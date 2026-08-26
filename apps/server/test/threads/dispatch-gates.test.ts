@@ -48,7 +48,7 @@ type GateRegistry = {
 };
 
 function emptyRegistry(): GateRegistry {
-  return { "thread.create": [], "turn.submit": [] };
+  return { "thread.create": [], "turn.submit": [], "turn.failed": [] };
 }
 
 /**

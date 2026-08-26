@@ -1,6 +1,7 @@
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
+type DispatchHoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -36,6 +37,46 @@ export function makeThreadResponse(
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
     liveDispatchHoldCount: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * A complete, deterministic `DispatchHoldResponse` for the `dispatch.*` event
+ * payloads and for faking `sdk.threads.holds.list`. Defaults are a live
+ * plugin-owned inline hold with no timer; override what the test is about. If
+ * the contract grows a required field, this builder fails typecheck — update
+ * the default here.
+ */
+export function makeDispatchHoldResponse(
+  overrides: Partial<DispatchHoldResponse> = {},
+): DispatchHoldResponse {
+  return {
+    id: "hold_1",
+    kind: "turn",
+    threadId: "thread-1",
+    holder: "plugin:test-plugin",
+    userReleasable: true,
+    reason: "Held",
+    payload: {
+      kind: "inline",
+      input: [{ type: "text", text: "Held turn", mentions: [] }],
+      execution: {
+        model: "test-model",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        source: "client/turn/requested",
+      },
+      editable: true,
+    },
+    resumeAt: null,
+    expectedReleaseAt: null,
+    staleAfterMs: null,
+    lastReportAt: null,
+    createdAt: 0,
+    releasedAt: null,
+    releaseKind: null,
     ...overrides,
   };
 }

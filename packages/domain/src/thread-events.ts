@@ -29,6 +29,7 @@ export const systemEventTypeValues = [
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
   "system/dispatch-hold",
+  "system/plugin-note",
   // Legacy persisted watchdog diagnostic; retained for read/decode/render
   // only, with no current producer.
   "system/provider-turn-watchdog",
@@ -96,7 +97,15 @@ export type ClientTurnLifecycleEventData = z.infer<
 export const turnRequestEventDataSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
-  continuationOfRequestId: clientTurnRequestIdSchema.optional(),
+  // Retry provenance, written only when a `turn.failed` gate's retry hold is
+  // released. Both fields are present together or not at all: absence means
+  // "this is an original dispatch", which is the overwhelmingly common case.
+  // (Supersedes the pre-plugin `continuationOfRequestId` key, which the removed
+  // core rate-limit recovery wrote and nothing ever read.)
+  /** The original request this attempt re-submits, unchanged across attempts. */
+  retryOfRequestId: clientTurnRequestIdSchema.optional(),
+  /** Which attempt this is: 2 is the first retry of the original request. */
+  retryAttempt: z.number().int().min(2).optional(),
   source: z.enum(["spawn", "tell"]),
   initiator: threadTurnInitiatorSchema,
   senderThreadId: z.string().nullable(),
@@ -295,6 +304,43 @@ export const systemDispatchHoldEventDataSchema = z.object({
 });
 export type SystemDispatchHoldEventData = z.infer<
   typeof systemDispatchHoldEventDataSchema
+>;
+
+/**
+ * Longest note a plugin may append. Deliberately short: a note is a one-line
+ * annotation on the timeline ("Rate limited — retrying at 6:30"), and anything
+ * that needs a paragraph is either a hold's transcript (`dispatch.report`) or
+ * content for the agent, which goes through an attributed agent-only message.
+ */
+export const PLUGIN_NOTE_TEXT_MAX_LENGTH = 500;
+
+const pluginNoteLevelValues = ["info", "warning"] as const;
+export const pluginNoteLevelSchema = z.enum(pluginNoteLevelValues);
+export type PluginNoteLevel = z.infer<typeof pluginNoteLevelSchema>;
+
+/**
+ * A plugin's one-line annotation on a thread's timeline.
+ *
+ * Display-only by construction, not by policy: nothing that builds a provider
+ * request reads thread events (a turn command carries prompt blocks and the
+ * provider resumes its own session by id), and the fork allowlist in
+ * `thread-fork-history.ts` names the conversation types explicitly, so a note
+ * cannot reach a model. Plugin content meant FOR the agent goes through an
+ * attributed agent-only message instead.
+ */
+export const systemPluginNoteEventDataSchema = z.object({
+  pluginId: z.string().min(1),
+  text: z.string().min(1).max(PLUGIN_NOTE_TEXT_MAX_LENGTH),
+  /**
+   * A lucide-style icon name the client renders when it recognizes it. A plain
+   * string rather than the client's `IconName` union so a note persisted by a
+   * newer plugin never becomes unparseable to an older client.
+   */
+  iconName: z.string().min(1).optional(),
+  level: pluginNoteLevelSchema,
+});
+export type SystemPluginNoteEventData = z.infer<
+  typeof systemPluginNoteEventDataSchema
 >;
 
 export const systemLegacyUserMessageEventDataSchema = z.object({

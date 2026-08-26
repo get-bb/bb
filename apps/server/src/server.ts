@@ -29,6 +29,11 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setDispatchGateProvider } from "./services/plugins/dispatch-gate-registry.js";
+import { appendPluginNote } from "./services/threads/plugin-notes.js";
+import {
+  createTurnFailedGateNotifier,
+  setTurnFailedGateNotifier,
+} from "./services/threads/turn-failed.js";
 import {
   releaseDispatchHoldForOwnerPlugin,
   reportDispatchHoldForOwnerPlugin,
@@ -595,6 +600,11 @@ export function createApp(
           }),
         ),
     },
+    // `bb.experimental_threads.appendNote`. The plugin id comes from the
+    // runtime's bound identity, so attribution on the timeline row cannot be
+    // forged by the caller.
+    appendThreadNote: ({ pluginId, threadId, note }) =>
+      appendPluginNote(deps, { pluginId, threadId, note }),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
@@ -605,6 +615,10 @@ export function createApp(
   // Bridge the dispatch pipeline to this service's gates. Until this runs
   // there are no gates, which is exactly the zero-overhead path.
   setDispatchGateProvider(pluginService.dispatchGates);
+  // Bridge the `run.failed` lifecycle seam to the `turn.failed` gate stage.
+  // Registered after the gate provider so the first failure it sees can already
+  // find gates.
+  setTurnFailedGateNotifier(createTurnFailedGateNotifier(deps));
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();

@@ -1,3 +1,4 @@
+import type { TurnRequestRetryMarker } from "./thread-events.js";
 import {
   deleteDeferredThreadMessage,
   deleteDeferredThreadMessagesForThread,
@@ -52,6 +53,8 @@ import {
 interface AcceptThreadSendRequestArgs {
   /** Present only when a released hold is re-entering the send path. */
   gateRelease?: SendThreadMessageGateRelease;
+  /** Present only when a released retry hold is re-submitting a failed turn. */
+  retryOf?: TurnRequestRetryMarker;
   payload: SendMessageRequest;
   thread: Thread;
 }
@@ -175,6 +178,7 @@ export async function acceptThreadSendRequest(
     ...(args.gateRelease !== undefined
       ? { gateRelease: args.gateRelease }
       : {}),
+    ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     payload,
     thread,
     trigger: "user",

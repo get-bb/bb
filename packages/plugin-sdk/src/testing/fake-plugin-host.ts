@@ -78,6 +78,8 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginThreadNote,
+  PluginThreads,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -266,6 +268,8 @@ export interface FakePluginRegistrations {
     holdId: string;
     update: DispatchHoldReportUpdate;
   }>;
+  /** Every `bb.experimental_threads.appendNote` call, in order. */
+  appendedThreadNotes: Array<{ threadId: string; note: PluginThreadNote }>;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1619,6 +1623,7 @@ function createFakePluginHostInternal(
   } = {
     "thread.create": null,
     "turn.submit": null,
+    "turn.failed": null,
   };
   const releasedDispatchHolds: Array<{
     holdId: string;
@@ -1627,6 +1632,10 @@ function createFakePluginHostInternal(
   const reportedDispatchHolds: Array<{
     holdId: string;
     update: DispatchHoldReportUpdate;
+  }> = [];
+  const appendedThreadNotes: Array<{
+    threadId: string;
+    note: PluginThreadNote;
   }> = [];
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
@@ -1900,6 +1909,13 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_threads: PluginThreads = {
+    appendNote(threadId, note) {
+      appendedThreadNotes.push({ threadId, note });
+      return Promise.resolve();
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1915,6 +1931,7 @@ function createFakePluginHostInternal(
     ui,
     events,
     experimental_dispatch,
+    experimental_threads,
     status,
     server,
     hosts,
@@ -2019,6 +2036,9 @@ function createFakePluginHostInternal(
       },
       get reportedDispatchHolds() {
         return [...reportedDispatchHolds];
+      },
+      get appendedThreadNotes() {
+        return [...appendedThreadNotes];
       },
       mentionProviders,
       providerRegistrations,

@@ -1,9 +1,15 @@
-import { getThread, type DispatchHoldRow } from "@bb/db";
+import {
+  getStoredTurnRequestEventByRequestId,
+  getThread,
+  type DispatchHoldRow,
+} from "@bb/db";
 import {
   DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX,
   type DispatchHoldInlinePayload,
   type DispatchHoldReleaseKind,
+  type DispatchHoldRetryPayload,
   type Thread,
+  type TurnRequestEventData,
 } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
@@ -40,6 +46,10 @@ import {
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
 import { acceptThreadSendRequest } from "./thread-send-request.js";
+import {
+  currentPermissionMode,
+  parseStoredTurnRequestEvent,
+} from "./thread-events.js";
 
 type DispatchHoldReleaseDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -77,6 +87,102 @@ function releasedHoldSendRequest(
       ? { pluginInputs: payload.pluginInputs }
       : {}),
   };
+}
+
+/**
+ * Rebuilds the send request a released RETRY hold dispatches.
+ *
+ * The blocks are the original request's, verbatim, so the provider is asked the
+ * same question the failed attempt asked rather than being nudged with a
+ * synthetic "please continue" whose meaning depends on what it remembers. Their
+ * VISIBILITY is the one thing that changes: `agent-only` is what keeps the
+ * timeline from showing the user's message a second time, using the same
+ * projection rule that has always hidden system continuations. The user's
+ * message stays where it was, on the attempt that failed.
+ *
+ * The execution tuple is replayed from the original request for the same reason
+ * an inline hold replays its frozen one: a retry must run what the user chose,
+ * not what the project default has since become.
+ */
+function retriedHoldSendRequest(
+  request: TurnRequestEventData,
+): SendMessageRequest {
+  const execution = request.execution;
+  const permissionMode = currentPermissionMode(execution.permissionMode);
+  return {
+    input: request.input.map((block) => ({
+      ...block,
+      visibility: "agent-only" as const,
+    })),
+    mode: "queue-if-active",
+    // Omitted rather than nulled where the recording has nothing to say: a
+    // send treats an absent field as "resolve it as usual", which is the same
+    // answer as when the original turn left it to core.
+    ...(execution.model !== null ? { model: execution.model } : {}),
+    ...(permissionMode !== null ? { permissionMode } : {}),
+    ...(execution.reasoningLevel !== null
+      ? { reasoningLevel: execution.reasoningLevel }
+      : {}),
+    ...(execution.serviceTier !== null
+      ? { serviceTier: execution.serviceTier }
+      : {}),
+  };
+}
+
+/**
+ * Re-submits the turn a retry hold references.
+ *
+ * The whole point of holding by reference rather than copying the turn is that
+ * the original request is the source of truth: this reads it back at release
+ * time, so a retry parked for six hours still dispatches exactly what was
+ * asked, and nothing about the retry is editable in between.
+ *
+ * It goes through `acceptThreadSendRequest` like every other release, so the
+ * `turn.submit` gates run: a retry coming back after a rate-limit window is
+ * still a dispatch, and a limiter at capacity must be able to park it again.
+ */
+async function dispatchRetryHold(
+  deps: DispatchHoldReleaseDeps,
+  args: {
+    hold: DispatchHoldRow;
+    payload: DispatchHoldRetryPayload;
+    releaseKind: DispatchingReleaseKind;
+    thread: Thread;
+  },
+): Promise<void> {
+  const row = getStoredTurnRequestEventByRequestId(deps.db, {
+    threadId: args.thread.id,
+    requestId: args.payload.retryOfTurnRequestId,
+  });
+  if (row === null) {
+    // The turn was edited away or its history rewritten under the hold. There
+    // is nothing left to re-submit and inventing a turn would be worse.
+    deps.logger.warn(
+      {
+        holdId: args.hold.id,
+        threadId: args.thread.id,
+        requestId: args.payload.retryOfTurnRequestId,
+      },
+      "Released a retry hold whose original request no longer exists",
+    );
+    return;
+  }
+  const request = parseStoredTurnRequestEvent(row);
+  await acceptThreadSendRequest(deps, {
+    payload: retriedHoldSendRequest(request),
+    thread: args.thread,
+    gateRelease: {
+      hold: args.hold,
+      skipPluginId:
+        args.releaseKind === "user"
+          ? dispatchHoldOwnerPluginId(args.hold)
+          : null,
+    },
+    retryOf: {
+      requestId: args.payload.retryOfTurnRequestId,
+      attempt: args.payload.attempt,
+    },
+  });
 }
 
 /**
@@ -261,15 +367,6 @@ async function dispatchReleasedHold(
 ): Promise<void> {
   const { hold } = args;
   const payload = parseDispatchHoldPayload(hold);
-  if (payload.kind === "retry") {
-    // Retry holds arrive with `turn.failed` in phase 3; nothing creates one
-    // yet, so a release has no original request to re-submit.
-    deps.logger.warn(
-      { holdId: hold.id, threadId: hold.threadId },
-      "Released a retry hold, which has no dispatch path yet",
-    );
-    return;
-  }
   if (hold.holder === CORE_REPROVISION_DISPATCH_HOLDER) {
     // A tracking record, not a dispatch carrier: its turn is persisted as a
     // deferred `client/turn/requested` and replayed by the provisioning
@@ -284,6 +381,15 @@ async function dispatchReleasedHold(
   }
   const thread = getThread(deps.db, hold.threadId);
   if (!thread || thread.deletedAt !== null) {
+    return;
+  }
+  if (payload.kind === "retry") {
+    await dispatchRetryHold(deps, {
+      hold,
+      payload,
+      releaseKind: args.releaseKind,
+      thread,
+    });
     return;
   }
   const startContext = parseDispatchHoldThreadStartContext(hold);

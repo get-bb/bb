@@ -1,48 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
+  makeDispatchHoldResponse,
   makeThreadResponse,
+  type CreateFakePluginHostOptions,
 } from "@get-bb/plugin-sdk/testing";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type {
+  PluginTurnFailedGateContext,
+  PluginTurnFailure,
+  PluginTurnSubmitGateContext,
+} from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import {
-  ProviderRetryService,
-  RELEASE_PACE_MS,
+  MAX_RETRY_ATTEMPTS,
   RESET_BUFFER_MS,
-} from "./src/service.js";
-import {
-  classifyProviderRetry,
-  type ProviderRateLimitState,
-} from "./src/recovery.js";
+  RESET_JITTER_MS,
+  decideRetry,
+} from "./src/retry-policy.js";
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
+const HOST_ID = "host-one";
+const THREAD_ID = "thread-limited";
 
-type ThreadEventRows = Awaited<
-  ReturnType<BbPluginApi["sdk"]["threads"]["events"]["list"]>
->;
-type TurnRequestEventRow = Extract<
-  ThreadEventRows[number],
-  { type: "client/turn/requested" }
->;
-type ThreadSend = BbPluginApi["sdk"]["threads"]["send"];
+type RateLimits = NonNullable<PluginTurnFailure["rateLimits"]>;
 
-interface TestFailedTurnInspection {
-  candidate: null | {
-    events: ThreadEventRows;
-    hostId: string;
-    providerId: "claude-code" | "codex";
-  };
-  events: ThreadEventRows;
-  reason: "eligible" | "input-not-accepted" | "superseded";
-}
-
-function rateLimits(
-  providerId: "claude-code" | "codex" = "codex",
-  resetsAtMs = RESET_AT_MS,
-): ProviderRateLimitState {
+function rateLimits(overrides: Partial<RateLimits> = {}): RateLimits {
   return {
-    providerId,
+    providerId: "codex",
     status: "blocked",
     kind: "subscription-window",
     windows: [
@@ -50,405 +35,312 @@ function rateLimits(
         providerKey: "primary",
         label: "Current session",
         status: "blocked",
-        resetsAtMs,
+        resetsAtMs: RESET_AT_MS,
       },
     ],
     reachedReason: "rate_limit_reached",
     overageStatus: null,
     overageReason: null,
+    ...overrides,
   };
 }
 
-function allowedRateLimits(
-  providerId: "claude-code" | "codex" = "codex",
-): ProviderRateLimitState {
+function failure(overrides: Partial<PluginTurnFailure> = {}): PluginTurnFailure {
   return {
-    ...rateLimits(providerId),
-    status: "allowed",
-    windows: [
-      {
-        providerKey: "primary",
-        label: "Current session",
-        status: "allowed",
-        resetsAtMs: null,
-      },
-    ],
+    requestId: "creq_aaaaaaaaaa",
+    originalRequestId: "creq_aaaaaaaaaa",
+    turnId: "turn-1",
+    message: "Usage limit reached",
+    errorInfo: {
+      category: "rate-limit",
+      providerCode: "usage_limit_reached",
+      httpStatusCode: 429,
+    },
+    rateLimits: rateLimits(),
+    attemptNumber: 1,
+    ...overrides,
   };
 }
 
-function failedTurnInspection(
-  threadId: string,
-  options: {
-    includeTerminalError?: boolean;
-    limits?: ProviderRateLimitState;
-    observedLimits?: ProviderRateLimitState;
-    providerId?: "claude-code" | "codex";
-    providerDrain?: boolean;
-    willRetry?: boolean;
-  } = {},
-): TestFailedTurnInspection {
-  const providerId = options.providerId ?? "codex";
-  const limits = options.limits ?? rateLimits(providerId);
-  const turnId = `turn-${threadId}`;
-  const providerThreadId = `provider-thread-${threadId}`;
-  const requestId = `request-${threadId}`;
-  const events: ThreadEventRows = [
-    {
-      id: `request-${threadId}`,
-      threadId,
-      seq: 1,
-      createdAt: NOW_MS,
-      scope: { kind: "thread" },
-      type: "client/turn/requested",
-      data: {
-        direction: "outbound",
-        requestId,
-        source: "tell",
-        initiator: "user",
-        senderThreadId: null,
-        systemMessageKind: "unlabeled",
-        systemMessageSubject: null,
-        input: [{ type: "text", text: "Finish the task", mentions: [] }],
-        target: { kind: "new-turn" },
-        request: { method: "turn/start", params: {} },
-        execution: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          permissionMode: "full",
-          source: "client/turn/requested",
-        },
-      },
-    },
-    {
-      id: `accepted-${threadId}`,
-      threadId,
-      seq: 2,
-      createdAt: NOW_MS,
-      scope: { kind: "turn", turnId },
-      type: "turn/input/accepted",
-      data: { providerThreadId, clientRequestId: requestId },
-    },
-    {
-      id: `rate-limits-${threadId}`,
-      threadId,
-      seq: 3,
-      createdAt: NOW_MS,
-      scope: { kind: "turn", turnId },
-      type: "provider/rateLimits/updated",
-      data: { providerThreadId, rateLimits: limits },
-    },
-  ];
-  if (options.includeTerminalError !== false) {
-    events.push({
-      id: `provider-error-${threadId}`,
-      threadId,
-      seq: 4,
-      createdAt: NOW_MS,
-      scope: { kind: "turn", turnId },
-      type: "provider/error",
-      data: {
-        providerThreadId,
-        message: "Usage limit reached",
-        willRetry: options.willRetry ?? false,
-        errorInfo: {
-          category: "rate-limit",
-          providerCode: "usage_limit_reached",
-          httpStatusCode: 429,
-        },
-      },
-    });
-  }
-  if (options.observedLimits !== undefined) {
-    events.push({
-      id: `observed-rate-limits-${threadId}`,
-      threadId,
-      seq: 6,
-      createdAt: NOW_MS + 1,
-      scope: { kind: "thread" },
-      type: "provider/rateLimits/updated",
-      data: { providerThreadId, rateLimits: options.observedLimits },
-    });
-  }
-  events.push({
-    id: `completed-${threadId}`,
-    threadId,
-    seq: 5,
+function gateHost(): NonNullable<PluginTurnFailedGateContext["host"]> {
+  return {
+    id: HOST_ID,
+    name: "Local",
+    type: "persistent",
+    status: "connected",
+    maxPermissionMode: "full",
+    lastRejectedProtocolVersion: null,
+    lastSeenAt: NOW_MS,
     createdAt: NOW_MS,
-    scope: { kind: "turn", turnId },
-    type: "turn/completed",
-    data: { providerThreadId, status: "failed" },
-  });
-  if (options.providerDrain === true) {
-    const drainTurnId = `drain-${threadId}`;
-    events.push(
-      {
-        id: `drain-started-${threadId}`,
-        threadId,
-        seq: 7,
-        createdAt: NOW_MS + 2,
-        scope: { kind: "turn", turnId: drainTurnId },
-        type: "turn/started",
-        data: { providerThreadId },
-      },
-      {
-        id: `drain-completed-${threadId}`,
-        threadId,
-        seq: 8,
-        createdAt: NOW_MS + 3,
-        scope: { kind: "turn", turnId: drainTurnId },
-        type: "turn/completed",
-        data: { providerThreadId, status: "failed" },
-      },
-    );
-  }
-  events.sort((left, right) => left.seq - right.seq);
-  return {
-    reason: "eligible",
-    candidate: {
-      events,
-      hostId: "host-one",
-      providerId,
-    },
-    events,
+    updatedAt: NOW_MS,
   };
 }
 
-function manualInspection(threadId: string): TestFailedTurnInspection {
-  return failedTurnInspection(threadId, {
-    limits: {
-      ...rateLimits(),
-      kind: "credits",
-      windows: [],
+function turnFailedContext(
+  overrides: Partial<PluginTurnFailure> = {},
+): PluginTurnFailedGateContext {
+  return {
+    stage: "turn.failed",
+    thread: makeThreadResponse({ id: THREAD_ID, providerId: "codex" }),
+    project: {
+      id: "project-one",
+      name: "Project",
+      kind: "standard",
+      gitRemoteUrl: null,
+      createdAt: NOW_MS,
+      updatedAt: NOW_MS,
     },
+    environment: null,
+    host: gateHost(),
+    input: { blocks: [], text: "do the thing" },
+    requestedExecution: {
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: null,
+      serviceTier: null,
+      permissionMode: null,
+    },
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: null,
+    parentThreadId: null,
+    failure: failure(overrides),
+  };
+}
+
+function turnSubmitContext(): PluginTurnSubmitGateContext {
+  const base = turnFailedContext();
+  return {
+    stage: "turn.submit",
+    thread: base.thread,
+    project: base.project,
+    environment: base.environment,
+    host: base.host,
+    input: base.input,
+    requestedExecution: base.requestedExecution,
+    executionSources: {
+      providerId: null,
+      model: null,
+      reasoningLevel: null,
+      serviceTier: null,
+      permissionMode: null,
+    },
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: null,
+    parentThreadId: null,
+    pluginInput: null,
+    isReleaseReevaluation: false,
+    hold: null,
+  };
+}
+
+type RetryHoldResponse = ReturnType<typeof makeDispatchHoldResponse>;
+
+/**
+ * A live retry hold as the server would return it: this plugin's holder, a
+ * retry payload and a timer.
+ */
+function retryHold(
+  overrides: Partial<RetryHoldResponse> = {},
+): RetryHoldResponse {
+  return makeDispatchHoldResponse({
+    id: "hold_1",
+    threadId: THREAD_ID,
+    holder: "plugin:provider-retry",
+    resumeAt: RESET_AT_MS + RESET_BUFFER_MS,
+    payload: { kind: "retry", retryOfTurnRequestId: "creq_aaaaaaaaaa" },
+    ...overrides,
   });
 }
 
-function unavailableInspection(
-  reason: "input-not-accepted" | "superseded",
-  threadId = "thread-ineligible",
-): TestFailedTurnInspection {
-  if (reason === "input-not-accepted") {
-    const inspection = failedTurnInspection(threadId);
-    const events = inspection.events.filter(
-      (row) =>
-        row.type !== "turn/input/accepted" && row.type !== "turn/completed",
-    );
-    return { reason, candidate: null, events };
-  }
-  const inspection = failedTurnInspection(threadId);
-  const events: ThreadEventRows = [
-    ...inspection.events,
-    {
-      id: `new-request-${threadId}`,
-      threadId,
-      seq: 7,
-      createdAt: NOW_MS + 2,
-      scope: { kind: "thread" },
-      type: "client/turn/requested",
-      data: {
-        direction: "outbound",
-        requestId: `new-request-${threadId}`,
-        source: "tell",
-        initiator: "user",
-        senderThreadId: null,
-        systemMessageKind: "unlabeled",
-        systemMessageSubject: null,
-        input: [{ type: "text", text: "New work", mentions: [] }],
-        target: { kind: "new-turn" },
-        request: { method: "turn/start", params: {} },
-        execution: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          permissionMode: "full",
-          source: "client/turn/requested",
-        },
+function createHost(holds: RetryHoldResponse[] = []) {
+  const sdk: CreateFakePluginHostOptions["sdk"] = {
+    threads: {
+      get: async ({ threadId }) =>
+        makeThreadResponse({ id: threadId, providerId: "codex" }),
+      holds: {
+        list: async () => holds,
+        cancel: async () => holds[0] ?? retryHold(),
+        release: async () => holds[0] ?? retryHold(),
       },
     },
-  ];
-  return { reason, candidate: null, events };
+  };
+  return createFakePluginHost({ pluginId: "provider-retry", sdk });
 }
 
-function createRetryHost(args: {
-  continueFailedTurn?: ThreadSend;
-  inspect: (args: {
-    threadId: string;
-  }) => TestFailedTurnInspection | Promise<TestFailedTurnInspection>;
-  onHostSubscription?: (
-    notify: (changes: Array<"host-connected" | "host-disconnected">) => void,
-  ) => void;
-  providerId?: "claude-code" | "codex";
-}) {
-  const inspectionByThreadId = new Map<string, TestFailedTurnInspection>();
-  return createFakePluginHost({
-    pluginId: "provider-retry",
-    sdk: {
-      environments: {
-        get: async ({ environmentId }) => ({
-          id: environmentId,
-          name: null,
-          projectId: "project-one",
-          hostId: "host-one",
-          path: "/workspace",
-          managed: false,
-          isGitRepo: true,
-          isWorktree: false,
-          workspaceProvisionType: "unmanaged",
-          branchName: "main",
-          baseBranch: null,
-          defaultBranch: "main",
-          createdAt: NOW_MS,
-          updatedAt: NOW_MS,
-          status: "ready",
+describe("provider retry policy", () => {
+  it("waits for the reported reset plus a buffer, jittered within its bound", () => {
+    // The jitter is what keeps every thread on one exhausted account from
+    // retrying in the same instant, so its bounds are the contract: never
+    // before the buffer, never a full jitter window past it.
+    const earliest = decideRetry({
+      failure: failure(),
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0,
+    });
+    const latest = decideRetry({
+      failure: failure(),
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0.999_999,
+    });
+    expect(earliest).toEqual({
+      kind: "retry",
+      resetsAtMs: RESET_AT_MS,
+      resumeAt: RESET_AT_MS + RESET_BUFFER_MS,
+    });
+    expect(latest.kind).toBe("retry");
+    if (latest.kind !== "retry") return;
+    expect(latest.resumeAt).toBeGreaterThan(RESET_AT_MS + RESET_BUFFER_MS);
+    expect(latest.resumeAt).toBeLessThan(
+      RESET_AT_MS + RESET_BUFFER_MS + RESET_JITTER_MS,
+    );
+  });
+
+  it("never schedules a retry in the past when the reset has already passed", () => {
+    const decision = decideRetry({
+      failure: failure({
+        rateLimits: rateLimits({
+          windows: [
+            {
+              providerKey: "primary",
+              label: "Current session",
+              status: "blocked",
+              resetsAtMs: NOW_MS - 60_000,
+            },
+          ],
         }),
-      },
-      threads: {
-        get: async ({ threadId }) => {
-          inspectionByThreadId.set(threadId, await args.inspect({ threadId }));
-          return makeThreadResponse({
-            id: threadId,
-            environmentId: "environment-one",
-            providerId: args.providerId ?? "codex",
-            status: "error",
-          });
-        },
-        events: {
-          list: async ({
-            threadId,
-            afterSeq,
-            beforeSeq,
-            limit,
-            order,
-            types,
-          }) => {
-            const inspection = inspectionByThreadId.get(threadId);
-            if (inspection === undefined) {
-              throw new Error(`Thread ${threadId} was not inspected`);
-            }
-            const after = afterSeq === undefined ? 0 : Number(afterSeq);
-            const before =
-              beforeSeq === undefined
-                ? Number.POSITIVE_INFINITY
-                : Number(beforeSeq);
-            const matching = inspection.events.filter(
-              (row) =>
-                row.seq > after &&
-                row.seq < before &&
-                (types === undefined || types.includes(row.type)),
-            );
-            matching.sort((left, right) =>
-              order === "desc" ? right.seq - left.seq : left.seq - right.seq,
-            );
-            return matching.slice(
-              0,
-              limit === undefined ? undefined : Number(limit),
-            );
-          },
-        },
-        send:
-          args.continueFailedTurn ??
-          (async () => ({ ok: true as const, delivery: "sent" as const })),
-      },
-      subscribe: ({ event, callback }) => {
-        if (event === "host:changed") {
-          args.onHostSubscription?.((changes) =>
-            callback({
-              type: "changed",
-              entity: "host",
-              id: "host-one",
-              changes,
-            }),
-          );
-        }
-        return () => undefined;
-      },
-    },
-  });
-}
-
-function expectedContinuation(threadId: string) {
-  return {
-    threadId,
-    mode: "start",
-    input: [
-      {
-        type: "text",
-        text: "Please continue.",
-        mentions: [],
-        visibility: "agent-only",
-      },
-    ],
-    model: "gpt-5",
-    permissionMode: "full",
-    reasoningLevel: "medium",
-    serviceTier: "default",
-    executionInputSources: {
-      model: "explicit",
-      permissionMode: "explicit",
-      reasoningLevel: "explicit",
-      serviceTier: "explicit",
-    },
-  };
-}
-
-async function flushPromises() {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
-}
-
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(NOW_MS);
-  vi.spyOn(Math, "random").mockReturnValue(0);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
-
-describe("provider retry scheduler", () => {
-  it("classifies prior completed requests with linear event reads", () => {
-    const events = Array.from({ length: 100 }, (_, index) =>
-      failedTurnInspection(`linear-${index}`).events.map((row) => ({
-        ...row,
-        seq: row.seq + index * 10,
-      })),
-    ).flat();
-    let eventReads = 0;
-    const observedEvents = new Proxy(events, {
-      get(target, property, receiver) {
-        if (typeof property === "string" && /^\d+$/u.test(property)) {
-          eventReads += 1;
-        }
-        return Reflect.get(target, property, receiver);
-      },
-    });
-
-    expect(
-      classifyProviderRetry({
-        events: observedEvents,
-        hostId: "host-one",
-        providerId: "codex",
       }),
-    ).toMatchObject({
-      candidate: { failedRequestId: "request-linear-99" },
-      reason: "eligible",
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0,
     });
-    expect(eventReads).toBeLessThan(events.length * 8);
+    expect(decision).toEqual({
+      kind: "retry",
+      resetsAtMs: NOW_MS - 60_000,
+      resumeAt: NOW_MS + RESET_BUFFER_MS,
+    });
   });
 
-  it("owns provider retry settings and all provider retry commands", async () => {
-    const host = createFakePluginHost({ pluginId: "provider-retry" });
+  it("waits for the latest blocked window, not the first to open", () => {
+    const weekly = RESET_AT_MS + 48 * 60 * 60 * 1_000;
+    const decision = decideRetry({
+      failure: failure({
+        rateLimits: rateLimits({
+          windows: [
+            {
+              providerKey: "session",
+              label: "Session",
+              status: "blocked",
+              resetsAtMs: RESET_AT_MS,
+            },
+            {
+              providerKey: "weekly",
+              label: "Weekly",
+              status: "blocked",
+              resetsAtMs: weekly,
+            },
+          ],
+        }),
+      }),
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0,
+    });
+    expect(decision).toEqual({
+      kind: "retry",
+      resetsAtMs: weekly,
+      resumeAt: weekly + RESET_BUFFER_MS,
+    });
+  });
+
+  it("declines a reset beyond the configured maximum wait", () => {
+    expect(
+      decideRetry({
+        failure: failure(),
+        maximumWaitMs: 60 * 60 * 1_000,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "beyond-maximum-wait" });
+    // The same window is fine once the limit is raised past it.
+    expect(
+      decideRetry({
+        failure: failure(),
+        maximumWaitMs: 24 * 60 * 60 * 1_000,
+        now: NOW_MS,
+        random: 0,
+      }).kind,
+    ).toBe("retry");
+  });
+
+  it("declines failures that are not rate limits, and limits that do not reset", () => {
+    expect(
+      decideRetry({
+        failure: failure({
+          errorInfo: {
+            category: "internal",
+            providerCode: null,
+            httpStatusCode: 500,
+          },
+        }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "not-rate-limited" });
+    expect(
+      decideRetry({
+        failure: failure({ rateLimits: null }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "no-rate-limit-state" });
+    // Credits do not come back on a clock, so waiting is not a fix.
+    expect(
+      decideRetry({
+        failure: failure({ rateLimits: rateLimits({ kind: "credits" }) }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "not-resettable" });
+  });
+
+  it("gives up once a turn has been retried its maximum number of times", () => {
+    expect(
+      decideRetry({
+        failure: failure({ attemptNumber: MAX_RETRY_ATTEMPTS }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "attempts-exhausted" });
+    expect(
+      decideRetry({
+        failure: failure({ attemptNumber: MAX_RETRY_ATTEMPTS - 1 }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }).kind,
+    ).toBe("retry");
+  });
+});
+
+describe("provider retry plugin", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("owns its settings, both gates and all provider retry commands", async () => {
+    const host = createHost();
     await plugin(host.bb);
 
     expect(host.harness.registrations.settingsDescriptors).toEqual({
@@ -461,610 +353,171 @@ describe("provider retry scheduler", () => {
         default: "6 hours",
       },
     });
+    expect(host.harness.registrations.dispatchGates["turn.failed"]).not.toBeNull();
+    expect(host.harness.registrations.dispatchGates["turn.submit"]).not.toBeNull();
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
     ).toEqual(["status", "cancel", "retry"]);
     await host.harness.dispose();
   });
 
-  it("classifies provider events and schedules subscription-window failures", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => failedTurnInspection(threadId),
-      continueFailedTurn,
-    });
+  it("asks for a retry at the reset window and notes nothing yet", async () => {
+    const host = createHost();
     await plugin(host.bb);
+    const gate = host.harness.registrations.dispatchGates["turn.failed"];
+    expect(gate).not.toBeNull();
 
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-limited", status: "error" }),
-      error: "Usage limit reached",
-    });
-    const eventCalls = host.harness.inspection.sdk.callsTo(
-      "threads.events.list",
+    const decision = await gate?.(turnFailedContext());
+    expect(decision?.action).toBe("retry");
+    if (decision?.action !== "retry") return;
+    expect(decision.resumeAt).toBeGreaterThanOrEqual(
+      RESET_AT_MS + RESET_BUFFER_MS,
     );
-    expect(eventCalls).toHaveLength(3);
-    expect(eventCalls[0]?.[0]).toMatchObject({
-      limit: "1",
-      order: "desc",
-      types: ["client/turn/requested"],
-    });
-    expect(eventCalls[1]?.[0]).toMatchObject({
-      limit: "100",
-      order: "desc",
-      types: ["provider/rateLimits/updated"],
-    });
-    expect(eventCalls[2]?.[0]).toMatchObject({
-      afterSeq: "1",
-      limit: "500",
-      order: "asc",
-      types: [
-        "client/turn/requested",
-        "provider/error",
-        "provider/rateLimits/updated",
-        "system/thread/interrupted",
-        "turn/completed",
-        "turn/input/accepted",
-      ],
-    });
-    await expect(
-      host.harness.runCli(["status", "thread-limited"]),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      stdout: expect.stringContaining("thread-limited\tcodex\tretrying"),
-    });
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueFailedTurn).toHaveBeenCalledWith(
-      expectedContinuation("thread-limited"),
-    );
+    expect(decision.reason).toContain("Rate limited");
+    // The "scheduled" narration is the hold's own card and timeline row; a
+    // note here would say the same thing twice.
+    expect(host.harness.registrations.appendedThreadNotes).toEqual([]);
     await host.harness.dispose();
   });
 
-  it("pages forward only through the latest request window", async () => {
-    const threadId = "thread-long-history";
-    const inspection = failedTurnInspection(threadId);
-    for (let index = 0; index < 500; index += 1) {
-      inspection.events.push({
-        id: `trailing-error-${index}`,
-        threadId,
-        seq: 6 + index,
-        createdAt: NOW_MS + index,
-        scope: { kind: "turn", turnId: `turn-${threadId}` },
-        type: "provider/error",
-        data: {
-          providerThreadId: `provider-thread-${threadId}`,
-          message: "Trailing provider diagnostic",
-          willRetry: false,
-          errorInfo: {
-            category: "internal",
-            providerCode: "trailing_diagnostic",
-            httpStatusCode: null,
-          },
+  it("leaves ordinary failures alone", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+    const gate = host.harness.registrations.dispatchGates["turn.failed"];
+
+    const decision = await gate?.(
+      turnFailedContext({
+        errorInfo: {
+          category: "internal",
+          providerCode: null,
+          httpStatusCode: 500,
         },
-      });
-    }
-    inspection.events.sort((left, right) => left.seq - right.seq);
-    const host = createRetryHost({ inspect: async () => inspection });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
-      error: "Usage limit reached",
-    });
-
-    const calls = host.harness.inspection.sdk.callsTo("threads.events.list");
-    expect(calls).toHaveLength(4);
-    expect(calls[2]?.[0]).toMatchObject({ afterSeq: "1", order: "asc" });
-    expect(calls[3]?.[0]).toMatchObject({ afterSeq: "501", order: "asc" });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId }),
-    ).resolves.toMatchObject({ view: { threadId } });
-    await host.harness.dispose();
-  });
-
-  it("does not page through prior requests when an ordinary failure has no rate-limit history", async () => {
-    const threadId = "thread-ordinary-long-history";
-    const latest = failedTurnInspection(threadId);
-    const latestRequest = latest.events.find(
-      (row): row is TurnRequestEventRow => row.type === "client/turn/requested",
-    );
-    if (latestRequest === undefined) {
-      throw new Error("Expected latest request fixture");
-    }
-    const priorRequests = Array.from({ length: 2_000 }, (_, index) => ({
-      ...latestRequest,
-      id: `prior-request-${index}`,
-      seq: index + 1,
-      data: {
-        ...latestRequest.data,
-        requestId: `prior-request-${index}`,
-      },
-    }));
-    const latestEvents = latest.events
-      .filter((row) => row.type !== "provider/rateLimits/updated")
-      .map((row) =>
-        row.type === "provider/error"
-          ? {
-              ...row,
-              seq: row.seq + 2_000,
-              data: {
-                ...row.data,
-                message: "Provider failed",
-                errorInfo: {
-                  category: "internal" as const,
-                  providerCode: "internal_error",
-                  httpStatusCode: 500,
-                },
-              },
-            }
-          : { ...row, seq: row.seq + 2_000 },
-      );
-    const inspection = {
-      ...latest,
-      events: [...priorRequests, ...latestEvents],
-    };
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async () => inspection,
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
-      error: "Provider failed",
-    });
-
-    const calls = host.harness.inspection.sdk.callsTo("threads.events.list");
-    expect(calls).toHaveLength(3);
-    expect(calls[0]?.[0]).toMatchObject({
-      limit: "1",
-      order: "desc",
-      types: ["client/turn/requested"],
-    });
-    expect(calls[1]?.[0]).toMatchObject({
-      limit: "100",
-      order: "desc",
-      types: ["provider/rateLimits/updated"],
-    });
-    expect(calls[2]?.[0]).toMatchObject({
-      afterSeq: "2001",
-      order: "asc",
-    });
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("releases immediately when a later provider observation is allowed", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect: async ({ threadId }) =>
-        failedTurnInspection(threadId, {
-          observedLimits: allowedRateLimits(),
-        }),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-allowed", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(continueFailedTurn).toHaveBeenCalledWith(
-      expectedContinuation("thread-allowed"),
-    );
-    await host.harness.dispose();
-  });
-
-  it("does not schedule failures without a terminal rate-limit error", async () => {
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async ({ threadId }) =>
-        failedTurnInspection(threadId, { includeTerminalError: false }),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-internal", status: "error" }),
-      error: "Provider failed",
-    });
-
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-internal",
-      }),
-    ).resolves.toEqual({ view: null });
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("defers to provider-owned retries", async () => {
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async ({ threadId }) =>
-        failedTurnInspection(threadId, { willRetry: true }),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-provider", status: "error" }),
-      error: "Provider is retrying",
-    });
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("keeps non-resettable limits manual and retries them through the plugin CLI", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => manualInspection(threadId),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-credits", status: "error" }),
-      error: "Credits exhausted",
-    });
-
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-credits",
-      }),
-    ).resolves.toEqual({ view: null });
-    await expect(
-      host.harness.runCli(["retry", "thread-credits", "--json"]),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      stdout: expect.stringContaining(
-        '"failedRequestId": "request-thread-credits"',
-      ),
-    });
-    expect(continueFailedTurn).toHaveBeenCalledWith(
-      expectedContinuation("thread-credits"),
-    );
-    await host.harness.dispose();
-  });
-
-  it("reports a useful CLI error when manual recovery is unavailable", async () => {
-    const host = createRetryHost({
-      inspect: async () => unavailableInspection("input-not-accepted"),
-    });
-    await plugin(host.bb);
-
-    await expect(
-      host.harness.runCli(["retry", "thread-ineligible"]),
-    ).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining("input-not-accepted"),
-    });
-    await host.harness.dispose();
-  });
-
-  it("paces threads sharing one provider account", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => failedTurnInspection(threadId),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    for (const threadId of ["thread-b", "thread-a"]) {
-      await host.harness.emitThreadEvent("thread.failed", {
-        thread: makeThreadResponse({ id: threadId, status: "error" }),
-        error: "Usage limit reached",
-      });
-    }
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueFailedTurn).toHaveBeenCalledTimes(1);
-    expect(continueFailedTurn).toHaveBeenLastCalledWith(
-      expect.objectContaining({ threadId: "thread-a" }),
-    );
-    await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
-    expect(continueFailedTurn).toHaveBeenCalledTimes(2);
-    expect(continueFailedTurn).toHaveBeenLastCalledWith(
-      expect.objectContaining({ threadId: "thread-b" }),
-    );
-    await host.harness.dispose();
-  });
-
-  it("attempts each reported reset window only once per plugin process", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => failedTurnInspection(threadId),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-once", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-once", status: "error" }),
-      error: "Usage limit reached again",
-    });
-    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
-
-    expect(continueFailedTurn).toHaveBeenCalledOnce();
-    await host.harness.dispose();
-  });
-
-  it("keeps cancellation final when reconciliation is already running", async () => {
-    const pendingInspection = deferred<TestFailedTurnInspection>();
-    let inspectionCount = 0;
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: ({ threadId }) => {
-        inspectionCount += 1;
-        return inspectionCount === 1
-          ? Promise.resolve(failedTurnInspection(threadId))
-          : pendingInspection.promise;
-      },
-      continueFailedTurn,
-    });
-    const service = new ProviderRetryService(host.bb);
-    await service.reconcile("thread-race");
-
-    const reconciling = service.reconcile("thread-race");
-    await flushPromises();
-    const cancelling = service.cancel("thread-race");
-    pendingInspection.resolve(failedTurnInspection("thread-race"));
-
-    await expect(reconciling).resolves.toMatchObject({
-      threadId: "thread-race",
-    });
-    await expect(cancelling).resolves.toBe(true);
-    expect(service.status("thread-race")).toBeNull();
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    service.dispose();
-    await host.harness.dispose();
-  });
-
-  it("does not inspect untracked active or idle threads", async () => {
-    const inspect = vi.fn(async ({ threadId }) =>
-      failedTurnInspection(threadId),
-    );
-    const host = createRetryHost({ inspect });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: "thread-untracked", status: "active" }),
-    });
-    await host.harness.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: "thread-untracked", status: "idle" }),
-      lastAssistantText: null,
-    });
-
-    expect(inspect).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("keeps an accepted failure scheduled while provider-only activity drains", async () => {
-    const threadId = "thread-claude-drain";
-    const inspect = vi.fn(async () =>
-      failedTurnInspection(threadId, {
-        providerDrain: true,
-        providerId: "claude-code",
       }),
     );
-    const continueFailedTurn = vi.fn(async () => ({
-      ok: true as const,
-      delivery: "sent" as const,
-    }));
-    const host = createRetryHost({
-      inspect,
-      continueFailedTurn,
-      providerId: "claude-code",
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
-      error: "Usage limit reached",
-    });
-    await host.harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: threadId, status: "active" }),
-    });
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
-      error: "Usage limit reached",
-    });
-
-    expect(inspect).toHaveBeenCalledTimes(3);
-    await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId }),
-    ).resolves.toMatchObject({
-      view: { threadId, providerId: "claude-code" },
-    });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueFailedTurn).toHaveBeenCalledOnce();
+    expect(decision).toEqual({ action: "none" });
+    expect(host.harness.registrations.appendedThreadNotes).toEqual([]);
     await host.harness.dispose();
   });
 
-  it("drops a tracked retry when a newer user action supersedes it", async () => {
-    let inspectionCount = 0;
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => {
-        inspectionCount += 1;
-        return inspectionCount === 1
-          ? failedTurnInspection(threadId)
-          : unavailableInspection("superseded", threadId);
-      },
-      continueFailedTurn,
-    });
+  it("tells the user when a limit resets beyond the maximum wait", async () => {
+    const host = createHost();
     await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-manual", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await host.harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: "thread-manual", status: "active" }),
-    });
-
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-manual",
-      }),
-    ).resolves.toEqual({ view: null });
-    await host.harness.dispose();
-  });
-
-  it("does not retry after an explicit user stop", async () => {
-    const threadId = "thread-stopped";
-    const inspection = failedTurnInspection(threadId);
-    inspection.events.push({
-      id: `manual-stop-${threadId}`,
-      threadId,
-      seq: 7,
-      createdAt: NOW_MS + 2,
-      scope: { kind: "thread" },
-      type: "system/thread/interrupted",
-      data: { reason: "manual-stop" },
-    });
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async () => inspection,
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
-      error: "Usage limit reached",
-    });
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-
-    expect(continueFailedTurn).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("honors the configured maximum wait", async () => {
-    const resetAtMs = NOW_MS + 7 * 60 * 60 * 1_000;
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async ({ threadId }) =>
-        failedTurnInspection(threadId, {
-          limits: rateLimits("codex", resetAtMs),
-        }),
-      continueFailedTurn,
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-weekly", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-weekly",
-      }),
-    ).resolves.toEqual({ view: null });
-
-    await host.harness.setSettings({ maximumWait: "24 hours" });
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-weekly", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-weekly",
-      }),
-    ).resolves.toMatchObject({
-      view: { retryAtMs: resetAtMs + RESET_BUFFER_MS },
-    });
-
     await host.harness.setSettings({ maximumWait: "6 hours" });
-    await vi.advanceTimersByTimeAsync(8 * 60 * 60 * 1_000);
-    expect(continueFailedTurn).not.toHaveBeenCalled();
+    const gate = host.harness.registrations.dispatchGates["turn.failed"];
+
+    const decision = await gate?.(
+      turnFailedContext({
+        rateLimits: rateLimits({
+          windows: [
+            {
+              providerKey: "primary",
+              label: "Weekly",
+              status: "blocked",
+              resetsAtMs: NOW_MS + 7 * 60 * 60 * 1_000,
+            },
+          ],
+        }),
+      }),
+    );
+    expect(decision).toEqual({ action: "none" });
+    const notes = host.harness.registrations.appendedThreadNotes;
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.threadId).toBe(THREAD_ID);
+    expect(notes[0]?.note.level).toBe("warning");
+    expect(notes[0]?.note.text).toContain("maximum wait");
     await host.harness.dispose();
   });
 
-  it("waits for a disconnected host and retries when it reconnects", async () => {
-    const continueFailedTurn = vi
-      .fn()
-      .mockRejectedValueOnce(
-        Object.assign(new Error("Host is not connected"), {
-          code: "host_unavailable",
-          status: 502,
-        }),
-      )
-      .mockResolvedValueOnce({ ok: true as const, delivery: "sent" as const });
-    const subscription = {
-      hostChanged: null as
-        | ((changes: Array<"host-connected" | "host-disconnected">) => void)
-        | null,
-    };
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => failedTurnInspection(threadId),
-      continueFailedTurn,
-      onHostSubscription: (notify) => {
-        subscription.hostChanged = notify;
-      },
-    });
+  it("holds new sends into an account it just watched hit its limit", async () => {
+    const host = createHost();
     await plugin(host.bb);
-    const running = host.harness.runService("provider-retry-scheduler");
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-host", status: "error" }),
-      error: "Usage limit reached",
+    const failedGate = host.harness.registrations.dispatchGates["turn.failed"];
+    const submitGate = host.harness.registrations.dispatchGates["turn.submit"];
+
+    // Nothing known yet, so an ordinary send goes through untouched.
+    expect(await submitGate?.(turnSubmitContext())).toEqual({
+      action: "proceed",
     });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+
+    await failedGate?.(turnFailedContext());
+
+    const held = await submitGate?.(turnSubmitContext());
+    expect(held?.action).toBe("hold");
+    if (held?.action !== "hold") return;
+    expect(held.resumeAt).toBe(RESET_AT_MS + RESET_BUFFER_MS);
+
+    // Once the window has passed the account is presumed usable again; being
+    // wrong costs one failure, which is what re-arms the hold.
+    vi.setSystemTime(RESET_AT_MS + RESET_BUFFER_MS + 1);
+    expect(await submitGate?.(turnSubmitContext())).toEqual({
+      action: "proceed",
+    });
+    await host.harness.dispose();
+  });
+
+  it("notes a retry when its hold releases and when the user cancels it", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+    const hold = retryHold();
+
+    await host.harness.emitThreadEvent("dispatch.released", { hold });
+    await host.harness.emitThreadEvent("dispatch.cancelled", { hold });
+
+    const notes = host.harness.registrations.appendedThreadNotes;
+    expect(notes.map((entry) => entry.note.text)).toEqual([
+      "Rate limit window reset — retrying now.",
+      "Automatic retry cancelled.",
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("ignores hold events belonging to other plugins", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("dispatch.released", {
+      hold: makeDispatchHoldResponse({
+        id: "hold_2",
+        threadId: THREAD_ID,
+        holder: "plugin:concurrency-limit",
+      }),
+    });
+
+    expect(host.harness.registrations.appendedThreadNotes).toEqual([]);
+    await host.harness.dispose();
+  });
+
+  it("reports pending retries from the hold list rather than private state", async () => {
+    const host = createHost([retryHold()]);
+    await plugin(host.bb);
 
     await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-host",
-      }),
-    ).resolves.toMatchObject({ view: { retryAtMs: null } });
-    subscription.hostChanged?.(["host-connected"]);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(continueFailedTurn).toHaveBeenCalledTimes(2);
-
-    running.controller.abort();
-    await running.done;
+      host.harness.callRpc("providerRetryStatus", { threadId: THREAD_ID }),
+    ).resolves.toEqual({
+      view: {
+        threadId: THREAD_ID,
+        providerId: "codex",
+        retryAtMs: RESET_AT_MS + RESET_BUFFER_MS,
+      },
+    });
+    await expect(host.harness.runCli(["status", THREAD_ID])).resolves.toEqual(
+      expect.objectContaining({ exitCode: 0 }),
+    );
     await host.harness.dispose();
   });
 
-  it("clears pending timers when the plugin is disposed", async () => {
-    const continueFailedTurn = vi.fn();
-    const host = createRetryHost({
-      inspect: async ({ threadId }) => failedTurnInspection(threadId),
-      continueFailedTurn,
-    });
+  it("reports no pending retry when no hold exists", async () => {
+    const host = createHost();
     await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-dispose", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await host.harness.dispose();
 
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    await flushPromises();
-    expect(continueFailedTurn).not.toHaveBeenCalled();
+    await expect(
+      host.harness.callRpc("providerRetryStatus", { threadId: THREAD_ID }),
+    ).resolves.toEqual({ view: null });
+    await expect(
+      host.harness.callRpc("providerRetryCancel", { threadId: THREAD_ID }),
+    ).resolves.toEqual({ cancelled: false });
+    const status = await host.harness.runCli(["status"]);
+    expect(status.stdout).toBe("No provider retries are pending.\n");
+    await host.harness.dispose();
   });
 });

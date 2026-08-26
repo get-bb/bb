@@ -552,6 +552,18 @@ export function parseOperationMessage(
     });
   }
 
+  if (decoded.type === "system/plugin-note") {
+    const { pluginId, text, iconName, level } = decoded;
+    // A note is one complete statement, not a progress row: it is `completed`
+    // the moment it exists, so nothing ever leaves it shimmering.
+    return op(decoded, meta, "plugin-note", {
+      opType: "plugin-note",
+      title: text,
+      status: "completed",
+      pluginNote: { pluginId, iconName: iconName ?? null, level },
+    });
+  }
+
   if (decoded.type === "thread/name/updated") {
     return null;
   }

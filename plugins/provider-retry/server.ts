@@ -1,10 +1,13 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
+import { findRetryHold, retryViewForThread } from "./src/holds.js";
 import {
   DEFAULT_MAXIMUM_WAIT_MS,
-  ProviderRetryService,
-} from "./src/service.js";
+  RESET_BUFFER_MS,
+  decideRetry,
+  type RetryDeclineReason,
+} from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
 
@@ -23,18 +26,29 @@ function maximumWaitMs(value: string | boolean | undefined): number | null {
   }
 }
 
-function waitForAbort(signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    signal.addEventListener("abort", () => resolve(), { once: true });
-  });
+function retryTimeLabel(atMs: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    weekday: "short",
+  }).format(new Date(atMs));
 }
 
-function logFailure(bb: BbPluginApi, operation: string, error: unknown): void {
-  bb.log.warn(
-    `${operation}: ${error instanceof Error ? error.message : String(error)}`,
-  );
-}
+/**
+ * The decline reasons worth telling the user about.
+ *
+ * Most declines mean "this failure had nothing to do with a rate limit", which
+ * is every ordinary failure on the machine — annotating those would put a note
+ * on failures this plugin has no opinion about. These two are different: the
+ * user hit a limit and is being told, once, that nothing will happen
+ * automatically.
+ */
+const NOTED_DECLINE_REASONS: Partial<Record<RetryDeclineReason, string>> = {
+  "beyond-maximum-wait":
+    "Rate limited, and the reset is farther away than the configured maximum wait — no retry scheduled.",
+  "attempts-exhausted":
+    "Rate limited again after several retries — giving up on this turn.",
+};
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
@@ -48,71 +62,150 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
   const initialSettings = await settings.get();
-  const service = new ProviderRetryService(
-    bb,
-    undefined,
-    maximumWaitMs(initialSettings.maximumWait),
-  );
+  let maximumWait = maximumWaitMs(initialSettings.maximumWait);
   settings.onChange((next) => {
-    service.setMaximumWaitMs(maximumWaitMs(next.maximumWait));
+    maximumWait = maximumWaitMs(next.maximumWait);
   });
-  bb.onDispose(() => service.dispose());
+
+  /**
+   * Windows this plugin has seen a provider account blocked on, keyed by
+   * `hostId:providerId`.
+   *
+   * This is the whole replacement for the old per-account release pacing: once
+   * one thread proves an account is exhausted, `turn.submit` parks OTHER
+   * dispatches into the same account until the window resets, instead of
+   * letting them each discover it by failing. Purely an optimisation, so
+   * in-memory is right — losing it on restart costs one extra failure, and a
+   * stale entry expires by its own reset time.
+   */
+  const blockedScopes = new Map<string, number>();
+
+  function noteBlockedScope(
+    hostId: string | null,
+    providerId: string,
+    resetsAtMs: number,
+  ): void {
+    if (hostId === null) return;
+    blockedScopes.set(`${hostId}:${providerId}`, resetsAtMs);
+  }
+
+  function blockedScopeResetAt(
+    hostId: string | null,
+    providerId: string,
+    now: number,
+  ): number | null {
+    if (hostId === null) return null;
+    const key = `${hostId}:${providerId}`;
+    const resetsAtMs = blockedScopes.get(key);
+    if (resetsAtMs === undefined) return null;
+    if (resetsAtMs + RESET_BUFFER_MS <= now) {
+      blockedScopes.delete(key);
+      return null;
+    }
+    return resetsAtMs;
+  }
+
+  function appendNote(
+    threadId: string,
+    text: string,
+    level: "info" | "warning",
+  ): void {
+    // Deliberately not awaited: notes annotate, they do not gate anything, and
+    // a gate that waited on one would spend its decision box on a write.
+    void bb.experimental_threads
+      .appendNote(threadId, { text, iconName: "ArrowReloadHorizontal", level })
+      .catch((error: unknown) => {
+        bb.log.warn(
+          `Could not append a provider retry note: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+  }
+
+  /**
+   * The retry decision itself.
+   *
+   * Everything this used to need — did the turn really fail, which request was
+   * it, what did the provider say, which window is blocked, how many times have
+   * we tried — arrives on the context. What is left is policy, which is all
+   * this plugin was ever for.
+   */
+  bb.experimental_dispatch.gate("turn.failed", (context) => {
+    const decision = decideRetry({
+      failure: context.failure,
+      maximumWaitMs: maximumWait,
+      now: Date.now(),
+      random: Math.random(),
+    });
+    if (decision.kind === "decline") {
+      const noteText = NOTED_DECLINE_REASONS[decision.reason];
+      if (noteText !== undefined) {
+        appendNote(context.thread.id, noteText, "warning");
+      }
+      return { action: "none" };
+    }
+    noteBlockedScope(
+      context.host?.id ?? null,
+      context.requestedExecution.providerId,
+      decision.resetsAtMs,
+    );
+    return {
+      action: "retry",
+      reason: `Rate limited · retrying ${retryTimeLabel(decision.resumeAt)}`,
+      resumeAt: decision.resumeAt,
+    };
+  });
+
+  /**
+   * Admission control for an account already known to be exhausted.
+   *
+   * A dispatch into a blocked account can only fail, and a failure costs the
+   * user a red turn plus a wait. Holding it until the window resets turns that
+   * into one card that says why. The released hold re-enters this gate, so a
+   * window that has not actually reset simply parks it again.
+   */
+  bb.experimental_dispatch.gate("turn.submit", (context) => {
+    const resetsAtMs = blockedScopeResetAt(
+      context.host?.id ?? null,
+      context.requestedExecution.providerId,
+      Date.now(),
+    );
+    if (resetsAtMs === null) {
+      return { action: "proceed" };
+    }
+    return {
+      action: "hold",
+      reason: `Rate limited · sending ${retryTimeLabel(resetsAtMs + RESET_BUFFER_MS)}`,
+      resumeAt: resetsAtMs + RESET_BUFFER_MS,
+    };
+  });
+
+  // The user-facing narration of a retry's life. It hangs off the hold events
+  // rather than the gate so the note reflects what core actually did with the
+  // verdict, and so a hold the user cancels says so without this plugin
+  // tracking cancellation itself.
+  bb.events.on("dispatch.released", ({ hold }) => {
+    if (hold.holder !== `plugin:${bb.pluginId}`) return;
+    if (hold.payload.kind !== "retry") return;
+    appendNote(hold.threadId, "Rate limit window reset — retrying now.", "info");
+  });
+  bb.events.on("dispatch.cancelled", ({ hold }) => {
+    if (hold.holder !== `plugin:${bb.pluginId}`) return;
+    if (hold.payload.kind !== "retry") return;
+    appendNote(hold.threadId, "Automatic retry cancelled.", "info");
+  });
 
   bb.rpc.register(providerRetryRpcContract, {
     async providerRetryCancel({ threadId }) {
-      return { cancelled: await service.cancel(threadId) };
+      const hold = await findRetryHold(bb, threadId);
+      if (hold === null) return { cancelled: false };
+      await bb.sdk.threads.holds.cancel({ holdId: hold.id });
+      return { cancelled: true };
     },
-    providerRetryStatus({ threadId }) {
-      return { view: service.status(threadId) };
-    },
-  });
-  registerProviderRetryCli(bb, service);
-
-  async function reconcile(
-    threadId: string,
-    trackedOnly = false,
-  ): Promise<void> {
-    try {
-      await (trackedOnly
-        ? service.reconcileTracked(threadId)
-        : service.reconcile(threadId));
-    } catch (error) {
-      logFailure(bb, `Could not inspect provider retry for ${threadId}`, error);
-    }
-  }
-
-  bb.events.on("thread.failed", async ({ thread }) => {
-    await reconcile(thread.id);
-  });
-  bb.events.on("thread.active", async ({ thread }) => {
-    await reconcile(thread.id, true);
-  });
-  bb.events.on("thread.idle", async ({ thread }) => {
-    await reconcile(thread.id, true);
-  });
-  bb.events.on("thread.archived", ({ thread }) => service.supersede(thread.id));
-  bb.events.on("thread.deleted", ({ thread }) =>
-    service.deleteThread(thread.id),
-  );
-
-  bb.background.service("provider-retry-scheduler", {
-    async start(signal) {
-      const unsubscribeHost = bb.sdk.subscribe({
-        event: "host:changed",
-        callback: (event) => {
-          if (
-            event.id !== undefined &&
-            event.changes.includes("host-connected")
-          ) {
-            service.hostChanged(event.id);
-          }
-        },
-      });
-      try {
-        await waitForAbort(signal);
-      } finally {
-        unsubscribeHost();
-      }
+    async providerRetryStatus({ threadId }) {
+      return { view: await retryViewForThread(bb, threadId) };
     },
   });
+  registerProviderRetryCli(bb);
 }

@@ -6,6 +6,7 @@ import {
   systemPermissionGrantLifecycleEventDataSchema,
   systemLegacyUserMessageEventDataSchema,
   systemOperationEventDataSchema,
+  systemPluginNoteEventDataSchema,
   systemProviderTurnWatchdogEventDataSchema,
   systemThreadProvisioningEventDataSchema,
   systemUserQuestionLifecycleEventDataSchema,
@@ -796,6 +797,12 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
       threadId: z.string(),
     })
     .merge(systemDispatchHoldEventDataSchema),
+  z
+    .object({
+      type: z.literal("system/plugin-note"),
+      threadId: z.string(),
+    })
+    .merge(systemPluginNoteEventDataSchema),
   z
     .object({
       type: z.literal("system/provider-turn-watchdog"),

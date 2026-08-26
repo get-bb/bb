@@ -1513,6 +1513,9 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
   }
+  if (row.systemKind === "operation" && row.operationKind === "plugin-note") {
+    return mapPluginNoteSystemTitle(row);
+  }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
   const titleText =
@@ -1526,6 +1529,30 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   return makeTitle({
     segments: [segment(titleText, { shimmer, truncate: true })],
     decorations,
+  });
+}
+
+/**
+ * A plugin note: its text, then who said it.
+ *
+ * Attribution is a muted trailing segment rather than a prefix so the sentence
+ * the user cares about leads and truncation eats the plugin id last — and it is
+ * always present, because an unattributed line in someone's conversation is the
+ * one thing a note must never be.
+ *
+ * `level` deliberately does not decorate the title: a warning note is still a
+ * note, and borrowing the error decoration would make it read like the thread
+ * failed. Renderers tint its glyph instead.
+ */
+function mapPluginNoteSystemTitle(
+  row: Extract<TimelineSystemViewRow, { operationKind: "plugin-note" }>,
+): TimelineTitle {
+  return makeTitle({
+    segments: [
+      segment(row.title, { truncate: true }),
+      segment(` · ${row.pluginId}`, { em: false }),
+    ],
+    decorations: [],
   });
 }
 

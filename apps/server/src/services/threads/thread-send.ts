@@ -32,6 +32,7 @@ import {
   type AppendedClientTurnRequestWithNotification,
   createClientTurnRequestId,
   getActiveTurnId,
+  type TurnRequestRetryMarker,
 } from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
@@ -104,6 +105,12 @@ interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   /** Present only when a released hold is re-entering the send path. */
   gateRelease?: SendThreadMessageGateRelease;
+  /**
+   * Present only when a released retry hold is re-submitting a failed turn.
+   * Marks the turn event as attempt N of an earlier request, which is what
+   * makes the next failure's attempt number correct without a separate tally.
+   */
+  retryOf?: TurnRequestRetryMarker;
   environment: Environment;
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
@@ -155,6 +162,8 @@ interface SendThreadMessageQueueRequest {
 interface AppendAndQueueSendThreadMessageArgs {
   /** Gate provenance; absent when no gate amended this turn. */
   amendment?: { pluginId: string; originalInput?: PromptInput[] };
+  /** Retry provenance; absent for an original dispatch. */
+  retryOf?: TurnRequestRetryMarker;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   db: DbConnection;
   environmentId: string | null;
@@ -355,6 +364,7 @@ function captureUserMessageSentTelemetry(
 
 function appendAndQueueSendThreadMessageInTransaction({
   amendment,
+  retryOf,
   beforeAppendInTransaction,
   db,
   environmentId,
@@ -380,6 +390,7 @@ function appendAndQueueSendThreadMessageInTransaction({
             environmentId,
             type: "client/turn/requested",
             ...(amendment !== undefined ? { amendment } : {}),
+            ...(retryOf !== undefined ? { retryOf } : {}),
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             execution,
@@ -539,7 +550,13 @@ export async function sendThreadMessage(
     input,
     projectId: thread.projectId,
   });
-  const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
+  // Agent-originated CLI sends still appear as normal turn requests in the
+  // timeline, while initiator lets policy distinguish the source. A retry is
+  // `system` whatever the original was: nobody asked for it a second time, and
+  // counting it as a user message would inflate every "messages sent" figure by
+  // however many times the provider happened to be rate limited.
+  const initiator: ThreadTurnInitiator =
+    args.retryOf !== undefined ? "system" : senderThreadId ? "agent" : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =
@@ -723,6 +740,7 @@ export async function sendThreadMessage(
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(amendment !== undefined ? { amendment } : {}),
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
         beforeAppendInTransaction({ tx });
         ensureThreadCanStartRequest(thread);
@@ -816,6 +834,7 @@ export async function sendThreadMessage(
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
     ...(amendment !== undefined ? { amendment } : {}),
+    ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,

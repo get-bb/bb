@@ -68,6 +68,10 @@ const STAGE_PRESENTATION: Record<
     label: "Messages",
     description: "Before a message is sent to the agent.",
   },
+  "turn.failed": {
+    label: "Failures",
+    description: "After a turn fails, to schedule a retry.",
+  },
 };
 
 /**

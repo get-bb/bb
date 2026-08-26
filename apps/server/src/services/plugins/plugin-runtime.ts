@@ -1312,6 +1312,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return deps.dispatchHolds.report({ pluginId: row.id, holdId, update });
       },
+      appendThreadNote: ({ threadId, note }) => {
+        if (!deps.appendThreadNote) {
+          throw new Error("thread notes are unavailable in this host");
+        }
+        deps.appendThreadNote({ pluginId: row.id, threadId, note });
+      },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");

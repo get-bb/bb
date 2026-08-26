@@ -33,7 +33,10 @@ export {
   type FakeSdkHarness,
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
-export { makeThreadResponse } from "./fixtures.js";
+export {
+  makeDispatchHoldResponse,
+  makeThreadResponse,
+} from "./fixtures.js";
 export {
   scanPublicSdkOnly as experimental_scanPublicSdkOnly,
   type PublicSdkOnlyScan,

@@ -29,6 +29,7 @@ import type {
   PluginDispatchExecutionSources,
   PluginDispatchGateStage,
   PluginThreadCreateGateContext,
+  PluginTurnFailedGateContext,
   PluginTurnSubmitGateContext,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -153,8 +154,19 @@ export type DispatchGatePassOutcome =
       amendments: DispatchAmendmentResult;
     };
 
+/**
+ * The stages that decide about a dispatch BEFORE it happens. `turn.failed` is
+ * excluded structurally: it answers a different union and cannot amend, so
+ * routing it through the admission pass would mean a request type full of
+ * fields it ignores.
+ */
+export type DispatchAdmissionGateStage = Exclude<
+  DispatchGateStage,
+  "turn.failed"
+>;
+
 export interface DispatchGatePassRequest {
-  stage: DispatchGateStage;
+  stage: DispatchAdmissionGateStage;
   /** Null at `thread.create`; the target thread at `turn.submit`. */
   thread: Thread | null;
   /** The `turn.submit` thread's public DTO; null at `thread.create`. */
@@ -261,7 +273,7 @@ function withEvaluationLock<T>(run: () => Promise<T>): Promise<T> {
 
 function dispatchGateFailure(
   pluginId: string,
-  stage: DispatchGateStage,
+  stage: DispatchAdmissionGateStage,
   detail: string,
 ): ApiError {
   // Fail-closed, mirroring how a throwing `deriveProviderOptions` fails the
@@ -278,7 +290,7 @@ function dispatchGateFailure(
 
 function dispatchRejection(
   pluginId: string,
-  stage: DispatchGateStage,
+  stage: DispatchAdmissionGateStage,
   message: string,
 ): ApiError {
   return new ApiError(409, "dispatch_rejected", message, {
@@ -352,7 +364,12 @@ function orderedGates(
   });
 }
 
-function environmentAndHost(
+/**
+ * The environment/host pair a gate context carries, resolved the same way for
+ * every stage so a `turn.failed` gate sees the same host record — including its
+ * live connection state — that the admission gates did.
+ */
+export function dispatchGateEnvironmentAndHost(
   deps: Pick<AppDeps, "db" | "hub">,
   environmentId: string | null,
 ): { environment: Environment | null; host: Host | null } {
@@ -458,7 +475,8 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
 
   if (amend.permissionMode !== undefined) {
     const hostId =
-      environmentAndHost(deps, request.environmentId).host?.id ?? null;
+      dispatchGateEnvironmentAndHost(deps, request.environmentId).host?.id ??
+      null;
     // Never fails the dispatch for asking too much: the machine's ceiling wins
     // and the gate gets the highest mode the host and provider both allow.
     const clamped = clampPermissionModeToHost(deps, {
@@ -501,7 +519,7 @@ function buildGateContext(
     sources: PluginDispatchExecutionSources;
   },
 ): PluginThreadCreateGateContext | PluginTurnSubmitGateContext {
-  const { environment, host } = environmentAndHost(
+  const { environment, host } = dispatchGateEnvironmentAndHost(
     deps,
     args.request.environmentId,
   );
@@ -673,6 +691,126 @@ export function dispatchHoldReasonForPass(
     ? outcome.holder.reason
     : `${outcome.holder.reason} (also held by ${extra})`;
   return reason.length > 200 ? `${reason.slice(0, 199)}…` : reason;
+}
+
+const turnFailedGateDecisionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("none") }),
+  z.object({
+    action: z.literal("retry"),
+    reason: z.string().min(1).max(200),
+    resumeAt: z.number().int().nonnegative(),
+  }),
+]);
+
+export interface TurnFailedRetryVerdict {
+  pluginId: string;
+  reason: string;
+  resumeAt: number;
+}
+
+export type TurnFailedGatePassOutcome =
+  | { kind: "none" }
+  | { kind: "retry"; verdict: TurnFailedRetryVerdict };
+
+export interface TurnFailedGatePassRequest {
+  context: Omit<PluginTurnFailedGateContext, "stage">;
+  /** Named in the log line when a gate misbehaves. */
+  threadId: string;
+}
+
+type TurnFailedGatePassDeps = Pick<AppDeps, "db" | "logger">;
+
+/**
+ * Runs the `turn.failed` chain.
+ *
+ * Two things differ from an admission pass, both because the failure has
+ * already been applied:
+ *
+ * - **A bad gate loses its vote, not the thread.** Fail-closed at an admission
+ *   stage means refusing to dispatch, because the safe state is "nothing ran".
+ *   Here the safe state is the failure standing exactly as core wrote it, so a
+ *   gate that throws, times out or returns a malformed verdict is logged with
+ *   its plugin named and SKIPPED. Propagating would let one broken retry plugin
+ *   turn every failure into a second failure, and there is no caller left to
+ *   receive the error anyway.
+ * - **The first `retry` wins and stops the chain.** Nothing accumulates across
+ *   a pass here — there are no amendments to collect and one failure earns at
+ *   most one retry hold — so continuing past a decided retry would only ask
+ *   later gates to answer a question that is already settled.
+ *
+ * It still runs under the same server-wide evaluation lock as admission passes:
+ * a retry policy that counts what it has in flight must not interleave with the
+ * limiter deciding whether that retry may dispatch.
+ */
+export async function runTurnFailedGatePass(
+  deps: TurnFailedGatePassDeps,
+  request: TurnFailedGatePassRequest,
+): Promise<TurnFailedGatePassOutcome> {
+  const provider = dispatchGateProvider();
+  if (provider === undefined) {
+    return { kind: "none" };
+  }
+  const gates = orderedGates(deps, provider, "turn.failed");
+  if (gates.length === 0) {
+    return { kind: "none" };
+  }
+
+  return withEvaluationLock(async () => {
+    for (const gate of gates) {
+      const context: PluginTurnFailedGateContext = {
+        ...request.context,
+        stage: "turn.failed",
+      };
+      const invocation = await provider.invokeGate(
+        gate.pluginId,
+        "turn.failed dispatch gate",
+        () =>
+          decideWithinBox(
+            async () => gate.handler(context),
+            provider.decisionTimeoutMs,
+          ),
+      );
+      const detail = !invocation.ok
+        ? invocation.error
+        : !invocation.value.ok
+          ? invocation.value.error
+          : null;
+      if (detail !== null) {
+        deps.logger.warn(
+          { pluginId: gate.pluginId, threadId: request.threadId, detail },
+          "Discarded a turn.failed gate verdict: the gate failed",
+        );
+        continue;
+      }
+      const parsed = turnFailedGateDecisionSchema.safeParse(
+        invocation.ok && invocation.value.ok ? invocation.value.value : null,
+      );
+      if (!parsed.success) {
+        deps.logger.warn(
+          {
+            pluginId: gate.pluginId,
+            threadId: request.threadId,
+            detail: parsed.error.issues
+              .map((issue) => `${issue.path.join(".")} ${issue.message}`)
+              .join("; "),
+          },
+          "Discarded a turn.failed gate verdict: the gate returned an invalid decision",
+        );
+        continue;
+      }
+      if (parsed.data.action === "retry") {
+        return {
+          kind: "retry",
+          verdict: {
+            pluginId: gate.pluginId,
+            reason: parsed.data.reason,
+            resumeAt: parsed.data.resumeAt,
+          },
+        };
+      }
+    }
+    return { kind: "none" };
+  });
 }
 
 /** The per-field sources a request carries into a pass. */

@@ -17,6 +17,7 @@ import type {
   TimelineFileReadWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
+  TimelinePluginNoteSystemRow,
   TimelineNonOperationSystemRow,
   TimelinePermissionGrantApprovalGrantScope,
   TimelineQuestionWorkRow,
@@ -279,6 +280,10 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
   id?: string;
   parentChange?: TimelineParentChange;
   operationKind?: TimelineSystemOperationKind;
+  /** Plugin-note rows only. */
+  pluginId?: string;
+  iconName?: string | null;
+  level?: TimelinePluginNoteSystemRow["level"];
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
@@ -290,7 +295,14 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
 
 interface NonOperationSystemRowArgs extends Omit<
   SystemRowArgs,
-  "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
+  | "completedAt"
+  | "durationMs"
+  | "parentChange"
+  | "operationKind"
+  | "systemKind"
+  | "pluginId"
+  | "iconName"
+  | "level"
 > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
@@ -1151,6 +1163,9 @@ export function systemRow({
   id = DEFAULT_SYSTEM_ID,
   parentChange,
   operationKind,
+  pluginId,
+  iconName,
+  level,
   seq,
   sourceSeqEnd,
   sourceSeqStart,
@@ -1212,6 +1227,17 @@ export function systemRow({
         nextParentThreadId: null,
         nextParentThreadTitle: null,
       },
+    };
+  }
+  if (resolvedOperationKind === "plugin-note") {
+    return {
+      ...base,
+      systemKind,
+      operationKind: resolvedOperationKind,
+      completedAt: resolvedCompletedAt,
+      pluginId: pluginId ?? "example-plugin",
+      iconName: iconName ?? null,
+      level: level ?? "info",
     };
   }
   return {

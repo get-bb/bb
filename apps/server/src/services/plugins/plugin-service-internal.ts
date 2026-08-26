@@ -101,6 +101,16 @@ export interface PluginServiceDeps {
       update: DispatchHoldReportUpdate;
     }): Promise<boolean>;
   };
+  /**
+   * Display-only timeline notes behind `bb.experimental_threads.appendNote`.
+   * Assembled in server.ts alongside `dispatchHolds`; omitted only by isolated
+   * plugin-runtime tests, where the call throws.
+   */
+  appendThreadNote?: (args: {
+    pluginId: string;
+    threadId: string;
+    note: unknown;
+  }) => void;
   /** Per-gate decision box; tests shrink it to exercise the timeout path. */
   dispatchGateTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +

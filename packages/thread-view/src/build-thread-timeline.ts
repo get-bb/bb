@@ -201,9 +201,11 @@ type TimelineWorkflowMessage = Extract<
   EventProjectionMessage,
   { kind: "workflow" }
 >;
+/** Every kind that renders as the plain title/detail row — i.e. the ones that
+ * do not carry their own extra fields in the read model. */
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "parent-change"
+  "parent-change" | "plugin-note"
 >;
 
 function operationKindForMessage(
@@ -215,6 +217,7 @@ function operationKindForMessage(
     case "context-clear":
     case "thread-provisioning":
     case "dispatch-hold":
+    case "plugin-note":
     case "thread-interrupted":
     case "provider-unhandled":
     case "warning":
@@ -272,6 +275,30 @@ function buildGenericOperationSystemRow({
     detail: buildTimelineOperationDetail(message),
     status: message.status ?? null,
     completedAt: message.completedAt,
+  };
+}
+
+/**
+ * A note's own row shape, so the plugin behind it survives into the read model
+ * rather than being flattened into an unattributed line of text.
+ */
+function buildPluginNoteSystemRow(args: {
+  base: TimelineRowBase;
+  message: TimelineOperationMessage;
+  pluginNote: NonNullable<TimelineOperationMessage["pluginNote"]>;
+}): TimelineSystemRow {
+  return {
+    ...args.base,
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "plugin-note",
+    title: args.message.title,
+    detail: null,
+    status: args.message.status ?? null,
+    completedAt: args.message.completedAt,
+    pluginId: args.pluginNote.pluginId,
+    iconName: args.pluginNote.iconName,
+    level: args.pluginNote.level,
   };
 }
 
@@ -804,6 +831,27 @@ function convertMessage(
       const parentChange = parentChangeForMessage(message);
       const operationKind = operationKindForMessage(message, parentChange);
       const base = buildTimelineRowBase(message, options.rowIdPrefix);
+      if (operationKind === "plugin-note") {
+        // The metadata is written with the row, so its absence means a
+        // malformed projection rather than a note without a plugin. Falling
+        // back to a generic row keeps the user's timeline readable instead of
+        // dropping a line somebody meant them to see.
+        return message.pluginNote === undefined
+          ? [
+              buildGenericOperationSystemRow({
+                base,
+                message,
+                operationKind: "generic",
+              }),
+            ]
+          : [
+              buildPluginNoteSystemRow({
+                base,
+                message,
+                pluginNote: message.pluginNote,
+              }),
+            ];
+      }
       if (operationKind === "parent-change") {
         return parentChange !== null
           ? [

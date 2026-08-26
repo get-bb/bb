@@ -105,7 +105,14 @@ export const dispatchHoldPayloadSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("retry"),
+    /**
+     * The ORIGINAL request, not the attempt that just failed. Retrying a retry
+     * re-submits the same original blocks, so this id is carried forward
+     * unchanged across attempts and `attempt` is what distinguishes them.
+     */
     retryOfTurnRequestId: clientTurnRequestIdSchema,
+    /** Which attempt this hold will dispatch: 2 is the first retry. */
+    attempt: z.number().int().min(2),
   }),
 ]);
 export type DispatchHoldPayload = z.infer<typeof dispatchHoldPayloadSchema>;
@@ -113,6 +120,11 @@ export type DispatchHoldPayload = z.infer<typeof dispatchHoldPayloadSchema>;
 export type DispatchHoldInlinePayload = Extract<
   DispatchHoldPayload,
   { kind: "inline" }
+>;
+
+export type DispatchHoldRetryPayload = Extract<
+  DispatchHoldPayload,
+  { kind: "retry" }
 >;
 
 /**

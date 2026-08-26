@@ -6,6 +6,7 @@ import {
   jsonValueSchema,
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
+  pluginNoteLevelSchema,
   promptTextMentionSchema,
   systemMessageKindSchema,
   systemMessageSubjectSchema,
@@ -168,6 +169,7 @@ export const timelineSystemOperationKindValues = [
   "parent-change",
   "thread-provisioning",
   "dispatch-hold",
+  "plugin-note",
   "thread-interrupted",
   "provider-unhandled",
   "warning",
@@ -231,6 +233,26 @@ export const timelineGenericOperationSystemRowSchema =
     completedAt: z.number().nullable(),
   });
 
+/**
+ * A plugin's display-only annotation. It gets its own row shape rather than
+ * riding the generic one because attribution is the point: a note the user
+ * cannot trace back to a plugin is an unexplained sentence in their timeline,
+ * and the icon/level are the plugin's, not core's.
+ */
+export const timelinePluginNoteSystemRowSchema =
+  timelineSystemRowBaseSchema.extend({
+    systemKind: z.literal("operation"),
+    operationKind: z.literal("plugin-note"),
+    pluginId: z.string(),
+    /** The plugin's requested icon; null when it asked for none. */
+    iconName: z.string().nullable(),
+    level: pluginNoteLevelSchema,
+    completedAt: z.number().nullable(),
+  });
+export type TimelinePluginNoteSystemRow = z.infer<
+  typeof timelinePluginNoteSystemRowSchema
+>;
+
 export const timelineParentChangeSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
@@ -248,6 +270,7 @@ export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   [
     timelineGenericOperationSystemRowSchema,
     timelineParentChangeSystemRowSchema,
+    timelinePluginNoteSystemRowSchema,
   ],
 );
 

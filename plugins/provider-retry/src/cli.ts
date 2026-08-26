@@ -1,6 +1,5 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
-import type { ProviderRetryView } from "./contract.js";
-import type { ProviderRetryService } from "./service.js";
+import { findRetryHold, listRetryHolds, type RetryHold } from "./holds.js";
 
 function requestedThreadId(
   argv: string[],
@@ -11,18 +10,24 @@ function requestedThreadId(
   );
 }
 
-function textView(view: ProviderRetryView): string {
+function textHold(hold: RetryHold): string {
   const retry =
-    view.retryAtMs === null
+    hold.resumeAt === null
       ? "pending"
-      : `retrying ${new Date(view.retryAtMs).toISOString()}`;
-  return `${view.threadId}\t${view.providerId}\t${retry}`;
+      : `retrying ${new Date(hold.resumeAt).toISOString()}`;
+  return `${hold.threadId}\t${hold.id}\t${retry}`;
 }
 
-export function registerProviderRetryCli(
-  bb: BbPluginApi,
-  service: ProviderRetryService,
-): void {
+/**
+ * A view over this plugin's dispatch holds.
+ *
+ * Every subcommand is now `bb thread holds --owner plugin:provider-retry`
+ * narrowed to retries, which is why there is no state here to consult: the
+ * server owns the schedule, and this reads and acts on it. `retry` is a release
+ * and `cancel` is a cancel, so both do exactly what the thread view's buttons
+ * do.
+ */
+export function registerProviderRetryCli(bb: BbPluginApi): void {
   bb.cli.register({
     name: "provider-retry",
     summary: "Manage pending automatic provider retries",
@@ -39,7 +44,7 @@ export function registerProviderRetryCli(
       },
       {
         name: "retry",
-        summary: "Manually continue a provider-limited turn",
+        summary: "Retry a rate-limited turn now instead of waiting",
         usage: "bb provider-retry retry <thread-id> [--json]",
       },
     ],
@@ -52,72 +57,64 @@ export function registerProviderRetryCli(
             "Usage: bb provider-retry <status|cancel|retry> [thread-id] [--json]\n",
         };
       }
-
+      const json = args.includes("--json");
       const threadId = requestedThreadId(args, context);
-      if (command === "retry") {
-        if (threadId === null) {
-          return {
-            exitCode: 2,
-            stderr:
-              "A thread id is required: bb provider-retry retry <thread-id>\n",
-          };
-        }
-        const result = await service.retry(threadId);
-        if (args.includes("--json")) {
+
+      if (command === "status") {
+        const holds = await listRetryHolds(
+          bb,
+          threadId === null ? undefined : threadId,
+        );
+        if (json) {
           return {
             exitCode: 0,
-            stdout: `${JSON.stringify({ threadId, ...result }, null, 2)}\n`,
+            stdout: `${JSON.stringify({ retries: holds }, null, 2)}\n`,
           };
         }
         return {
           exitCode: 0,
-          stdout: `Thread ${threadId} provider rate limit retry requested manually.\n`,
+          stdout:
+            holds.length === 0
+              ? "No provider retries are pending.\n"
+              : `${holds.map(textHold).join("\n")}\n`,
         };
       }
-      if (command === "cancel") {
-        if (threadId === null) {
-          return {
-            exitCode: 2,
-            stderr:
-              "A thread id is required: bb provider-retry cancel <thread-id>\n",
-          };
-        }
-        const cancelled = await service.cancel(threadId);
-        if (args.includes("--json")) {
-          return {
-            exitCode: cancelled ? 0 : 1,
-            stdout: `${JSON.stringify({ cancelled }, null, 2)}\n`,
-          };
-        }
-        return cancelled
+
+      if (threadId === null) {
+        return {
+          exitCode: 2,
+          stderr: `A thread id is required: bb provider-retry ${command} <thread-id>\n`,
+        };
+      }
+      const hold = await findRetryHold(bb, threadId);
+      if (hold === null) {
+        return json
           ? {
-              exitCode: 0,
-              stdout: `Cancelled provider retry for ${threadId}.\n`,
+              exitCode: 1,
+              stdout: `${JSON.stringify({ ok: false, threadId }, null, 2)}\n`,
             }
           : {
               exitCode: 1,
               stderr: `No pending provider retry exists for ${threadId}.\n`,
             };
       }
-
-      const views =
-        threadId === null
-          ? service.list()
-          : [service.status(threadId)].filter(
-              (view): view is ProviderRetryView => view !== null,
-            );
-      if (args.includes("--json")) {
+      if (command === "cancel") {
+        await bb.sdk.threads.holds.cancel({ holdId: hold.id });
+      } else {
+        await bb.sdk.threads.holds.release({ holdId: hold.id });
+      }
+      if (json) {
         return {
           exitCode: 0,
-          stdout: `${JSON.stringify({ retries: views }, null, 2)}\n`,
+          stdout: `${JSON.stringify({ ok: true, threadId, holdId: hold.id }, null, 2)}\n`,
         };
       }
       return {
         exitCode: 0,
         stdout:
-          views.length === 0
-            ? "No provider retries are pending.\n"
-            : `${views.map(textView).join("\n")}\n`,
+          command === "cancel"
+            ? `Cancelled provider retry for ${threadId}.\n`
+            : `Retrying ${threadId} now.\n`,
       };
     },
   });

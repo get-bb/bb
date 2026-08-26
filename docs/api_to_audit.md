@@ -144,34 +144,82 @@ version.
 
 **What it does.** The one plugin surface that *decides* about a dispatch rather
 than observing it. `bb.experimental_dispatch.gate(stage, handler)` registers a
-gate at `"thread.create"` or `"turn.submit"`; the handler receives a typed
-context (project, environment/host, prompt blocks plus a plain-text view, the
-resolved execution tuple with per-field provenance, origin/parent provenance,
-this plugin's `pluginInputs` entry, and — when a hold is being released — the
-hold plus an `isReleaseReevaluation` flag) and answers `proceed` (optionally
-amending provider, model, reasoning level, service tier, permission mode,
-target environment or the message itself), `hold` (a durable dispatch hold with
-a reason and optional `resumeAt`), or `reject` (a synchronous 409 carrying the
-plugin's message). `release(holdId, { amend? })` and `report(holdId, update)`
-act on holds this plugin owns; both refuse another plugin's hold.
+gate at one of three stages. The two ADMISSION stages, `"thread.create"` and
+`"turn.submit"`, run before the dispatch: the handler receives a typed context
+(project, environment/host, prompt blocks plus a plain-text view, the resolved
+execution tuple with per-field provenance, origin/parent provenance, this
+plugin's `pluginInputs` entry, and — when a hold is being released — the hold
+plus an `isReleaseReevaluation` flag) and answers `proceed` (optionally amending
+provider, model, reasoning level, service tier, permission mode, target
+environment or the message itself), `hold` (a durable dispatch hold with a
+reason and optional `resumeAt`), or `reject` (a synchronous 409 carrying the
+plugin's message).
+
+The POST-HOC stage `"turn.failed"` runs after a turn's failure has already been
+applied and the thread has landed in `error`. Its context drops the fields that
+only describe a dispatch that has not happened (`pluginInput`,
+`executionSources`, `isReleaseReevaluation`, `hold`) and adds `failure`: the
+failed request id, the original request id of the retry chain, the provider turn
+id, the failure message, the provider's `ProviderErrorInfo`, the latest
+`ProviderRateLimitState` the thread's provider reported, and `attemptNumber` (1
+for a first failure, incrementing across retries of the same original turn). It
+answers `none` or `retry(reason, resumeAt)`, and a `retry` parks a hold that
+re-submits the ORIGINAL turn when released.
+
+`release(holdId, { amend? })` and `report(holdId, update)` act on holds this
+plugin owns; both refuse another plugin's hold.
 
 Gates run as a deterministic chain in plugin install order with a per-stage
 override in app settings (`dispatchGateOrder`), amendments accumulate left to
 right, `reject` short-circuits, `hold` verdicts collect across a full pass so
 provider and model are final before anything is parked, and one hold row is
 created per pass owned by the first holder. The whole pass runs under a single
-server-wide async lock. A gate that throws or exceeds a 10s decision box fails
-the dispatch with the plugin named (fail-closed, the `deriveProviderOptions`
-precedent). Amendment values are validated against the provider registry, the
-host permission ceiling and the environment schema; an invalid amendment fails
-the dispatch the same way.
+server-wide async lock. At the admission stages a gate that throws or exceeds a
+10s decision box fails the dispatch with the plugin named (fail-closed, the
+`deriveProviderOptions` precedent). Amendment values are validated against the
+provider registry, the host permission ceiling and the environment schema; an
+invalid amendment fails the dispatch the same way.
+
+At `turn.failed` fail-closed resolves the other way, deliberately. The turn has
+already failed, so the safe state is the failure standing exactly as core
+applied it — not a second failure layered on top. A gate that throws, times out
+or returns a malformed verdict has its verdict DISCARDED with the plugin named
+in the server log, and the failure is untouched. The chain also short-circuits
+on the first `retry` (there are no amendments to accumulate and one failure
+earns at most one hold), and the pass is additionally serialized per thread so
+two failures arriving together cannot park the same turn twice.
 
 **Audit before stabilizing.**
 
-- **The stage set and the decision union.** `turn.failed` is planned and
-  returns a *different* union (`none | retry`). `PluginDispatchGateStages` maps
-  stage → `{ context, decision }` so that arrives additively, but confirm the
-  shape survives contact with a third stage before freezing it.
+- **The stage set and the decision union.** `turn.failed` shipped and returns a
+  different union (`none | retry`), which `PluginDispatchGateStages`
+  accommodated additively as designed. The remaining question is the context
+  split it forced: `PluginDispatchGateContextCommon` (every stage) vs
+  `PluginDispatchGateContextBase` (admission only). Confirm that split is the
+  right seam before a fourth stage, and that no admission-only field crept back
+  into the common half.
+- **Two readings of fail-closed in one API.** `gate()` now means "fail the
+  dispatch" at two stages and "discard the verdict" at a third. It is the right
+  behavior in both cases — the safe state genuinely differs — but it is one verb
+  with two failure semantics, which is exactly the kind of thing that surprises
+  a plugin author. Decide before stabilizing whether the post-hoc stage wants a
+  distinct registration verb, and confirm a discarded verdict is visible enough
+  (today: a server log line naming the plugin, and no user-facing signal).
+- **`PluginTurnFailure` completeness.** It carries `ProviderErrorInfo` but not
+  the `provider/error` event's `willRetry` flag, on the reasoning that a turn
+  which reached `run.failed` has already exhausted any provider-owned retry.
+  Confirm that holds for every provider. Also settle whether `originalRequestId`
+  and `attemptNumber` are the right way to expose a retry chain, or whether a
+  gate should get the chain itself.
+- **The retry marker on `client/turn/requested`.** `retryOfRequestId` /
+  `retryAttempt` are persisted event fields that a plugin never writes directly
+  but whose values it determines. They replaced the never-populated
+  `continuationOfRequestId`. Confirm the pair is the durable counter we want
+  before other readers depend on it.
+- **Attempt caps are entirely the plugin's.** Core will park as many retries as
+  a gate asks for, one per failure, forever. The bundled policy caps itself at
+  five attempts; a third-party gate need not. Decide whether core should own a
+  ceiling before this is stable.
 - **`PluginDispatchAmendments` vs `PluginDispatchCreateAmendments`.** The split
   keeps `providerId`/`environment` off follow-up turns structurally. Two
   interfaces with an `extends` is the cheapest encoding; check whether a
@@ -197,6 +245,57 @@ the dispatch the same way.
 - **`pluginInputs` sizing.** 8KB total per request, enforced at the schema
   boundary. Confirm the budget and whether per-plugin (rather than total) is
   the right unit.
+
+## `bb.experimental_threads` (`appendNote`)
+
+**What it does.** The plugin timeline-contribution surface for anything that is
+not a hold. `bb.experimental_threads.appendNote(threadId, { text, iconName?,
+level? })` appends a `system/plugin-note` thread event that renders as one
+system row: the note's text, the plugin's icon, and the plugin's id as
+attribution. `text` is capped at 500 characters, `level` is `"info"` or
+`"warning"` (warning tints the row's glyph), and `iconName` is a plain string a
+client renders only if it recognizes it, so a note from a newer plugin never
+becomes unrenderable in an older client.
+
+Notes are display-only by construction rather than by policy. Nothing that
+builds a provider request reads thread events — a turn command carries prompt
+blocks and the provider resumes its own session by id — and the fork inheritance
+allowlist in `thread-fork-history.ts` names the conversation event types
+explicitly, so a note has no path to a model. Content meant FOR the agent is an
+attributed agent-only message, not a note.
+
+The plugin id is stamped server-side from the caller's bound identity, so
+attribution cannot be forged. The call rejects on an unknown or deleted thread,
+on an invalid note, and on the rate limit: 6 notes per thread per minute per
+plugin, counted in an in-memory sliding window.
+
+**Audit before stabilizing.**
+
+- **The namespace, and what else belongs in it.** `bb.experimental_threads`
+  currently holds exactly one method, and everything else a plugin does with
+  threads goes through `bb.sdk.threads`. Decide whether this is the beginning of
+  a real host-side thread namespace or whether `appendNote` should move under
+  `bb.sdk.threads.notes.append` (the shape the plan originally named) so plugins
+  have one obvious home for thread operations. Shipping it in-process means
+  there is no public route and no `BbHttpError.code` for callers to branch on —
+  a rate-limit rejection is a plain `Error` with a descriptive message.
+- **The rate limit's unit and enforcement.** 6/thread/minute/plugin is the first
+  per-plugin rate limit in the server and has no precedent to inherit. It is
+  in-memory, so a restart forgives a plugin mid-spree, and it is silent to the
+  user (only the calling plugin sees the rejection). Confirm the budget, and
+  decide whether repeated rejections should surface as plugin status.
+- **`iconName` as an unvalidated string.** The server stores whatever the plugin
+  sends and each client decides whether it knows the name. That is what keeps
+  old clients working, but it also means a typo is invisible until someone looks
+  at the timeline. Consider validating against the shipped icon set at
+  registration-adjacent time, or reporting unknown names back to the plugin.
+- **`level` as a two-value enum.** `info`/`warning` covers what the bundled
+  plugins need; confirm before freezing that nothing wants `error` (and that if
+  it did, the answer is not "that is a failure, not a note").
+- **One row per note, forever.** Notes never collapse or supersede each other
+  the way a hold's transcript rows do, so a plugin that annotates every turn
+  adds a row every turn. The rate limit bounds the burst, not the total. Decide
+  whether notes need a supersede/replace affordance before this is stable.
 
 ## `dispatch.held` / `dispatch.released` / `dispatch.cancelled` (`bb.events.on`)
 

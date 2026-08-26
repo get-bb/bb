@@ -8,8 +8,10 @@ import type {
   PermissionMode,
   Project,
   PromptInput,
+  ProviderErrorInfo,
   ProviderNativeRootInput,
   ProviderNativeRootsInputLike,
+  ProviderRateLimitState,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -309,8 +311,8 @@ export interface PluginDispatchInput {
   text: string;
 }
 
-/** Everything both stages put on a gate's context. */
-export interface PluginDispatchGateContextBase {
+/** What every stage — admission and post-hoc alike — puts on a context. */
+export interface PluginDispatchGateContextCommon {
   project: Project;
   /** Null until an environment is chosen (a held or not-yet-provisioned thread). */
   environment: Environment | null;
@@ -318,12 +320,26 @@ export interface PluginDispatchGateContextBase {
   host: Host | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
-  executionSources: PluginDispatchExecutionSources;
   /** How the dispatch was requested; null for internal/core-driven sends. */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
+}
+
+/**
+ * Everything the two ADMISSION stages add. These fields describe a dispatch
+ * that has not happened yet, which is why `turn.failed` — where the dispatch is
+ * already over — does not carry them.
+ */
+export interface PluginDispatchGateContextBase
+  extends PluginDispatchGateContextCommon {
+  /**
+   * Where each execution value came from. Admission-only: at `turn.failed` the
+   * tuple is a historical fact about a turn that already ran, and "who asked
+   * for this model" is no longer a question the gate can act on.
+   */
+  executionSources: PluginDispatchExecutionSources;
   /**
    * This plugin's entry from the request's `pluginInputs`, or null when the
    * caller addressed no input to it. Never another plugin's entry.
@@ -354,10 +370,69 @@ export interface PluginTurnSubmitGateContext
 }
 
 /**
- * The per-stage context and decision types. Adding a stage — `turn.failed`,
- * whose decision is `none | retry` — is one entry here plus its context type;
- * `gate()`, the handler type and the server's registry all derive from this
- * map, so a half-added stage does not compile.
+ * Why a turn failed, assembled by core from the failed turn's own records so a
+ * gate never has to replay the event log to find out.
+ *
+ * `errorInfo` and `rateLimits` are null when the failure produced none — a
+ * command that never reached the provider, or a provider that reports no
+ * windows. A retry policy that needs them must handle null rather than assume.
+ */
+export interface PluginTurnFailure {
+  /** The failed turn's `client/turn/requested` id. */
+  requestId: string;
+  /**
+   * The ORIGINAL request of this retry chain. Equal to `requestId` on a first
+   * failure; on a retry's failure it is the request the chain started from.
+   */
+  originalRequestId: string;
+  /** The provider turn, when the failure happened inside one. */
+  turnId: string | null;
+  /** The failure text core recorded, always populated. */
+  message: string;
+  /** The provider's structured classification, when it reported one. */
+  errorInfo: ProviderErrorInfo | null;
+  /** The most recent rate-limit snapshot this thread's provider reported. */
+  rateLimits: ProviderRateLimitState | null;
+  /**
+   * Which attempt just failed: 1 is the original dispatch, 2 the first retry.
+   * A policy caps its own retries by comparing against this.
+   */
+  attemptNumber: number;
+}
+
+/**
+ * What a `turn.failed` gate may answer.
+ *
+ * `none` leaves the failure exactly as core applied it. `retry` parks a hold
+ * owned by this plugin that re-submits the ORIGINAL turn when released:
+ * `resumeAt` (epoch ms) is when core's timer should release it, and `reason` is
+ * the user-visible line on the hold's card and timeline row.
+ *
+ * There is no `hold`/`reject`/amendment arm: the turn already failed, so there
+ * is nothing left to admit, refuse or rewrite.
+ */
+export type PluginTurnFailedDecision =
+  | { action: "none" }
+  | { action: "retry"; reason: string; resumeAt: number };
+
+/**
+ * `turn.failed`: a turn on this thread just failed and the thread has already
+ * landed in `error`.
+ *
+ * The execution fields describe the turn that failed, so a retry policy can
+ * read the model and permission mode the attempt actually ran with.
+ */
+export interface PluginTurnFailedGateContext
+  extends PluginDispatchGateContextCommon {
+  stage: "turn.failed";
+  thread: ThreadResponse;
+  failure: PluginTurnFailure;
+}
+
+/**
+ * The per-stage context and decision types. `gate()`, the handler type and the
+ * server's registry all derive from this map, so a half-added stage does not
+ * compile.
  */
 export interface PluginDispatchGateStages {
   "thread.create": {
@@ -367,6 +442,10 @@ export interface PluginDispatchGateStages {
   "turn.submit": {
     context: PluginTurnSubmitGateContext;
     decision: PluginDispatchDecision<PluginDispatchAmendments>;
+  };
+  "turn.failed": {
+    context: PluginTurnFailedGateContext;
+    decision: PluginTurnFailedDecision;
   };
 }
 
@@ -394,10 +473,18 @@ export interface PluginDispatch {
    * final before anything is parked. The operation proceeds only when a pass
    * yields no holds.
    *
-   * Fail-closed: a handler that throws or exceeds the 10 second decision box
-   * FAILS THE DISPATCH with this plugin named. Decide in milliseconds — if the
-   * answer needs real work, return `hold` and finish it in a background
-   * service, then `release` the hold.
+   * Fail-closed: at the admission stages (`thread.create`, `turn.submit`) a
+   * handler that throws or exceeds the 10 second decision box FAILS THE
+   * DISPATCH with this plugin named. Decide in milliseconds — if the answer
+   * needs real work, return `hold` and finish it in a background service, then
+   * `release` the hold.
+   *
+   * At `turn.failed` fail-closed means the opposite of blocking: the turn has
+   * already failed, so the safe state is the failure standing as core applied
+   * it. A handler that throws or times out has its verdict DISCARDED (with this
+   * plugin named in the log and its status), and the failure is untouched. A
+   * broken retry plugin can cost you a retry; it can never make failures
+   * unrecoverable or a thread unusable.
    *
    * The whole pass runs under one server-wide lock, so a counting gate never
    * races another dispatch. It also means a gate that blocks delays every
@@ -435,6 +522,43 @@ export interface PluginDispatch {
    * from a torn-down owner never resurrects one.
    */
   report(holdId: string, update: DispatchHoldReportUpdate): Promise<boolean>;
+}
+
+/**
+ * A one-line annotation a plugin adds to a thread's timeline.
+ *
+ * Display-only, and structurally so: nothing that builds a provider request
+ * reads thread events, so a note can never reach a model. Content meant FOR the
+ * agent is a message, not a note.
+ */
+export interface PluginThreadNote {
+  /** The line the user reads. At most 500 characters. */
+  text: string;
+  /**
+   * A lucide icon name rendered beside the note when the client knows it. An
+   * unknown name renders without an icon rather than failing.
+   */
+  iconName?: string;
+  /** `warning` tints the row; defaults to `info`. */
+  level?: "info" | "warning";
+}
+
+export interface PluginThreads {
+  /**
+   * Append a display-only note to a thread's timeline, attributed to this
+   * plugin.
+   *
+   * This is the plugin timeline-contribution surface for things that are not a
+   * hold: "retry scheduled for 6:30", "routed to opus", "rate-limit window
+   * exhausted". Progress ON a hold belongs on that hold
+   * (`experimental_dispatch.report`), which keeps it in one collapsing row
+   * instead of a stream of notes.
+   *
+   * Rate limited to 6 notes per thread per minute per plugin; exceeding it
+   * rejects with an error naming the limit. Appending to a thread that does not
+   * exist rejects.
+   */
+  appendNote(threadId: string, note: PluginThreadNote): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,6 +1606,11 @@ export interface BbPluginApi {
    * follow-up turns, park them, and release them later.
    */
   readonly experimental_dispatch: PluginDispatch;
+  /**
+   * Plugin contributions to a thread's timeline. Display-only notes today;
+   * anything that reads or writes thread data goes through `bb.sdk.threads`.
+   */
+  readonly experimental_threads: PluginThreads;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

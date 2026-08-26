@@ -9,6 +9,7 @@ type ExpectedBbPluginApiKey =
   | "events"
   | "experimental_aiServices"
   | "experimental_dispatch"
+  | "experimental_threads"
   | "hosts"
   | "http"
   | "log"
@@ -55,6 +56,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginDispatchExecutionSources",
   "PluginDispatchGateContext",
   "PluginDispatchGateContextBase",
+  "PluginDispatchGateContextCommon",
   "PluginDispatchGateDecision",
   "PluginDispatchGateHandler",
   "PluginDispatchGateStage",
@@ -105,6 +107,11 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventName",
   "PluginThreadCreateGateContext",
   "PluginThreadEventPayloads",
+  "PluginThreadNote",
+  "PluginThreads",
+  "PluginTurnFailedDecision",
+  "PluginTurnFailedGateContext",
+  "PluginTurnFailure",
   "PluginTurnSubmitGateContext",
   "PluginUi",
 ] as const;

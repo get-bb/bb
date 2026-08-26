@@ -220,6 +220,11 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "A hold defers a turn that has not started, so there is no turn to scope it to; the row sits in the thread timeline where that turn will land.",
   },
+  "system/plugin-note": {
+    policy: "thread",
+    rationale:
+      "A plugin annotates the thread, not a turn: notes are appended from background services and gates that run between turns, and a note about a turn that failed would otherwise be scoped to a turn that is over.",
+  },
   "system/provider-turn-watchdog": {
     policy: "thread",
     rationale:
