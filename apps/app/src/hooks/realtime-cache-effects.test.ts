@@ -42,6 +42,7 @@ import {
 import { pluginContributionsQueryKey } from "./queries/query-keys";
 import {
   createRealtimeCacheEffects,
+  resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
 import {
@@ -505,7 +506,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refreshes an open search once per flush without aborting the request in flight", async () => {
+  it("refreshes an open search once per flush without aborting the request in flight, then once it settles", async () => {
     vi.useFakeTimers();
     const visibility = createFakeVisibility();
     const { effects, queryClient } =
@@ -559,12 +560,114 @@ describe("createRealtimeCacheEffects", () => {
     expect(signals[0]?.aborted).toBe(false);
     expect(searchQueryFn).toHaveBeenCalledTimes(1);
 
+    // That request read the index before the turns completed, and landing
+    // it clears the invalidation: one trailing refetch picks up the newly
+    // indexed content.
     resolveFetches[0]?.({
       active: { results: [], total: 0 },
       archived: { results: [], total: 0 },
     });
     await vi.advanceTimersByTimeAsync(0);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(false);
+
+    resolveFetches[1]?.({
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+
     invalidateSpy.mockRestore();
+    unsubscribeSearch();
+    effects.dispose();
+  });
+
+  it("refetches an in-flight search once it settles after a status change instead of aborting it", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
+    const idleResponse = {
+      active: { results: [{ id: "thr_1", status: "idle" }], total: 1 },
+      archived: { results: [], total: 0 },
+    };
+    const activeResponse = {
+      active: { results: [{ id: "thr_1", status: "active" }], total: 1 },
+      archived: { results: [], total: 0 },
+    };
+    // Cached data matters: the default cancelling invalidation only aborts
+    // and re-issues a fetch when the query already holds data — exactly the
+    // open-search-refreshing case a streaming turn's status flips would starve.
+    queryClient.setQueryData(threadSearchKey, idleResponse);
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const searchObserver = new QueryObserver(queryClient, {
+      queryKey: threadSearchKey,
+      queryFn: searchQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeSearch = searchObserver.subscribe(() => {});
+    void searchObserver.refetch();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        projectId: "project-1",
+        statusChange: {
+          activity: NO_THREAD_ACTIVITY,
+          latestAttentionAt: 100,
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          status: "active",
+          updatedAt: 200,
+        },
+      },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Status changes ride the immediate path, so a cancelling invalidation
+    // here could starve an open search forever; the request keeps running.
+    expect(signals[0]?.aborted).toBe(false);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+
+    // The request read the index before the transition, so its response
+    // still carries the old status. Landing it clears the invalidation, which
+    // would lose the change for good without a trailing refetch.
+    resolveFetches[0]?.(idleResponse);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(threadSearchKey)).toEqual(idleResponse);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(false);
+
+    resolveFetches[1]?.(activeResponse);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(threadSearchKey)).toEqual(activeResponse);
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      false,
+    );
+    // One trailing read is enough: nothing changed while it ran.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+
     unsubscribeSearch();
     effects.dispose();
   });
@@ -2082,6 +2185,113 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("throttles the metadata-less status fallback to one active refetch per second", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const sidebarQueryFn = vi.fn(async () => ({
+      projects: [{ threads: [{ id: "thr_1", status: "idle" }] }],
+      personalProject: { threads: [] },
+    }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    const emitBareStatusChange = () => {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { projectId: "project-1" },
+        changes: ["status-changed"],
+      });
+    };
+
+    // The first bare push after a quiet period still refetches immediately.
+    emitBareStatusChange();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+
+    // A second push inside the same second coalesces instead of fanning out…
+    await vi.advanceTimersByTimeAsync(100);
+    emitBareStatusChange();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    // …while the row still goes stale immediately for the next mount.
+    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    // The coalesced change lands as one trailing refetch at the 1s boundary.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
+  it("refetches a project list and its forks list once each for a bare status change", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const projectListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    // The forks row's filters extend the project list's, so a partial key
+    // match on the project list key also selects the forks query.
+    const forksListKey = threadListQueryKey({
+      archived: false,
+      originKind: "fork",
+      projectId: "project-1",
+      sourceThreadId: "thr_1",
+    });
+    const createListQueryFn = () =>
+      vi.fn(
+        () =>
+          new Promise<unknown[]>((resolve) => {
+            setTimeout(() => resolve([]), 20);
+          }),
+      );
+    const projectQueryFn = createListQueryFn();
+    const forksQueryFn = createListQueryFn();
+    const projectObserver = new QueryObserver(queryClient, {
+      queryKey: projectListKey,
+      queryFn: projectQueryFn,
+      staleTime: Infinity,
+    });
+    const forksObserver = new QueryObserver(queryClient, {
+      queryKey: forksListKey,
+      queryFn: forksQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeProject = projectObserver.subscribe(() => {});
+    const unsubscribeForks = forksObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(20);
+    expect(projectQueryFn).toHaveBeenCalledTimes(1);
+    expect(forksQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_2",
+      metadata: { projectId: "project-1" },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(projectQueryFn).toHaveBeenCalledTimes(2);
+    expect(forksQueryFn).toHaveBeenCalledTimes(2);
+
+    unsubscribeProject();
+    unsubscribeForks();
+    effects.dispose();
+  });
+
   it("refetches over a patched row when a bare status-changed arrives while visible", async () => {
     // Stop requests, command failures and host interruptions push the bare
     // kind. On the visible path status-changed never enters the debounce
@@ -2444,6 +2654,17 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
+  });
+
+  it("keeps the fine-pointer cadence and widens it for coarse pointers", () => {
+    expect(resolveThreadInvalidationDebounce(false)).toEqual({
+      debounceMs: 50,
+      maxWaitMs: 200,
+    });
+    expect(resolveThreadInvalidationDebounce(true)).toEqual({
+      debounceMs: 150,
+      maxWaitMs: 400,
+    });
   });
 
   it("applies the reconnect watermark from the connected event", () => {

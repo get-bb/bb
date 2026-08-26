@@ -5,7 +5,7 @@
 //
 // This wires up the production pieces themselves: the real TunnelDO (driven by
 // a fake tunnel client over a real WebSocket) behind the real serveWithCache.
-import { cacheKey, serveWithCache } from "../src/cache.js";
+import { cacheKey, serveWithCache, shellCacheKey } from "../src/cache.js";
 
 export { TunnelDO } from "../src/tunnel-do.js";
 
@@ -67,6 +67,21 @@ export default {
       });
     }
 
+    // Probe: whether the revalidated shell copy for a path has landed in the
+    // edge cache yet, and the Cache-Control it was stored under (the worker's
+    // internal freshness bound, not the origin's `no-cache`). Cache writes
+    // ride ctx.waitUntil, so tests poll this instead of racing the put.
+    if (url.pathname === "/shell-cached") {
+      const target = url.searchParams.get("for") ?? "/";
+      const cached = await caches.default.match(
+        shellCacheKey(NAMESPACE, new URL(`${url.origin}${target}`)),
+      );
+      return new Response(
+        cached ? (cached.headers.get("cache-control") ?? "") : "absent",
+        { status: cached ? 200 : 404 },
+      );
+    }
+
     // Control: the pre-fix cache-hit rebuild, over the entry serveWithCache
     // stored for another path.
     if (url.pathname === "/legacy-cache-hit") {
@@ -79,7 +94,12 @@ export default {
     }
 
     return (
-      await serveWithCache(request, NAMESPACE, ctx, () => stub.fetch(request))
+      await serveWithCache(request, NAMESPACE, ctx, (init) => {
+        if (init === undefined) return stub.fetch(request);
+        const headers = new Headers(request.headers);
+        headers.set("if-none-match", init.ifNoneMatch);
+        return stub.fetch(new Request(request, { headers }));
+      })
     ).response;
   },
 };

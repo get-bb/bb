@@ -96,6 +96,18 @@ async function writeRuntimePackageJson(args: {
   );
 }
 
+/**
+ * Runs `<pluginRoot>/scripts/stage-assets.mjs` when a plugin has one. The
+ * script's side effects are its contract: it populates `dist/` with runtime
+ * files the bundlers cannot produce (the Monaco plugin copies Monaco's AMD
+ * build in this way).
+ */
+async function runStageAssets(sourceRoot: string): Promise<void> {
+  const scriptPath = path.join(sourceRoot, "scripts", "stage-assets.mjs");
+  if (!(await exists(scriptPath))) return;
+  await import(pathToFileURL(scriptPath).href);
+}
+
 async function copyBuiltinPlugin(args: {
   bbVersion: string;
   build: boolean;
@@ -120,6 +132,10 @@ async function copyBuiltinPlugin(args: {
     if (packageJson.bb.host !== undefined) {
       await buildPluginHost(args.sourceRoot, args.bbVersion, toolchain);
     }
+    // A plugin that needs files on disk at runtime (rather than bundled into
+    // its server/app) stages them into `dist/` here, because `RUNTIME_DIRS`
+    // below is all that ships. Optional: most plugins have no such script.
+    await runStageAssets(args.sourceRoot);
   }
 
   const targetDir = path.join(args.targetRoot, args.name);

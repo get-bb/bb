@@ -635,6 +635,10 @@ export interface ListHostThreadIdsArgs {
   hostId: string;
 }
 
+export interface ListActiveHostThreadsArgs {
+  hostId: string;
+}
+
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
@@ -1428,6 +1432,27 @@ export function listHostThreadIds(
     .where(eq(environments.hostId, args.hostId))
     .all()
     .map((row) => row.id);
+}
+
+/**
+ * Full rows for the host's non-deleted `active` threads: the only rows whose
+ * displayed runtime depends on whether the host is connected.
+ */
+export function listActiveHostThreads(
+  db: DbConnection,
+  args: ListActiveHostThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select(getTableColumns(threads))
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      nonDeletedThreads(
+        eq(environments.hostId, args.hostId),
+        eq(threads.status, "active"),
+      ),
+    )
+    .all();
 }
 
 export function hasPendingThreadShutdownInEnvironment(

@@ -1,0 +1,144 @@
+/**
+ * Turning the server's flat path list into something a tree view can render.
+ * Kept free of React so the nesting, filtering, and reveal rules can be read
+ * (and reasoned about) on their own.
+ */
+
+export type EntryKind = "file" | "directory";
+
+export interface FlatEntry {
+  path: string;
+  kind: EntryKind;
+}
+
+export interface TreeNode {
+  /** Root-relative, `/`-separated. Unique; used as the React key. */
+  path: string;
+  name: string;
+  kind: EntryKind;
+  /** Empty for files. Directories first, then case-insensitive by name. */
+  children: TreeNode[];
+}
+
+/**
+ * Nests flat entries. Intermediate directories are synthesised when missing —
+ * a truncated listing can contain `a/b/c.ts` with no entry for `a/b`, and
+ * dropping that file would misrepresent the tree as smaller than it is.
+ */
+export function buildTree(entries: readonly FlatEntry[]): TreeNode[] {
+  const root: TreeNode = {
+    path: "",
+    name: "",
+    kind: "directory",
+    children: [],
+  };
+  const byPath = new Map<string, TreeNode>([["", root]]);
+
+  const directoryAt = (path: string): TreeNode => {
+    const existing = byPath.get(path);
+    if (existing !== undefined) return existing;
+    const separator = path.lastIndexOf("/");
+    const parent = directoryAt(separator === -1 ? "" : path.slice(0, separator));
+    const node: TreeNode = {
+      path,
+      name: path.slice(separator + 1),
+      kind: "directory",
+      children: [],
+    };
+    byPath.set(path, node);
+    parent.children.push(node);
+    return node;
+  };
+
+  for (const entry of entries) {
+    const path = normalize(entry.path);
+    if (path === "") continue;
+    if (entry.kind === "directory") {
+      directoryAt(path);
+      continue;
+    }
+    if (byPath.has(path)) continue;
+    const separator = path.lastIndexOf("/");
+    const parent = directoryAt(separator === -1 ? "" : path.slice(0, separator));
+    const node: TreeNode = {
+      path,
+      name: path.slice(separator + 1),
+      kind: "file",
+      children: [],
+    };
+    byPath.set(path, node);
+    parent.children.push(node);
+  }
+
+  sortRecursively(root);
+  return root.children;
+}
+
+function normalize(path: string): string {
+  return path.replace(/^\.?\//, "").replace(/\/+$/, "");
+}
+
+function sortRecursively(node: TreeNode): void {
+  node.children.sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+    return left.name.localeCompare(right.name, undefined, {
+      sensitivity: "base",
+    });
+  });
+  for (const child of node.children) sortRecursively(child);
+}
+
+/** Every directory containing `path`, nearest last: `a`, `a/b` for `a/b/c.ts`. */
+export function ancestorsOf(path: string): string[] {
+  const segments = normalize(path).split("/");
+  segments.pop();
+  const ancestors: string[] = [];
+  let current = "";
+  for (const segment of segments) {
+    current = current === "" ? segment : `${current}/${segment}`;
+    ancestors.push(current);
+  }
+  return ancestors;
+}
+
+export interface FilteredTree {
+  nodes: TreeNode[];
+  /** Directories to force open so every match is visible without clicking. */
+  expand: Set<string>;
+  matchCount: number;
+}
+
+/**
+ * Filters to files whose path contains `query`, keeping the directories that
+ * lead to them. Matching is on the whole relative path, not just the file
+ * name, so "components/ui" narrows by directory as readily as by file.
+ */
+export function filterTree(nodes: readonly TreeNode[], query: string): FilteredTree {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return { nodes: [...nodes], expand: new Set(), matchCount: 0 };
+  }
+
+  const expand = new Set<string>();
+  let matchCount = 0;
+
+  const visit = (node: TreeNode): TreeNode | null => {
+    if (node.kind === "file") {
+      if (!node.path.toLowerCase().includes(needle)) return null;
+      matchCount += 1;
+      return node;
+    }
+    const children = node.children
+      .map(visit)
+      .filter((child): child is TreeNode => child !== null);
+    if (children.length === 0) return null;
+    expand.add(node.path);
+    return { ...node, children };
+  };
+
+  return {
+    nodes: nodes.map(visit).filter((node): node is TreeNode => node !== null),
+    expand,
+    matchCount,
+  };
+}

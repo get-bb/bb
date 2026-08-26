@@ -747,6 +747,12 @@
     "bb-plugin-memory#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-monaco-editor#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
     "bb-plugin-pdf-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

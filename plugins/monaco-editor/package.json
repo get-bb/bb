@@ -1,0 +1,66 @@
+{
+  "name": "bb-plugin-monaco-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Edit files in BB with the Monaco editor instead of the read-only preview.",
+  "license": "MIT",
+  "homepage": "https://github.com/get-bb/bb#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "plugins/monaco"
+  },
+  "files": [
+    "dist",
+    "server.ts",
+    "app.tsx",
+    "components",
+    "lib",
+    "README.md"
+  ],
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.9"
+  },
+  "bb": {
+    "name": "File Editor",
+    "description": "Edit files in BB with the Monaco editor instead of the read-only preview.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:monaco": "node scripts/stage-assets.mjs"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "monaco-editor": "^0.56.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

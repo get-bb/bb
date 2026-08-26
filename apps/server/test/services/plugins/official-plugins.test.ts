@@ -100,6 +100,7 @@ describe("official plugin registry invariants", () => {
       "inline-vis": "Interface",
       "keep-awake": "Host access",
       memory: "Context & knowledge",
+      "monaco-editor": "Interface",
       "pdf-preview": "Interface",
       "plugin-api-docs": "Developer tools",
       "provider-acp": "Agent interaction",

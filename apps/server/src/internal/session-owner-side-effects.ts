@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import {
   closeSession,
   hostDaemonSessions,
+  listActiveHostThreads,
   listHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
@@ -18,6 +19,7 @@ import {
   interruptActiveThreadsForHost,
   reconcileDaemonReportedThreads,
 } from "../services/threads/thread-lifecycle.js";
+import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -32,12 +34,18 @@ type DaemonSocketClosedDeps = Pick<
   | "hub"
   | "logger"
   | "pendingInteractions"
+  | "providerRegistry"
   | "sharedPorts"
   | "terminalSessions"
 >;
 type DaemonDisconnectGraceDeps = Pick<
   AppDeps,
-  "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
+  | "db"
+  | "hub"
+  | "logger"
+  | "pendingInteractions"
+  | "providerRegistry"
+  | "terminalSessions"
 >;
 
 interface HandleHostSessionOpenedArgs {
@@ -236,7 +244,10 @@ function completeDaemonDisconnectGrace(
 }
 
 function completeDaemonActiveWorkDisconnectGrace(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
+  deps: Pick<
+    AppDeps,
+    "db" | "hub" | "logger" | "pendingInteractions" | "providerRegistry"
+  >,
   args: CompleteDaemonActiveWorkDisconnectGraceArgs,
 ): void {
   if (deps.hub.hasDaemonForHost(args.hostId)) {
@@ -249,12 +260,30 @@ function completeDaemonActiveWorkDisconnectGrace(
   });
 }
 
+/**
+ * Host connectivity is part of an `active` thread row's displayed runtime, so
+ * those rows' notifications carry the post-change `statusChange` snapshot
+ * clients patch in place instead of refetching every active thread list.
+ * Every other row renders the same whether or not the host is connected; it
+ * keeps the bare notification it always received, which clients coalesce into
+ * one throttled list refetch. The snapshots come from one batched pass: this
+ * runs synchronously in the daemon socket's close handler and again when the
+ * grace elapses, and a host can carry hundreds of threads.
+ */
 function notifyHostThreadRuntimeStatusChanged(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   hostId: string,
 ): void {
+  const metadataByThreadId = buildThreadStatusChangeMetadataByThreadId(deps, {
+    environmentHostId: hostId,
+    threads: listActiveHostThreads(deps.db, { hostId }),
+  });
   for (const threadId of listHostThreadIds(deps.db, { hostId })) {
-    deps.hub.notifyThread(threadId, ["status-changed"]);
+    deps.hub.notifyThread(
+      threadId,
+      ["status-changed"],
+      metadataByThreadId.get(threadId),
+    );
   }
 }
 

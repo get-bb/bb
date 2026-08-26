@@ -11,8 +11,10 @@ import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scro
 
 // Real externals only: the ResizeObserver/rAF used by the scroll body are
 // browser primitives jsdom omits, so they are stubbed; nothing in our own code
-// is mocked. The atom is read back from the real default jotai store the
-// component writes to.
+// is mocked. The ResizeObserver stub delivers what a browser delivers — an
+// entry per observed target carrying its box sizes — so the resize path under
+// test is the one production runs. The atom is read back from the real default
+// jotai store the component writes to.
 
 interface ScrollMetrics {
   scrollHeight: number;
@@ -32,16 +34,46 @@ const SCROLL_AREA_HEIGHT = 100;
 class ResizeObserverMock implements ResizeObserver {
   static instances: ResizeObserverMock[] = [];
   readonly callback: ResizeObserverCallback;
+  readonly targets: Element[] = [];
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     ResizeObserverMock.instances.push(this);
   }
-  observe() {}
+  observe(target: Element) {
+    this.targets.push(target);
+  }
   unobserve() {}
   disconnect() {}
   trigger() {
-    this.callback([], this);
+    this.callback(this.targets.map(makeResizeEntry), this);
   }
+}
+
+// The scroll port's content box is its client height and the content wrapper's
+// border box is the port's scroll height: the pair the component derives its
+// cached max offset from. The other box of each entry differs by 8px so a
+// refresh that reads the wrong one shows up as a skewed max offset.
+function makeResizeEntry(target: Element): ResizeObserverEntry {
+  const isScrollPort = target.classList.contains(SCROLL_AREA_CLASS);
+  const scrollPort = isScrollPort ? target : target.parentElement;
+  if (!scrollPort) {
+    throw new Error("Expected the content wrapper inside the scroll port.");
+  }
+  const contentBlockSize = isScrollPort
+    ? scrollPort.clientHeight
+    : scrollPort.scrollHeight - 8;
+  const borderBlockSize = isScrollPort
+    ? scrollPort.clientHeight + 8
+    : scrollPort.scrollHeight;
+  return {
+    target,
+    contentRect: new DOMRect(0, 0, 100, contentBlockSize),
+    borderBoxSize: [{ blockSize: borderBlockSize, inlineSize: 100 }],
+    contentBoxSize: [{ blockSize: contentBlockSize, inlineSize: 100 }],
+    devicePixelContentBoxSize: [
+      { blockSize: contentBlockSize, inlineSize: 100 },
+    ],
+  };
 }
 
 function getLatestResizeObserver(): ResizeObserverMock {
@@ -80,8 +112,12 @@ function mockScrollAreaRect(scrollArea: HTMLElement) {
 }
 
 function mockRowRect(row: HTMLElement, rect: RowRect) {
-  vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, rect.top, 100, rect.bottom - rect.top),
+  // A row the timeline has since unmounted reports an empty rect, as a
+  // browser's disconnected element does.
+  vi.spyOn(row, "getBoundingClientRect").mockImplementation(() =>
+    row.isConnected
+      ? new DOMRect(0, rect.top, 100, rect.bottom - rect.top)
+      : new DOMRect(0, 0, 0, 0),
   );
 }
 
@@ -171,6 +207,11 @@ function renderTimeline({
     getByRole: view.getByRole,
     scrollArea,
     rowElements,
+    // Rows mounted by a later rerender are not in `rowElements`.
+    getRow: (rowId: string) =>
+      requireHTMLElement(
+        view.container.querySelector(`[data-timeline-row-id="${rowId}"]`),
+      ),
     rerenderRows: (nextRowIds: string[]) => view.rerender(timeline(nextRowIds)),
     unmount: view.unmount,
   };
@@ -293,6 +334,65 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(readAnchor("thread-a")).toEqual({
       rowId: "row-b",
       offsetWithinRow: 20,
+      atBottom: false,
+    });
+  });
+
+  it("follows the row window when a windowed timeline slides it without a resize", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const { scrollArea, getRow, rerenderRows, unmount } = renderTimeline({
+      threadId: "thread-a",
+      // row-z is the timeline's last row, which the windowed list keeps
+      // mounted whatever the window holds.
+      rowIds: ["row-a", "row-b", "row-c", "row-z"],
+      virtualized: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(getRow("row-a"), { top: -120, bottom: -20 });
+    mockRowRect(getRow("row-b"), { top: -20, bottom: 80 });
+    mockRowRect(getRow("row-c"), { top: 80, bottom: 180 });
+    mockRowRect(getRow("row-z"), { top: 5_000, bottom: 5_100 });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 6_000,
+      clientHeight: 100,
+      scrollTop: 5_900,
+    });
+    getLatestResizeObserver().trigger();
+
+    // Past the throttle window, so each capture below writes immediately.
+    vi.advanceTimersByTime(1_000);
+    scrollArea.scrollTop = 1_000;
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    // A flick shorter than the overscan slides the window inside the
+    // fixed-height spacer: row-b and row-c unmount, row-x and row-y mount
+    // above row-a, and row-a and row-z stay connected. No observed box
+    // changed size, so the ResizeObserver never fires.
+    rerenderRows(["row-x", "row-y", "row-a", "row-z"]);
+    mockRowRect(getRow("row-x"), { top: -130, bottom: -30 });
+    mockRowRect(getRow("row-y"), { top: -30, bottom: 70 });
+    mockRowRect(getRow("row-a"), { top: 70, bottom: 170 });
+    vi.advanceTimersByTime(1_000);
+    scrollArea.scrollTop = 900;
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-y",
+      offsetWithinRow: 30,
+      atBottom: false,
+    });
+
+    // Leaving the thread flushes a final capture from the same row set.
+    unmount();
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-y",
+      offsetWithinRow: 30,
       atBottom: false,
     });
   });

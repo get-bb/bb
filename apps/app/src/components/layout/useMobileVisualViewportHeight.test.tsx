@@ -108,6 +108,18 @@ function withElementClientHeight(
   }
 }
 
+// Waits out one scheduled rAF pass so "the pass ran and did nothing" is
+// distinguishable from "the pass has not run yet".
+async function flushScheduledViewportPass() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+  });
+}
+
 beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
@@ -309,6 +321,142 @@ describe("useMobileVisualViewportHeight", () => {
       expect(shell.style.top).toBe("");
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
+  });
+
+  it("writes shell geometry only when a pass computes new values", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shell = screen.getByTestId("shell");
+      const shellHeightRoot = screen.getByTestId("shell-height-root");
+      expect(shell.style.height).toBe("500px");
+      const setShellHeightProperty = vi.spyOn(
+        shellHeightRoot.style,
+        "setProperty",
+      );
+
+      // Same geometry again: the pass must return before any style write, or
+      // every keyboard/URL-bar animation frame invalidates the whole tree.
+      act(() => {
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await flushScheduledViewportPass();
+      expect(setShellHeightProperty).not.toHaveBeenCalled();
+
+      act(() => {
+        visualViewport.height = 480;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("480px"));
+      expect(setShellHeightProperty).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("reads the containing block only when the layout viewport can change", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    let containingBlockReads = 0;
+    await withElementClientHeight(
+      document.body,
+      () => {
+        containingBlockReads += 1;
+        return 800;
+      },
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          render(<VisualViewportShell enabled />);
+          const shell = screen.getByTestId("shell");
+          expect(shell.style.height).toBe("500px");
+          const readsAfterMount = containingBlockReads;
+
+          // Visual-viewport ticks pan or resize only the visual viewport;
+          // they must reuse the cached containing-block height instead of
+          // forcing a full-document layout per animation frame.
+          act(() => {
+            visualViewport.offsetTop = 40;
+            visualViewport.dispatchEvent(new Event("scroll"));
+          });
+          await waitFor(() => expect(shell.style.top).toBe("40px"));
+          act(() => {
+            visualViewport.height = 460;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(shell.style.height).toBe("460px"));
+          expect(containingBlockReads).toBe(readsAfterMount);
+
+          act(() => {
+            window.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() =>
+            expect(containingBlockReads).toBe(readsAfterMount + 1),
+          );
+        }),
+    );
+  });
+
+  it("runs a geometry pass when an editor is focused programmatically", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withElementClientHeight(
+      document.body,
+      () => 500,
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          render(<VisualViewportShell enabled />);
+          const shell = screen.getByTestId("shell");
+          const editor = screen.getByTestId("editor");
+          // Native layout matches the visual viewport: no override applied.
+          expect(shell.style.height).toBe("");
+
+          // The keyboard shortens the visual viewport around the same time
+          // the composer autofocuses, without any window resize; the focus
+          // pass must pick the change up on its own.
+          visualViewport.height = 300;
+          act(() => editor.focus());
+          await waitFor(() => expect(shell.style.height).toBe("300px"));
+        }),
+    );
+  });
+
+  it("ignores visual viewport pans without a keyboard or an applied override", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withElementClientHeight(
+      document.body,
+      () => 500,
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          render(<VisualViewportShell enabled />);
+          const shell = screen.getByTestId("shell");
+          const editor = screen.getByTestId("editor");
+          expect(shell.style.height).toBe("");
+
+          // A URL-bar pan with no keyboard: nothing to compensate.
+          act(() => {
+            visualViewport.offsetTop = 340;
+            visualViewport.dispatchEvent(new Event("scroll"));
+          });
+          await flushScheduledViewportPass();
+          expect(window.scrollTo).not.toHaveBeenCalled();
+          expect(shell.style.top).toBe("");
+
+          // With a keyboard editor focused, the same pan is Safari's
+          // focus-reveal pan and must still be compensated. Let the pan
+          // settle and the focus-scheduled pass run first, so that only the
+          // scroll handler's keyboard branch can produce the compensation.
+          visualViewport.offsetTop = 0;
+          act(() => editor.focus());
+          await flushScheduledViewportPass();
+          expect(shell.style.top).toBe("");
+          act(() => {
+            visualViewport.offsetTop = 340;
+            visualViewport.dispatchEvent(new Event("scroll"));
+          });
+          await waitFor(() => expect(shell.style.top).toBe("340px"));
+          expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+        }),
+    );
   });
 });
 

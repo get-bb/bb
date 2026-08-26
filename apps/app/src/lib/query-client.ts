@@ -18,14 +18,16 @@ interface CreateAppQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
   showMutationErrorToasts?: boolean;
   /**
-   * Gate for the default focus refetch. Focus refetch is the freshness
-   * fallback for when realtime coverage is lost; while the socket is
-   * connected, change events keep the cache correct and the reconnect
-   * watermark repairs any gap, so a focus event (every phone unlock and
-   * app switch) must not refetch every active query on top of that wave.
-   * Defaults to always refetching. A `defaultOptions.queries.refetchOnWindowFocus`
-   * passed alongside this gate wins over it (caller defaults are spread last),
-   * so pass one or the other.
+   * Gate for the default focus and reconnect refetches. Both are the
+   * freshness fallback for when realtime coverage is lost; while the socket
+   * is connected, change events keep the cache correct and the reconnect
+   * watermark repairs any gap, so neither a focus event (every phone unlock
+   * and app switch) nor a browser `online` event (mobile Safari re-fires it
+   * around the same suspensions) must refetch every active query on top of
+   * that wave. Defaults to always refetching. A
+   * `defaultOptions.queries.refetchOnWindowFocus`/`refetchOnReconnect`
+   * passed alongside this gate wins over it (caller defaults are spread
+   * last), so pass one or the other.
    */
   shouldRefetchOnWindowFocus?: () => boolean;
 }
@@ -146,6 +148,10 @@ export function createAppQueryClient(
       queries: {
         staleTime: 2000,
         refetchOnWindowFocus:
+          shouldRefetchOnWindowFocus === undefined
+            ? true
+            : () => shouldRefetchOnWindowFocus(),
+        refetchOnReconnect:
           shouldRefetchOnWindowFocus === undefined
             ? true
             : () => shouldRefetchOnWindowFocus(),

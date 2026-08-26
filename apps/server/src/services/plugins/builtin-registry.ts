@@ -79,6 +79,12 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
+    name: "monaco-editor",
+    pluginId: "monaco-editor",
+    defaultEnabled: false,
+    category: "Interface",
+  },
+  {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,

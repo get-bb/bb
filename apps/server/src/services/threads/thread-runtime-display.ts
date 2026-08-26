@@ -92,6 +92,18 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   thread: ThreadWithPendingInteractionState;
 }
 
+interface BuildThreadStatusChangeMetadataByThreadIdArgs {
+  /** The host every listed thread's environment belongs to. */
+  environmentHostId: string;
+  threads: readonly Thread[];
+}
+
+interface ToThreadStatusChangeMetadataArgs {
+  activity: ThreadActivityState;
+  runtime: ThreadRuntimeState;
+  thread: Thread;
+}
+
 interface PromptBannerActivityState extends Pick<
   ThreadActivityState,
   "activeGoalCount" | "activePlanModeCount"
@@ -258,19 +270,72 @@ export function buildThreadStatusChangeMetadata(
   deps: ThreadPromptBannerDeps,
   thread: Thread,
 ): ThreadChangeMetadata {
-  return {
-    projectId: thread.projectId,
-    statusChange: {
+  return toThreadStatusChangeMetadata({
+    activity:
+      buildThreadActivityStateByThreadId(deps, [thread]).get(thread.id) ??
+      EMPTY_THREAD_ACTIVITY,
+    runtime: resolveThreadRuntimeState(deps, {
+      environmentHostId: resolveThreadEnvironmentHostId(deps, thread),
       status: thread.status,
-      runtime: resolveThreadRuntimeState(deps, {
-        environmentHostId: resolveThreadEnvironmentHostId(deps, thread),
-        status: thread.status,
+    }),
+    thread,
+  });
+}
+
+/**
+ * `buildThreadStatusChangeMetadata` for many threads on one host in a fixed
+ * number of queries: host connectivity and the latest session are resolved
+ * once for the host and the activity helpers run over the whole array, as the
+ * list endpoints do. The host fan-outs (daemon close, disconnect grace, host
+ * removal) run synchronously on the event loop, so they must not pay one
+ * snapshot's worth of queries per thread on a host with hundreds of threads.
+ */
+export function buildThreadStatusChangeMetadataByThreadId(
+  deps: ThreadPromptBannerDeps,
+  args: BuildThreadStatusChangeMetadataByThreadIdArgs,
+): Map<string, ThreadChangeMetadata> {
+  if (args.threads.length === 0) {
+    return new Map();
+  }
+  const activityByThreadId = buildThreadActivityStateByThreadId(
+    deps,
+    args.threads,
+  );
+  const hostConnected = hasOpenDaemonSessionForHost(
+    deps,
+    args.environmentHostId,
+  );
+  const latestSession = hostConnected
+    ? null
+    : getLatestSessionForHost(deps.db, { hostId: args.environmentHostId });
+  return new Map(
+    args.threads.map((thread) => [
+      thread.id,
+      toThreadStatusChangeMetadata({
+        activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
+        runtime: resolveThreadRuntimeStateFromLatestSession({
+          environmentHostId: args.environmentHostId,
+          hostConnected,
+          latestSession,
+          status: thread.status,
+        }),
+        thread,
       }),
-      activity: buildThreadActivityStateByThreadId(deps, [thread]).get(
-        thread.id,
-      ) ?? EMPTY_THREAD_ACTIVITY,
-      latestAttentionAt: thread.latestAttentionAt,
-      updatedAt: thread.updatedAt,
+    ]),
+  );
+}
+
+function toThreadStatusChangeMetadata(
+  args: ToThreadStatusChangeMetadataArgs,
+): ThreadChangeMetadata {
+  return {
+    projectId: args.thread.projectId,
+    statusChange: {
+      status: args.thread.status,
+      runtime: args.runtime,
+      activity: args.activity,
+      latestAttentionAt: args.thread.latestAttentionAt,
+      updatedAt: args.thread.updatedAt,
     },
   };
 }

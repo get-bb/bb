@@ -74,7 +74,48 @@ describe("HeightTransition", () => {
   });
 });
 
+function makeResizeEntry(
+  target: Element,
+  borderBoxBlockSize: number,
+  contentRectHeight: number,
+): ResizeObserverEntry {
+  return {
+    target,
+    contentRect: new DOMRect(0, 0, 200, contentRectHeight),
+    borderBoxSize: [{ blockSize: borderBoxBlockSize, inlineSize: 200 }],
+    contentBoxSize: [{ blockSize: contentRectHeight, inlineSize: 200 }],
+    devicePixelContentBoxSize: [
+      { blockSize: borderBoxBlockSize, inlineSize: 200 },
+    ],
+  };
+}
+
 describe("AutoHeightContainer", () => {
+  it("sizes the wrapper from the observed border box", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+
+    const view = render(
+      <AutoHeightContainer>
+        <span>Streaming response</span>
+      </AutoHeightContainer>,
+    );
+    const inner = view.getByText("Streaming response").parentElement;
+    const wrapper = inner?.parentElement;
+    const observer = ResizeObserverStub.instances[0];
+    if (!inner || !wrapper || !observer) {
+      throw new Error("AutoHeightContainer did not render");
+    }
+
+    // A padded inner: the border box (offsetHeight's metric, used by the
+    // mount and snap paths) is taller than the content rect. Sizing the
+    // wrapper from the content rect would clip it.
+    act(() => {
+      observer.callback([makeResizeEntry(inner, 120, 112)], observer);
+    });
+
+    expect(wrapper.style.height).toBe("120px");
+  });
+
   it("snap-syncs an authoritative layout revision", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 

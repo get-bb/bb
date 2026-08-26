@@ -54,7 +54,10 @@ import {
 import { turnRequestLabel } from "@bb/client-core";
 import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { MessageActionBar } from "./MessageActionBar.js";
+import {
+  MessageActionBar,
+  PROSE_COLUMN_INSET_CLASS,
+} from "./MessageActionBar.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
@@ -678,7 +681,10 @@ function AssistantConversationMessage({
 
   return (
     <div
-      className="group/message w-full px-2 text-sm font-normal leading-relaxed"
+      className={cn(
+        "group/message w-full text-sm font-normal leading-relaxed",
+        PROSE_COLUMN_INSET_CLASS,
+      )}
       data-message-column=""
     >
       {/*

@@ -410,4 +410,24 @@ describe("SelectableMessageProse", () => {
       ),
     );
   });
+
+  it("registers the shared pointer listeners as passive", () => {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const view = render(
+      <SelectableMessageProse>Answer prose</SelectableMessageProse>,
+    );
+
+    // None of the pointer handlers call preventDefault; the passive flag is a
+    // perf contract (it keeps taps off the blocking-handler list), so pin it.
+    const optionsByType = new Map(
+      addSpy.mock.calls.map(([type, , options]) => [type, options]),
+    );
+    for (const type of ["pointerdown", "pointerup", "pointercancel"]) {
+      expect(optionsByType.get(type), type).toEqual({ passive: true });
+    }
+
+    // Detach still matches (removeEventListener ignores `passive`): the
+    // shared-listener teardown test above covers the counts.
+    view.unmount();
+  });
 });

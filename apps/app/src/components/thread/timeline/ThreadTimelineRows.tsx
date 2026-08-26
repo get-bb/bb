@@ -66,6 +66,10 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
+import {
+  MessageColumnWidthContext,
+  useMeasuredWidth,
+} from "./MessageActionBar.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
@@ -2144,81 +2148,99 @@ function TimelineRowsList({
     detailScrollRoot?.getScrollElement ??
     bottomAnchor?.getScrollElement ??
     null;
+  const isTopLevelList = spacing === "top-level";
+  // One observer for every action bar below: each top-level row's message
+  // column is as wide as this list, so the bars derive their column's content
+  // width from this shared measurement (MessageColumnWidthContext; the bar
+  // subtracts its own column's padding) instead of observing their own
+  // columns. Nested lists are narrower, so they shadow the value with null
+  // and their bars fall back to per-bar measurement.
+  const { measureRef: messageColumnWidthSourceRef, width: messageColumnWidth } =
+    useMeasuredWidth({ enabled: isTopLevelList });
+  const messageColumnWidthValue = useMemo(
+    () => ({ width: messageColumnWidth }),
+    [messageColumnWidth],
+  );
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-      <div
-        className={cn(
-          "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
-          timelineRowsListGapClassName(spacing),
-          className,
-        )}
-        data-timeline-row-list={spacing}
+      <MessageColumnWidthContext.Provider
+        value={isTopLevelList ? messageColumnWidthValue : null}
       >
-        <TimelineWindowedItemsLoader
-          enabled={timelineWindowingEnabled}
-          alwaysMountedKeys={alwaysMountedKeys}
-          estimateItemHeight={(index) => {
-            const item = items[index];
-            return item?.kind === "row"
-              ? estimateTimelineWindowedRowHeight(item.row, spacing)
-              : 28;
-          }}
-          gap={spacing === "bundle" ? 0 : 8}
-          getScrollElement={getWindowingScrollElement}
-          itemKeys={itemKeys}
-          measurements={measurements}
-          minItemCount={
-            spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
-          }
-          renderItem={(index, windowedState) => {
-            const item = items[index];
-            if (item === undefined) {
-              return null;
+        <div
+          ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
+          className={cn(
+            "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+            timelineRowsListGapClassName(spacing),
+            className,
+          )}
+          data-timeline-row-list={spacing}
+        >
+          <TimelineWindowedItemsLoader
+            enabled={timelineWindowingEnabled}
+            alwaysMountedKeys={alwaysMountedKeys}
+            estimateItemHeight={(index) => {
+              const item = items[index];
+              return item?.kind === "row"
+                ? estimateTimelineWindowedRowHeight(item.row, spacing)
+                : 28;
+            }}
+            gap={spacing === "bundle" ? 0 : 8}
+            getScrollElement={getWindowingScrollElement}
+            itemKeys={itemKeys}
+            measurements={measurements}
+            minItemCount={
+              spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
             }
-            if (item.kind === "unread-divider") {
+            renderItem={(index, windowedState) => {
+              const item = items[index];
+              if (item === undefined) {
+                return null;
+              }
+              if (item.kind === "unread-divider") {
+                return (
+                  <div
+                    key={item.id}
+                    ref={windowedState.itemRef}
+                    data-index={windowedState.itemIndex}
+                    data-timeline-window-key={`divider:${item.id}`}
+                    data-timeline-windowed-realized={
+                      windowedState.windowingEnabled
+                        ? String(windowedState.isRealized)
+                        : undefined
+                    }
+                    style={windowedState.itemStyle}
+                  >
+                    {windowedState.isRealized ? (
+                      <TimelineUnreadDivider
+                        autoScroll={unreadDividerAutoScroll}
+                      />
+                    ) : null}
+                  </div>
+                );
+              }
               return (
-                <div
-                  key={item.id}
-                  ref={windowedState.itemRef}
-                  data-index={windowedState.itemIndex}
-                  data-timeline-window-key={`divider:${item.id}`}
-                  data-timeline-windowed-realized={
-                    windowedState.windowingEnabled
-                      ? String(windowedState.isRealized)
-                      : undefined
-                  }
-                  style={windowedState.itemStyle}
+                <TimelineRowItemWrapper
+                  key={item.row.id}
+                  row={item.row}
+                  spacing={spacing}
+                  windowedState={windowedState}
                 >
                   {windowedState.isRealized ? (
-                    <TimelineUnreadDivider
-                      autoScroll={unreadDividerAutoScroll}
+                    <MemoizedTimelineRowView
+                      activeLatestBundleId={activeLatestBundleId}
+                      row={item.row}
+                      scopeActive={scopeActive}
+                      showAssistantMessageActions={showAssistantMessageActions}
+                      spacing={spacing}
+                      compactActivityIntents={compactActivityIntents}
                     />
                   ) : null}
-                </div>
+                </TimelineRowItemWrapper>
               );
-            }
-            return (
-              <TimelineRowItemWrapper
-                key={item.row.id}
-                row={item.row}
-                spacing={spacing}
-                windowedState={windowedState}
-              >
-                {windowedState.isRealized ? (
-                  <MemoizedTimelineRowView
-                    activeLatestBundleId={activeLatestBundleId}
-                    row={item.row}
-                    scopeActive={scopeActive}
-                    showAssistantMessageActions={showAssistantMessageActions}
-                    spacing={spacing}
-                    compactActivityIntents={compactActivityIntents}
-                  />
-                ) : null}
-              </TimelineRowItemWrapper>
-            );
-          }}
-        />
-      </div>
+            }}
+          />
+        </div>
+      </MessageColumnWidthContext.Provider>
     </TimelineSearchExpansionContext.Provider>
   );
 }
