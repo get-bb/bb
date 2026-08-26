@@ -1,8 +1,7 @@
 /**
  * The whole product map: one annotated surface fixture at a time, panned
  * through with the arrows, with a click on any numbered annotation opening its
- * card in the nearest gutter (or directly below the diagram when no gutter
- * fits).
+ * card in flow directly below the diagram.
  *
  * Slides are the surface groups, in order, so the data file decides both what
  * a slide contains and what number each marker gets. The last group has no
@@ -610,10 +609,11 @@ export function ProductMap({
   /**
    * Follows a card's cross-reference: pan to the slide that draws the named
    * surface, then open its card. The open waits for the pan to land because
-   * the card measures its marker's live geometry to place itself, and an
-   * off-stage marker measures where it is parked, not where it will be. The
-   * landing signal is the track's own `transitionend` (see the stage below);
-   * the effect provides only a ceiling for environments without one.
+   * opening re-budgets the destination slide's stage height (the card's
+   * footprint subtracts from the fixture's available height), and doing that
+   * mid-pan would animate two heights against each other. The landing signal
+   * is the track's own `transitionend` (see the stage below); the effect
+   * provides only a ceiling for environments without one.
    */
   const goToSurface = (id: string) => {
     const group = GROUP_BY_SURFACE_ID.get(id);

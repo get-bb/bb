@@ -431,6 +431,10 @@ function MeasuredBadge({
     // is only valid at rest, and nothing re-fires when a pure transform
     // settles). Target and container may live in sibling subtrees (the
     // exterior layer), so both accumulate to the document and subtract.
+    // Known ≤1px caveat: offsetLeft/offsetTop do not include the borders of
+    // positioned intermediate offsetParents (WindowFrame's 1px border is one
+    // hop for in-frame anchors) — negligible today, but a thick-bordered
+    // frame would need border-width compensation here.
     const layoutOrigin = (element: HTMLElement) => {
       let x = 0;
       let y = 0;

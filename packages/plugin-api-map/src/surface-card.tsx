@@ -18,6 +18,7 @@ import { GROUP_BY_SURFACE_ID, type PluginSurface } from "./surfaces";
 import {
   annotationChipClass,
   ExperimentalBadge,
+  FOCUS_RING_CLASS,
   renderSurfaceCopy,
   type SurfaceReference,
 } from "./annotation";
@@ -178,7 +179,7 @@ export function SurfaceCard({
                     disabled={!target}
                     aria-label={label}
                     title={label}
-                    className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                    className={`inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground ${FOCUS_RING_CLASS}`}
                   >
                     <HugeiconsIcon icon={arrowIcon} className="size-3.5" />
                   </button>
@@ -191,7 +192,7 @@ export function SurfaceCard({
             onClick={onDismiss}
             aria-label="Close"
             title="Close annotation"
-            className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            className={`inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
           >
             <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
           </button>
@@ -262,7 +263,7 @@ export function SurfaceCard({
               type="button"
               onClick={() => void copyForAgent()}
               disabled={copyState === "copying"}
-              className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+              className={`ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING_CLASS}`}
             >
               <HugeiconsIcon
                 icon={copyState === "copied" ? Tick02Icon : Copy01Icon}

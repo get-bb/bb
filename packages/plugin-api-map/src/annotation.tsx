@@ -156,7 +156,7 @@ export function renderSurfaceCopy(
             ? `Go to ${label} on ${target.otherPage}`
             : `Go to ${label} on this page`
         }
-        className="cursor-pointer underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
+        className={`cursor-pointer rounded-sm underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground ${FOCUS_RING_CLASS}`}
       >
         {label}
       </button>

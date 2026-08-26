@@ -282,8 +282,8 @@ try {
         const frame = slide.querySelector("[data-guide-responsive-strategy]");
         const scale = Number(frame?.dataset.guideScale ?? "1") || 1;
         const ringed = !!target && target.className.includes("ring-surface-selected-border");
-        // The gap contract applies to the in-flow card under the stage; a
-        // compact viewport may float the card as an overlay instead.
+        // The card always renders in flow inside the carousel section;
+        // the closest() check is defensive, not a real overlay branch.
         const inFlowCard = card?.closest('section[aria-roledescription="carousel"]')
           ? card
           : null;
