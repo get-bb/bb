@@ -29,7 +29,7 @@ function writeLane(
   );
 }
 
-it("waits for the exact planned tail before closing bridge stdin", async () => {
+it("waits for the exact planned tail and a quiet period before closing", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bb-parity-tail-test-"));
   const bridgePath = join(dir, "delayed-tail-bridge.mjs");
   const identity = {
@@ -54,6 +54,18 @@ it("waits for the exact planned tail before closing bridge stdin", async () => {
       item: { type: "agentMessage", id: "item_test", text: "done" },
     },
     { type: "turn/completed", ...identity, scope, status: "completed" },
+  ];
+  const extraEvents: ThreadEvent[] = [
+    {
+      type: "thread/contextWindowUsage/updated",
+      ...identity,
+      scope: { kind: "thread" },
+      contextWindowUsage: {
+        usedTokens: 42,
+        modelContextWindow: 1_000,
+        estimated: false,
+      },
+    },
   ];
   const delta = (events: readonly ThreadEvent[]): string =>
     JSON.stringify({
@@ -83,6 +95,7 @@ it("waits for the exact planned tail before closing bridge stdin", async () => {
       [
         `const prefix = ${JSON.stringify(prefixEvents)};`,
         `const tail = ${JSON.stringify(tailEvents)};`,
+        `const extra = ${JSON.stringify(extraEvents)};`,
         "const delta = (events) => JSON.stringify({ jsonrpc: '2.0', method: 'thread/delta', params: { events } });",
         "let pending = '';",
         "let tailTimer = null;",
@@ -100,7 +113,10 @@ it("waits for the exact planned tail before closing bridge stdin", async () => {
         "    } else if (message.method === 'thread/start') {",
         "      process.stdout.write(delta(prefix) + '\\n');",
         "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
-        "      tailTimer = setTimeout(() => process.stdout.write(delta(tail) + '\\n'), 100);",
+        "      tailTimer = setTimeout(() => {",
+        "        process.stdout.write(delta(tail) + '\\n');",
+        "        tailTimer = setTimeout(() => process.stdout.write(delta(extra) + '\\n'), 40);",
+        "      }, 100);",
         "    }",
         "  }",
         "});",
@@ -135,13 +151,17 @@ it("waits for the exact planned tail before closing bridge stdin", async () => {
         },
       }),
       planFromCurrentLane: true,
-      settleMs: 20,
+      settleMs: 60,
       timeoutMs: 1_000,
     });
 
     expect(run.stalls).toEqual([]);
-    expect(run.events).toEqual([...prefixEvents, ...tailEvents]);
-    expect(run.events.at(-1)?.type).toBe("turn/completed");
+    expect(run.grammarViolations).toEqual([]);
+    expect(run.events).toEqual([
+      ...prefixEvents,
+      ...tailEvents,
+      ...extraEvents,
+    ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

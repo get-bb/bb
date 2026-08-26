@@ -301,8 +301,8 @@ export interface ReplayRecordingOptions {
    */
   orderTimeoutMs?: number;
   /**
-   * Quiet period after the last request before a non-exact replay is closed.
-   * An exact current-lane replay waits for every planned event instead.
+   * Quiet period after the last bridge output before the replay is closed.
+   * An exact current-lane replay first waits for every planned event.
    */
   settleMs?: number;
   /**
@@ -760,21 +760,19 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   }
   setCursor("end");
   await waitFor("the last responses", () => sentRequestIds.every((id) => answeredIds.has(id)));
-  // An exact plan is this bridge's own recorded lane, so its complete accepted
-  // event count is the deterministic end of replay. Output silence is not:
-  // the provider child and bridge can be alive in provider-internal control
-  // flow without emitting runtime deltas, especially under scheduler load.
+  // An exact plan is this bridge's own recorded lane, so wait for its complete
+  // accepted event count before considering the stream settled. Output silence
+  // alone is not enough while planned events are still missing.
   if (plannedEventCount !== null) {
     await waitFor(
       `all ${plannedEventCount} planned events before closing the bridge`,
       () => events.length >= plannedEventCount,
     );
-  } else {
-    // A bridge compared with a lane from another version may deliberately
-    // emit fewer events, so only that non-exact comparison needs the quiet
-    // fallback to terminate and report its parity diff.
-    await waitFor("the stream to settle", () => Date.now() - lastOutputAt >= settleMs);
   }
+  // Reaching the planned count is only a lower bound: another valid event may
+  // still be in flight. Non-exact replays retain this same divergent-version
+  // fallback because they may deliberately emit fewer events than the plan.
+  await waitFor("the stream to settle", () => Date.now() - lastOutputAt >= settleMs);
   child.stdin?.end();
   const exitCode = await Promise.race([
     exited,
