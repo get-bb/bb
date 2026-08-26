@@ -5,8 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { Workspace } from "../src/workspace.js";
-import { getCheckoutRef, readDefaultBranch, runGit } from "../src/git.js";
-import { createWorktree, removeWorktree } from "../src/provisioning.js";
+import { readDefaultBranch, runGit } from "../src/git.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -51,48 +50,6 @@ afterEach(async () => {
 });
 
 describe.skipIf(!jjAvailable)("provisioning from colocated jj sources", () => {
-  it("creates, uses, and removes a managed worktree from a jj source", async () => {
-    const sourceRepo = await initColocatedJjRepo();
-    const parentDir = await makeTempDir("bb-jj-worktree-parent-");
-    const worktreePath = path.join(parentDir, "feature");
-
-    await createWorktree({
-      sourcePath: sourceRepo,
-      targetPath: worktreePath,
-      branchName: "bb/test-thread",
-      baseBranch: "main",
-      timeoutMs: 900000,
-    });
-
-    const checkout = await getCheckoutRef(worktreePath);
-    expect(checkout).toMatchObject({
-      kind: "branch",
-      branchName: "bb/test-thread",
-    });
-    const gitDir = await runGit(["rev-parse", "--git-dir"], {
-      cwd: worktreePath,
-    });
-    expect(gitDir.stdout).toContain("/worktrees/");
-
-    // A commit in the worktree imports into the source's jj as the same-named
-    // bookmark, with no conflicts.
-    await runGit(["config", "user.name", "BB Tests"], { cwd: worktreePath });
-    await runGit(["config", "user.email", "bb@example.com"], {
-      cwd: worktreePath,
-    });
-    await fs.writeFile(path.join(worktreePath, "work.txt"), "work\n", "utf8");
-    const workspace = new Workspace(worktreePath);
-    await workspace.commit({ message: "worktree commit", noVerify: true });
-    const bookmarks = await runJj(["bookmark", "list", "--all"], sourceRepo);
-    expect(bookmarks).toContain("bb/test-thread");
-
-    await removeWorktree({ path: worktreePath });
-    await expect(fs.stat(worktreePath)).rejects.toThrow();
-    // The source workspace stays intact.
-    const sourceStatus = await runJj(["status"], sourceRepo);
-    expect(sourceStatus).toContain("The working copy has no changes.");
-  });
-
   it("resolves the default branch in a colocated jj clone", async () => {
     const upstream = await initColocatedJjRepo();
     const remoteParent = await makeTempDir("bb-jj-remote-");

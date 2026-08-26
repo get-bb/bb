@@ -16,6 +16,8 @@ import type {
   SquashMergeResult,
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
+import { JjWorkspace } from "./jj-workspace.js";
+import { readJjWorkspaceName, resolveJjWorkspaceLayout } from "./jj.js";
 import type {
   GitHostCliOptions,
   GitHostPullRequestLookup,
@@ -146,6 +148,36 @@ export interface HostWorkspace {
   destroy(args: DestroyWorkspaceArgs): Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Detect whether a path is a git worktree
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the workspace implementation for a managed checkout: a
+ * {@link JjWorkspace} when jj owns the working copy there, a plain
+ * {@link Workspace} otherwise.
+ *
+ * The jj bookmark carrying the checkout's committed work is named after the
+ * workspace itself, which bb creates from the branch name. Reading it back from
+ * jj rather than remembering it means a reconnect after a restart resolves the
+ * same bookmark.
+ */
+async function createManagedWorkspace(
+  wsPath: string,
+  options: GitProcessOptions,
+): Promise<Workspace> {
+  const layout = await resolveJjWorkspaceLayout(wsPath);
+  if (layout?.kind !== "secondary") {
+    return new Workspace(wsPath, options);
+  }
+
+  const bookmark = await readJjWorkspaceName(layout.sourcePath, wsPath, options);
+  if (!bookmark) {
+    return new Workspace(wsPath, options);
+  }
+  return new JjWorkspace({ path: wsPath, layout, bookmark, options });
+}
+
 async function detectWorktree(
   cwd: string,
   options: GitProcessOptions,
@@ -177,6 +209,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     isGitRepo: boolean;
     isWorktree: boolean;
     shellPath?: string;
+    workspace?: Workspace;
     destroyFn: (args: DestroyWorkspaceArgs) => Promise<void>;
   }) {
     this.path = opts.path;
@@ -186,7 +219,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     this.gitProcessOptions = {
       ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
     };
-    this.ws = new Workspace(opts.path, this.gitProcessOptions);
+    this.ws =
+      opts.workspace ?? new Workspace(opts.path, this.gitProcessOptions);
     this.destroyFn = opts.destroyFn;
   }
 
@@ -684,6 +718,9 @@ async function provisionWorktree(
     isGitRepo: true,
     isWorktree: true,
     shellPath: opts.shellPath,
+    workspace: await createManagedWorkspace(wsPath, {
+      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+    }),
     destroyFn: (args) =>
       removeWorktree({
         path: wsPath,
@@ -766,6 +803,7 @@ async function reconnectManaged(
     isGitRepo,
     isWorktree,
     shellPath,
+    workspace: await createManagedWorkspace(wsPath, gitProcessOptions),
     destroyFn,
   });
 }

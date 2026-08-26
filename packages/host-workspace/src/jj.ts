@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
-import { WorkspaceError, runGit } from "./git.js";
+import { WorkspaceError, runGit, type GitProcessOptions } from "./git.js";
 import {
   withProcessLocalQueuedLocks,
   type ProcessLocalQueuedLockWork,
@@ -13,7 +13,7 @@ import {
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
 
-export interface RunJjOptions {
+export interface RunJjOptions extends GitProcessOptions {
   cwd: string;
   timeoutMs?: number;
   allowFailure?: boolean;
@@ -43,7 +43,12 @@ export async function runJj(
     const result = await execFileAsync("jj", fullArgs, {
       cwd: options.cwd,
       encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      env: sanitizeInheritedChildProcessEnv({
+        env: process.env,
+        ...(options.shellPath !== undefined
+          ? { shellPath: options.shellPath }
+          : {}),
+      }),
       maxBuffer: DEFAULT_BUFFER_BYTES,
       signal: options.signal,
       timeout: options.timeoutMs,
@@ -173,7 +178,7 @@ export interface JjWorkingCopyCommits {
 
 export async function readJjWorkingCopyCommits(
   cwd: string,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: GitProcessOptions & { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<JjWorkingCopyCommits> {
   const result = await runJj(
     [
@@ -210,7 +215,7 @@ export async function readJjWorkingCopyCommits(
  */
 export async function syncShadowGitCheckout(
   workspacePath: string,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: GitProcessOptions & { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<void> {
   const { parent } = await readJjWorkingCopyCommits(workspacePath, options);
   const head = await runGit(["rev-parse", "HEAD"], {
@@ -230,6 +235,37 @@ export async function syncShadowGitCheckout(
 }
 
 /**
+ * Name jj knows a workspace directory by, or null when the repository has no
+ * workspace rooted there.
+ *
+ * Workspaces are matched on the root path jj records rather than on a name bb
+ * remembers, so this also resolves after a restart, and for workspaces bb did
+ * not create.
+ */
+export async function readJjWorkspaceName(
+  sourcePath: string,
+  workspacePath: string,
+  options: GitProcessOptions = {},
+): Promise<string | null> {
+  const listed = await runJj(
+    ["workspace", "list", "-T", 'name ++ "\\t" ++ if(root, root, "") ++ "\\n"'],
+    { cwd: sourcePath, allowFailure: true, ...options },
+  );
+  if (listed.exitCode !== 0) {
+    return null;
+  }
+
+  const target = path.resolve(workspacePath);
+  for (const line of listed.stdout.split("\n")) {
+    const [name = "", root = ""] = line.split("\t");
+    if (name && root && path.resolve(root) === target) {
+      return name;
+    }
+  }
+  return null;
+}
+
+/**
  * Registers an existing jj workspace as a git worktree of its source
  * repository, so bb reads it with the same git commands it uses everywhere
  * else.
@@ -240,14 +276,20 @@ export async function syncShadowGitCheckout(
  * checkout ends up detached at `@-`, which is the same shape jj leaves behind
  * in a colocated main workspace.
  */
-export async function attachShadowGitCheckout(args: {
-  sourcePath: string;
-  workspacePath: string;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-}): Promise<void> {
+export async function attachShadowGitCheckout(
+  args: GitProcessOptions & {
+    sourcePath: string;
+    workspacePath: string;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
   const { sourcePath, workspacePath } = args;
-  const gitOptions = { timeoutMs: args.timeoutMs, signal: args.signal };
+  const gitOptions = {
+    timeoutMs: args.timeoutMs,
+    signal: args.signal,
+    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+  };
   // jj writes this for colocated main workspaces but not for the ones it adds;
   // without it git reports the whole .jj directory as untracked.
   await fs.writeFile(path.join(workspacePath, ".jj", ".gitignore"), "/*\n", "utf8");

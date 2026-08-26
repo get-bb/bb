@@ -729,7 +729,9 @@ describe.sequential("watchWorkspaceStatus", () => {
       await ready;
       expect(getWorkspaceRootSubscribeOptions()?.ignore).toEqual([
         ".git",
+        ".jj",
         "*/**/.git/**",
+        "*/**/.jj/**",
         "**/node_modules/**",
         "**/.cache/**",
         "**/__pycache__/**",
@@ -788,7 +790,9 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(subscribedRoots).toEqual([normalizeWatchPath(repoPath)]);
       expect(subscribedOptions[0]?.ignore).toEqual([
         ".git",
+        ".jj",
         "*/**/.git/**",
+        "*/**/.jj/**",
         "**/node_modules/**",
         "**/.cache/**",
         "**/__pycache__/**",

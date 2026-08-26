@@ -1,4 +1,8 @@
-import { WorkspaceError, runGit } from "./git.js";
+import {
+  WorkspaceError,
+  runGit,
+  type GitProcessOptions,
+} from "./git.js";
 import {
   readJjWorkingCopyCommits,
   runJj,
@@ -38,19 +42,23 @@ export class JjWorkspace extends Workspace {
   readonly layout: JjWorkspaceLayout;
   /** jj bookmark this workspace's committed work is published under. */
   readonly bookmark: string;
+  /** Login-shell PATH so the daemon can find the jj binary. */
+  private readonly jjProcessOptions: GitProcessOptions;
 
   constructor(args: {
     path: string;
     layout: JjWorkspaceLayout;
     bookmark: string;
+    options?: GitProcessOptions;
   }) {
-    super(args.path);
+    super(args.path, args.options ?? {});
     this.layout = args.layout;
     this.bookmark = args.bookmark;
+    this.jjProcessOptions = args.options ?? {};
   }
 
   private async sync(): Promise<void> {
-    await syncShadowGitCheckout(this.path);
+    await syncShadowGitCheckout(this.path, this.jjProcessOptions);
   }
 
   override async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
@@ -95,17 +103,18 @@ export class JjWorkspace extends Workspace {
    */
   override async commit(options: CommitOptions): Promise<CommitResult> {
     return withJjRepoLock(this.layout, async () => {
-      const before = await readJjWorkingCopyCommits(this.path);
+      const before = await readJjWorkingCopyCommits(this.path, this.jjProcessOptions);
       const isEmpty = await this.isWorkingCopyEmpty();
       if (isEmpty) {
         throw new WorkspaceError("no_changes", "No changes to commit");
       }
 
       // jj has no commit hooks, so noVerify has nothing to switch off here.
-      await runJj(["commit", "-m", options.message], { cwd: this.path });
-      const after = await readJjWorkingCopyCommits(this.path);
+      await runJj(["commit", "-m", options.message], { cwd: this.path, ...this.jjProcessOptions });
+      const after = await readJjWorkingCopyCommits(this.path, this.jjProcessOptions);
       await runJj(["bookmark", "set", this.bookmark, "-r", after.parent], {
         cwd: this.path,
+        ...this.jjProcessOptions,
       });
       await this.exportBookmark(after.parent);
       await this.sync();
@@ -127,7 +136,7 @@ export class JjWorkspace extends Workspace {
 
   override async reset(): Promise<void> {
     await withJjRepoLock(this.layout, async () => {
-      await runJj(["restore"], { cwd: this.path });
+      await runJj(["restore"], { cwd: this.path, ...this.jjProcessOptions });
       await this.sync();
     });
   }
@@ -139,14 +148,14 @@ export class JjWorkspace extends Workspace {
    */
   protected override async resolveSquashMergeSource(): Promise<string> {
     await this.sync();
-    const { parent } = await readJjWorkingCopyCommits(this.path);
+    const { parent } = await readJjWorkingCopyCommits(this.path, this.jjProcessOptions);
     return parent;
   }
 
   private async isWorkingCopyEmpty(): Promise<boolean> {
     const result = await runJj(
       ["log", "--no-graph", "-r", "@", "-T", 'if(empty, "empty", "changed")'],
-      { cwd: this.path },
+      { cwd: this.path, ...this.jjProcessOptions },
     );
     return result.stdout.trim() === "empty";
   }
@@ -158,16 +167,16 @@ export class JjWorkspace extends Workspace {
    * importing the git side.
    */
   private async exportBookmark(expectedSha: string): Promise<void> {
-    await runJj(["git", "export"], { cwd: this.path });
+    await runJj(["git", "export"], { cwd: this.path, ...this.jjProcessOptions });
     if (await this.bookmarkRefMatches(expectedSha)) {
       return;
     }
 
-    await runJj(["git", "import"], { cwd: this.path });
+    await runJj(["git", "import"], { cwd: this.path, ...this.jjProcessOptions });
     await runJj(["bookmark", "set", this.bookmark, "-r", expectedSha], {
       cwd: this.path,
     });
-    await runJj(["git", "export"], { cwd: this.path });
+    await runJj(["git", "export"], { cwd: this.path, ...this.jjProcessOptions });
     if (!(await this.bookmarkRefMatches(expectedSha))) {
       throw new WorkspaceError(
         "jj_export_failed",

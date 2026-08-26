@@ -4,6 +4,7 @@ import {
   getGitCommonDir,
   type GitProcessOptions,
 } from "./git.js";
+import { resolveJjWorkspaceLayout } from "./jj.js";
 
 function isSamePathOrNestedUnder(
   childPath: string,
@@ -49,9 +50,16 @@ export async function resolveAdditionalWorkspaceWriteRoots(
     getAbsoluteGitDir(resolvedWorkspacePath, options),
     getGitCommonDir(resolvedWorkspacePath, options),
   ]);
+  // A jj workspace keeps its operation log and repository state in the source
+  // repository, outside the workspace, so an agent running jj here writes there
+  // as well as into the shadow git checkout's own directories.
+  const jjLayout = await resolveJjWorkspaceLayout(resolvedWorkspacePath);
+  const jjRoots =
+    jjLayout?.kind === "secondary" ? [jjLayout.repoPath] : ([] as string[]);
   const candidateRoots = dedupeResolvedPaths([
     gitDir,
     ...buildCommonGitWriteRoots(commonGitDir),
+    ...jjRoots,
   ]);
 
   return candidateRoots.filter(

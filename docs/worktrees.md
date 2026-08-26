@@ -155,31 +155,46 @@ so a real `.git` sits beside `.jj`). jj keeps that `.git` in sync — HEAD is
 pinned detached at the working-copy parent and bookmarks export as git
 branches — which is what bb reads.
 
-What works:
+### Threads get a real jj workspace
 
-- Change status and diffs. jj's working-copy changes appear as uncommitted
-  changes.
-- Checkout display shows the bookmark pointing at the current commit (or a
-  short commit id when no bookmark points there) instead of "detached".
-- Managed worktrees. bb still uses `git worktree add` under the hood; the
-  `bb/...` branch a thread commits to imports into jj as a bookmark of the
-  same name, so you can inspect and merge it with jj as usual.
-- Reset (discard changes), and squash-merge from managed worktrees.
+When a thread's source repository is a colocated jj repository, bb creates the
+managed checkout with `jj workspace add` instead of `git worktree add`. The
+thread's work is jj-native: it shows up as that workspace's `@` in `jj log`,
+`jj op log` can undo it, and `jj workspace list` in your repository shows where
+it lives.
 
-What's different:
+- Committing from bb runs `jj commit`, moves the workspace's `bb/...` bookmark
+  to the new commit, and exports it so the bookmark is also a git branch you
+  can push or open a pull request from.
+- Discarding changes runs `jj restore`.
+- Squash-merging into a branch works as it does for git worktrees, and the
+  target bookmark moves with it.
+- Commits an agent makes by running jj itself are picked up automatically.
 
-- The commit action is disabled in the jj main workspace: a git commit there
-  would leave the previous working-copy change behind as a stray head in
-  `jj log` without moving any bookmark. Use jj to describe or commit instead.
-  Commits in bb-managed worktrees work normally.
-- Branch switching from bb is blocked in the jj main workspace, as jj manages
-  the checkout.
+A jj workspace has no `.git` of its own, so bb registers it as a git worktree
+alongside jj and keeps that checkout pinned at `@-`. That is what lets status,
+diffs and file reads keep working; jj remains the only thing writing to the
+working copy.
+
+One consequence: a plain `git commit` run inside the workspace (by you or by an
+agent) doesn't stick. jj never sees it, and the next time bb reads the
+workspace the changes show up as uncommitted again — nothing is lost, but the
+commit is. Use jj, or bb's own commit action, to commit there.
+
+### The main workspace
+
+Opening your repository directly (an unmanaged environment) still reads through
+the colocated `.git`: status and diffs show jj's working-copy changes, and the
+checkout row shows the bookmark at the current commit rather than "detached".
+Two actions stay disabled there, because jj manages that checkout: committing
+(a git commit would strand the previous working-copy change as an anonymous
+head in `jj log`) and branch switching. Use jj for both.
 
 Not supported:
 
-- Pure jj repositories without a colocated `.git`.
-- jj secondary workspaces (`jj workspace add`) — they contain no `.git`, so
-  bb treats them as non-git directories.
+- Pure jj repositories without a colocated `.git`. The colocated git store is
+  what bb reads diffs and history from, so bb treats these as non-git
+  directories.
 
 ## If something isn't working
 

@@ -696,7 +696,12 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           const workspaceStatus = requireAvailableWorkspaceStatus(statusResult);
 
           const currentBranch = workspaceStatus.branch.currentBranch;
-          if (!currentBranch) {
+          // A jj workspace has no git branch: its work is named by a bookmark,
+          // and the daemon resolves what to merge from jj itself.
+          const checkout = workspaceStatus.checkout;
+          const jjBookmark =
+            checkout.kind === "detached" ? checkout.jj : undefined;
+          if (!currentBranch && !jjBookmark) {
             throw new ApiError(
               409,
               "invalid_request",
@@ -752,7 +757,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           const workspaceDiff = requireAvailableWorkspaceDiff(diffResult);
 
           const aiMessage = await generateCommitMessage(deps, {
-            diffDescription: `squash merge of ${currentBranch} into ${targetBranch}`,
+            diffDescription: `squash merge of ${currentBranch ?? jjBookmark?.bookmark ?? "this workspace"} into ${targetBranch}`,
             shortstat: workspaceDiff.shortstat,
             files: workspaceDiff.files,
             patch: workspaceDiff.diff,

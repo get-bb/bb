@@ -180,6 +180,25 @@ describe.skipIf(!jjAvailable)("bb-managed jj workspaces", () => {
     expect(mainLog.stdout.trim()).toBe("squashed thread work");
   });
 
+  it("keeps the local fingerprint stable across repeated reads", async () => {
+    const sourcePath = await initSource();
+    const { workspace, workspacePath } = await addWorkspace(
+      sourcePath,
+      "bb/thread-1",
+    );
+
+    // Every read snapshots the working copy. If that made the fingerprint
+    // move on its own, the watcher would re-read forever.
+    const idle = await workspace.getLocalStateFingerprint();
+    expect(await workspace.getLocalStateFingerprint()).toBe(idle);
+    expect(await workspace.getLocalStateFingerprint()).toBe(idle);
+
+    await fs.writeFile(path.join(workspacePath, "work.txt"), "work\n", "utf8");
+    const dirty = await workspace.getLocalStateFingerprint();
+    expect(dirty).not.toBe(idle);
+    expect(await workspace.getLocalStateFingerprint()).toBe(dirty);
+  });
+
   it("picks up commits an agent made with jj directly", async () => {
     const sourcePath = await initSource();
     const { workspace, workspacePath } = await addWorkspace(

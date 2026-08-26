@@ -29,6 +29,13 @@ import {
 import { withGitRefMutationLock } from "./git-ref-mutation-lock.js";
 import { ProcessLocalQueuedLockTimeoutError } from "./process-local-queued-lock.js";
 import {
+  attachShadowGitCheckout,
+  detectColocatedJjSource,
+  readJjWorkspaceName,
+  resolveJjWorkspaceLayout,
+  runJj,
+} from "./jj.js";
+import {
   runGitWithWorktreeMetadataLock,
   withWorktreeMetadataLock,
 } from "./worktree-metadata-lock.js";
@@ -217,9 +224,28 @@ async function ensureExistingWorkspaceMatches(
     return false;
   }
 
-  const workspace = new Workspace(targetPath, {
+  const gitProcessOptions = {
     ...(shellPath !== undefined ? { shellPath } : {}),
-  });
+  };
+  const jjLayout = await resolveJjWorkspaceLayout(targetPath);
+  if (jjLayout?.kind === "secondary") {
+    // A jj workspace has no git branch to compare; jj names the workspace
+    // after the branch bb asked for, so that name is the identity check.
+    const name = await readJjWorkspaceName(
+      jjLayout.sourcePath,
+      targetPath,
+      gitProcessOptions,
+    );
+    if (name !== branchName) {
+      throw new WorkspaceError(
+        "path_exists",
+        `Target path exists as a different jj workspace: ${targetPath}`,
+      );
+    }
+    return true;
+  }
+
+  const workspace = new Workspace(targetPath, gitProcessOptions);
   if (!(await workspace.isGitRepo)) {
     throw new WorkspaceError(
       "path_exists",
@@ -482,6 +508,93 @@ export async function fetchRemoteBaseBranch(args: {
   }
 }
 
+/**
+ * Rewrites a base branch as something jj can resolve.
+ *
+ * Bases arrive in git's spelling, where a remote-tracking branch is
+ * `origin/main`. jj has no such ref: the same commit is the remote bookmark
+ * `main@origin`. Local branches are spelled the same in both, so they pass
+ * through — including ones whose name contains a slash.
+ */
+async function toJjBaseRevset(
+  sourcePath: string,
+  baseBranch: string,
+  shellPath: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<string> {
+  const remoteBase = await resolveRemoteBaseBranch(
+    sourcePath,
+    baseBranch,
+    shellPath,
+    signal,
+  );
+  return remoteBase ? `${remoteBase.branch}@${remoteBase.remote}` : baseBranch;
+}
+
+/**
+ * Creates the managed checkout for a colocated Jujutsu source as a real jj
+ * workspace, so the thread's work is jj-native: it shows up in `jj log`, and
+ * jj's operation log can undo it.
+ *
+ * The workspace is named after the branch bb would otherwise have created, and
+ * a bookmark of that name is created on the base so committed work has
+ * somewhere to land. `attachShadowGitCheckout` then registers the workspace as
+ * a git worktree, which is what lets every git-based read keep working.
+ */
+async function createJjWorkspace(args: {
+  sourcePath: string;
+  targetPath: string;
+  branchName: string;
+  baseBranch: string;
+  shellPath?: string;
+  signal?: AbortSignal;
+}): Promise<GitCommandResult> {
+  const jjOptions = {
+    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+  };
+  const baseRevset = await toJjBaseRevset(
+    args.sourcePath,
+    args.baseBranch,
+    args.shellPath,
+    args.signal,
+  );
+  const commonDir = await getGitCommonDir(args.sourcePath, jjOptions);
+  const result = await withWorktreeMetadataLock(
+    commonDir,
+    () =>
+      runJj(
+        [
+          "workspace",
+          "add",
+          "--name",
+          args.branchName,
+          args.targetPath,
+          "-r",
+          baseRevset,
+        ],
+        { cwd: args.sourcePath, signal: args.signal, ...jjOptions },
+      ),
+    args.signal,
+  );
+
+  await runJj(
+    ["bookmark", "set", args.branchName, "-r", baseRevset],
+    { cwd: args.sourcePath, signal: args.signal, ...jjOptions },
+  );
+  await runJj(["git", "export"], {
+    cwd: args.sourcePath,
+    signal: args.signal,
+    ...jjOptions,
+  });
+  await attachShadowGitCheckout({
+    sourcePath: args.sourcePath,
+    workspacePath: args.targetPath,
+    signal: args.signal,
+    ...jjOptions,
+  });
+  return result;
+}
+
 export async function createWorktree(
   args: CreateWorkspaceArgs,
 ): Promise<{ path: string }> {
@@ -541,6 +654,7 @@ export async function createWorktree(
     signal: args.signal,
   });
 
+  const usesJj = await detectColocatedJjSource(args.sourcePath);
   const gitArgs = [
     "worktree",
     "add",
@@ -553,22 +667,31 @@ export async function createWorktree(
   emitStep({
     onProgress: args.onProgress,
     key: "git-worktree-started",
-    text: "Creating worktree",
+    text: usesJj ? "Creating jj workspace" : "Creating worktree",
     status: "started",
     startedAt: worktreeStartedAt,
   });
   let worktreeCreated = false;
   try {
-    const result = await runGitWithWorktreeMetadataLock(gitArgs, {
-      cwd: args.sourcePath,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-      signal: args.signal,
-    });
+    const result = usesJj
+      ? await createJjWorkspace({
+          sourcePath: args.sourcePath,
+          targetPath: args.targetPath,
+          branchName: args.branchName,
+          baseBranch,
+          shellPath: args.shellPath,
+          signal: args.signal,
+        })
+      : await runGitWithWorktreeMetadataLock(gitArgs, {
+          cwd: args.sourcePath,
+          ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+          signal: args.signal,
+        });
     emitGitOutput(args.onProgress, "git-worktree", result);
     emitStep({
       onProgress: args.onProgress,
       key: "git-worktree-completed",
-      text: "Created worktree",
+      text: usesJj ? "Created jj workspace" : "Created worktree",
       status: "completed",
       startedAt: worktreeStartedAt,
       metadata: { durationMs: Date.now() - worktreeStartedAt },
@@ -946,6 +1069,15 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
   });
 
+  // Resolve the jj workspace before git tears the directory down. jj matches
+  // workspaces by a root path it has to resolve on disk, so the name is only
+  // discoverable while the directory still exists.
+  const jjLayout = await resolveJjWorkspaceLayout(workspacePath);
+  const jjWorkspaceName =
+    jjLayout?.kind === "secondary"
+      ? await readJjWorkspaceName(jjLayout.sourcePath, workspacePath)
+      : null;
+
   const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {
     cwd: workspacePath,
     ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
@@ -984,6 +1116,18 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     );
   }
 
+  if (jjLayout && jjWorkspaceName) {
+    // The registration outlives the directory unless it is forgotten
+    // explicitly. Best-effort, for the same reason git metadata cleanup is.
+    await runJj(["workspace", "forget", jjWorkspaceName], {
+      cwd: jjLayout.sourcePath,
+      allowFailure: true,
+    });
+  }
+
+  // Git metadata cleanup is best-effort because broken teardown states often
+  // leave a directory that no longer resolves as a worktree. The managed
+  // workspace directory itself is the authoritative cleanup target.
   await fs.rm(workspacePath, { recursive: true, force: true });
   if (args.pruneEmptyParent) {
     await removeDirectoryIfEmpty(parentPath);
