@@ -1,4 +1,5 @@
 import { useHapticsEnabled } from "@/lib/haptics";
+import { useBadgeColors } from "./settings-badges";
 import { SettingsSwitchRow } from "./SettingsRows";
 
 /**
@@ -9,11 +10,15 @@ import { SettingsSwitchRow } from "./SettingsRows";
  */
 export function HapticsSettingsRow() {
   const [enabled, setEnabled] = useHapticsEnabled();
+  const colors = useBadgeColors();
   return (
     <SettingsSwitchRow
       label="Haptics"
-      description="Vibration feedback on pickers, send, approvals, and destructive actions"
-      icon="Smartphone"
+      badge={{
+        icon: "Smartphone",
+        symbol: "iphone.radiowaves.left.and.right",
+        color: colors.gray,
+      }}
       checked={enabled}
       onCheckedChange={setEnabled}
       testID="settings-haptics"

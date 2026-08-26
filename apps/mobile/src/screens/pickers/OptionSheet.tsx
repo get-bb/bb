@@ -40,7 +40,7 @@ interface OptionRowProps<T extends string> {
   testID?: string;
 }
 
-/** One selectable row: glyph, label/description, check mark when selected. */
+/** One selectable row: glyph, label/description, tinted check mark when selected. */
 function OptionRow<T extends string>({
   option,
   selected,
@@ -68,11 +68,6 @@ function OptionRow<T extends string>({
             }
           />
         ) : undefined)
-      }
-      trailing={
-        selected ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
       }
       selected={selected}
       disabled={disabled}

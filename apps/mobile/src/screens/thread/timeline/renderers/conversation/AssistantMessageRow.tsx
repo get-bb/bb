@@ -18,7 +18,11 @@ import {
   useConversationMarkdownHandlers,
 } from "./conversation-shared";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 const EMPTY_MENTIONS: readonly PromptTextMention[] = [];
+/** Conversation prose: the 17pt body on iOS, the web timeline size elsewhere. */
+const PROSE_TEXT_SIZE = IS_IOS ? "base" : "sm";
 
 interface AssistantMessageRowProps {
   row: Extract<TimelineConversationRow, { role: "assistant" }>;
@@ -30,8 +34,10 @@ interface AssistantMessageRowProps {
  * Agent prose (web `AssistantConversationMessage`): the full markdown body
  * at the top of the prominence ramp — never dimmed, never collapsed — with
  * `@thread:` pills, images through the host-files route (lightbox on tap),
- * and the attachment strip. Long-press opens the message actions; a
- * long-press on one paragraph also offers to quote just that block.
+ * and the attachment strip. Long-press opens the message action sheet on
+ * both platforms (a per-row SwiftUI context-menu host would pin the
+ * recycled cell's size to its first measurement); a long-press on one
+ * paragraph also offers to quote just that block.
  */
 export function AssistantMessageRow({
   row,
@@ -114,6 +120,7 @@ export function AssistantMessageRow({
         {hasText ? (
           <Markdown
             content={text}
+            textSize={PROSE_TEXT_SIZE}
             threadMentions={threadMentions}
             selectable={false}
             serverHostname={serverHostname}

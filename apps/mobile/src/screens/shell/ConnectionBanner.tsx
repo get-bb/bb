@@ -1,9 +1,16 @@
 import { useRouter } from "expo-router";
-import { Pressable, View } from "react-native";
+import { useEffect } from "react";
+import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import Animated, {
+  FadeInUp,
+  FadeOutUp,
+  LinearTransition,
+} from "react-native-reanimated";
 import { useConnectionBanner, useProfiles } from "@/app-shell";
 import type { ConnectionBannerKind } from "@/lib/connection";
-import { Icon, Text, cn, type IconName } from "@/ui";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
+import { Icon, Text, type IconName } from "@/ui";
 import { connectEnrollHref } from "./hrefs";
 
 interface BannerCopy {
@@ -35,19 +42,46 @@ const COPY: Record<Exclude<ConnectionBannerKind, "hidden">, BannerCopy> = {
   },
 };
 
+const ENTER_MS = 220;
+const EXIT_MS = 160;
+
+/** Inset card: continuous corners, tinted fill, no hard border. */
+const CARD_RADIUS = 12;
+
+/** Outer spacing for hosts that do not pad the card (a list header). */
+const INSET_STYLE: ViewStyle = { marginHorizontal: 16, marginTop: 8 };
+
+interface ConnectionBannerProps {
+  /**
+   * Adds the row margins (16 horizontal, 8 top) when the host does not pad
+   * the card itself — e.g. as a list's `ListHeaderComponent`.
+   */
+  inset?: boolean;
+}
+
 /**
- * Persistent strip under the header while the active profile is not
- * connected (offline, server restart, connect session trouble). Renders
- * nothing when the socket is up. `auth-required` (the connect gate refused
- * this phone's credential: revoked in the dashboard, or the account's
- * device list was pruned) offers "Sign in again", which re-pairs the same
- * profile with a fresh code.
+ * Card under the header while the active profile is not connected
+ * (offline, server restart, connect session trouble). Renders nothing when
+ * the socket is up, and animates in and out of the layout. `auth-required`
+ * (the connect gate refused this phone's credential: revoked in the
+ * dashboard, or the account's device list was pruned) offers "Sign in
+ * again", which re-pairs the same profile with a fresh code — the whole
+ * card is the action — and is announced with the warning haptic.
+ *
+ * Placement: `Screen` renders it as the first scroll item (scrolling
+ * screens) or floating under the bar (list screens on iOS); list screens
+ * that want it in the flow pass it as their `ListHeaderComponent`.
  */
-export function ConnectionBanner() {
+export function ConnectionBanner({ inset = false }: ConnectionBannerProps) {
   const router = useRouter();
   const kind = useConnectionBanner();
   const { activeProfile } = useProfiles();
   const { tokens } = useTheme();
+
+  useEffect(() => {
+    if (kind === "auth-required") haptic("warning");
+  }, [kind]);
+
   if (kind === "hidden" || !activeProfile) return null;
   const copy = COPY[kind];
   const color = copy.destructive ? tokens.destructiveText : tokens.warningText;
@@ -55,56 +89,79 @@ export function ConnectionBanner() {
     kind === "auth-required" && activeProfile.mode === "connect"
       ? () => router.push(connectEnrollHref({ profileId: activeProfile.id }))
       : null;
+  const message = copy.message(activeProfile.label);
+  const cardStyle: ViewStyle = {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: CARD_RADIUS,
+    borderCurve: "continuous",
+    backgroundColor: copy.destructive
+      ? tokens.surfaceDestructive
+      : tokens.surfaceAttention,
+  };
   const content = (
     <>
-      <Icon name={copy.icon} size={16} color={color} />
+      <Icon name={copy.icon} size={18} weight="semibold" color={color} />
       <Text
-        variant="caption"
+        variant="footnote"
+        weight="medium"
         numberOfLines={2}
         className="flex-1"
         style={{ color }}
         testID={`connection-banner-${kind}`}
       >
-        {copy.message(activeProfile.label)}
+        {message}
       </Text>
       {reauth ? (
         <View
-          className="rounded-md border border-surface-destructive-border px-2 py-1"
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 8,
+            borderCurve: "continuous",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: tokens.surfaceDestructiveBorder,
+          }}
           testID="connection-banner-reauth"
         >
-          <Text variant="caption" weight="semibold" style={{ color }}>
+          <Text variant="footnote" weight="semibold" style={{ color }}>
             Sign in again
           </Text>
         </View>
       ) : null}
     </>
   );
-  const className = cn(
-    "flex-row items-center gap-2 border-b px-4 py-2",
-    copy.destructive
-      ? "border-surface-destructive-border bg-surface-destructive"
-      : "border-border bg-surface-attention",
-  );
-  // The whole strip is the action when there is one: a thumb-sized target
-  // that does not depend on hitting the small "Sign in again" label.
-  return reauth ? (
-    <Pressable
-      testID="connection-banner"
-      accessibilityRole="button"
-      accessibilityLabel={`${copy.message(activeProfile.label)} Sign in again`}
-      accessibilityLiveRegion="polite"
-      onPress={reauth}
-      className={className}
+  return (
+    <Animated.View
+      entering={FadeInUp.duration(ENTER_MS)}
+      exiting={FadeOutUp.duration(EXIT_MS)}
+      layout={LinearTransition.duration(ENTER_MS)}
+      // Plain style: Reanimated views are not NativeWind-wrapped.
+      style={inset ? INSET_STYLE : undefined}
     >
-      {content}
-    </Pressable>
-  ) : (
-    <View
-      testID="connection-banner"
-      accessibilityLiveRegion="polite"
-      className={className}
-    >
-      {content}
-    </View>
+      {reauth ? (
+        <Pressable
+          testID="connection-banner"
+          accessibilityRole="button"
+          accessibilityLabel={`${message} Sign in again`}
+          accessibilityLiveRegion="polite"
+          onPress={reauth}
+          style={({ pressed }) => [cardStyle, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          {content}
+        </Pressable>
+      ) : (
+        <View
+          testID="connection-banner"
+          accessibilityLiveRegion="polite"
+          style={cardStyle}
+        >
+          {content}
+        </View>
+      )}
+    </Animated.View>
   );
 }

@@ -10,7 +10,7 @@ import type {
 import type { ThreadResponse } from "@bb/server-contract";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, type ReactNode } from "react";
-import { Linking, Pressable, ScrollView, View } from "react-native";
+import { Linking, ScrollView, View } from "react-native";
 import {
   formatChangeSummary,
   formatPullRequestRowLabel,
@@ -37,13 +37,16 @@ import { useTheme } from "@/theme";
 import {
   Button,
   cn,
+  DisclosureChevron,
+  GROUPED_ROW_PADDING_X,
+  GroupedRow,
+  GroupedSection,
   Icon,
-  Pill,
+  LIST_ROW_ICON_SIZE,
   Skeleton,
   Text,
   toast,
   useSheet,
-  type IconName,
 } from "@/ui";
 import { MergeBasePickerSheet } from "../thread/context/MergeBasePickerSheet";
 import {
@@ -56,88 +59,41 @@ import { usePanel } from "./PanelProvider";
 import type { PanelTabContentProps } from "./registry";
 
 /**
- * The Info tab: the mobile port of the web ThreadMetadataContent rows —
- * parent, forks, environment, directory, branch / checkout, merge base, git
- * status, pull request, archived, commits, changed files, thread storage.
- * Every row derives from the cached thread / environment / workspace queries
- * the screen already holds; the rows that lead somewhere (changed files →
- * Diff tab, storage → Files tab, parent / forks → thread) go through the
- * panel controller and the router.
+ * The Info tab: the mobile port of the web ThreadMetadataContent rows as
+ * inset-grouped cards — parent, forks, environment, directory, branch /
+ * checkout, merge base, git status, pull request, archived; commits; changed
+ * files; thread storage. Every row derives from the cached thread /
+ * environment / workspace queries the screen already holds; the rows that
+ * lead somewhere (changed files → Diff tab, storage → Files tab, parent /
+ * forks → thread) go through the panel controller and the router. The cards
+ * sit on the panel's raised surface (`surface="raised"`).
  */
 
-function DetailRow({
-  icon,
-  label,
-  children,
-  onPress,
-  onLongPress,
-  accessibilityLabel,
-  chevron = true,
-  testID,
-}: {
-  icon: IconName | null;
-  label: string;
-  children: ReactNode;
-  onPress?: () => void;
-  onLongPress?: () => void;
-  accessibilityLabel?: string;
-  /** Pressable rows lead somewhere by default; copy rows turn this off. */
-  chevron?: boolean;
-  testID: string;
-}) {
-  const { tokens } = useTheme();
-  const interactive = Boolean(onPress || onLongPress);
-  return (
-    <Pressable
-      accessibilityRole={interactive ? "button" : undefined}
-      accessibilityLabel={accessibilityLabel ?? label}
-      disabled={!interactive}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      className={cn(
-        "min-h-10 flex-row items-center gap-3 rounded-md px-2 py-1.5",
-        interactive && "active:bg-state-hover",
-      )}
-      testID={testID}
-    >
-      <View className="w-[104px] flex-row items-center gap-1.5">
-        {icon ? (
-          <Icon name={icon} size={14} color={tokens.mutedForeground} />
-        ) : null}
-        <Text variant="caption" numberOfLines={1} className="shrink">
-          {label}
-        </Text>
-      </View>
-      <View className="min-w-0 flex-1 flex-row items-center gap-2">
-        {children}
-      </View>
-      {onPress && chevron ? (
-        <Icon name="ChevronRight" size={14} color={tokens.subtleForeground} />
-      ) : null}
-    </Pressable>
-  );
-}
+/**
+ * Separator inset of the detail cards: every row leads with a glyph, so the
+ * hairlines start at the text column (row padding + glyph + gap).
+ */
+const GLYPH_ROW_SEPARATOR_INSET =
+  GROUPED_ROW_PADDING_X + LIST_ROW_ICON_SIZE + 12;
 
 function ValueText({
   children,
   mono = false,
-  tone,
+  tone = "muted",
   testID,
 }: {
   children: string;
   mono?: boolean;
-  tone?: "muted" | "destructive";
+  tone?: "muted" | "foreground" | "destructive";
   testID?: string;
 }) {
   return (
     <Text
-      variant={mono ? "mono" : "body"}
+      variant={mono ? "mono" : "bodyLarge"}
+      tone={tone}
+      numeric={mono}
       numberOfLines={1}
-      className={cn(
-        "min-w-0 shrink text-sm",
-        tone === "muted" && "text-muted-foreground",
-        tone === "destructive" && "text-destructive-text",
-      )}
+      className={cn("shrink", mono && "text-xs")}
       testID={testID}
     >
       {children}
@@ -145,38 +101,42 @@ function ValueText({
   );
 }
 
-function SectionHeader({ children }: { children: string }) {
+/** A row's right-hand slot: value(s) plus an optional glyph, capped so the label keeps room. */
+function Trailing({ children }: { children: ReactNode }) {
   return (
-    <Text variant="sectionLabel" className="px-2 pb-1 pt-4">
+    <View className="min-w-0 max-w-[65%] flex-row items-center gap-2">
       {children}
-    </Text>
+    </View>
   );
+}
+
+function CopyGlyph() {
+  const { tokens } = useTheme();
+  return <Icon name="Copy" size={16} color={tokens.subtleForeground} />;
 }
 
 // ---------------------------------------------------------------------------
 // Rows
 
-function ParentRow({ thread }: { thread: ThreadResponse }) {
+function ParentRow({ parentId }: { parentId: string }) {
   const router = useRouter();
-  const parentId = thread.parentThreadId;
-  const parentQuery = useThread(parentId ?? "", { enabled: parentId !== null });
-  if (parentId === null) return null;
+  const parentQuery = useThread(parentId);
   const title = parentQuery.data
     ? getThreadDisplayTitle(parentQuery.data)
     : "Parent thread";
   return (
-    <DetailRow
-      icon="Fork"
-      label="Parent"
+    <GroupedRow
+      leading="Fork"
+      title="Parent"
+      value={title}
+      trailing="chevron"
       onPress={() => router.push(threadHref(parentId))}
       testID="panel-info-parent"
-    >
-      <ValueText>{title}</ValueText>
-    </DetailRow>
+    />
   );
 }
 
-function ForksRow({ thread }: { thread: ThreadResponse }) {
+function ForksSection({ thread }: { thread: ThreadResponse }) {
   const router = useRouter();
   const forksQuery = useThreadsList({
     projectId: thread.projectId,
@@ -187,20 +147,27 @@ function ForksRow({ thread }: { thread: ThreadResponse }) {
   const forks = forksQuery.data ?? [];
   if (forks.length === 0) return null;
   return (
-    <View testID="panel-info-forks">
-      {forks.map((fork, index) => (
-        <DetailRow
-          key={fork.id}
-          icon={index === 0 ? "Fork" : null}
-          label={index === 0 ? "Forks" : ""}
-          onPress={() => router.push(threadHref(fork.id))}
-          accessibilityLabel={`Open fork ${getThreadDisplayTitle(fork)}`}
-          testID="panel-info-fork"
-        >
-          <ValueText>{getThreadDisplayTitle(fork)}</ValueText>
-        </DetailRow>
-      ))}
-    </View>
+    <GroupedSection
+      title="Forks"
+      surface="raised"
+      separatorInset={GLYPH_ROW_SEPARATOR_INSET}
+      testID="panel-info-forks"
+    >
+      {forks.map((fork) => {
+        const title = getThreadDisplayTitle(fork);
+        return (
+          <GroupedRow
+            key={fork.id}
+            leading="Fork"
+            title={title}
+            trailing="chevron"
+            onPress={() => router.push(threadHref(fork.id))}
+            accessibilityLabel={`Open fork ${title}`}
+            testID="panel-info-fork"
+          />
+        );
+      })}
+    </GroupedSection>
   );
 }
 
@@ -221,54 +188,60 @@ function EnvironmentRow({
         : null,
     },
   });
+  const hostSuffix = host
+    ? ` · ${host.name}${host.status === "connected" ? "" : " (offline)"}`
+    : "";
   return (
-    <DetailRow
-      icon={environment.isWorktree ? "FolderGit" : "Folder"}
-      label="Environment"
+    <GroupedRow
+      leading={environment.isWorktree ? "FolderGit" : "Folder"}
+      title="Environment"
+      trailing={
+        <Trailing>
+          <Text
+            variant="bodyLarge"
+            tone="muted"
+            numberOfLines={1}
+            className="shrink"
+            testID="panel-info-environment-label"
+          >
+            {display.compactModeLabel}
+            {hostSuffix}
+          </Text>
+          {environment.managed ? (
+            <View
+              className="rounded-full bg-secondary px-2 py-0.5"
+              style={{ borderCurve: "continuous" }}
+            >
+              <Text variant="chrome" tone="foreground">
+                managed
+              </Text>
+            </View>
+          ) : null}
+        </Trailing>
+      }
       testID="panel-info-environment"
-    >
-      <Text
-        className="min-w-0 shrink text-sm"
-        numberOfLines={1}
-        testID="panel-info-environment-label"
-      >
-        {display.compactModeLabel}
-        {host ? (
-          <Text className="text-sm text-muted-foreground">{` · ${host.name}${
-            host.status === "connected" ? "" : " (offline)"
-          }`}</Text>
-        ) : null}
-      </Text>
-      {environment.managed ? (
-        <Pill variant="outline" size="sm">
-          managed
-        </Pill>
-      ) : null}
-    </DetailRow>
+    />
   );
 }
 
 function DirectoryRow({ path }: { path: string }) {
   return (
-    <DetailRow
-      icon="Folder"
-      label="Directory"
+    <GroupedRow
+      leading="Folder"
+      title="Directory"
+      trailing={
+        <Trailing>
+          <ValueText mono testID="panel-info-directory-path">
+            {path}
+          </ValueText>
+          <CopyGlyph />
+        </Trailing>
+      }
       onPress={() => copyWithToast(path, "Directory copied")}
       accessibilityLabel="Copy directory"
-      chevron={false}
       testID="panel-info-directory"
-    >
-      <ValueText mono testID="panel-info-directory-path">
-        {path}
-      </ValueText>
-      <CopyGlyph />
-    </DetailRow>
+    />
   );
-}
-
-function CopyGlyph() {
-  const { tokens } = useTheme();
-  return <Icon name="Copy" size={14} color={tokens.mutedForeground} />;
 }
 
 function describeCheckout(checkout: GitCheckoutRef): {
@@ -317,23 +290,27 @@ function describeCheckout(checkout: GitCheckoutRef): {
 
 function BranchRow({ checkout }: { checkout: GitCheckoutRef }) {
   const display = describeCheckout(checkout);
+  const copyValue = display.copyValue;
   return (
-    <DetailRow
-      icon="GitBranch"
-      label={display.rowLabel}
+    <GroupedRow
+      leading="GitBranch"
+      title={display.rowLabel}
+      trailing={
+        <Trailing>
+          <ValueText mono testID="panel-info-branch-name">
+            {display.label}
+          </ValueText>
+          {copyValue === null ? null : <CopyGlyph />}
+        </Trailing>
+      }
       onPress={
-        display.copyValue === null
+        copyValue === null
           ? undefined
-          : () => copyWithToast(display.copyValue ?? "", display.copiedMessage)
+          : () => copyWithToast(copyValue, display.copiedMessage)
       }
       accessibilityLabel={`${display.rowLabel}: ${display.label}`}
-      chevron={false}
       testID="panel-info-branch"
-    >
-      <ValueText mono testID="panel-info-branch-name">
-        {display.label}
-      </ValueText>
-    </DetailRow>
+    />
   );
 }
 
@@ -345,29 +322,36 @@ function MergeBaseRow({
   onPress: (() => void) | null;
 }) {
   return (
-    <DetailRow
-      icon="GitMerge"
-      label="Merge base"
+    <GroupedRow
+      leading="GitMerge"
+      title="Merge base"
+      trailing={
+        <Trailing>
+          <ValueText mono>{branch}</ValueText>
+          {onPress ? <DisclosureChevron /> : null}
+        </Trailing>
+      }
       onPress={onPress ?? undefined}
       testID="panel-info-merge-base"
-    >
-      <ValueText mono>{branch}</ValueText>
-    </DetailRow>
+    />
   );
 }
 
 function GitStatusRow({ label, summary }: { label: string; summary: string }) {
   return (
-    <DetailRow
-      icon="FileDiff"
-      label="Git status"
+    <GroupedRow
+      leading="FileDiff"
+      title="Git status"
+      trailing={
+        <Trailing>
+          <ValueText tone={label === "Dirty" ? "destructive" : "foreground"}>
+            {label}
+          </ValueText>
+          {summary ? <ValueText>{summary}</ValueText> : null}
+        </Trailing>
+      }
       testID="panel-info-git-status"
-    >
-      <ValueText tone={label === "Dirty" ? "destructive" : undefined}>
-        {label}
-      </ValueText>
-      {summary ? <ValueText tone="muted">{summary}</ValueText> : null}
-    </DetailRow>
+    />
   );
 }
 
@@ -388,48 +372,55 @@ function PullRequestRow({
     });
   };
   return (
-    <DetailRow
-      icon="GitPullRequestArrow"
-      label="Pull request"
+    <GroupedRow
+      leading="GitPullRequestArrow"
+      title="Pull request"
+      trailing={
+        <Trailing>
+          <PullRequestStatusPill pullRequest={pullRequest} />
+          <ValueText tone="foreground">
+            {formatPullRequestRowLabel(pullRequest)}
+          </ValueText>
+          {attention ? (
+            <Text
+              variant="footnote"
+              numberOfLines={1}
+              className="shrink"
+              style={{ color: pullRequestToneColor(tokens, attention.tone) }}
+            >
+              {attention.label}
+            </Text>
+          ) : null}
+          <DisclosureChevron />
+        </Trailing>
+      }
       onPress={open}
       accessibilityLabel={`Open pull request ${pullRequest.number}`}
       testID="panel-info-pull-request"
-    >
-      <PullRequestStatusPill pullRequest={pullRequest} />
-      <ValueText>{formatPullRequestRowLabel(pullRequest)}</ValueText>
-      {attention ? (
-        <Text
-          className="min-w-0 shrink text-sm"
-          numberOfLines={1}
-          style={{ color: pullRequestToneColor(tokens, attention.tone) }}
-        >
-          {attention.label}
-        </Text>
-      ) : null}
-    </DetailRow>
+    />
   );
 }
 
 function ArchivedRow({ thread }: { thread: ThreadResponse }) {
   const unarchive = useUnarchiveThread();
-  if (thread.archivedAt === null) return null;
   const pending = unarchive.isPending && unarchive.variables?.id === thread.id;
   return (
-    <DetailRow
-      icon="PackageReceive"
-      label="Archived"
+    <GroupedRow
+      leading="PackageReceive"
+      title="Archived"
+      trailing={
+        <Button
+          variant="outline"
+          size="sm"
+          loading={pending}
+          onPress={() => unarchive.mutate({ id: thread.id })}
+          testID="panel-info-unarchive"
+        >
+          Unarchive
+        </Button>
+      }
       testID="panel-info-archived"
-    >
-      <Button
-        variant="outline"
-        size="sm"
-        loading={pending}
-        onPress={() => unarchive.mutate({ id: thread.id })}
-        testID="panel-info-unarchive"
-      >
-        Unarchive
-      </Button>
-    </DetailRow>
+    />
   );
 }
 
@@ -440,34 +431,26 @@ function CommitsSection({
 }) {
   if (commits.length === 0) return null;
   return (
-    <View testID="panel-info-commits">
-      <SectionHeader>Commits</SectionHeader>
+    <GroupedSection
+      title="Commits"
+      surface="raised"
+      testID="panel-info-commits"
+    >
       {commits.map((commit) => (
-        <Pressable
+        <GroupedRow
           key={commit.sha}
-          accessibilityRole="button"
-          accessibilityLabel={`Copy commit ${commit.shortSha}`}
-          onLongPress={() => copyWithToast(commit.sha, "Commit SHA copied")}
-          className="min-h-9 flex-row items-center gap-2 rounded-md px-2 py-1 active:bg-state-hover"
-          testID="panel-info-commit"
-        >
-          <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
-            {commit.subject}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Copy commit ${commit.shortSha} SHA`}
-            hitSlop={6}
-            onPress={() => copyWithToast(commit.sha, "Commit SHA copied")}
-            className="rounded-sm px-1.5 py-0.5 active:bg-state-hover"
-          >
-            <Text variant="mono" className="text-xs text-subtle-foreground">
+          title={commit.subject}
+          trailing={
+            <Text variant="mono" tone="subtle" numeric className="text-xs">
               {commit.shortSha}
             </Text>
-          </Pressable>
-        </Pressable>
+          }
+          onPress={() => copyWithToast(commit.sha, "Commit SHA copied")}
+          accessibilityLabel={`Copy commit ${commit.shortSha}`}
+          testID="panel-info-commit"
+        />
       ))}
-    </View>
+    </GroupedSection>
   );
 }
 
@@ -478,55 +461,52 @@ function ChangedFilesSection({
   sections: readonly WorkspaceChangedFilesSection[];
   onOpenDiff: (path: string | null) => void;
 }) {
-  const { tokens } = useTheme();
   if (sections.length === 0) return null;
   const onPressFile = (file: WorkspaceFileStatus) => onOpenDiff(file.path);
   return (
-    <View testID="panel-info-changed-files">
-      <SectionHeader>Changed files</SectionHeader>
-      {sections.map((section) => (
-        <View key={section.kind} className="gap-1 pb-2">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open diff: ${section.label}`}
+    <View className="gap-6" testID="panel-info-changed-files">
+      {sections.map((section, index) => (
+        <GroupedSection
+          key={section.kind}
+          title={index === 0 ? "Changed files" : undefined}
+          surface="raised"
+          separatorInset={GLYPH_ROW_SEPARATOR_INSET}
+        >
+          <GroupedRow
+            leading="FileDiff"
+            title={section.label}
+            value={formatChangeSummary(toChangeTally(section.stats))}
+            trailing="chevron"
             onPress={() => onOpenDiff(null)}
-            className="min-h-9 flex-row items-center gap-2 rounded-md px-2 py-1 active:bg-state-hover"
+            accessibilityLabel={`Open diff: ${section.label}`}
             testID={`panel-info-changed-files-${section.kind}`}
-          >
-            <Icon name="FileDiff" size={14} color={tokens.mutedForeground} />
-            <Text className="min-w-0 flex-1 text-sm" numberOfLines={1}>
-              {`${section.label} · ${formatChangeSummary(toChangeTally(section.stats))}`}
-            </Text>
-            <Icon
-              name="ChevronRight"
-              size={14}
-              color={tokens.subtleForeground}
-            />
-          </Pressable>
-          <View className="px-2">
+          />
+          <View className="px-3 py-2">
             <WorkspaceChangesList
               files={section.files}
               onPressFile={onPressFile}
               maxRows={5}
             />
           </View>
-        </View>
+        </GroupedSection>
       ))}
     </View>
   );
 }
 
-function ThreadStorageRow({ onPress }: { onPress: () => void }) {
+function StorageSection({ onPress }: { onPress: () => void }) {
   return (
-    <DetailRow
-      icon="FolderOpen"
-      label="Storage"
-      onPress={onPress}
-      accessibilityLabel="Browse thread storage"
-      testID="panel-info-storage"
-    >
-      <ValueText tone="muted">Files the thread saved</ValueText>
-    </DetailRow>
+    <GroupedSection surface="raised">
+      <GroupedRow
+        leading="FolderOpen"
+        title="Thread storage"
+        subtitle="Files the thread saved"
+        trailing="chevron"
+        onPress={onPress}
+        accessibilityLabel="Browse thread storage"
+        testID="panel-info-storage"
+      />
+    </GroupedSection>
   );
 }
 
@@ -597,6 +577,11 @@ export function ThreadInfoTabContent({ scope }: PanelTabContentProps) {
       workspace.workspaceUnavailable !== undefined ||
       environment?.status === "destroyed") &&
     !(thread.archivedAt !== null && environment?.managed !== true);
+  const mergeBaseBranch =
+    workspace.mergeBase.showMergeBase &&
+    workspace.mergeBase.effectiveMergeBaseBranch
+      ? workspace.mergeBase.effectiveMergeBaseBranch
+      : null;
 
   const openDiff = useCallback(
     (path: string | null) => panel.openDiff(path),
@@ -618,42 +603,66 @@ export function ThreadInfoTabContent({ scope }: PanelTabContentProps) {
     );
   }
 
+  const hasDetails =
+    thread.parentThreadId !== null ||
+    environment !== undefined ||
+    workspaceStatus !== undefined ||
+    mergeBaseBranch !== null ||
+    showGitStatus ||
+    pullRequest !== null ||
+    thread.archivedAt !== null;
+
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 8 }}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 32,
+        gap: 24,
+      }}
       keyboardShouldPersistTaps="handled"
       testID="panel-info"
     >
-      <ParentRow thread={thread} />
-      <ForksRow thread={thread} />
-      {environment ? (
-        <EnvironmentRow environment={environment} host={host} />
+      {/* Rows are conditional here, not inside the row components: the
+          section draws a hairline between every rendered child, so a child
+          that rendered null would leave a doubled separator. */}
+      {hasDetails ? (
+        <GroupedSection
+          surface="raised"
+          separatorInset={GLYPH_ROW_SEPARATOR_INSET}
+          testID="panel-info-details"
+        >
+          {thread.parentThreadId !== null ? (
+            <ParentRow parentId={thread.parentThreadId} />
+          ) : null}
+          {environment ? (
+            <EnvironmentRow environment={environment} host={host} />
+          ) : null}
+          {environment?.path ? <DirectoryRow path={environment.path} /> : null}
+          {workspaceStatus ? (
+            <BranchRow checkout={workspaceStatus.checkout} />
+          ) : null}
+          {mergeBaseBranch !== null ? (
+            <MergeBaseRow
+              branch={mergeBaseBranch}
+              onPress={mergeBaseSheet.present}
+            />
+          ) : null}
+          {showGitStatus ? (
+            <GitStatusRow label={gitStatus.label} summary={gitStatus.summary} />
+          ) : null}
+          {pullRequest ? <PullRequestRow pullRequest={pullRequest} /> : null}
+          {thread.archivedAt !== null ? <ArchivedRow thread={thread} /> : null}
+        </GroupedSection>
       ) : null}
-      {environment?.path ? <DirectoryRow path={environment.path} /> : null}
-      {workspaceStatus ? (
-        <BranchRow checkout={workspaceStatus.checkout} />
-      ) : null}
-      {workspace.mergeBase.showMergeBase &&
-      workspace.mergeBase.effectiveMergeBaseBranch ? (
-        <MergeBaseRow
-          branch={workspace.mergeBase.effectiveMergeBaseBranch}
-          onPress={mergeBaseSheet.present}
-        />
-      ) : null}
-      {showGitStatus ? (
-        <GitStatusRow label={gitStatus.label} summary={gitStatus.summary} />
-      ) : null}
-      {pullRequest ? <PullRequestRow pullRequest={pullRequest} /> : null}
-      <ArchivedRow thread={thread} />
+      <ForksSection thread={thread} />
       <CommitsSection commits={commits} />
       <ChangedFilesSection
         sections={changedFileSections}
         onOpenDiff={openDiff}
       />
-      <View className="pt-2">
-        <ThreadStorageRow onPress={openStorage} />
-      </View>
+      <StorageSection onPress={openStorage} />
       {canUseGitUi ? (
         <MergeBasePickerSheet
           controller={mergeBaseSheet}

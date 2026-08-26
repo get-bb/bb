@@ -1,6 +1,6 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { View } from "react-native";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useRef, useState } from "react";
+import { View, type TextInput } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
   PROFILE_LABEL_MAX_LENGTH,
@@ -8,10 +8,11 @@ import {
   validateDirectServerUrl,
 } from "@/lib/profiles";
 import { describeError } from "@/lib/describe-error";
-import { useTheme } from "@/theme";
-import { Button, Icon, Input, ListRow, Text, toast } from "@/ui";
+import { Button, GroupedRow, Input, Text, toast } from "@/ui";
 import { connectEnrollHref, rawPathHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
+import { GroupedScreen } from "./GroupedScreen";
+import { useBadgeColors } from "./settings-badges";
+import { SettingsSection } from "./SettingsRows";
 
 type SubmitState =
   | { phase: "idle" }
@@ -27,26 +28,32 @@ function defaultLabel(serverUrl: string): string {
   }
 }
 
+const URL_HELP =
+  "A LAN address, a Tailscale Serve URL, or http://127.0.0.1:<port> in the simulator.";
+
 /**
- * "Add server": the bb connect entry (pairing code / QR → `/connect`) and
- * the Direct-mode form — URL entry with live validation, the `/health` +
- * `/system/config` probe, the plain-http warning the plan requires for
- * non-loopback hosts, then save + activate.
+ * "Add server" as a grouped form: the bb connect entry (pairing code / QR →
+ * `/connect`) in its own group, then the direct URL fields as cells — URL
+ * entry with live validation, the `/health` + `/system/config` probe, the
+ * plain-http warning the plan requires for non-loopback hosts as the
+ * group's footer — and the Connect button.
  */
 export function AddServerScreen() {
   const router = useRouter();
   // A deep link to a server the phone does not know arrives here with the
   // origin prefilled and the in-app path to open once the server is added.
   const params = useLocalSearchParams<{ serverUrl?: string; next?: string }>();
-  const { tokens } = useTheme();
+  const colors = useBadgeColors();
   const { profiles, addProfile, setActiveProfile } = useProfiles();
   const [url, setUrl] = useState(params.serverUrl ?? "");
   const [label, setLabel] = useState("");
   const [urlTouched, setUrlTouched] = useState(false);
   const [submit, setSubmit] = useState<SubmitState>({ phase: "idle" });
+  const labelRef = useRef<TextInput>(null);
 
   const validation = validateDirectServerUrl(url);
   const showUrlError = urlTouched && !validation.ok && url.trim().length > 0;
+  const insecure = validation.ok && validation.warning === "insecure-http";
   const busy = submit.phase === "probing" || submit.phase === "saving";
   const firstRun = profiles.length === 0;
 
@@ -92,115 +99,121 @@ export function AddServerScreen() {
   };
 
   return (
-    <Screen testID="add-server-screen">
-      <View className="gap-1">
-        <Text variant="title">
-          {firstRun ? "Connect to a bb server" : "Add a server"}
-        </Text>
-        <Text variant="caption">
-          Pair through getbb.app from anywhere, or enter a direct URL: a LAN
-          address, a Tailscale Serve URL, or http://127.0.0.1:&lt;port&gt; in
-          the simulator.
-        </Text>
-      </View>
+    <>
+      {/* The first-run heading lives in the header; the body has no title. */}
+      <Stack.Screen
+        options={{ title: firstRun ? "Connect to a bb server" : "Add server" }}
+      />
+      <GroupedScreen testID="add-server-screen">
+        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Remote access.">
+          <GroupedRow
+            title="Connect with bb connect"
+            badge={{ icon: "Globe", symbol: "globe", color: colors.blue }}
+            trailing="chevron"
+            onPress={() => router.push(connectEnrollHref())}
+            disabled={busy}
+            testID="add-server-connect"
+          />
+        </SettingsSection>
 
-      <View className="overflow-hidden rounded-lg border border-border bg-card">
-        <ListRow
-          title="Connect with bb connect"
-          subtitle="Scan or type a pairing code from bb Settings → Remote access"
-          leading="Globe"
-          trailing="chevron"
-          onPress={() => router.push(connectEnrollHref())}
-          disabled={busy}
-          testID="add-server-connect"
-        />
-      </View>
-
-      <Text variant="sectionLabel">Direct URL</Text>
-
-      <View className="gap-2">
-        <Text variant="label">Server URL</Text>
-        <Input
-          value={url}
-          onChangeText={(next) => {
-            setUrl(next);
-            if (submit.phase === "failed") setSubmit({ phase: "idle" });
-          }}
-          onBlur={() => setUrlTouched(true)}
-          placeholder="https://bb.example.ts.net"
-          keyboardType="url"
-          textContentType="URL"
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoFocus
-          returnKeyType="go"
-          onSubmitEditing={() => void onSubmit()}
-          invalid={showUrlError}
-          mono
-          editable={!busy}
-          testID="server-url-input"
-        />
-        {showUrlError ? (
-          <Text variant="caption" tone="destructive" testID="server-url-error">
-            {validation.message}
-          </Text>
-        ) : null}
-        {validation.ok && validation.warning === "insecure-http" ? (
-          <View
-            className="flex-row items-start gap-2 rounded-md border border-border bg-surface-attention px-3 py-2"
-            testID="server-url-warning"
-          >
-            <Icon name="AlertTriangle" size={16} color={tokens.warningText} />
-            <Text variant="caption" tone="warning" className="flex-1">
-              Plain http is unencrypted: anyone on this network can read your
-              threads. Prefer https (Tailscale Serve) outside a trusted LAN.
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View className="gap-2">
-        <Text variant="label">Label (optional)</Text>
-        <Input
-          value={label}
-          onChangeText={setLabel}
-          placeholder={
-            validation.ok ? defaultLabel(validation.serverUrl) : "My Mac"
+        <SettingsSection
+          title="Server URL"
+          footnote={
+            showUrlError ? (
+              <Text
+                variant="footnote"
+                tone="destructive"
+                testID="server-url-error"
+              >
+                {validation.message}
+              </Text>
+            ) : insecure ? (
+              <Text
+                variant="footnote"
+                tone="warning"
+                testID="server-url-warning"
+              >
+                Plain http is unencrypted: anyone on this network can read your
+                threads. Prefer https (Tailscale Serve) outside a trusted LAN.
+              </Text>
+            ) : (
+              URL_HELP
+            )
           }
-          maxLength={PROFILE_LABEL_MAX_LENGTH}
-          autoCapitalize="words"
-          returnKeyType="go"
-          onSubmitEditing={() => void onSubmit()}
-          editable={!busy}
-          testID="server-label-input"
-        />
-      </View>
-
-      {submit.phase === "failed" ? (
-        <View
-          className="rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2"
-          testID="add-server-error"
         >
-          <Text variant="caption" tone="destructive">
-            {submit.message}
-          </Text>
-        </View>
-      ) : null}
+          <View className="px-1">
+            <Input
+              value={url}
+              onChangeText={(next) => {
+                setUrl(next);
+                if (submit.phase === "failed") setSubmit({ phase: "idle" });
+              }}
+              onBlur={() => setUrlTouched(true)}
+              placeholder="https://bb.example.ts.net"
+              keyboardType="url"
+              textContentType="URL"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => labelRef.current?.focus()}
+              invalid={showUrlError}
+              mono
+              grouped
+              editable={!busy}
+              testID="server-url-input"
+            />
+          </View>
+          <View className="px-1">
+            <Input
+              ref={labelRef}
+              value={label}
+              onChangeText={setLabel}
+              placeholder={
+                validation.ok
+                  ? `Label (${defaultLabel(validation.serverUrl)})`
+                  : "Label (optional)"
+              }
+              maxLength={PROFILE_LABEL_MAX_LENGTH}
+              autoCapitalize="words"
+              returnKeyType="go"
+              onSubmitEditing={() => void onSubmit()}
+              grouped
+              editable={!busy}
+              testID="server-label-input"
+            />
+          </View>
+        </SettingsSection>
 
-      <Button
-        onPress={() => void onSubmit()}
-        loading={busy}
-        disabled={url.trim().length === 0}
-        icon="ArrowRight"
-        iconPosition="right"
-        testID="add-server-submit"
-      >
-        {submit.phase === "probing"
-          ? "Checking server…"
-          : submit.phase === "saving"
-            ? "Saving…"
-            : "Connect"}
-      </Button>
-    </Screen>
+        <View className="gap-2">
+          <Button
+            onPress={() => void onSubmit()}
+            loading={busy}
+            disabled={url.trim().length === 0}
+            icon="ArrowRight"
+            iconPosition="right"
+            testID="add-server-submit"
+          >
+            {submit.phase === "probing"
+              ? "Checking server…"
+              : submit.phase === "saving"
+                ? "Saving…"
+                : "Connect"}
+          </Button>
+          {submit.phase === "failed" ? (
+            <Text
+              variant="footnote"
+              tone="destructive"
+              className="px-4"
+              selectable
+              testID="add-server-error"
+            >
+              {submit.message}
+            </Text>
+          ) : null}
+        </View>
+      </GroupedScreen>
+    </>
   );
 }

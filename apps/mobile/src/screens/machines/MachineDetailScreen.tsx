@@ -1,7 +1,7 @@
 import type { PermissionMode } from "@bb/domain";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { buildPermissionModeOptions } from "@/data/compose";
 import {
@@ -17,42 +17,54 @@ import {
   useHosts,
   useProviderCliInstallRunner,
   useRemoveHost,
+  useRenameHost,
   useRetryHostUpdate,
   useServerProtocolVersion,
   useUpdateHostPermissionCeiling,
 } from "@/data/hosts";
 import { useSidebarBootstrap } from "@/data/sidebar";
 import { useSystemConfig } from "@/data/system";
-import { useTheme } from "@/theme";
 import {
-  ActionSheet,
   Button,
+  confirmDestructive,
   EmptyStatePanel,
-  Icon,
-  ListRow,
-  Pill,
+  GroupedRow,
   Spinner,
   Text,
   toast,
   useSheet,
+  type IconName,
 } from "@/ui";
-import { HostStatusDot, PermissionModePicker } from "../pickers";
+import { HostStatusDot } from "../pickers";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { LinkRow } from "../settings/LinkRow";
+import { MenuValueRow } from "../settings/MenuValueRow";
 import {
+  HeaderIconButton,
+  ICON_ROW_SEPARATOR_INSET,
   SettingsControlRow,
   SettingsSection,
   SettingsValueRow,
 } from "../settings/SettingsRows";
 import { firstParam, projectSettingsHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import { useNow } from "../shell/use-now";
 import { MachineRenameSheet } from "./MachineRenameSheet";
 import { ProviderCliInstallLogHost, ProviderCliRows } from "./ProviderCliRows";
+import { promptRenameMachine } from "./rename-machine-prompt";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+
+const PERMISSION_MODE_ICON: Record<PermissionMode, IconName> = {
+  "accept-edits": "EditFile",
+  auto: "CircleCheck",
+  full: "Zap",
+};
 
 /**
  * `/settings/machines/[hostId]` (web MachineSettingsView): presence /
  * platform / pairing age, rename, the permission ceiling, the projects with
  * a source here, provider CLIs with Install / Update, the daemon update
- * retry, and Remove.
+ * retry, and Remove. Rename and the overflow menu live in the header.
  */
 export function MachineDetailScreen() {
   const params = useLocalSearchParams<{ hostId?: string | string[] }>();
@@ -60,17 +72,22 @@ export function MachineDetailScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="machine-detail-screen">
+      <GroupedScreen testID="machine-detail-screen">
         <EmptyStatePanel>Add a server first.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
   return <ConnectedMachineDetailScreen hostId={hostId} />;
 }
 
+function describeError(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.length > 0
+    ? error.message
+    : fallback;
+}
+
 function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   const router = useRouter();
-  const { tokens } = useTheme();
   const hostsQuery = useHosts();
   const configQuery = useSystemConfig();
   const bootstrap = useSidebarBootstrap();
@@ -86,8 +103,8 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   const updateCeiling = useUpdateHostPermissionCeiling();
   const retryUpdate = useRetryHostUpdate();
   const removeHost = useRemoveHost();
+  const renameHost = useRenameHost();
   const renameSheet = useSheet();
-  const removeConfirm = useSheet();
   const [renaming, setRenaming] = useState(false);
   const now = useNow();
 
@@ -113,21 +130,21 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
 
   if (hosts === undefined) {
     return (
-      <Screen scroll={false} testID="machine-detail-screen">
+      <GroupedScreen scroll={false} testID="machine-detail-screen">
         <View className="flex-1 items-center justify-center">
           <Spinner />
         </View>
-      </Screen>
+      </GroupedScreen>
     );
   }
   if (host === null) {
     return (
-      <Screen testID="machine-detail-screen">
+      <GroupedScreen testID="machine-detail-screen">
         <EmptyStatePanel>Machine is no longer paired.</EmptyStatePanel>
         <Button variant="outline" onPress={() => router.back()}>
           Back to machines
         </Button>
-      </Screen>
+      </GroupedScreen>
     );
   }
 
@@ -136,92 +153,189 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
       ? HOST_PLATFORM_LABELS[configQuery.data.primaryHostPlatform]
       : null;
   const updateStatus = formatHostUpdateStatus(host, serverProtocolVersion);
+  const canRetry = hostCanRetryUpdate(host, serverProtocolVersion);
+
+  const rename = () => {
+    const handled = promptRenameMachine({
+      currentName: host.name,
+      onSubmit: (name) =>
+        renameHost.mutate(
+          { hostId: host.id, name },
+          {
+            onSuccess: (updated) => toast.success(`Renamed to ${updated.name}`),
+            onError: (error) =>
+              toast.error(`Couldn't rename ${host.name}`, {
+                description: describeError(
+                  error,
+                  "The server refused the request.",
+                ),
+              }),
+          },
+        ),
+    });
+    if (handled) return;
+    setRenaming(true);
+    renameSheet.present();
+  };
+
+  const retry = () =>
+    retryUpdate.mutate(host.id, {
+      onSuccess: () => toast.success(`Update retry requested for ${host.name}`),
+    });
+
+  const confirmRemove = () =>
+    confirmDestructive({
+      title: `Remove ${host.name}?`,
+      message: `This revokes ${host.name}'s access to this server. Project checkouts stay on its disk, but its environments become read-only history and it can't run new work until it's paired again.`,
+      actionLabel: "Remove machine",
+      onConfirm: () => {
+        const name = host.name;
+        removeHost.mutate(host.id, {
+          onSuccess: () => {
+            toast.success(`Removed ${name}`);
+            router.back();
+          },
+          onError: (error) =>
+            toast.error(`Couldn't remove ${name}`, {
+              description: describeError(
+                error,
+                "The server refused the request.",
+              ),
+            }),
+        });
+      },
+    });
+
+  const selectCeiling = (maxPermissionMode: PermissionMode) => {
+    if (maxPermissionMode === host.maxPermissionMode) return;
+    updateCeiling.mutate(
+      { hostId: host.id, maxPermissionMode },
+      {
+        onSuccess: () =>
+          toast.success(
+            `${host.name} limited to ${PERMISSION_MODE_SHORT_LABELS[maxPermissionMode]}`,
+          ),
+      },
+    );
+  };
 
   return (
     <>
       <Stack.Screen
         options={{
           title: host.name,
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Rename machine"
-              hitSlop={8}
-              onPress={() => {
-                setRenaming(true);
-                renameSheet.present();
-              }}
-              testID="machine-rename"
-            >
-              <Icon name="Edit" size={20} color={tokens.foreground} />
-            </Pressable>
-          ),
+          ...(IS_IOS
+            ? {}
+            : {
+                headerRight: () => (
+                  <HeaderIconButton
+                    icon="Edit"
+                    accessibilityLabel="Rename machine"
+                    onPress={rename}
+                    testID="machine-rename"
+                  />
+                ),
+              }),
         }}
       />
-      <Screen testID="machine-detail-screen">
-        <View className="gap-1">
-          <View className="flex-row items-center gap-2">
-            <HostStatusDot connected={online} />
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="pencil"
+            accessibilityLabel="Rename machine"
+            onPress={rename}
+          />
+          <Stack.Toolbar.Menu
+            icon="ellipsis.circle"
+            accessibilityLabel="Machine actions"
+          >
+            <Stack.Toolbar.MenuAction icon="pencil" onPress={rename}>
+              Rename
+            </Stack.Toolbar.MenuAction>
+            {online ? (
+              <Stack.Toolbar.MenuAction
+                icon="arrow.clockwise"
+                disabled={statusQuery.isFetching}
+                onPress={() => void statusQuery.refetch()}
+              >
+                Recheck provider CLIs
+              </Stack.Toolbar.MenuAction>
+            ) : null}
+            {canRetry ? (
+              <Stack.Toolbar.MenuAction
+                icon="arrow.triangle.2.circlepath"
+                disabled={retryUpdate.isPending}
+                onPress={retry}
+              >
+                Retry update
+              </Stack.Toolbar.MenuAction>
+            ) : null}
+            <Stack.Toolbar.MenuAction
+              icon="trash"
+              destructive
+              disabled={isPrimary || removeHost.isPending}
+              onPress={confirmRemove}
+            >
+              Remove machine
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : null}
+      <GroupedScreen testID="machine-detail-screen">
+        <SettingsSection
+          title="Machine"
+          separatorInset={ICON_ROW_SEPARATOR_INSET}
+          footnote={machineHeaderMeta({ host, platformLabel, now })}
+        >
+          <View className="min-h-[44px] flex-row items-center gap-3 px-4 py-2.5">
+            <View className="w-5 items-center">
+              <HostStatusDot connected={online} />
+            </View>
             <Text
-              variant="title"
+              variant="bodyLarge"
               numberOfLines={1}
-              className="shrink"
+              className="min-w-0 flex-1"
+              selectable
               testID="machine-detail-name"
             >
               {host.name}
             </Text>
-            {hosts.length > 1 && isPrimary ? (
-              <Pill variant="outline" size="sm">
-                Primary
-              </Pill>
-            ) : null}
+            <Text variant="bodyLarge" tone="muted">
+              {hosts.length > 1 && isPrimary
+                ? "Primary"
+                : online
+                  ? "Online"
+                  : "Offline"}
+            </Text>
           </View>
-          <Text variant="caption">
-            {machineHeaderMeta({ host, platformLabel, now })}
-          </Text>
-        </View>
-
-        <SettingsSection title="Machine">
-          <ListRow
+          <GroupedRow
             title="Rename machine"
-            subtitle={host.name}
             leading="Edit"
             trailing="chevron"
-            onPress={() => {
-              setRenaming(true);
-              renameSheet.present();
-            }}
+            onPress={rename}
             testID="machine-rename-row"
           />
         </SettingsSection>
 
         <SettingsSection
           title="Permission limit"
-          description={PERMISSION_LIMIT_DESCRIPTION}
+          footnote={PERMISSION_LIMIT_DESCRIPTION}
         >
-          <SettingsControlRow
-            label="Highest permission mode"
-            description={updateCeiling.isPending ? "Saving…" : undefined}
-            control={
-              <PermissionModePicker
-                options={permissionOptions}
-                value={host.maxPermissionMode}
-                disabled={updateCeiling.isPending}
-                onChange={(maxPermissionMode: PermissionMode) => {
-                  if (maxPermissionMode === host.maxPermissionMode) return;
-                  updateCeiling.mutate(
-                    { hostId: host.id, maxPermissionMode },
-                    {
-                      onSuccess: () =>
-                        toast.success(
-                          `${host.name} limited to ${PERMISSION_MODE_SHORT_LABELS[maxPermissionMode]}`,
-                        ),
-                    },
-                  );
-                }}
-                testID="machine-permission-ceiling"
-              />
-            }
+          <MenuValueRow
+            title="Highest permission mode"
+            subtitle={updateCeiling.isPending ? "Saving…" : undefined}
+            value={PERMISSION_MODE_SHORT_LABELS[host.maxPermissionMode]}
+            options={permissionOptions.map((option) => ({
+              value: option.value,
+              label: option.label,
+              icon: PERMISSION_MODE_ICON[option.value],
+              disabled: option.disabled,
+            }))}
+            selected={host.maxPermissionMode}
+            onSelect={selectCeiling}
+            disabled={updateCeiling.isPending}
+            testID="machine-permission-ceiling"
+            accessibilityLabel="Permission mode"
           />
         </SettingsSection>
 
@@ -230,12 +344,11 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
             <SettingsValueRow label="Projects" value="None" />
           ) : (
             projects.map((project) => (
-              <ListRow
+              <LinkRow
                 key={project.id}
+                href={projectSettingsHref(project.id)}
                 title={project.name}
                 leading="Folder"
-                trailing="chevron"
-                onPress={() => router.push(projectSettingsHref(project.id))}
                 testID={`machine-project-${project.id}`}
               />
             ))
@@ -247,19 +360,12 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
             label="Updates"
             description={updateStatus ?? "Up to date"}
             control={
-              hostCanRetryUpdate(host, serverProtocolVersion) ? (
+              canRetry ? (
                 <Button
                   size="sm"
                   variant="outline"
                   loading={retryUpdate.isPending}
-                  onPress={() =>
-                    retryUpdate.mutate(host.id, {
-                      onSuccess: () =>
-                        toast.success(
-                          `Update retry requested for ${host.name}`,
-                        ),
-                    })
-                  }
+                  onPress={retry}
                   testID="machine-retry-update"
                 >
                   Retry update
@@ -272,25 +378,14 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
         <SettingsSection
           title="Provider CLIs"
           action={
-            online ? (
-              <Pressable
-                accessibilityRole="button"
+            online && !IS_IOS ? (
+              <HeaderIconButton
+                icon="RotateCcw"
                 accessibilityLabel="Recheck provider CLIs"
-                hitSlop={8}
-                disabled={statusQuery.isFetching}
+                loading={statusQuery.isFetching}
                 onPress={() => void statusQuery.refetch()}
                 testID="machine-provider-clis-refresh"
-              >
-                {statusQuery.isFetching ? (
-                  <Spinner size="small" color={tokens.mutedForeground} />
-                ) : (
-                  <Icon
-                    name="RotateCcw"
-                    size={18}
-                    color={tokens.mutedForeground}
-                  />
-                )}
-              </Pressable>
+              />
             ) : undefined
           }
         >
@@ -306,23 +401,22 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
         </SettingsSection>
 
         <SettingsSection
-          title="Danger zone"
-          description={
+          footnote={
             isPrimary
               ? PRIMARY_HOST_REMOVE_DISABLED_REASON
               : `Revokes ${host.name}'s access to this server. Project checkouts stay on its disk.`
           }
         >
-          <ListRow
+          <GroupedRow
             title="Remove machine"
             leading="Trash2"
             destructive
             disabled={isPrimary || removeHost.isPending}
-            onPress={removeConfirm.present}
+            onPress={confirmRemove}
             testID="machine-remove"
           />
         </SettingsSection>
-      </Screen>
+      </GroupedScreen>
 
       <MachineRenameSheet
         controller={renameSheet}
@@ -330,35 +424,6 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
         onRenamed={() => setRenaming(false)}
       />
       <ProviderCliInstallLogHost runner={runner} />
-      <ActionSheet
-        controller={removeConfirm}
-        title={`Remove ${host.name}?`}
-        message={`This revokes ${host.name}'s access to this server. Project checkouts stay on its disk, but its environments become read-only history and it can't run new work until it's paired again.`}
-        actions={[
-          {
-            key: "confirm",
-            label: "Remove machine",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              const name = host.name;
-              removeHost.mutate(host.id, {
-                onSuccess: () => {
-                  toast.success(`Removed ${name}`);
-                  router.back();
-                },
-                onError: (error) =>
-                  toast.error(`Couldn't remove ${name}`, {
-                    description:
-                      error instanceof Error && error.message.length > 0
-                        ? error.message
-                        : "The server refused the request.",
-                  }),
-              });
-            },
-          },
-        ]}
-      />
     </>
   );
 }

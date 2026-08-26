@@ -418,16 +418,15 @@ export type ExperimentalPluginFixedTabReference<
     });
 
 /** A fixed tab declared by a plugin nav panel. */
-export type PluginFixedTabRegistration<
-  Target extends JsonValue = never,
-> = ExperimentalPluginFixedTabReference<Target> & {
-  title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-  icon: string;
-  component: ComponentType<PluginNavPanelProps>;
-  /** `flush` lets the component own padding and scrolling. */
-  layout?: "padded" | "flush";
-};
+export type PluginFixedTabRegistration<Target extends JsonValue = never> =
+  ExperimentalPluginFixedTabReference<Target> & {
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    component: ComponentType<PluginNavPanelProps>;
+    /** `flush` lets the component own padding and scrolling. */
+    layout?: "padded" | "flush";
+  };
 
 /** A fixed tab with either no target or an owner-validated JSON target. */
 export type PluginFixedTabDeclaration =
@@ -792,6 +791,56 @@ export interface PluginSidebarThreadsState {
 export interface PluginProvidersState {
   status: "loading" | "ready" | "error";
   providers: readonly ProviderInfo[];
+}
+
+/**
+ * One TextMate token rule from the active code theme, in the shape VS Code
+ * theme files author it.
+ */
+export interface PluginCodeThemeTokenRule {
+  /** Scope(s) the rule paints; absent means the theme's base rule. */
+  scope?: string | readonly string[];
+  settings: {
+    /** `#rrggbb` or `#rrggbbaa`. */
+    foreground?: string;
+    background?: string;
+    /** Space-separated TextMate font styles, e.g. `"bold italic"`. */
+    fontStyle?: string;
+  };
+}
+
+/**
+ * The active code theme as a VS Code theme file: the same document BB's own
+ * highlighter renders from, so a plugin that embeds a third-party editor can
+ * translate it into that editor's theme format rather than guessing colors
+ * from CSS variables.
+ */
+export interface PluginCodeThemeData {
+  /** Registered theme name — a bundled Shiki name or a BB-registered id. */
+  name: string;
+  type: "light" | "dark";
+  /** Default editor foreground, as `#rrggbb[aa]`. */
+  fg: string;
+  /** Default editor background, as `#rrggbb[aa]`. */
+  bg: string;
+  /** VS Code workbench colors (`editor.background`, `editorCursor.foreground`, …). */
+  colors: Readonly<Record<string, string>>;
+  tokenColors: readonly PluginCodeThemeTokenRule[];
+}
+
+/**
+ * The code theme BB is currently rendering with (see
+ * {@link PluginSdkApp.experimental_useCodeTheme}). `mode` and `name` change
+ * the moment the user switches palette or light/dark; `theme` follows once
+ * the theme file resolves, and keeps the previous document until then so a
+ * consumer never has to paint an unthemed frame. Compare `theme.name` with
+ * `name` to tell a settled state from one still resolving.
+ */
+export interface PluginCodeThemeState {
+  mode: "light" | "dark";
+  name: string;
+  /** null only before the first theme file resolves. */
+  theme: PluginCodeThemeData | null;
 }
 
 /**
@@ -2065,6 +2114,13 @@ export interface PluginSdkApp {
    * see docs/api_to_audit.md.
    */
   experimental_useProviders(): PluginProvidersState;
+  /**
+   * The active code theme as a VS Code theme file (see
+   * {@link PluginCodeThemeState}), for a plugin that renders code with an
+   * engine of its own and needs BB's palette to reach it. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useCodeTheme(): PluginCodeThemeState;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

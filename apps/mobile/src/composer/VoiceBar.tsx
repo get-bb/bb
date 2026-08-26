@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -7,9 +7,16 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { Button } from "@/ui";
+import { haptic } from "@/lib/haptics";
+import { useTheme } from "@/theme";
+import { Button, Icon, Spinner } from "@/ui";
 import type { ComposerVoiceController } from "./useComposerVoice";
 import { VoiceWaveform } from "./VoiceWaveform";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** iOS: the filled circle symbols are the buttons. */
+const SYMBOL_BUTTON = 36;
+const SYMBOL_SIZE = 32;
 
 export type VoiceBarController = Pick<
   ComposerVoiceController,
@@ -20,9 +27,11 @@ export type VoiceBarController = Pick<
  * Replaces the footer while recording / transcribing (web `VoiceRecordingBar`):
  * cancel · the live sound-wave bars · confirm. While transcribing the bars
  * freeze and breathe (the web `animate-shine-icon`) and the confirm button
- * shows a spinner.
+ * shows a spinner. iOS draws the two buttons as the system's filled circle
+ * symbols (`xmark.circle.fill` / `arrow.up.circle.fill`).
  */
 export function VoiceBar({ voice }: { voice: VoiceBarController }) {
+  const { tokens } = useTheme();
   const transcribing = voice.state === "transcribing";
   const opacity = useSharedValue(1);
   useEffect(() => {
@@ -41,6 +50,16 @@ export function VoiceBar({ voice }: { voice: VoiceBarController }) {
     );
   }, [opacity, transcribing]);
   const breathe = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  const cancelLabel = transcribing
+    ? "Cancel transcription"
+    : "Cancel recording";
+  const stopLabel = transcribing
+    ? "Transcribing voice input"
+    : "Stop and transcribe";
+  const stop = () => {
+    haptic("impact-medium");
+    void voice.stop();
+  };
 
   return (
     <View
@@ -49,35 +68,75 @@ export function VoiceBar({ voice }: { voice: VoiceBarController }) {
       accessibilityLabel={transcribing ? "Transcribing" : "Recording"}
       testID="composer-voice-bar"
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        icon="X"
-        className="rounded-full"
-        accessibilityLabel={
-          transcribing ? "Cancel transcription" : "Cancel recording"
-        }
-        onPress={voice.cancel}
-        testID="composer-voice-cancel"
-      />
+      {IS_IOS ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={cancelLabel}
+          hitSlop={4}
+          onPress={voice.cancel}
+          className="items-center justify-center active:opacity-60"
+          style={{ width: SYMBOL_BUTTON, height: SYMBOL_BUTTON }}
+          testID="composer-voice-cancel"
+        >
+          <Icon
+            name="CircleX"
+            symbol="xmark.circle.fill"
+            size={SYMBOL_SIZE}
+            color={tokens.mutedForeground}
+          />
+        </Pressable>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          icon="X"
+          className="rounded-full"
+          accessibilityLabel={cancelLabel}
+          onPress={voice.cancel}
+          testID="composer-voice-cancel"
+        />
+      )}
       <Animated.View
         style={[{ flex: 1, minWidth: 0, height: 28 }, breathe]}
         testID="composer-voice-waveform"
       >
         <VoiceWaveform readLevel={voice.readLevel} active={!transcribing} />
       </Animated.View>
-      <Button
-        size="icon"
-        icon="Check"
-        className="rounded-full"
-        accessibilityLabel={
-          transcribing ? "Transcribing voice input" : "Stop and transcribe"
-        }
-        loading={transcribing}
-        haptic
-        onPress={() => void voice.stop()}
-        testID="composer-voice-stop"
-      />
+      {IS_IOS ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={stopLabel}
+          accessibilityState={{ busy: transcribing }}
+          hitSlop={4}
+          disabled={transcribing}
+          onPress={stop}
+          className="items-center justify-center active:opacity-60"
+          style={{ width: SYMBOL_BUTTON, height: SYMBOL_BUTTON }}
+          testID="composer-voice-stop"
+        >
+          {transcribing ? (
+            <Spinner color={tokens.primary} />
+          ) : (
+            <Icon
+              name="ArrowUp"
+              symbol="arrow.up.circle.fill"
+              size={SYMBOL_SIZE}
+              color={tokens.primary}
+            />
+          )}
+        </Pressable>
+      ) : (
+        <Button
+          size="icon"
+          icon="Check"
+          className="rounded-full"
+          accessibilityLabel={stopLabel}
+          loading={transcribing}
+          haptic
+          onPress={() => void voice.stop()}
+          testID="composer-voice-stop"
+        />
+      )}
     </View>
   );
 }

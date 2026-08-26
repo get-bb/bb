@@ -12,6 +12,40 @@ const WEB_THEME_CSS = readFileSync(
   join(MOBILE_ROOT, "..", "app", "src", "components", "ui", "theme.css"),
   "utf8",
 );
+const MOBILE_OVERRIDES_CSS = readFileSync(
+  join(HERE, "mobile-overrides.css"),
+  "utf8",
+);
+
+/**
+ * Tokens that exist only in src/theme/mobile-overrides.css, with no web
+ * counterpart (the generator lists them in theme.native.ts's header). Adding
+ * one is deliberate: declare it in both modes of the override file, map it in
+ * global.css (`--color-<name>: var(--<name>)`), and add it here and to
+ * MOBILE_ONLY_COLOR_UTILITIES. If theme.css later grows the same name, drop
+ * it from this set — the web then owns it.
+ */
+const MOBILE_ONLY_TOKENS = new Set(["surface-grouped", "surface-grouped-cell"]);
+
+/**
+ * `--color-*` utilities global.css exposes beyond the web `@theme inline`
+ * list: the anchors, the sidebar search match, the pill chrome, the shadow
+ * color (all theme.css tokens the web has no class for) and the mobile-only
+ * grouped-list surfaces.
+ */
+const MOBILE_ONLY_COLOR_UTILITIES = new Set([
+  "canvas",
+  "ink",
+  "pill-foreground",
+  "pill-icon",
+  "pill-surface-border",
+  "pill-surface-selected-border",
+  "sidebar-search-match",
+  "sidebar-search-match-border",
+  "shadow-color",
+  "surface-grouped",
+  "surface-grouped-cell",
+]);
 
 /** `--color-x: var(--y)` pairs inside every `@theme inline` block. */
 function colorMappings(css: string): Map<string, string> {
@@ -36,13 +70,23 @@ function declaredVars(css: string): Set<string> {
 describe("theme vars", () => {
   const tokens = nativeThemes.default.light;
 
-  it("maps every generated token key back to a theme.css custom property", () => {
+  it("maps every generated token key to a theme.css property or a documented mobile-only one", () => {
     const webVars = declaredVars(WEB_THEME_CSS);
-    for (const key of Object.keys(tokens)) {
-      const cssVar = tokenKeyToCssVar(key);
-      expect(cssVar.startsWith("--")).toBe(true);
-      expect(webVars.has(cssVar.slice(2)), `${key} → ${cssVar}`).toBe(true);
+    const mobileVars = declaredVars(MOBILE_OVERRIDES_CSS);
+    for (const name of MOBILE_ONLY_TOKENS) {
+      expect(mobileVars.has(name), `--${name} in mobile-overrides.css`).toBe(
+        true,
+      );
+      expect(
+        webVars.has(name),
+        `--${name} is now in theme.css; drop it from MOBILE_ONLY_TOKENS`,
+      ).toBe(false);
     }
+    const generatedMobileOnly = Object.keys(tokens)
+      .map((key) => tokenKeyToCssVar(key).slice(2))
+      .filter((name) => !webVars.has(name))
+      .sort();
+    expect(generatedMobileOnly).toEqual([...MOBILE_ONLY_TOKENS].sort());
   });
 
   it("handles the digit-bearing ansi names", () => {
@@ -77,6 +121,9 @@ describe("theme vars", () => {
         `--color-${utility} → --${cssVar}`,
       ).toBe(true);
     }
+    // Anything beyond the web list is deliberate and documented above.
+    const extra = [...mobile.keys()].filter((utility) => !web.has(utility));
+    expect(extra.sort()).toEqual([...MOBILE_ONLY_COLOR_UTILITIES].sort());
   });
 
   it("global.css radii and type scale match the generated native values", () => {
@@ -89,6 +136,8 @@ describe("theme vars", () => {
     expect(px("radius-md")).toBe(nativeRadii.md);
     expect(px("radius-lg")).toBe(nativeRadii.lg);
     expect(px("radius-xl")).toBe(nativeRadii.xl);
+    expect(px("radius-2xl")).toBe(nativeRadii.xl2);
+    expect(px("radius-full")).toBe(nativeRadii.full);
     // Line heights are `calc(lineHeight / fontSize)` ratios (see the comment
     // in global.css: a px value inside Tailwind's `var(--tw-leading, …)`
     // fallback is treated as an em multiplier by react-native-css).

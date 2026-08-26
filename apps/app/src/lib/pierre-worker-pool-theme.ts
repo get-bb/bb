@@ -1,24 +1,11 @@
 import { useEffect } from "react";
 import { registerCustomTheme } from "@pierre/diffs";
 import type { WorkerPoolManager } from "@pierre/diffs/worker";
-import { stampRegisteredThemeName } from "@bb/domain";
+import { registerResolvedCodeThemeFiles } from "@/lib/code-theme-registration";
 import {
-  getResolvedCodeTheme,
   useResolvedCodeTheme,
   useResolvedCodeThemePair,
 } from "@/lib/code-theme";
-
-const registeredFileNames = new Set<string>();
-
-function registerResolvedCodeThemeFiles(): void {
-  const resolved = getResolvedCodeTheme();
-  for (const [name, theme] of Object.entries(resolved.files)) {
-    if (registeredFileNames.has(name)) continue;
-    registeredFileNames.add(name);
-    const stamped = stampRegisteredThemeName(name, theme);
-    registerCustomTheme(name, () => Promise.resolve(stamped));
-  }
-}
 
 export interface CodeThemePair {
   dark: string;
@@ -56,10 +43,10 @@ export function useSyncPierreWorkerPoolTheme(
   constructedTheme: CodeThemePair,
 ): void {
   const resolved = useResolvedCodeTheme();
-  registerResolvedCodeThemeFiles();
+  registerResolvedCodeThemeFiles(registerCustomTheme);
   const theme = useResolvedCodeThemePair();
   useEffect(() => {
-    registerResolvedCodeThemeFiles();
+    registerResolvedCodeThemeFiles(registerCustomTheme);
     if (pool == null) return;
     const applied = appliedThemeByPool.get(pool) ?? constructedTheme;
     if (!appliedThemeByPool.has(pool)) {

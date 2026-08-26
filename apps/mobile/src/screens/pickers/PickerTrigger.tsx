@@ -3,6 +3,8 @@ import { Pressable, View } from "react-native";
 import { useTheme } from "@/theme";
 import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 interface PickerTriggerProps {
   label: string;
   /** Leading glyph. */
@@ -11,6 +13,7 @@ interface PickerTriggerProps {
   leading?: ReactNode;
   /** Muted second segment after the label (e.g. reasoning level). */
   detail?: string;
+  /** Presents the picker sheet. */
   onPress?: () => void;
   disabled?: boolean;
   /** Replaces the chevron with a spinner (catalog still loading). */
@@ -20,6 +23,7 @@ interface PickerTriggerProps {
   /**
    * `ghost` (default): borderless, for the composer's pill rows. `outline`:
    * the bordered pill for pickers that stand alone on a settings screen.
+   * On iOS both render as a `secondary` capsule (the option-pill look).
    */
   variant?: "ghost" | "outline";
   testID?: string;
@@ -29,9 +33,12 @@ interface PickerTriggerProps {
 
 /**
  * The composer's control pill: a compact pressable that opens a picker
- * sheet. Mirrors the web prompt-box option triggers (icon · label · chevron)
- * at touch size (36px). Ghost by default so a row of them reads as one
- * quiet line under the prompt.
+ * sheet (icon · label · chevron). iOS: a 32pt `secondary` capsule with
+ * subheadline copy and the `chevron.up.chevron.down` menu glyph; Android:
+ * the 36px ghost/outline pill mirroring the web prompt-box option triggers.
+ * The pill shows text, so it is never the trigger of a `NativeMenu` (whose
+ * iOS host hides the wrapped subtree from VoiceOver); the tap presents the
+ * picker's sheet on both platforms.
  */
 export function PickerTrigger({
   label,
@@ -65,9 +72,16 @@ export function PickerTrigger({
       onPress={onPress}
       testID={testID}
       className={cn(
-        "h-9 max-w-[220px] flex-row items-center gap-1.5 rounded-full px-2.5",
-        variant === "outline" && "border border-pill-surface-border bg-secondary",
-        interactive && "active:bg-state-hover",
+        "max-w-[220px] flex-row items-center gap-1.5 rounded-full",
+        IS_IOS
+          ? "h-8 bg-secondary px-3"
+          : cn(
+              "h-9 px-2.5",
+              variant === "outline" &&
+                "border border-pill-surface-border bg-secondary",
+            ),
+        interactive &&
+          (IS_IOS ? "active:bg-state-active" : "active:bg-state-hover"),
         disabled && "opacity-50",
       )}
     >
@@ -91,7 +105,14 @@ export function PickerTrigger({
       {loading ? (
         <Spinner size="small" color={tokens.mutedForeground} />
       ) : interactive ? (
-        <Icon name="ChevronDown" size={14} color={tokens.mutedForeground} />
+        <Icon
+          name="ChevronDown"
+          // The iOS menu-button glyph (the `chevron.up.chevron.down` pair).
+          symbol="chevron.up.chevron.down"
+          size={IS_IOS ? 11 : 14}
+          weight="semibold"
+          color={tokens.mutedForeground}
+        />
       ) : null}
     </Pressable>
   );

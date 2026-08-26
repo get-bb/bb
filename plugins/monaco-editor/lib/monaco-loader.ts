@@ -152,8 +152,14 @@ export function overflowWidgetsNode(): HTMLElement {
   return node;
 }
 
-/** Keeps the overflow host on the same Monaco theme as the editors. */
-export function setOverflowWidgetsTheme(theme: "vs" | "vs-dark"): void {
+/**
+ * Keeps the overflow host on the same Monaco theme as the editors.
+ *
+ * Only the base matters: Monaco emits one global stylesheet for the active
+ * theme and keys the light/dark half of it on `vs` / `vs-dark`, so a custom
+ * theme's own name never appears in a class list.
+ */
+export function setOverflowWidgetsTheme(base: "vs" | "vs-dark"): void {
   const node = document.getElementById(OVERFLOW_NODE_ID);
-  if (node !== null) node.className = `monaco-editor ${theme}`;
+  if (node !== null) node.className = `monaco-editor ${base}`;
 }

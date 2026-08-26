@@ -21,10 +21,21 @@ import {
 } from "react";
 import { Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { withAlpha } from "@/markdown/colors";
 import { useTheme } from "@/theme/ThemeProvider";
 import { scrimBaseColor } from "@/theme/scrim";
+import { cn } from "./cn";
 import { Text } from "./Text";
 import { useDeferredRealization } from "./useDeferredRealization";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+
+/** Top corner radius: the UIKit sheet radius on iOS, the Material one elsewhere. */
+export const SHEET_CORNER_RADIUS = IS_IOS ? 38 : 12;
+/** Grabber metrics (UISheetPresentationController). */
+const GRABBER_WIDTH = 36;
+const GRABBER_HEIGHT = 5;
+const GRABBER_ALPHA = 0.3;
 
 /** Imperative handle a mounted `<Sheet>` registers with its controller. */
 export interface SheetHandle {
@@ -71,6 +82,8 @@ export const SheetPresenceContext = createContext<{
   onPresenceChange: (open: boolean) => void;
 } | null>(null);
 
+export type SheetSurface = "raised" | "grouped";
+
 export interface SheetProps extends Pick<
   BottomSheetModalProps,
   | "snapPoints"
@@ -83,7 +96,7 @@ export interface SheetProps extends Pick<
 > {
   controller: SheetController;
   children: ReactNode;
-  /** Optional header title (semibold, with a bottom hairline). */
+  /** Optional centered title row (headline). */
   title?: string;
   /**
    * `view` (default) sizes to content; `scroll` puts children in a
@@ -91,6 +104,12 @@ export interface SheetProps extends Pick<
    * BottomSheetFlatList/SectionList bodies.
    */
   layout?: "view" | "scroll" | "custom";
+  /**
+   * `raised` (default): the lifted surface, rows sit directly on it.
+   * `grouped`: the grouped page color, for bodies made of inset cards
+   * (`ActionSheet`, `GroupedSection`) that need to stand out from it.
+   */
+  surface?: SheetSurface;
   /** Called when the sheet finishes presenting/dismissing (index ≥ 0 = open). */
   onOpenChange?: (open: boolean) => void;
   /**
@@ -101,16 +120,18 @@ export interface SheetProps extends Pick<
 }
 
 /**
- * Bottom sheet built on @gorhom/bottom-sheet. Content is realized two frames
- * after presenting so the slide-in starts on an empty body, and retained
- * afterwards (the web persistent drawer contract). Requires `<SheetProvider>`
- * up the tree.
+ * Bottom sheet built on @gorhom/bottom-sheet, styled like a UIKit sheet:
+ * large continuous top corners, no outline, a translucent grabber, the
+ * raised surface color. Content is realized two frames after presenting so
+ * the slide-in starts on an empty body, and retained afterwards (the web
+ * persistent drawer contract). Requires `<SheetProvider>` up the tree.
  */
 export function Sheet({
   controller,
   children,
   title,
   layout = "view",
+  surface = "raised",
   snapPoints,
   enableDynamicSizing,
   maxDynamicContentSize,
@@ -122,7 +143,7 @@ export function Sheet({
   deferContent = true,
 }: SheetProps) {
   const modalRef = useRef<BottomSheetModal>(null);
-  const { tokens, radii, mode } = useTheme();
+  const { tokens, mode } = useTheme();
   const scrimColor = scrimBaseColor(mode, tokens);
   const insets = useSafeAreaInsets();
   const [presented, setPresented] = useState(false);
@@ -167,27 +188,36 @@ export function Sheet({
   );
 
   const dynamic = enableDynamicSizing ?? snapPoints === undefined;
+  const surfaceColor =
+    surface === "grouped" ? tokens.surfaceGrouped : tokens.surfaceRaisedSolid;
   const backgroundStyle = useMemo(
     () => ({
-      backgroundColor: tokens.popover,
-      borderTopLeftRadius: radii.xl,
-      borderTopRightRadius: radii.xl,
-      borderWidth: 1,
-      borderColor: tokens.border,
+      backgroundColor: surfaceColor,
+      borderTopLeftRadius: SHEET_CORNER_RADIUS,
+      borderTopRightRadius: SHEET_CORNER_RADIUS,
+      borderCurve: "continuous" as const,
     }),
-    [tokens, radii],
+    [surfaceColor],
   );
   const handleIndicatorStyle = useMemo(
-    () => ({ backgroundColor: tokens.input, width: 36 }),
+    () => ({
+      backgroundColor: withAlpha(tokens.foreground, GRABBER_ALPHA),
+      width: GRABBER_WIDTH,
+      height: GRABBER_HEIGHT,
+      borderRadius: GRABBER_HEIGHT / 2,
+    }),
     [tokens],
   );
 
   const header = title ? (
     <View
-      className="border-b border-border-hairline px-4 pb-3 pt-1"
-      style={{ backgroundColor: tokens.popover }}
+      className={cn("items-center px-4 pb-3 pt-1", !IS_IOS && "border-b")}
+      style={{
+        backgroundColor: surfaceColor,
+        borderColor: tokens.borderHairline,
+      }}
     >
-      <Text variant="heading" numberOfLines={1}>
+      <Text variant="heading" numberOfLines={1} className="text-center">
         {title}
       </Text>
     </View>

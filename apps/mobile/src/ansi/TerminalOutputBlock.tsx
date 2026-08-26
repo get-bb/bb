@@ -30,11 +30,16 @@ export interface TerminalOutputBlockProps {
   testID?: string;
 }
 
+/** Card corners: continuous 10pt, the grouped-card radius. */
+const CARD_STYLE = { borderRadius: 10, borderCurve: "continuous" } as const;
+
 /**
  * Command card mirroring the web `TerminalOutputBlock`: command line,
  * metadata, ANSI-colored output in a horizontally scrolling monospace block
  * that collapses to its tail with an "N earlier lines" toggle, exit code.
- * The web dims the whole card to 70%; so does this one.
+ * The web dims the whole card to 70%; here the card stays opaque and the
+ * secondary text tiers carry the recession (a translucent card washes out
+ * over the timeline background).
  */
 export const TerminalOutputBlock = memo(function TerminalOutputBlock({
   output,
@@ -65,7 +70,7 @@ export const TerminalOutputBlock = memo(function TerminalOutputBlock({
         "overflow-hidden rounded-lg border border-border bg-card",
         className,
       )}
-      style={{ opacity: 0.7 }}
+      style={CARD_STYLE}
       testID={testID}
       accessibilityState={streaming ? { busy: true } : undefined}
     >
@@ -82,6 +87,7 @@ export const TerminalOutputBlock = memo(function TerminalOutputBlock({
               variant="mono"
               className="text-xs text-foreground"
               numberOfLines={commandExpanded ? undefined : 2}
+              selectable
               testID={testID ? `${testID}-command` : undefined}
             >
               {commandLine}
@@ -130,6 +136,7 @@ export const TerminalOutputBlock = memo(function TerminalOutputBlock({
                     fontSize={TERMINAL_FONT_SIZE}
                     lineHeight={TERMINAL_LINE_HEIGHT}
                     numberOfLines={1}
+                    selectable
                   />
                 ))}
               </View>
@@ -155,6 +162,7 @@ export const TerminalOutputBlock = memo(function TerminalOutputBlock({
               "text-xs text-muted-foreground",
               (hasOutput || commandLine) && "mt-1.5",
             )}
+            numeric
             testID={testID ? `${testID}-exit-code` : undefined}
           >
             exit code {exitCode}

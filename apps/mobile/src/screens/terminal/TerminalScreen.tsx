@@ -1,7 +1,7 @@
 import type { TerminalSession } from "@bb/server-contract";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Alert, Pressable, View } from "react-native";
 import {
   useCloseTerminal,
   useCreateTerminal,
@@ -12,27 +12,33 @@ import {
 import { useTheme } from "@/theme";
 import { useProfiles } from "@/app-shell/ProfilesProvider";
 import {
-  EmptyStatePanel,
+  confirmDestructive,
   Icon,
   KeyboardPaddingView,
   ListRow,
   Separator,
+  sfSymbolFor,
   Sheet,
   Text,
   toast,
   useSheet,
-  type IconName,
+  type NativeMenuAction,
   type SheetController,
 } from "@/ui";
 import { ConnectionBanner } from "../shell/ConnectionBanner";
 import { threadTerminalHref } from "../shell/hrefs";
+import { ScreenTitle } from "../shell/ScreenTitle";
 import { SheetNameForm } from "../sidebar/SheetNameForm";
 import { TerminalTabContent } from "./TerminalTabContent";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 /**
  * `/threads/[id]/terminal/[terminalId]`: one terminal full screen (any
- * orientation). Header: the session title (tap → rename), a "…" menu with
- * rename / restart / new terminal / close.
+ * orientation). Header: the session title and a "…" menu with rename /
+ * restart / new terminal / close — a native toolbar menu on iOS (rename
+ * through the system prompt, close through the destructive confirmation),
+ * a sheet with the same rows on Android.
  */
 export function TerminalScreen() {
   // The route can be restored before a profile is active (cold start on the
@@ -47,10 +53,12 @@ export function TerminalScreen() {
       <>
         <Stack.Screen options={{ title: "Terminal" }} />
         <View
-          className="flex-1 justify-center bg-background p-4"
+          className="flex-1 justify-center bg-background p-6"
           testID="terminal-screen"
         >
-          <EmptyStatePanel>No active server.</EmptyStatePanel>
+          <Text variant="footnote" tone="muted" className="text-center">
+            No active server.
+          </Text>
         </View>
       </>
     );
@@ -77,8 +85,9 @@ function ConnectedTerminalScreen({
   const closeTerminal = useCloseTerminal();
   const createTerminal = useCreateTerminal();
   const renameTerminal = useRenameTerminal();
-  // One sheet with two views (menu / rename): presenting a second modal
-  // while the first dismisses leaves an empty backdrop on iOS.
+  // Android: one sheet with two views (menu / rename) — presenting a second
+  // modal while the first dismisses leaves an empty backdrop. iOS never
+  // mounts it (native menu + system prompt).
   const sheet = useSheet();
   const [sheetView, setSheetView] = useState<"menu" | "rename" | null>(null);
   const openMenu = useCallback(() => {
@@ -123,15 +132,57 @@ function ConnectedTerminalScreen({
       },
     );
   }, [closeTerminal, router, terminalId]);
+  const rename = useCallback(
+    (title: string) => {
+      if (!session) return;
+      renameTerminal.mutate({ terminalId: session.id, title });
+    },
+    [renameTerminal, session],
+  );
+  const promptRename = useCallback(() => {
+    if (!session) return;
+    if (process.env.EXPO_OS === "ios") {
+      // The system text-field alert, prefilled with the current title.
+      Alert.prompt(
+        "Rename terminal",
+        undefined,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Rename",
+            onPress: (title?: string) => {
+              const next = title?.trim() ?? "";
+              if (next.length > 0 && next !== session.title) rename(next);
+            },
+          },
+        ],
+        "plain-text",
+        session.title,
+      );
+      return;
+    }
+    setSheetView("rename");
+  }, [rename, session]);
 
   const running = session?.status === "running";
-  const actions: TerminalMenuAction[] = [
+  const confirmClose = useCallback(() => {
+    confirmDestructive({
+      title: running ? "Close this terminal?" : "Remove this terminal?",
+      message: running
+        ? "The shell and anything running in it will be killed."
+        : undefined,
+      actionLabel: running ? "Close" : "Remove",
+      onConfirm: handleClose,
+    });
+  }, [handleClose, running]);
+
+  const actions: NativeMenuAction[] = [
     {
       key: "rename",
       label: "Rename",
       icon: "Edit",
       disabled: !session,
-      onPress: () => setSheetView("rename"),
+      onPress: promptRename,
     },
     {
       key: "restart",
@@ -161,7 +212,7 @@ function ConnectedTerminalScreen({
       disabled: !session || closeTerminal.isPending,
       onPress: () => {
         sheet.dismiss();
-        handleClose();
+        confirmClose();
       },
     },
   ];
@@ -169,24 +220,61 @@ function ConnectedTerminalScreen({
   return (
     <>
       <Stack.Screen
-        options={{
-          title: session?.title ?? "Terminal",
-          orientation: "all",
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Terminal actions"
-              hitSlop={8}
-              onPress={openMenu}
-              testID="terminal-actions-button"
-            >
-              <Icon name="MoreHorizontal" size={22} color={tokens.foreground} />
-            </Pressable>
-          ),
-        }}
+        options={
+          IS_IOS
+            ? {
+                orientation: "all",
+                // Nothing scrolls under the bar (the xterm canvas fills the
+                // screen), so it stays opaque in the canvas color.
+                headerTransparent: false,
+                headerStyle: { backgroundColor: tokens.surfaceRaisedSolid },
+              }
+            : {
+                orientation: "all",
+                headerRight: () => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Terminal actions"
+                    hitSlop={8}
+                    onPress={openMenu}
+                    testID="terminal-actions-button"
+                  >
+                    <Icon
+                      name="MoreHorizontal"
+                      size={22}
+                      color={tokens.foreground}
+                    />
+                  </Pressable>
+                ),
+              }
+        }
       />
-      <View className="flex-1 bg-sidebar" testID="terminal-screen">
-        <ConnectionBanner />
+      <ScreenTitle>{session?.title ?? "Terminal"}</ScreenTitle>
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Menu
+            icon="ellipsis.circle"
+            accessibilityLabel="Terminal actions"
+          >
+            {actions.map((action) => (
+              <Stack.Toolbar.MenuAction
+                key={action.key}
+                icon={action.icon ? sfSymbolFor(action.icon) : undefined}
+                destructive={action.destructive}
+                disabled={action.disabled}
+                onPress={action.onPress}
+              >
+                {action.label}
+              </Stack.Toolbar.MenuAction>
+            ))}
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : null}
+      <View
+        style={{ flex: 1, backgroundColor: tokens.surfaceRaisedSolid }}
+        testID="terminal-screen"
+      >
+        <ConnectionBanner inset />
         <KeyboardPaddingView style={{ flex: 1 }}>
           <TerminalTabContent
             terminalId={terminalId}
@@ -194,55 +282,50 @@ function ConnectedTerminalScreen({
             onRestart={handleRestart}
             onStartNew={threadId ? handleStartNew : undefined}
             restartPending={restartTerminal.isPending}
-            onMenu={openMenu}
+            onMenu={IS_IOS ? undefined : openMenu}
+            menuActions={IS_IOS ? actions : undefined}
             visible={!sheetOpen}
           />
         </KeyboardPaddingView>
       </View>
-      <Sheet
-        controller={sheet}
-        deferContent={false}
-        onOpenChange={(open) => {
-          if (!open) setSheetView(null);
-        }}
-      >
-        <TerminalActionsSheetBody
-          view={sheetView}
-          session={session ?? null}
-          actions={actions}
-          renamePending={renameTerminal.isPending}
-          onRename={(title) => {
-            if (!session) return;
-            renameTerminal.mutate(
-              { terminalId: session.id, title },
-              { onSettled: () => sheet.dismiss() },
-            );
+      {IS_IOS ? null : (
+        <Sheet
+          controller={sheet}
+          deferContent={false}
+          onOpenChange={(open) => {
+            if (!open) setSheetView(null);
           }}
-          sheet={sheet}
-        />
-      </Sheet>
+        >
+          <TerminalActionsSheetBody
+            view={sheetView}
+            session={session ?? null}
+            actions={actions}
+            renamePending={renameTerminal.isPending}
+            onRename={(title) => {
+              if (!session) return;
+              renameTerminal.mutate(
+                { terminalId: session.id, title },
+                { onSettled: () => sheet.dismiss() },
+              );
+            }}
+            sheet={sheet}
+          />
+        </Sheet>
+      )}
     </>
   );
-}
-
-interface TerminalMenuAction {
-  key: string;
-  label: string;
-  icon: IconName;
-  destructive?: boolean;
-  disabled?: boolean;
-  onPress: () => void;
 }
 
 interface TerminalActionsSheetBodyProps {
   view: "menu" | "rename" | null;
   session: TerminalSession | null;
-  actions: readonly TerminalMenuAction[];
+  actions: readonly NativeMenuAction[];
   renamePending: boolean;
   onRename: (title: string) => void;
   sheet: SheetController;
 }
 
+/** Android: the "…" sheet's rows, or the rename form once Rename was picked. */
 function TerminalActionsSheetBody({
   view,
   session,

@@ -25,9 +25,9 @@ env:
     visible:
       id: "thread-detail-header"
     timeout: 30000
-# Workspace panel → Files launcher.
-- tapOn:
-    id: "thread-panel-button"
+# Workspace panel (the header's toolbar item, tapped by its accessibility
+# label) → Files launcher.
+- tapOn: "Workspace panel"
 - extendedWaitUntil:
     visible:
       id: "panel-tab-files"
@@ -66,9 +66,9 @@ env:
     timeout: 30000
 - assertVisible: "Mobile E2E Project"
 - takeScreenshot: phase6-files-readme-preview
-# Source view + jump to line 60.
-- tapOn:
-    id: "file-preview-mode-source"
+# Source view (the Preview / Source segmented control's second segment) +
+# jump to line 60 through the panel's sheet field.
+- tapOn: "Source"
 - extendedWaitUntil:
     visible:
       id: "file-preview-lines"
@@ -118,7 +118,8 @@ env:
 - assertVisible: "Build the files tab"
 - takeScreenshot: phase6-files-storage-preview
 # Close the panel (tap the backdrop), then the full-screen preview route by
-# deep link: highlighted line 12 of src/app.ts.
+# deep link: highlighted line 12 of src/app.ts. The file name is the native
+# navigation title there.
 - tapOn:
     point: "50%,8%"
 - extendedWaitUntil:
@@ -127,9 +128,7 @@ env:
     timeout: 10000
 - openLink: "bb://threads/${THREAD_ID}/files?kind=workspace&path=src%2Fapp.ts&line=12"
 - extendedWaitUntil:
-    visible:
-      id: "file-preview-name"
-      text: "app.ts"
+    visible: "app.ts"
     timeout: 30000
 - extendedWaitUntil:
     visible:

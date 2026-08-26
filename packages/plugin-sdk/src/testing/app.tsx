@@ -19,6 +19,7 @@ import {
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginCodeThemeState,
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
@@ -188,6 +189,7 @@ interface SlotEnv {
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
   providers: PluginProvidersState;
+  codeTheme: PluginCodeThemeState;
 }
 
 interface TestFixedTabTargetStore {
@@ -805,6 +807,9 @@ const testPluginSdkApp = {
   experimental_useProviders(): PluginProvidersState {
     return useSlotEnv("experimental_useProviders").providers;
   },
+  experimental_useCodeTheme(): PluginCodeThemeState {
+    return useSlotEnv("experimental_useCodeTheme").codeTheme;
+  },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },
@@ -1112,6 +1117,11 @@ export interface RenderSlotOptions<
    */
   providers?: Partial<PluginProvidersState>;
   /**
+   * The code theme `experimental_useCodeTheme()` reports. Omitted → a light
+   * mode with no resolved document, the state a plugin sees on first paint.
+   */
+  codeTheme?: Partial<PluginCodeThemeState>;
+  /**
    * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
    * by thread id. Omitted → every thread reports none.
    */
@@ -1362,6 +1372,11 @@ export function renderSlot<
     status: options.providers?.status ?? "ready",
     providers: options.providers?.providers ?? [],
   };
+  const codeTheme: PluginCodeThemeState = {
+    mode: options.codeTheme?.mode ?? "light",
+    name: options.codeTheme?.name ?? "pierre-light",
+    theme: options.codeTheme?.theme ?? null,
+  };
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
       sidebarActionCalls.push({
@@ -1555,6 +1570,7 @@ export function renderSlot<
     sidebarActionCalls,
     sidebarPullRequests,
     providers,
+    codeTheme,
   };
 
   const releaseComposerOwnership = (): void => {

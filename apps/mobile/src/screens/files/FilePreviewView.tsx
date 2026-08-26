@@ -1,6 +1,16 @@
 import type { FilePreviewLineRange } from "@bb/client-core";
+import { SegmentedControl } from "@expo/ui/community/segmented-control";
+import { Stack } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   buildFileLineSelectionText,
@@ -16,16 +26,17 @@ import {
   type FilePreviewContent,
 } from "@/data/files";
 import { copyWithToast } from "@/lib/clipboard";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
   Button,
   Icon,
-  Pill,
   Sheet,
   SheetTextInput,
   Text,
   toast,
+  useInputFieldProps,
   useSheet,
   type ActionSheetAction,
 } from "@/ui";
@@ -53,6 +64,8 @@ import {
 } from "./TextFilePreviewBody";
 import { useThreadLocalFileLinks } from "./use-thread-local-file-links";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 interface FilePreviewViewProps {
   /** Null for the root-compose panel (project files only). */
   threadId: string | null;
@@ -69,6 +82,14 @@ interface FilePreviewViewProps {
   onAddedToChat?: () => void;
   /** Rendered inside the workspace panel sheet: the markdown body uses the sheet-aware scroller. */
   inSheet?: boolean;
+  /**
+   * Who owns the chrome. `"inline"` (default) draws the name, path and
+   * actions in the body (the panel tab; Android). `"header"` — the iOS
+   * full-screen route — puts the actions in the navigation toolbar and
+   * keeps only the path line (plus the Preview / Source control) in the
+   * body; the route sets the file name as the navigation title.
+   */
+  chrome?: "inline" | "header";
   testID?: string;
 }
 
@@ -78,12 +99,68 @@ function initialViewMode(lineRange: FilePreviewLineRange | null): ViewMode {
   return lineRange === null ? "preview" : "source";
 }
 
+/** Preview / Source: the native segmented control on iOS, the pill toggle elsewhere. */
+function ViewModeToggle({
+  viewMode,
+  onChange,
+  style,
+}: {
+  viewMode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+  /** iOS only: the segmented control's frame in its row. */
+  style?: StyleProp<ViewStyle>;
+}) {
+  if (IS_IOS) {
+    return (
+      <SegmentedControl
+        values={["Preview", "Source"]}
+        selectedIndex={viewMode === "preview" ? 0 : 1}
+        onChange={(event) => {
+          haptic("selection");
+          onChange(
+            event.nativeEvent.selectedSegmentIndex === 1 ? "source" : "preview",
+          );
+        }}
+        style={style}
+        testID="file-preview-mode"
+      />
+    );
+  }
+  return (
+    <View className="flex-row self-start overflow-hidden rounded-md border border-border">
+      {(["preview", "source"] as const).map((mode) => (
+        <Pressable
+          key={mode}
+          accessibilityRole="button"
+          accessibilityState={{ selected: viewMode === mode }}
+          onPress={() => onChange(mode)}
+          className={
+            viewMode === mode
+              ? "bg-surface-selected px-2.5 py-1"
+              : "px-2.5 py-1 active:bg-state-hover"
+          }
+          testID={`file-preview-mode-${mode}`}
+        >
+          <Text
+            variant="chrome"
+            tone={viewMode === mode ? "foreground" : "muted"}
+          >
+            {mode === "preview" ? "Preview" : "Source"}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 /**
- * The file preview (full-screen route body and panel tab body): header
- * (name, source, size, tappable path, open-in-browser, jump-to-line,
- * preview/source toggle) over a body per content kind — code with line
- * numbers, markdown, CSV grid, HTML in a WebView, image, video hand-off,
- * and the loading / not-found / too-large / error / empty / binary states.
+ * The file preview (full-screen route body and panel tab body): a compact
+ * header (name, source, size, tappable path, Preview / Source, jump to
+ * line, open in browser, reload — or, with `chrome="header"`, the native
+ * toolbar and a single path line) over a body per content kind —
+ * code with line numbers, markdown, CSV grid, HTML in a WebView, image,
+ * video hand-off, and the loading / not-found / too-large / error / empty /
+ * binary states.
  */
 export function FilePreviewView({
   threadId,
@@ -95,6 +172,7 @@ export function FilePreviewView({
   lineRange,
   onAddedToChat,
   inSheet = false,
+  chrome = "inline",
   testID = "file-preview",
 }: FilePreviewViewProps) {
   const { tokens } = useTheme();
@@ -185,19 +263,47 @@ export function FilePreviewView({
     () => copyWithToast(target.path, "Path copied"),
     [target.path],
   );
+  const reload = useCallback(() => void query.refetch(), [query]);
 
   // Jump to line.
   const textBodyRef = useRef<TextFilePreviewBodyHandle>(null);
   const jumpSheet = useSheet();
   const [jumpValue, setJumpValue] = useState("");
+  const jumpField = useInputFieldProps({ className: IS_IOS ? "h-11" : "h-10" });
+  const goToLine = useCallback(
+    (raw: string) => {
+      const line = Number.parseInt(raw.trim(), 10);
+      if (!Number.isFinite(line) || line <= 0) return;
+      if (!showsLines) setViewMode("source");
+      // Let a mode switch mount the line list before scrolling.
+      setTimeout(() => textBodyRef.current?.scrollToLine(line), 50);
+    },
+    [showsLines],
+  );
   const jumpToLine = useCallback(() => {
-    const line = Number.parseInt(jumpValue.trim(), 10);
     jumpSheet.dismiss();
-    if (!Number.isFinite(line) || line <= 0) return;
-    if (!showsLines) setViewMode("source");
-    // Let a mode switch mount the line list before scrolling.
-    setTimeout(() => textBodyRef.current?.scrollToLine(line), 50);
-  }, [jumpSheet, jumpValue, showsLines]);
+    goToLine(jumpValue);
+  }, [goToLine, jumpSheet, jumpValue]);
+  const promptJumpToLine = useCallback(() => {
+    if (process.env.EXPO_OS === "ios" && chrome === "header") {
+      // The full-screen route asks through the system text-field alert;
+      // the panel keeps its sheet-stacked field (the sheet owns the keyboard).
+      Alert.prompt(
+        "Jump to line",
+        undefined,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go", onPress: (value?: string) => goToLine(value ?? "") },
+        ],
+        "plain-text",
+        "",
+        "number-pad",
+      );
+      return;
+    }
+    setJumpValue("");
+    jumpSheet.present();
+  }, [chrome, goToLine, jumpSheet]);
 
   // Long-pressed line → actions.
   const lineMenu = useSheet();
@@ -268,7 +374,7 @@ export function FilePreviewView({
         <FilePreviewMessage
           title="File not found."
           detail={target.path}
-          onRetry={() => void query.refetch()}
+          onRetry={reload}
           testID="file-preview-not-found"
         />
       );
@@ -288,7 +394,7 @@ export function FilePreviewView({
         <FilePreviewMessage
           title="Could not load this file."
           detail={content.message}
-          onRetry={() => void query.refetch()}
+          onRetry={reload}
           testID="file-preview-error"
         />
       );
@@ -377,136 +483,173 @@ export function FilePreviewView({
       break;
   }
 
+  const headerStyle = [
+    styles.header,
+    { borderBottomColor: tokens.borderHairline },
+  ];
+  const sizeText = sizeLabel ? (
+    <Text variant="footnote" tone="subtle" numeric testID="file-preview-size">
+      {sizeLabel}
+    </Text>
+  ) : null;
+
   return (
     <View className="flex-1 bg-background" testID={testID}>
-      <View className="gap-2 border-b border-border px-4 pb-2 pt-2">
-        <View className="flex-row items-center gap-2">
-          <Icon name="FileText" size={18} color={tokens.mutedForeground} />
-          <Text
-            variant="title"
-            className="min-w-0 flex-1"
-            numberOfLines={1}
-            testID="file-preview-name"
-          >
-            {name}
-          </Text>
-          <Pill size="sm" variant="outline">
-            {describeFilePreviewTargetSource(target)}
-          </Pill>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Copy path"
-          onPress={copyPath}
-          className="flex-row items-center gap-1 active:opacity-70"
-          testID="file-preview-path"
-        >
-          <Text
-            variant="caption"
-            mono
-            numberOfLines={1}
-            className="min-w-0 flex-1"
-          >
-            {target.path}
-          </Text>
-          <Icon name="Copy" size={12} color={tokens.mutedForeground} />
-        </Pressable>
-        <View className="flex-row items-center gap-2">
-          {sizeLabel ? (
-            <Text variant="caption" testID="file-preview-size">
-              {sizeLabel}
-            </Text>
-          ) : null}
-          <View className="flex-1" />
-          {hasSourceToggle ? (
-            <View className="flex-row overflow-hidden rounded-md border border-border">
-              {(["preview", "source"] as const).map((mode) => (
-                <Pressable
-                  key={mode}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: viewMode === mode }}
-                  onPress={() => setViewMode(mode)}
-                  className={
-                    viewMode === mode
-                      ? "bg-surface-selected px-2.5 py-1"
-                      : "px-2.5 py-1 active:bg-state-hover"
-                  }
-                  testID={`file-preview-mode-${mode}`}
-                >
-                  <Text
-                    variant="chrome"
-                    tone={viewMode === mode ? "foreground" : "muted"}
-                  >
-                    {mode === "preview" ? "Preview" : "Source"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {sourceText !== null ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="Target"
-              accessibilityLabel="Jump to line"
-              onPress={() => {
-                setJumpValue("");
-                jumpSheet.present();
-              }}
-              testID="file-preview-jump"
+      {chrome === "header" ? (
+        <>
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Button
+              icon="arrow.clockwise"
+              accessibilityLabel="Reload"
+              disabled={query.isFetching}
+              onPress={reload}
+            />
+            <Stack.Toolbar.Menu
+              icon="ellipsis.circle"
+              accessibilityLabel="File actions"
             >
-              Line
-            </Button>
-          ) : null}
-          {externalUrl !== null ? (
+              {externalUrl !== null ? (
+                <Stack.Toolbar.MenuAction
+                  icon="safari"
+                  onPress={openExternally}
+                >
+                  Open in browser
+                </Stack.Toolbar.MenuAction>
+              ) : null}
+              <Stack.Toolbar.MenuAction icon="doc.on.doc" onPress={copyPath}>
+                Copy path
+              </Stack.Toolbar.MenuAction>
+              {sourceText !== null ? (
+                <Stack.Toolbar.MenuAction
+                  icon="list.number"
+                  onPress={promptJumpToLine}
+                >
+                  Jump to line…
+                </Stack.Toolbar.MenuAction>
+              ) : null}
+            </Stack.Toolbar.Menu>
+          </Stack.Toolbar>
+          <View style={headerStyle}>
+            <View className="flex-row items-center gap-3">
+              <Text
+                variant="footnote"
+                tone="muted"
+                mono
+                selectable
+                numberOfLines={1}
+                className="min-w-0 flex-1"
+                testID="file-preview-path"
+              >
+                {target.path}
+              </Text>
+              {sizeText}
+            </View>
+            {hasSourceToggle ? (
+              <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <View style={headerStyle}>
+          <View className="flex-row items-center gap-2">
+            <Icon name="FileText" size={18} color={tokens.mutedForeground} />
+            <Text
+              variant="headline"
+              className="min-w-0 flex-1"
+              numberOfLines={1}
+              testID="file-preview-name"
+            >
+              {name}
+            </Text>
+            <Text variant="footnote" tone="muted">
+              {describeFilePreviewTargetSource(target)}
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-3">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Copy path"
+              onPress={copyPath}
+              className="min-w-0 flex-1 flex-row items-center gap-1.5 active:opacity-60"
+              testID="file-preview-path"
+            >
+              <Text
+                variant="footnote"
+                tone="muted"
+                mono
+                numberOfLines={1}
+                className="min-w-0 shrink"
+              >
+                {target.path}
+              </Text>
+              <Icon name="Copy" size={13} color={tokens.subtleForeground} />
+            </Pressable>
+            {sizeText}
+          </View>
+          <View className="flex-row items-center gap-1">
+            {hasSourceToggle ? (
+              <ViewModeToggle
+                viewMode={viewMode}
+                onChange={setViewMode}
+                style={styles.segmented}
+              />
+            ) : null}
+            <View className="flex-1" />
+            {sourceText !== null ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="Target"
+                accessibilityLabel="Jump to line"
+                onPress={promptJumpToLine}
+                testID="file-preview-jump"
+              >
+                Line
+              </Button>
+            ) : null}
+            {externalUrl !== null ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                icon="ExternalLink"
+                accessibilityLabel="Open in browser"
+                onPress={openExternally}
+                testID="file-preview-open-external"
+              />
+            ) : null}
             <Button
               variant="ghost"
               size="icon"
-              icon="ExternalLink"
-              accessibilityLabel="Open in browser"
-              onPress={openExternally}
-              testID="file-preview-open-external"
+              icon="RotateCcw"
+              accessibilityLabel="Reload"
+              loading={query.isFetching && !query.isLoading}
+              onPress={reload}
+              testID="file-preview-refresh"
             />
-          ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            icon="RotateCcw"
-            accessibilityLabel="Reload"
-            loading={query.isFetching && !query.isLoading}
-            onPress={() => void query.refetch()}
-            testID="file-preview-refresh"
-          />
+          </View>
         </View>
-      </View>
+      )}
       <View className="flex-1">{body}</View>
-      <Sheet controller={jumpSheet} title="Jump to line" stackBehavior="push">
-        <View className="gap-3 px-4 pb-2">
-          <SheetTextInput
-            value={jumpValue}
-            onChangeText={setJumpValue}
-            keyboardType="number-pad"
-            returnKeyType="go"
-            onSubmitEditing={jumpToLine}
-            placeholder="Line number"
-            placeholderTextColor={tokens.mutedForeground}
-            autoFocus
-            style={{
-              height: 40,
-              borderWidth: 1,
-              borderColor: tokens.input,
-              borderRadius: 6,
-              paddingHorizontal: 12,
-              color: tokens.foreground,
-              fontSize: 16,
-            }}
-            testID="file-preview-jump-input"
-          />
-          <Button onPress={jumpToLine} testID="file-preview-jump-submit">
-            Go
-          </Button>
-        </View>
-      </Sheet>
+      {chrome === "inline" ? (
+        <Sheet controller={jumpSheet} title="Jump to line" stackBehavior="push">
+          <View className="gap-3 px-4 pb-2">
+            <SheetTextInput
+              value={jumpValue}
+              onChangeText={setJumpValue}
+              keyboardType="number-pad"
+              returnKeyType="go"
+              onSubmitEditing={jumpToLine}
+              placeholder="Line number"
+              autoFocus
+              {...jumpField}
+              testID="file-preview-jump-input"
+            />
+            <Button onPress={jumpToLine} testID="file-preview-jump-submit">
+              Go
+            </Button>
+          </View>
+        </Sheet>
+      ) : null}
       <ActionSheet
         controller={lineMenu}
         title={menuLine === null ? undefined : `Line ${menuLine}`}
@@ -517,3 +660,15 @@ export function FilePreviewView({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  /** The inline header's segmented control shares its row with the action buttons. */
+  segmented: { flex: 1, maxWidth: 200 },
+});

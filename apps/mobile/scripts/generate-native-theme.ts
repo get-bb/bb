@@ -3,10 +3,18 @@
  * Generates `src/theme/theme.native.ts` from the web app's CSS theme tokens.
  *
  * React Native has no `var()`, `color-mix()`, or `oklch()`, so this script
- * replays the web cascade (theme.css light/dark blocks, then a built-in
+ * replays the web cascade (theme.css light/dark blocks, then the mobile-only
+ * override layer in `src/theme/mobile-overrides.css`, then a built-in
  * palette's overrides) for every palette × mode and resolves each token to a
  * plain color string. The result is committed; a vitest drift test regenerates
  * it in memory and fails when it no longer matches.
+ *
+ * Cascade order is the whole contract: the mobile layer re-tunes the DEFAULT
+ * palette to the iOS system look (pure black/white anchors, systemBlue tint,
+ * system status colors, grouped-list surfaces) while palettes that set their
+ * own anchors and literals (Nord, Dracula, …) still win because they cascade
+ * last. Every mobile value derives from `--canvas`/`--ink` so those palettes
+ * keep tinting the surfaces the layer touches.
  *
  * Run: `pnpm --filter @bb/mobile theme:generate`
  * (`node --conditions=source --import tsx scripts/generate-native-theme.ts`).
@@ -21,6 +29,17 @@ const MOBILE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const APP_ROOT = join(MOBILE_ROOT, "..", "app");
 const THEME_CSS_PATH = join(APP_ROOT, "src", "components", "ui", "theme.css");
 const PALETTES_DIR = join(APP_ROOT, "src", "lib", "themes");
+/**
+ * The mobile-only override layer. Same `:root, .light` / `.dark` custom
+ * property shape as theme.css plus a `@theme` block for the native type ramp
+ * and the extra radii; the web app never loads it.
+ */
+export const MOBILE_OVERRIDES_CSS_PATH = join(
+  MOBILE_ROOT,
+  "src",
+  "theme",
+  "mobile-overrides.css",
+);
 export const NATIVE_THEME_OUTPUT_PATH = join(
   MOBILE_ROOT,
   "src",
@@ -441,12 +460,39 @@ export interface SkippedToken {
   reason: string;
 }
 
+export interface NativeRadii {
+  base: number;
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number;
+  /** Tailwind's `rounded-2xl` step (`--radius-2xl`). */
+  xl2: number;
+  /** Tailwind's `rounded-full` (`--radius-full`): any pill/circle. */
+  full: number;
+}
+
+export const RADII_KEYS = [
+  "base",
+  "sm",
+  "md",
+  "lg",
+  "xl",
+  "xl2",
+  "full",
+] as const satisfies readonly (keyof NativeRadii)[];
+
 export interface NativeThemeModel {
   /** palette → mode → camelCase token → RN color string. */
   themes: Map<BuiltInThemeId, Record<Mode, Record<string, string>>>;
   /** Sorted camelCase color token names (identical across palettes/modes). */
   tokenKeys: string[];
-  radii: { base: number; sm: number; md: number; lg: number; xl: number };
+  /**
+   * Kebab-case names the mobile layer declares that theme.css does not. The
+   * web has no utility class for these; global.css maps them by hand.
+   */
+  mobileOnlyTokens: string[];
+  radii: NativeRadii;
   /** Ordered by font size. */
   typography: [name: string, style: NativeTextStyle][];
   skipped: SkippedToken[];
@@ -454,12 +500,18 @@ export interface NativeThemeModel {
 
 export interface ThemeSources {
   themeCss: string;
+  /**
+   * Mobile-only override layer (`MOBILE_OVERRIDES_CSS_PATH`). Cascades after
+   * theme.css and before every palette, so palettes keep winning.
+   */
+  mobileCss: string;
   /** Palette override CSS per built-in id ("" for `default`). */
   paletteCss: ReadonlyMap<BuiltInThemeId, string>;
 }
 
 function readSources(): ThemeSources {
   const themeCss = readFileSync(THEME_CSS_PATH, "utf8");
+  const mobileCss = readFileSync(MOBILE_OVERRIDES_CSS_PATH, "utf8");
   const paletteCss = new Map<BuiltInThemeId, string>();
   for (const id of BUILTIN_THEME_IDS) {
     // "default" is theme.css itself (the registry maps it to "").
@@ -474,7 +526,7 @@ function readSources(): ThemeSources {
     }
     paletteCss.set(id, css);
   }
-  return { themeCss, paletteCss };
+  return { themeCss, mobileCss, paletteCss };
 }
 
 function webOnlyReason(name: string): string | null {
@@ -484,11 +536,29 @@ function webOnlyReason(name: string): string | null {
   return null;
 }
 
-/** Radii from the `@theme inline` block: `--radius-*` derived from `--radius`. */
+/** Custom properties of every `@theme` block (not `@theme inline`) in `css`. */
+function themeBlockProperties(css: string): Map<string, string> {
+  const declared = new Map<string, string>();
+  for (const rule of splitRules(stripComments(css))) {
+    if (rule.prelude !== "@theme") continue;
+    for (const [name, value] of parseCustomProperties(rule.body)) {
+      declared.set(name, value);
+    }
+  }
+  return declared;
+}
+
+/**
+ * Radii: `--radius-sm|md|lg|xl` from theme.css's `@theme inline` block
+ * (derived from `--radius`), plus `--radius-2xl` / `--radius-full` from the
+ * mobile layer's `@theme` block — the web leaves those at Tailwind's defaults
+ * (1rem and `calc(infinity * 1px)`), which the native side needs as numbers.
+ */
 function readRadii(
   themeCss: string,
+  mobileCss: string,
   lightTokens: ReadonlyMap<string, string>,
-): NativeThemeModel["radii"] {
+): NativeRadii {
   const inline = splitRules(stripComments(themeCss)).find(
     (rule) => rule.prelude === "@theme inline",
   );
@@ -500,28 +570,39 @@ function readRadii(
       throw new Error(`--${name} missing in @theme inline`);
     return lengthToPx(substituteVars(raw, lightTokens));
   };
+  const mobile = themeBlockProperties(mobileCss);
+  const mobileRadius = (name: string): number => {
+    const raw = mobile.get(name);
+    if (raw === undefined) {
+      throw new Error(`--${name} missing in mobile-overrides.css @theme`);
+    }
+    return lengthToPx(raw);
+  };
   return {
     base: lengthToPx(substituteVars("var(--radius)", lightTokens)),
     sm: radius("radius-sm"),
     md: radius("radius-md"),
     lg: radius("radius-lg"),
     xl: radius("radius-xl"),
+    xl2: mobileRadius("radius-2xl"),
+    full: mobileRadius("radius-full"),
   };
 }
 
 /**
- * `--text-*` scale: the `@theme` overrides, then the coarse-pointer
- * `@media … (pointer: coarse) { :root {…} }` block on top. Touch sizes are the
- * native base (there is no fine pointer on a phone).
+ * `--text-*` scale: theme.css's `@theme` overrides, then its coarse-pointer
+ * `@media … (pointer: coarse) { :root {…} }` block (touch sizes are the
+ * native base; there is no fine pointer on a phone), then the mobile layer's
+ * `@theme` block on top, which carries the Apple text-style ramp.
  */
-function readTypography(themeCss: string): NativeThemeModel["typography"] {
+function readTypography(
+  themeCss: string,
+  mobileCss: string,
+): NativeThemeModel["typography"] {
   const declared = new Map<string, string>();
   const rules = splitRules(stripComments(themeCss));
-  for (const rule of rules) {
-    if (rule.prelude !== "@theme") continue;
-    for (const [name, value] of parseCustomProperties(rule.body)) {
-      if (name.startsWith("text-")) declared.set(name, value);
-    }
+  for (const [name, value] of themeBlockProperties(themeCss)) {
+    if (name.startsWith("text-")) declared.set(name, value);
   }
   for (const rule of rules) {
     if (
@@ -536,6 +617,9 @@ function readTypography(themeCss: string): NativeThemeModel["typography"] {
         if (name.startsWith("text-")) declared.set(name, value);
       }
     }
+  }
+  for (const [name, value] of themeBlockProperties(mobileCss)) {
+    if (name.startsWith("text-")) declared.set(name, value);
   }
   const styles: [string, NativeTextStyle][] = [];
   for (const [name, value] of declared) {
@@ -565,15 +649,53 @@ function describeNonColor(name: string, value: string): string {
   return `unsupported value (${value.slice(0, 40)})`;
 }
 
-/** Builds the full native theme model from theme.css + palette CSS strings. */
+/**
+ * A token the mobile layer sets under `:root` must also get a `.dark` value:
+ * `:root` reaches dark mode too, so without one the override would silently
+ * replace theme.css's dark value. `.dark`-only overrides are fine (light keeps
+ * the web value), as are `.light`-only ones.
+ */
+function assertRootOverridesHaveDarkTwins(rules: ModeRule[]): void {
+  const viaRoot = new Set<string>();
+  const viaDark = new Set<string>();
+  for (const rule of rules) {
+    const target =
+      rule.modes.length === 2
+        ? viaRoot
+        : rule.modes[0] === "dark"
+          ? viaDark
+          : null;
+    if (target === null) continue;
+    for (const [name] of rule.declarations) target.add(name);
+  }
+  const missing = [...viaRoot].filter((name) => !viaDark.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `mobile-overrides.css sets ${missing.map((name) => `--${name}`).join(", ")} under \`:root\` (which reaches dark mode) without a \`.dark\` value`,
+    );
+  }
+}
+
+/**
+ * Builds the full native theme model from theme.css, the mobile override
+ * layer, and the palette CSS strings.
+ */
 export function buildNativeThemeModel(
   sources: ThemeSources = readSources(),
 ): NativeThemeModel {
   const baseRules = modeRules(sources.themeCss);
+  const mobileRules = modeRules(sources.mobileCss);
+  assertRootOverridesHaveDarkTwins(mobileRules);
+  // The default palette is theme.css with the mobile layer on top; every other
+  // palette cascades after both, so its anchors and literals keep winning.
   const defaultTokens = {
-    light: cascade("light", [baseRules]),
-    dark: cascade("dark", [baseRules]),
+    light: cascade("light", [baseRules, mobileRules]),
+    dark: cascade("dark", [baseRules, mobileRules]),
   };
+  const webNames = new Set([
+    ...cascade("light", [baseRules]).keys(),
+    ...cascade("dark", [baseRules]).keys(),
+  ]);
 
   // Classify every token once, from the default palette. The set of native
   // color tokens must be identical in both modes: a token added to one mode
@@ -624,7 +746,7 @@ export function buildNativeThemeModel(
   }
   if (oneModeOnly.length > 0) {
     throw new Error(
-      `theme.css defines tokens in one mode only: ${oneModeOnly.map((name) => `--${name}`).join(", ")}`,
+      `theme.css + mobile-overrides.css define tokens in one mode only: ${oneModeOnly.map((name) => `--${name}`).join(", ")}`,
     );
   }
 
@@ -643,7 +765,7 @@ export function buildNativeThemeModel(
       }
     }
     const resolveMode = (mode: Mode): Record<string, string> => {
-      const tokens = cascade(mode, [baseRules, paletteRules]);
+      const tokens = cascade(mode, [baseRules, mobileRules, paletteRules]);
       const resolved: Record<string, string> = {};
       for (const name of colorNames) {
         const raw = tokens.get(name);
@@ -665,8 +787,9 @@ export function buildNativeThemeModel(
   return {
     themes,
     tokenKeys: colorNames.map(camelCase).sort(),
-    radii: readRadii(sources.themeCss, defaultTokens.light),
-    typography: readTypography(sources.themeCss),
+    mobileOnlyTokens: colorNames.filter((name) => !webNames.has(name)),
+    radii: readRadii(sources.themeCss, sources.mobileCss, defaultTokens.light),
+    typography: readTypography(sources.themeCss, sources.mobileCss),
     skipped,
   };
 }
@@ -694,19 +817,29 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
   const skippedLines = model.skipped.map(
     ({ name, reason }) => ` *   --${name}: ${reason}`,
   );
+  const mobileOnlyLines = model.mobileOnlyTokens.map(
+    (name) => ` *   --${name}`,
+  );
   const header = [
     "/**",
     " * GENERATED FILE — run pnpm --filter @bb/mobile theme:generate",
     " *",
-    " * Source: apps/app/src/components/ui/theme.css and the built-in palettes in",
-    " * apps/app/src/lib/themes/*.ts, replayed through the web cascade per palette",
-    " * and mode by apps/mobile/scripts/generate-native-theme.ts.",
+    " * Source: apps/app/src/components/ui/theme.css, then the mobile-only override",
+    " * layer apps/mobile/src/theme/mobile-overrides.css, then the built-in palettes",
+    " * in apps/app/src/lib/themes/*.ts, replayed through the web cascade per",
+    " * palette and mode by apps/mobile/scripts/generate-native-theme.ts. The",
+    " * mobile layer re-tunes the default palette to the iOS system look; palettes",
+    " * cascade after it, so their anchors and literals still win.",
     " *",
     " * `var()` is substituted textually; `color-mix(in oklch|oklab, …)` is",
     " * evaluated like Chrome (premultiplied alpha, shorter hue arc, converted",
     " * near-achromatic operands lose their hue). Opaque results are `#rrggbb`,",
-    " * translucent ones `rgba(r, g, b, a)`. Typography uses the coarse-pointer",
-    " * (touch) sizes as the base scale, in CSS pixels.",
+    " * translucent ones `rgba(r, g, b, a)`. Typography is the Apple text-style",
+    " * ramp from the mobile layer's `@theme` block, in CSS pixels.",
+    " *",
+    " * Tokens only the mobile layer defines (no web utility class; global.css",
+    " * maps them by hand):",
+    ...mobileOnlyLines,
     " *",
     " * Tokens deliberately left out (edit the generator to add them):",
     ...skippedLines,
@@ -749,11 +882,12 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
   ];
 
   const radiiLines = [
-    "/** `--radius` and the Tailwind `--radius-*` steps, in CSS pixels. */",
+    "/**",
+    " * `--radius` and the Tailwind `--radius-*` steps, in CSS pixels. `xl2` is",
+    " * `rounded-2xl`; `full` is `rounded-full` (pills, circles).",
+    " */",
     "export const nativeRadii = {",
-    ...(["base", "sm", "md", "lg", "xl"] as const).map(
-      (key) => `  ${key}: ${model.radii[key]},`,
-    ),
+    ...RADII_KEYS.map((key) => `  ${key}: ${model.radii[key]},`),
     "};",
     "",
   ];
@@ -765,9 +899,9 @@ export function renderNativeThemeSource(model: NativeThemeModel): string {
     "}",
     "",
     "/**",
-    " * The `--text-*` scale theme.css overrides, using the coarse-pointer (touch)",
-    " * values as the base, in CSS pixels. Sizes theme.css does not override keep",
-    " * Tailwind's defaults.",
+    " * The `--text-*` scale: theme.css's coarse-pointer (touch) values with the",
+    " * mobile layer's Apple text-style ramp on top (caption2 → largeTitle), in",
+    " * CSS pixels. Mirrored as ratios in global.css (theme-vars.test.ts).",
     " */",
     "export const nativeTypography = {",
     ...model.typography.flatMap(([name, style]) => [

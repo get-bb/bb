@@ -121,6 +121,7 @@ export function FallbackTimelineRow({
         <ScrollView
           horizontal
           className="mb-2 rounded-md border border-border-hairline bg-surface-recessed"
+          style={{ borderRadius: 10, borderCurve: "continuous" }}
           contentContainerStyle={{ padding: 8 }}
           nestedScrollEnabled
         >

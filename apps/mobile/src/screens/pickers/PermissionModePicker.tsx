@@ -20,7 +20,13 @@ export interface PermissionModePickerProps {
   testID?: string;
 }
 
-/** Permission mode picker; labels/descriptions come from client-core. */
+/**
+ * Permission mode picker; labels/descriptions come from client-core. Three
+ * choices at most, in the option sheet (check mark on the current mode,
+ * ceiling-blocked modes disabled with the reason) on both platforms: the
+ * pill shows text, so it is a plain pressable rather than a native-menu
+ * trigger (see `NativeMenu`).
+ */
 export function PermissionModePicker({
   options,
   value,
@@ -43,13 +49,14 @@ export function PermissionModePicker({
     [options],
   );
   const selected = options.find((option) => option.value === value);
+  const inert = disabled || options.length <= 1;
   return (
     <>
       <PickerTrigger
         icon={PERMISSION_MODE_ICON[value]}
         label={selected?.label ?? "Permissions"}
         onPress={sheet.present}
-        disabled={disabled || options.length <= 1}
+        disabled={inert}
         testID={testID}
         accessibilityLabel="Permission mode"
       />

@@ -1,42 +1,44 @@
 import type { ComponentProps } from "react";
-import { resolveFont, useTheme } from "@/theme";
-import { cn, SheetTextInput } from "@/ui";
+import {
+  cn,
+  SheetTextInput,
+  useInputFieldProps,
+  type InputFieldOptions,
+} from "@/ui";
 
-interface SheetInputProps extends ComponentProps<typeof SheetTextInput> {
-  invalid?: boolean;
-  mono?: boolean;
-  className?: string;
-}
+const IS_IOS = process.env.EXPO_OS === "ios";
+
+interface SheetInputProps
+  extends ComponentProps<typeof SheetTextInput>, InputFieldOptions {}
 
 /**
- * The `Input` primitive's styling on `BottomSheetTextInput`, which keeps the
- * sheet's keyboard handling (interactive avoidance) working. Use this for
- * every text field that lives inside a `Sheet`.
+ * The `Input` primitive's appearance on `BottomSheetTextInput`, which keeps
+ * the sheet's keyboard handling (interactive avoidance) working. Use this
+ * for every text field that lives inside a `Sheet`.
  */
 export function SheetInput({
-  invalid = false,
-  mono = false,
+  invalid,
+  mono,
+  grouped,
   editable = true,
   className,
   style,
   ...props
 }: SheetInputProps) {
-  const { tokens } = useTheme();
+  const field = useInputFieldProps({
+    invalid,
+    mono,
+    grouped,
+    editable,
+    className: cn(IS_IOS ? "h-11" : "h-10", className),
+  });
   return (
     <SheetTextInput
       editable={editable}
       autoComplete="off"
       autoCorrect={false}
-      placeholderTextColor={tokens.mutedForeground}
-      selectionColor={tokens.primary}
-      cursorColor={tokens.primary}
-      className={cn(
-        "h-10 w-full rounded-md border border-input bg-transparent px-3 text-base text-foreground focus:border-ring",
-        invalid && "border-destructive",
-        !editable && "opacity-50",
-        className,
-      )}
-      style={[resolveFont({ className, mono }), style]}
+      {...field}
+      style={[field.style, style]}
       {...props}
     />
   );

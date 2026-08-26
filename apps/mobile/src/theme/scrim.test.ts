@@ -14,14 +14,27 @@ function luminance(color: string): number {
 }
 
 describe("scrimBaseColor", () => {
-  it("darkens the background in every palette and mode", () => {
+  it("darkens the page and its lifted surfaces in every palette and mode", () => {
     for (const [palette, modes] of Object.entries(nativeThemes)) {
       for (const mode of ["light", "dark"] as const) {
         const tokens = modes[mode];
         const scrim = scrimBaseColor(mode, tokens);
-        const before = luminance(blendOver(tokens.background, scrim, 0));
-        const after = luminance(blendOver(tokens.background, scrim, 0.35));
-        expect(after, `${palette}/${mode}`).toBeLessThan(before);
+        // Mobile-only exception: the default dark canvas is iOS
+        // systemBackground (#000000, set in mobile-overrides.css), which no
+        // scrim can darken. What matters there is that the scrim still dims
+        // the lifted surfaces drawn on it, so the grouped cell (never black)
+        // must get darker and the page must never get lighter.
+        for (const key of ["background", "surfaceGroupedCell"] as const) {
+          const before = luminance(blendOver(tokens[key], scrim, 0));
+          const after = luminance(blendOver(tokens[key], scrim, 0.35));
+          const label = `${palette}/${mode}/${key}`;
+          if (before === 0) {
+            expect(key, label).toBe("background");
+            expect(after, label).toBe(0);
+          } else {
+            expect(after, label).toBeLessThan(before);
+          }
+        }
       }
     }
   });

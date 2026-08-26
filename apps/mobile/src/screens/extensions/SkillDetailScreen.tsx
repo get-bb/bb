@@ -13,18 +13,18 @@ import {
 import { copyWithToast } from "@/lib/clipboard";
 import { Markdown } from "@/markdown";
 import {
-  ActionSheet,
   Button,
+  confirmDestructive,
   EmptyStatePanel,
-  ListRow,
-  Pill,
+  GroupedRow,
+  IconBadge,
   Skeleton,
   Text,
   toast,
-  useSheet,
 } from "@/ui";
-import { SettingsSection } from "../plugins/plugin-ui";
-import { Screen } from "../shell/Screen";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { useBadgeColors } from "../settings/settings-badges";
+import { SettingsSection } from "../settings/SettingsRows";
 import { useProviderDisplayNames } from "./SkillsLibraryScreen";
 
 const SKILL_MAIN_FILE = "SKILL.md";
@@ -35,9 +35,10 @@ function isMarkdownPath(path: string): boolean {
 
 /**
  * One library skill, read-only (`/settings/skills/[skillId]?projectId=`;
- * web SkillDetailDialogView): scope + description, the skill folder's files
- * as a chip strip, SKILL.md rendered as markdown (other files as mono
- * text), copy path, and Delete for user-owned local skills.
+ * web SkillDetailDialogView): the identity cell with scope and description,
+ * the skill folder's files as a chip strip, SKILL.md rendered as markdown
+ * (other files as mono text), copy path, and Delete for user-owned local
+ * skills.
  */
 export function SkillDetailScreen() {
   const params = useLocalSearchParams<{
@@ -50,6 +51,7 @@ export function SkillDetailScreen() {
       ? params.projectId
       : PERSONAL_PROJECT_ID;
   const router = useRouter();
+  const colors = useBadgeColors();
   const providerNames = useProviderDisplayNames();
   const { skill, isPending, isError, error, refetch } = useProjectSkill(
     projectId,
@@ -67,15 +69,34 @@ export function SkillDetailScreen() {
   const files = useSkillFiles({ projectId, skillId });
   const content = useSkillContent({ projectId, skillId, path: selectedPath });
   const deleteSkill = useDeleteSkill();
-  const confirmDelete = useSheet();
 
   const fileList = files.data?.files ?? [SKILL_MAIN_FILE];
   const title = skill?.name ?? "Skill";
 
+  const confirmDelete = () => {
+    if (!skill) return;
+    confirmDestructive({
+      title: `Delete ${skill.name}?`,
+      message:
+        "The skill folder is deleted from the machine. This cannot be undone.",
+      actionLabel: "Delete skill",
+      onConfirm: () =>
+        deleteSkill.mutate(
+          { projectId, skillId: skill.id },
+          {
+            onSuccess: () => {
+              toast.success(`${skill.name} deleted`);
+              router.back();
+            },
+          },
+        ),
+    });
+  };
+
   return (
     <>
       <Stack.Screen options={{ title }} />
-      <Screen testID="skill-detail-screen">
+      <GroupedScreen testID="skill-detail-screen">
         {isPending ? (
           <View className="gap-3">
             <Skeleton className="h-8 w-3/5" />
@@ -83,7 +104,7 @@ export function SkillDetailScreen() {
           </View>
         ) : isError ? (
           <View className="gap-3">
-            <Text variant="caption" tone="destructive">
+            <Text variant="footnote" tone="destructive" selectable>
               Could not load the skill:{" "}
               {error instanceof Error ? error.message : String(error)}
             </Text>
@@ -101,37 +122,42 @@ export function SkillDetailScreen() {
           </EmptyStatePanel>
         ) : (
           <>
-            <View className="gap-2">
-              <Text variant="title" testID="skill-detail-name">
-                {skill.name}
-              </Text>
-              <View className="flex-row flex-wrap gap-1.5">
-                <Pill variant="secondary" size="sm">
-                  {skillScopeLabel(
-                    skill,
-                    skill.provider === null
-                      ? undefined
-                      : providerNames.get(skill.provider),
-                  )}
-                </Pill>
-                {skill.registrySkillId !== null ? (
-                  <Pill variant="outline" size="sm">
-                    skills.sh
-                  </Pill>
-                ) : null}
-                {skill.pluginId !== null ? (
-                  <Pill
-                    variant="outline"
-                    size="sm"
-                  >{`plugin · ${skill.pluginId}`}</Pill>
-                ) : null}
+            <SettingsSection footnote={skill.description ?? undefined}>
+              <View className="flex-row items-center gap-3 px-4 py-3">
+                <IconBadge
+                  icon="AiContentGenerator01"
+                  symbol="sparkles"
+                  color={colors.pink}
+                  size={40}
+                />
+                <View className="min-w-0 flex-1">
+                  <Text
+                    variant="headline"
+                    numberOfLines={2}
+                    selectable
+                    testID="skill-detail-name"
+                  >
+                    {skill.name}
+                  </Text>
+                  <Text variant="caption" numberOfLines={2}>
+                    {[
+                      skillScopeLabel(
+                        skill,
+                        skill.provider === null
+                          ? undefined
+                          : providerNames.get(skill.provider),
+                      ),
+                      skill.registrySkillId !== null ? "skills.sh" : null,
+                      skill.pluginId !== null
+                        ? `plugin · ${skill.pluginId}`
+                        : null,
+                    ]
+                      .filter((part): part is string => part !== null)
+                      .join(" · ")}
+                  </Text>
+                </View>
               </View>
-              {skill.description ? (
-                <Text variant="body" tone="muted">
-                  {skill.description}
-                </Text>
-              ) : null}
-            </View>
+            </SettingsSection>
 
             {fileList.length > 1 ? (
               <ScrollView
@@ -153,96 +179,68 @@ export function SkillDetailScreen() {
               </ScrollView>
             ) : null}
 
-            <View
-              className="rounded-lg border border-border bg-card px-4 py-3"
-              testID="skill-detail-content"
-            >
-              {content.isPending ? (
-                <View className="gap-3">
-                  <Skeleton className="h-5 w-4/5" />
-                  <Skeleton className="h-5 w-3/5" />
-                  <Skeleton className="h-5 w-2/3" />
-                </View>
-              ) : content.isError ? (
-                <View className="gap-3">
-                  <Text variant="caption" tone="destructive">
-                    Could not read {selectedPath}:{" "}
-                    {content.error instanceof Error
-                      ? content.error.message
-                      : String(content.error)}
+            <SettingsSection title={selectedPath}>
+              <View className="px-4 py-3" testID="skill-detail-content">
+                {content.isPending ? (
+                  <View className="gap-3">
+                    <Skeleton className="h-5 w-4/5" />
+                    <Skeleton className="h-5 w-3/5" />
+                    <Skeleton className="h-5 w-2/3" />
+                  </View>
+                ) : content.isError ? (
+                  <View className="gap-3">
+                    <Text variant="footnote" tone="destructive" selectable>
+                      Could not read {selectedPath}:{" "}
+                      {content.error instanceof Error
+                        ? content.error.message
+                        : String(content.error)}
+                    </Text>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon="RotateCcw"
+                      onPress={() => void content.refetch()}
+                    >
+                      Retry
+                    </Button>
+                  </View>
+                ) : isMarkdownPath(selectedPath) ? (
+                  <Markdown
+                    content={content.data?.content ?? ""}
+                    textSize="base"
+                    showFrontmatter
+                  />
+                ) : (
+                  <Text variant="mono" className="text-xs" selectable>
+                    {content.data?.content ?? ""}
                   </Text>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon="RotateCcw"
-                    onPress={() => void content.refetch()}
-                  >
-                    Retry
-                  </Button>
-                </View>
-              ) : isMarkdownPath(selectedPath) ? (
-                <Markdown
-                  content={content.data?.content ?? ""}
-                  textSize="base"
-                  showFrontmatter
-                />
-              ) : (
-                <Text variant="mono" className="text-xs" selectable>
-                  {content.data?.content ?? ""}
-                </Text>
-              )}
-            </View>
+                )}
+              </View>
+            </SettingsSection>
 
             <SettingsSection title="Location">
-              <ListRow
+              <GroupedRow
                 title="SKILL.md path"
                 subtitle={skill.filePath}
                 leading="File"
                 onPress={() => copyWithToast(skill.filePath, "Path copied")}
+                accessibilityHint="Copies the path"
                 testID="skill-detail-path"
               />
               {isSkillDeletable(skill) ? (
-                <ListRow
+                <GroupedRow
                   title="Delete skill"
                   subtitle="Removes the installed skill folder"
                   leading="Trash2"
                   destructive
-                  onPress={confirmDelete.present}
+                  onPress={confirmDelete}
                   testID="skill-detail-delete"
                 />
               ) : null}
             </SettingsSection>
           </>
         )}
-      </Screen>
-
-      <ActionSheet
-        controller={confirmDelete}
-        title={skill ? `Delete ${skill.name}?` : undefined}
-        message="The skill folder is deleted from the machine. This cannot be undone."
-        actions={
-          skill
-            ? [
-                {
-                  key: "confirm-delete",
-                  label: "Delete skill",
-                  icon: "Trash2",
-                  destructive: true,
-                  onPress: () =>
-                    deleteSkill.mutate(
-                      { projectId, skillId: skill.id },
-                      {
-                        onSuccess: () => {
-                          toast.success(`${skill.name} deleted`);
-                          router.back();
-                        },
-                      },
-                    ),
-                },
-              ]
-            : []
-        }
-      />
+      </GroupedScreen>
     </>
   );
 }

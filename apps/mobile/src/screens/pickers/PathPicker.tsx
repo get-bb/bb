@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
+import { haptic } from "@/lib/haptics";
 import { Button, ListRow, Sheet, Text, useSheet } from "@/ui";
 import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
@@ -60,6 +61,7 @@ export function PathPicker({
           leading="FolderGit"
           selected={value === null}
           onPress={() => {
+            haptic("selection");
             sheet.dismiss();
             onChange(null);
           }}

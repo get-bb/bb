@@ -5,11 +5,18 @@ import {
 } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import { useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useHostCloneDefaultPath } from "@/data/hosts";
 import { useAddProjectSource } from "@/data/projects";
 import { useTheme } from "@/theme";
-import { Button, cn, Sheet, Spinner, Text, type SheetController } from "@/ui";
+import {
+  Button,
+  GROUPED_CARD_RADIUS,
+  Sheet,
+  Spinner,
+  Text,
+  type SheetController,
+} from "@/ui";
 import {
   describeRequestError,
   RemotePathBrowser,
@@ -340,8 +347,8 @@ function SetupBody({
         </Text>
       ) : null}
       {errorMessage ? (
-        <View className="gap-1 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2">
-          <Text variant="caption" tone="destructive">
+        <View className="gap-1 px-1">
+          <Text variant="footnote" tone="destructive" selectable>
             {errorMessage}
           </Text>
           {isTargetNotEmpty ? (
@@ -399,26 +406,32 @@ function SetupOptionCard({
       disabled={disabled}
       onPress={onSelect}
       testID={testID}
-      className={cn(
-        "flex-row items-start gap-3 rounded-md border p-3",
-        selected ? "border-primary" : "border-border",
-      )}
+      className="flex-row items-start gap-3 p-3"
+      style={{
+        borderRadius: GROUPED_CARD_RADIUS,
+        borderCurve: "continuous",
+        backgroundColor: tokens.surfaceRecessed,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: selected ? tokens.primary : "transparent",
+      }}
     >
       <View
-        className="mt-0.5 h-4 w-4 items-center justify-center rounded-full border"
+        className="mt-0.5 h-5 w-5 items-center justify-center rounded-full"
         style={{
-          borderColor: selected ? tokens.primary : tokens.mutedForeground,
+          borderWidth: selected ? 0 : 1.5,
+          borderColor: tokens.mutedForeground,
+          backgroundColor: selected ? tokens.primary : "transparent",
         }}
       >
         {selected ? (
           <View
             className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: tokens.primary }}
+            style={{ backgroundColor: tokens.primaryForeground }}
           />
         ) : null}
       </View>
       <View className="min-w-0 flex-1 gap-1">
-        <Text variant="label">{title}</Text>
+        <Text variant="bodyLarge">{title}</Text>
         {children}
       </View>
     </Pressable>

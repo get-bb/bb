@@ -9,7 +9,7 @@ import {
   useTerminalSession,
 } from "@/data/terminals";
 import { useTheme } from "@/theme";
-import { EmptyStatePanel, Icon, KeyboardPaddingView, Text } from "@/ui";
+import { Icon, KeyboardPaddingView, Text } from "@/ui";
 // Leaf imports: the panel barrel pulls in the registration manifest, which
 // imports this module (see the panel README).
 import { usePanel } from "../panel/PanelProvider";
@@ -46,10 +46,10 @@ export function TerminalLauncherContent({ scope }: PanelLauncherContentProps) {
   );
   if (listScope === null || createScope === null) {
     return (
-      <View className="p-4" testID="panel-terminal-launcher">
-        <EmptyStatePanel>
+      <View className="p-6" testID="panel-terminal-launcher">
+        <Text variant="footnote" tone="muted" className="text-center">
           {terminalScopeUnavailableMessage(scope)}
-        </EmptyStatePanel>
+        </Text>
       </View>
     );
   }
@@ -58,6 +58,7 @@ export function TerminalLauncherContent({ scope }: PanelLauncherContentProps) {
       listScope={listScope}
       createScope={createScope}
       onOpenTerminal={onOpenTerminal}
+      surface="raised"
       testID="panel-terminal-launcher"
     />
   );
@@ -71,8 +72,10 @@ export function TerminalPanelTabContent(
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <View className="flex-1 justify-center p-4" testID="panel-terminal-tab">
-        <EmptyStatePanel>No active server.</EmptyStatePanel>
+      <View className="flex-1 justify-center p-6" testID="panel-terminal-tab">
+        <Text variant="footnote" tone="muted" className="text-center">
+          No active server.
+        </Text>
       </View>
     );
   }
@@ -167,6 +170,11 @@ interface TerminalToolbarProps {
   onClose: () => void;
 }
 
+/**
+ * The panel terminal's bar: the session title (tap → full screen) and the
+ * tinted restart / new / close glyphs, on the same raised surface as the
+ * xterm canvas under a hairline.
+ */
 function TerminalToolbar({
   title,
   onExpand,
@@ -176,21 +184,34 @@ function TerminalToolbar({
 }: TerminalToolbarProps) {
   const { tokens } = useTheme();
   return (
-    <View className="flex-row items-center gap-1 border-b border-border-hairline bg-sidebar px-2 py-1.5">
+    <View
+      style={[
+        styles.toolbar,
+        {
+          backgroundColor: tokens.surfaceRaisedSolid,
+          borderBottomColor: tokens.borderHairline,
+        },
+      ]}
+    >
       <Pressable
         accessibilityRole={onExpand ? "button" : undefined}
         accessibilityLabel={onExpand ? "Open terminal full screen" : undefined}
         disabled={onExpand === null}
         onPress={onExpand ?? undefined}
-        className="min-w-0 flex-1 flex-row items-center gap-1.5 rounded-md px-1 py-1 active:bg-state-hover"
+        style={({ pressed }) => [styles.title, { opacity: pressed ? 0.6 : 1 }]}
         testID="panel-terminal-title"
       >
-        <Icon name="Terminal" size={14} color={tokens.mutedForeground} />
-        <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
+        <Icon name="Terminal" size={16} color={tokens.mutedForeground} />
+        <Text
+          variant="label"
+          weight="semibold"
+          numberOfLines={1}
+          className="min-w-0 flex-1"
+        >
           {title}
         </Text>
         {onExpand ? (
-          <Icon name="Maximize2" size={14} color={tokens.mutedForeground} />
+          <Icon name="Maximize2" size={15} color={tokens.primary} />
         ) : null}
       </Pressable>
       <ToolbarButton
@@ -235,14 +256,37 @@ function ToolbarButton({
       accessibilityLabel={label}
       hitSlop={6}
       onPress={onPress}
-      className="h-8 w-8 items-center justify-center rounded-md active:bg-state-hover"
+      style={({ pressed }) => [styles.button, { opacity: pressed ? 0.5 : 1 }]}
       testID={testID}
     >
-      <Icon name={icon} size={16} color={tokens.mutedForeground} />
+      <Icon name={icon} size={20} color={tokens.primary} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  title: {
+    minWidth: 0,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  button: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

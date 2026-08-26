@@ -1,6 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { memo, useMemo } from "react";
 import { Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { haptic } from "@/lib/haptics";
 import { FONT_FAMILIES } from "@/theme/fonts";
 import { nativeTypography } from "@/theme/theme.native";
 import { Icon } from "@/ui/Icon";
@@ -24,6 +25,7 @@ export interface CodeBlockProps {
 function copyCodeToClipboard(code: string): void {
   void Clipboard.setStringAsync(code)
     .then(() => {
+      haptic("success");
       toast.success("Copied");
     })
     .catch(() => {
@@ -58,7 +60,8 @@ export const CodeBlock = memo(function CodeBlock({
       onLongPress={copy}
       accessibilityHint="Long press to copy"
       style={{
-        borderRadius: 6,
+        borderRadius: 10,
+        borderCurve: "continuous",
         borderWidth: 1,
         borderColor: tokens.border,
         backgroundColor: tokens.surfaceRecessed,

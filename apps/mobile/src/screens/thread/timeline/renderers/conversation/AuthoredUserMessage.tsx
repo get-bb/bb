@@ -3,7 +3,8 @@ import type { TimelineUserConversationRow } from "@bb/server-contract";
 import { useCallback, useMemo } from "react";
 import { Pressable, View, type LayoutChangeEvent } from "react-native";
 import { Markdown, type MarkdownThreadMentions } from "@/markdown";
-import { nativeTypography } from "@/theme";
+import { withAlpha } from "@/markdown/colors";
+import { nativeTypography, useTheme } from "@/theme";
 import { LONG_PRESS_DELAY_MS, Text } from "@/ui";
 import {
   TIMELINE_ROW_HORIZONTAL_PADDING_PX,
@@ -22,6 +23,8 @@ import {
   useConversationMarkdownHandlers,
 } from "./conversation-shared";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 interface AuthoredUserMessageProps {
   row: TimelineUserConversationRow;
   depth: number;
@@ -31,17 +34,27 @@ interface AuthoredUserMessageProps {
   onToggle: () => void;
 }
 
+/** Conversation prose: the 17pt body on iOS, the web timeline size elsewhere. */
+const PROSE_TEXT_SIZE = IS_IOS ? "base" : "sm";
 /** Web `max-h-[15lh]` on the timeline body type. */
 const COLLAPSED_BODY_MAX_HEIGHT =
-  USER_MESSAGE_COLLAPSED_MAX_LINES * nativeTypography.sm.lineHeight;
+  USER_MESSAGE_COLLAPSED_MAX_LINES *
+  nativeTypography[PROSE_TEXT_SIZE].lineHeight;
 /** The authored bubble leaves this much room on its left (web max-w-[70%]). */
 const BUBBLE_LEFT_INSET_PX = 40;
+/** iOS sent-message bubble: continuous corners, tinted, no outline. */
+const BUBBLE_RADIUS = 18;
+const BUBBLE_TINT_ALPHA = 0.12;
+/** iOS bubble width cap (the sent-message idiom leaves the left side free). */
+const BUBBLE_MAX_WIDTH = "85%";
 
 /**
  * The person's own message (web `UserConversationMessage`): a right-aligned
  * bubble with the markdown body (mentions as pills), the attachment strip,
  * and the steer label above it. Long bodies clamp at fifteen lines / the
- * char cap with a Show more toggle; long-press opens the message actions.
+ * char cap with a Show more toggle; long-press opens the message action
+ * sheet on both platforms (a per-row SwiftUI context-menu host would pin
+ * the recycled cell's size to its first measurement).
  */
 export function AuthoredUserMessage({
   row,
@@ -50,6 +63,7 @@ export function AuthoredUserMessage({
   expanded,
   onToggle,
 }: AuthoredUserMessageProps) {
+  const { tokens } = useTheme();
   const { presentMessageActions } = useTimelineRowHost();
   const { onThreadPress, onFilePress, resolveThreadMention, serverHostname } =
     useConversationMarkdownHandlers();
@@ -73,22 +87,20 @@ export function AuthoredUserMessage({
   );
   const messageText = row.text.trim();
   const editable = canEditUserMessage(row);
-  const onLongPress = useCallback(
-    () =>
-      presentMessageActions({
-        rowId: row.id,
-        role: "user",
-        text: row.text,
-        sourceSeqStart: row.sourceSeqStart,
-        sourceSeqEnd: row.sourceSeqEnd,
-        paragraph: null,
-        editable,
-        mentions: row.mentions,
-        attachments: row.attachments,
-      }),
+  const actionsTarget = useMemo(
+    () => ({
+      rowId: row.id,
+      role: "user" as const,
+      text: row.text,
+      sourceSeqStart: row.sourceSeqStart,
+      sourceSeqEnd: row.sourceSeqEnd,
+      paragraph: null,
+      editable,
+      mentions: row.mentions,
+      attachments: row.attachments,
+    }),
     [
       editable,
-      presentMessageActions,
       row.attachments,
       row.id,
       row.mentions,
@@ -96,6 +108,10 @@ export function AuthoredUserMessage({
       row.sourceSeqStart,
       row.text,
     ],
+  );
+  const onLongPress = useCallback(
+    () => presentMessageActions(actionsTarget),
+    [actionsTarget, presentMessageActions],
   );
 
   // Collapsed bodies clamp to a fixed height; whether that clamp hides
@@ -136,7 +152,21 @@ export function AuthoredUserMessage({
         accessible={false}
         onLongPress={onLongPress}
         delayLongPress={LONG_PRESS_DELAY_MS}
-        className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-3.5 py-2.5 active:opacity-90"
+        className={
+          IS_IOS
+            ? "px-3.5 py-2.5 active:opacity-90"
+            : "max-w-full rounded-xl border border-border-seam bg-surface-recessed px-3.5 py-2.5 active:opacity-90"
+        }
+        style={
+          IS_IOS
+            ? {
+                maxWidth: BUBBLE_MAX_WIDTH,
+                borderRadius: BUBBLE_RADIUS,
+                borderCurve: "continuous",
+                backgroundColor: withAlpha(tokens.primary, BUBBLE_TINT_ALPHA),
+              }
+            : undefined
+        }
         testID="conversation-user-bubble"
       >
         {body.prefixText !== null ? (
@@ -156,6 +186,7 @@ export function AuthoredUserMessage({
               {body.parseAsMarkdown ? (
                 <Markdown
                   content={body.content}
+                  textSize={PROSE_TEXT_SIZE}
                   promptMentions={body.mentions}
                   threadMentions={threadMentions}
                   selectable={false}
@@ -165,7 +196,9 @@ export function AuthoredUserMessage({
                   onLongPress={onLongPress}
                 />
               ) : (
-                <Text className="text-sm">{body.content}</Text>
+                <Text variant={IS_IOS ? "bodyLarge" : "body"}>
+                  {body.content}
+                </Text>
               )}
             </View>
           </View>

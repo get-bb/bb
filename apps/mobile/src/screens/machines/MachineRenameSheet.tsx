@@ -18,7 +18,11 @@ function describeError(error: unknown): string {
     : "Couldn't rename the machine.";
 }
 
-/** Rename sheet (web MachineRenameDialog): one field, inline error, Save. */
+/**
+ * Rename sheet (web MachineRenameDialog): one field, inline error, Save.
+ * The Android path; iOS renames through the system prompt
+ * (`rename-machine-prompt.ios.ts`).
+ */
 export function MachineRenameSheet({
   controller,
   host,
@@ -89,7 +93,7 @@ function RenameForm({
         testID="machine-rename-input"
       />
       {renameHost.isError ? (
-        <Text variant="caption" tone="destructive">
+        <Text variant="caption" tone="destructive" selectable>
           {describeError(renameHost.error)}
         </Text>
       ) : null}

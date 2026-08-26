@@ -17,13 +17,16 @@ export interface ToolCallDetailBlockProps {
 /** Web `line-clamp-3` on the tool name + args header. */
 const HEADER_COLLAPSED_LINES = 3;
 const DEFAULT_MAX_OUTPUT_LINES = 24;
+/** Card corners: continuous 10pt, the grouped-card radius. */
+const CARD_STYLE = { borderRadius: 10, borderCurve: "continuous" } as const;
 
 /**
  * Port of the web `ToolCallDetailBlock`: a card with the tool name and its
  * arguments (`key: value` lines, clamped to three lines until "Show more"),
  * then the raw output in monospace. Plain text (no ANSI): provider tool
- * output is not a terminal stream. The whole card sits at 70% opacity like
- * the terminal card.
+ * output is not a terminal stream. The web dims the whole card to 70%; here
+ * the card stays opaque and the output sits in the secondary text tier
+ * (matching the terminal card).
  */
 export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
   toolName,
@@ -64,7 +67,7 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
   return (
     <View
       className="overflow-hidden rounded-lg border border-border bg-card"
-      style={{ opacity: 0.7 }}
+      style={CARD_STYLE}
       testID={testID}
     >
       <View className="px-3 py-2.5">
@@ -72,6 +75,7 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
           variant="mono"
           style={headerTextStyle}
           numberOfLines={headerExpanded ? undefined : HEADER_COLLAPSED_LINES}
+          selectable
           testID="timeline-tool-args"
         >
           <Text variant="mono" weight="semibold" style={headerTextStyle}>
@@ -127,8 +131,10 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
                   <Text
                     key={index}
                     variant="mono"
+                    tone="muted"
                     numberOfLines={1}
                     style={headerTextStyle}
+                    selectable
                   >
                     {line.length === 0 ? " " : line}
                   </Text>

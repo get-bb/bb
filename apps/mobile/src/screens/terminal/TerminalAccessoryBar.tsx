@@ -1,13 +1,31 @@
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
-import { cn, Icon, Text, type IconName } from "@/ui";
+import {
+  Icon,
+  NativeMenu,
+  Text,
+  type IconName,
+  type NativeMenuAction,
+  type SFSymbol,
+} from "@/ui";
 import type { TerminalAccessoryKey } from "./terminal-bridge";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** Key cap metrics (the iOS keyboard accessory row). */
+const KEY_HEIGHT = 34;
+const KEY_MIN_WIDTH = 38;
+const KEY_RADIUS = 6;
+/** The trailing "…" / keyboard buttons. */
+const BAR_BUTTON_WIDTH = 44;
 
 /**
  * The key bar above the soft keyboard: keys a phone keyboard lacks (Esc, Tab,
  * arrows, Home / End, shell punctuation), a sticky Ctrl modifier applied to
  * the next key, and paste from the clipboard. Always visible under the
- * terminal so the arrows work without the keyboard too.
+ * terminal so the arrows work without the keyboard too. Styled as an iOS
+ * keyboard accessory strip: key caps on the raised surface, the sticky Ctrl
+ * tinted, a selection tick per key.
  */
 
 interface TerminalAccessoryBarProps {
@@ -15,21 +33,29 @@ interface TerminalAccessoryBarProps {
   onToggleCtrl: () => void;
   onKey: (key: TerminalAccessoryKey) => void;
   onPaste: () => void;
-  /** Raise the keyboard (focus the page's textarea). */
+  /** Toggle the soft keyboard (focus / blur the page's textarea). */
   onKeyboard?: () => void;
+  /** Whether the keyboard is up: picks the show / hide glyph. */
+  keyboardVisible?: boolean;
   /**
-   * Terminal actions (rename / restart / new / close). Full screen only: it
-   * duplicates the header's "…" so the menu is reachable one-handed and in
-   * landscape.
+   * Android: opens the terminal actions sheet (rename / restart / new /
+   * close). Full screen only: it duplicates the header's "…" so the menu is
+   * reachable one-handed and in landscape.
    */
   onMenu?: () => void;
+  /** iOS: the same actions as a native menu anchored to the "…" key. */
+  menuActions?: readonly NativeMenuAction[];
   testID?: string;
 }
 
 interface AccessoryItem {
   id: string;
+  /** Key cap text (also the Android glyph when only `symbol` is set). */
   label?: string;
+  /** Glyph on both platforms (SF on iOS through the icon map). */
   icon?: IconName;
+  /** iOS glyph for caps whose symbol is not in the icon map (`arrow.left`, `doc.on.clipboard`). */
+  symbol?: SFSymbol;
   accessibilityLabel: string;
   key?: TerminalAccessoryKey;
 }
@@ -41,19 +67,28 @@ const ITEMS: readonly AccessoryItem[] = [
   {
     id: "ArrowLeft",
     label: "←",
+    symbol: "arrow.left",
     accessibilityLabel: "Arrow left",
     key: "ArrowLeft",
   },
-  { id: "ArrowUp", label: "↑", accessibilityLabel: "Arrow up", key: "ArrowUp" },
+  {
+    id: "ArrowUp",
+    label: "↑",
+    symbol: "arrow.up",
+    accessibilityLabel: "Arrow up",
+    key: "ArrowUp",
+  },
   {
     id: "ArrowDown",
     label: "↓",
+    symbol: "arrow.down",
     accessibilityLabel: "Arrow down",
     key: "ArrowDown",
   },
   {
     id: "ArrowRight",
     label: "→",
+    symbol: "arrow.right",
     accessibilityLabel: "Arrow right",
     key: "ArrowRight",
   },
@@ -62,8 +97,31 @@ const ITEMS: readonly AccessoryItem[] = [
   { id: "-", label: "-", accessibilityLabel: "Minus", key: "-" },
   { id: "/", label: "/", accessibilityLabel: "Slash", key: "/" },
   { id: "|", label: "|", accessibilityLabel: "Pipe", key: "|" },
-  { id: "paste", icon: "Copy", accessibilityLabel: "Paste" },
+  {
+    id: "paste",
+    icon: "Copy",
+    symbol: "doc.on.clipboard",
+    accessibilityLabel: "Paste",
+  },
 ];
+
+function KeyGlyph({ item, color }: { item: AccessoryItem; color: string }) {
+  if (item.icon !== undefined || (IS_IOS && item.symbol !== undefined)) {
+    return (
+      <Icon
+        name={item.icon ?? "ArrowRight"}
+        symbol={item.symbol}
+        size={18}
+        color={color}
+      />
+    );
+  }
+  return (
+    <Text variant="body" style={{ color }}>
+      {item.label}
+    </Text>
+  );
+}
 
 export function TerminalAccessoryBar({
   ctrlActive,
@@ -71,25 +129,37 @@ export function TerminalAccessoryBar({
   onKey,
   onPaste,
   onKeyboard,
+  keyboardVisible = false,
   onMenu,
+  menuActions,
   testID,
 }: TerminalAccessoryBarProps) {
   const { tokens } = useTheme();
+  const menuGlyph = (
+    <Icon
+      name="MoreHorizontal"
+      symbol="ellipsis.circle"
+      size={22}
+      color={tokens.primary}
+    />
+  );
   return (
     <View
-      className="flex-row items-center border-t border-border bg-sidebar"
+      style={[
+        styles.bar,
+        {
+          backgroundColor: tokens.surfaceRaisedSolid,
+          borderTopColor: tokens.borderHairline,
+        },
+      ]}
       testID={testID}
     >
       <ScrollView
         horizontal
         keyboardShouldPersistTaps="always"
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 6,
-          paddingVertical: 6,
-          gap: 6,
-        }}
-        className="flex-1"
+        contentContainerStyle={styles.keys}
+        style={styles.scroll}
       >
         {ITEMS.map((item) => {
           const isCtrl = item.id === "ctrl";
@@ -102,60 +172,106 @@ export function TerminalAccessoryBar({
               accessibilityState={isCtrl ? { selected: ctrlActive } : undefined}
               testID={`terminal-key-${item.id}`}
               onPress={() => {
+                haptic("selection");
                 if (isCtrl) onToggleCtrl();
                 else if (item.id === "paste") onPaste();
                 else if (item.key) onKey(item.key);
               }}
-              className={cn(
-                "h-9 min-w-9 items-center justify-center rounded-md border px-2.5 active:bg-state-active",
-                active
-                  ? "border-foreground bg-foreground"
-                  : "border-border bg-background",
-              )}
+              style={({ pressed }) => [
+                styles.key,
+                {
+                  backgroundColor: active ? tokens.primary : tokens.secondary,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
             >
-              {item.icon ? (
-                <Icon name={item.icon} size={16} color={tokens.foreground} />
-              ) : (
-                <Text
-                  mono
-                  className={cn(
-                    "text-sm",
-                    active ? "text-background" : "text-foreground",
-                  )}
-                >
-                  {item.label}
-                </Text>
-              )}
+              <KeyGlyph
+                item={item}
+                color={active ? tokens.primaryForeground : tokens.foreground}
+              />
             </Pressable>
           );
         })}
       </ScrollView>
-      {onMenu ? (
+      {menuActions ? (
+        // An icon-only trigger: the menu host is the accessible element
+        // (label, role, testID); the glyph view inside is not.
+        <NativeMenu
+          actions={menuActions}
+          accessibilityLabel="Terminal actions"
+          testID="terminal-key-menu"
+        >
+          <View style={styles.barButton}>{menuGlyph}</View>
+        </NativeMenu>
+      ) : onMenu ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Terminal actions"
           testID="terminal-key-menu"
           onPress={onMenu}
-          className="h-9 w-10 items-center justify-center border-l border-border active:bg-state-active"
+          style={({ pressed }) => [
+            styles.barButton,
+            { opacity: pressed ? 0.5 : 1 },
+          ]}
         >
-          <Icon
-            name="MoreHorizontal"
-            size={16}
-            color={tokens.mutedForeground}
-          />
+          {menuGlyph}
         </Pressable>
       ) : null}
       {onKeyboard ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Show keyboard"
+          accessibilityLabel={
+            keyboardVisible ? "Hide keyboard" : "Show keyboard"
+          }
           testID="terminal-key-keyboard"
-          onPress={onKeyboard}
-          className="h-9 w-10 items-center justify-center border-l border-border active:bg-state-active"
+          onPress={() => {
+            haptic("selection");
+            onKeyboard();
+          }}
+          style={({ pressed }) => [
+            styles.barButton,
+            { opacity: pressed ? 0.5 : 1 },
+          ]}
         >
-          <Icon name="ChevronUp" size={16} color={tokens.mutedForeground} />
+          <Icon
+            name={keyboardVisible ? "ChevronDown" : "ChevronUp"}
+            symbol={
+              keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"
+            }
+            size={22}
+            color={tokens.primary}
+          />
         </Pressable>
       ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  scroll: { flex: 1 },
+  keys: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  key: {
+    height: KEY_HEIGHT,
+    minWidth: KEY_MIN_WIDTH,
+    paddingHorizontal: 10,
+    borderRadius: KEY_RADIUS,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  barButton: {
+    width: BAR_BUTTON_WIDTH,
+    height: KEY_HEIGHT + 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

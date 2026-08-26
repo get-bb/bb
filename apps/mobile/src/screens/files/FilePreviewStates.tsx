@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { Button, EmptyStatePanel, Skeleton, Text } from "@/ui";
+import { Button, Skeleton, Text } from "@/ui";
 
 export function FilePreviewLoading() {
   return (
@@ -20,7 +20,10 @@ export interface FilePreviewMessageProps {
   testID?: string;
 }
 
-/** not-found / too-large / error / empty / unsupported bodies. */
+/**
+ * not-found / too-large / error / empty / unsupported bodies: a centered
+ * headline + footnote (iOS empty state) with tinted actions.
+ */
 export function FilePreviewMessage({
   title,
   detail,
@@ -29,17 +32,22 @@ export function FilePreviewMessage({
   testID,
 }: FilePreviewMessageProps) {
   return (
-    <View className="gap-3 p-4" testID={testID}>
-      <EmptyStatePanel>
-        <Text className="text-center text-sm text-muted-foreground">
+    <View className="items-center gap-4 px-6 py-10" testID={testID}>
+      <View className="items-center gap-1">
+        <Text variant="headline" className="text-center">
           {title}
         </Text>
         {detail ? (
-          <Text variant="caption" className="pt-1 text-center">
+          <Text
+            variant="footnote"
+            tone="muted"
+            className="text-center"
+            selectable
+          >
             {detail}
           </Text>
         ) : null}
-      </EmptyStatePanel>
+      </View>
       {onRetry ? (
         <Button variant="outline" icon="RotateCcw" onPress={onRetry}>
           Retry

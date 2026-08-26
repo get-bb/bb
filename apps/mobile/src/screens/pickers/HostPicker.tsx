@@ -1,5 +1,6 @@
 import type { Host } from "@bb/domain";
 import { View } from "react-native";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   Icon,
@@ -125,16 +126,17 @@ export function HostPicker({
                   <HostStatusDot connected={connected} />
                 </View>
               }
+              // A selected row shows the tinted check mark (ListRow
+              // `selected`); a machine awaiting setup shows the plus.
               trailing={
-                isSelected ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : !hasSource && connected && onRequestSetup ? (
+                !isSelected && !hasSource && connected && onRequestSetup ? (
                   <Icon name="Plus" size={18} color={tokens.mutedForeground} />
-                ) : null
+                ) : undefined
               }
               selected={isSelected}
               disabled={!connected || (!hasSource && !onRequestSetup)}
               onPress={() => {
+                haptic("selection");
                 sheet.dismiss();
                 if (!hasSource) {
                   onRequestSetup?.(host);

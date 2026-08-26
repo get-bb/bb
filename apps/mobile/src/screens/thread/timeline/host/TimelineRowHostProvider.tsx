@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { usePluginList } from "@/data/plugins";
+import { haptic } from "@/lib/haptics";
 import {
   useSenderThreadMetadataById,
   type SenderThreadMetadata,
@@ -106,6 +107,7 @@ interface TimelineRowHostProviderProps {
 function copyMessageTextToClipboard(text: string): void {
   void Clipboard.setStringAsync(text)
     .then(() => {
+      haptic("success");
       toast.success("Copied");
     })
     .catch(() => {

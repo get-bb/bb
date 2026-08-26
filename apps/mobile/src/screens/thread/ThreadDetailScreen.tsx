@@ -7,8 +7,16 @@ import {
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { View } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import type { ComposerHandle } from "@/composer";
 import {
@@ -31,6 +39,7 @@ import { appendPendingStopRow } from "@/data/thread-runtime";
 import {
   getThreadDisplayTitle,
   useMarkThreadRead,
+  useRenameThread,
   useThread,
   useThreadReadTracking,
 } from "@/data/threads";
@@ -40,8 +49,10 @@ import {
   COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   OverlayBounds,
+  promptName,
   Skeleton,
   Text,
+  useLiquidGlass,
   useSheet,
 } from "@/ui";
 import { ThreadWorkspacePanelProvider, usePanel } from "../panel";
@@ -58,7 +69,11 @@ import { MergeBasePickerSheet } from "./context/MergeBasePickerSheet";
 import { useThreadContextChips } from "./context/use-thread-context-chips";
 import { ThreadPromptArea } from "./prompt-area/ThreadPromptArea";
 import { useFollowUpComposer } from "./prompt-area/use-follow-up-composer";
-import { ThreadHeaderActions, ThreadHeaderTitle } from "./ThreadDetailHeader";
+import {
+  ThreadHeaderActions,
+  ThreadHeaderTitle,
+  ThreadHeaderToolbar,
+} from "./ThreadDetailHeader";
 import {
   describeThreadEnvironment,
   describeThreadStatusPill,
@@ -81,6 +96,8 @@ import { useThreadUnreadDividerState } from "./use-thread-unread-divider-state";
  */
 const SIDE_CHAT_PLUGIN_ID = "side-chat";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 const EMPTY_QUEUED_MESSAGES: ThreadQueuedMessage[] = [];
 const EMPTY_CHILD_SOURCES: ChildThreadPendingAttentionSource[] = [];
 
@@ -88,15 +105,42 @@ function isNotFoundError(error: unknown): boolean {
   return error instanceof BbHttpError && error.status === 404;
 }
 
+/**
+ * The non-list states (loading, error, empty) in place of the timeline: a
+ * scroll view so they inset under the translucent header the way the list
+ * does (`contentInsetAdjustmentBehavior`), and still fill the region.
+ */
+function TimelinePlaceholder({
+  children,
+  testID,
+}: {
+  children: ReactNode;
+  testID?: string;
+}) {
+  return (
+    <ScrollView
+      className="flex-1"
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{ padding: 16, gap: 12 }}
+      keyboardShouldPersistTaps="handled"
+      testID={testID}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
 function TimelineSkeleton() {
   return (
-    <View className="gap-4 px-4 pt-4" testID="thread-timeline-loading">
-      <Skeleton className="h-5 w-3/4" />
-      <Skeleton className="h-16 w-full" />
-      <Skeleton className="h-5 w-1/2" />
-      <Skeleton className="h-24 w-full" />
-      <Skeleton className="h-5 w-2/3" />
-    </View>
+    <TimelinePlaceholder testID="thread-timeline-loading">
+      <View className="gap-4">
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-5 w-1/2" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-5 w-2/3" />
+      </View>
+    </TimelinePlaceholder>
   );
 }
 
@@ -197,6 +241,22 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
   );
 
   const listRef = useRef<TimelineListHandle>(null);
+  // Liquid Glass (iOS 26): the prompt area floats over the timeline (the
+  // composer is a glass card) and the rows scroll under it. The host
+  // reports its height; the rows and the jump pill clear the part of it
+  // above the list's bottom edge (the home-indicator padding sits below
+  // that edge, outside the list's frame, so the scroll view's own
+  // safe-area inset stays zero and `scrollToEnd` lands exactly).
+  const glass = useLiquidGlass();
+  const insets = useSafeAreaInsets();
+  const promptBottomPadding = Math.max(insets.bottom, 8);
+  const [promptAreaHeight, setPromptAreaHeight] = useState(0);
+  const handlePromptAreaLayout = useCallback((event: LayoutChangeEvent) => {
+    setPromptAreaHeight(event.nativeEvent.layout.height);
+  }, []);
+  const promptOverlap = glass
+    ? Math.max(0, promptAreaHeight - promptBottomPadding)
+    : 0;
   // The workspace panel (Info / Diff / Files / Terminal + synced file tabs):
   // the header button presents it.
   const panel = usePanel();
@@ -219,17 +279,30 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     mergeBaseBranch: contextChips.workspace.mergeBaseBranch,
   });
   const gitSheet = useSheet();
-  // Header "…" menu (rename, pin, read state, move, links, archive, delete).
+  // Header "…" menu (rename, pin, read state, move, links, archive, delete):
+  // a native menu on iOS, the bottom sheet on Android.
   const threadActions = useThreadActionsSheet();
   const presentThreadMenu = threadActions.present;
   const openThreadMenu = useCallback(
     () => presentThreadMenu("menu"),
     [presentThreadMenu],
   );
-  const openRename = useCallback(
-    () => presentThreadMenu("rename"),
-    [presentThreadMenu],
-  );
+  // Rename: the system prompt on iOS, the sheet's form elsewhere.
+  const renameThread = useRenameThread();
+  const openRename = useCallback(() => {
+    if (thread === undefined) return;
+    const currentTitle = getThreadDisplayTitle(thread);
+    const prompted = promptName({
+      title: "Rename thread",
+      initialValue: currentTitle,
+      submitLabel: "Rename",
+      onSubmit: (nextTitle) => {
+        if (nextTitle === currentTitle) return;
+        renameThread.mutate({ id: thread.id, title: nextTitle });
+      },
+    });
+    if (!prompted) presentThreadMenu("rename");
+  }, [presentThreadMenu, renameThread, thread]);
   const handleDeleted = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace("/");
@@ -286,7 +359,8 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     host: bootstrap.data?.host ?? null,
     projectName: projectName ?? null,
   });
-  // The "…" menu's first rows: what the old second header row carried.
+  // The Android sheet's first rows: what the old second header row carried
+  // (on iOS the panel is a bar button and the git action the menu's first row).
   const menuLeadingActions: ThreadMenuAction[] = [
     {
       key: "workspace",
@@ -368,7 +442,7 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     return (
       <>
         <Stack.Screen options={{ title: notFound ? "Not found" : "Thread" }} />
-        <View className="gap-3 p-4" testID="thread-detail-error">
+        <TimelinePlaceholder testID="thread-detail-error">
           <EmptyStatePanel>
             <Text className="text-center text-sm text-muted-foreground">
               {notFound
@@ -376,7 +450,7 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
                 : "Could not load this thread."}
             </Text>
             {!notFound ? (
-              <Text variant="caption" className="pt-1 text-center">
+              <Text variant="caption" className="pt-1 text-center" selectable>
                 {threadError.message}
               </Text>
             ) : null}
@@ -394,10 +468,19 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
               Retry
             </Button>
           ) : null}
-        </View>
+        </TimelinePlaceholder>
       </>
     );
   }
+
+  const headerTitle = () => (
+    <ThreadHeaderTitle
+      title={title}
+      statusPill={statusPill}
+      childPillLabel={childPillLabel}
+      onPressTitle={threadReady ? openRename : null}
+    />
+  );
 
   return (
     <TimelineRowHostProvider
@@ -406,26 +489,44 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
       threadOriginKind={thread?.originKind ?? null}
       messageActions={messageActions}
     >
-      <Stack.Screen
-        options={{
-          title,
-          headerTitle: () => (
-            <ThreadHeaderTitle
-              title={title}
-              statusPill={statusPill}
-              childPillLabel={childPillLabel}
-              onPressTitle={threadReady ? openRename : null}
-            />
-          ),
-          headerRight: () => (
-            <ThreadHeaderActions
-              onOpenActions={threadReady ? openThreadMenu : null}
-              onOpenPanel={threadReady ? onOpenPanel : null}
-              panelActive={panel.visible}
-            />
-          ),
-        }}
-      />
+      {IS_IOS ? (
+        <>
+          <Stack.Screen options={{ title, headerTitle }} />
+          <ThreadHeaderToolbar
+            thread={thread}
+            panelActive={panel.visible}
+            onOpenPanel={onOpenPanel}
+            gitAction={
+              gitActions.primaryLabel !== null
+                ? {
+                    label: gitActions.primaryLabel,
+                    pending: gitActions.pending,
+                    onPress: gitSheet.present,
+                  }
+                : null
+            }
+            menuTitle={menuDetail.length > 0 ? menuDetail : null}
+            onDeleted={handleDeleted}
+            onHandoffToNewThread={contextChips.handoffToNewThread}
+            onNewThreadInWorktree={contextChips.newThreadInWorktree}
+            onRename={openRename}
+          />
+        </>
+      ) : (
+        <Stack.Screen
+          options={{
+            title,
+            headerTitle,
+            headerRight: () => (
+              <ThreadHeaderActions
+                onOpenActions={threadReady ? openThreadMenu : null}
+                onOpenPanel={threadReady ? onOpenPanel : null}
+                panelActive={panel.visible}
+              />
+            ),
+          }}
+        />
+      )}
       {turnLoaders}
       <KeyboardPaddingView
         style={{ flex: 1 }}
@@ -434,50 +535,65 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
         {/* The composer's typeahead floats up to the top of this region,
             never under the header. */}
         <OverlayBounds style={{ flex: 1 }}>
-          {(timelineLoading && entries.length === 0) || !threadReady ? (
-            <View className="flex-1">
+          {/* Floating prompt area: the timeline's frame ends at the glass
+              card's bottom edge; only the card's own height is padded into
+              the rows (above). In flow, the body is the region itself. */}
+          <View
+            style={{
+              flex: 1,
+              paddingBottom: glass ? promptBottomPadding : 0,
+            }}
+          >
+            {(timelineLoading && entries.length === 0) || !threadReady ? (
               <TimelineSkeleton />
-            </View>
-          ) : timelineError && entries.length === 0 ? (
-            <View className="flex-1 gap-3 p-4" testID="thread-timeline-error">
-              <EmptyStatePanel>
-                <Text className="text-center text-sm text-muted-foreground">
-                  Failed to load the timeline.
-                </Text>
-                <Text variant="caption" className="pt-1 text-center">
-                  {timelineError.message}
-                </Text>
-              </EmptyStatePanel>
-              <Button
-                variant="outline"
-                icon="RotateCcw"
-                onPress={() => void refetchLatestTimeline()}
-              >
-                Retry
-              </Button>
-            </View>
-          ) : entries.length === 0 && !showWorkingIndicator ? (
-            <View className="flex-1 px-4 pt-6" testID="thread-timeline-empty">
-              <EmptyStatePanel>No messages yet.</EmptyStatePanel>
-            </View>
-          ) : (
-            <TimelineList
-              ref={listRef}
-              entries={entries}
-              unreadDividerIndex={unreadDividerIndex}
-              unreadDividerAutoScroll={unreadDivider.autoScroll}
-              onToggleRow={toggleRow}
-              threadId={threadId}
-              projectId={thread?.projectId ?? ""}
-              hasOlderRows={hasOlderTimelineRows}
-              isLoadingOlderRows={isLoadingOlderTimelineRows}
-              onLoadOlderRows={loadOlderTimelineRows}
-              footer={footer}
-              bottomInset={8}
-              testID="thread-timeline"
-            />
-          )}
+            ) : timelineError && entries.length === 0 ? (
+              <TimelinePlaceholder testID="thread-timeline-error">
+                <EmptyStatePanel>
+                  <Text className="text-center text-sm text-muted-foreground">
+                    Failed to load the timeline.
+                  </Text>
+                  <Text
+                    variant="caption"
+                    className="pt-1 text-center"
+                    selectable
+                  >
+                    {timelineError.message}
+                  </Text>
+                </EmptyStatePanel>
+                <Button
+                  variant="outline"
+                  icon="RotateCcw"
+                  onPress={() => void refetchLatestTimeline()}
+                >
+                  Retry
+                </Button>
+              </TimelinePlaceholder>
+            ) : entries.length === 0 && !showWorkingIndicator ? (
+              <TimelinePlaceholder testID="thread-timeline-empty">
+                <EmptyStatePanel>No messages yet.</EmptyStatePanel>
+              </TimelinePlaceholder>
+            ) : (
+              <TimelineList
+                ref={listRef}
+                entries={entries}
+                unreadDividerIndex={unreadDividerIndex}
+                unreadDividerAutoScroll={unreadDivider.autoScroll}
+                onToggleRow={toggleRow}
+                threadId={threadId}
+                projectId={thread?.projectId ?? ""}
+                hasOlderRows={hasOlderTimelineRows}
+                isLoadingOlderRows={isLoadingOlderTimelineRows}
+                onLoadOlderRows={loadOlderTimelineRows}
+                footer={footer}
+                bottomInset={promptOverlap + 8}
+                bottomOverlay={promptOverlap}
+                testID="thread-timeline"
+              />
+            )}
+          </View>
           <ThreadPromptArea
+            floating={glass}
+            onLayout={glass ? handlePromptAreaLayout : undefined}
             threadId={threadId}
             thread={thread}
             environmentId={bootstrap.data?.environment?.id ?? null}
@@ -499,7 +615,7 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
           />
         </OverlayBounds>
       </KeyboardPaddingView>
-      {thread ? (
+      {thread && !IS_IOS ? (
         <ThreadActionsSheet
           controller={threadActions}
           thread={thread}

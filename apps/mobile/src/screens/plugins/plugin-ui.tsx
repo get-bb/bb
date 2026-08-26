@@ -1,39 +1,19 @@
-import type { ReactNode } from "react";
 import { View } from "react-native";
 import type { PluginRowSignal, PluginStatusTone } from "@/data/plugins";
 import { useTheme } from "@/theme";
-import { Icon, Pill, Text } from "@/ui";
+import { GROUPED_CARD_RADIUS, Icon, Pill, Text } from "@/ui";
 
-/** Card-styled section with a label, shared by the plugin / extension screens. */
-export function SettingsSection({
-  title,
-  description,
-  children,
-  testID,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  testID?: string;
-}) {
-  return (
-    <View className="gap-1" testID={testID}>
-      <Text variant="sectionLabel" className="pb-1">
-        {title}
-      </Text>
-      {description ? (
-        <Text variant="caption" className="pb-2">
-          {description}
-        </Text>
-      ) : null}
-      <View className="overflow-hidden rounded-lg border border-border bg-card">
-        {children}
-      </View>
-    </View>
-  );
-}
+/** The grouped section shared by the plugin / extension screens. */
+export { SettingsSection } from "../settings/SettingsRows";
 
-/** A `label: value` definition row inside a card. */
+/** Values up to this length sit on the row's right; longer ones wrap under the label. */
+const INLINE_VALUE_MAX_LENGTH = 28;
+
+/**
+ * A `label: value` definition row inside a card. Short values read like an
+ * iOS value cell (label left, muted value right); long or mono values
+ * (sources, schedules, paths) wrap under the label. Values are selectable.
+ */
 export function DetailRow({
   label,
   value,
@@ -45,16 +25,32 @@ export function DetailRow({
   mono?: boolean;
   testID?: string;
 }) {
-  return (
-    <View className="flex-row items-start gap-3 px-4 py-2.5" testID={testID}>
-      <Text variant="caption" className="w-28 shrink-0">
-        {label}
-      </Text>
-      <Text
-        variant={mono ? "mono" : "body"}
-        className="min-w-0 flex-1"
-        selectable
+  const inline = !mono && value.length <= INLINE_VALUE_MAX_LENGTH;
+  if (inline) {
+    return (
+      <View
+        className="min-h-[44px] flex-row items-center gap-3 px-4 py-2.5"
+        testID={testID}
       >
+        <Text variant="bodyLarge" className="shrink" numberOfLines={2}>
+          {label}
+        </Text>
+        <Text
+          variant="bodyLarge"
+          tone="muted"
+          className="min-w-0 flex-1 text-right"
+          numberOfLines={1}
+          selectable
+        >
+          {value}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View className="min-h-[44px] gap-0.5 px-4 py-2.5" testID={testID}>
+      <Text variant="bodyLarge">{label}</Text>
+      <Text variant={mono ? "mono" : "body"} tone="muted" selectable>
         {value}
       </Text>
     </View>
@@ -71,7 +67,9 @@ export function CardNote({
 }) {
   return (
     <View className="px-4 py-3" testID={testID}>
-      <Text variant="caption">{children}</Text>
+      <Text variant="footnote" tone="muted">
+        {children}
+      </Text>
     </View>
   );
 }
@@ -119,7 +117,7 @@ export function PluginSignalPill({
   );
 }
 
-/** A tinted banner (status condition + recovery, third-party warnings). */
+/** A grouped card carrying a status condition + recovery, or a third-party warning. */
 export function NoticeCard({
   tone,
   icon,
@@ -146,13 +144,18 @@ export function NoticeCard({
     tone === "info" ? tokens.mutedForeground : toneColor(tone, tokens);
   return (
     <View
-      className="flex-row gap-3 rounded-lg border border-border bg-card px-4 py-3"
+      className="flex-row gap-3 bg-surface-grouped-cell px-4 py-3"
+      style={{ borderRadius: GROUPED_CARD_RADIUS, borderCurve: "continuous" }}
       testID={testID}
     >
-      <Icon name={icon} size={18} color={color} />
+      <Icon name={icon} size={20} color={color} />
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="label">{title}</Text>
-        {body ? <Text variant="caption">{body}</Text> : null}
+        <Text variant="headline">{title}</Text>
+        {body ? (
+          <Text variant="footnote" tone="muted" selectable>
+            {body}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

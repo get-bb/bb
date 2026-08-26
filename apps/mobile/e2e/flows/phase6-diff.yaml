@@ -1,7 +1,7 @@
 # Phase 6 Diff tab: add the harness server → open the thread named by
 # THREAD_TITLE (its worktree is dirty) → the context banner's changed-files
 # row → "Open diff" → the Diff sheet lists the modified / deleted / added
-# cards with the modified file's hunk → the target picker offers the
+# cards with the modified file's hunk → the target picker sheet offers the
 # uncommitted target → "Add to chat" quotes the patch into the composer
 # ("> diff --git …") → a file row in the banner opens the diff focused on it
 # → an API commit + refresh offers the committed target.
@@ -62,8 +62,10 @@ env:
 - assertVisible:
     id: "diff-tab-removed"
 - takeScreenshot: phase6-diff
-# Target picker: the working tree is the only target on a fresh worktree
-# with no commits above the default branch; pick it and the list holds.
+# Target picker: the capsule opens the picker sheet (both platforms; its rows
+# carry `diff-target-<value>` ids). The working tree is the only target on a
+# fresh worktree with no commits above the default branch; pick it and the
+# list holds.
 - tapOn:
     id: "diff-tab-target"
 - extendedWaitUntil:
@@ -118,8 +120,9 @@ env:
     timeout: 30000
 - takeScreenshot: phase6-diff-focused
 # Commit through the API (the fake provider cannot), refresh: the picker now
-# offers "Committed changes" and the commit itself; the committed target
-# lists the same files.
+# offers "Committed changes" and the commit itself (a row with the short sha
+# as its mono prefix and the subject); the committed target lists the same
+# files.
 - runScript:
     file: ../scripts/phase6-commit.js
 - tapOn:

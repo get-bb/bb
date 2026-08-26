@@ -9,7 +9,14 @@ import {
   useTerminals,
 } from "@/data/terminals";
 import type { TerminalQueryScope } from "@/lib/query/query-keys";
-import { Button, EmptyStatePanel, ListRow, Skeleton, Text } from "@/ui";
+import {
+  Button,
+  GroupedRow,
+  GroupedSection,
+  Skeleton,
+  Text,
+  type GroupedSurface,
+} from "@/ui";
 
 /**
  * The scope's terminal sessions with a "Start terminal" action: the body of
@@ -21,6 +28,8 @@ interface TerminalSessionsListProps {
   listScope: TerminalQueryScope;
   createScope: TerminalCreateScope;
   onOpenTerminal: (terminalId: string) => void;
+  /** What the session cards sit on: the grouped page (full screen) or the panel's raised surface. */
+  surface?: GroupedSurface;
   testID?: string;
 }
 
@@ -29,8 +38,10 @@ export function TerminalSessionsList(props: TerminalSessionsListProps) {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <View className="p-4" testID={props.testID ?? "terminal-sessions"}>
-        <EmptyStatePanel>No active server.</EmptyStatePanel>
+      <View className="p-6" testID={props.testID ?? "terminal-sessions"}>
+        <Text variant="footnote" tone="muted" className="text-center">
+          No active server.
+        </Text>
       </View>
     );
   }
@@ -41,6 +52,7 @@ function ConnectedTerminalSessionsList({
   listScope,
   createScope,
   onOpenTerminal,
+  surface = "grouped",
   testID = "terminal-sessions",
 }: TerminalSessionsListProps) {
   const terminalsQuery = useTerminals(listScope);
@@ -58,7 +70,7 @@ function ConnectedTerminalSessionsList({
   };
 
   return (
-    <View className="gap-3 p-4" testID={testID}>
+    <View className="gap-6 px-4 pb-8 pt-3" testID={testID}>
       <Button
         icon="Terminal"
         loading={createTerminal.isPending}
@@ -69,42 +81,40 @@ function ConnectedTerminalSessionsList({
       </Button>
       {terminalsQuery.isLoading && !terminalsQuery.data ? (
         <View className="gap-2">
-          <Skeleton className="h-11 w-full" />
-          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full rounded-lg" />
+          <Skeleton className="h-11 w-full rounded-lg" />
         </View>
       ) : terminalsQuery.error && !terminalsQuery.data ? (
-        <EmptyStatePanel>
-          <Text className="text-center text-sm text-destructive-text">
+        <View className="items-center gap-1 py-4">
+          <Text variant="footnote" tone="destructive" className="text-center">
             Failed to load terminals.
           </Text>
-          <Text variant="caption" className="pt-1 text-center">
+          <Text variant="caption" className="text-center" selectable>
             {terminalsQuery.error.message}
           </Text>
-        </EmptyStatePanel>
+        </View>
       ) : sessions.length === 0 ? (
-        <EmptyStatePanel>No terminals</EmptyStatePanel>
+        <Text variant="footnote" tone="muted" className="py-4 text-center">
+          No terminals
+        </Text>
       ) : (
-        <View className="overflow-hidden rounded-lg border border-border bg-card">
-          {sessions.map((session, index) => {
+        <GroupedSection title="Sessions" surface={surface}>
+          {sessions.map((session) => {
             const row = describeTerminalSessionRow(session);
             return (
-              <View key={session.id}>
-                {index > 0 ? (
-                  <View className="ml-4 h-px bg-border-hairline" />
-                ) : null}
-                <ListRow
-                  leading="Terminal"
-                  title={row.title}
-                  subtitle={row.subtitle}
-                  trailing="chevron"
-                  disabled={!row.active}
-                  onPress={() => onOpenTerminal(session.id)}
-                  testID={`terminal-session-row-${session.id}`}
-                />
-              </View>
+              <GroupedRow
+                key={session.id}
+                leading="Terminal"
+                title={row.title}
+                subtitle={row.subtitle}
+                trailing="chevron"
+                disabled={!row.active}
+                onPress={() => onOpenTerminal(session.id)}
+                testID={`terminal-session-row-${session.id}`}
+              />
             );
           })}
-        </View>
+        </GroupedSection>
       )}
     </View>
   );

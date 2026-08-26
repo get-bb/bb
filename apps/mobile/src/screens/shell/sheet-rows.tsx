@@ -1,7 +1,9 @@
 import { Pressable, View } from "react-native";
-import { useTheme } from "@/theme";
-import { Icon, ListRow, Separator, Text, type IconName } from "@/ui";
+import { cn, ListRow, Separator, Text, type IconName } from "@/ui";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
+/** Centered sheet title (headline) with an optional caption, like a UIKit sheet. */
 export function SheetHeader({
   title,
   message,
@@ -11,17 +13,22 @@ export function SheetHeader({
 }) {
   return (
     <>
-      <View className="gap-1 px-4 pb-3 pt-1">
-        <Text variant="heading" numberOfLines={2}>
+      <View className="items-center gap-0.5 px-4 pb-3 pt-1">
+        <Text variant="heading" numberOfLines={2} className="text-center">
           {title}
         </Text>
-        {message ? <Text variant="caption">{message}</Text> : null}
+        {message ? (
+          <Text variant="caption" numberOfLines={2} className="text-center">
+            {message}
+          </Text>
+        ) : null}
       </View>
       <Separator />
     </>
   );
 }
 
+/** Single-choice row: the checked one shows the tinted check mark. */
 export function CheckRow({
   label,
   icon,
@@ -35,24 +42,18 @@ export function CheckRow({
   onPress: () => void;
   testID: string;
 }) {
-  const { tokens } = useTheme();
   return (
     <ListRow
       title={label}
       leading={icon}
       selected={checked}
-      trailing={
-        checked ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
       onPress={onPress}
       testID={testID}
     />
   );
 }
 
-/** Full-width secondary row with centered copy (Cancel / Done). */
+/** Full-width row with centered tinted copy (Cancel / Done). */
 export function CenteredRow({
   label,
   onPress,
@@ -66,10 +67,15 @@ export function CenteredRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      className="min-h-[44px] items-center justify-center px-4 active:bg-state-hover"
+      className={cn(
+        "min-h-[44px] items-center justify-center px-4",
+        IS_IOS ? "active:bg-state-active" : "active:bg-state-hover",
+      )}
       testID={testID}
     >
-      <Text variant="label">{label}</Text>
+      <Text variant="bodyLarge" weight="semibold" tone="primary">
+        {label}
+      </Text>
     </Pressable>
   );
 }

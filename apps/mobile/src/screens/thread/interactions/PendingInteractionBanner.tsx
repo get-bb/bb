@@ -19,7 +19,7 @@ import {
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import { useCallback, useMemo } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
 import {
   approvalDecisionButtonVariant,
   approvalResolutionDecision,
@@ -54,6 +54,32 @@ import { QuestionForm } from "./QuestionForm";
 import { SecretRequestForm } from "./SecretRequestForm";
 
 const DETAIL_SCROLL_MAX_HEIGHT = 220;
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** Inner detail cards (command, plan, tool use): continuous 10pt corners. */
+const DETAIL_CARD_STYLE = {
+  borderRadius: 10,
+  borderCurve: "continuous",
+} as const;
+
+/**
+ * iOS decision buttons: the safest yes filled, the session-long yes plain,
+ * Deny red-tinted — never a second filled button competing with the first.
+ */
+function iosDecisionButtonProps(decision: PendingInteractionApprovalDecision): {
+  variant: "default" | "ghost" | "outline";
+  tint?: "destructive";
+} {
+  switch (decision) {
+    case "allow_once":
+      return { variant: "default" };
+    case "allow_for_session":
+      return { variant: "ghost" };
+    case "deny":
+      return { variant: "outline", tint: "destructive" };
+    default:
+      return assertNever(decision);
+  }
+}
 
 interface PendingInteractionBannerProps {
   interaction: PendingInteraction;
@@ -231,7 +257,9 @@ function ApprovalInteractionBanner({
         <Button
           key={decision}
           size="sm"
-          variant={approvalDecisionButtonVariant(decision)}
+          {...(IS_IOS
+            ? iosDecisionButtonProps(decision)
+            : { variant: approvalDecisionButtonVariant(decision) })}
           disabled={submitDisabled}
           loading={
             (isResolving && submittedDecision === decision) ||
@@ -249,7 +277,10 @@ function ApprovalInteractionBanner({
       ))}
     >
       {subject.command !== null ? (
-        <View className="overflow-hidden rounded-lg border border-border bg-card">
+        <View
+          className="overflow-hidden rounded-lg border border-border bg-card"
+          style={DETAIL_CARD_STYLE}
+        >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -272,7 +303,10 @@ function ApprovalInteractionBanner({
           ) : null}
         </View>
       ) : subject.plan !== null ? (
-        <View className="overflow-hidden rounded-lg border border-border bg-card">
+        <View
+          className="overflow-hidden rounded-lg border border-border bg-card"
+          style={DETAIL_CARD_STYLE}
+        >
           <ScrollView
             style={{ maxHeight: DETAIL_SCROLL_MAX_HEIGHT }}
             nestedScrollEnabled
@@ -296,6 +330,7 @@ function ApprovalInteractionBanner({
       ) : subject.detailLines.length > 0 ? (
         <ApprovalDetailList
           className="rounded-lg border border-border bg-card px-3 py-2"
+          style={DETAIL_CARD_STYLE}
           lines={subject.detailLines}
         />
       ) : null}
@@ -331,6 +366,7 @@ function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
   return (
     <View
       className="overflow-hidden rounded-lg border border-border bg-card px-3 py-2"
+      style={DETAIL_CARD_STYLE}
       testID="approval-tool-use"
     >
       <View className="flex-row items-center gap-2">
@@ -372,15 +408,17 @@ function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
 
 function ApprovalDetailList({
   className,
+  style,
   lines,
   mono = false,
 }: {
   className: string;
+  style?: StyleProp<ViewStyle>;
   lines: readonly string[];
   mono?: boolean;
 }) {
   return (
-    <View className={className}>
+    <View className={className} style={style}>
       {lines.map((line) => (
         <Text
           key={line}

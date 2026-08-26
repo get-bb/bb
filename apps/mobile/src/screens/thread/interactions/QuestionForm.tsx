@@ -12,8 +12,11 @@ import {
   type QuestionAnswerState,
   type QuestionFormState,
 } from "@/data/interactions";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
-import { Button, cn, Icon, Text, TextArea } from "@/ui";
+import { Button, cn, Icon, SelectedCheck, Text, TextArea } from "@/ui";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 const OTHER_OPTION_LABEL = "Other…";
 const PREVIEW_MAX_HEIGHT = 220;
@@ -35,27 +38,74 @@ interface QuestionOptionRowProps {
   description?: string;
   multiSelect: boolean;
   disabled: boolean;
+  /** Hairline above the row (every row but the first in a grouped list). */
+  separated?: boolean;
   onSelect: () => void;
   testID?: string;
 }
 
+/**
+ * One choice. iOS: a grouped-list cell (17pt label, footnote description,
+ * tinted check mark when chosen, hairline separators) — the system's
+ * single / multi-choice table look. Elsewhere: the web's radio / checkbox
+ * square in a highlighted row.
+ */
 function QuestionOptionRow({
   checked,
   label,
   description,
   multiSelect,
   disabled,
+  separated = false,
   onSelect,
   testID,
 }: QuestionOptionRowProps) {
   const { tokens } = useTheme();
+  const select = () => {
+    haptic("selection");
+    onSelect();
+  };
+  if (IS_IOS) {
+    return (
+      <Pressable
+        accessibilityRole={multiSelect ? "checkbox" : "radio"}
+        accessibilityState={{ checked, disabled }}
+        accessibilityLabel={label}
+        disabled={disabled}
+        onPress={select}
+        className="min-h-11 flex-row items-center gap-3 px-3 py-2 active:bg-state-active"
+        testID={testID}
+      >
+        <View className="min-w-0 flex-1">
+          <Text variant="bodyLarge">{label}</Text>
+          {description ? (
+            <Text variant="caption" className="mt-0.5">
+              {description}
+            </Text>
+          ) : null}
+        </View>
+        {checked ? (
+          <SelectedCheck />
+        ) : (
+          // Reserve the check's column so labels do not shift on selection.
+          <View style={{ width: 18 }} />
+        )}
+        {separated ? (
+          <View
+            pointerEvents="none"
+            className="absolute left-3 right-0 top-0 border-t border-border-hairline"
+          />
+        ) : null}
+      </Pressable>
+    );
+  }
   return (
     <Pressable
       accessibilityRole={multiSelect ? "checkbox" : "radio"}
       accessibilityState={{ checked, disabled }}
       accessibilityLabel={label}
       disabled={disabled}
-      onPress={onSelect}
+      onPress={select}
       className={cn(
         "min-h-11 flex-row items-start gap-2.5 rounded-md px-2.5 py-2 active:bg-state-hover",
         checked && "bg-surface-selected",
@@ -93,7 +143,7 @@ function QuestionOptionPreview({ preview }: { preview: string }) {
   return (
     <ScrollView
       className="mx-2.5 mb-1 mt-1 rounded-md border border-border bg-surface-raised"
-      style={{ maxHeight: PREVIEW_MAX_HEIGHT }}
+      style={{ maxHeight: PREVIEW_MAX_HEIGHT, borderCurve: "continuous" }}
       nestedScrollEnabled
     >
       <Text variant="mono" className="px-2.5 py-2 text-xs" selectable>
@@ -134,9 +184,12 @@ function QuestionTabs({
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={question.prompt}
-              onPress={() => onSelect(index)}
+              onPress={() => {
+                haptic("selection");
+                onSelect(index);
+              }}
               className={cn(
-                "h-7 justify-center rounded-md px-2 active:bg-state-hover",
+                "h-7 justify-center rounded-full px-2.5 active:bg-state-hover",
                 isActive && "bg-muted",
               )}
               testID={`question-tab-${index}`}
@@ -156,7 +209,7 @@ function QuestionTabs({
           );
         })}
       </ScrollView>
-      <Text variant="caption">
+      <Text variant="caption" numeric>
         {currentIndex + 1} of {questions.length}
       </Text>
     </View>
@@ -181,10 +234,23 @@ function QuestionInputBlock({
   const options = question.options;
   return (
     <View className="min-w-0">
-      <Text className="text-sm font-semibold" testID="question-prompt">
+      <Text
+        variant={IS_IOS ? "headline" : undefined}
+        className={IS_IOS ? undefined : "text-sm font-semibold"}
+        testID="question-prompt"
+      >
         {question.prompt}
       </Text>
-      <View className="mt-2 gap-0.5">
+      <View
+        // iOS: the choices sit in an inset grouped card.
+        className={cn(
+          "mt-2",
+          IS_IOS ? "overflow-hidden bg-surface-grouped-cell" : "gap-0.5",
+        )}
+        style={
+          IS_IOS ? { borderRadius: 10, borderCurve: "continuous" } : undefined
+        }
+      >
         {options.map((option, index) => {
           const checked = state.selected.includes(option.value);
           return (
@@ -195,6 +261,7 @@ function QuestionInputBlock({
                 description={option.description}
                 multiSelect={question.multiSelect}
                 disabled={disabled}
+                separated={index > 0}
                 onSelect={() => onToggleOption(option.value)}
                 testID={`question-option-${index}`}
               />
@@ -210,6 +277,7 @@ function QuestionInputBlock({
             label={OTHER_OPTION_LABEL}
             multiSelect={question.multiSelect}
             disabled={disabled}
+            separated={options.length > 0}
             onSelect={onSelectOther}
             testID="question-option-other"
           />
@@ -223,7 +291,8 @@ function QuestionInputBlock({
           autoCapitalize="sentences"
           onChangeText={onFreeTextChange}
           placeholder="Type your own answer…"
-          className="mt-2 max-h-40 bg-surface-raised"
+          className={cn("mt-2 max-h-40", !IS_IOS && "bg-surface-raised")}
+          grouped={IS_IOS}
           testID="question-free-text"
         />
       ) : null}

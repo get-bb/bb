@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
-  cn,
   Icon,
   Text,
   useSheet,
   type ActionSheetAction,
+  type IconName,
 } from "@/ui";
 import type { PanelStripEntry, PanelStripTarget } from "./panel-model";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** Capsule height of one strip entry (the iOS filter-bar pill). */
+const PILL_HEIGHT = 32;
+/** Longest label before it truncates (file names). */
+const LABEL_MAX_WIDTH = 140;
 
 interface PanelTabStripProps {
   entries: readonly PanelStripEntry[];
@@ -30,10 +37,21 @@ function stripEntryTestId(entry: PanelStripEntry): string {
 }
 
 /**
- * Horizontal tab strip of the workspace panel: fixed entries (Info, Diff,
- * Files, Terminal) then closable file tabs with an "x"; long-press a file
- * tab for Close / Close others / Close all. The active entry scrolls into
- * view when it changes.
+ * File tabs read as documents on iOS (one glyph for every file kind, like a
+ * Files app tab row); the fixed entries keep their own symbols.
+ */
+function stripEntryIcon(entry: PanelStripEntry): IconName {
+  return IS_IOS && entry.closable ? "File" : entry.icon;
+}
+
+/**
+ * The workspace panel's tab strip as an iOS pill bar: the fixed entries
+ * (Info, Diff, Files, Terminal) then the closable file tabs, the active one
+ * a filled capsule. Switching tabs ticks the selection haptic; a file tab's
+ * close actions (Close / Close others / Close all) are a long-press action
+ * sheet shared by every tab (a native context menu per tab would host a
+ * SwiftUI view in each pill). The active entry scrolls into view when it
+ * changes.
  */
 export function PanelTabStrip({
   entries,
@@ -56,42 +74,57 @@ export function PanelTabStrip({
     scrollRef.current?.scrollTo({ x: Math.max(0, x - 48), animated: true });
   }, [activeKey]);
 
+  const closeActionsFor = useCallback(
+    (tabId: string): ActionSheetAction[] => [
+      {
+        key: "close",
+        label: "Close tab",
+        icon: "X",
+        onPress: () => onCloseTab(tabId),
+      },
+      {
+        key: "close-others",
+        label: "Close other tabs",
+        icon: "CircleX",
+        onPress: () => onCloseOtherTabs(tabId),
+      },
+      {
+        key: "close-all",
+        label: "Close all tabs",
+        icon: "Trash2",
+        destructive: true,
+        onPress: () => onCloseAllTabs(),
+      },
+    ],
+    [onCloseAllTabs, onCloseOtherTabs, onCloseTab],
+  );
+
   const openMenu = useCallback(
     (entry: PanelStripEntry) => {
+      haptic("impact-heavy");
       setMenuEntry(entry);
       menu.present();
     },
     [menu],
   );
 
+  const activate = useCallback(
+    (entry: PanelStripEntry) => {
+      if (!entry.active) haptic("selection");
+      onActivate(entry.target);
+    },
+    [onActivate],
+  );
+
   const menuTabId =
     menuEntry?.target.kind === "tab" ? menuEntry.target.tabId : null;
-  const menuActions: ActionSheetAction[] =
-    menuTabId === null
-      ? []
-      : [
-          {
-            key: "close",
-            label: "Close tab",
-            icon: "X",
-            onPress: () => onCloseTab(menuTabId),
-          },
-          {
-            key: "close-others",
-            label: "Close other tabs",
-            onPress: () => onCloseOtherTabs(menuTabId),
-          },
-          {
-            key: "close-all",
-            label: "Close all tabs",
-            destructive: true,
-            onPress: () => onCloseAllTabs(),
-          },
-        ];
 
   return (
     <View
-      className="border-b border-border-hairline"
+      style={{
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: tokens.borderHairline,
+      }}
       testID="workspace-panel-tab-strip"
     >
       <ScrollView
@@ -99,12 +132,7 @@ export function PanelTabStrip({
         horizontal
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          gap: 6,
-          alignItems: "center",
-        }}
+        contentContainerStyle={styles.strip}
       >
         {entries.map((entry) => {
           const closableTabId =
@@ -112,17 +140,21 @@ export function PanelTabStrip({
               ? entry.target.tabId
               : null;
           return (
+            // A direct child of the scroll content, so its layout x is the
+            // offset the scroll-into-view needs.
             <View
               key={entry.key}
               onLayout={(event) => {
                 offsetsRef.current.set(entry.key, event.nativeEvent.layout.x);
               }}
-              className={cn(
-                "flex-row items-center rounded-md border",
-                entry.active
-                  ? "border-border bg-surface-selected"
-                  : "border-transparent",
-              )}
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: entry.active
+                    ? tokens.secondary
+                    : "transparent",
+                },
+              ]}
             >
               <Pressable
                 accessibilityRole="tab"
@@ -132,35 +164,38 @@ export function PanelTabStrip({
                     ? `${entry.label} (${entry.statusLabel})`
                     : entry.label
                 }
-                onPress={() => onActivate(entry.target)}
-                onLongPress={entry.closable ? () => openMenu(entry) : undefined}
-                className={cn(
-                  "h-8 flex-row items-center gap-1.5 rounded-md pl-2.5 active:bg-state-hover",
-                  entry.closable ? "pr-1" : "pr-2.5",
-                )}
+                onPress={() => activate(entry)}
+                onLongPress={
+                  closableTabId !== null ? () => openMenu(entry) : undefined
+                }
+                style={({ pressed }) => [
+                  styles.pillPress,
+                  {
+                    paddingRight: closableTabId === null ? 12 : 4,
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
                 testID={stripEntryTestId(entry)}
               >
                 <Icon
-                  name={entry.icon}
-                  size={14}
+                  name={stripEntryIcon(entry)}
+                  size={16}
+                  weight={entry.active ? "semibold" : "medium"}
                   color={
                     entry.active ? tokens.foreground : tokens.mutedForeground
                   }
                 />
                 <Text
-                  className={cn(
-                    "max-w-[140px] text-xs",
-                    entry.active ? "text-foreground" : "text-muted-foreground",
-                  )}
+                  variant="body"
+                  weight={entry.active ? "semibold" : "regular"}
+                  tone={entry.active ? "foreground" : "muted"}
                   numberOfLines={1}
+                  style={styles.label}
                 >
                   {entry.label}
                 </Text>
                 {entry.statusLabel ? (
-                  <Text
-                    className="text-2xs text-muted-foreground"
-                    numberOfLines={1}
-                  >
+                  <Text variant="caption" numberOfLines={1}>
                     {entry.statusLabel}
                   </Text>
                 ) : null}
@@ -171,10 +206,18 @@ export function PanelTabStrip({
                   accessibilityLabel={`Close ${entry.label}`}
                   hitSlop={6}
                   onPress={() => onCloseTab(closableTabId)}
-                  className="h-8 w-7 items-center justify-center rounded-md active:bg-state-hover"
+                  style={({ pressed }) => [
+                    styles.close,
+                    { opacity: pressed ? 0.5 : 1 },
+                  ]}
                   testID="panel-tab-close"
                 >
-                  <Icon name="X" size={12} color={tokens.mutedForeground} />
+                  <Icon
+                    name="CircleX"
+                    symbol="xmark.circle.fill"
+                    size={16}
+                    color={tokens.subtleForeground}
+                  />
                 </Pressable>
               ) : null}
             </View>
@@ -184,10 +227,40 @@ export function PanelTabStrip({
       <ActionSheet
         controller={menu}
         title={menuEntry?.label}
-        actions={menuActions}
+        actions={menuTabId === null ? [] : closeActionsFor(menuTabId)}
         onDismiss={() => setMenuEntry(null)}
         stackBehavior="push"
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  strip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+    alignItems: "center",
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: PILL_HEIGHT,
+    borderRadius: PILL_HEIGHT / 2,
+    borderCurve: "continuous",
+  },
+  pillPress: {
+    height: PILL_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingLeft: 12,
+  },
+  close: {
+    height: PILL_HEIGHT,
+    width: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: { maxWidth: LABEL_MAX_WIDTH },
+});

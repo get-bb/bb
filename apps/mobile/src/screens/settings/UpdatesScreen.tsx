@@ -1,8 +1,8 @@
 import type { Host } from "@bb/domain";
-import type { SystemVersionResponse } from "@bb/server-contract";
 import * as Clipboard from "expo-clipboard";
+import { Stack } from "expo-router";
 import { useMemo, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Linking, View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
   formatRelativeAge,
@@ -29,16 +29,13 @@ import {
   useUpdateInventory,
   type UpdateInventoryMachine,
 } from "@/data/updates";
-import { useTheme } from "@/theme";
 import {
   Button,
   EmptyStatePanel,
-  Icon,
+  GroupedRow,
   ListRow,
-  Pill,
   Separator,
   Sheet,
-  Spinner,
   Text,
   toast,
   useSheet,
@@ -48,84 +45,73 @@ import {
   ProviderCliRows,
 } from "../machines/ProviderCliRows";
 import { HostStatusDot } from "../pickers";
-import { Screen } from "../shell/Screen";
 import { useNow } from "../shell/use-now";
-import { SettingsControlRow, SettingsSection } from "./SettingsRows";
+import { GroupedScreen } from "./GroupedScreen";
+import {
+  HeaderIconButton,
+  ICON_ROW_SEPARATOR_INSET,
+  SettingsControlRow,
+  SettingsSection,
+} from "./SettingsRows";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
 const CHANGELOG_URL = "https://github.com/get-bb/bb/blob/main/CHANGELOG.md";
+
+function openChangelog(): void {
+  Linking.openURL(CHANGELOG_URL).catch(() => {
+    toast.error("Could not open the changelog");
+  });
+}
 
 /**
  * `/settings/updates` (web UpdatesSettingsSection + CliSkillsSettingsSection):
  * the bb-app version against the registry, every machine's provider CLIs
  * with Install / Update, stranded daemons with Retry, and the bb CLI skills
- * install per machine.
+ * install per machine. Check / What's new live in the header on iOS.
  */
 export function UpdatesScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="updates-screen">
+      <GroupedScreen testID="updates-screen">
         <EmptyStatePanel>Add a server first.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
   return <ConnectedUpdatesScreen />;
 }
 
-function BbAppRow({
-  systemVersion,
-}: {
-  systemVersion: SystemVersionResponse | undefined;
-}) {
-  const state = bbAppRowState(systemVersion);
-  const copyUpgradeCommand = (command: string) => {
-    void Clipboard.setStringAsync(command)
-      .then(() => toast.success("Upgrade command copied"))
-      .catch(() => toast.error("Couldn't copy upgrade command"));
-  };
+function copyUpgradeCommand(command: string): void {
+  void Clipboard.setStringAsync(command)
+    .then(() => toast.success("Upgrade command copied"))
+    .catch(() => toast.error("Couldn't copy upgrade command"));
+}
+
+/** The bb-app version row: current (→ latest) under the name, the state as the value. */
+function BbAppRow({ state }: { state: ReturnType<typeof bbAppRowState> }) {
+  const version =
+    state.kind === "checking"
+      ? undefined
+      : state.kind === "available" && state.latest !== null
+        ? `${state.current} → ${state.latest}`
+        : state.current;
+  const status =
+    state.kind === "checking"
+      ? "Checking…"
+      : state.kind === "development"
+        ? "Development mode"
+        : state.kind === "available"
+          ? "Update available"
+          : "Up to date";
   return (
-    <View className="gap-2 px-4 py-3" testID="updates-bb-row">
-      <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
-        <View className="min-w-0 flex-1 flex-row items-baseline gap-2">
-          <Text variant="label">bb-app</Text>
-          {state.kind !== "checking" ? (
-            <Text variant="mono" tone="readback" className="text-xs">
-              {state.current}
-              {state.kind === "available" && state.latest !== null
-                ? ` → ${state.latest}`
-                : ""}
-            </Text>
-          ) : null}
-        </View>
-        {state.kind === "checking" ? (
-          <Text variant="caption">Checking…</Text>
-        ) : state.kind === "development" ? (
-          <Text variant="caption">Development mode</Text>
-        ) : state.kind === "available" ? (
-          <Text variant="caption" tone="warning">
-            Available
-          </Text>
-        ) : (
-          <Text variant="caption">Up to date</Text>
-        )}
-      </View>
-      {state.kind === "available" ? (
-        <View className="flex-row flex-wrap items-center gap-2">
-          <Text variant="mono" className="shrink text-xs" numberOfLines={1}>
-            {state.upgradeCommand}
-          </Text>
-          <Button
-            size="sm"
-            variant="outline"
-            icon="Copy"
-            onPress={() => copyUpgradeCommand(state.upgradeCommand)}
-            testID="updates-copy-upgrade"
-          >
-            Copy
-          </Button>
-        </View>
-      ) : null}
-    </View>
+    <GroupedRow
+      title="bb-app"
+      subtitle={version}
+      value={status}
+      valueTone={state.kind === "available" ? "warning" : "default"}
+      selectable
+      testID="updates-bb-row"
+    />
   );
 }
 
@@ -149,36 +135,36 @@ function MachineUpdatesBlock({
   const daemonStatus = formatHostUpdateStatus(host, serverProtocolVersion);
   return (
     <View testID={`updates-machine-${host.id}`}>
-      <View className="flex-row items-center gap-2 bg-surface-recessed px-4 py-2">
-        <HostStatusDot connected={host.status === "connected"} />
-        <Text variant="label" numberOfLines={1} className="shrink">
-          {host.name}
-        </Text>
-        {showPrimaryBadge ? (
-          <Pill variant="outline" size="sm">
-            Primary
-          </Pill>
-        ) : null}
-        <View className="flex-1" />
-        {stranded ? (
-          <Button
-            size="sm"
-            variant="outline"
-            loading={retryPending}
-            onPress={onRetry}
-            testID={`updates-retry-${host.id}`}
-          >
-            Retry update
-          </Button>
-        ) : null}
-      </View>
+      <GroupedRow
+        title={host.name}
+        value={showPrimaryBadge ? "Primary" : undefined}
+        leading={
+          <View className="w-5 items-center">
+            <HostStatusDot connected={host.status === "connected"} />
+          </View>
+        }
+        trailing={
+          stranded ? (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={retryPending}
+              onPress={onRetry}
+              testID={`updates-retry-${host.id}`}
+            >
+              Retry update
+            </Button>
+          ) : undefined
+        }
+      />
+      <Separator inset={ICON_ROW_SEPARATOR_INSET} />
       {stranded ? (
         <View className="gap-0.5 px-4 py-3">
-          <Text variant="caption" tone="destructive">
+          <Text variant="footnote" tone="destructive">
             Can't connect — its bb agent is out of date
           </Text>
-          <Text variant="chrome">Usually it updates itself.</Text>
-          {daemonStatus ? <Text variant="chrome">{daemonStatus}</Text> : null}
+          <Text variant="caption">Usually it updates itself.</Text>
+          {daemonStatus ? <Text variant="caption">{daemonStatus}</Text> : null}
         </View>
       ) : (
         <ProviderCliRows
@@ -196,7 +182,6 @@ function MachineUpdatesBlock({
 }
 
 function CliSkillsSection({ hosts }: { hosts: readonly Host[] }) {
-  const { tokens } = useTheme();
   const statusQuery = useCliSkillsStatus();
   const install = useInstallCliSkills();
   const pickerSheet = useSheet();
@@ -233,11 +218,13 @@ function CliSkillsSection({ hosts }: { hosts: readonly Host[] }) {
 
   return (
     <>
-      <SettingsSection title="Skills">
+      <SettingsSection
+        title="Skills"
+        footnote={cliSkillsInstallDescription(hasConnectedMachine)}
+      >
         <SettingsControlRow
           label={CLI_SKILLS_SETTING_LABEL}
-          badge={summarizeMachineStatuses([...statuses.values()]) ?? undefined}
-          description={cliSkillsInstallDescription(hasConnectedMachine)}
+          tag={summarizeMachineStatuses([...statuses.values()]) ?? undefined}
           control={
             <Button
               size="sm"
@@ -289,11 +276,6 @@ function CliSkillsSection({ hosts }: { hosts: readonly Host[] }) {
                   <HostStatusDot connected={connected} />
                 </View>
               }
-              trailing={
-                checked ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : null
-              }
               selected={checked}
               disabled={!connected}
               onPress={() => {
@@ -328,7 +310,6 @@ function CliSkillsSection({ hosts }: { hosts: readonly Host[] }) {
 }
 
 function ConnectedUpdatesScreen() {
-  const { tokens } = useTheme();
   const inventory = useUpdateInventory();
   const hostsQuery = useHosts();
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
@@ -364,57 +345,88 @@ function ConnectedUpdatesScreen() {
   const connectedHostIds = inventory.machines
     .filter((machine) => machine.host.status === "connected")
     .map((machine) => machine.host.id);
+  const checkForUpdates = () => check.mutate(connectedHostIds);
+  const bbAppState = bbAppRowState(inventory.systemVersion);
 
   return (
     <>
-      <Screen testID="updates-screen">
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="arrow.clockwise"
+            accessibilityLabel="Check for updates"
+            disabled={check.isPending}
+            onPress={checkForUpdates}
+          />
+          <Stack.Toolbar.Menu
+            icon="ellipsis.circle"
+            accessibilityLabel="More updates actions"
+          >
+            <Stack.Toolbar.MenuAction icon="doc.text" onPress={openChangelog}>
+              What's new
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction
+              icon="arrow.clockwise"
+              disabled={check.isPending}
+              onPress={checkForUpdates}
+            >
+              Check for updates
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : null}
+      <GroupedScreen testID="updates-screen">
         <SettingsSection
           title="bb"
-          footnote="Connected machines follow the server version automatically."
           action={
-            <View className="flex-row items-center gap-3">
+            IS_IOS ? undefined : (
+              <View className="flex-row items-center gap-4">
+                <HeaderIconButton
+                  icon="RotateCcw"
+                  accessibilityLabel="Check for updates"
+                  loading={check.isPending}
+                  onPress={checkForUpdates}
+                  testID="updates-check"
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={openChangelog}
+                  testID="updates-whats-new"
+                >
+                  What's new
+                </Button>
+              </View>
+            )
+          }
+          footnote={
+            <View className="gap-1">
+              <Text variant="footnote" tone="muted">
+                Connected machines follow the server version automatically.
+              </Text>
               {check.isPending || checkedLabel !== null ? (
-                <Text variant="caption" testID="updates-checked-label">
+                <Text
+                  variant="footnote"
+                  tone="muted"
+                  testID="updates-checked-label"
+                >
                   {check.isPending ? "Checking…" : checkedLabel}
                 </Text>
               ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Check for updates"
-                hitSlop={8}
-                disabled={check.isPending}
-                onPress={() => check.mutate(connectedHostIds)}
-                testID="updates-check"
-              >
-                {check.isPending ? (
-                  <Spinner size="small" color={tokens.mutedForeground} />
-                ) : (
-                  <Icon
-                    name="RotateCcw"
-                    size={18}
-                    color={tokens.mutedForeground}
-                  />
-                )}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="What's new"
-                hitSlop={8}
-                onPress={() => {
-                  Linking.openURL(CHANGELOG_URL).catch(() => {
-                    toast.error("Could not open the changelog");
-                  });
-                }}
-                testID="updates-whats-new"
-              >
-                <Text variant="caption" tone="foreground">
-                  What's new
-                </Text>
-              </Pressable>
             </View>
           }
         >
-          <BbAppRow systemVersion={inventory.systemVersion} />
+          <BbAppRow state={bbAppState} />
+          {bbAppState.kind === "available" ? (
+            <GroupedRow
+              title="Copy upgrade command"
+              subtitle={bbAppState.upgradeCommand}
+              leading="Copy"
+              leadingTone="primary"
+              onPress={() => copyUpgradeCommand(bbAppState.upgradeCommand)}
+              testID="updates-copy-upgrade"
+            />
+          ) : null}
         </SettingsSection>
 
         <SettingsSection
@@ -446,42 +458,40 @@ function ConnectedUpdatesScreen() {
           }
         >
           {inventory.machines.length === 0 ? (
-            <View className="px-4 py-4">
-              <Text variant="caption">
+            <View className="px-4 py-3">
+              <Text variant="footnote" tone="muted">
                 {inventory.isLoading ? "Loading…" : "No machines yet."}
               </Text>
             </View>
           ) : (
-            inventory.machines.map((machine, index) => (
-              <View key={machine.host.id}>
-                {index > 0 ? <Separator /> : null}
-                <MachineUpdatesBlock
-                  machine={machine}
-                  showPrimaryBadge={
-                    inventory.machines.length > 1 && machine.isPrimary
-                  }
-                  serverProtocolVersion={inventory.serverProtocolVersion}
-                  runner={runner}
-                  retryPending={
-                    retryUpdate.isPending &&
-                    retryUpdate.variables === machine.host.id
-                  }
-                  onRetry={() =>
-                    retryUpdate.mutate(machine.host.id, {
-                      onSuccess: () =>
-                        toast.success(
-                          `Update retry requested for ${machine.host.name}`,
-                        ),
-                    })
-                  }
-                />
-              </View>
+            inventory.machines.map((machine) => (
+              <MachineUpdatesBlock
+                key={machine.host.id}
+                machine={machine}
+                showPrimaryBadge={
+                  inventory.machines.length > 1 && machine.isPrimary
+                }
+                serverProtocolVersion={inventory.serverProtocolVersion}
+                runner={runner}
+                retryPending={
+                  retryUpdate.isPending &&
+                  retryUpdate.variables === machine.host.id
+                }
+                onRetry={() =>
+                  retryUpdate.mutate(machine.host.id, {
+                    onSuccess: () =>
+                      toast.success(
+                        `Update retry requested for ${machine.host.name}`,
+                      ),
+                  })
+                }
+              />
             ))
           )}
         </SettingsSection>
 
         <CliSkillsSection hosts={hosts} />
-      </Screen>
+      </GroupedScreen>
       <ProviderCliInstallLogHost runner={runner} />
     </>
   );

@@ -37,6 +37,7 @@ import {
 } from "./plugin-sidebar-hooks";
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
 import { useAppNavigationHost } from "./app-navigation-host";
+import { useCodeTheme } from "./plugin-code-theme";
 
 /**
  * The real `@get-bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
@@ -93,6 +94,9 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     // Experimental (see docs/api_to_audit.md): the provider directory, so no
     // plugin re-vendors provider names or icons.
     experimental_useProviders: useProviders,
+    // Experimental (see docs/api_to_audit.md): the live code theme as its VS
+    // Code document, for plugins that render code with their own engine.
+    experimental_useCodeTheme: useCodeTheme,
   } satisfies PluginSdkApp,
   // The old spelling the facade exported before 0.4.16; bundles built
   // against it destructure this name. Removal target: bb 0.42 (see

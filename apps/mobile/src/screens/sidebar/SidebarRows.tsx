@@ -1,9 +1,16 @@
 import { isThreadRead, resolveThreadListIndicator } from "@bb/client-core";
-import { memo } from "react";
-import { Pressable, View } from "react-native";
+import { memo, useEffect, useRef } from "react";
+import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { getThreadDisplayTitle } from "@/data/threads";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import { Icon, LONG_PRESS_DELAY_MS, Text, cn } from "@/ui";
+import { useSidebarActions } from "./SidebarActionsProvider";
 import {
   getCollapsedActivityIndicatorState,
   type SidebarEmptyRow,
@@ -11,7 +18,13 @@ import {
   type SidebarHeaderRow,
   type SidebarThreadRow,
 } from "./sidebar-list-rows";
+import {
+  ThreadRowSwipeable,
+  type ThreadSwipeAction,
+} from "./ThreadRowSwipeable";
 import { ThreadStatusGlyph } from "./ThreadStatusGlyph";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 /**
  * One left text edge per depth, shared by headers, thread rows, environment
@@ -25,6 +38,8 @@ const ROW_DEPTH_STEP = 24;
 const ROW_PADDING_RIGHT = 8;
 const ROW_MIN_HEIGHT = 44;
 const HEADER_MIN_HEIGHT = 36;
+/** Space above a top-level group header (iOS grouped sections breathe more). */
+const HEADER_GROUP_GAP = IS_IOS ? 12 : 6;
 /**
  * Distance from a row's text edge to the center of the hairline that ties
  * its children to it (web `SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX`).
@@ -32,32 +47,75 @@ const HEADER_MIN_HEIGHT = 36;
 const GROUP_LINE_OFFSET = 8;
 /** The single trailing column: status glyph, or the header "+" action. */
 const TRAILING_SLOT_CLASS = "h-9 w-9 items-center justify-center";
+/** System highlight while pressed (iOS) / hover tone (Android). */
+const ROW_PRESS_CLASS = IS_IOS
+  ? "active:bg-state-active"
+  : "active:bg-state-hover";
+const CHEVRON_TURN_MS = 200;
+/** Rotation of the disclosure chevron while the group is expanded. */
+const CHEVRON_OPEN_DEG = 90;
 
 function rowPaddingLeft(depth: number): number {
   return ROW_BASE_PADDING + depth * ROW_DEPTH_STEP;
 }
 
+/**
+ * `chevron.right` that turns to point down as a group expands. The turn
+ * only animates when the same row toggles: a recycled list cell that now
+ * shows another row (`rowKey` changed) snaps to that row's state.
+ */
 function DisclosureChevron({
   collapsed,
   size,
+  rowKey,
 }: {
   collapsed: boolean;
   size: number;
+  /** Identity of the row the chevron belongs to. */
+  rowKey: string;
 }) {
   const { tokens } = useTheme();
+  const degrees = useSharedValue(collapsed ? 0 : CHEVRON_OPEN_DEG);
+  const shown = useRef({ rowKey, collapsed });
+  useEffect(() => {
+    const previous = shown.current;
+    shown.current = { rowKey, collapsed };
+    const target = collapsed ? 0 : CHEVRON_OPEN_DEG;
+    if (previous.rowKey !== rowKey) {
+      degrees.set(target);
+    } else if (previous.collapsed !== collapsed) {
+      degrees.set(withTiming(target, { duration: CHEVRON_TURN_MS }));
+    }
+  }, [collapsed, degrees, rowKey]);
+  const turn = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${degrees.get()}deg` }],
+  }));
   return (
-    <Icon
-      name={collapsed ? "ChevronRight" : "ChevronDown"}
-      size={size}
-      color={tokens.subtleForeground}
-    />
+    <Animated.View style={turn}>
+      <Icon
+        name="ChevronRight"
+        size={size}
+        weight="semibold"
+        color={tokens.subtleForeground}
+      />
+    </Animated.View>
   );
 }
 
+/** Thread count of a collapsed group: tabular footnote (iOS) / chip. */
 function CountChip({ count }: { count: number }) {
+  if (IS_IOS) {
+    return (
+      <Text variant="footnote" tone="muted" numeric className="px-1">
+        {count}
+      </Text>
+    );
+  }
   return (
     <View className="rounded-sm bg-surface-selected px-1.5 py-px">
-      <Text variant="chrome">{count}</Text>
+      <Text variant="chrome" numeric>
+        {count}
+      </Text>
     </View>
   );
 }
@@ -65,15 +123,35 @@ function CountChip({ count }: { count: number }) {
 /**
  * Hairline under the parent's text edge that runs the height of a nested row
  * (web `SIDEBAR_PROJECT_GROUP_LINE_CLASS`). Rows are flat list items, so each
- * nested row paints its own segment; contiguous rows read as one line.
+ * nested row paints its own segment; contiguous rows read as one line. iOS
+ * conveys nesting with indentation and inset separators instead.
  */
 function GroupLine({ depth }: { depth: number }) {
-  if (depth === 0) return null;
+  if (depth === 0 || IS_IOS) return null;
   return (
     <View
       pointerEvents="none"
       className="absolute bottom-0 top-0 w-px bg-border-hairline opacity-70"
       style={{ left: rowPaddingLeft(depth - 1) + GROUP_LINE_OFFSET }}
+    />
+  );
+}
+
+/** iOS table-cell separator, inset to the row's text column. */
+function RowSeparator({ inset }: { inset: number }) {
+  const { tokens } = useTheme();
+  if (!IS_IOS) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: inset,
+        right: 0,
+        bottom: 0,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: tokens.borderHairline,
+      }}
     />
   );
 }
@@ -90,46 +168,52 @@ interface SidebarThreadRowViewProps {
    * archive passes the project name.
    */
   subtitle: SidebarRowSubtitle | null;
-  onPress: (row: SidebarThreadRow) => void;
-  onLongPress: (row: SidebarThreadRow) => void;
   onToggleCollapsed: (threadId: string) => void;
 }
 
+/**
+ * A thread row. Tapping opens the thread; long-pressing opens the row's
+ * action sheet (read, pin, rename, move, archive, delete) from the
+ * enclosing `SidebarActionsProvider`; swipe actions on both platforms. One
+ * plain `Pressable` on both: a native context menu (`Link.Menu`) removes
+ * the row from the iOS accessibility tree, so VoiceOver and Maestro would
+ * see nothing but the host, and a `Link.Preview` would mount the thread
+ * screen (twice) and mark the thread read, since the preview reports
+ * itself as focused.
+ */
 export const SidebarThreadRowView = memo(function SidebarThreadRowView({
   row,
   subtitle,
-  onPress,
-  onLongPress,
   onToggleCollapsed,
 }: SidebarThreadRowViewProps) {
   const { tokens } = useTheme();
+  const actions = useSidebarActions();
   const { thread } = row;
   const title = getThreadDisplayTitle(thread);
-  const unread = !isThreadRead(thread) && thread.parentThreadId === null;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      accessibilityHint={subtitleText(subtitle)}
-      onPress={() => onPress(row)}
-      onLongPress={() => onLongPress(row)}
-      delayLongPress={LONG_PRESS_DELAY_MS}
-      className="flex-row items-center gap-1 active:bg-state-hover"
-      style={{
-        minHeight: ROW_MIN_HEIGHT,
-        paddingLeft: rowPaddingLeft(row.depth),
-        paddingRight: ROW_PADDING_RIGHT,
-      }}
-      testID={`thread-row-${thread.id}`}
-    >
+  const read = isThreadRead(thread);
+  const unread = !read && thread.parentThreadId === null;
+  const pinned = thread.pinnedAt !== null;
+  const archived = thread.archivedAt !== null;
+  const textInset = rowPaddingLeft(row.depth);
+  const rowStyle: ViewStyle = {
+    minHeight: ROW_MIN_HEIGHT,
+    paddingLeft: textInset,
+    paddingRight: ROW_PADDING_RIGHT,
+  };
+
+  const content = (
+    <>
       <GroupLine depth={row.depth} />
       <View className="min-w-0 flex-1 py-1.5">
         <View className="flex-row items-center gap-1">
           <Text
-            variant="body"
-            weight={unread ? "medium" : undefined}
+            variant={IS_IOS ? "bodyLarge" : "body"}
+            weight={unread ? (IS_IOS ? "semibold" : "medium") : undefined}
             numberOfLines={1}
-            className={cn("min-w-0 shrink", !unread && "text-foreground/90")}
+            className={cn(
+              "min-w-0 shrink",
+              !unread && !IS_IOS && "text-foreground/90",
+            )}
           >
             {title}
           </Text>
@@ -140,11 +224,18 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
                 row.collapsed ? "Show child threads" : "Hide child threads"
               }
               hitSlop={10}
-              onPress={() => onToggleCollapsed(thread.id)}
+              onPress={() => {
+                haptic("selection");
+                onToggleCollapsed(thread.id);
+              }}
               className="h-6 w-6 items-center justify-center rounded-sm active:bg-state-active"
               testID={`thread-row-toggle-${thread.id}`}
             >
-              <DisclosureChevron collapsed={row.collapsed} size={14} />
+              <DisclosureChevron
+                collapsed={row.collapsed}
+                size={13}
+                rowKey={row.key}
+              />
             </Pressable>
           ) : null}
         </View>
@@ -168,7 +259,70 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
       <View className={TRAILING_SLOT_CLASS}>
         <ThreadStatusGlyph kind={row.indicator} />
       </View>
-    </Pressable>
+      <RowSeparator inset={textInset} />
+    </>
+  );
+
+  const leading: ThreadSwipeAction = read
+    ? {
+        key: "unread",
+        label: "Unread",
+        icon: "Mail",
+        color: tokens.primary,
+        onPress: () => actions.toggleThreadRead(thread),
+      }
+    : {
+        key: "read",
+        label: "Read",
+        icon: "MailOpen",
+        color: tokens.primary,
+        onPress: () => actions.toggleThreadRead(thread),
+      };
+  const trailing: ThreadSwipeAction[] = [
+    {
+      key: pinned ? "unpin" : "pin",
+      label: pinned ? "Unpin" : "Pin",
+      icon: pinned ? "PinOff" : "Pin",
+      color: tokens.warning,
+      onPress: () => actions.toggleThreadPinned(thread),
+    },
+    archived
+      ? {
+          key: "unarchive",
+          label: "Unarchive",
+          icon: "ArchiveRestore",
+          color: tokens.success,
+          onPress: () => actions.unarchiveThread(thread),
+        }
+      : {
+          key: "archive",
+          label: "Archive",
+          icon: "Archive",
+          color: tokens.destructive,
+          onPress: () => actions.archiveThread(thread),
+        },
+  ];
+
+  return (
+    <ThreadRowSwipeable
+      threadId={thread.id}
+      leading={leading}
+      trailing={trailing}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityHint={subtitleText(subtitle)}
+        onPress={() => actions.openThread(thread)}
+        onLongPress={() => actions.openThreadMenu(thread)}
+        delayLongPress={LONG_PRESS_DELAY_MS}
+        className={cn("flex-row items-center gap-1", ROW_PRESS_CLASS)}
+        style={rowStyle}
+        testID={`thread-row-${thread.id}`}
+      >
+        {content}
+      </Pressable>
+    </ThreadRowSwipeable>
   );
 });
 
@@ -192,6 +346,12 @@ interface SidebarHeaderRowViewProps {
   onCreateThread: ((row: SidebarHeaderRow) => void) | null;
 }
 
+/**
+ * A group header (pinned, project, machine, section, threads): sentence-case
+ * footnote label, a turning disclosure chevron, the tabular count and the
+ * rolled-up status while collapsed, and the "+" new-thread action. Tapping
+ * toggles the group (selection haptic); long-pressing opens its menu.
+ */
 export const SidebarHeaderRowView = memo(function SidebarHeaderRowView({
   row,
   onToggleCollapsed,
@@ -217,29 +377,36 @@ export const SidebarHeaderRowView = memo(function SidebarHeaderRowView({
       accessibilityRole="button"
       accessibilityLabel={row.label}
       accessibilityState={{ expanded: !row.collapsed }}
-      onPress={() => onToggleCollapsed(row)}
+      onPress={() => {
+        haptic("selection");
+        onToggleCollapsed(row);
+      }}
       onLongPress={() => onLongPress(row)}
       delayLongPress={LONG_PRESS_DELAY_MS}
-      className="flex-row items-center gap-1 active:bg-state-hover"
+      className={cn("flex-row items-center gap-1", ROW_PRESS_CLASS)}
       style={{
         minHeight: HEADER_MIN_HEIGHT,
         paddingLeft: rowPaddingLeft(row.depth),
         paddingRight: ROW_PADDING_RIGHT,
-        marginTop: row.depth === 0 ? 6 : 0,
+        marginTop: row.depth === 0 ? HEADER_GROUP_GAP : 0,
       }}
       testID={`sidebar-header-${testIdSuffix}`}
     >
       <GroupLine depth={row.depth} />
       {row.target.kind === "machine" ? (
-        <Icon name="Laptop" size={14} color={tokens.subtleForeground} />
+        <Icon name="Laptop" size={13} color={tokens.subtleForeground} />
       ) : row.target.kind === "pinned" ? (
-        <Icon name="Pin" size={14} color={tokens.subtleForeground} />
+        <Icon name="Pin" size={13} color={tokens.subtleForeground} />
       ) : null}
       <Text variant="sectionLabel" numberOfLines={1} className="min-w-0 shrink">
         {row.label}
       </Text>
       <View className="h-6 w-6 items-center justify-center">
-        <DisclosureChevron collapsed={row.collapsed} size={12} />
+        <DisclosureChevron
+          collapsed={row.collapsed}
+          size={11}
+          rowKey={row.key}
+        />
       </View>
       <View className="flex-1" />
       {row.collapsed && row.threadCount > 0 ? (
@@ -265,7 +432,7 @@ export const SidebarHeaderRowView = memo(function SidebarHeaderRowView({
           <Icon
             name="MessageSquarePlus"
             size={18}
-            color={tokens.subtleForeground}
+            color={IS_IOS ? tokens.primary : tokens.subtleForeground}
           />
         </Pressable>
       ) : null}
@@ -294,8 +461,11 @@ export const SidebarEnvironmentRowView = memo(
         accessibilityRole="button"
         accessibilityLabel={row.label}
         accessibilityState={{ expanded: !row.collapsed }}
-        onPress={() => onToggleCollapsed(row.environmentId)}
-        className="flex-row items-center gap-1 active:bg-state-hover"
+        onPress={() => {
+          haptic("selection");
+          onToggleCollapsed(row.environmentId);
+        }}
+        className={cn("flex-row items-center gap-1", ROW_PRESS_CLASS)}
         style={{
           minHeight: HEADER_MIN_HEIGHT,
           paddingLeft: rowPaddingLeft(row.depth),
@@ -304,7 +474,7 @@ export const SidebarEnvironmentRowView = memo(
         testID={`environment-row-${row.environmentId}`}
       >
         <GroupLine depth={row.depth} />
-        <Icon name="GitBranch" size={14} color={tokens.subtleForeground} />
+        <Icon name="GitBranch" size={13} color={tokens.subtleForeground} />
         <Text
           variant="label"
           tone="muted"
@@ -314,7 +484,11 @@ export const SidebarEnvironmentRowView = memo(
           {row.label}
         </Text>
         <View className="h-6 w-6 items-center justify-center">
-          <DisclosureChevron collapsed={row.collapsed} size={12} />
+          <DisclosureChevron
+            collapsed={row.collapsed}
+            size={11}
+            rowKey={row.key}
+          />
         </View>
         <View className="flex-1" />
         {row.collapsed ? <CountChip count={row.threadCount} /> : null}

@@ -5,10 +5,9 @@ import {
   type SheetController,
 } from "@/ui";
 import {
-  buildEditMessageRequest,
   buildMessageActionItems,
   capabilitiesFromHandlers,
-  type MessageActionItem,
+  runMessageAction,
   type TimelineMessageActionHandlers,
   type TimelineMessageActionsTarget,
 } from "./message-actions-model";
@@ -22,41 +21,14 @@ interface MessageActionSheetProps {
   onCopy: (text: string) => void;
 }
 
-function runAction(
-  item: MessageActionItem,
-  target: TimelineMessageActionsTarget,
-  handlers: TimelineMessageActionHandlers,
-  onCopy: (text: string) => void,
-): void {
-  switch (item.key) {
-    case "copy":
-      onCopy(target.text);
-      return;
-    case "quote-paragraph":
-      if (target.paragraph !== null) {
-        handlers.quoteIntoComposer?.(target.paragraph);
-      }
-      return;
-    case "add-to-chat":
-      handlers.quoteIntoComposer?.(target.text);
-      return;
-    case "edit":
-      handlers.editMessage?.(buildEditMessageRequest(target));
-      return;
-    case "fork":
-      handlers.forkFromMessage?.({ sourceSeqEnd: target.sourceSeqEnd });
-      return;
-    case "send-to-main":
-      handlers.sendToMainThread?.({ messageText: target.text });
-      return;
-  }
-}
-
 /**
  * The long-press menu for a conversation message (web MessageActionBar as a
  * bottom sheet): copy, quote paragraph / add to chat, edit, fork, send to
  * main thread — each present only when the host supplied its handler and
- * the message qualifies.
+ * the message qualifies. Both platforms: the timeline rows are recycled
+ * FlashList cells, so they keep a plain long-press instead of hosting a
+ * per-row native context menu (which would pin each cell's size to its
+ * first SwiftUI measurement).
  */
 export function MessageActionSheet({
   controller,
@@ -73,7 +45,7 @@ export function MessageActionSheet({
       key: item.key,
       label: item.label,
       icon: item.icon,
-      onPress: () => runAction(item, target, handlers, onCopy),
+      onPress: () => runMessageAction(item, target, handlers, onCopy),
     }));
   }, [handlers, onCopy, target]);
   return <ActionSheet controller={controller} actions={actions} />;

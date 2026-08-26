@@ -102,6 +102,7 @@ export function WorkRowShell({
   return (
     <TimelineRowShell depth={item.depth} kind={item.kind} testID={rowTestID}>
       <ExpandableRowHeader
+        rowKey={item.key}
         title={item.title}
         leadingIcon={leadingIconForWorkRow(row)}
         {...(leadingIconUrl === null ? {} : { leadingIconUrl })}

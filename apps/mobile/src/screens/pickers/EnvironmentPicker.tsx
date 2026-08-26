@@ -5,9 +5,8 @@ import type {
   ReuseEnvironmentOption,
   ThreadEnvironmentSelection,
 } from "@/data/compose";
-import { useTheme } from "@/theme";
+import { haptic } from "@/lib/haptics";
 import {
-  Icon,
   ListRow,
   Separator,
   Sheet,
@@ -39,11 +38,26 @@ interface EnvironmentPickerProps {
   disabled?: boolean;
 }
 
+/** One environment mode as the choice model behind the sheet rows. */
+interface EnvironmentChoice {
+  key: string;
+  label: string;
+  description: string | undefined;
+  icon: IconName;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  testID: string;
+}
+
 /**
  * Environment (where the thread runs) picker: project default (server
  * policy), work in the project checkout on a machine, a new managed
  * worktree, or reuse an existing worktree from the project's threads.
- * Branch and path refinements have their own pickers.
+ * Branch and path refinements have their own pickers. The pill presents a
+ * sheet on both platforms — the three modes as check-mark rows, the
+ * existing worktrees as a titled section (the pill shows text, so it is a
+ * plain pressable rather than a native-menu trigger; see `NativeMenu`).
  */
 export function EnvironmentPicker({
   value,
@@ -57,7 +71,6 @@ export function EnvironmentPicker({
   disabled,
 }: EnvironmentPickerProps) {
   const sheet = useSheet();
-  const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   const summary = useMemo(
     () => describeEnvironmentSelection(value, host, reuseOptions),
@@ -96,9 +109,99 @@ export function EnvironmentPicker({
           : "local";
 
   const pick = (selection: ThreadEnvironmentSelection) => {
+    haptic("selection");
     sheet.dismiss();
     onChange(selection);
   };
+
+  const modeChoices: EnvironmentChoice[] = [
+    {
+      key: "project-default",
+      label: "Project default",
+      description: isPersonalProject
+        ? "Personal workspace on the primary machine."
+        : "bb picks: a fresh worktree from the default branch on the primary machine.",
+      icon: "Laptop",
+      selected: selectedMode === "project-default",
+      disabled: false,
+      onPress: () => pick({ type: "project-default" }),
+      testID: "environment-picker-option-project-default",
+    },
+    {
+      key: "local",
+      label: isPersonalProject
+        ? host
+          ? `Personal workspace on ${host.name}`
+          : "Personal workspace"
+        : host
+          ? `Work in the checkout on ${host.name}`
+          : "Work in the checkout",
+      description:
+        workspaceDisabledReason ??
+        (isPersonalProject
+          ? undefined
+          : "Runs directly in the project folder; pick a branch or path next."),
+      icon: "Folder",
+      selected: selectedMode === "local",
+      disabled: workspaceDisabledReason !== null || hostId === null,
+      onPress: () => {
+        if (hostId === null) return;
+        pick({
+          type: "host",
+          hostId,
+          workspace: isPersonalProject
+            ? { type: "personal" }
+            : { type: "unmanaged", path: null, branch: null },
+        });
+      },
+      testID: "environment-picker-option-local",
+    },
+    {
+      key: "worktree",
+      label: "New worktree",
+      description:
+        worktreeReason ?? "Creates a worktree from a base branch you pick.",
+      icon: "FolderGit",
+      selected: selectedMode === "worktree",
+      disabled: worktreeReason !== null || hostId === null,
+      onPress: () => {
+        if (hostId === null) return;
+        pick({
+          type: "host",
+          hostId,
+          workspace: { type: "managed-worktree", baseBranch: null },
+        });
+      },
+      testID: "environment-picker-option-worktree",
+    },
+  ];
+  const reuseChoices: EnvironmentChoice[] = reuseOptions.map((option) => {
+    const isSelected =
+      value.type === "reuse" && value.environmentId === option.environmentId;
+    const title = option.name ?? option.branchName ?? option.environmentId;
+    const threadPreview = option.threads
+      .slice(0, 2)
+      .map((thread) => thread.title)
+      .join(" · ");
+    const subtitle = [
+      option.hostName,
+      option.name && option.branchName ? option.branchName : null,
+      threadPreview || null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      key: `reuse-${option.environmentId}`,
+      label: title,
+      description: subtitle || undefined,
+      icon: "FolderGit",
+      selected: isSelected,
+      disabled: false,
+      onPress: () =>
+        pick({ type: "reuse", environmentId: option.environmentId }),
+      testID: `environment-picker-option-reuse-${option.environmentId}`,
+    };
+  });
 
   return (
     <>
@@ -117,67 +220,18 @@ export function EnvironmentPicker({
         layout="scroll"
         maxDynamicContentSize={maxHeight}
       >
-        <ModeRow
-          label="Project default"
-          description={
-            isPersonalProject
-              ? "Personal workspace on the primary machine."
-              : "bb picks: a fresh worktree from the default branch on the primary machine."
-          }
-          icon="Laptop"
-          selected={selectedMode === "project-default"}
-          onPress={() => pick({ type: "project-default" })}
-          testID="environment-picker-option-project-default"
-        />
-        <ModeRow
-          label={
-            isPersonalProject
-              ? host
-                ? `Personal workspace on ${host.name}`
-                : "Personal workspace"
-              : host
-                ? `Work in the checkout on ${host.name}`
-                : "Work in the checkout"
-          }
-          description={
-            workspaceDisabledReason ??
-            (isPersonalProject
-              ? undefined
-              : "Runs directly in the project folder; pick a branch or path next.")
-          }
-          icon="Folder"
-          selected={selectedMode === "local"}
-          disabled={workspaceDisabledReason !== null || hostId === null}
-          onPress={() => {
-            if (hostId === null) return;
-            pick({
-              type: "host",
-              hostId,
-              workspace: isPersonalProject
-                ? { type: "personal" }
-                : { type: "unmanaged", path: null, branch: null },
-            });
-          }}
-          testID="environment-picker-option-local"
-        />
-        <ModeRow
-          label="New worktree"
-          description={
-            worktreeReason ?? "Creates a worktree from a base branch you pick."
-          }
-          icon="FolderGit"
-          selected={selectedMode === "worktree"}
-          disabled={worktreeReason !== null || hostId === null}
-          onPress={() => {
-            if (hostId === null) return;
-            pick({
-              type: "host",
-              hostId,
-              workspace: { type: "managed-worktree", baseBranch: null },
-            });
-          }}
-          testID="environment-picker-option-worktree"
-        />
+        {modeChoices.map((choice) => (
+          <ListRow
+            key={choice.key}
+            title={choice.label}
+            subtitle={choice.description}
+            leading={choice.icon}
+            selected={choice.selected}
+            disabled={choice.disabled}
+            onPress={choice.onPress}
+            testID={choice.testID}
+          />
+        ))}
         <Separator />
         <View className="px-4 pb-1 pt-3">
           <Text variant="sectionLabel">Existing worktrees</Text>
@@ -192,82 +246,19 @@ export function EnvironmentPicker({
             <Text variant="caption">Loading worktrees…</Text>
           </View>
         ) : (
-          reuseOptions.map((option) => {
-            const isSelected =
-              value.type === "reuse" &&
-              value.environmentId === option.environmentId;
-            const title =
-              option.name ?? option.branchName ?? option.environmentId;
-            const threadPreview = option.threads
-              .slice(0, 2)
-              .map((thread) => thread.title)
-              .join(" · ");
-            const subtitle = [
-              option.hostName,
-              option.name && option.branchName ? option.branchName : null,
-              threadPreview || null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <ListRow
-                key={option.environmentId}
-                title={title}
-                subtitle={subtitle || undefined}
-                leading="FolderGit"
-                selected={isSelected}
-                trailing={
-                  isSelected ? (
-                    <Icon name="Check" size={18} color={tokens.foreground} />
-                  ) : null
-                }
-                onPress={() =>
-                  pick({ type: "reuse", environmentId: option.environmentId })
-                }
-                testID={`environment-picker-option-reuse-${option.environmentId}`}
-              />
-            );
-          })
+          reuseChoices.map((choice) => (
+            <ListRow
+              key={choice.key}
+              title={choice.label}
+              subtitle={choice.description}
+              leading={choice.icon}
+              selected={choice.selected}
+              onPress={choice.onPress}
+              testID={choice.testID}
+            />
+          ))
         )}
       </Sheet>
     </>
-  );
-}
-
-interface ModeRowProps {
-  label: string;
-  description?: string;
-  icon: IconName;
-  selected: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-  testID: string;
-}
-
-function ModeRow({
-  label,
-  description,
-  icon,
-  selected,
-  disabled = false,
-  onPress,
-  testID,
-}: ModeRowProps) {
-  const { tokens } = useTheme();
-  return (
-    <ListRow
-      title={label}
-      subtitle={description}
-      leading={icon}
-      selected={selected}
-      disabled={disabled}
-      trailing={
-        selected ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
-      onPress={onPress}
-      testID={testID}
-    />
   );
 }

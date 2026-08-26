@@ -50,6 +50,22 @@ env:
     timeout: 20000
 - assertVisible: ".*BB Community.*"
 - takeScreenshot: p7-plugins-marketplaces
+# Tapping the row opens its action sheet (refresh / remove) on both
+# platforms; the rows carry `action-sheet-<key>` ids. Cancel leaves the
+# catalog alone.
+- tapOn:
+    id: "marketplace-row-bb-community"
+- extendedWaitUntil:
+    visible:
+      id: "action-sheet-refresh"
+    timeout: 10000
+- takeScreenshot: p7-plugins-marketplace-menu
+- tapOn:
+    id: "action-sheet-cancel"
+- extendedWaitUntil:
+    notVisible:
+      id: "action-sheet-refresh"
+    timeout: 10000
 # The add-marketplace sheet (also behind the header "+", which the dev
 # client's floating gear can cover on larger simulators).
 - tapOn:
@@ -108,20 +124,20 @@ env:
       id: "skill-row-.*"
     timeout: 20000
 # The in-process daemon discovers this Mac's real skill folders too, so the
-# library can be long: filter down to the built-in bb-cli skill when the
-# filter field is shown (more than a handful of skills).
+# library can be long: filter down to the built-in bb-cli skill through the
+# native header search bar (iOS; Android keeps the in-body skills-filter
+# field), then scroll to the row in case the list is still long.
 - runFlow:
     when:
-      visible:
-        id: "skills-filter"
+      visible: "Search skills"
     commands:
-      - tapOn:
-          id: "skills-filter"
+      - tapOn: "Search skills"
       - inputText: "bb-cli"
       - tapOn: ".*My skills.*"
-- extendedWaitUntil:
-    visible:
+- scrollUntilVisible:
+    element:
       id: "skill-row-bb-cli"
+    direction: DOWN
     timeout: 20000
 - takeScreenshot: p7-plugins-skills
 - tapOn:

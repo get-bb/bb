@@ -1,5 +1,6 @@
-# Phase 7 settings: Settings home → Experiments (toggle "New onboarding",
-# persisted server-side: re-open shows it on, the API agrees) → Appearance
+# Phase 7 settings: Settings home → Experiments (toggle "Edit messages" off —
+# it defaults on — persisted server-side: re-open shows it off, the API
+# agrees; toggle it back on) → Appearance
 # (palette → Nord: the row shows "Nord", the API agrees, the UI re-tints) →
 # Machines (the harness host row → detail → rename → the list shows the new
 # name) → restore. Resets the server settings it touches at start and end, so
@@ -23,22 +24,24 @@ env:
       id: "settings-experiments"
     timeout: 10000
 - takeScreenshot: p7-settings-home
-# Experiments: toggle "New onboarding" on (PUT /settings/experiments).
+# Experiments: toggle "Edit messages" off (PUT /settings/experiments). It is
+# the one experiment the reset leaves on, so the flow drives it on → off → on.
 - tapOn:
     id: "settings-experiments"
 - extendedWaitUntil:
     visible:
-      id: "experiment-newOnboarding"
+      id: "experiment-editMessages"
+      checked: true
     timeout: 15000
 - tapOn:
-    id: "experiment-newOnboarding"
+    id: "experiment-editMessages"
 - extendedWaitUntil:
     visible:
-      id: "experiment-newOnboarding"
-      checked: true
+      id: "experiment-editMessages"
+      checked: false
     timeout: 10000
 - takeScreenshot: p7-settings-experiments
-# Persisted: leave, come back, still on; and the server says so.
+# Persisted: leave, come back, still off; and the server says so.
 - tapOn:
     id: "BackButton"
 - extendedWaitUntil:
@@ -49,21 +52,21 @@ env:
     id: "settings-experiments"
 - extendedWaitUntil:
     visible:
-      id: "experiment-newOnboarding"
-      checked: true
+      id: "experiment-editMessages"
+      checked: false
     timeout: 15000
 - runScript:
     file: ../scripts/phase7-settings-assert.js
     env:
-      EXPECT_NEW_ONBOARDING: "true"
+      EXPECT_EDIT_MESSAGES: "false"
       EXPECT_THEME_ID: "default"
-# Toggle it back off through the UI (the reset at the end covers failures).
+# Toggle it back on through the UI (the reset at the end covers failures).
 - tapOn:
-    id: "experiment-newOnboarding"
+    id: "experiment-editMessages"
 - extendedWaitUntil:
     visible:
-      id: "experiment-newOnboarding"
-      checked: false
+      id: "experiment-editMessages"
+      checked: true
     timeout: 10000
 - tapOn:
     id: "BackButton"
@@ -79,8 +82,10 @@ env:
     visible:
       id: "appearance-palette"
     timeout: 15000
+# The mode control is a native segmented control on iOS (one id for the
+# whole control); Android keeps per-option appearance-mode-<value> buttons.
 - assertVisible:
-    id: "appearance-mode-system"
+    id: "appearance-mode"
 - tapOn:
     id: "appearance-palette"
 - extendedWaitUntil:
@@ -97,7 +102,7 @@ env:
 - runScript:
     file: ../scripts/phase7-settings-assert.js
     env:
-      EXPECT_NEW_ONBOARDING: "false"
+      EXPECT_EDIT_MESSAGES: "true"
       EXPECT_THEME_ID: "nord"
 - takeScreenshot: p7-settings-appearance-nord
 - tapOn:
@@ -139,16 +144,15 @@ env:
 - takeScreenshot: p7-settings-machine-detail
 - tapOn:
     id: "machine-rename-row"
+# iOS renames through the system prompt (Alert.prompt: Cancel / Save, the
+# field pre-filled and focused); Android presents the rename sheet
+# (machine-rename-input / machine-rename-save).
 - extendedWaitUntil:
-    visible:
-      id: "machine-rename-input"
+    visible: "Save"
     timeout: 10000
-- tapOn:
-    id: "machine-rename-input"
 - eraseText: 80
 - inputText: "P7 renamed machine"
-- tapOn:
-    id: "machine-rename-save"
+- tapOn: "Save"
 - extendedWaitUntil:
     visible:
       id: "machine-detail-name"

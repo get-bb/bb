@@ -2,7 +2,17 @@ import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { buildHighlightSegments, splitPathForRow } from "@/data/files";
 import { useTheme } from "@/theme";
-import { cn, Icon, LONG_PRESS_DELAY_MS, Text, type IconName } from "@/ui";
+import {
+  cn,
+  DisclosureChevron,
+  Icon,
+  LIST_ROW_ICON_SIZE,
+  LONG_PRESS_DELAY_MS,
+  Text,
+  type IconName,
+} from "@/ui";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 interface FilePathRowProps {
   /** Root-relative (or absolute) path shown split into name + directory. */
@@ -14,14 +24,20 @@ interface FilePathRowProps {
   trailingText?: string;
   trailing?: "chevron" | null;
   onPress: () => void;
+  /**
+   * The long-press menu: the host presents one shared `ActionSheet` for the
+   * whole list. (A native context menu per row would put a SwiftUI host in
+   * every recycled list cell.) Keep it referentially stable per row so the
+   * memo holds.
+   */
   onLongPress?: () => void;
   testID?: string;
 }
 
 /**
- * A file (or directory) row: name on the first line, directory on the
- * second, both with the matched characters emphasized. Long-press is the
- * copy menu.
+ * A file (or directory) row (44pt, 17pt name over a 13pt directory, SF
+ * doc / folder glyph), both lines with the matched characters emphasized.
+ * Long-press is the open / copy menu.
  */
 export const FilePathRow = memo(function FilePathRow({
   path,
@@ -55,26 +71,25 @@ export const FilePathRow = memo(function FilePathRow({
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_DELAY_MS}
       testID={testID}
-      className="min-h-[44px] flex-row items-center gap-3 px-4 py-2 active:bg-state-hover"
+      className={cn(
+        "min-h-[44px] flex-row items-center gap-3 px-4 py-2",
+        IS_IOS ? "active:bg-state-active" : "active:bg-state-hover",
+      )}
     >
       <Icon
         name={icon}
-        size={18}
+        size={LIST_ROW_ICON_SIZE}
         color={
           icon.startsWith("Folder") ? tokens.fileAccent : tokens.mutedForeground
         }
       />
       <View className="min-w-0 flex-1">
-        <Text className="text-sm text-foreground" numberOfLines={1}>
+        <Text variant="bodyLarge" numberOfLines={1}>
           {nameSegments.map((segment, index) => (
             <Text
               key={index}
-              className={cn(
-                "text-sm",
-                segment.matched
-                  ? "font-semibold text-primary"
-                  : "text-foreground",
-              )}
+              variant="bodyLarge"
+              className={cn(segment.matched && "font-semibold text-primary")}
             >
               {segment.text}
             </Text>
@@ -95,13 +110,11 @@ export const FilePathRow = memo(function FilePathRow({
         ) : null}
       </View>
       {trailingText ? (
-        <Text variant="caption" numberOfLines={1}>
+        <Text variant="body" tone="muted" numberOfLines={1}>
           {trailingText}
         </Text>
       ) : null}
-      {trailing === "chevron" ? (
-        <Icon name="ChevronRight" size={16} color={tokens.mutedForeground} />
-      ) : null}
+      {trailing === "chevron" ? <DisclosureChevron /> : null}
     </Pressable>
   );
 });

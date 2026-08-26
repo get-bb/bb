@@ -1,8 +1,14 @@
 # Phase 4b actions on the thread screen: open the thread named by
-# THREAD_TITLE → the header shows the environment line (project · host ·
-# workspace) → "…" → Rename through the sheet → the title updates →
-# long-press the user message → Copy text toasts "Copied" → long-press again
-# → Add to chat quotes it into the follow-up composer ("> …").
+# THREAD_TITLE → the header "…" (a native menu titled with the environment
+# line: project · host · workspace) → Rename through the system prompt → the
+# title updates → long-press the user message → the action sheet's Copy
+# text toasts "Copied" → long-press again → Add to chat quotes it into the
+# follow-up composer ("> …").
+#
+# iOS: native bar items and menu items have no testID, so the flow taps them
+# by accessibility label / text ("Thread actions", "Rename"). Message
+# actions stay a bottom sheet on both platforms (its rows keep
+# `action-sheet-<key>` ids).
 #
 # Create an idle thread titled "P4b actions" first (see phase4b-send.yaml):
 #   maestro test e2e/flows/phase4b-actions.yaml
@@ -28,34 +34,29 @@ env:
       id: "thread-composer-input"
     timeout: 30000
 - takeScreenshot: phase4b-actions-thread
-# Rename through the "…" sheet; its header carries the environment line
+# Rename through the "…" menu; its title carries the environment line
 # (project · host · workspace).
-- tapOn:
-    id: "thread-actions-button"
+- tapOn: "Thread actions"
 - extendedWaitUntil:
-    visible:
-      id: "thread-action-rename"
+    visible: "Rename"
     timeout: 10000
 - assertVisible: "Mobile E2E Project.*"
-- tapOn:
-    id: "thread-action-rename"
+- tapOn: "Rename"
+# The system prompt: the field is pre-filled with the current title and
+# focused, the confirming button reads "Rename".
 - extendedWaitUntil:
-    visible:
-      id: "thread-rename-input"
+    visible: "Rename thread"
     timeout: 10000
-- tapOn:
-    id: "thread-rename-input"
 - eraseText: 60
 - inputText: "${THREAD_TITLE} renamed"
-- tapOn:
-    id: "thread-rename-submit"
+- tapOn: "Rename"
 - extendedWaitUntil:
     visible:
       id: "thread-detail-title"
       text: "${THREAD_TITLE} renamed"
     timeout: 15000
 - takeScreenshot: phase4b-actions-renamed
-# Long-press the user message → Copy text.
+# Long-press the user message → the action sheet → Copy text.
 - longPressOn:
     id: "conversation-user-bubble"
     index: 0

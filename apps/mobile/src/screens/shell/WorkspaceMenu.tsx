@@ -1,21 +1,14 @@
-import { useRouter, type Href } from "expo-router";
+import { Stack, useRouter, type Href } from "expo-router";
 import { Pressable, View } from "react-native";
 import {
   e2eModeEnabled,
   useProfiles,
   useRealtimeConnectionState,
 } from "@/app-shell";
+import { haptic } from "@/lib/haptics";
 import type { MobileRealtimeConnectionState } from "@/lib/realtime";
 import { useTheme } from "@/theme";
-import {
-  Icon,
-  ListRow,
-  Separator,
-  Sheet,
-  Text,
-  toast,
-  useSheet,
-} from "@/ui";
+import { ListRow, Separator, Sheet, Text, toast, useSheet } from "@/ui";
 import { archivedThreadsHref } from "./hrefs";
 import { workspaceInitials } from "./workspace-initials";
 
@@ -25,21 +18,98 @@ const REALTIME_LABEL: Record<MobileRealtimeConnectionState, string> = {
   reconnecting: "Reconnecting…",
 };
 
+function useSwitchProfile() {
+  const { activeProfile, setActiveProfile } = useProfiles();
+  return (profileId: string) => {
+    if (profileId === activeProfile?.id) return;
+    haptic("selection");
+    setActiveProfile(profileId).catch((error: unknown) => {
+      toast.error("Could not switch server", {
+        description: String(error),
+      });
+    });
+  };
+}
+
 /**
- * The home header's left button: the active server's initials with a
- * realtime dot. It opens the workspace sheet — the server switcher, archived
- * threads, and Settings — which replaces the old left drawer.
+ * iOS: the workspace menu as a native pull-down on the home header's left
+ * — the server switcher (check on the active one), Add server, then
+ * Archived threads and Settings. The menu's title carries the realtime
+ * state. Rendered from the home route; `Stack.Toolbar` items are native bar
+ * buttons, reachable in tests by their labels.
  */
-export function WorkspaceMenuButton({
-  dimmed = false,
-}: {
-  /** Muted and inert while the home compose dock's scrim is up. */
-  dimmed?: boolean;
-}) {
+export function WorkspaceToolbar() {
+  const router = useRouter();
+  const { profiles, activeProfile } = useProfiles();
+  const realtimeState = useRealtimeConnectionState();
+  const switchProfile = useSwitchProfile();
+  const title = activeProfile
+    ? `${activeProfile.label} · ${REALTIME_LABEL[realtimeState]}`
+    : "No server selected";
+  return (
+    <Stack.Toolbar placement="left">
+      <Stack.Toolbar.Menu
+        icon="person.crop.circle"
+        accessibilityLabel="Workspace"
+        title={title}
+      >
+        {profiles.map((profile) => (
+          <Stack.Toolbar.MenuAction
+            key={profile.id}
+            icon={profile.mode === "connect" ? "globe" : "laptopcomputer"}
+            subtitle={profile.mode === "connect" ? "bb connect" : "Direct"}
+            isOn={profile.id === activeProfile?.id}
+            onPress={() => switchProfile(profile.id)}
+          >
+            {profile.label}
+          </Stack.Toolbar.MenuAction>
+        ))}
+        <Stack.Toolbar.MenuAction
+          icon="plus"
+          onPress={() => router.push("/settings/servers/add")}
+        >
+          Add server…
+        </Stack.Toolbar.MenuAction>
+        <Stack.Toolbar.Menu inline>
+          {activeProfile ? (
+            <Stack.Toolbar.MenuAction
+              icon="archivebox"
+              onPress={() => router.push(archivedThreadsHref())}
+            >
+              Archived threads
+            </Stack.Toolbar.MenuAction>
+          ) : null}
+          <Stack.Toolbar.MenuAction
+            icon="gearshape"
+            onPress={() => router.push("/settings")}
+          >
+            Settings
+          </Stack.Toolbar.MenuAction>
+          {e2eModeEnabled ? (
+            <Stack.Toolbar.MenuAction
+              icon="paintpalette"
+              onPress={() => router.push("/dev/ui")}
+            >
+              UI gallery
+            </Stack.Toolbar.MenuAction>
+          ) : null}
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar.Menu>
+    </Stack.Toolbar>
+  );
+}
+
+/**
+ * Android: the home header's left button — the active server's initials
+ * with a realtime dot — opening the workspace sheet: the server switcher,
+ * archived threads, and Settings.
+ */
+export function WorkspaceMenuButton() {
   const router = useRouter();
   const { tokens } = useTheme();
-  const { profiles, activeProfile, setActiveProfile } = useProfiles();
+  const { profiles, activeProfile } = useProfiles();
   const realtimeState = useRealtimeConnectionState();
+  const switchProfile = useSwitchProfile();
   const sheet = useSheet();
 
   const dotColor = !activeProfile
@@ -61,10 +131,8 @@ export function WorkspaceMenuButton({
         accessibilityRole="button"
         accessibilityLabel="Workspace menu"
         hitSlop={8}
-        disabled={dimmed}
         onPress={sheet.present}
         className="h-10 w-10 items-center justify-center rounded-full active:bg-state-hover"
-        style={{ opacity: dimmed ? 0.5 : 1 }}
         testID="home-workspace-menu"
       >
         <View
@@ -87,41 +155,34 @@ export function WorkspaceMenuButton({
 
       <Sheet controller={sheet} deferContent={false}>
         <View className="gap-0.5 px-4 pb-2 pt-1">
-          <Text variant="title" numberOfLines={1} testID="workspace-profile-label">
+          <Text
+            variant="title"
+            numberOfLines={1}
+            testID="workspace-profile-label"
+          >
             {activeProfile?.label ?? "bb"}
           </Text>
           <Text variant="chrome">
-            {activeProfile ? REALTIME_LABEL[realtimeState] : "No server selected"}
+            {activeProfile
+              ? REALTIME_LABEL[realtimeState]
+              : "No server selected"}
           </Text>
         </View>
         <Separator />
-        {profiles.map((profile) => {
-          const active = profile.id === activeProfile?.id;
-          return (
-            <ListRow
-              key={profile.id}
-              title={profile.label}
-              subtitle={profile.mode === "connect" ? "bb connect" : "Direct"}
-              leading={profile.mode === "connect" ? "Globe" : "Laptop"}
-              selected={active}
-              trailing={
-                active ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : undefined
-              }
-              onPress={() => {
-                sheet.dismiss();
-                if (active) return;
-                setActiveProfile(profile.id).catch((error: unknown) => {
-                  toast.error("Could not switch server", {
-                    description: String(error),
-                  });
-                });
-              }}
-              testID={`workspace-server-${profile.id}`}
-            />
-          );
-        })}
+        {profiles.map((profile) => (
+          <ListRow
+            key={profile.id}
+            title={profile.label}
+            subtitle={profile.mode === "connect" ? "bb connect" : "Direct"}
+            leading={profile.mode === "connect" ? "Globe" : "Laptop"}
+            selected={profile.id === activeProfile?.id}
+            onPress={() => {
+              sheet.dismiss();
+              switchProfile(profile.id);
+            }}
+            testID={`workspace-server-${profile.id}`}
+          />
+        ))}
         <ListRow
           title="Add server"
           leading="Plus"

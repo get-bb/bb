@@ -1,9 +1,15 @@
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { buildStorageBreadcrumbs } from "@/data/files";
 import { useTheme } from "@/theme";
 import { Icon, Text } from "@/ui";
 
-/** Breadcrumb strip: root › dir › dir, the last crumb current. */
+/** Crumb capsule height. */
+const CRUMB_HEIGHT = 28;
+
+/**
+ * Breadcrumb strip: root › dir › dir as capsule chips, the last (current)
+ * crumb filled, the others tinted and tappable.
+ */
 export function StorageBreadcrumbs({
   directoryPath,
   onNavigate,
@@ -18,11 +24,7 @@ export function StorageBreadcrumbs({
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{
-        alignItems: "center",
-        paddingHorizontal: 16,
-        gap: 2,
-      }}
+      contentContainerStyle={styles.strip}
       testID="storage-breadcrumbs"
     >
       {crumbs.map((crumb, index) => {
@@ -32,19 +34,29 @@ export function StorageBreadcrumbs({
             {index > 0 ? (
               <Icon
                 name="ChevronRight"
-                size={14}
-                color={tokens.mutedForeground}
+                size={11}
+                weight="semibold"
+                color={tokens.subtleForeground}
               />
             ) : null}
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ selected: current }}
               disabled={current}
               onPress={() => onNavigate(crumb.path)}
-              className="rounded-sm px-1 py-1 active:bg-state-hover"
+              hitSlop={4}
+              style={({ pressed }) => [
+                styles.crumb,
+                {
+                  backgroundColor: current ? tokens.secondary : "transparent",
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
               testID={`storage-crumb-${index}`}
             >
               <Text
-                variant="chrome"
+                variant="footnote"
+                weight={current ? "semibold" : "medium"}
                 tone={current ? "foreground" : "primary"}
                 numberOfLines={1}
               >
@@ -57,3 +69,19 @@ export function StorageBreadcrumbs({
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  strip: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  crumb: {
+    height: CRUMB_HEIGHT,
+    paddingHorizontal: 12,
+    borderRadius: CRUMB_HEIGHT / 2,
+    borderCurve: "continuous",
+    justifyContent: "center",
+  },
+});

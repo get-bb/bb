@@ -1,5 +1,5 @@
 import type { PluginCatalogSearchResult } from "@bb/server-contract";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import {
@@ -12,18 +12,18 @@ import { useTheme } from "@/theme";
 import {
   Button,
   EmptyStatePanel,
+  GroupedRow,
   Icon,
   Input,
-  ListRow,
-  Pill,
   Skeleton,
   Text,
   useSheet,
 } from "@/ui";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { LinkRow } from "../settings/LinkRow";
+import { SettingsSection } from "../settings/SettingsRows";
 import { marketplacesHref, pluginDetailHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import { AddPluginSheet } from "./AddPluginSheet";
-import { SettingsSection } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
 
 /** Store counts are read at a glance: "1.2k installs", not the exact number. */
@@ -31,6 +31,8 @@ const INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 function entrySubtitle(entry: PluginCatalogSearchResult): string {
   const parts = [entry.category];
@@ -50,7 +52,7 @@ function entrySubtitle(entry: PluginCatalogSearchResult): string {
 /**
  * Plugin catalog browse (`/settings/plugins/browse`; web Extensions →
  * Plugins → Browse): `GET /plugin-catalog/search` grouped by publisher, a
- * search field, installed / incompatible markers, and a tap → install
+ * header search bar, installed / incompatible markers, and a tap → install
  * confirmation (or the detail screen when already installed).
  */
 export function PluginBrowseScreen() {
@@ -69,15 +71,26 @@ export function PluginBrowseScreen() {
 
   return (
     <>
-      <Screen testID="plugin-browse-screen">
-        <Input
-          value={query}
-          onChangeText={setQuery}
+      {IS_IOS ? (
+        <Stack.SearchBar
           placeholder="Search plugins"
           autoCapitalize="none"
-          clearButtonMode="while-editing"
-          testID="plugin-browse-search"
+          hideWhenScrolling={false}
+          onChangeText={(event) => setQuery(event.nativeEvent.text)}
+          onCancelButtonPress={() => setQuery("")}
         />
+      ) : null}
+      <GroupedScreen testID="plugin-browse-screen">
+        {IS_IOS ? null : (
+          <Input
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search plugins"
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+            testID="plugin-browse-search"
+          />
+        )}
         {search.isPending ? (
           <View className="gap-3">
             <Skeleton className="h-5 w-2/5" />
@@ -86,7 +99,7 @@ export function PluginBrowseScreen() {
           </View>
         ) : search.isError ? (
           <View className="gap-3">
-            <Text variant="caption" tone="destructive">
+            <Text variant="footnote" tone="destructive" selectable>
               Could not load the catalog: {describeError(search.error)}
             </Text>
             <Button
@@ -119,69 +132,69 @@ export function PluginBrowseScreen() {
               title={group.label}
               testID={`plugin-browse-group-${group.publisherKey}`}
             >
-              {group.entries.map((entry) => (
-                <ListRow
-                  key={`${entry.marketplace}:${entry.entryId}`}
-                  title={entry.displayName}
-                  subtitle={entrySubtitle(entry)}
-                  leading={
-                    <PluginIcon
-                      iconUrl={entry.iconUrl}
-                      icon={entry.icon}
-                      size={22}
-                      color={
-                        entry.compatible
-                          ? tokens.foreground
-                          : tokens.subtleForeground
-                      }
-                    />
-                  }
-                  trailing={
-                    entry.installed ? (
-                      <View className="flex-row items-center gap-2">
-                        <Pill variant="secondary" size="sm">
-                          Installed
-                        </Pill>
-                        <Icon
-                          name="ChevronRight"
-                          size={18}
-                          color={tokens.subtleForeground}
-                        />
-                      </View>
-                    ) : entry.compatible ? (
-                      <Icon
-                        name="Download"
-                        size={18}
-                        color={tokens.foreground}
-                      />
-                    ) : (
-                      <Pill variant="outline" size="sm">
-                        Incompatible
-                      </Pill>
-                    )
-                  }
-                  disabled={!entry.installed && !entry.compatible}
-                  onPress={() => {
-                    if (entry.installed) {
-                      router.push(pluginDetailHref(entry.pluginId));
-                      return;
+              {group.entries.map((entry) => {
+                const leading = (
+                  <PluginIcon
+                    iconUrl={entry.iconUrl}
+                    icon={entry.icon}
+                    size={20}
+                    color={
+                      entry.compatible
+                        ? tokens.foreground
+                        : tokens.subtleForeground
                     }
-                    setTarget(entry);
-                    installSheet.present();
-                  }}
-                  titleLines={1}
-                  testID={`plugin-browse-${entry.entryId}`}
-                />
-              ))}
+                  />
+                );
+                const key = `${entry.marketplace}:${entry.entryId}`;
+                if (entry.installed) {
+                  return (
+                    <LinkRow
+                      key={key}
+                      href={pluginDetailHref(entry.pluginId)}
+                      title={entry.displayName}
+                      subtitle={entrySubtitle(entry)}
+                      leading={leading}
+                      value="Installed"
+                      testID={`plugin-browse-${entry.entryId}`}
+                    />
+                  );
+                }
+                return (
+                  <GroupedRow
+                    key={key}
+                    title={entry.displayName}
+                    subtitle={entrySubtitle(entry)}
+                    leading={leading}
+                    value={entry.compatible ? undefined : "Incompatible"}
+                    trailing={
+                      entry.compatible ? (
+                        <Icon
+                          name="Download"
+                          symbol="arrow.down.circle"
+                          size={22}
+                          color={tokens.primary}
+                          accessibilityLabel="Install"
+                        />
+                      ) : undefined
+                    }
+                    disabled={!entry.compatible}
+                    onPress={() => {
+                      setTarget(entry);
+                      installSheet.present();
+                    }}
+                    testID={`plugin-browse-${entry.entryId}`}
+                  />
+                );
+              })}
             </SettingsSection>
           ))
         )}
-        <Text variant="caption">
+        <Text variant="footnote" tone="muted" className="px-4">
           {marketplaceCount > 0
             ? `Listing ${marketplaceCount} ${marketplaceCount === 1 ? "marketplace" : "marketplaces"}. Plugins run with full trust inside the bb server.`
             : "Plugins run with full trust inside the bb server."}
         </Text>
-      </Screen>
+      </GroupedScreen>
       <AddPluginSheet
         controller={installSheet}
         target={target ? { kind: "catalog", entry: target } : null}

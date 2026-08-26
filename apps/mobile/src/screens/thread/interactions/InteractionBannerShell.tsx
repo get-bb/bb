@@ -1,9 +1,12 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
 import { useTheme } from "@/theme";
 import { Icon, Text } from "@/ui";
 import { threadHref } from "../../shell/hrefs";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 export interface InteractionSourceThread {
   threadId: string;
@@ -23,11 +26,15 @@ interface InteractionBannerShellProps {
   testID?: string;
 }
 
+/** Card corners: continuous 12pt (the grouped inset-card look). */
+const CARD_STYLE = { borderRadius: 12, borderCurve: "continuous" } as const;
+
 /**
  * Frame shared by every pending-interaction banner (mirrors the web
  * `BannerShell` in ThreadPendingInteractionBanner.tsx): recessed card, an
  * optional "From child thread" link, title, body, right-aligned footer
- * actions, and the inline mutation error.
+ * actions, and the inline mutation error. It rises in and drops out as
+ * the interaction arrives / resolves.
  */
 export function InteractionBannerShell({
   title,
@@ -41,8 +48,22 @@ export function InteractionBannerShell({
   const router = useRouter();
   const { tokens } = useTheme();
   return (
-    <View
-      className="overflow-hidden rounded-lg border border-border bg-surface-recessed px-4 py-3"
+    <Animated.View
+      entering={FadeInDown.duration(220)}
+      exiting={FadeOutDown.duration(160)}
+      // Plain style tokens: the animated view sits outside the className
+      // interop, and Reanimated wants string colors anyway.
+      style={[
+        CARD_STYLE,
+        {
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: tokens.border,
+          backgroundColor: tokens.surfaceRecessed,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+        },
+      ]}
       testID={testID}
       accessibilityLiveRegion="polite"
     >
@@ -66,7 +87,9 @@ export function InteractionBannerShell({
       ) : null}
       {title ? (
         <Text
-          className="text-sm font-semibold"
+          // The 17/600 headline on iOS; the web's 15/600 elsewhere.
+          variant={IS_IOS ? "headline" : undefined}
+          className={IS_IOS ? undefined : "text-sm font-semibold"}
           numberOfLines={3}
           testID="interaction-banner-title"
         >
@@ -91,12 +114,13 @@ export function InteractionBannerShell({
       {errorMessage ? (
         <View
           className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1"
+          style={{ borderCurve: "continuous" }}
           accessibilityRole="alert"
           testID="interaction-banner-error"
         >
           <Text className="text-xs text-destructive-text">{errorMessage}</Text>
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }

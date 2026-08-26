@@ -1,5 +1,7 @@
 import { useMemo } from "react";
+import { StyleSheet } from "react-native";
 import { toast as sonnerToast, Toaster as SonnerToaster } from "sonner-native";
+import { resolveFont } from "@/theme/fonts";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Icon } from "./Icon";
 
@@ -62,17 +64,33 @@ export const toast = {
   dismiss: (id?: ToastId) => sonnerToast.dismiss(id),
 };
 
-/** Themed sonner-native host. Place once, after the navigator. */
+const TOAST_RADIUS = 14;
+const ICON_SIZE = 20;
+
+/**
+ * Themed sonner-native host. Place once, after the navigator. Status glyphs
+ * are SF Symbols on iOS (through `Icon`), the card is the raised surface
+ * with continuous corners, a hairline in light mode only, and the system
+ * font.
+ */
 export function Toaster() {
-  const { tokens, mode, radii, fonts } = useTheme();
+  const { tokens, mode, radii } = useTheme();
   const icons = useMemo(
     () => ({
-      success: <Icon name="CircleCheck" size={18} color={tokens.success} />,
-      error: <Icon name="CircleX" size={18} color={tokens.destructiveText} />,
-      warning: (
-        <Icon name="AlertTriangle" size={18} color={tokens.warningText} />
+      success: (
+        <Icon name="CircleCheck" size={ICON_SIZE} color={tokens.success} />
       ),
-      info: <Icon name="Info" size={18} color={tokens.timelineAccent} />,
+      error: (
+        <Icon name="CircleX" size={ICON_SIZE} color={tokens.destructiveText} />
+      ),
+      warning: (
+        <Icon
+          name="AlertTriangle"
+          size={ICON_SIZE}
+          color={tokens.warningText}
+        />
+      ),
+      info: <Icon name="Info" size={ICON_SIZE} color={tokens.timelineAccent} />,
     }),
     [tokens],
   );
@@ -86,28 +104,30 @@ export function Toaster() {
       icons={icons}
       toastOptions={{
         style: {
-          backgroundColor: tokens.popover,
-          borderColor: tokens.border,
-          borderWidth: 1,
-          borderRadius: radii.lg,
+          backgroundColor: tokens.surfaceRaisedSolid,
+          borderRadius: TOAST_RADIUS,
+          borderCurve: "continuous",
+          borderWidth: mode === "dark" ? 0 : StyleSheet.hairlineWidth,
+          borderColor: tokens.borderHairline,
+          boxShadow: `0 6px 20px ${tokens.shadowColor}`,
         },
         titleStyle: {
+          ...resolveFont({ weight: "semibold" }),
           color: tokens.foreground,
-          fontFamily: fonts.sans.medium,
           fontSize: 15,
         },
         descriptionStyle: {
+          ...resolveFont({}),
           color: tokens.mutedForeground,
-          fontFamily: fonts.sans.regular,
-          fontSize: 14,
+          fontSize: 13,
         },
         actionButtonStyle: {
-          backgroundColor: tokens.foreground,
-          borderRadius: radii.md,
+          backgroundColor: tokens.primary,
+          borderRadius: radii.full,
         },
         actionButtonTextStyle: {
-          color: tokens.background,
-          fontFamily: fonts.sans.medium,
+          ...resolveFont({ weight: "semibold" }),
+          color: tokens.primaryForeground,
         },
       }}
     />

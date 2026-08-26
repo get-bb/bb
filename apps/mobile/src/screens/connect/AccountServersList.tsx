@@ -4,7 +4,8 @@ import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { accountServerProfile, useAccountServers } from "@/data/connect";
 import { describeError } from "@/lib/describe-error";
-import { Button, ListRow, Pill, Spinner, Text, toast } from "@/ui";
+import { Button, GroupedRow, Spinner, Text, toast } from "@/ui";
+import { SettingsSection } from "../settings/SettingsRows";
 
 /**
  * The other bb servers on the same getbb.app account, one tap to save each
@@ -46,71 +47,79 @@ export function AccountServersList({
   };
 
   return (
-    <View className="gap-2" testID="connect-account-servers">
-      <Text variant="sectionLabel">Servers on this account</Text>
+    <SettingsSection
+      title="Servers on this account"
+      footnote="One pairing covers every server on the account: the credential and the session cookie are account-wide. Servers paired later show up here too."
+      testID="connect-account-servers"
+    >
       {state.status === "loading" || state.status === "idle" ? (
-        <View className="flex-row items-center gap-2 px-1 py-2">
-          <Spinner />
-          <Text variant="caption">Loading your servers…</Text>
+        <View className="flex-row items-center gap-2 px-4 py-3">
+          <Spinner size="small" />
+          <Text variant="footnote" tone="muted">
+            Loading your servers…
+          </Text>
         </View>
       ) : state.status === "error" ? (
-        <View className="gap-2">
-          <Text variant="caption" tone="destructive">
+        <View className="gap-2 px-4 py-3">
+          <Text variant="footnote" tone="destructive" selectable>
             {state.failure.title}: {state.failure.message}
           </Text>
-          <Button variant="outline" size="sm" onPress={reload}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onPress={reload}
+          >
             Try again
           </Button>
         </View>
       ) : state.servers.length === 0 ? (
-        <Text variant="caption">
-          No servers are paired with this account yet.
-        </Text>
-      ) : (
-        <View className="overflow-hidden rounded-lg border border-border bg-card">
-          {state.servers.map((server) => {
-            const isSelf = server.handle === state.selfHandle;
-            const saved = savedHandles.has(`${server.handle} ${server.url}`);
-            return (
-              <ListRow
-                key={server.handle}
-                title={server.name}
-                subtitle={server.url}
-                leading="Globe"
-                trailing={
-                  isSelf || saved ? (
-                    <Pill variant="secondary">
-                      {isSelf ? "This server" : "Saved"}
-                    </Pill>
-                  ) : (
-                    <View className="flex-row items-center gap-2">
-                      <Pill variant={server.live ? "outline" : "secondary"}>
-                        {server.live ? "Online" : "Offline"}
-                      </Pill>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        icon="Plus"
-                        loading={adding === server.handle}
-                        disabled={adding !== null}
-                        onPress={() => void add(server)}
-                        testID={`account-server-add-${server.handle}`}
-                      >
-                        Add
-                      </Button>
-                    </View>
-                  )
-                }
-                testID={`account-server-${server.handle}`}
-              />
-            );
-          })}
+        <View className="px-4 py-3">
+          <Text variant="footnote" tone="muted">
+            No servers are paired with this account yet.
+          </Text>
         </View>
+      ) : (
+        state.servers.map((server) => {
+          const isSelf = server.handle === state.selfHandle;
+          const saved = savedHandles.has(`${server.handle} ${server.url}`);
+          return (
+            <GroupedRow
+              key={server.handle}
+              title={server.name}
+              subtitle={server.url}
+              leading="Globe"
+              value={
+                isSelf
+                  ? "This server"
+                  : saved
+                    ? "Saved"
+                    : server.live
+                      ? "Online"
+                      : "Offline"
+              }
+              trailing={
+                isSelf ? (
+                  "checkmark"
+                ) : saved ? undefined : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon="Plus"
+                    loading={adding === server.handle}
+                    disabled={adding !== null}
+                    onPress={() => void add(server)}
+                    testID={`account-server-add-${server.handle}`}
+                  >
+                    Add
+                  </Button>
+                )
+              }
+              testID={`account-server-${server.handle}`}
+            />
+          );
+        })
       )}
-      <Text variant="caption">
-        One pairing covers every server on the account: the credential and the
-        session cookie are account-wide. Servers paired later show up here too.
-      </Text>
-    </View>
+    </SettingsSection>
   );
 }

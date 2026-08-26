@@ -3,18 +3,21 @@ import type { TerminalPageTheme } from "./terminal-bridge";
 
 /**
  * xterm theme from the native tokens (the web's
- * `buildTerminalThemeFromCssColors`: the canvas and cursor cutout are the
- * sidebar surface, selection is `muted`, ANSI 0-15 are the palette's
- * `--ansi-*`).
+ * `buildTerminalThemeFromCssColors`): the canvas and cursor cutout are the
+ * raised solid surface — the workspace panel's sheet color, which the
+ * terminal chrome (toolbar, accessory bar, status card) is painted with too,
+ * so the page and its frame read as one — selection is `muted`, ANSI 0-15
+ * are the palette's `--ansi-*`. Strings only: the theme is serialized to the
+ * WebView page.
  */
 export function buildTerminalThemeFromTokens(
   tokens: NativeThemeTokens,
 ): TerminalPageTheme {
   return {
-    background: tokens.sidebar,
+    background: tokens.surfaceRaisedSolid,
     foreground: tokens.foreground,
     cursor: tokens.foreground,
-    cursorAccent: tokens.sidebar,
+    cursorAccent: tokens.surfaceRaisedSolid,
     selectionBackground: tokens.muted,
     black: tokens.ansi0,
     red: tokens.ansi1,

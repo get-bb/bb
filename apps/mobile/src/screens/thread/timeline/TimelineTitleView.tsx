@@ -96,7 +96,7 @@ function LiveDurationText({
   // row entry.
   if (elapsed <= 1_000) return null;
   return (
-    <Text className={className} numberOfLines={1}>
+    <Text className={className} numberOfLines={1} numeric>
       {durationToCompactString(elapsed)}
     </Text>
   );
@@ -123,7 +123,12 @@ function renderDecoration(
         : base;
       if (decoration.completedAt !== null) {
         return (
-          <Text key={`d${index}`} className={className} numberOfLines={1}>
+          <Text
+            key={`d${index}`}
+            className={className}
+            numberOfLines={1}
+            numeric
+          >
             {durationToCompactString(
               decoration.completedAt - decoration.startedAt,
             )}
@@ -147,7 +152,7 @@ function renderDecoration(
       return (
         <View key={`d${index}`} className="flex-row items-baseline gap-1">
           {durationText ? (
-            <Text className={mono} numberOfLines={1}>
+            <Text className={mono} numberOfLines={1} numeric>
               {durationText}
             </Text>
           ) : null}
@@ -173,7 +178,7 @@ function renderDecoration(
       }
       if (parts.length === 0) return null;
       return (
-        <Text key={`d${index}`} className={mono} numberOfLines={1}>
+        <Text key={`d${index}`} className={mono} numberOfLines={1} numeric>
           {parts.join(", ")}
         </Text>
       );
@@ -187,7 +192,7 @@ function renderDecoration(
         });
         if (text.length === 0) return null;
         return (
-          <Text key={`d${index}`} className={base} numberOfLines={1}>
+          <Text key={`d${index}`} className={base} numberOfLines={1} numeric>
             {text}
           </Text>
         );
@@ -195,12 +200,12 @@ function renderDecoration(
       return (
         <View key={`d${index}`} className="flex-row items-baseline gap-1">
           {decoration.added > 0 ? (
-            <Text className="font-mono text-xs text-diff-added">
+            <Text className="font-mono text-xs text-diff-added" numeric>
               +{decoration.added}
             </Text>
           ) : null}
           {decoration.removed > 0 ? (
-            <Text className="font-mono text-xs text-diff-removed">
+            <Text className="font-mono text-xs text-diff-removed" numeric>
               -{decoration.removed}
             </Text>
           ) : null}

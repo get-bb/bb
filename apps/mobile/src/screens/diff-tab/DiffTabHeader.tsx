@@ -2,16 +2,21 @@ import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { formatDiffCount } from "@bb/thread-view";
 import { useMemo } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { describeDiffTarget } from "@/data/diff";
 import { useTheme } from "@/theme";
-import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
+import { Icon, Spinner, Text, type IconName } from "@/ui";
+
+/** The target capsule. */
+const TRIGGER_HEIGHT = 32;
+const ICON_BUTTON_SIZE = 32;
 
 interface DiffTabHeaderProps {
   files: readonly DiffFileEntry[];
   /** The TOC holds only the leading slice of a larger diff. */
   truncated: boolean;
   target: WorkspaceDiffTarget;
+  /** Presents the target picker sheet (`DiffTargetPickerSheet`). */
   onPickTarget: () => void;
   targetDisabled: boolean;
   areAllCollapsed: boolean;
@@ -24,7 +29,7 @@ interface DiffTabHeaderProps {
 
 /**
  * Totals from the TOC (the same `--numstat` the shortstat summarizes), so
- * the pills are exact without any patch text in hand.
+ * the tallies are exact without any patch text in hand.
  */
 function summarizeDiffFiles(files: readonly DiffFileEntry[]): {
   fileCount: number;
@@ -40,6 +45,7 @@ function summarizeDiffFiles(files: readonly DiffFileEntry[]): {
   return { fileCount: files.length, additions, deletions };
 }
 
+/** A tinted bar-button glyph (32pt). */
 function IconButton({
   icon,
   label,
@@ -64,24 +70,26 @@ function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || busy }}
-      className={cn(
-        "h-8 w-8 items-center justify-center rounded-md active:bg-state-hover",
-        disabled && "opacity-40",
-      )}
+      style={({ pressed }) => [
+        styles.iconButton,
+        { opacity: disabled ? 0.35 : pressed ? 0.5 : 1 },
+      ]}
       testID={testID}
     >
       {busy ? (
         <Spinner size="small" />
       ) : (
-        <Icon name={icon} size={16} color={tokens.mutedForeground} />
+        <Icon name={icon} size={20} color={tokens.primary} />
       )}
     </Pressable>
   );
 }
 
 /**
- * The diff tab's toolbar: file count and +/- totals, the target picker
- * trigger, collapse-all / expand-all, refresh.
+ * The diff tab's toolbar: the target capsule (a pressable that presents the
+ * target picker sheet on both platforms — it shows text, so it is not a
+ * native-menu trigger; see `NativeMenu`), file count and +/- totals in
+ * tabular figures, collapse-all / expand-all, refresh.
  */
 export function DiffTabHeader({
   files,
@@ -98,45 +106,63 @@ export function DiffTabHeader({
 }: DiffTabHeaderProps) {
   const { tokens } = useTheme();
   const stats = useMemo(() => summarizeDiffFiles(files), [files]);
+  const label = describeDiffTarget(target);
   return (
     <View
-      className="flex-row items-center gap-2 border-b border-border-hairline px-4 py-2"
+      style={[styles.header, { borderBottomColor: tokens.borderHairline }]}
       testID="diff-tab-header"
     >
-      <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
+      <View className="min-w-0 flex-1 flex-row items-center gap-2">
         <Pressable
           onPress={onPickTarget}
           disabled={targetDisabled}
           accessibilityRole="button"
-          accessibilityLabel={`Diff target: ${describeDiffTarget(target)}`}
-          className={cn(
-            "h-8 min-w-0 shrink flex-row items-center gap-1 rounded-md border border-border bg-background px-2 active:bg-state-hover",
-            targetDisabled && "opacity-40",
-          )}
+          accessibilityLabel={`Diff target: ${label}`}
+          accessibilityState={{ disabled: targetDisabled }}
+          style={({ pressed }) => [
+            styles.trigger,
+            {
+              backgroundColor: pressed ? tokens.stateActive : tokens.secondary,
+              opacity: targetDisabled ? 0.4 : 1,
+            },
+          ]}
           testID="diff-tab-target"
         >
-          <Text className="min-w-0 shrink text-xs" numberOfLines={1}>
-            {describeDiffTarget(target)}
+          <Text variant="label" numberOfLines={1} className="min-w-0 shrink">
+            {label}
           </Text>
-          <Icon name="ChevronDown" size={12} color={tokens.mutedForeground} />
+          <Icon
+            name="ChevronDown"
+            symbol="chevron.up.chevron.down"
+            size={12}
+            weight="semibold"
+            color={tokens.mutedForeground}
+          />
         </Pressable>
         <View
-          className="shrink-0 flex-row items-center gap-1"
+          className="shrink-0 flex-row items-center gap-1.5"
           accessibilityLabel={`${stats.fileCount} files, ${stats.additions} additions, ${stats.deletions} deletions`}
           testID="diff-tab-stats"
         >
-          <Text variant="caption" numberOfLines={1}>
+          <Text variant="footnote" tone="muted" numeric numberOfLines={1}>
             {stats.fileCount === 1 ? "1 file" : `${stats.fileCount} files`}
             {truncated ? "+" : ""}
           </Text>
           {stats.additions > 0 ? (
-            <Text className="text-xs text-diff-added" testID="diff-tab-added">
+            <Text
+              variant="footnote"
+              numeric
+              style={{ color: tokens.success }}
+              testID="diff-tab-added"
+            >
               +{formatDiffCount(stats.additions)}
             </Text>
           ) : null}
           {stats.deletions > 0 ? (
             <Text
-              className="text-xs text-diff-removed"
+              variant="footnote"
+              numeric
+              style={{ color: tokens.destructiveText }}
               testID="diff-tab-removed"
             >
               -{formatDiffCount(stats.deletions)}
@@ -162,3 +188,32 @@ export function DiffTabHeader({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  trigger: {
+    minWidth: 0,
+    flexShrink: 1,
+    height: TRIGGER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: TRIGGER_HEIGHT / 2,
+    borderCurve: "continuous",
+  },
+  iconButton: {
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

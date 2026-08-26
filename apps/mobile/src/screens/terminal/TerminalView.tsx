@@ -334,7 +334,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
           <Text className="text-center text-sm text-destructive-text">
             Could not load the terminal page.
           </Text>
-          <Text variant="caption" className="pt-1 text-center">
+          <Text variant="caption" className="pt-1 text-center" selectable>
             {page.error.message}
           </Text>
         </View>

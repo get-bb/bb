@@ -7,11 +7,20 @@ import type {
   ProviderCommandSuggestion,
 } from "@bb/client-core";
 import { memo, useMemo } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
+import { haptic } from "@/lib/haptics";
+import { withAlpha } from "@/markdown/colors";
 import { useTheme } from "@/theme";
-import { Icon, Spinner, Text, type IconName } from "@/ui";
+import { Icon, Spinner, Text, type IconName, type SFSymbol } from "@/ui";
 import { TYPEAHEAD_MAX_HEIGHT } from "./model";
 import type { TypeaheadMenuModel } from "./useComposerTypeahead";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** Popover corners: continuous 14pt (the system menu radius). */
+const POPOVER_RADIUS = 14;
+const ENTER_MS = 150;
+const EXIT_MS = 100;
 
 export interface TypeaheadMenuProps {
   menu: TypeaheadMenuModel;
@@ -28,19 +37,33 @@ const COMMAND_SECTION_LABELS: Record<ProviderCommandSection, string> = {
   "user-command": "User commands",
 };
 
-function mentionIcon(suggestion: PromptMentionSuggestion): IconName {
+/** Row glyph: the Android icon name and the iOS symbol (the spec's set). */
+interface RowGlyph {
+  icon: IconName;
+  symbol: SFSymbol;
+}
+
+function mentionGlyph(suggestion: PromptMentionSuggestion): RowGlyph {
   switch (suggestion.kind) {
     case "thread":
-      return "UserRound";
+      return { icon: "MessageSquare", symbol: "bubble.left" };
     case "project":
-      return "Folder";
+      return { icon: "Folder", symbol: "folder" };
     case "section":
-      return "SectionAdd";
+      return { icon: "SectionAdd", symbol: "text.badge.plus" };
     case "plugin":
-      return "ElectricPlugs";
+      return { icon: "ElectricPlugs", symbol: "powerplug" };
     case "path":
-      return suggestion.entryKind === "directory" ? "Folder" : "File";
+      return suggestion.entryKind === "directory"
+        ? { icon: "Folder", symbol: "folder" }
+        : { icon: "File", symbol: "doc" };
   }
+}
+
+function commandGlyph(suggestion: ProviderCommandSuggestion): RowGlyph {
+  return suggestion.source === "skill"
+    ? { icon: "Zap", symbol: "bolt.fill" }
+    : { icon: "Terminal", symbol: "terminal" };
 }
 
 function mentionTitle(suggestion: PromptMentionSuggestion): string {
@@ -92,7 +115,7 @@ function mentionSectionLabel(suggestion: PromptMentionSuggestion): string {
 
 interface MenuRow {
   key: string;
-  icon: IconName;
+  glyph: RowGlyph;
   title: string;
   subtitle: string | null;
   section: string;
@@ -112,7 +135,10 @@ const Row = memo(function Row({ row }: { row: MenuRow }) {
   const { tokens } = useTheme();
   return (
     <Pressable
-      onPress={row.onPress}
+      onPress={() => {
+        haptic("selection");
+        row.onPress();
+      }}
       accessibilityRole="button"
       accessibilityLabel={row.title}
       testID={row.testID}
@@ -123,12 +149,21 @@ const Row = memo(function Row({ row }: { row: MenuRow }) {
         minHeight: 44,
         paddingHorizontal: 12,
         paddingVertical: 6,
-        backgroundColor: pressed ? tokens.stateHover : "transparent",
+        backgroundColor: pressed
+          ? IS_IOS
+            ? tokens.stateActive
+            : tokens.stateHover
+          : "transparent",
       })}
     >
-      <Icon name={row.icon} size={16} color={tokens.mutedForeground} />
+      <Icon
+        name={row.glyph.icon}
+        symbol={row.glyph.symbol}
+        size={18}
+        color={tokens.mutedForeground}
+      />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text variant="body" numberOfLines={1}>
+        <Text variant={IS_IOS ? "bodyLarge" : "body"} numberOfLines={1}>
           {row.title}
         </Text>
         {row.subtitle ? (
@@ -159,7 +194,7 @@ export function TypeaheadMenu({
     if (menu.kind === "command") {
       return menu.suggestions.map((suggestion, index) => ({
         key: `${suggestion.source}:${suggestion.name}`,
-        icon: suggestion.source === "skill" ? "Zap" : "Terminal",
+        glyph: commandGlyph(suggestion),
         title: `/${suggestion.name}`,
         subtitle: suggestion.description ?? suggestion.argumentHint,
         section: COMMAND_SECTION_LABELS[providerCommandSection(suggestion)],
@@ -171,7 +206,7 @@ export function TypeaheadMenu({
       key: `${suggestion.kind}:${suggestion.replacement}:${
         suggestion.kind === "plugin" ? suggestion.itemId : ""
       }`,
-      icon: mentionIcon(suggestion),
+      glyph: mentionGlyph(suggestion),
       title: mentionTitle(suggestion),
       subtitle: mentionSubtitle(suggestion),
       section: mentionSectionLabel(suggestion),
@@ -192,21 +227,21 @@ export function TypeaheadMenu({
   }
 
   return (
-    <View
+    <Animated.View
+      entering={FadeInDown.duration(ENTER_MS)}
+      exiting={FadeOut.duration(EXIT_MS)}
       testID={testID}
       accessibilityRole="menu"
       style={{
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: tokens.border,
-        backgroundColor: tokens.popover,
+        borderRadius: POPOVER_RADIUS,
+        borderCurve: "continuous",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: tokens.borderHairline,
+        // The lifted surface (the sheet color), not the canvas.
+        backgroundColor: tokens.surfaceRaisedSolid,
         overflow: "hidden",
         maxHeight,
-        shadowColor: tokens.shadowColor,
-        shadowOpacity: 0.12,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 6,
+        boxShadow: `0 4px 12px ${withAlpha(tokens.shadowColor, 0.12)}`,
       }}
     >
       {status !== null ? (
@@ -235,6 +270,6 @@ export function TypeaheadMenu({
           })}
         </ScrollView>
       )}
-    </View>
+    </Animated.View>
   );
 }

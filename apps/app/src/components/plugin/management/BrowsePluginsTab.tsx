@@ -104,7 +104,10 @@ export function BrowsePluginsTab({
   }, [heroRequest]);
   // Empty means unfiltered, matching the Type filters on Installed and Skills.
   const [categories, setCategories] = useState<string[]>([]);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  // Browse is a store, so it opens on popularity: the most installed plugins
+  // are the ones a first visit should see. Alphabetical stays one click away.
+  const [sortMode, setSortMode] = useState<BrowseSortMode>("installs");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   // Browse offers installs, so an entry this BB cannot install is noise here.
@@ -126,11 +129,39 @@ export function BrowsePluginsTab({
     id: name,
     label: name,
   }));
+  // Only the curated marketplace publishes counts, so a catalog without a
+  // single count has nothing to order by; offering the mode would sort the
+  // grid by name and look broken.
+  const installsKnown = entries.some((entry) => entry.installs !== null);
+  // Falling back carries the fallback's own default direction: the count sort
+  // opens descending, and inheriting that would show an unexplained Z→A grid.
+  const effectiveSortMode =
+    sortMode === "installs" && !installsKnown ? "alpha" : sortMode;
+  const effectiveSortDirection =
+    effectiveSortMode === sortMode ? sortDirection : "asc";
+  // Picking the mode already showing flips direction, as on the other
+  // collections. A new mode starts at the direction that reads as its default:
+  // A→Z for names, most-installed-first for popularity. The comparison is
+  // against the mode on screen, so the menu's checked row always toggles.
+  const changeSort = (next: string) => {
+    if (next !== "alpha" && next !== "installs") return;
+    if (next === effectiveSortMode) {
+      setSortDirection(effectiveSortDirection === "asc" ? "desc" : "asc");
+      setSortMode(next);
+      return;
+    }
+    setSortMode(next);
+    setSortDirection(next === "installs" ? "desc" : "asc");
+  };
   const visibleEntries =
     categories.length === 0
       ? entries
       : entries.filter((entry) => categories.includes(entry.category));
-  const groups = groupByPublisher(visibleEntries, sortDirection);
+  const groups = groupByPublisher(
+    visibleEntries,
+    effectiveSortMode,
+    effectiveSortDirection,
+  );
   // A single group needs no heading — with nothing to contrast against, naming
   // it would add page chrome that tells the user nothing. Bundled plugins and
   // the curated marketplace are two publishers, so in practice headings show.
@@ -211,15 +242,18 @@ export function BrowsePluginsTab({
                       />
                     ) : null}
                     <ResourceSortMenu
-                      value="alpha"
-                      direction={sortDirection}
+                      value={effectiveSortMode}
+                      direction={effectiveSortDirection}
                       compact
-                      options={[{ id: "alpha", label: "Plugin name" }]}
-                      onChange={() =>
-                        setSortDirection((current) =>
-                          current === "asc" ? "desc" : "asc",
-                        )
-                      }
+                      options={[
+                        { id: "alpha", label: "Plugin name" },
+                        {
+                          id: "installs",
+                          label: "Installs",
+                          disabled: !installsKnown,
+                        },
+                      ]}
+                      onChange={changeSort}
                     />
                   </>
                 }
@@ -298,6 +332,8 @@ export function BrowsePluginsTab({
   );
 }
 
+type BrowseSortMode = "alpha" | "installs";
+
 interface PublisherGroup {
   key: string;
   label: string;
@@ -322,6 +358,7 @@ interface PublisherGroup {
  */
 function groupByPublisher(
   entries: readonly PluginCatalogSearchEntry[],
+  sortMode: BrowseSortMode,
   sortDirection: "asc" | "desc",
 ): PublisherGroup[] {
   const groups: PublisherGroup[] = [];
@@ -340,8 +377,25 @@ function groupByPublisher(
   }
   for (const group of groups) {
     group.entries.sort((left, right) => {
-      const result = left.displayName.localeCompare(right.displayName);
-      if (result !== 0) return sortDirection === "asc" ? result : -result;
+      if (sortMode === "installs") {
+        // An entry the sidecar does not name has an unknown count, not zero,
+        // so it sinks to the bottom in both directions rather than claiming
+        // either end of the popularity order.
+        if (left.installs === null || right.installs === null) {
+          if (left.installs !== null) return -1;
+          if (right.installs !== null) return 1;
+        } else if (left.installs !== right.installs) {
+          const result = left.installs - right.installs;
+          return sortDirection === "asc" ? result : -result;
+        }
+      } else {
+        const result = left.displayName.localeCompare(right.displayName);
+        if (result !== 0) return sortDirection === "asc" ? result : -result;
+      }
+      // Names break count ties so equally installed plugins stay in a stable,
+      // readable order instead of the server's arbitrary one.
+      const byName = left.displayName.localeCompare(right.displayName);
+      if (byName !== 0) return byName;
       return left.entryId.localeCompare(right.entryId);
     });
   }

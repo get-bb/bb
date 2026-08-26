@@ -25,6 +25,7 @@ export function TurnRow({
   return (
     <TimelineRowShell depth={item.depth} kind="turn">
       <ExpandableRowHeader
+        rowKey={item.key}
         title={item.title}
         expandable={item.expandable}
         expanded={expanded}

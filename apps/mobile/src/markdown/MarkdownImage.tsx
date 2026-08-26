@@ -75,7 +75,8 @@ export const MarkdownImage = memo(function MarkdownImage({
           maxHeight: MAX_IMAGE_HEIGHT,
           aspectRatio: aspectRatio ?? undefined,
           height: aspectRatio === null ? PENDING_IMAGE_HEIGHT : undefined,
-          borderRadius: 6,
+          borderRadius: 10,
+          borderCurve: "continuous",
           overflow: "hidden",
           backgroundColor: tokens.surfaceRecessed,
         }}

@@ -57,11 +57,12 @@ export function ConversationAttachments({
                     ? "border-surface-selected-border bg-surface-raised"
                     : "border-border bg-surface-recessed",
                 )}
-                style={
+                style={[
                   align === "end"
                     ? { height: 80, width: 120 }
-                    : { height: 64, width: 96 }
-                }
+                    : { height: 64, width: 96 },
+                  { borderRadius: 10, borderCurve: "continuous" },
+                ]}
                 testID="conversation-attachment-image"
               >
                 <Image

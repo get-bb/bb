@@ -1,7 +1,13 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
-import { useCallback, useMemo, useState } from "react";
-import { View, type StyleProp, type ViewStyle } from "react-native";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
+import {
+  ScrollView,
+  View,
+  type ScrollViewProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useHosts } from "@/data/hosts";
 import {
   useSidebarBootstrap,
@@ -23,7 +29,6 @@ import {
   getHeaderCollapseTarget,
   type SidebarHeaderRow,
   type SidebarListRow,
-  type SidebarThreadRow,
 } from "./sidebar-list-rows";
 
 /**
@@ -52,18 +57,25 @@ function SidebarListSkeleton() {
 
 interface SidebarThreadListProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** Keeps the indicator clear of a bar floating over the list's bottom. */
+  scrollIndicatorInsets?: ScrollViewProps["scrollIndicatorInsets"];
+  /** Scrolls with the rows (the connection banner on home). */
+  ListHeaderComponent?: ReactElement | null;
   testID?: string;
 }
 
 /**
  * The grouped thread list (pinned, then projects / machines / sections per
  * the organize preference) as a FlashList, the body of the home screen; the
- * row menus come from the enclosing `SidebarActionsProvider`.
+ * row actions come from the enclosing `SidebarActionsProvider`. The list is
+ * the screen's first scrollable and adjusts for the native header itself.
  * Data stays put across realtime refetches (the bootstrap query keeps its
  * previous data), so rows update in place instead of flashing.
  */
 export function SidebarThreadList({
   contentContainerStyle,
+  scrollIndicatorInsets,
+  ListHeaderComponent,
   testID,
 }: SidebarThreadListProps) {
   const [preferences, preferenceActions] = useSidebarPreferences();
@@ -96,14 +108,6 @@ export function SidebarThreadList({
     );
   }, [bootstrapRefetch, hostsRefetch]);
 
-  const onThreadPress = useCallback(
-    (row: SidebarThreadRow) => actions.openThread(row.thread),
-    [actions],
-  );
-  const onThreadLongPress = useCallback(
-    (row: SidebarThreadRow) => actions.openThreadMenu(row.thread),
-    [actions],
-  );
   const onToggleThread = useCallback(
     (threadId: string) => preferenceActions.toggleCollapsed("thread", threadId),
     [preferenceActions],
@@ -182,8 +186,6 @@ export function SidebarThreadList({
             <SidebarThreadRowView
               row={item}
               subtitle={null}
-              onPress={onThreadPress}
-              onLongPress={onThreadLongPress}
               onToggleCollapsed={onToggleThread}
             />
           );
@@ -201,8 +203,6 @@ export function SidebarThreadList({
     [
       onHeaderCreateThread,
       onHeaderLongPress,
-      onThreadLongPress,
-      onThreadPress,
       onToggleEnvironment,
       onToggleHeader,
       onToggleThread,
@@ -212,30 +212,37 @@ export function SidebarThreadList({
   if (!model.isReady) {
     if (isError) {
       return (
-        <View className="gap-3 p-4" testID="sidebar-list-error">
+        <ScrollView
+          className="flex-1"
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ gap: 12, padding: 16 }}
+          testID="sidebar-list-error"
+        >
+          {ListHeaderComponent}
           <EmptyStatePanel>
             <Text className="text-center text-sm text-muted-foreground">
               Could not load threads.
             </Text>
-            <Text
-              variant="caption"
-              className="pt-1 text-center"
-              numberOfLines={3}
-            >
+            <Text variant="caption" className="pt-1 text-center" selectable>
               {error?.message ?? "Unknown error"}
             </Text>
           </EmptyStatePanel>
           <Button variant="outline" icon="RotateCcw" onPress={refetch}>
             Retry
           </Button>
-        </View>
+        </ScrollView>
       );
     }
     if (isLoading) {
       return (
-        <View className="flex-1">
+        <ScrollView
+          className="flex-1"
+          contentInsetAdjustmentBehavior="automatic"
+          scrollEnabled={false}
+        >
+          {ListHeaderComponent}
           <SidebarListSkeleton />
-        </View>
+        </ScrollView>
       );
     }
   }
@@ -252,6 +259,7 @@ export function SidebarThreadList({
       maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={
         isEmpty ? (
           <View className="gap-3 px-4 pt-6" testID="sidebar-list-empty">
@@ -274,8 +282,14 @@ export function SidebarThreadList({
           </View>
         ) : null
       }
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={contentContainerStyle}
+      scrollIndicatorInsets={scrollIndicatorInsets}
       keyboardShouldPersistTaps="handled"
+      // Not "interactive": the dock under the list is padded by
+      // KeyboardPaddingView, which only follows keyboard frame notifications,
+      // not a drag.
+      keyboardDismissMode="on-drag"
       testID={testID}
     />
   );

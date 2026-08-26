@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.40.0
+
+This release adds the File Editor and a quick command palette. It also makes bb faster across all devices.
+
+### New features
+
+- Press Mod+Shift+P to open the quick command palette. Plugins can add commands to it.
+- Archive a thread from its sidebar row.
+- See plugin problems in the sidebar or with `bb status`.
+- Check for plugin updates from the Plugins page. bb also checks every six hours.
+- Use `bb plugin new` to create a complete example plugin.
+- Use find and copy-link controls in the desktop browser.
+- Match thread titles with spaces in the `@` mention menu.
+- Split the thread panel into several tabs. bb restores the layout later.
+- Use dark mode on the bb website.
+
+### Built-in plugin updates
+
+- **File Editor.** Enable it from Extensions > Installed Plugins. Open, edit, and save text files inside bb.
+- **File Viewer.** Preview PDF files. Open an HTML preview as a full page in your browser.
+- **Tasks.** Delete folders from Manage > Folders. Presets now support `ultra`, and `bb tasks detach` removes a thread from a task.
+- **Docs.** Open thread storage files. Preview and save files on the host that you selected.
+- **Plugin API Tester.** Enable this new developer plugin to test panel contributions.
+
+### Agent providers
+
+All built-in agent providers now use the provider API. You can use the same API to build your own provider with a first-class bb timeline.
+
+### CLI
+
+- Use `--plan` with `bb thread tell` or `bb thread spawn` to enter Plan mode.
+- Use `bb thread log --all` to read the full thread history.
+- Move a local plugin with `bb plugin install path:<new directory>`. bb keeps its data and settings.
+- Get a clear error when `bb plugin reload` fails.
+- Set every general app setting with `bb settings general`.
+- Start common CLI commands much faster. `bb --version` now starts in about 27 milliseconds.
+- Write automation prompts of any practical length.
+
+### Performance
+
+- A thread now opens with about half as many requests.
+- Smaller bundles reduce the initial load time for the app and plugins.
+- Long threads use less server work and load timeline pages faster.
+- Large command results load only after you expand them.
+- Search uses a faster full-text index and returns shorter results.
+- Large files, lists, and diffs render only the visible rows.
+- Safari can recalculate plugin styles up to 40 times faster.
+- Large prompt drafts respond faster to a paste or a key press.
+- The app restores recent panel data after a reload. This change removes several blank states.
+- The `timelineWindowing` experiment renders only visible timeline rows.
+
+### Experimental iOS app
+
+[Join our Discord](https://discord.gg/kvBU6tJhcJ) to join the TestFlight.
+
+### Notable fixes
+
+- A thread now holds a new message while it waits for your answer. bb delivers the message after your answer.
+- Steer messages no longer create duplicate turns or duplicate detail rows.
+- Threads keep their scroll position when older messages load.
+- Forks show the conversation that they inherit.
+- Side chat keeps the selected message as context for its first turn.
+- Hosts reconnect more reliably after sleep or a lost server link.
+- bb connect renews active sessions and retries rejected tunnel connections.
+- The desktop app installs a downloaded macOS update after a relaunch.
+- The desktop app no longer stops after a terminal start failure.
+- Plugin service failures restart that service instead of the full server.
+- Plugin commands, icons, file views, and update checks work correctly again.
+- Split panels keep each tab with its panel.
+
+### Plugin API changes
+
+- Plugins can add commands to the quick palette.
+- Shared host libraries reduce the size of built-in plugin bundles by 55%.
+- `storage.database()` now returns one shared handle for each plugin load.
+- `sdk.threads.storageLocation()` now returns the thread storage root.
+
+This release also adds several experimental APIs for code views, links, and pickers. These APIs can change.
+
+See [the API audit list](https://github.com/get-bb/bb/blob/main/docs/api_to_audit.md) for all new experimental members.
+
+### Thanks
+
+Seventeen people outside the core team added code to this release. Thank you:
+
+- [@jshph](https://github.com/jshph)
+- [@ebg1223](https://github.com/ebg1223)
+- [@lnittman](https://github.com/lnittman)
+- [@kongenpei](https://github.com/kongenpei)
+- [@hemaaanth](https://github.com/hemaaanth)
+- [@georgecollier-nqu](https://github.com/georgecollier-nqu)
+- [@patleeman](https://github.com/patleeman)
+- [@Roystbeef](https://github.com/Roystbeef)
+- [@bradhallett](https://github.com/bradhallett)
+- [@davidondrej](https://github.com/davidondrej)
+- [@MateoCerquetella](https://github.com/MateoCerquetella)
+- [@Juns-g](https://github.com/Juns-g)
+- [@jsilets](https://github.com/jsilets)
+- [@sujeito-operator](https://github.com/sujeito-operator)
+- [@builtui](https://github.com/builtui)
+- [@ryanbbrown](https://github.com/ryanbbrown)
+- [@Uttar](https://github.com/Uttar)
+
+Thank you also to everyone who reported an issue that this release fixes: **[@9amhealth-gregschwartz](https://github.com/9amhealth-gregschwartz)**, **[@aemrebarut](https://github.com/aemrebarut)**, **[@aiyi404](https://github.com/aiyi404)**, **[@ariofrio](https://github.com/ariofrio)**, **[@iamhenry](https://github.com/iamhenry)**, **[@jjcm](https://github.com/jjcm)**, **[@Joesirven](https://github.com/Joesirven)**, **[@markasoftware-tc](https://github.com/markasoftware-tc)**, **[@mattwyckhouse](https://github.com/mattwyckhouse)**, **[@MGrin](https://github.com/MGrin)**, **[@PennybagsCX](https://github.com/PennybagsCX)**, **[@pixexid](https://github.com/pixexid)**, **[@ruudk](https://github.com/ruudk)**, **[@Samuka007](https://github.com/Samuka007)**, **[@sholub-dev](https://github.com/sholub-dev)**, **[@smsunarto](https://github.com/smsunarto)**, **[@swairshah](https://github.com/swairshah)**, **[@toasterman234](https://github.com/toasterman234)**, **[@uje-m](https://github.com/uje-m)**, and **[@yurilaguardia](https://github.com/yurilaguardia)**.
+
 ## 0.39.0
 
 Faster large threads, child threads across projects, and a long list of fixes.

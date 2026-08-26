@@ -21,11 +21,10 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { withAlpha } from "@/markdown/colors";
 import { useTheme } from "@/theme";
 import { Button, Icon, Spinner, Text } from "@/ui";
-import {
-  type TimelineListEntry,
-} from "./list-entries";
+import { type TimelineListEntry } from "./list-entries";
 import { getTimelineRowRenderer } from "./renderers";
 // Registers the row renderers (side effect) before the first cell renders.
 import "./renderers/index";
@@ -64,6 +63,13 @@ interface TimelineListProps {
   footer?: ReactElement | null;
   /** Extra space under the footer (bottom bar height). */
   bottomInset: number;
+  /**
+   * Height of a bar floating over the bottom of the list (the Liquid Glass
+   * prompt area). `bottomInset` must already clear it; this lifts the
+   * jump-to-latest pill and the scroll indicator above it. 0 (the default)
+   * when the bar is docked under the list.
+   */
+  bottomOverlay?: number;
   testID?: string;
 }
 
@@ -168,6 +174,7 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
       onLoadOlderRows,
       footer,
       bottomInset,
+      bottomOverlay = 0,
       testID,
     },
     ref,
@@ -307,11 +314,9 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
       scrollToEndNow(true);
     }, [scrollToEndNow]);
 
-    useImperativeHandle(
-      ref,
-      () => ({ scrollToEnd: jumpToLatest }),
-      [jumpToLatest],
-    );
+    useImperativeHandle(ref, () => ({ scrollToEnd: jumpToLatest }), [
+      jumpToLatest,
+    ]);
 
     const renderItem = useCallback(
       ({ item: entry }: ListRenderItemInfo<TimelineListEntry>) => {
@@ -390,29 +395,43 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
           ListHeaderComponent={header}
           ListFooterComponent={footerNode}
           keyboardShouldPersistTaps="handled"
+          // Not "interactive": the composer is positioned by
+          // KeyboardPaddingView, which only follows keyboard frame
+          // notifications, and iOS posts none while the keyboard is dragged.
           keyboardDismissMode="on-drag"
+          // First scrollable of the route: insets under a transparent /
+          // blurred native header and above the home indicator.
+          contentInsetAdjustmentBehavior="automatic"
+          // The indicator stops where the floating prompt area begins.
+          scrollIndicatorInsets={
+            bottomOverlay > 0 ? { bottom: bottomOverlay } : undefined
+          }
           testID={testID}
         />
         {showJumpToLatest ? (
           <View
             pointerEvents="box-none"
-            className="absolute bottom-3 left-0 right-0 items-center"
+            className="absolute left-0 right-0 items-center"
+            style={{ bottom: 12 + bottomOverlay }}
           >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Jump to latest"
               onPress={jumpToLatest}
-              className="h-9 flex-row items-center gap-1.5 rounded-full border border-border bg-popover pl-3 pr-4 active:bg-state-hover"
+              className="h-9 flex-row items-center gap-1.5 rounded-full pl-3 pr-4 active:opacity-70"
               style={{
-                shadowColor: tokens.ink,
-                shadowOpacity: 0.18,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 3,
+                backgroundColor: tokens.surfaceRaisedSolid,
+                borderCurve: "continuous",
+                boxShadow: `0 2px 6px ${withAlpha(tokens.ink, 0.18)}`,
               }}
               testID="timeline-jump-to-latest"
             >
-              <Icon name="ArrowDown" size={16} color={tokens.foreground} />
+              <Icon
+                name="ArrowDown"
+                size={16}
+                weight="semibold"
+                color={tokens.foreground}
+              />
               <Text variant="label">Jump to latest</Text>
             </Pressable>
           </View>

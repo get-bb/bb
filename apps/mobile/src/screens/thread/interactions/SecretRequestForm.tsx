@@ -5,8 +5,11 @@ import {
   buildSecretRequestResponse,
   type SecretRequestFormResult,
 } from "@/data/interactions";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
-import { Button, Icon, Input, Text } from "@/ui";
+import { Button, cn, Icon, Input, Text } from "@/ui";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 interface SecretRequestFormProps {
   /** Resets the fields when a different interaction takes over. */
@@ -94,7 +97,10 @@ export function SecretRequestForm({
                     setValues((current) => ({ ...current, [field.name]: text }))
                   }
                   accessibilityLabel={field.name}
-                  className="flex-1 bg-card pr-11"
+                  // iOS: the filled grouped field on the recessed banner;
+                  // Android: the bordered field on the card color.
+                  className={cn("flex-1 pr-11", !IS_IOS && "bg-card")}
+                  grouped={IS_IOS}
                   testID={`secret-field-${field.name}`}
                 />
                 <Pressable
@@ -102,18 +108,19 @@ export function SecretRequestForm({
                   accessibilityLabel={`${isRevealed ? "Hide" : "Show"} ${field.name}`}
                   accessibilityState={{ selected: isRevealed }}
                   disabled={disabled}
-                  onPress={() =>
+                  onPress={() => {
+                    haptic("selection");
                     setRevealed((current) => ({
                       ...current,
                       [field.name]: !current[field.name],
-                    }))
-                  }
-                  className="absolute right-1 h-8 w-8 items-center justify-center rounded-md active:bg-state-hover"
+                    }));
+                  }}
+                  className="absolute right-1 h-8 w-8 items-center justify-center rounded-full active:opacity-60"
                   hitSlop={6}
                 >
                   <Icon
                     name={isRevealed ? "EyeOff" : "Eye"}
-                    size={16}
+                    size={IS_IOS ? 18 : 16}
                     color={tokens.mutedForeground}
                   />
                 </Pressable>
@@ -125,6 +132,7 @@ export function SecretRequestForm({
       {formError ? (
         <View
           className="rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1"
+          style={{ borderCurve: "continuous" }}
           accessibilityRole="alert"
         >
           <Text className="text-xs text-destructive-text">{formError}</Text>

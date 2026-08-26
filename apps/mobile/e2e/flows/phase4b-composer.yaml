@@ -2,9 +2,9 @@
 # Developer) against the harness backend. Types an `@` query → the typeahead
 # opens above the input listing the seeded threads; picking one inserts a
 # pill and the serialized PromptInput carries `@thread:<id>`; backspace at the
-# pill end removes it whole; `/` lists provider commands; the "+" menu opens
-# with the attachment + prompt actions; then the compose screen creates a
-# thread through the composer.
+# pill end removes it whole; `/` lists provider commands; the "+" menu (a
+# native pull-down menu on iOS) opens with the attachment + prompt actions;
+# then the compose screen creates a thread through the composer.
 #
 # Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
 appId: app.getbb.mobile
@@ -72,13 +72,20 @@ env:
     id: "dev-composer-typeahead-row-0"
 - assertVisible: '(?s).*"kind": "command".*'
 - eraseText: 30
-# "+" menu: attachment + prompt actions.
+# "+" menu (a native pull-down menu on iOS): attachment + prompt actions.
+# A native menu has no Cancel row; a tap outside it dismisses it.
 - tapOn:
     id: "dev-composer-actions"
-- assertVisible: "Photo library"
+- extendedWaitUntil:
+    visible: "Photo library"
+    timeout: 10000
 - assertVisible: "Attach file"
 - takeScreenshot: phase4b-composer-actions
-- tapOn: "Cancel"
+- tapOn:
+    point: "50%,15%"
+- extendedWaitUntil:
+    notVisible: "Photo library"
+    timeout: 10000
 # Submit in the ready mode reports the kind.
 - tapOn:
     id: "dev-composer-input"

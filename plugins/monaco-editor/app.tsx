@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_useCodeTheme,
   useRpc,
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
@@ -19,6 +20,7 @@ import {
   overflowWidgetsNode,
   setOverflowWidgetsTheme,
 } from "./lib/monaco-loader.js";
+import { applyCodeTheme, editorBackground } from "./lib/monaco-theme.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { FileToolbar, type SaveIndicator } from "./components/FileToolbar.js";
 import { FileTreePanel } from "./components/FileTreePanel.js";
@@ -38,30 +40,18 @@ type SaveState =
   | { kind: "error"; message: string }
   | { kind: "conflict" };
 
-/** Monaco's dark/light pair, following the app's `<html class="dark">`. */
-function useMonacoTheme(): "vs-dark" | "vs" {
-  const [isDark, setIsDark] = useState(
-    () => document.documentElement.classList.contains("dark"),
-  );
-  useEffect(() => {
-    const target = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setIsDark(target.classList.contains("dark"));
-    });
-    observer.observe(target, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-  return isDark ? "vs-dark" : "vs";
-}
-
-function MonacoFileOpener({
-  path,
-  source,
-  Original,
-}: PluginFileOpenerProps) {
+function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const rpc = useRpc<typeof rpcContract>();
-  const theme = useMonacoTheme();
+  // BB's live code theme — the same VS Code document its own file preview
+  // renders from, so the editor follows the app palette and not just
+  // light/dark. Held in a ref as well, because the boot effect below has to
+  // theme the editor at construction and must not re-create it on a palette
+  // change.
+  const codeTheme = experimental_useCodeTheme();
+  const codeThemeRef = useRef(codeTheme);
+  codeThemeRef.current = codeTheme;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
 
   // The file actually in the editor. It starts as the one BB opened the tab
@@ -288,18 +278,19 @@ function MonacoFileOpener({
         if (disposed) return;
         const container = containerRef.current;
         if (!container) return;
+        monacoRef.current = monaco;
 
         sha256Ref.current = file.sha256;
+        // Define BB's theme before the first paint; the effect below only
+        // handles later palette and light/dark changes.
+        const applied = applyCodeTheme(monaco, codeThemeRef.current);
+        setOverflowWidgetsTheme(applied.base);
         const editor = monaco.editor.create(container, {
           value: file.content,
           language: languageForPath(activePath),
           automaticLayout: true,
           lineNumbers: "on",
-          // Read from the DOM rather than the hook so the editor is created
-          // in the right theme; re-theming on toggle is a separate effect.
-          theme: document.documentElement.classList.contains("dark")
-            ? "vs-dark"
-            : "vs",
+          theme: applied.name,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           // Matches BB's own file preview, which renders its code table as
@@ -361,12 +352,18 @@ function MonacoFileOpener({
     };
   }, [activePath, rpc, setSaveState, source]);
 
+  // Follow palette and light/dark changes. Monaco's theme is per-instance in
+  // its options but global in effect — defining and selecting it here re-themes
+  // every open editor, which is what a palette change should do.
   useEffect(() => {
-    editorRef.current?.updateOptions({ theme });
+    const monaco = monacoRef.current;
+    if (monaco === null) return;
+    const applied = applyCodeTheme(monaco, codeTheme);
+    editorRef.current?.updateOptions({ theme: applied.name });
     // The overflow host lives outside the editor, so Monaco does not re-theme
     // it for us.
-    setOverflowWidgetsTheme(theme);
-  }, [theme, status]);
+    setOverflowWidgetsTheme(applied.base);
+  }, [codeTheme, status]);
 
   // Binary and oversized files are ordinary things to click on, and this
   // plugin claims broad extensions. Hand them back to BB's own preview, which
@@ -378,6 +375,7 @@ function MonacoFileOpener({
       {isFilesOpen ? (
         <FileTreePanel
           activePath={activePath}
+          background={editorBackground(codeTheme.theme)}
           entries={tree.entries}
           error={tree.error}
           isLoading={tree.isLoading}

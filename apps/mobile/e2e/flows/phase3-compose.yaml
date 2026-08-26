@@ -1,6 +1,7 @@
 # Phase 3 compose: first run → add the harness server → deep link to
-# bb://compose (home opens its dock) → pick the seeded project → open the environment picker (screenshot)
-# → type a prompt → Create → lands on the thread placeholder with the title →
+# bb://compose (home opens its dock) → pick the seeded project → open the
+# environment picker sheet (screenshot) → type a prompt → Create → lands on
+# the thread placeholder with the title →
 # deep link to /projects/new → the machine picker lists the harness host and
 # the remote path browser lists that machine's folders.
 #
@@ -72,7 +73,9 @@ env:
       id: "project-picker"
       text: "(?i).*mobile e2e project.*"
     timeout: 15000
-# Environment picker opens as a sheet listing the modes; screenshot it open.
+# Environment picker: the pill opens a sheet listing the modes as check-mark
+# rows (both platforms; the pill shows text, so it is never a native menu).
+# Screenshot it open.
 - extendedWaitUntil:
     visible:
       id: "environment-picker"

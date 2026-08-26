@@ -15,6 +15,7 @@ export { MachinesScreen } from "./machines/MachinesScreen";
 export { TerminalScreen } from "./terminal/TerminalScreen";
 export { ThreadTerminalsScreen } from "./terminal/ThreadTerminalsScreen";
 export { RootNavigator } from "./shell/RootNavigator";
+export { ScreenTitle } from "./shell/ScreenTitle";
 export { RouteErrorBoundary } from "./shell/RouteErrorBoundary";
 export { ArchivedThreadsScreen } from "./threads/ArchivedThreadsScreen";
 export { ThreadDetailScreen } from "./thread/ThreadDetailScreen";

@@ -159,6 +159,7 @@ const ContentRow = memo(function ContentRow({
           includeFontPadding: false,
         }}
         numberOfLines={1}
+        selectable
       >
         {text}
       </RNText>

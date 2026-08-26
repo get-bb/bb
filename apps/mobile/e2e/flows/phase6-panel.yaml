@@ -25,13 +25,13 @@ env:
       id: "thread-detail-title"
       text: "${THREAD_TITLE}"
     timeout: 30000
-# The header's panel button presents the sheet on the Info tab.
+# The header's panel button presents the sheet on the Info tab. It is a
+# native toolbar item on iOS (no test id), so the flow taps its
+# accessibility label; the Android Pressable carries the same label.
 - extendedWaitUntil:
-    visible:
-      id: "thread-panel-button"
+    visible: "Workspace panel"
     timeout: 10000
-- tapOn:
-    id: "thread-panel-button"
+- tapOn: "Workspace panel"
 - extendedWaitUntil:
     visible:
       id: "workspace-panel-tab-strip"

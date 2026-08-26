@@ -1,22 +1,29 @@
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from "react-native-reanimated";
 import {
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
   useSetThreadQueuedMessageGroupBoundary,
 } from "@/data/thread-runtime";
+import { haptic } from "@/lib/haptics";
 import { getMutationErrorMessage } from "@/lib/query/mutation-errors";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
   cn,
   Icon,
+  NativeMenu,
   Spinner,
   Text,
   useSheet,
-  type ActionSheetAction,
+  type NativeMenuAction,
 } from "@/ui";
 import {
   buildQueuedMessageRowModels,
@@ -25,6 +32,12 @@ import {
   type QueuedMessageProcessingAction,
   type QueuedMessageRowModel,
 } from "./queued-messages-list-model";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** Card corners: continuous 12pt (the grouped inset-card look). */
+const CARD_STYLE = { borderRadius: 12, borderCurve: "continuous" } as const;
+const ROW_EXIT_MS = 160;
+const ROW_ENTER_MS = 200;
 
 export interface QueuedMessageEditRequest {
   queuedMessage: ThreadQueuedMessage;
@@ -61,7 +74,9 @@ interface RowProps {
   sendDisabled: boolean;
   actionDisabled: boolean;
   onSendNow: () => void;
-  onEdit: () => void;
+  /** The secondary actions (Edit, move, group, Delete). */
+  menuActions: readonly NativeMenuAction[];
+  /** Android: presents the shared action sheet for this row. */
   onOpenMenu: () => void;
 }
 
@@ -73,14 +88,27 @@ function QueuedMessageRow({
   sendDisabled,
   actionDisabled,
   onSendNow,
-  onEdit,
+  menuActions,
   onOpenMenu,
 }: RowProps) {
   const { tokens } = useTheme();
   const busy = processingAction !== null;
   const ordinal = row.index + 1;
+  const sendInert = busy || actionDisabled || sendDisabled;
+  const menuInert = busy || actionDisabled;
+  const menuGlyph = (
+    <Icon
+      name="MoreHorizontal"
+      symbol="ellipsis.circle"
+      size={IS_IOS ? 22 : 18}
+      color={IS_IOS ? tokens.primary : tokens.foreground}
+    />
+  );
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(ROW_ENTER_MS)}
+      exiting={FadeOut.duration(ROW_EXIT_MS)}
+      layout={LinearTransition.duration(ROW_ENTER_MS)}
       className={cn(
         "flex-row items-center gap-2 px-3 py-2",
         row.index > 0 && "border-t border-border-hairline",
@@ -100,7 +128,11 @@ function QueuedMessageRow({
         {busy ? (
           <Spinner size="small" color={tokens.mutedForeground} />
         ) : (
-          <Text variant="chrome" className="font-medium text-foreground">
+          <Text
+            variant="chrome"
+            className="font-medium text-foreground"
+            numeric
+          >
             {ordinal}
           </Text>
         )}
@@ -137,56 +169,71 @@ function QueuedMessageRow({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Send queued message ${ordinal} now`}
-            disabled={busy || actionDisabled || sendDisabled}
-            onPress={onSendNow}
-            className="h-9 w-9 items-center justify-center rounded-md active:bg-state-hover"
-            style={{
-              opacity: busy || actionDisabled || sendDisabled ? 0.4 : 1,
+            disabled={sendInert}
+            onPress={() => {
+              haptic("impact-medium");
+              onSendNow();
             }}
+            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            style={{ opacity: sendInert ? 0.4 : 1 }}
             hitSlop={4}
             testID="queued-message-send-now"
           >
-            <Icon name="Sent" size={18} color={tokens.foreground} />
+            <Icon
+              name="Sent"
+              symbol="paperplane.fill"
+              size={IS_IOS ? 20 : 18}
+              color={IS_IOS ? tokens.primary : tokens.foreground}
+            />
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Edit queued message ${ordinal}`}
-            disabled={busy || actionDisabled}
-            onPress={onEdit}
-            className="h-9 w-9 items-center justify-center rounded-md active:bg-state-hover"
-            style={{ opacity: busy || actionDisabled ? 0.4 : 1 }}
-            hitSlop={4}
-            testID="queued-message-edit"
-          >
-            <Icon name="Edit" size={18} color={tokens.foreground} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Queued message ${ordinal} actions`}
-            disabled={busy || actionDisabled}
-            onPress={onOpenMenu}
-            className="h-9 w-9 items-center justify-center rounded-md active:bg-state-hover"
-            style={{ opacity: busy || actionDisabled ? 0.4 : 1 }}
-            hitSlop={4}
-            testID="queued-message-menu"
-          >
-            <Icon name="MoreHorizontal" size={18} color={tokens.foreground} />
-          </Pressable>
+          {IS_IOS ? (
+            // An icon-only trigger: the menu host is the accessible element
+            // (label, role, state, testID); the glyph view inside is not.
+            <NativeMenu
+              title={`Queued message ${ordinal}`}
+              actions={menuActions}
+              disabled={menuInert}
+              accessibilityLabel={`Queued message ${ordinal} actions`}
+              testID="queued-message-menu"
+            >
+              <View
+                className="h-9 w-9 items-center justify-center"
+                style={{ opacity: menuInert ? 0.4 : 1 }}
+              >
+                {menuGlyph}
+              </View>
+            </NativeMenu>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Queued message ${ordinal} actions`}
+              disabled={menuInert}
+              onPress={onOpenMenu}
+              className="h-9 w-9 items-center justify-center rounded-md active:bg-state-hover"
+              style={{ opacity: menuInert ? 0.4 : 1 }}
+              hitSlop={4}
+              testID="queued-message-menu"
+            >
+              {menuGlyph}
+            </Pressable>
+          )}
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
 /**
  * Messages queued behind the running turn, listed under the composer
  * (mirrors apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
- * without drag). Per row: Send now, Edit (handed to the composer through
- * `onEdit`), and a "…" sheet with Move up / Move down, the group toggle
- * ("send together with the messages above" / "send separately"), and
- * Delete. The lead group that sends as one turn is tinted and closed by a
- * dashed divider. Mutations are optimistic (see `@/data/thread-runtime`);
- * the last error shows inline under the list.
+ * without drag). Per row: one Send now button and a "…" menu (a native
+ * menu on iOS, the action sheet on Android) with Edit (handed to the
+ * composer through `onEdit`), Move up / Move down, the group toggle ("send
+ * together with the messages above" / "send separately"), and Delete. The
+ * lead group that sends as one turn is tinted and closed by a dashed
+ * divider. Mutations are optimistic (see `@/data/thread-runtime`); the
+ * last error shows inline under the list. Rows fade out as they leave and
+ * the card reflows.
  */
 export function QueuedMessagesList({
   threadId,
@@ -255,61 +302,99 @@ export function QueuedMessagesList({
       })
     : null;
 
+  const edit = useCallback(
+    (row: QueuedMessageRowModel) => {
+      const queuedMessage = byId.get(row.id);
+      if (queuedMessage) {
+        onEdit({ queuedMessage, queuedMessageIndex: row.index });
+      }
+    },
+    [byId, onEdit],
+  );
+
+  // The "…" menu for one row (the same items feed the native menu and the
+  // Android sheet).
+  const menuActionsFor = useCallback(
+    (row: QueuedMessageRowModel): NativeMenuAction[] => {
+      const actions: NativeMenuAction[] = [
+        {
+          key: "edit",
+          label: "Edit",
+          icon: "Edit",
+          onPress: () => edit(row),
+        },
+      ];
+      if (row.moveUp) {
+        const request = row.moveUp;
+        actions.push({
+          key: "move-up",
+          label: "Move up",
+          icon: "ArrowUp",
+          onPress: () => {
+            haptic("selection");
+            reorder.mutate({ id: threadId, ...request });
+          },
+        });
+      }
+      if (row.moveDown) {
+        const request = row.moveDown;
+        actions.push({
+          key: "move-down",
+          label: "Move down",
+          icon: "ArrowDown",
+          onPress: () => {
+            haptic("selection");
+            reorder.mutate({ id: threadId, ...request });
+          },
+        });
+      }
+      if (row.groupToggle) {
+        const toggle = row.groupToggle;
+        actions.push({
+          key: "group-toggle",
+          label: queuedMessageGroupToggleLabel(toggle),
+          icon: "Layers",
+          onPress: () => {
+            haptic("selection");
+            setGroupBoundary.mutate({ id: threadId, ...toggle.request });
+          },
+        });
+      }
+      actions.push({
+        key: "delete",
+        label: "Delete",
+        icon: "Trash2",
+        destructive: true,
+        onPress: () => {
+          haptic("warning");
+          deleteMessage.mutate({ id: threadId, queuedMessageId: row.id });
+        },
+      });
+      return actions;
+    },
+    [deleteMessage, edit, reorder, setGroupBoundary, threadId],
+  );
+
   const menuRow = menuRowId
     ? (rows.find((row) => row.id === menuRowId) ?? null)
     : null;
-  const menuActions = useMemo<ActionSheetAction[]>(() => {
-    if (!menuRow) return [];
-    const actions: ActionSheetAction[] = [];
-    if (menuRow.moveUp) {
-      const request = menuRow.moveUp;
-      actions.push({
-        key: "move-up",
-        label: "Move up",
-        icon: "ArrowUp",
-        onPress: () => reorder.mutate({ id: threadId, ...request }),
-      });
-    }
-    if (menuRow.moveDown) {
-      const request = menuRow.moveDown;
-      actions.push({
-        key: "move-down",
-        label: "Move down",
-        icon: "ArrowDown",
-        onPress: () => reorder.mutate({ id: threadId, ...request }),
-      });
-    }
-    if (menuRow.groupToggle) {
-      const toggle = menuRow.groupToggle;
-      actions.push({
-        key: "group-toggle",
-        label: queuedMessageGroupToggleLabel(toggle),
-        icon: "Layers",
-        onPress: () =>
-          setGroupBoundary.mutate({ id: threadId, ...toggle.request }),
-      });
-    }
-    actions.push({
-      key: "delete",
-      label: "Delete",
-      icon: "Trash2",
-      destructive: true,
-      onPress: () =>
-        deleteMessage.mutate({ id: threadId, queuedMessageId: menuRow.id }),
-    });
-    return actions;
-  }, [deleteMessage, menuRow, reorder, setGroupBoundary, threadId]);
+  const sheetActions = useMemo(
+    () => (menuRow ? menuActionsFor(menuRow) : []),
+    [menuActionsFor, menuRow],
+  );
 
   if (rows.length === 0) return null;
 
   return (
-    <View
+    <Animated.View
+      layout={LinearTransition.duration(ROW_ENTER_MS)}
       className="overflow-hidden rounded-lg border border-border bg-surface-recessed"
+      style={CARD_STYLE}
       testID="queued-messages-list"
     >
       <View className="flex-row items-center gap-2 border-b border-border-hairline px-3 py-1.5">
         <Icon name="ListView" size={14} color={tokens.mutedForeground} />
-        <Text variant="caption" className="flex-1">
+        <Text variant="caption" className="flex-1" numeric>
           {rows.length === 1
             ? "1 queued message"
             : `${rows.length} queued messages`}
@@ -334,12 +419,7 @@ export function QueuedMessagesList({
               mode: "auto",
             })
           }
-          onEdit={() => {
-            const queuedMessage = byId.get(row.id);
-            if (queuedMessage) {
-              onEdit({ queuedMessage, queuedMessageIndex: row.index });
-            }
-          }}
+          menuActions={IS_IOS ? menuActionsFor(row) : []}
           onOpenMenu={() => {
             setMenuRowId(row.id);
             menu.present();
@@ -355,15 +435,17 @@ export function QueuedMessagesList({
           <Text className="text-xs text-destructive-text">{errorMessage}</Text>
         </View>
       ) : null}
-      <ActionSheet
-        controller={menu}
-        title={
-          menuRow ? `Queued message ${menuRow.index + 1}` : "Queued message"
-        }
-        message={menuRow?.preview}
-        actions={menuActions}
-        onDismiss={() => setMenuRowId(null)}
-      />
-    </View>
+      {IS_IOS ? null : (
+        <ActionSheet
+          controller={menu}
+          title={
+            menuRow ? `Queued message ${menuRow.index + 1}` : "Queued message"
+          }
+          message={menuRow?.preview}
+          actions={sheetActions}
+          onDismiss={() => setMenuRowId(null)}
+        />
+      )}
+    </Animated.View>
   );
 }

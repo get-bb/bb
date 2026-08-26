@@ -2401,6 +2401,21 @@ openThreadPanel({ actionId, title?, params? }), openUrl(url) }`.
   `"expanded" | "compact" | "zen"`; `draft` is
   `{ text, isEmpty, attachmentCount }`; `run` is
   `{ isRunning, isSubmitting }`.
+- `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
+  is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
+  registered theme name for that mode, and `theme` is the resolved **VS Code
+  theme document** behind it: `{ name, type, fg, bg, colors, tokenColors }`,
+  the same document bb's own highlighter paints from. Reach for it ONLY when
+  your plugin renders code with an engine of its own (Monaco, CodeMirror) and
+  has to build that engine's theme; for ordinary code and diffs use
+  `experimental_SourceCode` / `experimental_Diff`, which are already themed.
+  `theme` is null only before the first document resolves, and keeps the
+  previous document while a palette switch is in flight — compare `theme.name`
+  with `name` to tell a settled state from one still resolving — so a consumer
+  that repaints on every change never paints an unthemed frame. Do NOT
+  approximate the palette by reading bb's CSS variables: `--canvas` / `--ink`
+  carry the app chrome, not the syntax colors, and a custom palette that
+  declares its own code theme would not follow.
 
 ```tsx
 const composer = useComposer();
