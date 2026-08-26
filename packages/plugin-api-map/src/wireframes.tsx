@@ -425,18 +425,32 @@ function MeasuredBadge({
     const target = scope.querySelector<HTMLElement>(anchor);
     if (!target) return;
 
+    // Layout offsets, never client rects: offsetLeft/offsetTop are
+    // transform-independent, so the math is exact even while the fixture's
+    // scale transition is mid-glide (a client-rect ÷ target-scale reading
+    // is only valid at rest, and nothing re-fires when a pure transform
+    // settles). Target and container may live in sibling subtrees (the
+    // exterior layer), so both accumulate to the document and subtract.
+    const layoutOrigin = (element: HTMLElement) => {
+      let x = 0;
+      let y = 0;
+      let node: HTMLElement | null = element;
+      while (node) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node =
+          node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
+      }
+      return { x, y };
+    };
     const measure = () => {
-      const scaleWrapper = container.closest<HTMLElement>(
-        "[data-guide-responsive-strategy]",
-      );
-      const scale = Number(scaleWrapper?.dataset.guideScale ?? "1") || 1;
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
+      const containerOrigin = layoutOrigin(container);
+      const targetOrigin = layoutOrigin(target);
       const local = {
-        left: (targetRect.left - containerRect.left) / scale,
-        top: (targetRect.top - containerRect.top) / scale,
-        width: targetRect.width / scale,
-        height: targetRect.height / scale,
+        left: targetOrigin.x - containerOrigin.x,
+        top: targetOrigin.y - containerOrigin.y,
+        width: target.offsetWidth,
+        height: target.offsetHeight,
       };
       const centerY = local.top + local.height / 2 - CHIP_SIZE / 2;
       const anchoredY =
@@ -446,11 +460,12 @@ function MeasuredBadge({
       // so nothing clips them) and the lane centers in the band the gutter
       // reserves above the frame. Without a frame, the container stands in.
       const frame = container.querySelector<HTMLElement>("[data-guide-frame]");
-      const frameRect = frame?.getBoundingClientRect() ?? containerRect;
+      const frameOrigin = frame ? layoutOrigin(frame) : containerOrigin;
+      const frameWidth = frame ? frame.offsetWidth : container.offsetWidth;
       const frameLocal = {
-        left: (frameRect.left - containerRect.left) / scale,
-        right: (frameRect.right - containerRect.left) / scale,
-        top: (frameRect.top - containerRect.top) / scale,
+        left: frameOrigin.x - containerOrigin.x,
+        right: frameOrigin.x - containerOrigin.x + frameWidth,
+        top: frameOrigin.y - containerOrigin.y,
       };
       const next =
         at === "start"
@@ -474,14 +489,11 @@ function MeasuredBadge({
         "[data-guide-frame]",
       );
       if (clippingFrame) {
-        const clipRect = clippingFrame.getBoundingClientRect();
-        const clipLocal = {
-          left: (clipRect.left - containerRect.left) / scale,
-          right: (clipRect.right - containerRect.left) / scale,
-        };
+        const clipOrigin = layoutOrigin(clippingFrame);
+        const clipLeft = clipOrigin.x - containerOrigin.x;
         next.left = Math.min(
-          Math.max(next.left, clipLocal.left + 4),
-          clipLocal.right - CHIP_SIZE - 4,
+          Math.max(next.left, clipLeft + 4),
+          clipLeft + clippingFrame.offsetWidth - CHIP_SIZE - 4,
         );
       }
       setPosition((current) =>

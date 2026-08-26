@@ -272,6 +272,9 @@ try {
     await showPage("The composer", "composer");
     for (const id of ["provider-picker", "composer-plus-menu", "composer-actions", "composer-state"]) {
       await click(`[data-guide-badge="${id}"]`);
+      // The stage, reserve, and scale all glide on a 300ms ease when a card
+      // re-budgets the height; the gap contract is about the settled state.
+      await delay(500);
       const engaged = await evaluate(`(() => {
         const target = document.querySelector('[data-map-section="composer"] [data-guide-target="${id}"]');
         const card = document.querySelector('[role="dialog"]');

@@ -265,6 +265,14 @@ function SpatialFixture({
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
+  // While cards stay open, the reserved footprint only ratchets up to the
+  // largest card seen, and resets when every card closes. Deriving it from
+  // each card's exact height re-scaled the fixture a few percent on every
+  // Previous/Next between cards of different heights — a startling jitter
+  // for no reader benefit. The ratchet moves at most once per open run
+  // (when a taller card first needs the room); a shorter card just keeps
+  // the whitespace.
+  const cardReserveRef = useRef(0);
   const [geometry, setGeometry] = useState({
     scale: 1,
     height: null as number | null,
@@ -290,10 +298,14 @@ function SpatialFixture({
       const flowCard = frame
         .closest("section")
         ?.querySelector<HTMLElement>("[data-guide-card-flow]");
-      const cardFootprint = flowCard
-        ? flowCard.getBoundingClientRect().height +
-          parseFloat(getComputedStyle(flowCard).marginTop || "0")
+      cardReserveRef.current = flowCard
+        ? Math.max(
+            cardReserveRef.current,
+            flowCard.getBoundingClientRect().height +
+              parseFloat(getComputedStyle(flowCard).marginTop || "0"),
+          )
         : 0;
+      const cardFootprint = cardReserveRef.current;
       const availableHeight = viewport
         ? viewport.clientHeight -
           (frame.getBoundingClientRect().top -
@@ -361,12 +373,15 @@ function SpatialFixture({
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
-      className="w-full overflow-x-clip"
+      // The reserve height glides on the stage's own rhythm, so a re-budget
+      // (a card opening, the ratchet stepping once) morphs instead of
+      // snapping against the stage's animated height.
+      className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
       style={scaled ? { height: geometry.height ?? undefined } : undefined}
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full origin-top-left"
+        className="mx-auto w-full origin-top-left transition-[transform,margin-left] duration-300 ease-out"
         style={{
           minWidth: band?.min,
           maxWidth: band?.max,
