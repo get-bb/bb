@@ -47,6 +47,7 @@ describe("useCodeTheme", () => {
     // The two halves an editor needs: the surface and the token rules.
     expect(theme?.colors["editor.background"]).toMatch(/^#[0-9a-f]{6,8}$/i);
     expect(theme?.tokenColors.length).toBeGreaterThan(10);
+    probe.unmount();
   });
 
   it("keeps the resolved document while the next palette is in flight", async () => {
@@ -77,6 +78,7 @@ describe("useCodeTheme", () => {
     await waitFor(() => {
       expect(probe.latest().theme?.name).toBe("solarized-light");
     });
+    probe.unmount();
   });
 
   it("serves an already-resolved theme on the first render of the next consumer", async () => {
@@ -92,6 +94,8 @@ describe("useCodeTheme", () => {
     first.unmount();
 
     // No unthemed first frame for the second editor tab the user opens.
-    expect(renderProbe().latest().theme?.name).toBe("solarized-light");
+    const second = renderProbe();
+    expect(second.latest().theme?.name).toBe("solarized-light");
+    second.unmount();
   });
 });
