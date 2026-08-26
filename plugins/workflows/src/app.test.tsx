@@ -685,6 +685,11 @@ describe("workflow thread panel", () => {
     );
 
     await slot.findByText("Run independent checks before shipping.");
+    const scrollArea = slot.container.querySelector(
+      '[data-detail-scroll-area="workflow-panel"]',
+    );
+    expect(scrollArea?.className).toContain("p-4");
+    expect(scrollArea?.parentElement?.className).toContain("bg-border");
     // The settled Discover phase starts collapsed; the active phase is open.
     expect(slot.queryByText("Inspect implementation")).toBeNull();
     expect(slot.getByText("Adversarial review")).toBeTruthy();
