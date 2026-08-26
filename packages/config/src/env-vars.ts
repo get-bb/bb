@@ -15,7 +15,7 @@ import {
   validateTranscriptionModel,
 } from "./inference-model.js";
 import { validateLogLevel } from "./log-level.js";
-import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
+import { validateOptionalUrl, validateServerUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
 
 export type ServerBindHost = "127.0.0.1";
@@ -116,8 +116,8 @@ function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
   return parsed;
 }
 
-function parseRequiredUrlEnvValue(args: EnvVarParseArgs): string {
-  return validateRequiredUrl(args.name, args.value);
+function parseServerUrlEnvValue(args: EnvVarParseArgs): string {
+  return validateServerUrl(args.name, args.value);
 }
 
 function parseOptionalUrlEnvValue(args: EnvVarParseArgs): string {
@@ -179,9 +179,9 @@ export const BB_HOST_DAEMON_PORT_ENV = defineEnvVar<number>({
 });
 
 export const BB_SERVER_URL_ENV = defineEnvVar<string>({
-  description: "URL of the bb server",
+  description: "HTTPS URL of the bb server, or HTTP loopback for development",
   name: "BB_SERVER_URL",
-  parse: parseRequiredUrlEnvValue,
+  parse: parseServerUrlEnvValue,
 });
 
 export const BB_APP_VERSION_ENV = defineEnvVar<string>({

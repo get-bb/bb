@@ -135,8 +135,9 @@ console.log(await bb.threads.output({ threadId: String(thread.id) }));
 ```
 
 `new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
-CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
-targets (see the remote-access note below). Scripts launched by bb already receive `BB_SERVER_URL` and
+CLI. Pass `new BBSdk({ baseUrl: "https://host.example.test" })` for remote
+targets, or a loopback HTTP URL for local tests (see the remote-access note
+below). Scripts launched by bb already receive `BB_SERVER_URL` and
 `BB_THREAD_ID` in their environment.
 
 ## Provider Credentials

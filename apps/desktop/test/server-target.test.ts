@@ -31,13 +31,14 @@ function createMemoryFs(initial: Record<string, string> = {}): {
 }
 
 describe("normalizeCustomServerUrl", () => {
-  it("trims, strips hashes and trailing slashes, rejects non-http", () => {
+  it("trims, strips hashes and trailing slashes, and requires secure transport", () => {
     expect(normalizeCustomServerUrl(" https://example.com/ ")).toBe(
       "https://example.com",
     );
-    expect(normalizeCustomServerUrl("http://10.0.0.5:38886/#x")).toBe(
-      "http://10.0.0.5:38886",
+    expect(normalizeCustomServerUrl("http://127.0.0.1:38886/#x")).toBe(
+      "http://127.0.0.1:38886",
     );
+    expect(normalizeCustomServerUrl("http://10.0.0.5:38886/#x")).toBeNull();
     expect(normalizeCustomServerUrl("")).toBeNull();
     expect(normalizeCustomServerUrl("example.com")).toBeNull();
     expect(normalizeCustomServerUrl("file:///etc/passwd")).toBeNull();

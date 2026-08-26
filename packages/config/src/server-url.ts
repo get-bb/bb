@@ -5,7 +5,7 @@ import {
   type EnvLoaderArgs,
 } from "./env.js";
 import { BB_SERVER_URL_ENV } from "./env-vars.js";
-import { validateRequiredUrl } from "./public-url.js";
+import { validateServerUrl } from "./public-url.js";
 import { resolveDevInstanceConfig } from "./runtime.js";
 
 interface LoadServerUrlValueArgs extends EnvLoaderArgs {
@@ -15,7 +15,7 @@ interface LoadServerUrlValueArgs extends EnvLoaderArgs {
 
 export function loadServerUrlValue(args: LoadServerUrlValueArgs = {}): string {
   if (args.serverUrl !== undefined) {
-    return validateRequiredUrl(BB_SERVER_URL_ENV.name, args.serverUrl);
+    return validateServerUrl(BB_SERVER_URL_ENV.name, args.serverUrl);
   }
 
   const loader = resolveEnvLoader(args);

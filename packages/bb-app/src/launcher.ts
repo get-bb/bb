@@ -56,7 +56,10 @@ import {
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
-import { validateOptionalUrl } from "@bb/config/public-url";
+import {
+  validateOptionalUrl,
+  validateServerUrl,
+} from "@bb/config/public-url";
 import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
 import { toOptionalString } from "@bb/config/strings";
 import {
@@ -922,12 +925,12 @@ function createEnvFromOptions(
 }
 
 function resolveServerUrl(args: ResolveServerUrlArgs): string {
-  return (
+  const serverUrl =
     toOptionalString(args.optionServerUrl) ??
     args.config.serverUrl ??
     toOptionalString(args.env.BB_SERVER_URL) ??
-    args.defaultServerUrl
-  );
+    args.defaultServerUrl;
+  return validateServerUrl("BB_SERVER_URL", serverUrl);
 }
 
 export function resolveServerListenerUrl(
@@ -1229,7 +1232,7 @@ async function writeManagedConfigFile(
 
 function validateManagedConfigForWrite(config: ManagedConfigForWrite): void {
   if (config.serverUrl !== undefined) {
-    validateOptionalUrl("BB_SERVER_URL", config.serverUrl);
+    validateServerUrl("BB_SERVER_URL", config.serverUrl);
   }
   const configValues = config.config;
   if (configValues === undefined) {

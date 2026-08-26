@@ -65,6 +65,10 @@ succeeds, so a nightly failure cannot affect the release that already shipped.
   iOS EAS builds remain available from other branches.
 - npm Trusted Publishing jobs install npm `11.6.2` exactly; do not replace that
   pin with `npm@latest`.
+- npm Trusted Publishing currently grants `id-token: write` at job scope while
+  that job installs dependencies and builds. Treat the locked dependency tree as
+  trusted; split build and publish into separate jobs before treating OIDC as a
+  hard isolation boundary.
 
 ## Inputs
 
@@ -235,7 +239,9 @@ gh workflow run build-desktop.yml \
   with `gh attestation verify <asset> -R get-bb/bb`. This is Sigstore-signed
   publisher provenance, not a replacement for macOS Developer ID signing or a
   code signature for Linux; Linux AppImages remain unsigned and their updater
-  still relies on the feed's SHA-512 metadata. Artifact attestations also
+  keeps self-installing updates disabled until the updater can verify publisher
+  provenance independently; Linux still exposes feed metadata for version checks.
+  Artifact attestations also
   require the repository plan and Actions `id-token`/`attestations` permissions
   to be enabled.
 - The `desktop-v<version>` release is immutable: if it already exists the

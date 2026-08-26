@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -1420,6 +1421,22 @@ describe("bb-app launcher", () => {
         "test-openai-key",
       ]),
     ).rejects.toThrow(/bb-app env set OPENAI_API_KEY/u);
+  });
+
+  it("rejects remote HTTP server URLs before writing managed config", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-remote-http-config-"));
+
+    await expect(
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "config",
+        "set",
+        "BB_SERVER_URL",
+        "http://server.example.test:38886",
+      ]),
+    ).rejects.toThrow(/HTTPS/u);
+    expect(existsSync(join(dataDir, "config.json"))).toBe(false);
   });
 
   it("stores managed env values from the env command", async () => {

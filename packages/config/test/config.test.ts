@@ -534,6 +534,24 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_SERVER_URL/u);
   });
 
+  it("requires HTTPS for non-loopback server URLs", () => {
+    expect(() =>
+      loadCliConfig({
+        env: createHostDaemonRuntimeEnv({
+          BB_SERVER_URL: "http://server.example.test:38886",
+        }),
+      }),
+    ).toThrow(/HTTPS/u);
+
+    expect(
+      loadCliConfig({
+        env: createHostDaemonRuntimeEnv({
+          BB_SERVER_URL: "https://server.example.test:38886",
+        }),
+      }).BB_SERVER_URL,
+    ).toBe("https://server.example.test:38886");
+  });
+
   it("normalizes server URL whitespace consistently for the daemon and CLI", () => {
     const env = createHostDaemonRuntimeEnv({
       BB_SERVER_URL: " http://localhost:9999 ",
