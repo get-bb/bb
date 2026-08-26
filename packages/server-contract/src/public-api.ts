@@ -6,7 +6,6 @@ import type {
   AppKeybindingOverrides,
   Environment,
   Experiments,
-  Host,
   PendingInteraction,
   ProjectExecutionDefaults,
   ProjectSource,
@@ -79,6 +78,7 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostResponse,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostFileListRequest,
@@ -599,19 +599,19 @@ export const publicApiRoutes = {
       path: "/hosts",
       method: "get",
       request: noRequest(),
-      response: jsonResponse<Host[]>(),
+      response: jsonResponse<HostResponse[]>(),
     }),
     get: defineRoute({
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<HostResponse>(),
     }),
     update: defineRoute({
       path: "/hosts/:id",
       method: "patch",
       request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<HostResponse>(),
     }),
     updatePermissionCeiling: defineRoute({
       path: "/hosts/:id/permission-ceiling",
@@ -619,7 +619,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, UpdateHostPermissionCeilingRequest>(
         updateHostPermissionCeilingRequestSchema,
       ),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<HostResponse>(),
     }),
     retryUpdate: defineRoute({
       path: "/hosts/:id/retry-update",

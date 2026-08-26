@@ -21,6 +21,7 @@ import {
   environmentActionRequestSchema,
   baseBranchSpecSchema,
   gitBranchNameSchema,
+  hostResponseSchema,
   reorderPinnedThreadRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
@@ -538,6 +539,43 @@ describe("git branch name contract", () => {
       contract.environmentDiffQuerySchema.safeParse({
         target: "all",
         mergeBaseBranch: "origin/main lock",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("public host contracts", () => {
+  const host = {
+    id: "host-1",
+    name: "Mac",
+    type: "persistent" as const,
+    maxPermissionMode: "full" as const,
+    lastSeenAt: null,
+    lastRejectedProtocolVersion: null,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  it("requires platform facts exactly while a host is connected", () => {
+    expect(
+      hostResponseSchema.parse({
+        ...host,
+        status: "connected",
+        connectedRuntime: { platform: "darwin" },
+      }),
+    ).toMatchObject({ connectedRuntime: { platform: "darwin" } });
+    expect(
+      hostResponseSchema.safeParse({
+        ...host,
+        status: "connected",
+        connectedRuntime: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostResponseSchema.safeParse({
+        ...host,
+        status: "disconnected",
+        connectedRuntime: { platform: "darwin" },
       }).success,
     ).toBe(false);
   });

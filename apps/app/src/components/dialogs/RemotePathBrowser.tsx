@@ -87,6 +87,7 @@ interface RemotePathBrowserProps {
   initialPath?: string | null;
   /** Whether this picker may create and select a new child directory. */
   allowCreateFolder: boolean;
+  pathPlaceholder?: string;
   /**
    * Reports the resolved directory currently shown (the folder that would be
    * picked). Null while the first listing loads or a manual path fails to read.
@@ -99,6 +100,7 @@ export function RemotePathBrowser({
   hostId,
   initialPath = null,
   allowCreateFolder,
+  pathPlaceholder = "/path/to/project",
   onDirectoryChange,
   disabled = false,
 }: RemotePathBrowserProps) {
@@ -336,7 +338,7 @@ export function RemotePathBrowser({
               className="h-7 flex-1 text-xs"
               value={editValue}
               disabled={disabled}
-              placeholder="/path/to/project"
+              placeholder={pathPlaceholder}
               onChange={(event) => setEditValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {

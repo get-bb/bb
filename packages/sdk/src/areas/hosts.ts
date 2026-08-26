@@ -1,5 +1,4 @@
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
-import type { Host } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
   HostCloneDefaultPathQuery,
@@ -13,6 +12,7 @@ import type {
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
+  HostResponse,
   HostRetryUpdateResponse,
   UpdateHostRequest,
 } from "@bb/server-contract";
@@ -66,15 +66,15 @@ export interface HostListArgs {
 export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
 export type HostDeleteResult = { ok: true };
 export type HostDirectoryResult = HostDirectoryListing;
-export type HostGetResult = Host;
+export type HostGetResult = HostResponse;
 export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;
 export type HostProviderCliInstallResult = HostProviderCliInstallEvent[];
-export type HostListResult = Host[];
+export type HostListResult = HostResponse[];
 export type HostPathsExistResult = HostPathsExistResponse;
 export type HostPickFolderResult = HostPickFolderResponse;
 export type HostProviderCliStatusResult = HostProviderCliStatusResponse;
 export type HostRetryUpdateResult = HostRetryUpdateResponse;
-export type HostUpdateResult = Host;
+export type HostUpdateResult = HostResponse;
 
 export interface HostsArea {
   createJoinCode(): Promise<HostCreateJoinCodeResult>;

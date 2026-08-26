@@ -33,17 +33,26 @@ function hostRecord(
   id: string,
   status: HostRecord["status"] = "connected",
 ): HostRecord {
-  return {
+  const common = {
     id,
     name: id,
     type: "persistent",
-    status,
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,
-  };
+  } satisfies Omit<
+    Extract<HostRecord, { status: "connected" }>,
+    "status" | "connectedRuntime"
+  >;
+  return status === "connected"
+    ? {
+        ...common,
+        status,
+        connectedRuntime: { platform: "linux" },
+      }
+    : { ...common, status, connectedRuntime: null };
 }
 
 function enabledInput(input: unknown): boolean {

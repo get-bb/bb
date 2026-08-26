@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import type { SystemConfigResponse } from "@bb/server-contract";
+import type { HostResponse, SystemConfigResponse } from "@bb/server-contract";
 import type {
   ProviderCliKey,
   ProviderCliStatus,
@@ -54,19 +54,22 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 
 const HOST_ID = "host_remote";
 
-function host(overrides: Partial<Host> = {}): Host {
-  return {
+function host(overrides: Partial<Host> = {}): HostResponse {
+  const status = overrides.status ?? "connected";
+  const fields = {
     id: HOST_ID,
     name: "dev-vm",
-    type: "persistent",
-    status: "connected",
-    maxPermissionMode: "full",
+    type: "persistent" as const,
+    maxPermissionMode: "full" as const,
     lastSeenAt: Date.now(),
     lastRejectedProtocolVersion: null,
     createdAt: Date.now() - 86_400_000,
     updatedAt: Date.now(),
     ...overrides,
   };
+  return status === "connected"
+    ? { ...fields, status, connectedRuntime: { platform: "linux" } }
+    : { ...fields, status, connectedRuntime: null };
 }
 
 function systemConfig(): SystemConfigResponse {
@@ -138,11 +141,12 @@ function stubSupportingFetches(): void {
   ]);
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(JSON.stringify({ projects: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ projects: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     ),
   );
 }

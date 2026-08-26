@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import type { InstalledPlugin } from "@bb/server-contract";
+import type { HostResponse, InstalledPlugin } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
@@ -35,17 +35,22 @@ vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
+function host(
+  overrides: Partial<Host> & Pick<Host, "id" | "name">,
+): HostResponse {
+  const status = overrides.status ?? "connected";
+  const fields = {
+    type: "persistent" as const,
     lastSeenAt: null,
-    maxPermissionMode: "full",
+    maxPermissionMode: "full" as const,
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,
   };
+  return status === "connected"
+    ? { ...fields, status, connectedRuntime: { platform: "darwin" } }
+    : { ...fields, status, connectedRuntime: null };
 }
 
 const existingHost = host({ id: "host_primary", name: "MacBook Pro" });

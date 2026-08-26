@@ -8,12 +8,12 @@
 // rows (stamped with the device clock) above rows the server appends.
 
 import type {
-  Host,
   ResolvedThreadExecutionOptions,
   ThreadListEntry,
   ThreadQueuedMessage,
 } from "@bb/domain";
 import type {
+  HostResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
   SystemVersionResponse,
@@ -159,13 +159,14 @@ export function sidebarBootstrap(
   return { sections: [], projects: [project], personalProject };
 }
 
-export function hosts(now: number): Host[] {
+export function hosts(now: number): HostResponse[] {
   return [
     {
       id: DEMO_HOST_ID,
       name: "demo",
       type: "persistent",
       status: "connected",
+      connectedRuntime: { platform: "linux" },
       maxPermissionMode: "full",
       lastSeenAt: now,
       lastRejectedProtocolVersion: null,

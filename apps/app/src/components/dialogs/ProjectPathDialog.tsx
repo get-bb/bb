@@ -10,9 +10,9 @@ import {
   deriveProjectNameFromPath,
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
-  type Host,
 } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
+import type { HostResponse } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -50,13 +50,19 @@ export type ProjectPathDialogSubmitHandler = (
   hostId: string | null,
 ) => Promise<void> | void;
 
+export interface ProjectPathDialogNativeFolderPicker {
+  hostId: string;
+  onPick: (target: ProjectPathDialogTarget) => Promise<void> | void;
+}
+
 interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
-  hosts?: readonly Host[];
+  hosts?: readonly HostResponse[];
+  nativeFolderPicker?: ProjectPathDialogNativeFolderPicker | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
@@ -68,6 +74,7 @@ export function ProjectPathDialog({
   hostId,
   hostName,
   hosts,
+  nativeFolderPicker = null,
   onOpenChange,
   onSubmit,
 }: ProjectPathDialogProps) {
@@ -83,6 +90,7 @@ export function ProjectPathDialog({
             hostId={hostId}
             hostName={hostName}
             hosts={hosts}
+            nativeFolderPicker={nativeFolderPicker}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -97,12 +105,14 @@ interface ProjectPathDialogContentProps {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
-  hosts?: readonly Host[];
+  hosts?: readonly HostResponse[];
+  nativeFolderPicker?: ProjectPathDialogNativeFolderPicker | null;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
 
 interface PlatformCopy {
   description: string;
+  pathLabel: string;
   placeholder: string;
 }
 
@@ -132,20 +142,36 @@ function getPlatformCopy(
   platform: HostPlatform | null,
   hostName: string | null,
 ): PlatformCopy {
-  const placeholder = "/path/to/project";
   // The path is resolved on the host machine, not the device showing this
-  // dialog — name the host so remote users don't type a local path.
+  // dialog. Name the host so remote users don't type a path from the browser.
   const hostSuffix = hostName ? ` on ${hostName}` : "";
-  if (platform === "wsl") {
-    return {
-      description: `Enter an absolute WSL path${hostSuffix} to the project folder, such as /home/me/repo or /mnt/c/...`,
-      placeholder,
-    };
+  switch (platform) {
+    case "darwin":
+      return {
+        description: `Enter an absolute macOS path${hostSuffix} to the project folder.`,
+        pathLabel: "macOS path",
+        placeholder: "/Users/me/project",
+      };
+    case "linux":
+      return {
+        description: `Enter an absolute Linux path${hostSuffix} to the project folder.`,
+        pathLabel: "Linux path",
+        placeholder: "/home/me/project",
+      };
+    case "wsl":
+      return {
+        description: `Enter an absolute WSL path${hostSuffix} to the project folder, such as /home/me/repo or /mnt/c/...`,
+        pathLabel: "WSL path",
+        placeholder: "/mnt/c/Users/me/project",
+      };
+    case "unknown":
+    case null:
+      return {
+        description: `Enter an absolute path${hostSuffix} to the project folder.`,
+        pathLabel: "path",
+        placeholder: "/path/to/project",
+      };
   }
-  return {
-    description: `Enter an absolute path${hostSuffix} to the project folder.`,
-    placeholder,
-  };
 }
 
 export function ProjectPathDialogContent({
@@ -155,6 +181,7 @@ export function ProjectPathDialogContent({
   hostId,
   hostName,
   hosts,
+  nativeFolderPicker = null,
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
@@ -176,6 +203,8 @@ export function ProjectPathDialogContent({
     (host) => host.id === selectedHostId,
   );
   const selectedHostName = selectedHost?.name ?? hostName;
+  const selectedHostPlatform =
+    selectedHost?.connectedRuntime?.platform ?? platform;
   const selectedHostConnected =
     selectedHost === undefined || selectedHost.status === "connected";
   const showMachinePicker = (machineOptions?.length ?? 0) > 1;
@@ -193,11 +222,16 @@ export function ProjectPathDialogContent({
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
   );
-  const copy = getPlatformCopy(platform, selectedHostName);
+  const copy = getPlatformCopy(selectedHostPlatform, selectedHostName);
   const placeholder =
     target.kind === "update"
       ? target.currentPath || copy.placeholder
       : copy.placeholder;
+
+  const canUseNativeFolderPicker =
+    nativeFolderPicker !== null &&
+    selectedHostId === nativeFolderPicker.hostId &&
+    selectedHostPlatform === "darwin";
 
   const selectedPath = selectedHostId
     ? browserDirectory
@@ -246,7 +280,7 @@ export function ProjectPathDialogContent({
           {selectedHostId
             ? `Browse to the project folder${
                 selectedHostName ? ` on ${selectedHostName}` : ""
-              }, or edit the path directly.`
+              }, or edit the ${copy.pathLabel} directly.`
             : noMachineAvailable
               ? "No machine is online. Start one to choose a project folder."
               : copy.description}
@@ -317,12 +351,24 @@ export function ProjectPathDialogContent({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
+        {canUseNativeFolderPicker ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => void nativeFolderPicker.onPick(target)}
+          >
+            <Icon name="FolderOpen" />
+            Choose folder with Finder
+          </Button>
+        ) : null}
         {selectedHostId ? (
           <RemotePathBrowser
             key={selectedHostId}
             hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}
             allowCreateFolder={target.kind === "create"}
+            pathPlaceholder={copy.placeholder}
             onDirectoryChange={setBrowserDirectory}
             disabled={pending || !selectedHostConnected}
           />

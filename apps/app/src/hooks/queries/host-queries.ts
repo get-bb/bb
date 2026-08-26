@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
-import type { HostDirectoryListing } from "@bb/server-contract";
+import type { HostDirectoryListing, HostResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -21,7 +21,7 @@ export function useHosts(options?: QueryOptions) {
   const enabled = options?.enabled ?? true;
   useHostListRealtimeSubscription({ enabled });
 
-  return useQuery<Host[]>({
+  return useQuery<HostResponse[]>({
     queryKey: hostsQueryKey(),
     queryFn: ({ signal }) => sdk.hosts.list({ signal }),
     enabled,
@@ -37,10 +37,10 @@ export function useHosts(options?: QueryOptions) {
  * loading). A non-null id that isn't in the list means the primary isn't
  * visible here: return null rather than promote another machine.
  */
-export function selectPrimaryHost(
-  hosts: readonly Host[] | undefined,
+export function selectPrimaryHost<THost extends Host>(
+  hosts: readonly THost[] | undefined,
   primaryHostId: string | null,
-): Host | null {
+): THost | null {
   if (!hosts || hosts.length === 0) return null;
   if (primaryHostId !== null) {
     return hosts.find((host) => host.id === primaryHostId) ?? null;
@@ -52,7 +52,7 @@ export function selectPrimaryHost(
  * The single host the server runs work on by default, resolved server-side.
  * Returns null while loading or before any host has ever connected.
  */
-export function usePrimaryHost(options?: QueryOptions): Host | null {
+export function usePrimaryHost(options?: QueryOptions): HostResponse | null {
   const { data: hosts } = useHosts(options);
   const primaryHostId = useSystemConfig(options).data?.primaryHostId ?? null;
   return useMemo(

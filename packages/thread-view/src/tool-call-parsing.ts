@@ -287,24 +287,6 @@ function tokenizeShellWords(command: string): ShellToken[] {
 
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/u;
 
-/** Search flags that take a separate value. */
-const SEARCH_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set([
-  "-g",
-  "--glob",
-  "-t",
-  "--type",
-  "-T",
-  "--type-not",
-  "-A",
-  "--after-context",
-  "-B",
-  "--before-context",
-  "-C",
-  "--context",
-  "-m",
-  "--max-count",
-]);
-
 /** `find` flags whose value is the next token. Only the common ones —
  * unknown flags are treated as value-less, which is harmless for path extraction
  * since `find` puts the start path before the expression. */
@@ -545,24 +527,8 @@ function classifyShellSegment(
 
   switch (commandName) {
     case "rg":
-    case "grep": {
-      const positionals = collectPositionals(
-        argTokens,
-        SEARCH_FLAGS_WITH_VALUE,
-      );
-      return {
-        kind: "intent",
-        intent: {
-          type: "search",
-          cmd: fullCommand,
-          query: positionals[0] ?? null,
-          path:
-            positionals.length > 1
-              ? positionals[positionals.length - 1]!
-              : null,
-        },
-      };
-    }
+    case "grep":
+      return { kind: "none" };
     case "find": {
       const positionals = collectPositionals(argTokens, FIND_FLAGS_WITH_VALUE);
       const path = positionals[0];

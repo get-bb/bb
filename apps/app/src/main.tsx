@@ -73,7 +73,7 @@ createRoot(document.getElementById("root")!, {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />
-          <AppToaster position="bottom-right" />
+          <AppToaster position="bottom-right" closeButton />
         </BrowserRouter>
       </QueryClientProvider>
     </AppErrorBoundary>

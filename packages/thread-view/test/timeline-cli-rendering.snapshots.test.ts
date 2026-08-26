@@ -337,7 +337,7 @@ describe("timeline CLI rendering snapshots", () => {
           "text": "── User ────────────────────────────────────────────────────
       Patch the timeline output
 
-      ── Searching for timeline in packages/core-ui ──────────────
+      ── Running rg timeline packages/core-ui ────────────────────
         $ rg timeline packages/core-ui",
         },
         {
@@ -349,8 +349,9 @@ describe("timeline CLI rendering snapshots", () => {
           "text": "── User ────────────────────────────────────────────────────
       Patch the timeline output
 
-      ── Searched for timeline in packages/core-ui ───────────────
-        $ rg timeline packages/core-ui",
+      ── Ran rg timeline packages/core-ui ────────────────────────
+        $ rg timeline packages/core-ui
+        packages/core-ui/src/format-timeline-text.ts",
         },
         {
           "messageKinds": [
@@ -363,8 +364,9 @@ describe("timeline CLI rendering snapshots", () => {
           "text": "── User ────────────────────────────────────────────────────
       Patch the timeline output
 
-      ── Searched for timeline in packages/core-ui ───────────────
+      ── Ran rg timeline packages/core-ui ────────────────────────
         $ rg timeline packages/core-ui
+        packages/core-ui/src/format-timeline-text.ts
 
       ── Ran web search: timeline rendering ──────────────────────
 
@@ -383,8 +385,10 @@ describe("timeline CLI rendering snapshots", () => {
       Patch the timeline output
 
       ── Worked for (10ms) ───────────────────────────────────────
-        ── Explored 1 search, researched 1 search query, edited 1 file
-          ── Searched for timeline in packages/core-ui
+        ── Ran 1 command, researched 1 search query, edited 1 file
+          ── Ran rg timeline packages/core-ui
+            $ rg timeline packages/core-ui
+            packages/core-ui/src/format-timeline-text.ts
           ── Ran web search: timeline rendering
           ── Edited /repo/packages/core-ui/src/format-timeline-text.ts +1 -1
             @@ -1 +1 @@
@@ -960,8 +964,10 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.turnRows[0]?.summaryCount).toBe(2);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (4ms) ────────────────────────────────────────
-        ── Explored 1 search, ran 1 command
-          ── Searched for TODO in packages/core-ui
+        ── Ran 2 commands
+          ── Ran rg TODO packages/core-ui
+            $ rg TODO packages/core-ui
+            packages/core-ui/src/a.ts:10: TODO
           ── Ran pnpm test
             $ pnpm test
             Tests passed
@@ -1122,8 +1128,9 @@ describe("timeline CLI rendering snapshots", () => {
       ── Assistant ───────────────────────────────────────────────
       I found the test path.
 
-      ── Searched for setState in packages/excalidraw/tests/helpers/ui.ts
-        $ rg setState packages/excalidraw/tests/helpers/ui.ts"
+      ── Ran rg setState packages/excalidraw/tests/helpers/ui.ts ─
+        $ rg setState packages/excalidraw/tests/helpers/ui.ts
+        packages/excalidraw/tests/helpers/ui.ts:42: setState"
     `);
   });
 
@@ -2168,11 +2175,12 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (7ms) ────────────────────────────────────────
-        ── Explored 1 file, 2 lists, 1 search
+        ── Explored 1 file, 2 lists, ran 1 command
           ── Read src/a.ts
           ── Listed files in src
           ── Listed files in test
-          ── Searched for TODO in src
+          ── Ran rg TODO src
+            $ rg TODO src
 
       ── Assistant ───────────────────────────────────────────────
       Done."

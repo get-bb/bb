@@ -131,8 +131,20 @@ export function AppToastContent({
 
   return (
     <div
-      className="relative w-[var(--width,356px)] max-w-[calc(100vw-32px)] rounded-md border border-border bg-popover px-4 py-3 text-popover-foreground shadow-sm max-[600px]:w-[calc(100vw-32px)]"
+      className="relative w-[var(--width,356px)] max-w-[calc(100vw-32px)] rounded-md border border-border bg-popover px-4 py-3 pr-9 text-popover-foreground shadow-sm max-[600px]:w-[calc(100vw-32px)]"
     >
+      {id !== undefined ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Dismiss notification"
+          className="absolute right-1.5 top-1.5 size-6 text-muted-foreground"
+          onClick={() => dismissToast(id)}
+        >
+          <Icon name="X" className="size-3.5" />
+        </Button>
+      ) : null}
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-foreground">
           <Icon

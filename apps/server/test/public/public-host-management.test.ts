@@ -7,6 +7,7 @@ import {
 } from "@bb/db";
 import {
   createHostJoinCodeResponseSchema,
+  hostResponseSchema,
   type CreateHostJoinCodeResponse,
 } from "@bb/server-contract";
 import {
@@ -49,6 +50,54 @@ function requestJoinCode(app: {
 }
 
 describe("public host management", () => {
+  it("returns each connected host's validated runtime platform", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_runtime_platform" });
+      const session = seedSession(harness.deps, host.id);
+
+      const listResponse = await harness.app.request(`${API}/hosts`);
+      expect(listResponse.status).toBe(200);
+      expect(
+        z.array(hostResponseSchema).parse(await readJson(listResponse)),
+      ).toContainEqual(
+        expect.objectContaining({
+          id: host.id,
+          status: "connected",
+          connectedRuntime: { platform: "darwin" },
+        }),
+      );
+
+      harness.hub.unregisterDaemon(session.id);
+      const disconnectedResponse = await harness.app.request(
+        `${API}/hosts/${host.id}`,
+      );
+      expect(disconnectedResponse.status).toBe(200);
+      expect(
+        hostResponseSchema.parse(await readJson(disconnectedResponse)),
+      ).toMatchObject({
+        id: host.id,
+        status: "disconnected",
+        connectedRuntime: null,
+      });
+
+      harness.hub.recordDaemonSessionPlatform(session.id, "wsl");
+      harness.hub.registerDaemon(session.id, host.id, {
+        close() {},
+        send() {},
+      });
+      const reconnectedResponse = await harness.app.request(
+        `${API}/hosts/${host.id}`,
+      );
+      expect(
+        hostResponseSchema.parse(await readJson(reconnectedResponse)),
+      ).toMatchObject({
+        id: host.id,
+        status: "connected",
+        connectedRuntime: { platform: "wsl" },
+      });
+    });
+  });
+
   it("preserves a renamed host across a daemon reconnect", async () => {
     await withTestHarness(async (harness) => {
       const issued = await createJoinCode(harness.app);

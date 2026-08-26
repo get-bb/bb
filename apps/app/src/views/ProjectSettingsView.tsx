@@ -285,6 +285,7 @@ export function ProjectSettingsView() {
         platform={localSourcePicker.platform}
         hostId={localSourcePicker.hostId}
         hostName={localSourcePicker.hostName}
+        nativeFolderPicker={localSourcePicker.nativeFolderPicker}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}
       />

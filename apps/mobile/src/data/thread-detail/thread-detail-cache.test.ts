@@ -39,7 +39,11 @@ describe("ingestThreadDetailBootstrap", () => {
     ingestThreadDetailBootstrap(queryClient, {
       ...thread,
       environment,
-      host: hostFixture({ id: "h1", name: "laptop" }),
+      host: {
+        ...hostFixture({ id: "h1", name: "laptop" }),
+        status: "disconnected" as const,
+        connectedRuntime: null,
+      },
     });
 
     expect(queryClient.getQueryData(threadQueryKey("t1"))).toEqual(thread);

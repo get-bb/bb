@@ -183,6 +183,7 @@ export function ProjectActionsProvider({
         platform={addLocalSourcePicker.platform}
         hostId={addLocalSourcePicker.hostId}
         hostName={addLocalSourcePicker.hostName}
+        nativeFolderPicker={addLocalSourcePicker.nativeFolderPicker}
         onOpenChange={addLocalSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={addLocalSourcePicker.submitProjectPath}
       />

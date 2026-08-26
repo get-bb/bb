@@ -10,6 +10,7 @@ import {
 } from "@bb/db";
 import type { Environment, Host } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
+import type { HostResponse } from "@bb/server-contract";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
 import {
@@ -27,7 +28,10 @@ type HostRow = NonNullable<ReturnType<typeof getHost>>;
 type ProjectRow = NonNullable<ReturnType<typeof getProject>>;
 type ThreadRow = NonNullable<ReturnType<typeof getThread>>;
 type StandardProject = ProjectRow & { kind: "standard" };
-type HostLookupHub = Pick<NotificationHub, "getDaemonSessionIdForHost">;
+type HostLookupHub = Pick<
+  NotificationHub,
+  "getDaemonPlatformForHost" | "getDaemonSessionIdForHost"
+>;
 
 interface HostLookupDeps {
   db: DbConnection;
@@ -79,18 +83,35 @@ function toHostStatus(deps: HostLookupDeps, hostId: string): Host["status"] {
     : "disconnected";
 }
 
-function toHostRecord(row: HostRow, status: Host["status"]): Host {
-  return {
+function toHostRecord(
+  deps: HostLookupDeps,
+  row: HostRow,
+  status: Host["status"],
+): HostResponse {
+  const fields = {
     id: row.id,
     name: row.name,
     type: row.type,
-    status,
     maxPermissionMode: row.maxPermissionMode,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+
+  if (status === "connected") {
+    const platform = deps.hub.getDaemonPlatformForHost(row.id);
+    if (platform === null) {
+      throw new Error(`Connected host ${row.id} has no runtime platform`);
+    }
+    return {
+      ...fields,
+      status,
+      connectedRuntime: { platform },
+    };
+  }
+
+  return { ...fields, status, connectedRuntime: null };
 }
 
 function throwHostNotFound(): never {
@@ -101,11 +122,14 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
   return project.kind === "standard";
 }
 
-export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
+export function listPublicHostsWithStatus(
+  deps: HostLookupDeps,
+): HostResponse[] {
   const rows = listPublicHosts(deps.db);
 
   return rows.map((row) =>
     toHostRecord(
+      deps,
       row,
       getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
     ),
@@ -115,7 +139,7 @@ export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
 export function requireNonDestroyedHostWithStatus(
   deps: HostLookupDeps,
   hostId: string,
-): Host {
+): HostResponse {
   const host = getHost(deps.db, hostId);
   if (!host) {
     throwHostNotFound();
@@ -127,18 +151,18 @@ export function requireNonDestroyedHostWithStatus(
       destroyedHostUnavailableDetails(host.destroyedAt),
     );
   }
-  return toHostRecord(host, toHostStatus(deps, host.id));
+  return toHostRecord(deps, host, toHostStatus(deps, host.id));
 }
 
 export function getNonDestroyedHostWithStatus(
   deps: HostLookupDeps,
   hostId: string,
-): Host | null {
+): HostResponse | null {
   const host = getNonDestroyedHost(deps.db, hostId);
   if (!host) {
     return null;
   }
-  return toHostRecord(host, toHostStatus(deps, host.id));
+  return toHostRecord(deps, host, toHostStatus(deps, host.id));
 }
 
 export function requireConnectedHostSession(

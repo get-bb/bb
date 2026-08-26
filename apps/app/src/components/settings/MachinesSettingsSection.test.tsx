@@ -10,7 +10,7 @@ import {
 import type { Host } from "@bb/domain";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import type { SystemConfigResponse } from "@bb/server-contract";
+import type { HostResponse, SystemConfigResponse } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -48,17 +48,22 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 
 const NOW = Date.now();
 
-function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
+function host(
+  overrides: Partial<Host> & Pick<Host, "id" | "name">,
+): HostResponse {
+  const status = overrides.status ?? "connected";
+  const fields = {
+    type: "persistent" as const,
     lastSeenAt: NOW,
-    maxPermissionMode: "full",
+    maxPermissionMode: "full" as const,
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,
   };
+  return status === "connected"
+    ? { ...fields, status, connectedRuntime: { platform: "darwin" } }
+    : { ...fields, status, connectedRuntime: null };
 }
 
 const primaryHost = host({ id: "host_primary", name: "MacBook Pro" });

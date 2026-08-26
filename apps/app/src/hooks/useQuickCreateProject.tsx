@@ -6,8 +6,9 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deriveProjectNameFromPath, type Host } from "@bb/domain";
+import { deriveProjectNameFromPath } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
+import type { HostResponse } from "@bb/server-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
 import {
@@ -20,6 +21,7 @@ import {
 } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
+  ProjectPathDialogNativeFolderPicker,
   ProjectPathDialogSubmitHandler,
   ProjectPathDialogTarget,
 } from "@/components/dialogs/ProjectPathDialog";
@@ -37,14 +39,15 @@ interface QuickCreateProjectController {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
-  hosts: readonly Host[];
+  hosts: readonly HostResponse[];
+  nativeFolderPicker: ProjectPathDialogNativeFolderPicker | null;
   projectPathDialog: QuickCreateProjectDialogState;
   submitProjectPath: ProjectPathDialogSubmitHandler;
 }
 
 const quickCreateProjectContext =
   createContext<QuickCreateProjectController | null>(null);
-const EMPTY_HOSTS: readonly Host[] = [];
+const EMPTY_HOSTS: readonly HostResponse[] = [];
 
 export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
@@ -98,6 +101,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       hostId: controller.hostId,
       hostName: controller.hostName,
       hosts,
+      nativeFolderPicker: controller.nativeFolderPicker,
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),

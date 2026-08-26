@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { permissionModeSchema } from "@bb/domain";
+import { hostSchema, permissionModeSchema } from "@bb/domain";
 import {
+  hostPlatformSchema,
   pathsExistRequestSchema,
   providerCliInstallEventSchema,
   providerCliInstallRequestSchema,
@@ -11,6 +12,24 @@ import {
   type ProviderCliInstallRequest,
   type ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract/local";
+
+const connectedHostRuntimeSchema = z
+  .object({
+    platform: hostPlatformSchema,
+  })
+  .strict();
+
+export const hostResponseSchema = z.discriminatedUnion("status", [
+  hostSchema.extend({
+    status: z.literal("connected"),
+    connectedRuntime: connectedHostRuntimeSchema,
+  }),
+  hostSchema.extend({
+    status: z.literal("disconnected"),
+    connectedRuntime: z.null(),
+  }),
+]);
+export type HostResponse = z.infer<typeof hostResponseSchema>;
 
 /**
  * Query for `GET /hosts/:id/directory`, the interactive path browser's

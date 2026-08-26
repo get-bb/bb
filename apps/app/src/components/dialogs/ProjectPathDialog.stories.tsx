@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { HostDirectoryListing } from "@bb/server-contract";
+import type { HostDirectoryListing, HostResponse } from "@bb/server-contract";
 import {
   ProjectPathDialogContent,
   type ProjectPathDialogTarget,
@@ -38,18 +38,33 @@ const addSourceTarget: ProjectPathDialogTarget = {
   projectName: PROJECT_NAMES.bb,
 };
 
-const connectedMachine = makeHost();
-const offlineMachine = makeHost({
-  id: HOST_IDS.remote,
-  name: HOST_NAMES.remote,
-  status: "disconnected",
-});
-const offlineLocalMachine = makeHost({ status: "disconnected" });
+const connectedMachine = {
+  ...makeHost(),
+  status: "connected" as const,
+  connectedRuntime: { platform: "darwin" as const },
+} satisfies HostResponse;
+const offlineMachine = {
+  ...makeHost({
+    id: HOST_IDS.remote,
+    name: HOST_NAMES.remote,
+  }),
+  status: "disconnected" as const,
+  connectedRuntime: null,
+} satisfies HostResponse;
+const offlineLocalMachine = {
+  ...makeHost(),
+  status: "disconnected" as const,
+  connectedRuntime: null,
+} satisfies HostResponse;
 
-const longNamesMachine = makeHost({
-  id: "host_long_names",
-  name: "sandbox",
-});
+const longNamesMachine = {
+  ...makeHost({
+    id: "host_long_names",
+    name: "sandbox",
+  }),
+  status: "connected" as const,
+  connectedRuntime: { platform: "linux" as const },
+} satisfies HostResponse;
 const longProjectName = "long-project-name-".repeat(18);
 const longProjectPath = `/home/winter/${longProjectName}`;
 const longFileName = `${"appdata-buzz-pre-sandbox-migration-".repeat(8)}.tar.gz`;
