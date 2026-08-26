@@ -43,7 +43,10 @@ export interface PluginSurfaceAgentReference {
 }
 
 const AGENT_REFERENCE_PREFIX = "Build a plugin that uses ";
-const AGENT_REFERENCE_SUFFIX = ". ";
+// A single space after the pill keeps consecutive pastes and follow-on
+// typing from gluing to the label; no punctuation is added, so the pasted
+// text carries exactly what the source content contains.
+const AGENT_REFERENCE_SUFFIX = " ";
 
 function escapeHtml(value: string): string {
   return value

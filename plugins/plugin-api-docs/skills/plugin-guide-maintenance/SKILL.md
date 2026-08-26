@@ -362,7 +362,9 @@ in the top visual layer rather than merely having an unclipped rectangle.
   exactly `surface.id`, the label is exactly `surface.title`, the plugin id is
   exactly `plugin-api-docs`, and the item id is exactly
   `surface:<surface.id>`. The framing is exactly `Build a plugin that uses `
-  before the pill and `. ` after it. The pill's send-time context already
+  before the pill and one plain space after it — never added punctuation, so
+  pasted output carries exactly the source content's own punctuation. The
+  pill's send-time context already
   points at the Plugin Guide and authoring skill, so visible clipboard prose
   never repeats that implementation pointer.
 - Resolve exactly three context lines: surface title plus id; the surface's

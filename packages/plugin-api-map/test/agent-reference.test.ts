@@ -38,7 +38,7 @@ describe("Plugin Guide agent references", () => {
     });
     expect(reference.context.split("\n")).toHaveLength(3);
     expect(reference.clipboard.text).toBe(
-      "Build a plugin that uses @Code & diff renderers. ",
+      "Build a plugin that uses @Code & diff renderers ",
     );
   });
 
@@ -70,7 +70,7 @@ describe("Plugin Guide agent references", () => {
     const document = new DOMParser().parseFromString(content.html, "text/html");
     const pill = document.querySelector("[data-prompt-mention='true']");
 
-    expect(content.text).toBe("Build a plugin that uses @Inline actions. ");
+    expect(content.text).toBe("Build a plugin that uses @Inline actions ");
     expect(document.body.textContent).toBe(content.text);
     expect(pill?.textContent).toBe("@Inline actions");
     expect(pill?.getAttribute("data-prompt-mention-serialized-text")).toBe(
@@ -107,8 +107,8 @@ describe("Plugin Guide agent references", () => {
       "surface:thread-panel",
     ]);
     expect(document.body.textContent).toBe(
-      "Build a plugin that uses @Inline actions. " +
-        "Build a plugin that uses @Thread side-panel tabs. ",
+      "Build a plugin that uses @Inline actions " +
+        "Build a plugin that uses @Thread side-panel tabs ",
     );
   });
 
@@ -147,7 +147,7 @@ describe("Plugin Guide agent references", () => {
       "text/plain",
     ]);
     await expect(items[0]?.["text/plain"]?.text()).resolves.toBe(
-      "Build a plugin that uses @Inline actions. ",
+      "Build a plugin that uses @Inline actions ",
     );
     await expect(items[0]?.["text/html"]?.text()).resolves.toContain(
       'Build a plugin that uses <span data-prompt-mention="true"',
