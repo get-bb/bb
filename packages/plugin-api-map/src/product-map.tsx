@@ -264,14 +264,15 @@ function SpatialFixture({
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
-  // The reserved card footprint only ratchets up — to the largest card seen
-  // over this slide's lifetime — and never resets on close. Deriving it from
-  // each card's exact height re-scaled the fixture on every Previous/Next,
-  // and resetting on close replayed the whole make-room swing on every
-  // reopen (click card, click away, click another card = shrink, grow,
-  // shrink). With the persistent ratchet the fixture makes room once, keeps
-  // honest whitespace while no card is open, and later opens move it only
-  // when a strictly taller card first needs the room.
+  // Card-reserve state. The landing view reserves nothing — the fixture
+  // renders at its full derived size until the reader opens a card. The
+  // first open glides once to the final size (the hidden probe already
+  // knows the tallest card this slide can open), and after that nothing
+  // moves again for the slide's lifetime: not on close, not on reopen, not
+  // on Previous/Next through any card. Anything less stable re-scaled the
+  // fixture per card (jitter); anything more eager reserved the tallest
+  // card permanently and shrank every landing view (squished).
+  const everOpenedRef = useRef(false);
   const cardReserveRef = useRef(0);
   const [geometry, setGeometry] = useState({
     scale: 1,
@@ -299,13 +300,33 @@ function SpatialFixture({
         .closest("section")
         ?.querySelector<HTMLElement>("[data-guide-card-flow]");
       if (flowCard) {
+        everOpenedRef.current = true;
         cardReserveRef.current = Math.max(
           cardReserveRef.current,
           flowCard.getBoundingClientRect().height +
             parseFloat(getComputedStyle(flowCard).marginTop || "0"),
         );
       }
-      const cardFootprint = cardReserveRef.current;
+      // The hidden probe knows every card this slide can open, so the first
+      // open lands directly on the final size; the live ratchet above
+      // remains only as a backstop for environments without a probe.
+      const probe = frame
+        .closest("[data-map-section]")
+        ?.querySelector<HTMLElement>("[data-guide-card-probe]");
+      let probeReserve = 0;
+      if (probe) {
+        for (const item of Array.from(probe.children)) {
+          if (!(item instanceof HTMLElement)) continue;
+          probeReserve = Math.max(
+            probeReserve,
+            item.offsetHeight +
+              parseFloat(getComputedStyle(item).marginTop || "0"),
+          );
+        }
+      }
+      const cardFootprint = everOpenedRef.current
+        ? Math.max(probeReserve, cardReserveRef.current)
+        : 0;
       const availableHeight = viewport
         ? viewport.clientHeight -
           (frame.getBoundingClientRect().top -
@@ -343,6 +364,12 @@ function SpatialFixture({
     observer.observe(frame);
     observer.observe(fixture);
     if (viewport) observer.observe(viewport);
+    const probeRoot = frame
+      .closest("[data-map-section]")
+      ?.querySelector("[data-guide-card-probe]");
+    if (probeRoot?.firstElementChild) {
+      observer.observe(probeRoot.firstElementChild);
+    }
     // The in-flow card mounts and unmounts with the open annotation; watch
     // the section so its appearance re-budgets the height, and its own size
     // while present.
@@ -420,6 +447,48 @@ function SlideContent({ group }: { group: SurfaceGroup }) {
   }
 }
 
+const PROBE_NOOP = () => {};
+const PROBE_COPY = async () => false;
+
+/**
+ * Measures the tallest card this slide can open — rendered hidden with zero
+ * layout height — so the height budget reserves the real maximum up front.
+ * The fixture then makes room exactly once per page; opening, closing, and
+ * walking Previous/Next through every card moves nothing, because no card
+ * can exceed what is already reserved.
+ */
+function CardReserveProbe({ group }: { group: SurfaceGroup }) {
+  return (
+    <div
+      inert
+      aria-hidden
+      data-guide-card-probe
+      className="invisible h-0 overflow-hidden"
+    >
+      {group.surfaces.map((surface) => (
+        <div
+          key={surface.id}
+          // The real card wrapper's gap margin, so each measured footprint
+          // already includes the stage-to-card rhythm.
+          className="mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
+        >
+          <SurfaceCard
+            probe
+            surface={surface}
+            number={SURFACE_NUMBERS.get(surface.id) ?? null}
+            onDismiss={PROBE_NOOP}
+            onCopyForAgent={PROBE_COPY}
+            navigation={{
+              ...annotationNeighbors(group.surfaces, surface.id),
+              onOpen: PROBE_NOOP,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Slide({ group }: { group: SurfaceGroup }) {
   if (fixtureResponsiveStrategy(group) === "reflow") {
     return (
@@ -429,9 +498,12 @@ function Slide({ group }: { group: SurfaceGroup }) {
     );
   }
   return (
-    <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.id]}>
-      <SlideContent group={group} />
-    </SpatialFixture>
+    <>
+      <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.id]}>
+        <SlideContent group={group} />
+      </SpatialFixture>
+      <CardReserveProbe group={group} />
+    </>
   );
 }
 

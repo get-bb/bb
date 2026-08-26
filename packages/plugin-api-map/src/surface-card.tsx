@@ -32,12 +32,19 @@ export function SurfaceCard({
   onDismiss,
   onCopyForAgent,
   navigation,
+  probe = false,
 }: {
   surface: PluginSurface;
   /** Marker number, so the card reads as the same annotation. */
   number: number | null;
   onDismiss: () => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
+  /**
+   * Render for measurement only (the hidden card-reserve probe): identical
+   * box, but no dialog semantics, no global key listener, and no
+   * scroll-into-view — a probe must never act like an open card.
+   */
+  probe?: boolean;
   /** Adjacent annotations on this page; omitted for standalone cards. */
   navigation?: {
     previous: PluginSurface | null;
@@ -107,24 +114,26 @@ export function SurfaceCard({
   // another marker replaces the card, and panning to another slide closes
   // it, because its marker leaves the screen.
   useEffect(() => {
+    if (probe) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onDismiss();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onDismiss]);
+  }, [onDismiss, probe]);
 
   // The card sits below the diagram, so on a short screen it can open past
   // the fold; bring it into view whenever the open surface changes.
   useEffect(() => {
+    if (probe) return;
     cardRef.current?.scrollIntoView({ block: "nearest" });
-  }, [surface.id]);
+  }, [surface.id, probe]);
 
   return (
     <div
       ref={cardRef}
-      role="dialog"
-      aria-label={surface.title}
+      role={probe ? undefined : "dialog"}
+      aria-label={probe ? undefined : surface.title}
       className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg"
     >
       <div className="flex items-start gap-2">

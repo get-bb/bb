@@ -152,12 +152,16 @@ on a nested wrapper is invisible to the measurement, because a block's
 
 An open in-flow card is part of the height budget: its footprint subtracts
 from the fixture's available height so the card ends where its content ends
-without scrolling the page chrome. The reserve ratchets — over the slide's lifetime it only grows to the
-tallest card seen and never resets on close — so opening, closing, and
-revisiting cards never re-scales the fixture (the make-room step happens
-once; closed pages keep honest whitespace), and
-the reserve, transform, and centering glide on the stage's 300ms ease rather
-than snapping.
+without scrolling the page chrome. The fixture moves at most once per slide:
+the landing view reserves nothing and renders at its full derived size; the
+first card open glides once — on the stage's 300ms ease — to the size that
+fits the slide's tallest card, pre-measured by a hidden probe that renders
+every card the slide can open; after that nothing re-scales for the slide's
+lifetime, not on close, reopen, or Previous/Next through any card. The
+reserve ratchets as a probe-less backstop — it only grows and never resets
+on close. Sizing the reserve from each card individually re-scales the
+fixture per card, and reserving the tallest card before any open shrinks
+every landing view.
 
 The scaled fixture reserves exactly `authoredHeight * scale` in normal flow,
 whether shrunken or grown. It must have no horizontal scrollbar, clipped
