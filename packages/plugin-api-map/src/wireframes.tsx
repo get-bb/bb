@@ -463,6 +463,24 @@ function MeasuredBadge({
                   left: local.left + local.width / 2 - CHIP_SIZE / 2,
                   top: Math.max(0, (frameLocal.top - CHIP_SIZE) / 2),
                 };
+      // A container inside a clipping window frame (the palette dialog)
+      // cannot hang chips past that frame's edge — they would clip to
+      // nothing. Clamp into the frame's interior instead; the chip then
+      // rides the container's edge when the frame leaves no margin.
+      const clippingFrame = container.closest<HTMLElement>(
+        "[data-guide-frame]",
+      );
+      if (clippingFrame) {
+        const clipRect = clippingFrame.getBoundingClientRect();
+        const clipLocal = {
+          left: (clipRect.left - containerRect.left) / scale,
+          right: (clipRect.right - containerRect.left) / scale,
+        };
+        next.left = Math.min(
+          Math.max(next.left, clipLocal.left + 4),
+          clipLocal.right - CHIP_SIZE - 4,
+        );
+      }
       setPosition((current) =>
         current &&
         Math.abs(current.left - next.left) < 0.5 &&
@@ -744,21 +762,21 @@ function RightPanelTabLaneBadges({
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
-        anchor='[data-guide-tab="code-renderers"]'
+        anchor='[data-guide-region="code-renderers"]'
         at="lane"
         onActivate={() => onTabSelect("code-renderers")}
       />
       <MeasuredBadge
         id="thread-panel"
         label="A plugin tab in the thread side panel"
-        anchor='[data-guide-tab="thread-panel"]'
+        anchor='[data-guide-region="thread-panel"]'
         at="lane"
         onActivate={() => onTabSelect("thread-panel")}
       />
       <MeasuredBadge
         id="file-opener"
         label="A plugin file viewer or editor tab"
-        anchor='[data-guide-tab="file-opener"]'
+        anchor='[data-guide-region="file-opener"]'
         at="lane"
         onActivate={() => onTabSelect("file-opener")}
       />
@@ -1600,12 +1618,14 @@ function StaticEmbeddedComposer() {
       <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
         {/* + menu: opens upward while engaged, the direction the real menu
             takes at the window's bottom, anchored to the box the real menu
-            flips against. */}
+            flips against. The bottom margin is the outside-above chip lane
+            (CHIP_SIZE + CHIP_GAP), so the open menu clears the draft line's
+            chips by construction. */}
         {plus.outlined ? (
           <div
             aria-hidden
             data-guide-transient-for="composer-plus-menu"
-            className="pointer-events-none absolute bottom-full left-2 z-20 mb-1 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+            className="pointer-events-none absolute bottom-full left-2 z-20 mb-[28px] w-44 rounded-md border border-border bg-popover p-1 shadow-md"
           >
             <span className="flex h-6 items-center gap-1.5 px-1.5">
               <MiniIcon icon={File01Icon} className="size-3.5" />

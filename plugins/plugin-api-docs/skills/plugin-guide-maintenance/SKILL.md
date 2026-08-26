@@ -243,6 +243,16 @@ pixel nudge:
   and outcome states may replace one another; do not display mutually
   exclusive states as a convenient composite.
 
+Run the committed relationship sweep after any fixture, annotation, or layout
+change: `scripts/verify-guide-chrome.mjs` (in this skill's directory) drives
+Chrome for Testing against the running dev app across the four viewport
+classes, discovers every rendered annotation, reconciles it against the
+declared inventory, and asserts the relationships above — badge bounds and
+hit-tests, engaged rings on targets, transient clearances, caret adjacency,
+scale bounds with zero page overflow, the gap clamp, and the wide-viewport
+fill gate. Extend the sweep when a rule is added; never replace a sweep
+assertion with an exact authored pixel.
+
 Verify these rules at every required viewport with rendered geometry, not
 class names alone. Record the badge, target-content, transient-surface,
 fixture, and viewport bounding rectangles. The badge rectangle must be fully
