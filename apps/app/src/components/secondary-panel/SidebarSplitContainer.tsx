@@ -12,7 +12,6 @@ import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { beginSplitDrag, type SplitDropTarget } from "@/lib/split-drag";
 import {
-  clampSplitPairFraction,
   computePaneRects,
   countPanes,
   listPanes,
@@ -23,6 +22,7 @@ import {
   type SplitSide,
 } from "@/lib/split-layout";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import {
@@ -758,6 +758,10 @@ function SidebarSplitDivider({
       const pair = createSidebarSplitResizePair(previous, next);
       hitTarget.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
+      const snapSession = createSplitResizeSnapSession(
+        divider,
+        horizontal ? "x" : "y",
+      );
       let pendingFraction: number | null = null;
       let receivedPointerMove = false;
       let finished = false;
@@ -765,7 +769,11 @@ function SidebarSplitDivider({
         const pointer = horizontal
           ? pointerEvent.clientX
           : pointerEvent.clientY;
-        const fraction = clampSplitPairFraction((pointer - start) / span);
+        const { fraction } = snapSession.resolve({
+          end,
+          pointer,
+          start,
+        });
         pendingFraction = fraction;
         pair.previous.style.flex = `${pair.total * fraction} 1 0px`;
         pair.next.style.flex = `${pair.total * (1 - fraction)} 1 0px`;
@@ -787,6 +795,7 @@ function SidebarSplitDivider({
         if (hitTarget.hasPointerCapture?.(pointerId)) {
           hitTarget.releasePointerCapture(pointerId);
         }
+        snapSession.clear();
         onResizeDragChange(null);
         onPreviewResize(null);
         if (commit && pendingFraction !== null) {
@@ -823,6 +832,7 @@ function SidebarSplitDivider({
   return (
     <div
       role="separator"
+      data-split-resize-axis={horizontal ? "x" : "y"}
       aria-hidden={hidden || undefined}
       aria-label={
         horizontal
@@ -831,7 +841,7 @@ function SidebarSplitDivider({
       }
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
-        "group relative z-[25] shrink-0 bg-border-seam transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        "group relative z-[25] shrink-0 bg-border-seam transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40 data-[split-resize-snap-target]:bg-ring/60",
         MACOS_APP_REGION_NO_DRAG_CLASS,
         "pointer-events-auto",
         hidden && "invisible pointer-events-none",

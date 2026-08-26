@@ -32,7 +32,6 @@ import {
   splitLayoutAtom,
 } from "@/lib/split-layout/atoms";
 import {
-  clampSplitPairFraction,
   computePaneRects,
   countPanes,
   findPane,
@@ -44,6 +43,7 @@ import {
   setFocus,
   swapPanes,
 } from "@/lib/split-layout";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import type {
   LayoutNode,
   PaneContent,
@@ -1395,10 +1395,18 @@ function freezeOffscreenTimelineRows(
 
 function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
   const horizontal = dir === "row";
+  const finishResizeRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      finishResizeRef.current?.();
+    },
+    [],
+  );
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
+      finishResizeRef.current?.();
       const hitTarget = event.currentTarget;
       const divider = hitTarget.parentElement;
       if (!(divider instanceof HTMLDivElement)) {
@@ -1425,6 +1433,11 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
 
       hitTarget.setPointerCapture(event.pointerId);
       divider.dataset.dragging = "true";
+      const pointerId = event.pointerId;
+      const snapSession = createSplitResizeSnapSession(
+        divider,
+        horizontal ? "x" : "y",
+      );
 
       const previousGrow = Number.parseFloat(
         window.getComputedStyle(previous).flexGrow,
@@ -1445,8 +1458,13 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       let finished = false;
 
       const onMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
         const pointer = horizontal ? moveEvent.clientX : moveEvent.clientY;
-        const fraction = clampSplitPairFraction((pointer - start) / span);
+        const { fraction } = snapSession.resolve({
+          end,
+          pointer,
+          start,
+        });
         pendingFraction = fraction;
 
         // Keep high-frequency drag state local to the two flex items. Writing
@@ -1458,10 +1476,15 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       const finish = (commit: boolean) => {
         if (finished) return;
         finished = true;
+        finishResizeRef.current = null;
         delete divider.dataset.dragging;
         hitTarget.removeEventListener("pointermove", onMove);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", onCancel);
+        if (hitTarget.hasPointerCapture?.(pointerId)) {
+          hitTarget.releasePointerCapture(pointerId);
+        }
+        snapSession.clear();
         restoreTimelineRows();
         if (commit && pendingFraction !== null) {
           // Commit once so the imperative flex values above become the
@@ -1472,11 +1495,18 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         previous.style.flex = previousFlex;
         next.style.flex = nextFlex;
       };
-      const onUp = () => finish(true);
-      const onCancel = () => finish(false);
+      const onUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== pointerId) return;
+        finish(true);
+      };
+      const onCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
       hitTarget.addEventListener("pointermove", onMove);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", onCancel);
+      finishResizeRef.current = () => finish(false);
     },
     [horizontal, onResize],
   );
@@ -1484,6 +1514,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
   return (
     <div
       role="separator"
+      data-split-resize-axis={horizontal ? "x" : "y"}
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         // A one-pixel seam between flush tiles — squared ends, no rounding,
@@ -1496,7 +1527,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         // lower divider layer loses the grab target to that header.
         "group relative z-[25] flex-shrink-0 transition-colors",
         "bg-border-seam",
-        "hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        "hover:bg-ring/40 data-[dragging]:bg-ring/40 data-[split-resize-snap-target]:bg-ring/60",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}

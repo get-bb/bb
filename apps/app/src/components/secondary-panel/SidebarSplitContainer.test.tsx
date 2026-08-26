@@ -20,6 +20,7 @@ import {
   createSidebarSplitState,
   focusSidebarPane,
   moveSidebarTab,
+  parseSidebarSplitState,
   serializeSidebarSplitState,
   sidebarSplitStorageKey,
   type SidebarSplitState,
@@ -780,6 +781,116 @@ describe("SidebarSplitContainer", () => {
       clientY: 600,
       pointerId: 3,
     });
+  });
+
+  it("snaps a right-panel divider to a workspace divider and persists the exact fraction", () => {
+    persistState(createTwoPaneState());
+    renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+    const separator = screen.getByRole("separator");
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected adjacent right-panel split items");
+    }
+    Object.defineProperties(hitTarget, {
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 401,
+      right: 801,
+      top: 0,
+      width: 400,
+      x: 401,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(separator, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 400,
+      right: 401,
+      top: 0,
+      width: 1,
+      x: 400,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const workspaceDivider = document.createElement("div");
+    workspaceDivider.dataset.splitResizeAxis = "x";
+    workspaceDivider.getBoundingClientRect = () => ({
+      bottom: 600,
+      height: 600,
+      left: 560,
+      right: 561,
+      top: 0,
+      width: 1,
+      x: 560,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const workspaceSplit = document.createElement("div");
+    workspaceSplit.appendChild(workspaceDivider);
+    document.body.appendChild(workspaceSplit);
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400.5, pointerId: 32 });
+    fireEvent.pointerMove(hitTarget, { clientX: 567, pointerId: 32 });
+
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
+    expect(workspaceDivider.dataset.splitResizeSnapTarget).toBe("true");
+    expect(
+      document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
+        ?.style.left,
+    ).toBe("560.5px");
+
+    fireEvent.pointerUp(hitTarget, { clientX: 567, pointerId: 32 });
+
+    const persisted = parseSidebarSplitState(
+      window.localStorage.getItem(sidebarSplitStorageKey(PANEL_STATE_ID)),
+      TABS.map((tab) => tab.id),
+      "tab-a",
+    );
+    expect(persisted.layout.root.type).toBe("split");
+    if (persisted.layout.root.type === "split") {
+      expect(persisted.layout.root.sizes[0]).toBeCloseTo(0.7, 5);
+      expect(persisted.layout.root.sizes[1]).toBeCloseTo(0.3, 5);
+    }
+    expect(workspaceDivider.dataset.splitResizeSnapTarget).toBeUndefined();
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+    workspaceSplit.remove();
+  });
+
+  it("keeps right-panel separators out of the tab order", () => {
+    persistState(createTwoPaneState());
+    renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+
+    const separator = screen.getByRole("separator");
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+
+    expect(separator.tabIndex).toBe(-1);
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
   it("does not resize or persist when the divider is pressed and released in place", () => {

@@ -1175,6 +1175,114 @@ describe("SplitThreadArea", () => {
     expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
   });
 
+  it("snaps a workspace divider to a visible right-panel divider and clears its guide", () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const separator = screen.getByRole("separator");
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    const hitTarget = separator.querySelector<HTMLElement>(
+      "[data-split-divider-hit-target]",
+    );
+    if (
+      hitTarget === null ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected adjacent workspace split items");
+    }
+    Object.defineProperties(hitTarget, {
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 406,
+      right: 806,
+      top: 0,
+      width: 400,
+      x: 406,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(separator, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 403,
+      right: 404,
+      top: 0,
+      width: 1,
+      x: 403,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const rightPanelDivider = document.createElement("div");
+    rightPanelDivider.dataset.splitResizeAxis = "x";
+    rightPanelDivider.getBoundingClientRect = () => ({
+      bottom: 600,
+      height: 600,
+      left: 563.5,
+      right: 564.5,
+      top: 0,
+      width: 1,
+      x: 563.5,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const rightPanelSplit = document.createElement("div");
+    rightPanelSplit.appendChild(rightPanelDivider);
+    document.body.appendChild(rightPanelSplit);
+
+    fireEvent.pointerDown(hitTarget, { clientX: 403.5, pointerId: 31 });
+    fireEvent.pointerMove(hitTarget, { clientX: 570, pointerId: 31 });
+
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
+    expect(rightPanelDivider.dataset.splitResizeSnapTarget).toBe("true");
+    expect(
+      document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
+        ?.style.left,
+    ).toBe("564px");
+
+    fireEvent.pointerUp(hitTarget, { clientX: 570, pointerId: 31 });
+
+    const root = store.get(splitLayoutAtom)?.root;
+    expect(root?.type).toBe("split");
+    if (root?.type === "split") {
+      expect(root.sizes[0]).toBeCloseTo(0.7, 5);
+      expect(root.sizes[1]).toBeCloseTo(0.3, 5);
+    }
+    expect(rightPanelDivider.dataset.splitResizeSnapTarget).toBeUndefined();
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+    rightPanelSplit.remove();
+  });
+
+  it("keeps workspace separators out of the tab order", () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    const separator = screen.getByRole("separator");
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+
+    expect(separator.tabIndex).toBe(-1);
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+  });
+
   it("gives a top-to-bottom split a full-width drag target without thickening its seam", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
