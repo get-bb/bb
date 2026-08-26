@@ -21,6 +21,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 
 import { cn } from "./cn";
+import { SCROLLBAR_HIDDEN_CLASS, scrollEdgeFadeStyle } from "./scroll-edges";
 
 /** Sub-pixel slack: a 0.5px remainder is not something left to scroll to. */
 const SCROLL_EPSILON_PX = 1;
@@ -213,7 +214,14 @@ export function UsedByList({
             event.stopPropagation();
           }
         }}
-        className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-scrollbar]:hidden"
+        // The shared chip-bar treatment: hidden scrollbar plus an edge fade
+        // on whichever side has overflow, so a cut entry reads as "more this
+        // way" rather than a torn glyph beside the caret.
+        className={cn(
+          "min-w-0 flex-1 overflow-x-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          SCROLLBAR_HIDDEN_CLASS,
+        )}
+        style={scrollEdgeFadeStyle(scroll.canScrollLeft, scroll.canScrollRight)}
       >
         <ul className="flex w-max gap-x-3">
           {items.map((item) => (

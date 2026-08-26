@@ -37,7 +37,16 @@ import {
   type PluginSurface,
   type SurfaceGroup,
 } from "./surfaces";
-import { ExperimentalBadge, renderSurfaceCopy } from "./annotation";
+import {
+  ExperimentalBadge,
+  FOCUS_RING_CLASS,
+  renderSurfaceCopy,
+} from "./annotation";
+import {
+  SCROLLBAR_HIDDEN_CLASS,
+  scrollEdgeFadeStyle,
+  useScrollEdges,
+} from "./scroll-edges";
 import {
   AppShellWireframe,
   CommandPaletteWireframe,
@@ -106,6 +115,7 @@ function PlatformCard({ surface }: { surface: PluginSurface }) {
       onMouseLeave={() => setActiveId(null)}
       className={cn(
         "flex h-full items-center gap-3 rounded-lg border px-4 py-4 transition-colors",
+        FOCUS_RING_CLASS,
         selected
           ? "border-border bg-surface-selected"
           : // Resting fill one step below hover: a faint opaque lift off the
@@ -130,7 +140,11 @@ function PlatformCard({ surface }: { surface: PluginSurface }) {
           </span>
           {surface.experimental ? <ExperimentalBadge /> : null}
         </span>
-        <span className="block truncate text-sm text-muted-foreground">
+        {/* One line where rows are two-up and scannable; two clamped lines
+            when the panel is narrow enough that a single line would cut the
+            tagline mid-thought. Container-keyed: the panel, not the window,
+            decides (falls back to two lines with no container ancestor). */}
+        <span className="line-clamp-2 text-sm text-muted-foreground @3xl:line-clamp-1">
           {renderSurfaceCopy(surface.tagline ?? surface.summary)}
         </span>
       </span>
@@ -179,9 +193,11 @@ const PAN_FALLBACK_MS = 600;
 /**
  * Fixtures render proportionally larger on roomy displays, up to this
  * legibility ceiling — past it, transform-scaled product chrome starts to
- * read as a zoomed screenshot rather than a diagram.
+ * read as a zoomed screenshot rather than a diagram, and non-integer
+ * scaling visibly softens the fixtures' hairline borders. 1.2 lifts the
+ * authored 12px chrome to ~14px on a monitor while keeping lines crisp.
  */
-export const MAX_FIXTURE_SCALE = 1.3;
+export const MAX_FIXTURE_SCALE = 1.2;
 
 /**
  * A spatial fixture is authored at product scale, then derives its render
@@ -215,13 +231,38 @@ const useBrowserLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
+ * Each spatial fixture's one authored width band: fluid between the floor
+ * and its natural cap, scaled beyond either. The band lives on the measured
+ * element itself (`SpatialFixture`'s inner div) — a band on a nested wrapper
+ * is invisible to the scale measurement, because a block's `scrollWidth`
+ * can never be smaller than its own `clientWidth`.
+ */
+const FIXTURE_WIDTH_BANDS: Record<
+  string,
+  { min: number; max: number } | undefined
+> = {
+  "app-shell": { min: 1260, max: 1440 },
+  "command-palette": { min: 860, max: 1200 },
+  composer: { min: 720, max: 768 },
+  home: { min: 560, max: 1080 },
+  settings: { min: 640, max: 900 },
+  extensions: { min: 640, max: 900 },
+};
+
+/**
  * One owner for every spatial fixture's responsive geometry. Available width
  * comes from the frame; available height comes from the consumer's declared
  * scroll viewport (`data-guide-stage-viewport`), measured strictly upstream —
  * scrollport bottom minus the frame's own top — so nothing the scale itself
  * resizes feeds back into it.
  */
-function SpatialFixture({ children }: { children: ReactNode }) {
+function SpatialFixture({
+  band,
+  children,
+}: {
+  band?: { min: number; max: number };
+  children: ReactNode;
+}) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
   const [geometry, setGeometry] = useState({
@@ -325,16 +366,19 @@ function SpatialFixture({ children }: { children: ReactNode }) {
     >
       <div
         ref={fixtureRef}
-        className="w-full origin-top-left"
-        style={
-          scaled
+        className="mx-auto w-full origin-top-left"
+        style={{
+          minWidth: band?.min,
+          maxWidth: band?.max,
+          ...(scaled
             ? {
                 transform: `scale(${geometry.scale})`,
                 width: geometry.width ?? undefined,
                 marginLeft: geometry.offsetX,
+                marginRight: 0,
               }
-            : undefined
-        }
+            : undefined),
+        }}
       >
         {children}
       </div>
@@ -370,7 +414,7 @@ function Slide({ group }: { group: SurfaceGroup }) {
     );
   }
   return (
-    <SpatialFixture>
+    <SpatialFixture band={FIXTURE_WIDTH_BANDS[group.id]}>
       <SlideContent group={group} />
     </SpatialFixture>
   );
@@ -431,7 +475,10 @@ function PanButton({
       aria-label={`${direction === "previous" ? "Previous" : "Next"} surface`}
       // Borderless: the hit area, hover fill, and focus ring carry the
       // affordance, so the outline is chrome the row does not need.
-      className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+      className={cn(
+        "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
+        FOCUS_RING_CLASS,
+      )}
     >
       <HugeiconsIcon
         icon={direction === "previous" ? ArrowLeft01Icon : ArrowRight01Icon}
@@ -505,6 +552,7 @@ export function ProductMap({
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
+  const pageListEdges = useScrollEdges(pageListRef);
   const [index, setIndex] = useState(() =>
     Math.max(
       0,
@@ -690,7 +738,14 @@ export function ProductMap({
               <div
                 ref={pageListRef}
                 data-guide-page-list-scroll
-                className="min-w-0 overflow-x-auto"
+                // The shared chip-bar treatment: hidden scrollbar, and each
+                // overflowing edge fades so a cut label reads as "more this
+                // way" instead of butting torn text against the caret.
+                className={cn("min-w-0 overflow-x-auto", SCROLLBAR_HIDDEN_CLASS)}
+                style={scrollEdgeFadeStyle(
+                  pageListEdges.canScrollLeft,
+                  pageListEdges.canScrollRight,
+                )}
               >
                 <ul className="flex w-max flex-nowrap items-center gap-1">
                   {slides.map((entry, slideIndex) => (
@@ -704,6 +759,7 @@ export function ProductMap({
                         aria-current={slideIndex === index ? "true" : undefined}
                         className={cn(
                           "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors",
+                          FOCUS_RING_CLASS,
                           slideIndex === index
                             ? "bg-surface-selected text-foreground"
                             : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",

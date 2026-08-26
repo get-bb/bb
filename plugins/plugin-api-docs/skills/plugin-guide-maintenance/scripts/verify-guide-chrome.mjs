@@ -225,7 +225,7 @@ try {
         };
       })()`);
 
-      if (!(page.scale > 0 && page.scale <= 1.3001)) {
+      if (!(page.scale > 0 && page.scale <= 1.2001)) {
         failures.push(`${viewport.tag}/${groupId}: scale ${page.scale} out of bounds`);
       }
       if (page.overflow.document > 1) {

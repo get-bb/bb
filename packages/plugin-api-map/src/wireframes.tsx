@@ -60,6 +60,7 @@ import { cn } from "./cn";
 import {
   annotationChipClass,
   CHIP_PLACEMENT_CLASS,
+  FOCUS_RING_CLASS,
   type AnnotationChipPlacement,
 } from "./annotation";
 import anatomy from "./anatomy-manifest.json";
@@ -228,6 +229,7 @@ function Mark({
         // ring-inset keeps the outline inside this region's own bounds, so
         // it cannot bleed into a neighbor that shares an edge.
         "relative rounded-md ring-1 ring-inset transition-all",
+        FOCUS_RING_CLASS,
         outlined
           ? "bg-surface-selected ring-surface-selected-border"
           : "ring-transparent hover:bg-state-hover",
@@ -338,6 +340,7 @@ function RegionMark({
         onBlur={() => setActiveId(null)}
         className={cn(
           "absolute inset-0 z-[1] rounded-md ring-1 ring-inset transition-all",
+          FOCUS_RING_CLASS,
           outlined
             ? "bg-surface-selected/30 ring-surface-selected-border"
             : "ring-transparent hover:bg-state-hover",
@@ -519,7 +522,7 @@ function MeasuredBadge({
       onMouseLeave={() => setActiveId(null)}
       onFocus={() => setActiveId(id)}
       onBlur={() => setActiveId(null)}
-      className="pointer-events-auto absolute z-50"
+      className={cn("pointer-events-auto absolute z-50", FOCUS_RING_CLASS)}
       style={position ?? undefined}
     >
       <span
@@ -568,11 +571,12 @@ function WindowFrame({
     <div
       data-guide-frame
       className={cn(
-        // bg-background: the window's content areas use the same canvas the
-        // real app paints, so the sidebar (var(--sidebar)) sits against it
-        // at exactly the product's own contrast in every palette. The frame
-        // edge carries the separation from the page.
-        "select-none overflow-hidden rounded-lg border border-border bg-background text-xs leading-none text-muted-foreground shadow-sm",
+        // A raised surface, not the raw canvas: in dark themes shadows
+        // vanish and a same-canvas frame dissolves into the page (the
+        // standard dark-mode answer is a surface step — Material elevation,
+        // macOS windows). The token derives from --canvas/--ink, so light
+        // themes get a subtle lift and custom palettes stay tinted.
+        "select-none overflow-hidden rounded-lg border border-border bg-surface-raised-solid text-xs leading-none text-muted-foreground shadow-sm",
         className,
       )}
     >
@@ -1024,7 +1028,7 @@ export function AppShellWireframe() {
     // Unlike the simpler slides, this dense three-column anatomy stays at a
     // readable minimum size. ProductMap supplies the single scroll owner so
     // the exterior gutter and all badges move with the frame.
-    <div className="relative min-w-[1260px] px-10 pb-0 pt-[26px]">
+    <div className="relative w-full px-10 pb-0 pt-[26px]">
       {/* The first two surfaces belong to the sidebar as a whole. Their chips
             ride the exterior gutter column, each measured from the region it
             annotates, while the in-frame regions remain independently
@@ -1488,7 +1492,7 @@ export function RealComposerAnnotated() {
     <div className="relative px-7 pb-2 pt-4">
       {/* ProductMap keeps the full-width anatomy and its markers inside the
           same scale-together wrapper at every panel width. */}
-      <div className="relative mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
+      <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
         <div
           data-guide-annotation-layer="composer-controls"
           className="pointer-events-none absolute inset-0 z-50"
@@ -1617,15 +1621,16 @@ function StaticEmbeddedComposer() {
     <div data-guide-fixture="embedded-composer" className="space-y-2">
       <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
         {/* + menu: opens upward while engaged, the direction the real menu
-            takes at the window's bottom, anchored to the box the real menu
-            flips against. The bottom margin is the outside-above chip lane
-            (CHIP_SIZE + CHIP_GAP), so the open menu clears the draft line's
-            chips by construction. */}
+            takes at the window's bottom, seated flush against the box it
+            flips from (the real PromptBoxActionsMenu's sideOffset). The
+            draft-line chips it would cover hide while it is open — the
+            tour-platform convention — so the menu never floats to clear
+            them. */}
         {plus.outlined ? (
           <div
             aria-hidden
             data-guide-transient-for="composer-plus-menu"
-            className="pointer-events-none absolute bottom-full left-2 z-20 mb-[28px] w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+            className="pointer-events-none absolute bottom-full left-2 z-20 mb-1 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
           >
             <span className="flex h-6 items-center gap-1.5 px-1.5">
               <MiniIcon icon={File01Icon} className="size-3.5" />
@@ -1660,6 +1665,7 @@ function StaticEmbeddedComposer() {
             label="Plugin mention results in the @ typeahead"
             className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
             chip="outside-above"
+            showChip={!plus.outlined}
           >
             <span aria-hidden>@release-notes</span>
           </RegionMark>
@@ -1672,6 +1678,7 @@ function StaticEmbeddedComposer() {
             label="Plugin highlighting, painted over the draft prompt"
             className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
             chip="outside-above"
+            showChip={!plus.outlined}
           >
             <span aria-hidden>TODO</span>
           </RegionMark>
@@ -1755,7 +1762,7 @@ export function ComposeScreenWireframe({
         anchor='[data-guide-region="new-thread-panel"]'
         at="end"
       />
-      <div className="min-w-[560px]">
+      <div>
         <ComposeScreenWireframeBody composer={composer} />
       </div>
     </div>

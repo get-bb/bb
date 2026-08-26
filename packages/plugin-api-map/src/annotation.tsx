@@ -29,6 +29,15 @@ export function annotationChipClass(active: boolean, className?: string) {
 }
 
 /**
+ * One keyboard-focus treatment for every Guide interactive, on the product's
+ * ring token rather than the browser default outline. Outline (not ring
+ * utilities) on purpose: the annotation primitives already use the ring
+ * utilities for their engagement styling, and the two must not collide.
+ */
+export const FOCUS_RING_CLASS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/**
  * Chip placement is a declared variant, never a per-instance offset. These
  * four cover every in-target fixture site (exterior and lane chips measure
  * their anchor instead — see MeasuredBadge); the rendered QA sweep asserts
@@ -107,6 +116,9 @@ export function renderSurfaceCopy(
       return (
         <code
           key={index}
+          // Relative on purpose (the GitHub-markdown 85% convention): this
+          // copy renders at several parent sizes — cards, grid taglines —
+          // and inline code should track each, which no fixed token can do.
           className="rounded bg-surface-recessed px-1 py-px font-mono text-[0.85em]"
         >
           {part.slice(1, -1)}

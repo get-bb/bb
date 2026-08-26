@@ -193,7 +193,10 @@ describe("guide fixture boundaries", () => {
       /data-guide-badge="content-scripts"[\s\S]*?data-guide-badge-placement="end"/,
     );
     expect(markup).not.toContain("overflow-x-auto");
-    expect(markup).toContain("relative min-w-[1260px] px-10 pb-0 pt-[26px]");
+    // Width bands live on SpatialFixture's measured element (one owner, one
+    // table), never on fixture wrappers where scrollWidth cannot see them.
+    expect(markup).not.toContain("min-w-[1260px]");
+    expect(markup).toContain("relative w-full px-10 pb-0 pt-[26px]");
     // The engaged tint for content scripts is the frame's own box.
     expect(markup).toMatch(
       /data-guide-target="content-scripts"[^>]*class="[^"]*absolute inset-0/,

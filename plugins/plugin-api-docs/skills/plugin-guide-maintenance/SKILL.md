@@ -166,8 +166,9 @@ spatial fixture measures itself. Put `min-width: 0` on that item; never let an
 authored fixture minimum inflate the measurement frame and turn a narrow pane
 into a false `scale=1` result.
 
-Each fixture declares one authored geometry — a single minimum height and, for
-non-fluid fixtures, one width floor with one owner — and never encodes the app
+Each fixture declares one authored geometry — a single minimum height and one
+width band (a floor and a natural cap) with one owner, fluid between them and
+scaled beyond either so every fixture can use the upscale path — and never encodes the app
 chrome around it (no `100dvh` arithmetic). Vertical fit at every panel size
 is the scale formula's job: the desktop app-window fixture and every open
 annotation card stay reachable in the 980px-tall plugin content region left by
@@ -222,9 +223,10 @@ pixel nudge:
 - Keep the badge clear of the entry point's icon, label, selection, and hit
   target. Keep every transient menu, palette, popover, or toolbar clear of both
   its annotation and annotated target, and anchor a transient to the element
-  the real product flips it against — never to an authored offset. If a
-  placement collides, change the declared variant; do not add a bespoke
-  coordinate.
+  the real product flips it against — never to an authored offset. A chip the
+  open transient would cover hides while it is open (the tour-platform
+  convention); if a placement collides outside a transient, change the
+  declared variant rather than adding a bespoke coordinate.
 - Keep annotations on each page sequential by annotation number. Previous and
   next controls use that page order, including first and last disabled states,
   so readers never have to hunt across the fixture.
