@@ -362,6 +362,53 @@ touched plugins, and `@bb/integration-tests` (output piped to a file);
 - New provision types / ephemeral host type (core-owned sandbox teardown).
 - Released-hold GC (rows kept for v1; timeline preserves history regardless).
 
+## As shipped (implementation deltas)
+
+All three phases are implemented. Deliberate deviations from the text above,
+each chosen during implementation and worth knowing when reading the code:
+
+- **No `--reason` flag.** An optional reason would mean "use the default
+  label", which the optional-fields rule forbids; every `holdUntil` hold gets
+  the fixed reason "Scheduled".
+- **Held creation parks nothing in the provisioning machinery.** The
+  in-memory provisioning context cannot survive a restart, so the hold row
+  itself carries the cold-start context (`original_request`) and release
+  re-enters `requestThreadProvision` fresh. `--hold-until` survives restarts
+  because of this.
+- **`amend.environment` is accepted at create only**, refused at release of a
+  cold-start hold (re-resolving an environment intent at release means
+  re-running most of create; recorded as an audit item).
+- **Multiple holds in one pass produce one row** owned by the first holder,
+  with the other holders' reasons appended to the reason string.
+- **Release-re-hold pacing**: only a release that re-held starts a 1s
+  per-thread window; releases that dispatch are never delayed.
+- **`turn.failed` inverts fail-closed** deliberately: it is a post-hoc stage,
+  so a throwing/timed-out plugin has its verdict discarded (plugin named) and
+  the failure stands — a broken retry plugin cannot make failures
+  unrecoverable.
+- **Faithful retries** re-issue the original `client/turn/requested` as a
+  system-initiated, agent-only continuation — the projection rule that
+  already hides system continuations means no duplicate user message;
+  `retryOfRequestId`/`retryAttempt` on the new event are the durable attempt
+  counter. `resumeAt` is required, so non-resettable limits (credit
+  exhaustion) no longer get an untimed manual-release hold.
+- **`plugins/workflows` kept its retry ladder**: it re-spawns a hidden child
+  thread on transient infrastructure failures — a different mechanism a
+  turn.failed gate cannot express. Only provider-retry was rewritten
+  (1427 → 733 lines).
+- **Mobile cancel confirms** via action sheet when the hold has inline input —
+  mobile has no draft to restore into, so the app's no-confirm rule would
+  discard text irrecoverably there.
+- **Plugin notes are in-process only** (`bb.experimental_threads.appendNote`),
+  no public route.
+- **The plugin-facing `ExperimentalProviderModelPickerValue` deliberately
+  excludes the plugin-entry arm** — that value is forwarded verbatim to
+  spawn, so every arm must name a real provider; Auto entries render only in
+  bb's own composers.
+- **model-router clamps reasoning effort** to the chosen model's supported
+  ladder, because an unhonourable amendment is a fail-closed dispatch
+  failure, not a silent no-op.
+
 ## Risks
 
 - **Fail-closed blast radius** (chosen deliberately): one broken gate plugin
