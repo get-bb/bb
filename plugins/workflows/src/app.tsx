@@ -533,6 +533,10 @@ function LoadingPreview() {
   );
 }
 
+function WorkflowRunPanelState({ children }: { children: ReactNode }) {
+  return <div className="p-4">{children}</div>;
+}
+
 function RefreshWarning({ message }: { message: string }) {
   return (
     <div
@@ -863,11 +867,11 @@ function WorkflowRunPanel({ threadId, params }: PluginThreadPanelProps) {
   return (
     <div className="h-full min-h-0 flex-1 bg-border">
       {runId === undefined ? (
-        <div className="p-4">
+        <WorkflowRunPanelState>
           <EmptyOrError>
             This workflow panel has invalid run parameters.
           </EmptyOrError>
-        </div>
+        </WorkflowRunPanelState>
       ) : (
         <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />
       )}
@@ -892,13 +896,27 @@ function WorkflowRunPanelLoaded({
     () => (run === null ? null : buildSharedWorkflowView(run)),
     [run],
   );
-  if (state.status === "loading") return <LoadingPreview />;
+  if (state.status === "loading") {
+    return (
+      <WorkflowRunPanelState>
+        <LoadingPreview />
+      </WorkflowRunPanelState>
+    );
+  }
   if (state.status === "error") {
-    return <EmptyOrError>{state.message}</EmptyOrError>;
+    return (
+      <WorkflowRunPanelState>
+        <EmptyOrError>{state.message}</EmptyOrError>
+      </WorkflowRunPanelState>
+    );
   }
   if (run === null || shared === null) {
     return (
-      <EmptyOrError>No workflow runs were found for this thread.</EmptyOrError>
+      <WorkflowRunPanelState>
+        <EmptyOrError>
+          No workflow runs were found for this thread.
+        </EmptyOrError>
+      </WorkflowRunPanelState>
     );
   }
   const pillState = runPillState(run.status);
