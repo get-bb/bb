@@ -48,6 +48,9 @@
  * - Fault knobs for the bridge's own tests: FAKE_PI_SPAWN_COUNTER_FILE counts
  *   spawns across processes and FAKE_PI_MISMATCH_FIRST_SPAWN=1 makes only the
  *   first spawn ignore `--model` (a transient model mismatch);
+ *   FAKE_PI_SCOPE_BY_SPAWN=1 scopes the first spawn to fake-model and later
+ *   spawns to fake-mini; FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE=1 exits the first
+ *   spawn after answering its first catalog request;
  *   FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE=1 exits after recording the spawn but
  *   before importing the extension or reading a command;
  *   FAKE_PI_NO_SESSION_START=1 never emits session_start to the extension (so
@@ -228,9 +231,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const extensionTools = new Map();
 const extensionHandlers = new Map();
 let activeTools = ["read", "bash", "edit", "write"];
+const scopedModel =
+  process.env.FAKE_PI_SCOPE_BY_SPAWN === "1"
+    ? MODELS[spawnIndex === 1 ? 0 : 1]
+    : undefined;
 const extensionContext = {
   cwd: process.cwd(),
   sessionManager: { getLeafId: () => leafId },
+  model: scopedModel,
+  scopedModels: scopedModel ? [{ model: scopedModel }] : [],
 };
 
 async function emitExtensionEvent(type, payload = {}) {
@@ -432,6 +441,12 @@ async function handle(command) {
       return;
     case "get_available_models":
       respond(id, "get_available_models", { models: MODELS });
+      if (
+        process.env.FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE === "1" &&
+        spawnIndex === 1
+      ) {
+        setTimeout(exit, 25);
+      }
       return;
     case "set_model": {
       const found = MODELS.find(

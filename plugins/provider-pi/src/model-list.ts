@@ -25,6 +25,10 @@ export interface PiCatalogModel {
 
 interface BuildPiAvailableModelsArgs {
   models: readonly PiCatalogModel[];
+  /** Canonical ids in Pi's configured scope, in Pi's resolution order. */
+  scopedModelIds?: readonly string[];
+  /** Canonical id Pi selected from its scope or saved default. */
+  preferredDefaultId?: string;
 }
 
 interface BuildPiAvailableModelsResult {
@@ -79,18 +83,38 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
 export function buildPiAvailableModels(
   args: BuildPiAvailableModelsArgs,
 ): BuildPiAvailableModelsResult {
+  const scopedModelIds = args.scopedModelIds;
+  const scopedIds =
+    scopedModelIds && scopedModelIds.length > 0
+      ? new Set(scopedModelIds)
+      : undefined;
+  const sourceModels = scopedIds
+    ? [...scopedIds].flatMap((id) => {
+        const match = args.models.find(
+          (model) => toCanonicalPiModelId(model.provider, model.id) === id,
+        );
+        return match ? [match] : [];
+      })
+    : args.models;
+
   const models: AvailableModel[] = [];
   const selectedOnlyModels: AvailableModel[] = [];
-  for (const model of args.models) {
+  for (const model of sourceModels) {
     const built = buildPiAvailableModel(model);
-    if (isModelAlias(model.id)) {
+    // A scope is an explicit request. Keep pinned dated versions that Pi put
+    // in it instead of relegating them to selected-only metadata.
+    if (isModelAlias(model.id) || scopedIds?.has(built.id)) {
       models.push(built);
     } else {
       selectedOnlyModels.push(built);
     }
   }
 
-  const defaultId = resolveDefaultPiModelId(models);
+  const defaultId =
+    (args.preferredDefaultId &&
+    models.some((model) => model.id === args.preferredDefaultId)
+      ? args.preferredDefaultId
+      : undefined) ?? resolveDefaultPiModelId(models);
   return {
     models: models.map((model) =>
       model.id === defaultId ? { ...model, isDefault: true } : model,
