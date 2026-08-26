@@ -255,6 +255,9 @@ function EmbeddedThreadChatWithComposer({
   const steerActiveThreadOnEnter =
     systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
     defaultAppSettings.steerActiveThreadOnEnter;
+  const composerEscapeBehavior =
+    systemConfigQuery.data?.generalSettings.composerEscapeBehavior ??
+    defaultAppSettings.composerEscapeBehavior;
   const surfaceKey = threadId;
   const markThreadRead = useMarkThreadRead();
   const stopThread = useStopThread();
@@ -826,11 +829,13 @@ function EmbeddedThreadChatWithComposer({
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       steerActiveThreadOnEnter,
+      composerEscapeBehavior,
       submitMode,
       threadRuntimeDisplayStatus: displayStatus,
     }),
     [
       canSubmitModifierShortcut,
+      composerEscapeBehavior,
       composerPlaceholder,
       currentPromptDraft,
       displayStatus,
@@ -864,6 +869,7 @@ function EmbeddedThreadChatWithComposer({
               activeComposerDraftInput.length > 0 &&
               !isUpdateQueuedMessagePending,
             steerActiveThreadOnEnter: false,
+            composerEscapeBehavior,
             submitMode: { kind: "ready" },
             threadRuntimeDisplayStatus: displayStatus,
           }
@@ -871,6 +877,7 @@ function EmbeddedThreadChatWithComposer({
     [
       activeComposerDraft,
       activeComposerDraftInput.length,
+      composerEscapeBehavior,
       composerPlaceholder,
       displayStatus,
       handleChangeMessage,

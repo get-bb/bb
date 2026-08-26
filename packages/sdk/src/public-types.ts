@@ -3,7 +3,9 @@
  * barrel so DTO availability does not depend on a Node or browser constructor.
  */
 export type {
+  AppSettings,
   CallerExecutionInputSource,
+  ComposerEscapeBehavior,
   JsonValue,
   PermissionMode,
   PromptInput,

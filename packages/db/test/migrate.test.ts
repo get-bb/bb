@@ -1625,6 +1625,7 @@ describe("migrate", () => {
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
+        composerEscapeBehavior: "blur",
         showUnhandledProviderEvents: true,
         providerOrder: [],
         defaultProviderId: null,

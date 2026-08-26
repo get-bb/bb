@@ -26,6 +26,7 @@ describe("general settings", () => {
           ...defaultAppSettings,
           showKeyboardHints: false,
           steerActiveThreadOnEnter: true,
+          composerEscapeBehavior: "stop-running-thread",
           providerOrder: ["pi", "codex"],
           defaultProviderId: "pi",
         }),
@@ -35,6 +36,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
+        composerEscapeBehavior: "stop-running-thread",
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
       });
@@ -42,6 +44,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
+        composerEscapeBehavior: "stop-running-thread",
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
       });
@@ -54,6 +57,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
+        composerEscapeBehavior: "stop-running-thread",
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
       });
@@ -66,6 +70,20 @@ describe("general settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
+      });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  it("rejects an invalid composer Escape behavior", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          composerEscapeBehavior: "stop-all-threads",
+        }),
       });
       expect(response.status).toBe(400);
     });

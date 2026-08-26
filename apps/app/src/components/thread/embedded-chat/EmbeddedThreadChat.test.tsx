@@ -266,6 +266,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       generalSettings: {
         steerActiveThreadOnEnter: false,
+        composerEscapeBehavior: "blur",
       },
     },
   }),

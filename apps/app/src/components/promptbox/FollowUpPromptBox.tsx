@@ -13,6 +13,7 @@ import {
   type RefObject,
 } from "react";
 import type {
+  ComposerEscapeBehavior,
   PromptTextMention,
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
@@ -161,6 +162,7 @@ export interface FollowUpComposerProps {
    * for queue. False preserves the default Enter-to-queue behavior.
    */
   steerActiveThreadOnEnter: boolean;
+  composerEscapeBehavior: ComposerEscapeBehavior;
   submitMode: FollowUpSubmitMode;
   /** Used by the scroll-to-bottom button to know whether the runtime is actively streaming. */
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -749,6 +751,7 @@ function FollowUpPromptBoxWithComposer({
         mentionMenuPlacement="top"
         submission={{
           onStop: onStopRuntime,
+          escapeBehavior: composer.composerEscapeBehavior,
           isSubmitting: composer.isFollowUpSubmitting || isStopping,
           disabled:
             !canSubmit ||

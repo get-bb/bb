@@ -16,6 +16,7 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  ComposerEscapeBehavior,
   EnvironmentStatus,
   PendingInteraction,
   PromptInput,
@@ -217,6 +218,7 @@ interface ThreadDetailPromptAreaProps {
   /** Present only while a sent-message editor is mounted in the timeline. */
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
+  composerEscapeBehavior: ComposerEscapeBehavior;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
    * draft via "Add to chat", so the composer can focus its caret at the end —
@@ -230,6 +232,7 @@ interface InlineDraftComposerOptions {
   attachments: FollowUpPromptBoxProps["attachments"];
   canModifierSubmit: boolean;
   compactPromptPlaceholder: string;
+  composerEscapeBehavior: ComposerEscapeBehavior;
   composerId: string;
   /** Live draft under edit; supplies the message text, mentions, and history draft. */
   draft: PromptDraftState;
@@ -289,6 +292,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
         promptPlaceholder: options.promptPlaceholder,
         canModifierSubmit: options.canModifierSubmit,
         steerActiveThreadOnEnter: false,
+        composerEscapeBehavior: options.composerEscapeBehavior,
         submitMode: options.submitMode,
         threadRuntimeDisplayStatus: options.threadRuntimeDisplayStatus,
       }}
@@ -440,6 +444,7 @@ export function ThreadDetailPromptArea({
   sendMessage,
   sentMessageEdit,
   steerActiveThreadOnEnter,
+  composerEscapeBehavior,
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -1080,12 +1085,14 @@ export function ThreadDetailPromptArea({
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       steerActiveThreadOnEnter,
+      composerEscapeBehavior,
       submitMode,
       threadRuntimeDisplayStatus: runtimeDisplayStatus,
     }),
     [
       canSubmitModifierShortcut,
       compactPromptPlaceholder,
+      composerEscapeBehavior,
       currentPromptDraft,
       handleBottomComposerModifierSubmit,
       handleBottomComposerSubmit,
@@ -1379,6 +1386,7 @@ export function ThreadDetailPromptArea({
         canModifierSubmit:
           activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
         compactPromptPlaceholder,
+        composerEscapeBehavior,
         composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-queued-${queuedMessageId}`,
         draft: activeComposerDraft,
         editFocusNonce,
@@ -1405,6 +1413,7 @@ export function ThreadDetailPromptArea({
     activeComposerDraft,
     activeComposerDraftInput.length,
     compactPromptPlaceholder,
+    composerEscapeBehavior,
     dismissInlineQueuedMessageEditor,
     editFocusNonce,
     handleAttachInlineFiles,
@@ -1498,6 +1507,7 @@ export function ThreadDetailPromptArea({
           },
           canModifierSubmit: canSubmitSentMessageEdit,
           compactPromptPlaceholder: "Edit message",
+          composerEscapeBehavior,
           composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-sent-${operationId}`,
           draft,
           editFocusNonce,
@@ -1534,6 +1544,7 @@ export function ThreadDetailPromptArea({
     bottomPermissionConfig,
     canSubmitSentMessageEdit,
     compactExecutionConfig,
+    composerEscapeBehavior,
     editFocusNonce,
     handleAttachSentMessageFiles,
     handleSentMessageEditSubmit,

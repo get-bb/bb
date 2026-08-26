@@ -712,6 +712,7 @@ function Row({
                   promptPlaceholder: resolvedPlaceholder,
                   canModifierSubmit: true,
                   steerActiveThreadOnEnter: false,
+                  composerEscapeBehavior: "blur",
                   submitMode: { kind: "ready" },
                   threadRuntimeDisplayStatus,
                 }}
@@ -804,6 +805,7 @@ function Row({
                 promptPlaceholder: resolvedPlaceholder,
                 canModifierSubmit: submitMode.kind === "queue",
                 steerActiveThreadOnEnter: false,
+                composerEscapeBehavior: "blur",
                 submitMode,
                 threadRuntimeDisplayStatus,
               }

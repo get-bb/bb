@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const composerEscapeBehaviorSchema = z.enum([
+  "blur",
+  "stop-running-thread",
+]);
+export type ComposerEscapeBehavior = z.infer<
+  typeof composerEscapeBehaviorSchema
+>;
+
 // Adding a preference here plus its default below is the whole change: values
 // persist as key/value rows, the route and SDK carry the object as a whole,
 // and `bb settings general` takes its keys from this schema. Only the UI
@@ -17,6 +25,8 @@ export const appSettingsSchema = z
      * Command+Enter to queue a follow-up.
      */
     steerActiveThreadOnEnter: z.boolean(),
+    /** What unmodified Escape does in a focused composer. */
+    composerEscapeBehavior: composerEscapeBehaviorSchema,
     /** Show raw provider events that bb does not yet understand. */
     showUnhandledProviderEvents: z.boolean(),
     /**
@@ -43,6 +53,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   steerActiveThreadOnEnter: false,
+  composerEscapeBehavior: "blur",
   showUnhandledProviderEvents: false,
   providerOrder: [],
   defaultProviderId: null,

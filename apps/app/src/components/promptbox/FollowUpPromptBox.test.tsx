@@ -211,6 +211,7 @@ function createFollowUpPromptBoxProps(
       promptPlaceholder: "Ask for a follow-up",
       canModifierSubmit: true,
       steerActiveThreadOnEnter: false,
+      composerEscapeBehavior: "blur",
       submitMode,
       threadRuntimeDisplayStatus:
         submitMode.kind === "queue" ? "active" : "idle",

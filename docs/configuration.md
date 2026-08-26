@@ -184,6 +184,14 @@ defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
 steers and Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
 
+The "Escape in composer" preference in Settings → General defaults to
+`blur`, which moves focus out of the composer. Set it to
+`stop-running-thread` to make an unmodified, non-repeated Escape stop the
+running thread owned by the focused composer while retaining focus. An idle
+composer still blurs. Typeahead, dialogs, voice input, message editing, and
+composition keep priority and do not stop a thread. Set it with
+`bb settings general composerEscapeBehavior <blur|stop-running-thread>`.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen

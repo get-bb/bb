@@ -110,8 +110,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         onChangeMessage: (message: string, mentions: []) => void;
         onEscape?: () => void;
         onSubmit: () => void;
+        composerEscapeBehavior: "blur" | "stop-running-thread";
         submitTitle?: string;
-        submitMode: { kind: string; reason?: string };
+        submitMode:
+          | { kind: "queue" | "stop-only"; onStop: () => void }
+          | { kind: string; reason?: string };
       } | null;
       execution: {
         footerAction?: {
@@ -161,7 +164,10 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           {pendingInteraction ? "true" : "false"}
         </div>
         <div data-testid="submit-mode">
-          {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
+          {composer?.submitMode.kind}:
+          {composer && "reason" in composer.submitMode
+            ? (composer.submitMode.reason ?? "")
+            : ""}
         </div>
         <div data-testid="submit-title">
           {composer?.submitTitle ?? "Submit"}
@@ -252,11 +258,21 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
             <button type="button" onClick={composer.onSubmit}>
               Submit composer
             </button>
-            {composer.onEscape ? (
-              <button type="button" onClick={composer.onEscape}>
-                Escape composer
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (composer.onEscape) {
+                  composer.onEscape();
+                } else if (
+                  composer.composerEscapeBehavior === "stop-running-thread" &&
+                  "onStop" in composer.submitMode
+                ) {
+                  composer.submitMode.onStop();
+                }
+              }}
+            >
+              Escape composer
+            </button>
             <button
               type="button"
               onClick={() =>
@@ -666,6 +682,7 @@ function makePluginPendingInteraction(): PendingInteraction {
 
 interface RenderPromptAreaOptions {
   activePromptMode?: ThreadTimelineActivePromptMode | null;
+  composerEscapeBehavior?: "blur" | "stop-running-thread";
   activeWorkflows?: TimelineWorkflowWorkRow[];
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
@@ -678,6 +695,7 @@ interface RenderPromptAreaOptions {
 
 function buildPromptAreaElement({
   activePromptMode = null,
+  composerEscapeBehavior = "blur",
   activeWorkflows = [],
   goal = null,
   modelFallback = null,
@@ -696,6 +714,7 @@ function buildPromptAreaElement({
       canUseGitUi={false}
       childPendingInteractions={childPendingInteractions}
       childThreadsSection={null}
+      composerEscapeBehavior={composerEscapeBehavior}
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
       environmentGoneStatus={null}
@@ -850,17 +869,36 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(onCancel).toHaveBeenCalledTimes(1);
 
-    // Escape in the edit composer cancels too; the bottom composer keeps its
-    // default Escape behavior (no onEscape).
-    expect(
-      within(bottomComposer!).queryByRole("button", {
-        name: "Escape composer",
-      }),
-    ).toBeNull();
+    // Escape in the edit composer cancels; the bottom composer has no edit
+    // action and remains on its default blur behavior.
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Escape composer" }),
     );
     expect(onCancel).toHaveBeenCalledTimes(2);
+    fireEvent.click(
+      within(bottomComposer!).getByRole("button", {
+        name: "Escape composer",
+      }),
+    );
+    expect(onCancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("binds Escape stop to the composer-owned running thread", () => {
+    renderPromptArea({
+      composerEscapeBehavior: "stop-running-thread",
+      thread: makeThread({
+        id: "thr_escape_owner",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+        status: "active",
+      }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Escape composer" }));
+
+    expect(mocks.stopThreadMutate).toHaveBeenCalledWith("thr_escape_owner");
   });
 
   it("blocks a staged sent-message edit when the thread becomes ineligible", () => {

@@ -398,6 +398,7 @@ function buildPromptArea({
         canUseGitUi={false}
         childPendingInteractions={[]}
         childThreadsSection={null}
+        composerEscapeBehavior="blur"
         composerFocusRequestNonce={0}
         contextBannerMergeBase={null}
         environmentGoneStatus={null}

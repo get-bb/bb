@@ -49,6 +49,18 @@ every window and client sees the same value.
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard.
 
+## Composer Escape behavior
+
+- `composerEscapeBehavior` defaults to `blur`. Set it with
+  `bb settings general composerEscapeBehavior <blur|stop-running-thread>`.
+- `blur` moves focus out of the composer.
+- `stop-running-thread` makes an unmodified, non-repeated Escape stop only the
+  running thread owned by the focused composer and retain focus. An idle
+  composer still blurs.
+- Typeahead, dialogs, voice input, message editing, and composition keep
+  priority and do not stop a thread. Modified and repeated Escape events do
+  not stop a thread.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with

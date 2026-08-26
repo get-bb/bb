@@ -2606,6 +2606,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter
       }
+      composerEscapeBehavior={
+        systemConfigQuery.data?.generalSettings.composerEscapeBehavior ??
+        defaultAppSettings.composerEscapeBehavior
+      }
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}

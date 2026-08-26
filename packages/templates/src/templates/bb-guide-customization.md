@@ -88,6 +88,12 @@ reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline. iPadOS WebKit preserves these
 Enter shortcuts for a connected Magic Keyboard.
 
+Settings → General also includes `composerEscapeBehavior`, which defaults to
+`blur`. Set it to `stop-running-thread` to make an unmodified, non-repeated
+Escape stop only the running thread owned by the focused composer while
+retaining focus. An idle composer still blurs. Typeahead, dialogs, voice input,
+message editing, and composition keep priority and do not stop a thread.
+
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The

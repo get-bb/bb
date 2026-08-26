@@ -1,4 +1,5 @@
 import type {
+  ComposerEscapeBehavior,
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
@@ -210,6 +211,7 @@ export interface PromptBoxSubmissionConfig {
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
+  escapeBehavior?: ComposerEscapeBehavior;
   onModifierSubmit?: () => void;
 }
 
@@ -1145,6 +1147,20 @@ function blurPromptEditor(editor: Editor | null | undefined): void {
   window.getSelection()?.removeAllRanges();
 }
 
+function isUnmodifiedComposerEscape(event: KeyboardEvent): boolean {
+  return (
+    event.key === "Escape" &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat &&
+    !event.isComposing &&
+    event.keyCode !== 229 &&
+    !event.defaultPrevented
+  );
+}
+
 function focusEditorAtEnd(editor: Editor): void {
   const transaction = editor.state.tr
     .setSelection(TextSelection.atEnd(editor.state.doc))
@@ -1225,6 +1241,7 @@ export function PromptBoxInternal({
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
+    escapeBehavior = "blur",
     onModifierSubmit,
   } = submission;
   const {
@@ -2883,6 +2900,10 @@ export function PromptBoxInternal({
       ) {
         return false;
       }
+      // A dialog or another capture-phase owner has already consumed this key.
+      if (event.defaultPrevented) {
+        return false;
+      }
       // App keybindings win over the editor's own keymap. TipTap cancels the
       // chords it knows (Mod+Shift+B for a blockquote, Mod+B, Mod+Shift+7/8 for
       // lists), and the window listener skips a canceled event — so without
@@ -2983,15 +3004,20 @@ export function PromptBoxInternal({
         }
       }
 
-      // Escape releases the composer so the keyboard can reach the rest of the
-      // app — or cancels the sent-message editor when `onEscape` is provided.
-      // Higher-priority Escape behavior still runs first: the typeahead menu
-      // above dismisses itself, and voice recording cancels from a window
-      // capture listener that stops the event before the editor sees it. A
-      // locked editor never reaches here — see the editor container below.
+      // Typeahead above, voice capture, dialogs, and sent-message editing keep
+      // their existing Escape ownership. Only a plain, first Escape can reach
+      // the configurable stop action.
       if (event.key === "Escape") {
         if (onEscape) {
           onEscape();
+          return true;
+        }
+        if (!isUnmodifiedComposerEscape(event)) {
+          return false;
+        }
+        if (escapeBehavior === "stop-running-thread" && isRunning && onStop) {
+          event.preventDefault();
+          onStop();
           return true;
         }
         blurPromptEditor(currentEditor);
@@ -3120,11 +3146,14 @@ export function PromptBoxInternal({
       commandIsLoadingMore,
       dispatchAppCommandKey,
       dismissActiveTrigger,
+      escapeBehavior,
       history,
       isPointerCoarse,
+      isRunning,
       loadMoreCommands,
       onEscape,
       onModifierSubmit,
+      onStop,
       postCompositionKeyDownEvents,
       resetHistorySession,
       selectedIndex,
@@ -3258,6 +3287,7 @@ export function PromptBoxInternal({
               minHeight={minHeight}
               layout={editorLayout}
               resolveMentionLink={mentionResolveLink}
+              onLockedEditorEscape={handleEditorKeyDown}
             />
           </div>
 

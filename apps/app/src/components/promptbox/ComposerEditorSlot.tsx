@@ -19,13 +19,6 @@ const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   "root-compose": "calc(70dvh - 3rem)",
 };
 
-// TipTap's `blur` command defers to the next animation frame, so blur the
-// editor DOM directly and drop the caret with it.
-function blurComposerEditor(editor: Editor): void {
-  editor.view.dom.blur();
-  window.getSelection()?.removeAllRanges();
-}
-
 /** BB's editor region with the effects already resolved by the Composer host. */
 export function ComposerEditorSlot({
   editor,
@@ -35,6 +28,7 @@ export function ComposerEditorSlot({
   minHeight,
   layout,
   resolveMentionLink,
+  onLockedEditorEscape,
 }: {
   editor: Editor | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -43,6 +37,7 @@ export function ComposerEditorSlot({
   minHeight: number;
   layout: ComposerEditorLayout;
   resolveMentionLink: PromptMentionLinkResolver | undefined;
+  onLockedEditorEscape: (event: KeyboardEvent) => boolean;
 }) {
   return (
     <div
@@ -74,8 +69,9 @@ export function ComposerEditorSlot({
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             if (editor === null || editor.isEditable) return;
-            event.preventDefault();
-            blurComposerEditor(editor);
+            if (onLockedEditorEscape(event.nativeEvent)) {
+              event.preventDefault();
+            }
           }}
           data-promptbox-editor-content=""
           data-promptbox-compact-content={isCompactLayout ? "" : undefined}

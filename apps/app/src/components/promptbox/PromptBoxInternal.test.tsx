@@ -1562,12 +1562,21 @@ describe("PromptBoxInternal escape", () => {
     expect(document.activeElement).not.toBe(editor);
   });
 
-  it("routes Escape to onEscape instead of blurring the editor", async () => {
+  it("routes Escape to message editing before a configured stop", async () => {
     const onEscape = vi.fn();
+    const onStop = vi.fn();
     const promptBoxRef = createRef<PromptBoxHandle>();
     render(
       <PromptBoxInternal
-        {...createPromptBoxProps({ onEscape, value: "Edited message" })}
+        {...createPromptBoxProps({
+          onEscape,
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
+          value: "Edited message",
+        })}
         promptBoxRef={promptBoxRef}
       />,
     );
@@ -1578,18 +1587,23 @@ describe("PromptBoxInternal escape", () => {
     });
 
     expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(onStop).not.toHaveBeenCalled();
     expect(wasNotCanceled).toBe(false);
     // The cancel action owns what happens next; the editor must not also blur.
     expect(document.activeElement).toBe(getPromptEditorElement());
   });
 
-  it("dismisses an open typeahead before Escape reaches onEscape", async () => {
-    const onEscape = vi.fn();
+  it("dismisses an open typeahead before a configured stop", async () => {
+    const onStop = vi.fn();
     const promptBoxRef = createRef<PromptBoxHandle>();
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
-          onEscape,
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
           value: "/re",
           typeahead: buildTypeaheadConfig({
             commandSuggestions: [
@@ -1612,13 +1626,162 @@ describe("PromptBoxInternal escape", () => {
 
     fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
 
-    expect(onEscape).not.toHaveBeenCalled();
+    expect(onStop).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "review" })).toBeNull(),
     );
 
     fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
-    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a running composer and retains focus when enabled", async () => {
+    const onStop = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
+        })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    const editor = getPromptEditorElement();
+
+    const wasNotCanceled = fireEvent.keyDown(editor, { key: "Escape" });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("blurs an idle composer in stop-running-thread mode", async () => {
+    const onStop = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: false,
+            onStop,
+          },
+        })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    const editor = getPromptEditorElement();
+
+    fireEvent.keyDown(editor, { key: "Escape" });
+
+    expect(onStop).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(editor);
+  });
+
+  it.each([
+    ["Alt", { altKey: true }],
+    ["Control", { ctrlKey: true }],
+    ["Meta", { metaKey: true }],
+    ["Shift", { shiftKey: true }],
+    ["repeat", { repeat: true }],
+    ["composition", { isComposing: true }],
+  ])("does not stop for %s Escape", async (_name, init) => {
+    const onStop = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
+        })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    const editor = getPromptEditorElement();
+
+    fireEvent.keyDown(editor, { key: "Escape", ...init });
+
+    expect(onStop).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("leaves an Escape already consumed by a dialog untouched", async () => {
+    const onStop = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
+        })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    const editor = getPromptEditorElement();
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    event.preventDefault();
+
+    editor.dispatchEvent(event);
+
+    expect(onStop).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("stops only the focused split composer", () => {
+    const stopLeft = vi.fn();
+    const stopRight = vi.fn();
+    render(
+      <>
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            id: "left-composer",
+            submission: {
+              escapeBehavior: "stop-running-thread",
+              isRunning: true,
+              onStop: stopLeft,
+            },
+          })}
+        />
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            id: "right-composer",
+            submission: {
+              escapeBehavior: "stop-running-thread",
+              isRunning: true,
+              onStop: stopRight,
+            },
+          })}
+        />
+      </>,
+    );
+    const editors = document.querySelectorAll<HTMLElement>(".ProseMirror");
+    const rightEditor = editors[1];
+    if (!rightEditor) throw new Error("Expected right split composer");
+    rightEditor.focus();
+
+    fireEvent.keyDown(rightEditor, { key: "Escape" });
+
+    expect(stopLeft).not.toHaveBeenCalled();
+    expect(stopRight).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(rightEditor);
   });
 });
 
@@ -1800,7 +1963,8 @@ describe("PromptBoxInternal plugin composer actions", () => {
     warnSpy.mockRestore();
   });
 
-  it("makes the editor read-only while locked and restores it on unlock", async () => {
+  it("keeps Escape-to-stop available while a plugin locks the editor", async () => {
+    const onStop = vi.fn();
     function LockAction() {
       const composer = useComposer();
       const view = useComposerView();
@@ -1852,7 +2016,14 @@ describe("PromptBoxInternal plugin composer actions", () => {
       <MemoryRouter>
         <PluginComposerHostProvider value={host}>
           <PromptBoxInternal
-            {...createPromptBoxProps({ value: "Thread draft" })}
+            {...createPromptBoxProps({
+              submission: {
+                escapeBehavior: "stop-running-thread",
+                isRunning: true,
+                onStop,
+              },
+              value: "Thread draft",
+            })}
           />
         </PluginComposerHostProvider>
       </MemoryRouter>,
@@ -1882,6 +2053,10 @@ describe("PromptBoxInternal plugin composer actions", () => {
       ).toBe("true");
     });
     expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    editor.focus();
+    fireEvent.keyDown(editor, { key: "Escape" });
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Toggle lock (thread)" }),
@@ -4042,11 +4217,19 @@ describe("voice recording escape", () => {
     return event;
   }
 
-  it("cancels the recording on Escape and consumes the event before the composer's dismiss", () => {
+  it("cancels recording before the configured running-thread stop", () => {
     const cancel = vi.fn();
+    const onStop = vi.fn();
     render(
       <PromptBoxInternal
-        {...createPromptBoxProps({ voice: voiceConfig({ cancel }) })}
+        {...createPromptBoxProps({
+          submission: {
+            escapeBehavior: "stop-running-thread",
+            isRunning: true,
+            onStop,
+          },
+          voice: voiceConfig({ cancel }),
+        })}
       />,
     );
 
@@ -4060,6 +4243,7 @@ describe("voice recording escape", () => {
     window.removeEventListener("keydown", onWindowEscape);
 
     expect(cancel).toHaveBeenCalledTimes(1);
+    expect(onStop).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(true);
     expect(dismiss).not.toHaveBeenCalled();
   });

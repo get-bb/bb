@@ -93,6 +93,12 @@ message agents, or inspect projects, providers, and environments.
   the software keyboard keeps Return as a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- The `composerEscapeBehavior` General preference defaults to `blur`. Set it
+  to `stop-running-thread` to make an unmodified, non-repeated Escape stop only
+  the running thread owned by the focused composer while retaining focus. An
+  idle composer still blurs. Typeahead, dialogs, voice input, message editing,
+  and composition take priority and do not stop a thread. Update it with
+  `bb settings general composerEscapeBehavior <blur|stop-running-thread>`.
 - The `streamerMode` General preference defaults to false. Enable it to hide
   every `customModels` entry from `~/.bb/config.json` in all model lists
   (pickers, `bb provider models`, and the SDK) during a screen share. Update it
