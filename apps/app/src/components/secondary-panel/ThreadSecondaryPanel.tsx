@@ -567,6 +567,7 @@ export function ThreadSecondaryPanel({
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     paneId: string | null;
     reserveLeadingChrome: boolean;
+    reserveNewTabControl: boolean;
     showNewTabControl: boolean;
     showOuterControls: boolean;
     usesPaneArrangementControl: boolean;
@@ -582,7 +583,9 @@ export function ThreadSecondaryPanel({
       tabId: string,
       event: ReactPointerEvent<HTMLElement>,
     ) => void;
+    newTabAriaLabel: string;
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
+    reserveNewTabButton: boolean;
     showNewTabButton: boolean;
   }
 
@@ -687,8 +690,10 @@ export function ThreadSecondaryPanel({
     activeSurfaceTabId,
     surfaceTabs,
     fixedSurfaceTabs,
+    newTabAriaLabel,
     onBeginTabDrag,
     onSurfaceTabReorder,
+    reserveNewTabButton,
     showNewTabButton: showGroupNewTabButton,
   }: PanelTabGroupArgs) => {
     const activeSurfaceTab = surfaceTabs.find(
@@ -742,9 +747,19 @@ export function ThreadSecondaryPanel({
         ) : null}
         {showGroupNewTabButton ? (
           <NewTabButton
+            ariaLabel={newTabAriaLabel}
             onOpenNewTab={onOpenNewTab}
             shortcut={newTabShortcut}
             usesDesktopChrome={usesDesktopChrome}
+          />
+        ) : reserveNewTabButton ? (
+          <div
+            aria-hidden
+            data-new-tab-control-reserved=""
+            className={cn(
+              SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
           />
         ) : null}
       </>
@@ -767,6 +782,7 @@ export function ThreadSecondaryPanel({
     onSurfaceTabReorder,
     paneId,
     reserveLeadingChrome,
+    reserveNewTabControl,
     showNewTabControl,
     showOuterControls,
     usesPaneArrangementControl,
@@ -837,8 +853,13 @@ export function ThreadSecondaryPanel({
                 activeSurfaceTabId,
                 surfaceTabs,
                 fixedSurfaceTabs,
+                newTabAriaLabel:
+                  onRemoveSplit === undefined
+                    ? "Open new tab"
+                    : "Open new tab in this pane",
                 onBeginTabDrag,
                 onSurfaceTabReorder,
+                reserveNewTabButton: reserveNewTabControl,
                 showNewTabButton: showNewTabControl,
               })}
             </div>
@@ -1020,6 +1041,7 @@ export function ThreadSecondaryPanel({
       tabs={splitTabs}
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
         const activePaneTabId = pane.group.activeTabId;
+        const isSplitPane = pane.onRemoveSplit !== undefined;
         const paneTabs = resolveSplitPaneTabs(pane);
         const paneFixedTabs = fixedTabs
           .filter((fixedTab) => pane.group.tabIds.includes(fixedTab.tab.id))
@@ -1049,7 +1071,10 @@ export function ThreadSecondaryPanel({
           onSurfaceTabReorder: pane.onReorderTab,
           paneId: pane.paneId,
           reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,
-          showNewTabControl: pane.showOuterControls && showNewTabButton,
+          reserveNewTabControl:
+            isSplitPane && !pane.isFocused && showNewTabButton,
+          showNewTabControl:
+            (!isSplitPane || pane.isFocused) && showNewTabButton,
           showOuterControls: pane.showOuterControls,
           usesPaneArrangementControl: true,
           usesWindowChrome: pane.isTopRow,
@@ -1068,6 +1093,7 @@ export function ThreadSecondaryPanel({
       onSurfaceTabReorder: onTabReorder,
       paneId: null,
       reserveLeadingChrome: true,
+      reserveNewTabControl: false,
       showNewTabControl: showNewTabButton,
       showOuterControls: true,
       usesPaneArrangementControl: false,
@@ -1207,6 +1233,7 @@ export function ThreadSecondaryPanel({
 }
 
 interface NewTabButtonProps {
+  ariaLabel: string;
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
@@ -1265,6 +1292,7 @@ function PinnedIconTab({
 }
 
 function NewTabButton({
+  ariaLabel,
   onOpenNewTab,
   shortcut,
   usesDesktopChrome,
@@ -1279,9 +1307,7 @@ function NewTabButton({
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}
-      aria-label={
-        shortcut ? `Open new tab (${shortcut.label})` : "Open new tab"
-      }
+      aria-label={shortcut ? `${ariaLabel} (${shortcut.label})` : ariaLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
     >
       <Icon name="Plus" />

@@ -772,6 +772,14 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       </Wrapper>,
     );
 
+    expect(screen.getByRole("button", { name: "Open new tab" })).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open new tab in this pane" }),
+    ).toBeNull();
+    expect(
+      document.querySelectorAll("[data-new-tab-control-reserved]"),
+    ).toHaveLength(0);
+
     const control = screen.getByRole("button", { name: "Maximize pane" });
     fireEvent.focus(control);
     expect(
@@ -815,11 +823,41 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     ).toHaveLength(1);
     expect(document.querySelectorAll("header")).toHaveLength(0);
     const newTabControls = screen.getAllByRole("button", {
-      name: "Open new tab",
+      name: "Open new tab in this pane",
     });
     expect(newTabControls).toHaveLength(1);
-    fireEvent.click(newTabControls[0] as HTMLElement);
+    expect(
+      document.querySelectorAll("[data-new-tab-control-reserved]"),
+    ).toHaveLength(1);
+    const initiallyFocusedPane = panes.find(
+      (pane) => pane.dataset.focused === "true",
+    );
+    const initiallyInactivePane = panes.find(
+      (pane) => pane.dataset.focused === "false",
+    );
+    expect(
+      initiallyFocusedPane?.querySelector(
+        'button[aria-label^="Open new tab in this pane"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      initiallyInactivePane?.querySelector("[data-new-tab-control-reserved]"),
+    ).not.toBeNull();
+
+    fireEvent.pointerDown(initiallyInactivePane as HTMLElement);
+    const focusedPaneNewTabControl = screen.getByRole("button", {
+      name: "Open new tab in this pane",
+    });
+    expect(
+      focusedPaneNewTabControl.closest("[data-split-pane-id]"),
+    ).toBe(initiallyInactivePane);
+    expect(
+      initiallyFocusedPane?.querySelector("[data-new-tab-control-reserved]"),
+    ).not.toBeNull();
+    fireEvent.click(focusedPaneNewTabControl);
     expect(onOpenNewTab).toHaveBeenCalledTimes(1);
+    expect(initiallyInactivePane?.dataset.focused).toBe("true");
+    expect(initiallyFocusedPane?.dataset.focused).toBe("false");
   });
 
   it("maximizes one stacked pane while keeping both tab rows mounted", () => {
