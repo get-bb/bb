@@ -881,4 +881,81 @@ describe("collectPluginAppRegistrations", () => {
       experimental_sidebarAccessory: SidebarAccessory,
     });
   });
+
+  it("keeps experimental nav-panel menu groups and lazy submenus", () => {
+    const run = vi.fn();
+    const lazyItems = vi.fn(() => [{ id: "api", label: "API", run }]);
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "docs",
+        title: "Docs",
+        icon: "FileText",
+        path: "docs",
+        component: Component,
+        experimental_menu: [
+          {
+            id: "surfaces",
+            label: "API docs",
+            items: [
+              {
+                id: "by-surface",
+                label: "API surfaces",
+                items: lazyItems,
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    const menu =
+      collectPluginAppRegistrations(definition).navPanels[0]?.experimental_menu;
+    expect(menu?.[0]).toMatchObject({
+      id: "surfaces",
+      label: "API docs",
+    });
+    expect(menu?.[0]?.items[0]).toMatchObject({
+      id: "by-surface",
+      items: lazyItems,
+    });
+    expect(lazyItems).not.toHaveBeenCalled();
+  });
+
+  it("merges menu groups beyond the fourth into the fourth and logs it", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "docs",
+        title: "Docs",
+        icon: "FileText",
+        path: "docs",
+        component: Component,
+        experimental_menu: Array.from({ length: 6 }, (_, index) => ({
+          id: `group-${index + 1}`,
+          label: `Group ${index + 1}`,
+          items: [
+            {
+              id: `item-${index + 1}`,
+              label: `Item ${index + 1}`,
+              run: () => {},
+            },
+          ],
+        })),
+      });
+    });
+
+    const groups =
+      collectPluginAppRegistrations(definition).navPanels[0]?.experimental_menu;
+    expect(groups).toHaveLength(4);
+    expect(groups?.[3]?.label).toBe("Group 4");
+    expect(groups?.[3]?.items.map((item) => item.id)).toEqual([
+      "item-4",
+      "item-5",
+      "item-6",
+    ]);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("groups beyond the fourth were merged"),
+    );
+    warning.mockRestore();
+  });
 });

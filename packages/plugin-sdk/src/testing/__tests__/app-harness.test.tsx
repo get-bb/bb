@@ -250,9 +250,7 @@ function UrlNavigationProbe() {
       </UrlLink>
       <button
         type="button"
-        onClick={() =>
-          navigate.openUrl("https://example.com/imperative")
-        }
+        onClick={() => navigate.openUrl("https://example.com/imperative")}
       >
         Open imperatively
       </button>
@@ -825,6 +823,39 @@ describe("loadPluginApp", () => {
     expect(captured.navPanels[0]?.experimental_sidebarAccessory).toBe(
       SidebarAccessory,
     );
+  });
+
+  it("captures nav panel menu groups without resolving lazy submenus", async () => {
+    const run = vi.fn();
+    const lazyItems = vi.fn(() => [{ id: "threads", label: "Threads", run }]);
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo",
+          path: "tasks",
+          component: Panel,
+          experimental_menu: [
+            {
+              id: "browse",
+              items: [
+                {
+                  id: "by-kind",
+                  label: "Browse by kind",
+                  items: lazyItems,
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    expect(
+      captured.navPanels[0]?.experimental_menu?.[0]?.items[0],
+    ).toMatchObject({ id: "by-kind", items: lazyItems });
+    expect(lazyItems).not.toHaveBeenCalled();
   });
 
   it("validates and captures nav panel fixed tabs", async () => {

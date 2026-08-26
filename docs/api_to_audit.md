@@ -272,6 +272,7 @@ ever needs two configured differently. For `acpLaunchSpecSchema`: the shape
 is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -860,6 +861,35 @@ unmounting. A crash hides only the accessory.
    order and the focus-triggered accessory/options swap work for counts and
    short statuses, and decide whether a dedicated label prop or host-rendered
    status semantics are needed.
+
+## `PluginNavPanelRegistration.experimental_menu`
+
+**Added experimental (2026-08-25).** One example consumer exercises the shape;
+the waiting API-docs plugin is not yet a second production consumer.
+
+**What it does.** Lets the plugin that owns a nav panel append up to four
+host-rendered menu groups to that page's sidebar ellipsis and right-click
+menus. Contributions are data and callbacks, not components. Items can run an
+action or open one level of submenu; a submenu resolver may load its leaf
+items when opened. The host supplies owner-scoped navigation and split helpers,
+omits unknown icon names, contains rejected resolvers and actions, and merges
+groups after the fourth into the fourth in declaration order.
+
+**Audit before stabilizing.**
+
+1. Confirm two independent plugins can express their real actions without
+   arbitrary menu components, deeper nesting, checkboxes, or destructive-item
+   metadata.
+2. Verify the one-level lazy resolver lifecycle across repeated opens, plugin
+   reloads, slow promises, rejected promises, and menus dismissed mid-load.
+3. Audit `navigate` and `openInSplit` as the right owner-scoped capabilities;
+   neither should gain cross-plugin or global route access.
+4. Confirm four plugin groups, with later groups merged and logged, remains a
+   useful cap under localization and long plugin display names.
+5. Exercise keyboard, screen-reader, pointer, touch-drawer, and right-click
+   parity before freezing the host-rendered presentation.
+6. Decide whether action failures need a structured error or telemetry
+   contract beyond the current contained toast and warning.
 
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 

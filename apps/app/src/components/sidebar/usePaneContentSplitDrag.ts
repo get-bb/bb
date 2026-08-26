@@ -53,23 +53,26 @@ export function usePaneContentSplitDrag({
   const navigate = useNavigate();
   const isCompact = useIsCompactViewport();
 
-  const openInSplit = useCallback(() => {
-    const route = routeForContent(content);
-    const layout = store.get(splitLayoutAtom);
-    if (!enabled || isCompact || layout === null) {
-      navigate(route);
-      return;
-    }
-    const existing = findPaneByContent(layout.root, content);
-    const next =
-      existing !== null
-        ? setFocus(layout, existing.paneId)
-        : countPanes(layout.root) >= MAX_PANES
-          ? replacePaneContent(layout, layout.focusedPaneId, content)
-          : splitPane(layout, layout.focusedPaneId, "right", content);
-    if (next !== layout) store.set(splitLayoutAtom, next);
-    navigate(route, existing !== null ? { replace: true } : undefined);
-  }, [content, enabled, isCompact, navigate, store]);
+  const openInSplit = useCallback(
+    (nextContent: PaneContent = content) => {
+      const route = routeForContent(nextContent);
+      const layout = store.get(splitLayoutAtom);
+      if (!enabled || isCompact || layout === null) {
+        navigate(route);
+        return;
+      }
+      const existing = findPaneByContent(layout.root, nextContent);
+      const next =
+        existing !== null
+          ? setFocus(layout, existing.paneId)
+          : countPanes(layout.root) >= MAX_PANES
+            ? replacePaneContent(layout, layout.focusedPaneId, nextContent)
+            : splitPane(layout, layout.focusedPaneId, "right", nextContent);
+      if (next !== layout) store.set(splitLayoutAtom, next);
+      navigate(route, existing !== null ? { replace: true } : undefined);
+    },
+    [content, enabled, isCompact, navigate, store],
+  );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {

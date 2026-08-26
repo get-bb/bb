@@ -15,10 +15,12 @@ import { CompactLongPressMenu } from "./compact-long-press-menu";
 const LONG_PRESS_MS = 700;
 
 function renderRow({
+  disabled = false,
   onRowClick = vi.fn(),
   onOpenChange = vi.fn(),
   onRename = vi.fn(),
 }: {
+  disabled?: boolean;
   onRowClick?: () => void;
   onOpenChange?: (open: boolean) => void;
   onRename?: () => void;
@@ -29,6 +31,7 @@ function renderRow({
   const utils = render(
     <CompactViewportOverrideProvider isCompactViewport>
       <CompactLongPressMenu
+        disabled={disabled}
         label="Thread actions"
         onOpenChange={onOpenChange}
         items={<DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>}
@@ -214,5 +217,25 @@ describe("CompactLongPressMenu", () => {
     fireEvent(row, event);
     expect(event.defaultPrevented).toBe(true);
     expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it("leaves long-press and context-menu gestures untouched when disabled", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow({ disabled: true });
+
+    touchPointerDown(row);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(row, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menuitem")).toBeNull();
   });
 });

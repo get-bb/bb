@@ -1,6 +1,8 @@
 import {
+  cp,
   mkdtemp,
   mkdir,
+  readFile,
   rename,
   rm,
   symlink,
@@ -16,7 +18,7 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import type { SystemChangeKind } from "@bb/domain";
+import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -592,7 +594,7 @@ describe("plugin service", () => {
     } as unknown as Logger;
     const makeService = (appVersion: string) =>
       createPluginService({
-      aiServices: createAiServiceRegistry(),
+        aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -646,6 +648,72 @@ describe("plugin service", () => {
       "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
     await after.stop();
+  });
+
+  it("keeps a persisted 0.4.17 scaffold plugin running after the 0.4.24 SDK upgrade", async () => {
+    // Frozen output from the last released scaffold proves an existing user
+    // install still clears the compatibility gate after the additive bump.
+    // In-repo plugins built against the new SDK would not exercise an upgrade.
+    const fixtureDir = new URL(
+      "../../fixtures/plugins/bb-plugin-sdk-0.4.17-scaffold/",
+      import.meta.url,
+    );
+    const rootDir = join(workDir, "bb-plugin-sdk-upgrade-fixture");
+    await cp(fixtureDir, rootDir, { recursive: true });
+    const manifest = JSON.parse(
+      await readFile(join(rootDir, "package.json"), "utf8"),
+    ) as {
+      engines: { bbPluginSdk: string };
+      devDependencies: Record<string, string>;
+    };
+    expect(manifest.engines.bbPluginSdk).toBe(">=0.4.17");
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.17");
+    expect(PLUGIN_SDK_VERSION).toBe("0.4.24");
+
+    upsertInstalledPlugin(db, {
+      id: "sdk-upgrade-fixture",
+      source: `path:${rootDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: rootDir },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir,
+      version: "0.1.0",
+      enabled: true,
+    });
+
+    const upgraded = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.39.0",
+      loadTimeoutMs: 2000,
+      bundledPlugins: [],
+    });
+    await upgraded.start();
+    try {
+      const entry = upgraded
+        .list()
+        .find((plugin) => plugin.id === "sdk-upgrade-fixture");
+      expect(entry?.status).toBe("running");
+      expect(entry?.statusDetail).toBeNull();
+      expect(upgraded.getApi("sdk-upgrade-fixture")).toBeDefined();
+    } finally {
+      await upgraded.stop();
+    }
   });
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
@@ -1034,9 +1102,7 @@ describe("plugin service", () => {
       version: "0.2.0",
       status: "running",
     });
-    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
-      "a",
-    );
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe("a");
     expect(service.getApi("brittle")).toBeDefined();
     expect((await service.getSettings("brittle"))?.values).toEqual({
       token: { set: true },

@@ -3,6 +3,9 @@ import type {
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
+  ExperimentalPluginNavPanelMenuGroup,
+  ExperimentalPluginNavPanelMenuItem,
+  ExperimentalPluginNavPanelSubmenu,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandPaletteActionRegistration,
@@ -50,6 +53,7 @@ const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
     component: true,
     fixedTabs: true,
     experimental_sidebarAccessory: true,
+    experimental_menu: true,
     headerContent: true,
   } satisfies Record<keyof PluginNavPanelRegistration, true>),
 );
@@ -79,6 +83,180 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
       throw new Error(`${kind}: unknown field "${key}"`);
     }
   }
+}
+
+type ExperimentalPluginNavPanelMenuEntry =
+  | ExperimentalPluginNavPanelMenuItem
+  | ExperimentalPluginNavPanelSubmenu;
+
+function requireMenuRecord(
+  kind: string,
+  value: unknown,
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${kind}: must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function rejectUnknownMenuKeys(
+  kind: string,
+  value: Record<string, unknown>,
+  allowedKeys: ReadonlySet<string>,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error(`${kind}: unknown field ${JSON.stringify(key)}`);
+    }
+  }
+}
+
+const MENU_ITEM_KEYS = new Set([
+  "id",
+  "label",
+  "icon",
+  "description",
+  "disabled",
+  "run",
+]);
+const SUBMENU_KEYS = new Set(["id", "label", "icon", "items"]);
+const MENU_GROUP_KEYS = new Set(["id", "label", "items"]);
+
+/** Validate lazy submenu output at the moment the plugin produces it. */
+export function validateExperimentalPluginNavPanelMenuItems(
+  kind: string,
+  value: unknown,
+): ExperimentalPluginNavPanelMenuItem[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${kind}: must be an array`);
+  }
+  const seenIds = new Set<string>();
+  return value.map((entryValue, index) => {
+    const entryKind = `${kind}[${index}]`;
+    const entry = requireMenuRecord(entryKind, entryValue);
+    rejectUnknownMenuKeys(entryKind, entry, MENU_ITEM_KEYS);
+    const id = requireSlotId(entryKind, entry.id);
+    requireUniqueId(kind, seenIds, id);
+    if (typeof entry.run !== "function") {
+      throw new Error(`${entryKind}: "run" must be a function`);
+    }
+    const icon = requireOptionalString(entryKind, "icon", entry.icon);
+    const description = requireOptionalString(
+      entryKind,
+      "description",
+      entry.description,
+    );
+    if (entry.disabled !== undefined && typeof entry.disabled !== "boolean") {
+      throw new Error(`${entryKind}: "disabled" must be a boolean when set`);
+    }
+    return {
+      id,
+      label: requireNonEmptyString(entryKind, "label", entry.label),
+      ...(icon === undefined ? {} : { icon }),
+      ...(description === undefined ? {} : { description }),
+      ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
+      run: entry.run as ExperimentalPluginNavPanelMenuItem["run"],
+    };
+  });
+}
+
+function collectExperimentalPluginNavPanelMenuEntries(
+  kind: string,
+  value: unknown,
+): ExperimentalPluginNavPanelMenuEntry[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${kind}: must be an array`);
+  }
+  const seenIds = new Set<string>();
+  return value.map((entryValue, index) => {
+    const entryKind = `${kind}[${index}]`;
+    const entry = requireMenuRecord(entryKind, entryValue);
+    const isSubmenu = Object.hasOwn(entry, "items");
+    rejectUnknownMenuKeys(
+      entryKind,
+      entry,
+      isSubmenu ? SUBMENU_KEYS : MENU_ITEM_KEYS,
+    );
+    const id = requireSlotId(entryKind, entry.id);
+    requireUniqueId(kind, seenIds, id);
+    const label = requireNonEmptyString(entryKind, "label", entry.label);
+    const icon = requireOptionalString(entryKind, "icon", entry.icon);
+    if (isSubmenu) {
+      if (typeof entry.items !== "function" && !Array.isArray(entry.items)) {
+        throw new Error(`${entryKind}: "items" must be an array or function`);
+      }
+      return {
+        id,
+        label,
+        ...(icon === undefined ? {} : { icon }),
+        items:
+          typeof entry.items === "function"
+            ? (entry.items as ExperimentalPluginNavPanelSubmenu["items"])
+            : validateExperimentalPluginNavPanelMenuItems(
+                `${entryKind}.items`,
+                entry.items,
+              ),
+      };
+    }
+    if (typeof entry.run !== "function") {
+      throw new Error(`${entryKind}: "run" must be a function`);
+    }
+    const description = requireOptionalString(
+      entryKind,
+      "description",
+      entry.description,
+    );
+    if (entry.disabled !== undefined && typeof entry.disabled !== "boolean") {
+      throw new Error(`${entryKind}: "disabled" must be a boolean when set`);
+    }
+    return {
+      id,
+      label,
+      ...(icon === undefined ? {} : { icon }),
+      ...(description === undefined ? {} : { description }),
+      ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
+      run: entry.run as ExperimentalPluginNavPanelMenuItem["run"],
+    };
+  });
+}
+
+function collectExperimentalPluginNavPanelMenuGroups(
+  kind: string,
+  value: unknown,
+): ExperimentalPluginNavPanelMenuGroup[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${kind}: must be an array when set`);
+  }
+  const seenIds = new Set<string>();
+  const groups = value.map((groupValue, index) => {
+    const groupKind = `${kind}[${index}]`;
+    const group = requireMenuRecord(groupKind, groupValue);
+    rejectUnknownMenuKeys(groupKind, group, MENU_GROUP_KEYS);
+    const id = requireSlotId(groupKind, group.id);
+    requireUniqueId(kind, seenIds, id);
+    const label = requireOptionalString(groupKind, "label", group.label);
+    return {
+      id,
+      ...(label === undefined ? {} : { label }),
+      items: collectExperimentalPluginNavPanelMenuEntries(
+        `${groupKind}.items`,
+        group.items,
+      ),
+    } satisfies ExperimentalPluginNavPanelMenuGroup;
+  });
+  if (groups.length <= 4) return groups;
+
+  const fourth = groups[3];
+  if (fourth === undefined) return groups;
+  const mergedItems = groups.slice(3).flatMap((group) => group.items);
+  const mergedIds = new Set<string>();
+  for (const item of mergedItems) {
+    requireUniqueId(`${kind}[3].items`, mergedIds, item.id);
+  }
+  console.warn(
+    `${kind}: groups beyond the fourth were merged into ${JSON.stringify(fourth.id)}`,
+  );
+  return [...groups.slice(0, 3), { ...fourth, items: mergedItems }];
 }
 
 /** Validated registrations produced by one plugin app setup execution. */
@@ -280,6 +458,13 @@ export function collectPluginAppRegistrations(
             };
           });
         })();
+        const experimentalMenu =
+          registration.experimental_menu === undefined
+            ? []
+            : collectExperimentalPluginNavPanelMenuGroups(
+                `${kind}.experimental_menu`,
+                registration.experimental_menu,
+              );
         collected.navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -292,6 +477,9 @@ export function collectPluginAppRegistrations(
                 experimental_sidebarAccessory:
                   registration.experimental_sidebarAccessory,
               }
+            : {}),
+          ...(experimentalMenu.length > 0
+            ? { experimental_menu: experimentalMenu }
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }

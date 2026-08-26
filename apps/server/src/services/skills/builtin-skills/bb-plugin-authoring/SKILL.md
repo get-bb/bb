@@ -394,7 +394,12 @@ const settings = bb.settings.define({
   teamKey: { type: "string", label: "Team", default: "" },
   // Multi-line editor (JSON, lists); the value is still a string the plugin
   // parses itself. Cannot be combined with `secret`.
-  agents: { type: "string", label: "Agents", experimental_multiline: true, default: "[]" },
+  agents: {
+    type: "string",
+    label: "Agents",
+    experimental_multiline: true,
+    default: "[]",
+  },
   mode: {
     type: "select",
     label: "Mode",
@@ -1022,7 +1027,10 @@ bb.agents.registerTool({
   // tool name and the plugin's branding glyph. Errors/interruptions keep
   // that standard rendering so the failing tool remains identifiable.
   presentation: {
-    label: { pending: "Searching bundled docs", completed: "Searched bundled docs" },
+    label: {
+      pending: "Searching bundled docs",
+      completed: "Searched bundled docs",
+    },
   },
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
@@ -1500,6 +1508,30 @@ export default definePluginApp((app) => {
       },
     ],
     experimental_sidebarAccessory: OpenIssueCount,
+    experimental_menu: [
+      {
+        id: "board-actions",
+        label: "Issue tracker",
+        items: [
+          {
+            id: "overview",
+            label: "Open overview",
+            run: ({ navigate }) => navigate(""),
+          },
+          {
+            id: "saved-views",
+            label: "Saved views",
+            items: async ({ navigate }) => [
+              {
+                id: "mine",
+                label: "Assigned to me",
+                run: () => navigate("views/mine"),
+              },
+            ],
+          },
+        ],
+      },
+    ],
   });
   app.slots.threadPanelAction({
     id: "issue",
@@ -1798,7 +1830,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, experimental_menu?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -1859,6 +1891,18 @@ target? })`. Inside the fixed-tab component,
   button on row hover or keyboard focus without unmounting. Do not render
   controls or portalled content there. A throw hides only the accessory.
   Experimental: see `docs/api_to_audit.md`.
+  `experimental_menu` contributes host-rendered data to this page's sidebar
+  ellipsis and right-click menus. Declare up to four ordered groups:
+  `{ id, label?, items }`, where an item is
+  `{ id, label, icon?, description?, disabled?, run(context) }`. A submenu is
+  `{ id, label, icon?, items }`; its `items` is either a leaf-item array or a
+  function that returns one synchronously or asynchronously when the submenu
+  opens. Only one submenu level exists. The context is
+  `{ pluginId, panelId, navigate(subPath), openInSplit(subPath?) }` and is
+  scoped to the owning page. Unknown Lucide icon names render no glyph. BB
+  catches action and resolver failures. Groups after the fourth merge into the
+  fourth in declaration order and log a warning. Experimental: see
+  `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
@@ -2054,10 +2098,10 @@ openWorkspaceFile }` — register a leaf
   through the bridge's presentation. The component receives `row` (id,
   threadId, turnId, kind, toolName, status, startedAt, completedAt),
   `payload` (the extension item's validated payload, or `{ arguments,
-  output }` for a tool call), `presentation` (the bridge's label, icon,
+output }` for a tool call), `presentation` (the bridge's label, icon,
   title, detail, suppress and tint for the row; null only for a tool row
   persisted before bridges attached one), `thread` (`{ id,
-  providerId }`) and `Original`, the host's declarative base for the body —
+providerId }`) and `Original`, the host's declarative base for the body —
   render `<Original />` to keep it beside your own content. The row header
   (label, glyph, tint, headline) stays host-rendered; a glyph of the form
   `"<pluginId>/<name>"` draws the plugin's declared icon

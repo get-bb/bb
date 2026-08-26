@@ -2,158 +2,167 @@ import { describe, expect, it } from "vitest";
 import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
+  movePluginNavPanelToOverflow,
+  movePluginNavPanelToTop,
+  normalizePluginNavPanelOrder,
   reorderPluginNavPanels,
 } from "./pluginNavSidebarOrder";
 
-function panel(pluginId: string, id: string) {
+function panel(pluginId: string, id = "main") {
   return { pluginId, id };
 }
 
-const github = panel("github", "pulls");
-const docs = panel("docs", "vault");
-const tasks = panel("tasks", "board");
+const panels = Array.from({ length: 9 }, (_, index) =>
+  panel(`plugin-${index + 1}`),
+);
+const keys = panels.map(getPluginNavPanelKey);
 
 describe("arrangePluginNavPanels", () => {
-  it("falls back to registry order before the user has reordered anything", () => {
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
+  it.each([1, 4, 5])("keeps %i pages in one flat list", (count) => {
+    const arranged = arrangePluginNavPanels({
+      panels: panels.slice(0, count),
       storedOrder: [],
-      hiddenKeys: [],
     });
+    expect(arranged.visible.map(getPluginNavPanelKey)).toEqual(
+      keys.slice(0, count),
+    );
+    expect(arranged.overflow).toEqual([]);
+  });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "github/pulls",
-      "docs/vault",
-      "tasks/board",
-    ]);
-    expect(normalizedOrder).toEqual([
-      "github/pulls",
-      "docs/vault",
-      "tasks/board",
+  it.each([6, 9])("caps %i pages at five", (count) => {
+    const arranged = arrangePluginNavPanels({
+      panels: panels.slice(0, count),
+      storedOrder: [],
+    });
+    expect(arranged.visible.map(getPluginNavPanelKey)).toEqual(
+      keys.slice(0, 5),
+    );
+    expect(arranged.overflow.map(getPluginNavPanelKey)).toEqual(
+      keys.slice(5, count),
+    );
+  });
+
+  it("appends a newly installed panel after a customized order", () => {
+    const arranged = arrangePluginNavPanels({
+      panels: panels.slice(0, 3),
+      storedOrder: [keys[2], keys[0]],
+    });
+    expect(arranged.ordered.map(getPluginNavPanelKey)).toEqual([
+      keys[2],
+      keys[0],
+      keys[1],
     ]);
   });
 
-  it("appends newly installed panels last instead of at the top of a customized list", () => {
-    const { visible } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "github/pulls"],
-      hiddenKeys: [],
+  it("keeps unregistered keys and restores a late registration to its slot", () => {
+    const storedOrder = [keys[2], keys[1], keys[0]];
+    const before = arrangePluginNavPanels({
+      panels: [panels[0], panels[1]],
+      storedOrder,
     });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "github/pulls",
-      "docs/vault",
+    const after = arrangePluginNavPanels({
+      panels: panels.slice(0, 3),
+      storedOrder,
+    });
+    expect(before.normalizedOrder).toEqual(storedOrder);
+    expect(before.ordered.map(getPluginNavPanelKey)).toEqual([
+      keys[1],
+      keys[0],
     ]);
+    expect(after.ordered.map(getPluginNavPanelKey)).toEqual(storedOrder);
   });
 
-  it("renders no row for an unregistered key but keeps its slot in the order", () => {
-    // A plugin frontend can register after the sidebar mounts. Dropping the key
-    // here would persist a shortened order and lose the user's arrangement.
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
-      panels: [github, docs],
-      storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
+  it("temporarily promotes the active overflow page into the fifth slot", () => {
+    const arranged = arrangePluginNavPanels({
+      panels,
+      storedOrder: keys,
+      activeKey: keys[8],
     });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "docs/vault",
-      "github/pulls",
+    expect(arranged.visible.map(getPluginNavPanelKey)).toEqual([
+      ...keys.slice(0, 4),
+      keys[8],
     ]);
-    expect(normalizedOrder).toEqual([
-      "strudel/repl",
-      "docs/vault",
-      "github/pulls",
+    expect(arranged.overflow.map(getPluginNavPanelKey)).toEqual([
+      keys[4],
+      ...keys.slice(5, 8),
     ]);
+    expect(arranged.normalizedOrder).toEqual(keys);
   });
 
-  it("returns a late-registering panel to its stored slot", () => {
-    const { visible } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      // The order saved while only github had registered still names all three.
-      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
+  it("preserves a migrated fold below five and promotes an active page from zero", () => {
+    const folded = arrangePluginNavPanels({
+      panels: panels.slice(0, 4),
+      storedOrder: keys.slice(0, 4),
+      visibleLimit: 2,
     });
+    expect(folded.visible.map(getPluginNavPanelKey)).toEqual(keys.slice(0, 2));
+    expect(folded.overflow.map(getPluginNavPanelKey)).toEqual(keys.slice(2, 4));
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "docs/vault",
-      "github/pulls",
-    ]);
-  });
-
-  it("splits hidden panels out while both lists keep the user's order", () => {
-    const { visible, hidden } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: ["docs/vault", "tasks/board"],
+    const allHidden = arrangePluginNavPanels({
+      panels: panels.slice(0, 4),
+      storedOrder: keys.slice(0, 4),
+      visibleLimit: 0,
+      activeKey: keys[3],
     });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual(["github/pulls"]);
-    expect(hidden.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "docs/vault",
-    ]);
-  });
-
-  it("ignores duplicate stored keys so a corrupted list can't render a panel twice", () => {
-    const { visible } = arrangePluginNavPanels({
-      panels: [github, docs],
-      storedOrder: ["github/pulls", "github/pulls", "docs/vault"],
-      hiddenKeys: [],
-    });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
-      "github/pulls",
-      "docs/vault",
-    ]);
+    expect(allHidden.visible.map(getPluginNavPanelKey)).toEqual([keys[3]]);
+    expect(allHidden.overflow.map(getPluginNavPanelKey)).toEqual(
+      keys.slice(0, 3),
+    );
   });
 });
 
-describe("reorderPluginNavPanels", () => {
-  it("moves a visible row to the target slot", () => {
+describe("plugin panel order mutations", () => {
+  it("drags a row across the cap boundary in the stored order", () => {
     expect(
       reorderPluginNavPanels({
-        activeKey: "tasks/board",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault", "tasks/board"],
-        visibleKeys: ["github/pulls", "docs/vault", "tasks/board"],
+        activeKey: keys[1],
+        overKey: keys[7],
+        order: keys,
       }),
-    ).toEqual(["tasks/board", "github/pulls", "docs/vault"]);
+    ).toEqual([keys[0], ...keys.slice(2, 8), keys[1], keys[8]]);
   });
 
-  it("keeps hidden panels pinned to their index in the stored order", () => {
-    // docs is hidden and sits between the two visible rows; swapping those two
-    // must not shuffle docs, so unhiding it later restores its old slot.
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "tasks/board",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault", "tasks/board"],
-        visibleKeys: ["github/pulls", "tasks/board"],
-      }),
-    ).toEqual(["tasks/board", "docs/vault", "github/pulls"]);
+  it("moves a visible page to the first overflow position", () => {
+    expect(movePluginNavPanelToOverflow(keys, keys, keys[1])).toEqual([
+      keys[0],
+      ...keys.slice(2, 6),
+      keys[1],
+      ...keys.slice(6),
+    ]);
   });
 
-  it("returns null when the drag lands where it started", () => {
-    expect(
-      reorderPluginNavPanels({
-        activeKey: "github/pulls",
-        overKey: "github/pulls",
-        order: ["github/pulls", "docs/vault"],
-        visibleKeys: ["github/pulls", "docs/vault"],
-      }),
-    ).toBeNull();
+  it("moves an overflow page to the top", () => {
+    expect(movePluginNavPanelToTop(keys, keys, keys[7])).toEqual([
+      keys[7],
+      ...keys.slice(0, 7),
+      keys[8],
+    ]);
   });
 
-  it("returns null when the drop target is not a visible row", () => {
+  it("keeps unregistered key slots while moving a registered page", () => {
+    const order = ["missing/main", ...keys.slice(0, 6)];
     expect(
-      reorderPluginNavPanels({
-        activeKey: "github/pulls",
-        overKey: "docs/vault",
-        order: ["github/pulls", "docs/vault"],
-        visibleKeys: ["github/pulls"],
-      }),
-    ).toBeNull();
+      movePluginNavPanelToOverflow(order, keys.slice(0, 6), keys[0]),
+    ).toEqual(["missing/main", ...keys.slice(1, 6), keys[0]]);
+  });
+
+  it("moves a page below a migrated fold", () => {
+    expect(
+      movePluginNavPanelToOverflow(
+        keys.slice(0, 4),
+        keys.slice(0, 4),
+        keys[0],
+        2,
+      ),
+    ).toEqual([keys[1], keys[2], keys[0], keys[3]]);
+  });
+});
+
+describe("normalizePluginNavPanelOrder", () => {
+  it("dedupes valid ids and drops malformed values", () => {
+    expect(
+      normalizePluginNavPanelOrder([keys[0], keys[0], null, "", keys[1]]),
+    ).toEqual(keys.slice(0, 2));
+    expect(normalizePluginNavPanelOrder({})).toEqual([]);
   });
 });

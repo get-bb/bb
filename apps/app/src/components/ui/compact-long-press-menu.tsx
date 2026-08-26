@@ -34,6 +34,8 @@ const claimedPressEvents = new WeakSet<Event>();
 interface CompactLongPressMenuProps {
   /** The single element that receives the long-press gesture (a row). */
   children: ReactNode;
+  /** Leaves the child chrome mounted without claiming context-menu gestures. */
+  disabled?: boolean;
   /** Menu items rendered inside the compact drawer; mounted on first open. */
   items: ReactNode;
   /** Screen-reader label for the drawer surface. */
@@ -56,6 +58,7 @@ interface CompactLongPressMenuProps {
  */
 export function CompactLongPressMenu({
   children,
+  disabled = false,
   items,
   label,
   onOpenChange,
@@ -87,13 +90,19 @@ export function CompactLongPressMenu({
   );
 
   const openMenu = useCallback(() => {
+    if (disabled) {
+      return;
+    }
     clearPress();
     setHasOpened(true);
     handleOpenChange(true);
-  }, [clearPress, handleOpenChange]);
+  }, [clearPress, disabled, handleOpenChange]);
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      if (disabled) {
+        return;
+      }
       if (event.pointerType !== "touch" && event.pointerType !== "pen") {
         return;
       }
@@ -121,7 +130,7 @@ export function CompactLongPressMenu({
         openMenu();
       }, LONG_PRESS_MS);
     },
-    [clearPress, openMenu],
+    [clearPress, disabled, openMenu],
   );
 
   const handlePointerMove = useCallback(
@@ -151,6 +160,9 @@ export function CompactLongPressMenu({
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      if (disabled) {
+        return;
+      }
       // An enclosed menu (or another handler) already took this one; the same
       // rule Radix's ContextMenuTrigger applies through defaultPrevented.
       if (event.defaultPrevented) {
@@ -167,7 +179,7 @@ export function CompactLongPressMenu({
       }
       openMenu();
     },
-    [openMenu],
+    [disabled, openMenu],
   );
 
   const handleClickCapture = useCallback(

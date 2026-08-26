@@ -418,21 +418,69 @@ export type ExperimentalPluginFixedTabReference<
     });
 
 /** A fixed tab declared by a plugin nav panel. */
-export type PluginFixedTabRegistration<
-  Target extends JsonValue = never,
-> = ExperimentalPluginFixedTabReference<Target> & {
-  title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-  icon: string;
-  component: ComponentType<PluginNavPanelProps>;
-  /** `flush` lets the component own padding and scrolling. */
-  layout?: "padded" | "flush";
-};
+export type PluginFixedTabRegistration<Target extends JsonValue = never> =
+  ExperimentalPluginFixedTabReference<Target> & {
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    component: ComponentType<PluginNavPanelProps>;
+    /** `flush` lets the component own padding and scrolling. */
+    layout?: "padded" | "flush";
+  };
 
 /** A fixed tab with either no target or an owner-validated JSON target. */
 export type PluginFixedTabDeclaration =
   | PluginFixedTabRegistration
   | PluginFixedTabRegistration<JsonValue>;
+
+/** Host capabilities passed to an experimental nav-panel menu action. */
+export interface ExperimentalPluginNavPanelMenuContext {
+  /** Plugin that owns the nav panel and menu. */
+  pluginId: string;
+  /** Owning nav panel registration id. */
+  panelId: string;
+  /** Navigate within the owning page. An empty path opens its root. */
+  navigate(subPath: string): void;
+  /** Open the owning page or one of its subpaths in the split workspace. */
+  openInSplit(subPath?: string): void;
+}
+
+/** One host-rendered action contributed to a nav-panel menu. */
+export interface ExperimentalPluginNavPanelMenuItem {
+  id: string;
+  label: string;
+  /** Lucide icon name. Unknown names render no icon. */
+  icon?: string;
+  description?: string;
+  disabled?: boolean;
+  run(context: ExperimentalPluginNavPanelMenuContext): void | Promise<void>;
+}
+
+/** One lazy or eager submenu. Submenus cannot contain another submenu. */
+export interface ExperimentalPluginNavPanelSubmenu {
+  id: string;
+  label: string;
+  /** Lucide icon name. Unknown names render no icon. */
+  icon?: string;
+  /** A function is evaluated once when this submenu opens. */
+  items:
+    | readonly ExperimentalPluginNavPanelMenuItem[]
+    | ((
+        context: ExperimentalPluginNavPanelMenuContext,
+      ) =>
+        | readonly ExperimentalPluginNavPanelMenuItem[]
+        | Promise<readonly ExperimentalPluginNavPanelMenuItem[]>);
+}
+
+export interface ExperimentalPluginNavPanelMenuGroup {
+  id: string;
+  /** Host-rendered group heading; defaults to the plugin's display name. */
+  label?: string;
+  items: readonly (
+    | ExperimentalPluginNavPanelMenuItem
+    | ExperimentalPluginNavPanelSubmenu
+  )[];
+}
 
 export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -466,6 +514,14 @@ export interface PluginNavPanelRegistration {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_sidebarAccessory?: ComponentType;
+  /**
+   * Optional host-rendered action groups appended to this panel's sidebar
+   * menus. Up to four groups render; later groups merge into the fourth. A
+   * plugin supplies data and callbacks, never sidebar components.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_menu?: readonly ExperimentalPluginNavPanelMenuGroup[];
   /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
