@@ -7,6 +7,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -402,6 +403,8 @@ describe("machine install script", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
+    expect(statSync(fixture.dataDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(fixture.dataDir, "logs")).mode & 0o777).toBe(0o700);
     const npmInvocation = readFileSync(
       join(fixture.dataDir, "npm.log"),
       "utf8",

@@ -222,6 +222,7 @@ jobs:
     needs:
       - macos
       - linux
+    if: ${{ inputs.publish == true && inputs.release_channel == 'stable' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
@@ -294,15 +295,23 @@ jobs:
           name: bb-desktop-linux-x64
           path: release/linux
 
-      - name: Attest desktop release binaries
+      - name: Attest Linux AppImage provenance
         if: steps.release_plan.outputs.should_publish == 'true'
-        id: attest
+        id: attest_linux
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: release/linux/*.AppImage
+
+      - name: Attest macOS desktop provenance
+        if: >-
+          ${{ steps.release_plan.outputs.should_publish == 'true'
+          && steps.release_plan.outputs.publish_macos_binaries == 'true' }}
+        id: attest_macos
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
             release/macos/*.dmg
             release/macos/*.zip
-            release/linux/*.AppImage
 
       - name: Publish stable desktop release feed
         if: steps.release_plan.outputs.should_publish == 'true'
@@ -400,7 +409,8 @@ jobs:
 
       - name: Summarize
         env:
-          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          ATTESTATION_LINUX_URL: ${{ steps.attest_linux.outputs.attestation-url }}
+          ATTESTATION_MACOS_URL: ${{ steps.attest_macos.outputs.attestation-url }}
           IS_PRERELEASE: ${{ steps.release_plan.outputs.is_prerelease }}
           PUBLISH_MACOS_BINARIES: ${{ steps.release_plan.outputs.publish_macos_binaries }}
           SHOULD_PUBLISH: ${{ steps.release_plan.outputs.should_publish }}
@@ -417,5 +427,6 @@ jobs:
             echo "- macOS release binary upload enabled: ${PUBLISH_MACOS_BINARIES}"
             echo "- macOS feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
             echo "- Linux feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json"
-            echo "- binary provenance attestation: ${ATTESTATION_URL}"
+            echo "- Linux binary provenance attestation: ${ATTESTATION_LINUX_URL}"
+            echo "- macOS binary provenance attestation: ${ATTESTATION_MACOS_URL:-not published}"
           } >> "$GITHUB_STEP_SUMMARY"

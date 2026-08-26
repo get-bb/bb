@@ -2,6 +2,10 @@
 
 set -eu
 
+# Enrollment data contains host credentials and provider state. Do not let a
+# permissive caller umask expose newly created files or directories.
+umask 077
+
 usage() {
   cat >&2 <<'EOF'
 Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>] [--auto-update]
@@ -205,6 +209,7 @@ curl_allowed_redirect_protocols=$curl_allowed_protocols
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
+chmod 700 "$data_dir" "$data_dir/logs"
 canonical_data_dir=$(node -e '
   const fs = require("node:fs");
   process.stdout.write(fs.realpathSync(process.argv[1]));
@@ -221,6 +226,7 @@ bb_app_native_modules="better-sqlite3,node-pty,@parcel/watcher"
 bb_app_allow_scripts="--allow-scripts=$bb_app_native_modules"
 port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
 mkdir -p "$port_registry_dir"
+chmod 700 "$port_registry_dir"
 
 valid_port() {
   node -e '

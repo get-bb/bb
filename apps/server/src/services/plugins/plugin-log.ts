@@ -43,7 +43,9 @@ export function appendPluginLogLine(
     const file = join(dir, PLUGIN_LOG_FILE);
     try {
       if (statSync(file).size > PLUGIN_LOG_MAX_BYTES) {
-        renameSync(file, join(dir, PLUGIN_LOG_ROTATED_FILE));
+        const rotated = join(dir, PLUGIN_LOG_ROTATED_FILE);
+        renameSync(file, rotated);
+        chmodSync(rotated, 0o600);
       }
     } catch {
       // Missing file: nothing to rotate.
@@ -53,7 +55,10 @@ export function appendPluginLogLine(
       level,
       message: redactSensitiveText(message),
     });
-    appendFileSync(file, `${line}\n`, "utf8");
+    appendFileSync(file, `${line}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
     chmodSync(file, 0o600);
   } catch {
     // Best effort only.

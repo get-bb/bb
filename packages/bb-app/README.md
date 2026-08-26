@@ -198,9 +198,8 @@ npx bb-app config refresh
 ```
 
 For remote access, use bb connect or publish the default loopback listener with
-Tailscale Serve. Direct tailnet or LAN access to port `38886` requires the
-explicit, security-sensitive `--server-bind-host 0.0.0.0` compatibility option;
-see the multiple-devices guide.
+Tailscale Serve. Direct tailnet or LAN binding is not supported because the
+server API is unauthenticated; see the multiple-devices guide.
 
 Use `bb-app client ssh-target` to configure local editor opens for remote
 bb servers under `~/.bb/client.json`. The target is the value that works after

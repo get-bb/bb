@@ -97,6 +97,18 @@ function redactSensitiveValue(
   if (value instanceof Error || Buffer.isBuffer(value)) {
     return value;
   }
+  if (Array.isArray(value)) {
+    const existing = seen.get(value);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const result: unknown[] = [];
+    seen.set(value, result);
+    for (const entry of value) {
+      result.push(redactSensitiveValue(entry, undefined, seen));
+    }
+    return result;
+  }
   let objectTag: string;
   try {
     objectTag = Object.prototype.toString.call(value);
@@ -109,14 +121,6 @@ function redactSensitiveValue(
   const existing = seen.get(value);
   if (existing !== undefined) {
     return existing;
-  }
-  if (Array.isArray(value)) {
-    const result: unknown[] = [];
-    seen.set(value, result);
-    for (const entry of value) {
-      result.push(redactSensitiveValue(entry, undefined, seen));
-    }
-    return result;
   }
   const result: Record<string, unknown> = {};
   seen.set(value, result);

@@ -59,6 +59,12 @@ for (const jobName of ["macos", "linux", "publish"]) {
   );
 }
 assert(
+  jobSection(buildDesktop, "publish").includes(
+    "if: ${{ inputs.publish == true && inputs.release_channel == 'stable' }}",
+  ),
+  "build-desktop/publish: QA runs must not receive publication permissions",
+);
+assert(
   buildDesktop.includes(
     "CSC_LINK: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.MACOS_CERTIFICATE_P12 || '' }}",
   ),
@@ -73,6 +79,19 @@ assert(
 assert(
   jobSection(buildDesktop, "publish").includes("attestations: write"),
   "build-desktop/publish: artifact-attestation permission is required",
+);
+const stableDesktopPublish = jobSection(buildDesktop, "publish");
+assert(
+  stableDesktopPublish.includes("id: attest_linux") &&
+    stableDesktopPublish.includes("subject-path: release/linux/*.AppImage"),
+  "build-desktop/publish: Linux AppImage attestation must cover published assets",
+);
+assert(
+  stableDesktopPublish.includes("id: attest_macos") &&
+    stableDesktopPublish.includes(
+      "steps.release_plan.outputs.publish_macos_binaries == 'true'",
+    ),
+  "build-desktop/publish: macOS attestation must be conditional on published assets",
 );
 
 for (const workflowName of [

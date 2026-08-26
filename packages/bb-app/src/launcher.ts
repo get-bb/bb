@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   access,
+  chmod,
   mkdir,
   readFile,
   rename,
@@ -1197,11 +1198,16 @@ function pruneManagedEnvFile(config: ManagedEnvFile): ManagedEnvFile {
   return nextConfig;
 }
 
+async function ensurePrivateDataDirectory(dataDir: string): Promise<void> {
+  await mkdir(dataDir, { mode: 0o700, recursive: true });
+  await chmod(dataDir, 0o700);
+}
+
 async function writeManagedConfigFile(
   args: WriteManagedConfigFileArgs,
 ): Promise<void> {
   validateManagedConfigForWrite(args.config);
-  await mkdir(args.dataDir, { recursive: true });
+  await ensurePrivateDataDirectory(args.dataDir);
   const nextConfig = pruneManagedConfig(args.config);
   const configPath = formatBbAppConfigPath(args.dataDir);
   const tempPath = join(
@@ -1267,7 +1273,7 @@ async function writeManagedEnv(args: WriteManagedEnvFileArgs): Promise<void> {
 async function writeManagedEnvFile(
   args: WriteManagedEnvFileArgs,
 ): Promise<void> {
-  await mkdir(args.dataDir, { recursive: true });
+  await ensurePrivateDataDirectory(args.dataDir);
   const nextConfig = pruneManagedEnvFile(args.config);
   const envPath = formatBbAppEnvPath(args.dataDir);
   const tempPath = join(
@@ -1290,7 +1296,7 @@ async function writeManagedEnvFile(
 async function writeClientConfigFile(
   args: WriteClientConfigFileArgs,
 ): Promise<void> {
-  await mkdir(args.dataDir, { recursive: true });
+  await ensurePrivateDataDirectory(args.dataDir);
   const configPath = formatClientConfigPath(args.dataDir);
   const tempPath = join(
     args.dataDir,
@@ -1860,7 +1866,7 @@ function printStartupOnlyChangeNotice(key: string): void {
   );
   if (key === "BB_SERVER_BIND_HOST") {
     process.stdout.write(
-      "Until then, the server keeps its previous bind address. If it was bound to 0.0.0.0, that network exposure remains open.\n",
+      "Restart bb-app before relying on this change; an older process may still have an off-loopback listener.\n",
     );
   }
 }

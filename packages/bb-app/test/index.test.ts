@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -33,7 +34,6 @@ import {
   resolveDataDir,
   resolveBbAppStartContext,
   resolveBbAppCommand,
-  resolveServerListenerUrl,
   resolveWorktreeRuntimePolicy,
   runBbApp,
   runBundledCliCommand,
@@ -765,26 +765,17 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("reports the server bind host separately from the loopback connection URL", async () => {
-    const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
+  it("rejects a non-loopback server bind host before startup", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
-    const runtime = await resolveBbAppRuntimeState({
-      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
-      env: { BB_DATA_DIR: dataDir },
-      homeDir: "/home/tester",
-      options: parsedArgs.options,
-      serverUrlMode: "local",
-    });
 
-    expect(parsedArgs.options.serverBindHost).toBe("0.0.0.0");
-    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
-    expect(
-      resolveServerListenerUrl({
-        bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
-        port: runtime.context.serverPort,
-      }),
-    ).toBe("http://0.0.0.0:38886");
-    expect(runtime.context.serverUrl).toBe("http://127.0.0.1:38886");
+    await expect(
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "--server-bind-host",
+        "0.0.0.0",
+      ]),
+    ).rejects.toThrow(/loopback/u);
   });
 
   it("strips parent thread context from the production server without stripping the CLI", async () => {
@@ -840,7 +831,7 @@ describe("bb-app launcher", () => {
 
     await expect(
       runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
-    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+    ).rejects.toThrow(/loopback/u);
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -1010,7 +1001,7 @@ describe("bb-app launcher", () => {
           BB_DEV_APP_PORT: "4173",
           BB_HOST_DAEMON_PORT: "48887",
           BB_INHERITED_SKILLS_ROOTS: "/stored/skills",
-          BB_SERVER_BIND_HOST: "0.0.0.0",
+          BB_SERVER_BIND_HOST: "127.0.0.1",
           BB_SERVER_PORT: "48886",
           BB_TELEMETRY: "true",
           OPENAI_API_KEY: "stored-openai-key",
@@ -1085,6 +1076,7 @@ describe("bb-app launcher", () => {
 
   it("stores managed config values from the config command", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-command-"));
+    chmodSync(dataDir, 0o755);
 
     await runBbApp([
       "--data-dir",
@@ -1137,6 +1129,7 @@ describe("bb-app launcher", () => {
     );
     expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    expect(statSync(dataDir).mode & 0o777).toBe(0o700);
   });
 
   it("stores client SSH targets from the client command", async () => {
@@ -1468,7 +1461,7 @@ describe("bb-app launcher", () => {
         "BB_SERVER_BIND_HOST",
         "localhost",
       ]),
-    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+    ).rejects.toThrow(/loopback/u);
 
     expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual(initialEnvFile);
   });
@@ -1674,7 +1667,7 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("warns that wildcard exposure remains after unsetting the server bind host", async () => {
+  it("recovers from a legacy wildcard bind setting when unsetting it", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-bind-unset-"));
     writeFileSync(
       join(dataDir, "env.json"),
@@ -1700,7 +1693,7 @@ describe("bb-app launcher", () => {
         "BB_SERVER_BIND_HOST is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change. Run `bb-app stop && bb-app start`, or restart the desktop app.",
       );
       expect(output).toContain(
-        "Until then, the server keeps its previous bind address. If it was bound to 0.0.0.0, that network exposure remains open.",
+        "Restart bb-app before relying on this change; an older process may still have an off-loopback listener.",
       );
       expect(output).not.toContain("Reloaded running bb server config.");
       expect(server.reloadRequests()).toEqual([
@@ -1750,8 +1743,8 @@ describe("bb-app launcher", () => {
         String(unavailablePort),
         "env",
         "set",
-        "BB_SERVER_BIND_HOST",
-        "0.0.0.0",
+        "BB_SERVER_PORT",
+        "48886",
       ]),
     );
 
@@ -1771,7 +1764,7 @@ describe("bb-app launcher", () => {
       JSON.stringify({
         env: {
           BB_FF_PLACEHOLDER: "true",
-          BB_SERVER_BIND_HOST: "0.0.0.0",
+          BB_SERVER_BIND_HOST: "127.0.0.1",
           BB_SERVER_PORT: "48886",
           BB_TELEMETRY: "false",
         },

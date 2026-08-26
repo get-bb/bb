@@ -3,7 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { ensurePrivateDirectory, redactSensitiveText } from "../src/privacy.js";
+import {
+  ensurePrivateDirectory,
+  redactSensitiveLogValue,
+  redactSensitiveText,
+} from "../src/privacy.js";
 
 const LOGGER_IMPORT_SPECIFIER = "@bb/logger";
 
@@ -201,6 +205,17 @@ describe("logger privacy", () => {
     expect(redacted).toContain("jwt [REDACTED]");
     expect(redacted).not.toContain(credential);
     expect(redacted).not.toContain("bearer-example-value");
+  });
+
+  it("redacts credential-shaped values nested in arrays", () => {
+    const credential = "sk-example-array-secret";
+    expect(
+      redactSensitiveLogValue({
+        details: [{ token: credential }],
+      }),
+    ).toEqual({
+      details: [{ token: "[REDACTED]" }],
+    });
   });
 
   it("creates and repairs data and log directories with owner-only permissions", () => {
