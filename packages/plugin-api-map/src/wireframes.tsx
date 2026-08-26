@@ -259,6 +259,13 @@ function Mark({
   );
 }
 
+/**
+ * How long the palette stays away after running the demo command — long
+ * enough to read the checklist panel it opened, short enough that the
+ * page's subject is never missing when the reader looks back.
+ */
+const RELEASE_DEMO_MS = 2400;
+
 /** The palette row remains the real product action, separate from the badge. */
 function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const id = "command-palette-actions";
@@ -812,12 +819,23 @@ function RightPanelTabLaneBadges({
 export function CommandPaletteWireframe() {
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [releasePanelOpen, setReleasePanelOpen] = useState(false);
+  const restoreTimer = useRef<number | undefined>(undefined);
 
   const openPalette = () => setPaletteOpen(true);
+  // Running the command closes the palette just long enough to show its
+  // outcome — the checklist panel opening — then the palette restores
+  // itself. The palette is this page's subject, so it can never be left
+  // dismissed; the panel stays open behind it as the run's lasting effect.
   const runReleaseChecklist = () => {
     setPaletteOpen(false);
     setReleasePanelOpen(true);
+    window.clearTimeout(restoreTimer.current);
+    restoreTimer.current = window.setTimeout(
+      () => setPaletteOpen(true),
+      RELEASE_DEMO_MS,
+    );
   };
+  useEffect(() => () => window.clearTimeout(restoreTimer.current), []);
 
   return (
     <div

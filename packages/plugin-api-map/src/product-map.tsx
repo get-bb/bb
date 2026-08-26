@@ -571,12 +571,31 @@ function PanButton({
 /**
  * Keeps the stage exactly as tall as the slide on show, so a short fixture
  * does not leave the tallest one's empty space below it.
+ *
+ * The stage height animates only across pans, where it steps between two
+ * slides. During a same-page re-budget the slide's own height is already
+ * gliding on the fixture's 300ms ease; the stage follows it frame by frame
+ * so the card below moves 1:1 with the mock. A transition here would chase
+ * that moving target — restarting its ease against each observed tick —
+ * and let the card drift on for another ~300ms after the mock settles,
+ * which reads as two animations instead of one.
  */
 function useStageHeight(
   index: number,
   slideRefs: React.RefObject<Array<HTMLDivElement | null>>,
-): number | null {
+): { height: number | null; animate: boolean } {
   const [height, setHeight] = useState<number | null>(null);
+  const [animate, setAnimate] = useState(false);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    setAnimate(true);
+    const timer = window.setTimeout(() => setAnimate(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [index]);
   useEffect(() => {
     const slide = slideRefs.current[index];
     if (!slide) {
@@ -588,7 +607,7 @@ function useStageHeight(
     observer.observe(slide);
     return () => observer.disconnect();
   }, [index, slideRefs]);
-  return height;
+  return { height, animate };
 }
 
 export function ProductMap({
@@ -638,7 +657,7 @@ export function ProductMap({
       slides.findIndex((slide) => slide.id === initialSlideId),
     ),
   );
-  const stageHeight = useStageHeight(index, slideRefs);
+  const stage = useStageHeight(index, slideRefs);
 
   // The page selector is the sole horizontal scroller. Keep the active page
   // visible without asking scrollIntoView to move the document vertically.
@@ -839,9 +858,15 @@ export function ProductMap({
               />
             </div>
             <div
-              className="overflow-x-clip transition-[height] duration-300 ease-out"
+              className={cn(
+                "overflow-x-clip",
+                // See useStageHeight: the height glides only across pans;
+                // same-page re-budgets follow the slide's animated height
+                // frame by frame so the card tracks the mock 1:1.
+                stage.animate && "transition-[height] duration-300 ease-out",
+              )}
               style={{
-                ...(stageHeight === null ? undefined : { height: stageHeight }),
+                ...(stage.height === null ? undefined : { height: stage.height }),
                 // Clip the pan sideways only. `overflow: hidden` would also
                 // cut anything the live composer opens downward — its
                 // @-mention typeahead is taller than the room under the
@@ -869,9 +894,9 @@ export function ProductMap({
                     // the stage's height itself. The slide on stage is never
                     // capped: that is what lets the composer's typeahead out.
                     style={
-                      slideIndex === index || stageHeight === null
+                      slideIndex === index || stage.height === null
                         ? undefined
-                        : { maxHeight: stageHeight, overflow: "hidden" }
+                        : { maxHeight: stage.height, overflow: "hidden" }
                     }
                     // Markers sit slightly outside their region; the padding
                     // keeps them inside the stage's clip. No shared min-height:

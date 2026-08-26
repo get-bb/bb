@@ -335,6 +335,9 @@ in the top visual layer rather than merely having an unclipped rectangle.
   reference pans and opens the destination card in the same commit, so the
   pan, the destination's re-budget, and the card's arrival ride one 300ms
   gesture instead of a pan-then-open two-step.
+- A fixture demo may hide its page's subject (the command palette, the
+  composer) only as a timed beat that restores itself; it must never latch
+  the subject away behind a manual reopen control.
 - Use one Guide-owned gap between a fixture and its card: the card wrapper
   owns `clamp(8px, 3cqh, 28px)`, derived from the consumer's declared
   container and floored at 8 CSS pixels without one. The active carousel slide

@@ -9,6 +9,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 
 import { SURFACE_NUMBERS } from "../src/product-map";
@@ -61,7 +62,8 @@ describe("command palette guide interaction", () => {
     container.remove();
   });
 
-  it("closes the palette and opens the release-checklist tab, then reopens from the shortcut", () => {
+  it("closes the palette and opens the release-checklist tab, then restores it on its own", () => {
+    vi.useFakeTimers();
     const contract = anatomy.surfaceFixtures["command-palette-actions"];
     const action = container.querySelector<HTMLButtonElement>(
       '[data-guide-fixture="command-palette-action"]',
@@ -111,13 +113,32 @@ describe("command palette guide interaction", () => {
         ?.getAttribute("aria-selected"),
     ).toBe("true");
 
+    // The palette is this page's subject: running the command hides it only
+    // as a timed beat, then it restores itself with the panel still open.
+    act(() => vi.advanceTimersByTime(2400));
+    expect(
+      container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-guide-fixture="release-checklist-panel"]'),
+    ).not.toBeNull();
+
+    // The header shortcut restores it immediately, without waiting the beat.
+    const rerunAction = container.querySelector<HTMLButtonElement>(
+      '[data-guide-fixture="command-palette-action"]',
+    );
+    act(() => rerunAction?.click());
+    expect(
+      container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
+    ).toBeNull();
     const shortcut = container.querySelector<HTMLElement>(
       '[data-guide-fixture="command-palette-shortcut"]',
     );
     act(() => shortcut?.click());
-
     expect(
       container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
     ).not.toBeNull();
+
+    vi.useRealTimers();
   });
 });
