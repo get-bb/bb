@@ -7,6 +7,10 @@ const REPOSITORY_ROOT = join(import.meta.dirname, "../../..");
 const PLUGIN_ROOT = join(REPOSITORY_ROOT, "plugins/plugin-api-docs");
 const MAINTENANCE_SKILL_ROOT = join(
   REPOSITORY_ROOT,
+  ".bb/skills/plugin-guide-maintenance",
+);
+const PROVIDER_NATIVE_SKILL_ROOT = join(
+  REPOSITORY_ROOT,
   ".agents/skills/plugin-guide-maintenance",
 );
 const LEGACY_PLUGIN_SKILL_ROOT = join(
@@ -25,6 +29,7 @@ describe("Plugin Guide maintenance skill", () => {
     );
 
     expect(manifest.bb.skills).toEqual([]);
+    expect(existsSync(PROVIDER_NATIVE_SKILL_ROOT)).toBe(false);
     expect(existsSync(LEGACY_PLUGIN_SKILL_ROOT)).toBe(false);
     expect(
       existsSync(
