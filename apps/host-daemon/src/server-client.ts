@@ -26,6 +26,7 @@ import {
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
+import { validateServerUrl } from "@bb/config/public-url";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
@@ -399,6 +400,7 @@ export async function readHostArtifactBytes(
 export function createServerClient(
   options: CreateServerClientOptions,
 ): ServerClient {
+  const serverUrl = validateServerUrl("serverUrl", options.serverUrl);
   const fetchFn = options.fetchFn ?? fetch;
 
   function requireSessionId(): string {
@@ -423,7 +425,7 @@ export function createServerClient(
     pathname: string,
     query?: Record<string, string | undefined>,
   ): string {
-    const url = new URL(`/internal${pathname}`, options.serverUrl);
+    const url = new URL(`/internal${pathname}`, serverUrl);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined) {
@@ -499,9 +501,9 @@ export function createServerClient(
     async fetchProjectAttachment(
       args: FetchProjectAttachmentArgs,
     ): Promise<FetchedProjectAttachment> {
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+      if (!usesSecureInternalFetchTransport(serverUrl)) {
         throw new AbortError(
-          `Refusing to fetch project attachment over insecure server URL: ${options.serverUrl}`,
+          `Refusing to fetch project attachment over insecure server URL: ${serverUrl}`,
         );
       }
 
