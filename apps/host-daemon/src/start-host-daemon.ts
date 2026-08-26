@@ -8,6 +8,7 @@ import {
   setParcelWatcherBackend,
 } from "@bb/host-watcher";
 import { createLogger } from "@bb/logger";
+import { loadAdditionalWorkspaceWriteRoots } from "./additional-workspace-write-roots.js";
 import { createHostDaemonApp } from "./app.js";
 import {
   readHostAuthState,
@@ -49,6 +50,7 @@ export async function startHostDaemon(
   const resolvedConfig = loadHostDaemonStartConfig({});
   const dataDir = resolvedConfig.dataDir;
   const hostDaemonConfig = resolvedConfig.connectionConfig;
+  const additionalWorkspaceWriteRoots = loadAdditionalWorkspaceWriteRoots();
   // The real logger writes into the shared data dir, so it must not exist
   // before the lock is held (a losing daemon would mutate the winner's
   // rolling logs). Lock diagnostics delegate to it once it is created below;
@@ -211,6 +213,7 @@ export async function startHostDaemon(
       logger,
       releaseLock,
       localApiConfig,
+      additionalWorkspaceWriteRoots,
       runtimeShellEnv,
       runtimeShellEnvResolvedAtMs,
       resolveRuntimeShellEnv,

@@ -76,6 +76,9 @@ message agents, or inspect projects, providers, and environments.
   change, run `bb-app stop && bb-app start` or restart the desktop app. Until
   then, a server previously bound to `0.0.0.0` remains exposed even if
   `BB_SERVER_BIND_HOST` was changed or unset.
+- `BB_ADDITIONAL_WORKSPACE_WRITE_ROOTS` adds host-local absolute paths to every
+  provider workspace-write sandbox. Set it with `bb-app env`, separate paths
+  with the platform path delimiter, keep the list narrow, then restart bb.
 - Settings → General holds server-backed app-wide preferences. For details, read
   `references/app-settings.md` (in this skill's directory).
 - Keep Awake is a standalone builtin plugin. Use `bb keep-awake enable` and

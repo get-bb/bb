@@ -1194,6 +1194,35 @@ describe("RuntimeManager", () => {
     ]);
   });
 
+  it("merges host-configured workspace-write roots into created runtimes", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      additionalWorkspaceWriteRoots: [
+        "/home/user/.cache",
+        "/home/user/go/pkg/mod",
+        "/home/user/.cache",
+      ],
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntime();
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-configured-write-roots",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(runtimeOptions.current?.additionalWorkspaceWriteRoots).toEqual([
+      "/home/user/.cache",
+      "/home/user/go/pkg/mod",
+      "/tmp/bb-thread-storage",
+    ]);
+  });
+
   it("passes shell env through to created runtimes", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
@@ -1343,6 +1372,10 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
       createRuntime,
+      additionalWorkspaceWriteRoots: [
+        "/home/user/.cache",
+        "/home/user/.cache",
+      ],
       shellEnv: {
         PATH: "/old/bin:/usr/bin",
       },
@@ -1363,6 +1396,7 @@ describe("RuntimeManager", () => {
     expect(createRuntime).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
+        additionalWorkspaceWriteRoots: ["/home/user/.cache"],
         env: {
           PATH: "/new/bin:/usr/bin",
         },

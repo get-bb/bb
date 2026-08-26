@@ -49,6 +49,10 @@ change, run `bb-app stop && bb-app start` or restart the desktop app. Until
 then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
 `0.0.0.0` listener.
 
+`BB_ADDITIONAL_WORKSPACE_WRITE_ROOTS` adds host-local absolute paths to every
+provider workspace-write sandbox. Set it with `bb-app env`, separate paths with
+the platform path delimiter, keep the list narrow, then restart bb.
+
 With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
 `http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
 through loopback; this does not narrow the IPv4 wildcard listener. Containers

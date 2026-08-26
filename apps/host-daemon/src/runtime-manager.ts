@@ -194,6 +194,8 @@ interface RefreshEnvironmentWorkspaceArgs {
 }
 
 export interface RuntimeManagerOptions {
+  /** Host-local roots added to every provider workspace-write sandbox. */
+  additionalWorkspaceWriteRoots?: readonly string[];
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
   /**
    * Reads the daemon's cached provider-bridge policy at runtime creation.
@@ -372,7 +374,10 @@ export class RuntimeManager {
   private runtimeWorkspaceWriteRoots(
     args: RuntimeWorkspaceWriteRootsArgs,
   ): string[] {
-    const roots = [...args.workspaceRoots];
+    const roots = [
+      ...(this.options.additionalWorkspaceWriteRoots ?? []),
+      ...args.workspaceRoots,
+    ];
     if (args.threadStorageRootPath) {
       // Provider runtimes are environment-scoped and may host multiple threads.
       // BB_THREAD_STORAGE still points agents at their own thread subdirectory;
@@ -1413,7 +1418,10 @@ export class RuntimeManager {
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: [],
+      additionalWorkspaceWriteRoots: this.runtimeWorkspaceWriteRoots({
+        threadStorageRootPath: null,
+        workspaceRoots: [],
+      }),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,

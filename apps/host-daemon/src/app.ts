@@ -118,6 +118,7 @@ interface CreateHostDaemonAppOptions {
   autoUpdate?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
+  additionalWorkspaceWriteRoots?: readonly string[];
   createRuntime?: RuntimeManagerOptions["createRuntime"];
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
   runtimeShellEnvResolvedAtMs?: number;
@@ -499,6 +500,11 @@ export async function createHostDaemonApp(
     },
   });
   runtimeManager = new RuntimeManager({
+    ...(options.additionalWorkspaceWriteRoots !== undefined
+      ? {
+          additionalWorkspaceWriteRoots: options.additionalWorkspaceWriteRoots,
+        }
+      : {}),
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
