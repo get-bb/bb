@@ -248,7 +248,14 @@ jobs:
       # seeded project + threads) on the port the flows expect. Turbo builds
       # its prerequisites (plugin SDK, native modules) first; the script
       # prints one JSON line when it is ready and keeps running.
+      # phase2-webview-shell renders the real page inside the WebView, so the
+      # harness has to serve a built apps/app the way a bb server does.
+      - name: Build the web app for the WebView shell flow
+        run: pnpm exec turbo run build --filter=@bb/app
+
       - name: Start the e2e backend
+        env:
+          BB_MOBILE_E2E_SERVE_APP: "1"
         run: |
           set -x
           mkdir -p e2e-artifacts

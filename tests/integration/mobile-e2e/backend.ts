@@ -17,7 +17,10 @@
 // your user) to everyone on the network, the same exposure as
 // `bb --server-bind-host 0.0.0.0`. Use it only on a trusted network and stop
 // the backend when you are done.
+import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { PendingInteraction } from "@bb/domain";
 import { createIntegrationHarness } from "../helpers/harness.js";
 import type { IntegrationHarness } from "../helpers/harness.js";
@@ -33,6 +36,26 @@ import {
 import { waitForThreadStatus } from "../helpers/assertions.js";
 
 const DEFAULT_PORT = 41999;
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/**
+ * The built web app, when it exists. The WebView shell flow renders this
+ * page, so the harness has to serve it like a real bb server does. Every
+ * other flow drives native screens and does not care.
+ *
+ * Build it with `pnpm exec turbo run build --filter=@bb/app`.
+ */
+function readStaticDir(): string | undefined {
+  if (process.env.BB_MOBILE_E2E_SERVE_APP !== "1") return undefined;
+  const dist = resolve(repoRoot, "apps/app/dist");
+  if (!existsSync(resolve(dist, "index.html"))) {
+    throw new Error(
+      `BB_MOBILE_E2E_SERVE_APP=1 but ${dist}/index.html is missing. Run: pnpm exec turbo run build --filter=@bb/app`,
+    );
+  }
+  return dist;
+}
 
 function readPort(): number {
   const raw = process.env.BB_MOBILE_E2E_PORT;
@@ -196,6 +219,7 @@ async function main(): Promise<void> {
   const harness = await createIntegrationHarness({
     bindHost,
     serverPort,
+    staticDir: readStaticDir(),
   });
 
   const shutdown = async (signal: string) => {

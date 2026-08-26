@@ -122,6 +122,13 @@ export interface CreateHarnessOptions {
    * 127.0.0.1 either way.
    */
   bindHost?: "127.0.0.1" | "0.0.0.0";
+  /**
+   * Serve a built `apps/app` bundle from this directory, the way a real bb
+   * server does. The mobile WebView shell renders that page, so its Maestro
+   * flow needs the harness to serve it; every other test leaves this unset
+   * and the server answers API routes only.
+   */
+  staticDir?: string;
 }
 
 export type WithHarnessCallback<T> = (
@@ -308,27 +315,34 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
-  const { app, injectWebSocket } = createApp({
-    appVersion,
-    bbAppManagedConfig,
-    providerRegistry,
-    providerNativeRoots: createProviderNativeRootsCache(),
-    pluginHostArtifacts,
-    aiServices,
-    config,
-    db,
-    hub,
-    lifecycleDedupers,
-    logger: testLogger,
-    machineAuth,
-    pendingInteractions,
-    sharedPorts,
-    skillTreeRegistry,
-    telemetry,
-    terminalSessions,
-    watchInterests,
-    workspaceReadCaches,
-  });
+  const { app, injectWebSocket } = createApp(
+    {
+      appVersion,
+      bbAppManagedConfig,
+      providerRegistry,
+      providerNativeRoots: createProviderNativeRootsCache(),
+      pluginHostArtifacts,
+      aiServices,
+      config,
+      db,
+      hub,
+      lifecycleDedupers,
+      logger: testLogger,
+      machineAuth,
+      pendingInteractions,
+      sharedPorts,
+      skillTreeRegistry,
+      telemetry,
+      terminalSessions,
+      watchInterests,
+      workspaceReadCaches,
+    },
+    // createApp takes its options separately from its dependencies; staticDir
+    // belongs here, not in the deps object.
+    options.staticDir === undefined
+      ? undefined
+      : { staticDir: options.staticDir },
+  );
 
   let addressInfo: ListeningAddress | null = null;
   const server = serve(

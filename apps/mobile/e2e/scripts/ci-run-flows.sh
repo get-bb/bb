@@ -10,9 +10,14 @@
 #
 # Default flows (in this order; later ones depend on seeds the earlier ones
 # leave alone): smoke, phase1-shell, phase4a-timeline, phase3-compose,
-# phase4b-send, phase6-panel. The script creates the threads the title-based
-# flows open ("P4b send" idle; "P6 panel thread" with a dirty managed
-# worktree) through the API first.
+# phase4b-send, phase6-panel, phase2-webview-shell. The script creates the
+# threads the title-based flows open ("P4b send" idle; "P6 panel thread" with
+# a dirty managed worktree) through the API first.
+#
+# phase2-webview-shell drives the page inside the WebView, so it needs the
+# backend started with BB_MOBILE_E2E_SERVE_APP=1 and a built apps/app. It runs
+# last because it leaves the shell switch off again but does touch a seeded
+# thread.
 #
 # Environment: SERVER_URL (default http://127.0.0.1:41999; the flows' own
 # env blocks point at the same port), MAESTRO_FLAGS (extra `maestro test`
@@ -37,7 +42,7 @@ ARTIFACTS="${2:?artifacts dir}"
 shift 2
 FLOWS=("$@")
 if [ ${#FLOWS[@]} -eq 0 ]; then
-  FLOWS=(smoke phase1-shell phase4a-timeline phase3-compose phase4b-send phase6-panel)
+  FLOWS=(smoke phase1-shell phase4a-timeline phase3-compose phase4b-send phase6-panel phase2-webview-shell)
 fi
 
 export SERVER_URL="${SERVER_URL:-http://127.0.0.1:41999}"
