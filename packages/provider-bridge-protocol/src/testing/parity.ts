@@ -300,7 +300,10 @@ export interface ReplayRecordingOptions {
    * alone lands before them, at a point the recording never had.
    */
   orderTimeoutMs?: number;
-  /** Quiet period after the last request before the bridge is closed. */
+  /**
+   * Quiet period after the last request before a non-exact replay is closed.
+   * An exact current-lane replay waits for every planned event instead.
+   */
   settleMs?: number;
   /**
    * Quiet period a request waits for once the gates are met. The replay child
@@ -545,10 +548,15 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const liveAssembler = options.createAssembler(providerId);
   const planAssembler = (options.createPlanAssembler ?? options.createAssembler)(providerId);
   const exactPlan = options.planFromCurrentLane === true;
-  const steps = planRuntimeSteps(
-    exactPlan ? withCurrentBridgeLane(recording) : recording,
-    planAssembler,
-  );
+  const planRecording = exactPlan ? withCurrentBridgeLane(recording) : recording;
+  const steps = planRuntimeSteps(planRecording, planAssembler);
+  const plannedEventCount = exactPlan
+    ? assembleRecordedEvents(
+        planRecording,
+        options.createPlanAssembler ?? options.createAssembler,
+        providerId,
+      ).events.length
+    : null;
 
   const answeredIds = new Set<string>();
   const pendingBridgeRequests: { id: string | number; method: string }[] = [];
@@ -752,8 +760,21 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   }
   setCursor("end");
   await waitFor("the last responses", () => sentRequestIds.every((id) => answeredIds.has(id)));
-  // Let trailing notifications drain, then close the wire like the runtime.
-  await waitFor("the stream to settle", () => Date.now() - lastOutputAt >= settleMs);
+  // An exact plan is this bridge's own recorded lane, so its complete accepted
+  // event count is the deterministic end of replay. Output silence is not:
+  // the provider child and bridge can be alive in provider-internal control
+  // flow without emitting runtime deltas, especially under scheduler load.
+  if (plannedEventCount !== null) {
+    await waitFor(
+      `all ${plannedEventCount} planned events before closing the bridge`,
+      () => events.length >= plannedEventCount,
+    );
+  } else {
+    // A bridge compared with a lane from another version may deliberately
+    // emit fewer events, so only that non-exact comparison needs the quiet
+    // fallback to terminate and report its parity diff.
+    await waitFor("the stream to settle", () => Date.now() - lastOutputAt >= settleMs);
+  }
   child.stdin?.end();
   const exitCode = await Promise.race([
     exited,
