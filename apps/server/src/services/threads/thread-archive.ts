@@ -1,4 +1,5 @@
 import {
+  archiveThread,
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
@@ -33,9 +34,13 @@ interface ArchiveThreadEnvironment {
   id: string;
 }
 
-interface ArchiveThreadWithLifecycleEffectsArgs {
+interface ArchiveThreadTarget {
   environment: ArchiveThreadEnvironment | null;
   thread: Pick<Thread, "environmentId" | "id" | "status">;
+}
+
+interface ArchiveThreadWithLifecycleEffectsArgs extends ArchiveThreadTarget {
+  releaseChildren: boolean;
 }
 
 interface ResolveArchiveThreadEnvironmentArgs {
@@ -85,9 +90,9 @@ function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
-  const archivedThread = archiveThreadAndReleaseChildren(deps, {
-    threadId: args.thread.id,
-  });
+  const archivedThread = args.releaseChildren
+    ? archiveThreadAndReleaseChildren(deps, { threadId: args.thread.id })
+    : archiveThread(deps.db, deps.hub, args.thread.id);
   if (!archivedThread) {
     return null;
   }
@@ -126,9 +131,12 @@ function archiveThreadWithLifecycleEffects(
  */
 export function archiveThreadAndHiddenSourceForks(
   deps: AppDeps,
-  args: ArchiveThreadWithLifecycleEffectsArgs,
+  args: ArchiveThreadTarget,
 ): Thread | null {
-  const archivedThread = archiveThreadWithLifecycleEffects(deps, args);
+  const archivedThread = archiveThreadWithLifecycleEffects(deps, {
+    ...args,
+    releaseChildren: true,
+  });
   if (!archivedThread) {
     return null;
   }
@@ -137,6 +145,7 @@ export function archiveThreadAndHiddenSourceForks(
   })) {
     archiveThreadWithLifecycleEffects(deps, {
       environment: resolveArchiveThreadEnvironment(deps, { thread: fork }),
+      releaseChildren: true,
       thread: fork,
     });
   }
@@ -155,6 +164,9 @@ export function archiveEnvironmentThreads(
   for (const thread of threads) {
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment: args.environment,
+      // This operation is scoped to one worktree. Releasing a live child in
+      // another environment would mutate ownership outside that scope.
+      releaseChildren: false,
       thread,
     });
     if (!result) {
@@ -206,6 +218,7 @@ export function archiveThreadAndChildren(
     const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment,
+      releaseChildren: true,
       thread,
     });
     if (!result) {

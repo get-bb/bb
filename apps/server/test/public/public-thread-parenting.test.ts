@@ -2,6 +2,7 @@ import { getThread } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
+  environmentArchiveThreadsResponseSchema,
   sidebarBootstrapResponseSchema,
   threadArchiveAllResponseSchema,
   threadChildSummaryResponseSchema,
@@ -404,6 +405,54 @@ describe("public thread parenting routes", () => {
       const archivedChildThread = getThread(harness.db, childThread.id);
       expect(archivedChildThread?.archivedAt).not.toBeNull();
       expect(archivedChildThread?.parentThreadId).toBe(parentThread.id);
+    });
+  });
+
+  it("preserves child ownership outside an archived worktree", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        path: "/tmp/child-test-environment",
+        projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
+        projectId: project.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        environmentId: childEnvironment.id,
+        parentThreadId: parentThread.id,
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${parentEnvironment.id}/archive-threads`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        environmentArchiveThreadsResponseSchema.parse(await readJson(response)),
+      ).toEqual({
+        ok: true,
+        archivedThreadIds: [parentThread.id],
+      });
+      expect(getThread(harness.db, parentThread.id)?.archivedAt).not.toBeNull();
+      const preservedChild = getThread(harness.db, childThread.id);
+      expect(preservedChild?.archivedAt).toBeNull();
+      expect(preservedChild?.parentThreadId).toBe(parentThread.id);
     });
   });
 
