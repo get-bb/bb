@@ -1,13 +1,27 @@
-import { Extension, InputRule, Node, type Extensions } from "@tiptap/core";
+import {
+  Extension,
+  getHTMLFromFragment,
+  InputRule,
+  Node,
+  type Extensions,
+} from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
+import Table from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { DOMOutputSpec } from "@tiptap/pm/model";
+import {
+  Fragment,
+  type DOMOutputSpec,
+  type Node as ProseMirrorNode,
+} from "@tiptap/pm/model";
 import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import type { IconSvgElement } from "@hugeicons/react";
 import { BubbleChatIcon } from "@hugeicons/core-free-icons";
@@ -92,6 +106,100 @@ const MarkdownTaskInput = Extension.create({
         },
       }),
     ];
+  },
+});
+
+interface TableMarkdownState {
+  out: string;
+  inTable: boolean;
+  write(value: string): void;
+  ensureNewLine(): void;
+  closeBlock(node: ProseMirrorNode): void;
+  renderInline(node: ProseMirrorNode): void;
+}
+
+function tableChildren(node: ProseMirrorNode): readonly ProseMirrorNode[] {
+  return node.content.content;
+}
+
+function hasMergedCell(node: ProseMirrorNode): boolean {
+  return node.attrs.colspan > 1 || node.attrs.rowspan > 1;
+}
+
+function isMarkdownTable(node: ProseMirrorNode): boolean {
+  const [header, ...body] = tableChildren(node);
+  if (!header) return false;
+  if (
+    tableChildren(header).some(
+      (cell) =>
+        cell.type.name !== "tableHeader" ||
+        hasMergedCell(cell) ||
+        cell.childCount > 1,
+    )
+  ) {
+    return false;
+  }
+  return !body.some((row) =>
+    tableChildren(row).some(
+      (cell) =>
+        cell.type.name === "tableHeader" ||
+        hasMergedCell(cell) ||
+        cell.childCount > 1,
+    ),
+  );
+}
+
+function renderTableCell(
+  state: TableMarkdownState,
+  cell: ProseMirrorNode,
+): void {
+  const content = cell.firstChild;
+  if (!content?.textContent.trim()) return;
+  const start = state.out.length;
+  state.renderInline(content);
+  state.out =
+    state.out.slice(0, start) +
+    state.out.slice(start).replaceAll("|", "\\|");
+}
+
+// tiptap-markdown's table serializer does not escape pipes inside cells.
+// Escaping every rendered pipe keeps text, code, and link destinations inside
+// their original cell when an edited agent comment is serialized again.
+const MarkdownTable = Table.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: TableMarkdownState, node: ProseMirrorNode) {
+          if (!isMarkdownTable(node)) {
+            state.write(
+              getHTMLFromFragment(Fragment.from(node), node.type.schema),
+            );
+            state.closeBlock(node);
+            return;
+          }
+
+          state.inTable = true;
+          node.forEach((row, _offset, rowIndex) => {
+            state.write("| ");
+            row.forEach((cell, _cellOffset, cellIndex) => {
+              if (cellIndex > 0) state.write(" | ");
+              renderTableCell(state, cell);
+            });
+            state.write(" |");
+            state.ensureNewLine();
+            if (rowIndex === 0) {
+              state.write(
+                `| ${Array.from({ length: row.childCount }, () => "---").join(" | ")} |`,
+              );
+              state.ensureNewLine();
+            }
+          });
+          state.closeBlock(node);
+          state.inTable = false;
+        },
+        parse: {},
+      },
+    };
   },
 });
 
@@ -325,6 +433,10 @@ export function createEditorExtensions(options?: {
     Image.configure({ allowBase64: false }),
     TightTaskList,
     TaskItem.configure({ nested: true }),
+    MarkdownTable.configure({ resizable: true, lastColumnResizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     MarkdownTaskInput,
     TaskMention,
     ThreadMention,

@@ -71,6 +71,36 @@ describe("markdown round-trip", () => {
   it.each(cases)("preserves %s", (_name, markdown) => {
     expect(roundTrip(markdown)).toBe(markdown);
   });
+
+  it("preserves table rows and cells", () => {
+    const markdown =
+      "| Item | Owner |\n| --- | --- |\n| Parser | Ada |\n| Styles | Lin |";
+
+    expect(roundTrip(markdown).trimEnd()).toBe(markdown);
+  });
+
+  it.each([
+    ["plain text", "left \\| right"],
+    ["inline code", "`left\\|right`"],
+  ])("preserves a pipe inside table-cell %s", (_name, cell) => {
+    const markdown = `| Value |\n| --- |\n| ${cell} |`;
+
+    expect(roundTrip(markdown).trimEnd()).toBe(markdown);
+  });
+
+  it("renders table headers and cells", () => {
+    const screen = render(
+      <TasksEditor
+        value={"| Item | Owner |\n| --- | --- |\n| Parser | Ada |"}
+        onChange={() => undefined}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getAllByRole("columnheader")).toHaveLength(2);
+    expect(screen.getAllByRole("cell")).toHaveLength(2);
+  });
 });
 
 describe("mention extension", () => {

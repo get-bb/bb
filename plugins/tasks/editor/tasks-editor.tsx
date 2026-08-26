@@ -78,6 +78,16 @@ const EDITOR_CSS = `
 .bb-tasks-editor .tiptap blockquote { border-left: 2px solid var(--border); padding-left: 0.85em; margin: 0.75em 0 0; color: var(--muted-foreground); }
 .bb-tasks-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0 0; }
 .bb-tasks-editor .tiptap img { display: block; max-width: 100%; max-height: 24rem; margin: 0.9em 0 0; border-radius: var(--radius); border: 1px solid var(--border); }
+.bb-tasks-editor .tiptap .tableWrapper { margin: 0.9em 0 0; overflow-x: auto; }
+.bb-tasks-editor .tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.bb-tasks-editor .tiptap th,
+.bb-tasks-editor .tiptap td { position: relative; min-width: 6rem; border: 1px solid var(--border); padding: 0.45em 0.6em; text-align: left; vertical-align: top; }
+.bb-tasks-editor .tiptap th { background: var(--muted); font-weight: 600; }
+.bb-tasks-editor .tiptap :is(th, td) > p { margin-top: 0; }
+.bb-tasks-editor .tiptap :is(th, td) > p + p { margin-top: 0.5em; }
+.bb-tasks-editor .tiptap .selectedCell::after { position: absolute; inset: 0; z-index: 2; pointer-events: none; content: ""; background: color-mix(in oklab, var(--primary) 14%, transparent); }
+.bb-tasks-editor .tiptap .column-resize-handle { position: absolute; top: 0; right: -2px; bottom: -1px; width: 4px; z-index: 3; pointer-events: none; background: var(--primary); }
+.bb-tasks-editor .tiptap.resize-cursor { cursor: col-resize; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.3em; padding-left: 0; }
