@@ -332,7 +332,9 @@ in the top visual layer rather than merely having an unclipped rectangle.
   pages rather than removing its control.
 - Open the annotation card in normal flow below the fixture so it never covers
   the entry point. Panning pages closes the old card; following a cross-page
-  reference lands on the destination before opening its card.
+  reference pans and opens the destination card in the same commit, so the
+  pan, the destination's re-budget, and the card's arrival ride one 300ms
+  gesture instead of a pan-then-open two-step.
 - Use one Guide-owned gap between a fixture and its card: the card wrapper
   owns `clamp(8px, 3cqh, 28px)`, derived from the consumer's declared
   container and floored at 8 CSS pixels without one. The active carousel slide

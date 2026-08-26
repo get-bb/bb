@@ -182,14 +182,6 @@ function PlatformSlide({ group }: { group: SurfaceGroup }) {
 }
 
 /**
- * Fallback for environments where the pan's CSS transition never fires a
- * `transitionend` (reduced motion, detached layout, jsdom). The normal path
- * opens a followed reference's card on the transition's own end event, so
- * this is a ceiling, not the pacing.
- */
-const PAN_FALLBACK_MS = 600;
-
-/**
  * Fixtures render proportionally larger on roomy displays, up to this
  * legibility ceiling — past it, transform-scaled product chrome starts to
  * read as a zoomed screenshot rather than a diagram, and non-integer
@@ -639,7 +631,6 @@ export function ProductMap({
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
   const pageListEdges = useScrollEdges(pageListRef);
   const [index, setIndex] = useState(() =>
     Math.max(
@@ -667,51 +658,32 @@ export function ProductMap({
   const carets = panCarets(index, slides.length);
 
   // Panning away from a card's marker would strand the card, so it closes.
-  // A pan also supersedes any reference-follow still waiting on a previous
-  // pan, so a stale open can never land on the wrong slide.
   const show = (next: number) => {
     if (next < 0 || next >= slides.length) {
       return;
     }
     card.close();
     setHoverId(null);
-    setPendingOpenId(null);
     setIndex(next);
     onSlideChange?.(slides[next].id);
   };
 
   /**
    * Follows a card's cross-reference: pan to the slide that draws the named
-   * surface, then open its card. The open waits for the pan to land because
-   * opening re-budgets the destination slide's stage height (the card's
-   * footprint subtracts from the fixture's available height), and doing that
-   * mid-pan would animate two heights against each other. The landing signal
-   * is the track's own `transitionend` (see the stage below); the effect
-   * provides only a ceiling for environments without one.
+   * surface and open its card in the same commit, so the pan, the
+   * destination's re-budget, and the card's arrival all ride one 300ms
+   * gesture. The hidden probe makes the destination's card-open size
+   * deterministic up front — waiting for the pan to land and only then
+   * opening read as two separate animations.
    */
   const goToSurface = (id: string) => {
     const group = GROUP_BY_SURFACE_ID.get(id);
     if (!group) return;
     const target = slides.findIndex((slide) => slide.id === group.id);
     if (target === -1) return;
-    if (target === index) {
-      card.open(id);
-      return;
-    }
-    show(target);
-    setPendingOpenId(id);
+    if (target !== index) show(target);
+    card.open(id);
   };
-
-  useEffect(() => {
-    if (pendingOpenId === null) return;
-    const timer = window.setTimeout(() => {
-      setPendingOpenId(null);
-      card.open(pendingOpenId);
-    }, PAN_FALLBACK_MS);
-    return () => window.clearTimeout(timer);
-    // `card.open` is rebuilt each render by design: it reads live geometry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingOpenId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "ArrowRight") {
@@ -881,17 +853,6 @@ export function ProductMap({
               <div
                 className="flex transition-transform duration-300 ease-out"
                 style={{ transform: `translateX(-${index * 100}%)` }}
-                onTransitionEnd={(event) => {
-                  if (
-                    event.target !== event.currentTarget ||
-                    event.propertyName !== "transform" ||
-                    pendingOpenId === null
-                  ) {
-                    return;
-                  }
-                  setPendingOpenId(null);
-                  card.open(pendingOpenId);
-                }}
               >
                 {slides.map((entry, slideIndex) => (
                   <div
