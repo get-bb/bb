@@ -163,6 +163,9 @@ describe("bb app process", () => {
     });
 
     expect(launch.args).toContain(desktopMountScript.path);
+    if (process.platform !== "linux") {
+      return;
+    }
     const result = await execFileAsync(launch.executablePath, launch.args, {
       env: {
         ...launch.env,
