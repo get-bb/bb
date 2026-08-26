@@ -20,6 +20,7 @@
     "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir --arm64",
     "package:linux": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --linux --dir --x64",
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
+    "smoke:appimage-lifecycle": "node scripts/smoke-linux-appimage-lifecycle.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "start:linux": "pnpm run package:linux && node scripts/run-packaged-app.mjs",

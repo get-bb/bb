@@ -665,6 +665,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Install AppImage FUSE runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libfuse2
+
       - name: Apply the nightly version
         id: nightly_version
         env:
@@ -702,6 +707,11 @@ jobs:
         # The packaged app opens a real BrowserWindow, so the headless runner
         # needs a virtual display.
         run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Smoke test nightly AppImage mount lifecycle
+        # Launches the generated AppImage itself, tears down only its GUI mount,
+        # and verifies the separately mounted owned runtime remains healthy.
+        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Generate nightly desktop version feed
         run: pnpm --dir apps/desktop run desktop:version-feed

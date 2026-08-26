@@ -189,6 +189,13 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#smoke:appimage-lifecycle": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "*"
+      ]
+    },
     "@bb/desktop#dev": {
       "dependsOn": ["bb-app#build"],
       "cache": false,
