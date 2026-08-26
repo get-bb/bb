@@ -787,6 +787,7 @@ const codexRateLimitSnapshotUpdateSchema = z
     secondary: codexRateLimitWindowSchema.nullable().optional(),
     credits: codexCreditsSnapshotSchema.nullable().optional(),
     individualLimit: codexSpendControlLimitSnapshotSchema.nullable().optional(),
+    spendControlReached: z.boolean().nullable().optional(),
     planType: z.string().nullable().optional(),
     rateLimitReachedType: z.string().nullable().optional(),
   })
@@ -802,6 +803,7 @@ export interface CodexRateLimitSnapshot {
   secondary: z.output<typeof codexRateLimitWindowSchema> | null;
   credits: z.output<typeof codexCreditsSnapshotSchema> | null;
   individualLimit: z.output<typeof codexSpendControlLimitSnapshotSchema> | null;
+  spendControlReached: boolean | null;
   planType: string | null;
   rateLimitReachedType: string | null;
 }

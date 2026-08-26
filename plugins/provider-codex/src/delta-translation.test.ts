@@ -13,9 +13,14 @@ import {
   PLAN_PRESENTATION,
 } from "./presentation.js";
 import {
+  applyCodexRateLimitUpdate,
+  createCodexEventTranslationState,
+} from "./delta-translation.js";
+import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "./translator.js";
+import { codexRateLimitReadResponseSchema } from "./schemas.js";
 
 /**
  * Per-event Codex translation equivalence for the narrow-grammar path.
@@ -1959,6 +1964,65 @@ describe("codex error and warning translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex account rate-limit translation", () => {
+  const blockedSpendControlSnapshot = {
+    limitId: "codex",
+    limitName: "Codex",
+    primary: null,
+    secondary: null,
+    credits: null,
+    individualLimit: null,
+    spendControlReached: true,
+    planType: "team",
+    rateLimitReachedType: null,
+  } as const;
+
+  it("carries Codex spend-control state from the initial read", () => {
+    const response = codexRateLimitReadResponseSchema.parse({
+      rateLimits: blockedSpendControlSnapshot,
+    });
+    const snapshot = applyCodexRateLimitUpdate(
+      createCodexEventTranslationState(),
+      response.rateLimits,
+    );
+
+    expect(snapshot.spendControlReached).toBe(true);
+  });
+
+  it.each([
+    ["null", { spendControlReached: null }],
+    ["absence", {}],
+  ])("does not resurrect blocked spend control after %s", (_, clearUpdate) => {
+    const harness = createHarness();
+    const [blockedEvent] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: blockedSpendControlSnapshot,
+      }),
+    );
+    expect(blockedEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "spend-control",
+        windows: [],
+        reachedReason: null,
+      },
+    });
+
+    const [clearedEvent] = harness.translate({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: { rateLimits: clearUpdate },
+    });
+    expect(clearedEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "unknown",
+        kind: "unknown",
+        reachedReason: null,
+      },
+    });
+  });
+
   it("preserves Codex subscription rate limits", () => {
     const harness = createHarness();
     const events = harness.translate(
