@@ -100,6 +100,19 @@ export function newThreadHref(params: NewThreadHrefParams = {}): Href {
   });
 }
 
+/**
+ * The WebView shell (`/webview`): one screen that renders the page for a
+ * profile. `path` is a page path, not a mobile route.
+ */
+export function webViewShellHref(
+  params: { profileId?: string; path?: string } = {},
+): Href {
+  return untypedHref("/webview", {
+    profileId: params.profileId,
+    path: params.path,
+  });
+}
+
 /** Project settings (sources add/remove; owned by the project screens). */
 export function projectSettingsHref(projectId: string): Href {
   return untypedHref("/projects/[id]/settings", { id: projectId });
@@ -193,6 +206,7 @@ export function registrySkillDetailHref(registrySkillId: string): Href {
 // --- Settings, machines, updates (Phase 7; owned by @/screens/settings + machines)
 
 type SettingsSectionRoute =
+  | "device"
   | "general"
   | "appearance"
   | "experiments"

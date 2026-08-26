@@ -1,0 +1,8 @@
+# Phase 0 spike helper: focus a point, type text, and press Enter.
+# Usage: maestro test -e POINT="30%,46%" -e TEXT="echo hi" e2e/spike/type.yaml
+appId: app.getbb.mobile
+---
+- tapOn:
+    point: ${POINT}
+- inputText: ${TEXT}
+- pressKey: Enter

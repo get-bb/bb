@@ -13,3 +13,4 @@ export {
   useConnectionBanner,
   useRealtimeConnectionState,
 } from "./useRealtimeState";
+export { QuickActionsHandler } from "./QuickActionsHandler";

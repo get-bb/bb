@@ -1,13 +1,16 @@
 // Expo Router calls `redirectSystemPath` for every incoming URL (cold start
 // and while running) before routing it: the `bb://` scheme, universal links
 // (`https://<handle>.getbb.app/threads/<id>`), the dev-client's own URLs.
-// Pure resolution lives in src/lib/links; this file does the RN side:
-// activate the profile that owns a web link, wait for its connection, and
-// send unknown servers to the add-server screen with the link remembered.
+// Pure resolution lives in src/lib/links and src/lib/shell; this file does the
+// RN side: pick the resolver for the current shell mode, activate the profile
+// that owns a web link, wait for its connection, and send unknown servers to
+// the add-server screen with the link remembered.
 import { waitForActiveConnection } from "@/app-shell/connector";
 import { e2eModeEnabled } from "@/app-shell/e2e";
 import { addServerPathForLink, resolveIncomingLink } from "@/lib/links";
 import { getProfileStore } from "@/lib/native";
+import { resolveShellIncomingLink } from "@/lib/shell";
+import { getShellPreferenceStore } from "@/lib/shell/shell-preference-store";
 
 export async function redirectSystemPath({
   path,
@@ -19,11 +22,16 @@ export async function redirectSystemPath({
     const store = getProfileStore();
     await store.load();
     const snapshot = store.getSnapshot();
-    const resolution = resolveIncomingLink(path, {
+    const context = {
       profiles: snapshot.profiles,
       activeProfileId: snapshot.activeProfileId,
       developerRoutesEnabled: e2eModeEnabled,
-    });
+    };
+    // In shell mode the page owns almost every surface, so a link resolves to
+    // one WebView route carrying a web path instead of a native route.
+    const resolution = getShellPreferenceStore().isEnabled()
+      ? resolveShellIncomingLink(path, context)
+      : resolveIncomingLink(path, context);
     switch (resolution.kind) {
       case "passthrough":
         return path;

@@ -221,6 +221,12 @@ export function RootNavigator() {
           name="dev/connect-spike"
           options={{ title: "Connect spike" }}
         />
+        <Stack.Screen name="dev/webview-spike" options={hiddenHeader} />
+        <Stack.Screen name="webview" options={hiddenHeader} />
+        <Stack.Screen
+          name="settings/device"
+          options={{ title: "This device" }}
+        />
         <Stack.Screen name="e2e/reset" options={hiddenHeader} />
         <Stack.Screen
           name="projects/new"

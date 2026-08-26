@@ -21,9 +21,14 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       },
-      "associatedDomains": ["applinks:getbb.app", "applinks:*.getbb.app"]
+      "associatedDomains": [
+        "applinks:getbb.app",
+        "applinks:*.getbb.app"
+      ]
     },
     "android": {
       "package": "app.getbb.mobile",
@@ -55,7 +60,10 @@
               "pathPrefix": "/settings/"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -88,6 +96,7 @@
           "defaultChannel": "threads"
         }
       ],
+      "expo-quick-actions",
       "expo-camera",
       "expo-image-picker",
       [

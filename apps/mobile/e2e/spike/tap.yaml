@@ -1,0 +1,5 @@
+# Phase 0 spike helper: tap one control on the WebView spike screen.
+# Usage: maestro test -e LABEL="Voice" e2e/spike/tap.yaml
+appId: app.getbb.mobile
+---
+- tapOn: ${LABEL}

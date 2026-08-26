@@ -1,0 +1,5 @@
+appId: app.getbb.mobile
+---
+- swipe:
+    start: 30%, 45%
+    end: 30%, 60%

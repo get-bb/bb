@@ -111,6 +111,18 @@ export function SettingsScreen() {
         footnote="Haptics play on pickers, send, approvals, and destructive actions."
       >
         <GroupedRow
+          title="This device"
+          subtitle="Servers, haptics, and the web interface"
+          badge={{
+            icon: "Smartphone",
+            symbol: "iphone",
+            color: colors.blue,
+          }}
+          trailing="chevron"
+          onPress={() => router.push(settingsSectionHref("device"))}
+          testID="settings-device"
+        />
+        <GroupedRow
           title="General"
           badge={{
             icon: "Settings",

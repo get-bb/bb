@@ -1,0 +1,6 @@
+# Phase 0 spike helper: tap a screen point, given as a percentage pair.
+# Usage: maestro test -e POINT="50%,25%" e2e/spike/tap-point.yaml
+appId: app.getbb.mobile
+---
+- tapOn:
+    point: ${POINT}

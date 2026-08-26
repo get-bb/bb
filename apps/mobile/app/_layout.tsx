@@ -11,6 +11,7 @@ import {
   PaletteProvider,
   ProfilesProvider,
   ServerPaletteSync,
+  QuickActionsHandler,
   ShareIntentHandler,
   ThreadOpenSignalHandler,
   useAppBoot,
@@ -52,6 +53,7 @@ export default function RootLayout() {
                     <RootNavigator />
                     <ThreadOpenSignalHandler />
                     <ShareIntentHandler />
+                    <QuickActionsHandler />
                     <Toaster />
                   </SheetProvider>
                 </ProfilesProvider>

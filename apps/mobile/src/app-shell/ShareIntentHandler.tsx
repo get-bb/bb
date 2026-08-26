@@ -5,7 +5,8 @@ import {
   loadShareIntentModule,
   type ShareIntentModule,
 } from "@/lib/share";
-import { newThreadHref } from "@/screens/shell/hrefs";
+import { useWebViewShellEnabled } from "@/lib/shell";
+import { newThreadHref, webViewShellHref } from "@/screens/shell/hrefs";
 import { toast } from "@/ui";
 import { useProfiles } from "./ProfilesProvider";
 
@@ -30,6 +31,7 @@ function ShareIntentHandlerWithModule({
 }) {
   const router = useRouter();
   const { activeProfile } = useProfiles();
+  const [webViewShell] = useWebViewShellEnabled();
   const { hasShareIntent, shareIntent, resetShareIntent, error } =
     module.useShareIntent({ resetOnBackground: true });
   useEffect(() => {
@@ -50,7 +52,22 @@ function ShareIntentHandlerWithModule({
       toast.info("Only text and links can be sent to bb for now.");
       return;
     }
-    router.navigate(newThreadHref({ initialPrompt: seed.initialPrompt }));
-  }, [activeProfile, hasShareIntent, resetShareIntent, router, shareIntent]);
+    // The page's root is its compose view, so a shared link seeds it through
+    // the same `initialPrompt` query the native dock uses.
+    router.navigate(
+      webViewShell
+        ? webViewShellHref({
+            path: `/?initialPrompt=${encodeURIComponent(seed.initialPrompt)}`,
+          })
+        : newThreadHref({ initialPrompt: seed.initialPrompt }),
+    );
+  }, [
+    activeProfile,
+    hasShareIntent,
+    resetShareIntent,
+    router,
+    shareIntent,
+    webViewShell,
+  ]);
   return null;
 }

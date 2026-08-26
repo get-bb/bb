@@ -1,0 +1,12 @@
+# Phase 0 spike helper: pair the native app with a Direct-mode server so the
+# native composer can be compared against the WebView composer.
+appId: app.getbb.mobile
+---
+- launchApp:
+    appId: app.getbb.mobile
+- tapOn:
+    text: "https://bb.example.ts.net"
+- inputText: "http://localhost:26524"
+- hideKeyboard
+- tapOn:
+    text: "Connect"
