@@ -861,11 +861,13 @@ function WorkflowPreviewLoaded({
 function WorkflowRunPanel({ threadId, params }: PluginThreadPanelProps) {
   const runId = panelRunId(params);
   return (
-    <div className="h-full min-h-0 flex-1 p-4">
+    <div className="h-full min-h-0 flex-1 bg-border">
       {runId === undefined ? (
-        <EmptyOrError>
-          This workflow panel has invalid run parameters.
-        </EmptyOrError>
+        <div className="p-4">
+          <EmptyOrError>
+            This workflow panel has invalid run parameters.
+          </EmptyOrError>
+        </div>
       ) : (
         <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />
       )}
@@ -921,10 +923,10 @@ function WorkflowRunPanelLoaded({
     }
   };
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-border">
       <div
         data-detail-scroll-area="workflow-panel"
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto p-4"
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">

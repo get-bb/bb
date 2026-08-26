@@ -27,7 +27,7 @@
     },
     "./provider-bridge/testing": {
       "types": "bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
-      "sha256": "7c97c6976876e450ecc9dab36314a48215aae11054e410f985433cd322f9cde8"
+      "sha256": "c35f7c70cdde2281a6fc5b51a041ea9281f4c232d6a4d730a823cbd5ef8aa8a9"
     },
     "./testing": {
       "types": "bundled-types/bb-plugin-sdk-testing.d.ts",
