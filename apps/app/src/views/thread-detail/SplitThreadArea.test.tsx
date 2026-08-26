@@ -1374,7 +1374,7 @@ describe("SplitThreadArea", () => {
       .querySelector("button");
     expect(pluginToggle?.hasAttribute("disabled")).toBe(false);
     expect(
-      pluginPane.querySelector('button[aria-label*="Full Screen"]'),
+      pluginPane.querySelector('button[aria-label*="Maximize pane"]'),
     ).not.toBeNull();
 
     // The plugin page's hosted panel owns the open/close transition.
@@ -1552,9 +1552,9 @@ describe("SplitThreadArea", () => {
     expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
     // The app panel belongs to a publishing pane, but full screen is pane
     // chrome: every pane in a split owns it, plugin panes included.
-    expect(screen.getAllByRole("button", { name: /Full Screen/ })).toHaveLength(
-      2,
-    );
+    expect(
+      screen.getAllByRole("button", { name: /Maximize pane/ }),
+    ).toHaveLength(2);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[0]!);
 
@@ -1967,7 +1967,9 @@ describe("SplitThreadArea", () => {
     expect(reserve?.getAttribute("aria-hidden")).toBe("true");
 
     // Full screen hides the host toggle, so the reserved slot must go with it.
-    fireEvent.click(screen.getAllByRole("button", { name: /Full Screen/ })[0]!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Maximize pane/ })[0]!,
+    );
     await waitFor(() =>
       expect(
         screen.getAllByRole("button", { name: "Close pane" })[0]

@@ -159,7 +159,9 @@ describe("ThreadDetailHeader", () => {
       </PaneContext.Provider>,
     );
 
-    expect(screen.getByRole("button", { name: /Full Screen/ })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Maximize pane/ }),
+    ).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "Hide right panel" }),
     ).toBeNull();

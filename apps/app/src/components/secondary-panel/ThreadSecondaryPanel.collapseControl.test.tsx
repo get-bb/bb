@@ -724,6 +724,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 
     const control = view.getByRole("button", { name: "Exit Full Screen" });
     expect(control.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector("aside")?.style.width).toBe("100%");
 
     fireEvent.click(control);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
@@ -771,7 +772,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       </Wrapper>,
     );
 
-    const control = screen.getByRole("button", { name: "Full Screen" });
+    const control = screen.getByRole("button", { name: "Maximize pane" });
     fireEvent.focus(control);
     expect(
       screen.getByRole("menu", { name: "Pane arrangement" }),
@@ -803,6 +804,15 @@ describe("ThreadSecondaryPanel full-screen control", () => {
         pane.querySelector('[data-testid="thread-secondary-panel-top-chrome"]'),
       ),
     ).toBe(true);
+    expect(
+      screen.getAllByRole("button", { name: "Maximize pane" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Remove split" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Hide right panel" }),
+    ).toHaveLength(1);
     expect(document.querySelectorAll("header")).toHaveLength(0);
     const newTabControls = screen.getAllByRole("button", {
       name: "Open new tab",
@@ -812,7 +822,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(onOpenNewTab).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps pane-local tab rows and one restore control in a stacked split", () => {
+  it("maximizes one stacked pane while keeping both tab rows mounted", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const fileTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-test",
@@ -871,7 +881,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     );
 
     const restoreControls = screen.getAllByRole("button", {
-      name: "Exit Full Screen",
+      name: "Restore split",
     });
     expect(restoreControls).toHaveLength(1);
     const panes = Array.from(
@@ -895,23 +905,30 @@ describe("ThreadSecondaryPanel full-screen control", () => {
           ).length,
       ),
     ).toEqual([1, 1]);
-    expect(
-      screen
-        .getByRole("separator", {
-          name: "Resize stacked right panel panes",
-        })
-        .getAttribute("aria-orientation"),
-    ).toBe("horizontal");
+    const separator = document.querySelector<HTMLElement>(
+      '[aria-label="Resize stacked right panel panes"]',
+    );
+    expect(separator?.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(separator?.getAttribute("aria-hidden")).toBe("true");
+    expect(separator?.className).toContain("invisible");
     expect(
       panes.map(
-        (pane) =>
-          pane.querySelectorAll('[aria-label="Exit Full Screen"]').length,
+        (pane) => pane.querySelectorAll('[aria-label="Restore split"]').length,
       ),
-    ).toEqual([1, 0]);
+    ).toEqual([0, 1]);
+    expect(panes[0]?.getAttribute("aria-hidden")).toBe("true");
+    expect(panes[0]?.style.contentVisibility).toBe("hidden");
+    expect(panes[1]?.dataset.maximized).toBe("true");
     const restoreControl = restoreControls[0];
     if (restoreControl === undefined)
       throw new Error("Missing restore control");
     fireEvent.click(restoreControl);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
+    expect(
+      panes.every((pane) => pane.getAttribute("aria-hidden") === null),
+    ).toBe(true);
+    expect(
+      document.querySelector('[data-split-pane-id][data-maximized="true"]'),
+    ).toBeNull();
   });
 });

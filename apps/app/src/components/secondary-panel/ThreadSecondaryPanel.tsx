@@ -554,6 +554,7 @@ export function ThreadSecondaryPanel({
     surfaceTabs: readonly SecondaryPanelRenderableTab[];
     fixedSurfaceTabs: readonly SecondaryPanelFixedTab[];
     isFocused: boolean;
+    isFullScreen?: boolean;
     isSurfaceDiffEligibilityPending: boolean;
     onBeginTabDrag?: (
       tabId: string,
@@ -561,6 +562,7 @@ export function ThreadSecondaryPanel({
     ) => void;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
     onRemoveSplit?: () => void;
+    onToggleFullScreen?: () => void;
     onFocusPane: () => void;
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     paneId: string | null;
@@ -630,26 +632,31 @@ export function ThreadSecondaryPanel({
     ) : null;
 
   const renderConversationCollapseButton = ({
+    isFullScreen,
     onMoveActiveTabToSide,
+    onToggleFullScreen,
     usesPaneArrangementControl,
   }: {
+    isFullScreen?: boolean;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
+    onToggleFullScreen?: () => void;
     usesPaneArrangementControl: boolean;
   }) => {
-    if (conversationCollapseControl === null) return null;
     if (usesPaneArrangementControl) {
+      if (onToggleFullScreen === undefined) return null;
       return (
         <PaneArrangementButton
           className={cn(
             "shrink-0",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
-          isFullScreen={conversationCollapseControl.isFullScreen}
+          isFullScreen={isFullScreen ?? false}
           onMoveToSide={onMoveActiveTabToSide}
-          onToggleFullScreen={conversationCollapseControl.onClick}
+          onToggleFullScreen={onToggleFullScreen}
         />
       );
     }
+    if (conversationCollapseControl === null) return null;
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -750,11 +757,13 @@ export function ThreadSecondaryPanel({
     surfaceTabs,
     fixedSurfaceTabs,
     isFocused,
+    isFullScreen,
     isSurfaceDiffEligibilityPending,
     onBeginTabDrag,
     onFocusPane,
     onMoveActiveTabToSide,
     onRemoveSplit,
+    onToggleFullScreen,
     onSurfaceTabReorder,
     paneId,
     reserveLeadingChrome,
@@ -833,14 +842,18 @@ export function ThreadSecondaryPanel({
                 showNewTabButton: showNewTabControl,
               })}
             </div>
-            {showOuterControls || onRemoveSplit ? (
+            {showOuterControls ||
+            onRemoveSplit ||
+            usesPaneArrangementControl ? (
               <div
                 className="flex min-w-0 shrink-0 items-center gap-1"
                 onPointerDown={(event) => event.stopPropagation()}
               >
-                {showOuterControls
+                {usesPaneArrangementControl || showOuterControls
                   ? renderConversationCollapseButton({
+                      isFullScreen,
                       onMoveActiveTabToSide,
+                      onToggleFullScreen,
                       usesPaneArrangementControl,
                     })
                   : null}
@@ -993,6 +1006,7 @@ export function ThreadSecondaryPanel({
     <SidebarSplitContainer
       key={splitPanelStateId}
       activeTabId={globalActiveTabId}
+      isFullScreen={isConversationCollapsed}
       onActivateTab={(tabId) => {
         const fixedTab = fixedTabs.find(
           (candidate) => candidate.tab.id === tabId,
@@ -1001,6 +1015,7 @@ export function ThreadSecondaryPanel({
         else tabs.find((tab) => tab.tab.id === tabId)?.onSelect();
       }}
       onGlobalTabReorder={onTabReorder}
+      onToggleFullScreen={onToggleConversationCollapse}
       panelStateId={splitPanelStateId}
       tabs={splitTabs}
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
@@ -1021,6 +1036,7 @@ export function ThreadSecondaryPanel({
           surfaceTabs: paneTabs,
           fixedSurfaceTabs: paneFixedTabs,
           isFocused: pane.isFocused,
+          isFullScreen: pane.isMaximized,
           isSurfaceDiffEligibilityPending:
             activePaneFixedTab?.tab.kind === "git-diff" &&
             (resolvedGitDiffTabStatus === "loading" ||
@@ -1029,6 +1045,7 @@ export function ThreadSecondaryPanel({
           onFocusPane: pane.onFocusPane,
           onMoveActiveTabToSide: pane.onMoveActiveTabToSide,
           onRemoveSplit: pane.onRemoveSplit,
+          onToggleFullScreen: pane.onToggleMaximize,
           onSurfaceTabReorder: pane.onReorderTab,
           paneId: pane.paneId,
           reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,
@@ -1091,7 +1108,13 @@ export function ThreadSecondaryPanel({
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
           ? {
-              width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
+              // Full screen collapses the conversation and lifts this Panel to
+              // 100% of its host. Do not retain the ordinary persisted panel
+              // width inside that expanded shell: it leaves the tab surface at
+              // its old half-width with an empty region to the right.
+              width: isConversationCollapsed
+                ? "100%"
+                : `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
             }
           : undefined
       }
