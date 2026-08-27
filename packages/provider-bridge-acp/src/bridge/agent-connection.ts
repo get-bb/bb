@@ -174,6 +174,9 @@ export function createAcpAgentConnection(
   const stderrChunks: string[] = [];
   let nextRequestId = 1;
   let exited = false;
+  // `kill()` is a synchronous API boundary even though process exit is not:
+  // once called, no more protocol traffic may reach this connection.
+  let stopping = false;
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -203,6 +206,12 @@ export function createAcpAgentConnection(
   }
 
   function writeLine(message: object): void {
+    // An agent request can be answered asynchronously after the session that
+    // owned it has been released. Do not write that stale response to a child
+    // whose termination has already begun.
+    if (stopping) {
+      return;
+    }
     const stdin = child.stdin;
     if (!stdin || stdin.destroyed || !stdin.writable) {
       closeForAgentStdin(new Error("stdin is not writable"));
@@ -218,6 +227,12 @@ export function createAcpAgentConnection(
   child.stdin?.on("error", (error) => {
     if (!isClosedAgentStdinError(error)) {
       throw error;
+    }
+    if (stopping) {
+      // Preserve the existing leak backstop for a child that closes stdin in
+      // response to SIGTERM but keeps another handle alive.
+      child.kill("SIGKILL");
+      return;
     }
     closeForAgentStdin(error);
   });
@@ -330,11 +345,11 @@ export function createAcpAgentConnection(
 
   return {
     get exited() {
-      return exited;
+      return stopping || exited;
     },
 
     request({ method, params, resultSchema }) {
-      if (exited) {
+      if (stopping || exited) {
         return Promise.reject(
           new AcpAgentExitedError(
             `ACP agent "${options.command}" is not running`,
@@ -364,16 +379,22 @@ export function createAcpAgentConnection(
     },
 
     notify(method, params) {
-      if (exited) {
+      if (stopping || exited) {
         return;
       }
       writeLine({ jsonrpc: "2.0", method, params });
     },
 
     kill() {
-      if (exited) {
+      if (stopping || exited) {
         return;
       }
+      stopping = true;
+      rejectAllPending(
+        new AcpAgentExitedError(
+          `ACP agent "${options.command}" is not running`,
+        ),
+      );
       child.kill("SIGTERM");
     },
   };

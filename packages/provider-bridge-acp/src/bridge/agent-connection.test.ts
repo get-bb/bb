@@ -159,6 +159,82 @@ describe("ACP agent stdio lifecycle", () => {
     }
   });
 
+  it("makes an intentionally stopped connection unavailable before stdin teardown", async () => {
+    const ready = deferred<void>();
+    const stdinClosed = deferred<void>();
+    const exited = deferred<AcpAgentExitInfo>();
+    const connection = createAcpAgentConnection({
+      recordThreadId: null,
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          'const fs = require("node:fs");',
+          'const send = (method) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method }) + "\\n");',
+          'process.on("SIGTERM", () => { fs.closeSync(0); send("stdin-closed"); setTimeout(() => process.exit(0), 50); });',
+          'send("ready");',
+          "setInterval(() => {}, 1000);",
+        ].join(" "),
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      onNotification(method) {
+        if (method === "ready") ready.resolve();
+        if (method === "stdin-closed") stdinClosed.resolve();
+      },
+      onRequest() {},
+      onExit: exited.resolve,
+    });
+
+    try {
+      await ready.promise;
+      const pendingError = connection
+        .request({
+          method: "session/new",
+          params: null,
+          resultSchema: z.unknown(),
+        })
+        .then(
+          () => undefined,
+          (error: Error) => error,
+        );
+      connection.kill();
+      await stdinClosed.promise;
+      // Reproduce the write that used to win the race with child exit and
+      // replace the pending request's release result with an EPIPE message.
+      connection.notify("construction/continues", {
+        payload: "x".repeat(EPIPE_PAYLOAD_SIZE),
+      });
+
+      const error = await Promise.race([
+        pendingError,
+        delay(500).then(() => {
+          throw new Error(
+            "ACP request remained pending after intentional stop",
+          );
+        }),
+      ]);
+      expect(error).toBeInstanceOf(AcpAgentExitedError);
+      expect(error?.message).toBe(
+        `ACP agent "${process.execPath}" is not running`,
+      );
+      expect(connection.exited).toBe(true);
+      await expect(
+        connection.request({
+          method: "fixture/future",
+          params: null,
+          resultSchema: z.unknown(),
+        }),
+      ).rejects.toThrow(`ACP agent "${process.execPath}" is not running`);
+      await expect(exited.promise).resolves.toMatchObject({
+        code: 0,
+        signal: null,
+      });
+    } finally {
+      await stopConnection(connection, exited.promise);
+    }
+  });
+
   it("rejects pending requests when the agent exits", async () => {
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
