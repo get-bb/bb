@@ -45,6 +45,15 @@ interface CreateHomeCliWrapperScriptArgs {
 }
 
 /**
+ * Single-quote a value for POSIX sh. Paths here come from Electron rather than
+ * from user input, but bundle names contain spaces as a matter of course and a
+ * home directory can contain anything.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
  * Layer 1: ships inside the macOS bundle at Contents/Resources/bin/<name>.
  *
  * Self-locates via $0, so it needs no recorded path and no refresh: it moves
@@ -113,7 +122,7 @@ set -e
 
   if (args.target.kind === "macos-bundle") {
     return `${header}
-WRAPPER="${args.target.wrapperPath}"
+WRAPPER=${shellQuote(args.target.wrapperPath)}
 
 if [ ! -x "$WRAPPER" ]; then
   echo "${args.commandName}: the bb app is no longer installed at ${args.target.appBundlePath}" >&2
@@ -126,8 +135,8 @@ exec "$WRAPPER" "$@"
   }
 
   return `${header}
-APPIMG="${args.target.appImagePath}"
-BOOTSTRAP="${args.target.bootstrapPath}"
+APPIMG=${shellQuote(args.target.appImagePath)}
+BOOTSTRAP=${shellQuote(args.target.bootstrapPath)}
 
 if [ ! -x "$APPIMG" ]; then
   echo "${args.commandName}: the bb AppImage is no longer at ${args.target.appImagePath}" >&2
