@@ -159,6 +159,11 @@ import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js"
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
+import {
+  refreshHomeCliWrapper,
+  resolveCliCommandName,
+  resolveCliWrapperTarget,
+} from "./cli-link.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -1635,6 +1640,34 @@ async function finishQuit(): Promise<void> {
   await stopOwnedRuntime();
 }
 
+/**
+ * Keep ~/.bb/bin/<name> pointed at this app. Runs on every launch so a moved,
+ * renamed, or auto-updated app repairs the user's command without them doing
+ * anything. Failures are logged and ignored: a broken shell convenience must
+ * never stop the app from starting.
+ */
+async function refreshCliCommandLink(): Promise<void> {
+  const commandName = resolveCliCommandName({
+    productName: DESKTOP_RELEASE_INFO.applicationName,
+  });
+  const target = resolveCliWrapperTarget({
+    commandName,
+    env: process.env,
+    homeDir: homedir(),
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
+  });
+  if (target === null) {
+    return;
+  }
+  await refreshHomeCliWrapper({
+    commandName,
+    homeDir: homedir(),
+    logger: createDesktopLogger(),
+    target,
+  });
+}
+
 function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
@@ -2132,6 +2165,7 @@ async function runDesktopApp(): Promise<void> {
   await app.whenReady();
   if (app.isPackaged) {
     await session.defaultSession.clearCache();
+    void refreshCliCommandLink();
   }
 
   const paths = createDesktopPathContext();
