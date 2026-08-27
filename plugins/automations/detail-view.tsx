@@ -68,6 +68,7 @@ interface AutomationDetailViewProps {
   runsState: AutomationRunsViewState;
   actionPending: boolean;
   editing: boolean;
+  requiresPrompt?: boolean;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -704,6 +705,7 @@ export function AutomationDetailView({
   runsState,
   actionPending,
   editing,
+  requiresPrompt = false,
   onToggle,
   onEdit,
   onCancelEdit,
@@ -720,12 +722,15 @@ export function AutomationDetailView({
     runCount: automation.runCount,
     lastRunStatus: automation.lastRunStatus,
   });
-  const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
-  const lifecycleDisabledReason = lifecycleLocked
-    ? oneShotLifecycle === "expired"
-      ? "Missed its run time. Edit to reschedule."
-      : "Already ran. Edit to reschedule."
-    : undefined;
+  const lifecycleLocked =
+    requiresPrompt || !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+  const lifecycleDisabledReason = requiresPrompt
+    ? "Add a prompt before changing this automation."
+    : lifecycleLocked
+      ? oneShotLifecycle === "expired"
+        ? "Missed its run time. Edit to reschedule."
+        : "Already ran. Edit to reschedule."
+      : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
   const projectContextLabel = projectLabel;
@@ -764,13 +769,15 @@ export function AutomationDetailView({
           disabled={actionPending || lifecycleLocked}
           disabledReason={lifecycleDisabledReason}
           label={
-            oneShotLifecycle === "expired"
-              ? "Expired automation; edit to reschedule"
-              : lifecycleLocked
-                ? `${formatScheduleStatusLabel(automation)} automation`
-                : automation.enabled
-                  ? "Pause automation"
-                  : "Resume automation"
+            requiresPrompt
+              ? "Add a prompt before changing this automation"
+              : oneShotLifecycle === "expired"
+                ? "Expired automation; edit to reschedule"
+                : lifecycleLocked
+                  ? `${formatScheduleStatusLabel(automation)} automation`
+                  : automation.enabled
+                    ? "Pause automation"
+                    : "Resume automation"
           }
           onCheckedChange={onToggle}
         />
@@ -780,7 +787,15 @@ export function AutomationDetailView({
           label={`${automation.name} actions`}
           disabled={actionPending}
           items={[
-            { label: "Run now", icon: "Play", onSelect: onRunNow },
+            {
+              label: "Run now",
+              icon: "Play",
+              disabled: requiresPrompt,
+              disabledReason: requiresPrompt
+                ? "Add a prompt before running this automation."
+                : undefined,
+              onSelect: onRunNow,
+            },
             { kind: "separator" },
             {
               label: "Delete",

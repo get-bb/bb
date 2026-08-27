@@ -85,9 +85,10 @@ bb automation delete <automationId> --project <id> --yes
 
 `list` and `show` are diagnostic reads: a damaged record remains visible as
 `Needs prompt` or `Invalid stored data` instead of failing the whole read. A
-`Needs prompt` record can be repaired from the Automations panel by supplying
-its prompt. Run, update, pause, and resume validate the complete record before
-acting, and every successful create/update persists the canonical format.
+`Needs prompt` record opens in the Automations panel's standard editor, where
+the user can add its prompt while reviewing the other settings. Run, update,
+pause, and resume validate the complete record before acting, and every
+successful create/update persists the canonical format.
 
 Choose one of two execution update forms:
 

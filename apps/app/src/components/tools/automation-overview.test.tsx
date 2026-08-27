@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
-import type { AutomationsOverviewResponse } from "bb-plugin-automations/rpc-types";
+import type {
+  AutomationResponse,
+  AutomationsOverviewResponse,
+} from "bb-plugin-automations/rpc-types";
 
 function iconNames(element: HTMLElement): string[] {
   return [...element.querySelectorAll("[data-icon]")].map(
@@ -53,13 +56,17 @@ afterEach(cleanup);
 describe("AutomationOverviewView", () => {
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
+    if ("problem" in baseEntry.automation) {
+      throw new Error("Expected a canonical automation fixture");
+    }
+    const baseAutomation = baseEntry.automation;
     const entry = (
       name: string,
-      overrides: Partial<(typeof baseEntry)["automation"]> = {},
+      overrides: Partial<AutomationResponse> = {},
     ) => ({
       ...baseEntry,
       automation: {
-        ...baseEntry.automation,
+        ...baseAutomation,
         id: `auto_${name.toLowerCase().replaceAll(" ", "_")}`,
         name,
         ...overrides,
@@ -128,14 +135,22 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByRole("button", { name: "New automation" })).toBeTruthy();
   });
 
-  it("keeps degraded rows visible and offers repair only for a missing prompt", () => {
-    const onRepair = vi.fn();
+  it("opens a missing-prompt row in the standard editor", () => {
+    const onOpenDetail = vi.fn();
+    const healthyAutomation = INSTALLED_AUTOMATIONS[0]!.automation;
+    if (
+      "problem" in healthyAutomation ||
+      healthyAutomation.execution.mode !== "agent"
+    ) {
+      throw new Error("Expected an agent automation fixture");
+    }
     const entries: AutomationsOverviewResponse["automations"] = [
       {
         automation: {
+          ...healthyAutomation,
           id: "auto_repair",
-          projectId: "proj_1",
           name: "Needs a prompt",
+          execution: { ...healthyAutomation.execution, prompt: "" },
           problem: "missing-agent-prompt",
         },
         project: { id: "proj_1", name: "bb" },
@@ -156,8 +171,7 @@ describe("AutomationOverviewView", () => {
         entries={entries}
         error={null}
         onRetry={() => {}}
-        onOpenDetail={() => {}}
-        onRepair={onRepair}
+        onOpenDetail={onOpenDetail}
         onEnabledChange={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
@@ -168,9 +182,12 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByText("Needs a prompt")).toBeTruthy();
     expect(screen.getByText("Unreadable automation")).toBeTruthy();
     expect(screen.getByText("Nightly digest")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Repair" }));
-    expect(onRepair).toHaveBeenCalledWith(entries[0]?.automation);
-    expect(screen.getAllByRole("button", { name: "Repair" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(onOpenDetail).toHaveBeenCalledWith(
+      { projectId: "proj_1", automationId: "auto_repair" },
+      { editing: true },
+    );
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
   });
 
   it("offers Projects and Status as groups inside one filter menu", async () => {

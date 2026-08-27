@@ -3,7 +3,6 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   assertCanonicalAutomationUpdate,
-  assertLegacyEmptyPromptAutomationRow,
   createAutomation,
   createManualRun,
   deleteAutomation,
@@ -17,6 +16,7 @@ import {
   parseAutomationTrigger,
   setAutomationEnabled,
   toAutomationResponse,
+  toLegacyEmptyPromptAutomationResponse,
   toAutomationRunResponse,
   updateAutomation,
   closeAutomationRun,
@@ -224,24 +224,24 @@ function toAutomationReadProblem(
   row: AutomationRow,
   error: unknown,
 ): AutomationReadResult {
-  let problem: "missing-agent-prompt" | "invalid-stored-data";
   try {
-    assertLegacyEmptyPromptAutomationRow(row);
-    problem = "missing-agent-prompt";
+    return automationReadProblemSchema.parse({
+      ...toLegacyEmptyPromptAutomationResponse(row),
+      problem: "missing-agent-prompt",
+    });
   } catch {
-    problem = "invalid-stored-data";
     bb.log.warn(
       `Malformed stored automation ${row.id}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    return automationReadProblemSchema.parse({
+      id: row.id,
+      projectId: row.projectId,
+      name: row.name,
+      problem: "invalid-stored-data",
+    });
   }
-  return automationReadProblemSchema.parse({
-    id: row.id,
-    projectId: row.projectId,
-    name: row.name,
-    problem,
-  });
 }
 
 function toStoredAutomationReadResult(

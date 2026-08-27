@@ -277,21 +277,25 @@ export const legacyEmptyPromptAutomationResponseSchema =
   automationResponseSchema.extend({
     execution: legacyEmptyPromptAgentExecutionSchema,
   });
+export type LegacyEmptyPromptAutomationResponse = z.infer<
+  typeof legacyEmptyPromptAutomationResponseSchema
+>;
 
-const automationReadProblemBaseSchema = z
+const invalidStoredAutomationReadProblemSchema = z
   .object({
     id: z.string(),
     projectId: z.string(),
     name: z.string(),
+    problem: z.literal("invalid-stored-data"),
   })
   .strict();
-export const automationReadProblemSchema = z.discriminatedUnion("problem", [
-  automationReadProblemBaseSchema.extend({
+export const missingAgentPromptAutomationReadProblemSchema =
+  legacyEmptyPromptAutomationResponseSchema.extend({
     problem: z.literal("missing-agent-prompt"),
-  }),
-  automationReadProblemBaseSchema.extend({
-    problem: z.literal("invalid-stored-data"),
-  }),
+  });
+export const automationReadProblemSchema = z.discriminatedUnion("problem", [
+  missingAgentPromptAutomationReadProblemSchema,
+  invalidStoredAutomationReadProblemSchema,
 ]);
 export type AutomationReadProblem = z.infer<typeof automationReadProblemSchema>;
 export const automationReadResultSchema = z.union([

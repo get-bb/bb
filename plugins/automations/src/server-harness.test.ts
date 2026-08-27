@@ -701,6 +701,12 @@ describe("automations server plugin harness", () => {
     expect(repairTarget).toMatchObject({
       name: "Hidden legacy row",
       projectId: PROJECT_ID,
+      execution: expect.objectContaining({
+        mode: "agent",
+        prompt: "",
+        providerId: "codex",
+        model: "gpt-5",
+      }),
     });
     expect(invalidTarget).toMatchObject({ name: "Invalid stored row" });
     expect(listed).toContainEqual(expect.objectContaining({ id: healthy.id }));
@@ -722,7 +728,7 @@ describe("automations server plugin harness", () => {
 
     if (
       repairTarget === undefined ||
-      "execution" in repairTarget ||
+      !("execution" in repairTarget) ||
       invalidTarget === undefined ||
       "execution" in invalidTarget
     ) {

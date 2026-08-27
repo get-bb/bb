@@ -15,6 +15,7 @@ import {
   type AutomationRunStatus,
   type AutomationRunTrigger,
   type AutomationTrigger,
+  type LegacyEmptyPromptAutomationResponse,
 } from "./rpc-types.js";
 
 const AUTOMATION_COLUMNS = `id, project_id AS projectId, target_thread_id AS targetThreadId,
@@ -323,12 +324,14 @@ export function toAutomationResponse(row: AutomationRow): AutomationResponse {
   );
 }
 
-export function assertLegacyEmptyPromptAutomationRow(row: AutomationRow): void {
+export function toLegacyEmptyPromptAutomationResponse(
+  row: AutomationRow,
+): LegacyEmptyPromptAutomationResponse {
   const execution = parseRepairableAutomationExecution(row.execution);
   if (execution.mode !== "agent" || execution.prompt !== "") {
     throw new Error("Not a legacy empty-prompt agent automation");
   }
-  legacyEmptyPromptAutomationResponseSchema.parse(
+  return legacyEmptyPromptAutomationResponseSchema.parse(
     automationResponseValue(
       row,
       parseAutomationTrigger(row.triggerConfig),

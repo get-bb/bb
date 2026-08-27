@@ -58,7 +58,7 @@ Add `--json` for machine-readable output. Use `runs --output <runId>` to print a
 script run's captured output.
 
 `list` and `show` keep damaged stored records visible as `Needs prompt` or
-`Invalid stored data` instead of failing the whole read. Repair a `Needs
-prompt` record from the Automations panel by supplying its prompt. Run,
-update, pause, and resume continue to validate the complete record before
-acting.
+`Invalid stored data` instead of failing the whole read. Opening a `Needs
+prompt` record in the Automations panel takes you through the standard editor,
+where you can add the prompt while reviewing its other settings. Run, update,
+pause, and resume continue to validate the complete record before acting.

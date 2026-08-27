@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  AutomationReadProblem,
   AutomationResponse,
   AutomationsOverviewResponse,
 } from "./src/rpc-types.js";
@@ -90,10 +89,6 @@ export const AUTOMATION_CREATE_TEMPLATES = [
 ] as const;
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
-type AutomationRepairTarget = Extract<
-  AutomationReadProblem,
-  { problem: "missing-agent-prompt" }
->;
 type AutomationProjectFilter = `project:${string}`;
 type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
@@ -102,6 +97,10 @@ export type AutomationCollectionMode = "installed" | "browse";
 interface AutomationDetailRoute {
   projectId: string;
   automationId: string;
+}
+
+interface AutomationDetailNavigationOptions {
+  editing?: boolean;
 }
 
 function routeOf(automation: AutomationResponse): AutomationDetailRoute {
@@ -289,11 +288,12 @@ function OverviewRow({
 function AutomationProblemRow({
   entry,
   onNavigate,
-  onRepair,
 }: {
   entry: OverviewEntry;
-  onNavigate: (route: AutomationDetailRoute) => void;
-  onRepair?: (target: AutomationRepairTarget) => void;
+  onNavigate: (
+    route: AutomationDetailRoute,
+    options?: AutomationDetailNavigationOptions,
+  ) => void;
 }) {
   const { automation, project } = entry;
   if (!("problem" in automation)) return null;
@@ -310,7 +310,7 @@ function AutomationProblemRow({
             COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
           )}
           aria-label={
-            repairTarget !== null ? "Needs repair" : "Invalid stored data"
+            repairTarget !== null ? "Needs prompt" : "Invalid stored data"
           }
         />
       }
@@ -328,21 +328,33 @@ function AutomationProblemRow({
         />
       }
       muted
-      onOpen={() =>
-        onNavigate({
+      onOpen={() => {
+        const route = {
           projectId: automation.projectId,
           automationId: automation.id,
-        })
-      }
+        };
+        onNavigate(
+          route,
+          repairTarget === null ? undefined : { editing: true },
+        );
+      }}
       persistentActions={
-        repairTarget !== null && onRepair !== undefined ? (
+        repairTarget !== null ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onRepair(repairTarget)}
+            onClick={() =>
+              onNavigate(
+                {
+                  projectId: repairTarget.projectId,
+                  automationId: repairTarget.id,
+                },
+                { editing: true },
+              )
+            }
           >
-            Repair
+            Edit
           </Button>
         ) : undefined
       }
@@ -355,7 +367,6 @@ export function AutomationOverviewView({
   error,
   onRetry,
   onOpenDetail,
-  onRepair,
   onEnabledChange,
   onCreateViaChat,
   activeMode,
@@ -364,8 +375,10 @@ export function AutomationOverviewView({
   entries: OverviewEntry[] | null;
   error: string | null;
   onRetry: () => void;
-  onOpenDetail: (route: AutomationDetailRoute) => void;
-  onRepair?: (target: AutomationRepairTarget) => void;
+  onOpenDetail: (
+    route: AutomationDetailRoute,
+    options?: AutomationDetailNavigationOptions,
+  ) => void;
   onEnabledChange: (
     enabled: boolean,
     route: AutomationDetailRoute,
@@ -431,7 +444,7 @@ export function AutomationOverviewView({
         if (normalizedQuery.length === 0) return true;
         const problemLabel =
           automation.problem === "missing-agent-prompt"
-            ? "needs repair missing prompt"
+            ? "needs prompt missing prompt"
             : "invalid stored data";
         return [automation.name, project.name, problemLabel].some((value) =>
           value.toLowerCase().includes(normalizedQuery),
@@ -544,7 +557,6 @@ export function AutomationOverviewView({
               key={entry.automation.id}
               entry={entry}
               onNavigate={onOpenDetail}
-              onRepair={onRepair}
             />
           ) : (
             <OverviewRow
