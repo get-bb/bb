@@ -1,4 +1,11 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type UIEvent,
+} from "react";
 import { ThreadStorageBrowser } from "./ThreadStorageBrowser";
 import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
 import { Link } from "react-router-dom";
@@ -968,6 +975,8 @@ interface DetailCardWrapperProps {
   children: ReactNode;
 }
 
+const INFO_SCROLLBAR_IDLE_DELAY_MS = 600;
+
 /**
  * Shared DetailCard styling used by ThreadMetadataContent and the per-row
  * stories so a single row in isolation looks the same as it does inside the
@@ -981,10 +990,36 @@ interface DetailCardWrapperProps {
  * card itself only scrolls once those minimums no longer fit.
  */
 export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
+  const scrollbarIdleTimeoutRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (scrollbarIdleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollbarIdleTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleScroll = useCallback((event: UIEvent<HTMLDListElement>) => {
+    const scrollArea = event.currentTarget;
+    if (scrollArea.dataset.scrollbarScrolling !== "true") {
+      scrollArea.dataset.scrollbarScrolling = "true";
+    }
+    if (scrollbarIdleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollbarIdleTimeoutRef.current);
+    }
+    scrollbarIdleTimeoutRef.current = window.setTimeout(() => {
+      scrollbarIdleTimeoutRef.current = null;
+      scrollArea.removeAttribute("data-scrollbar-scrolling");
+    }, INFO_SCROLLBAR_IDLE_DELAY_MS);
+  }, []);
+
   return (
     <DetailCard
       appearance="flat"
-      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      onScroll={handleScroll}
     >
       {children}
     </DetailCard>

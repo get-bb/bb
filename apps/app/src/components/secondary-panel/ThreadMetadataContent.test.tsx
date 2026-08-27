@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
+import {
+  EnvironmentRow,
+  ParentSelectorRow,
+  ThreadMetadataCard,
+} from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
 
 const localHost = { locality: "local", identity: null } as const;
@@ -73,7 +77,37 @@ function renderEnvironmentRow(environment: Environment): string {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe("ThreadMetadataCard", () => {
+  it("shows its scrollbar only during active scrolling", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <ThreadMetadataCard>
+        <div>Thread information</div>
+      </ThreadMetadataCard>,
+    );
+    const scrollArea = container.querySelector("dl");
+    if (!(scrollArea instanceof HTMLElement)) {
+      throw new Error("missing info scroll area");
+    }
+
+    expect(scrollArea.classList).toContain("transient-scrollbar");
+    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+
+    fireEvent.scroll(scrollArea);
+    expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
+
+    act(() => vi.advanceTimersByTime(599));
+    expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+  });
+});
 
 describe("EnvironmentRow", () => {
   it("shows the create-thread action for a provisioned worktree", () => {

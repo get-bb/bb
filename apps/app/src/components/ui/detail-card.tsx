@@ -1,4 +1,8 @@
-import { type CSSProperties, type ReactNode } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  type UIEventHandler,
+} from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -49,6 +53,7 @@ type DetailCardAppearance = "card" | "flat";
 interface DetailCardProps {
   children: ReactNode;
   className?: string;
+  onScroll?: UIEventHandler<HTMLDListElement>;
   /**
    * Width of the label column. Applied as a CSS custom property so descendant
    * rows inherit it without prop drilling. Defaults to 96px.
@@ -69,11 +74,13 @@ const DETAIL_CARD_CARD_CLASS =
 export function DetailCard({
   children,
   className,
+  onScroll,
   labelWidth,
   appearance = "card",
 }: DetailCardProps) {
   return (
     <dl
+      onScroll={onScroll}
       className={cn(
         DETAIL_CARD_BASE_CLASS,
         appearance === "card" && DETAIL_CARD_CARD_CLASS,
