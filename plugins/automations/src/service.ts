@@ -11,6 +11,7 @@ import {
   listAutomationRuns,
   listAutomationsForProject,
   parseAutomationExecution,
+  parseRepairableAutomationExecution,
   parseAutomationTrigger,
   setAutomationEnabled,
   toAutomationResponse,
@@ -497,7 +498,9 @@ export function createAutomationService(args: {
         throw new Error("execution and agent updates cannot be combined");
       }
       const now = Date.now();
-      const currentExecution = parseAutomationExecution(current.execution);
+      const currentExecution = parseRepairableAutomationExecution(
+        current.execution,
+      );
       let stagedScriptFile: string | undefined;
       const patch: Parameters<typeof updateAutomation>[1]["patch"] = {};
       if (input.name !== undefined) patch.name = input.name;

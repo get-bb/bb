@@ -181,6 +181,13 @@ export const automationExecutionSchema = z.discriminatedUnion("mode", [
 ]);
 export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
 
+// Desktop v0.40.0 persisted this otherwise-canonical empty-prompt shape.
+// Only update recovery may use it; every persisted write stays canonical.
+export const repairableAutomationExecutionSchema = z.union([
+  automationExecutionSchema,
+  automationAgentExecutionSchema.extend({ prompt: z.literal("") }),
+]);
+
 function requireExactlyOneScriptSource(
   exec: z.infer<typeof automationExecutionSchema>,
   ctx: z.RefinementCtx,
