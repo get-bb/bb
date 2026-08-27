@@ -700,6 +700,54 @@ describe("ThreadRow", () => {
     }
   });
 
+  it("keeps missing naked thread ids literal across sidebar labels", async () => {
+    const missingThreadId = "thr_dcwivn5n8w";
+    const resolveMentions = vi
+      .spyOn(sdk.threads, "resolveMentions")
+      .mockResolvedValue([]);
+
+    try {
+      render(
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map()}
+          threadById={new Map()}
+        >
+          <ThreadRowTestHarness
+            thread={createThread({
+              id: "thr_canonical",
+              title: `Canonical @thread:${missingThreadId}`,
+              titleFallback: `Canonical @thread:${missingThreadId}`,
+            })}
+          />
+          <ThreadRowTestHarness
+            thread={createThread({
+              id: "thr_naked",
+              title: `Naked ${missingThreadId}`,
+              titleFallback: `Naked ${missingThreadId}`,
+            })}
+          />
+        </ThreadTitleMentionResourcesProvider>,
+      );
+
+      await waitFor(() => expect(resolveMentions).toHaveBeenCalledTimes(1));
+      expect(
+        await screen.findByRole("link", {
+          name: "Open Canonical Unavailable thread",
+        }),
+      ).not.toBeNull();
+      expect(screen.getByTitle("Canonical Unavailable thread")).not.toBeNull();
+
+      const nakedTitle = `Naked ${missingThreadId}`;
+      expect(
+        screen.getByRole("link", { name: `Open ${nakedTitle}` }),
+      ).not.toBeNull();
+      expect(screen.getByTitle(nakedTitle).textContent).toBe(nakedTitle);
+    } finally {
+      resolveMentions.mockRestore();
+    }
+  });
+
   it("marks a child from another project with the project name", () => {
     const { container } = render(
       <ThreadTitleMentionResourcesProvider

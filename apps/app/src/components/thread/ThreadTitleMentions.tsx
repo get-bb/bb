@@ -700,7 +700,8 @@ export function useThreadTitleDisplayText(title: string): string {
           segment.unresolvedThreadId === null
             ? segment.text
             : (resolvedThreadsById.get(segment.unresolvedThreadId)?.label ??
-              (unavailableThreadIds.has(segment.unresolvedThreadId)
+              (segment.serializedText?.startsWith("@thread:") === true &&
+              unavailableThreadIds.has(segment.unresolvedThreadId)
                 ? UNAVAILABLE_THREAD_MENTION_LABEL
                 : segment.text)),
         )
