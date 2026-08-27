@@ -21,6 +21,7 @@ const SELF_FILES = new Set([
 ]);
 
 /** Brand marks have no SF Symbol; `Icon.ios.tsx` keeps Hugeicons for them. */
+/** Icons with no SF Symbol equivalent; they render the hugeicons glyph. */
 const BRAND_MARKS: readonly IconName[] = ["Discord", "Github"];
 
 /**
@@ -128,7 +129,9 @@ describe("SF_SYMBOL_MAP", () => {
   it("covers every icon name the app renders", () => {
     const used = usedIconNames();
     // A scan that stops finding names would pass vacuously; pin the floor.
-    expect(used.size).toBeGreaterThan(80);
+    // The shell renders a handful of screens, so the floor is small — it
+    // guards the scan, not the size of the app.
+    expect(used.size).toBeGreaterThan(12);
     const missing = [...used]
       .filter(
         ([name]) =>
@@ -136,11 +139,10 @@ describe("SF_SYMBOL_MAP", () => {
       )
       .map(([name, locations]) => `${name} (${locations[0]})`);
     expect(missing).toEqual([]);
-    // The brand marks are really rendered somewhere; otherwise the allowlist
-    // is stale.
-    for (const name of BRAND_MARKS) {
-      expect(used.has(name), name).toBe(true);
-    }
+    // There is deliberately no "every brand mark is rendered" check. The icon
+    // map mirrors the web vocabulary (icon-map.test.ts pins that), so it holds
+    // names this app never renders — since the WebView shell replaced the
+    // native screens, Discord and GitHub are among them.
   });
 
   it("uses bare symbol names that exist by the deployment target's SF Symbols release", () => {

@@ -1,5 +1,8 @@
 import { createMMKV } from "react-native-mmkv";
-import { createShellPreferenceStore, type ShellPreferenceStore } from "./shell-preferences";
+import {
+  createShellPreferenceStore,
+  type ShellPreferenceStore,
+} from "./shell-preferences";
 
 let store: ShellPreferenceStore | null = null;
 

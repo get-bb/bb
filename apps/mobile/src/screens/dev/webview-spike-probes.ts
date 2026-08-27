@@ -640,7 +640,6 @@ export const OPEN_FILE_CHOOSER_PROBE = String.raw`
 true;
 `;
 
-
 /** Lists the page's interactive controls so a spike can target one by name. */
 export const BUTTONS_PROBE = String.raw`
 (function () {

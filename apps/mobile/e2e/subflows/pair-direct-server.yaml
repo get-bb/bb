@@ -1,0 +1,27 @@
+# Subflow: add the harness server when the app asks for one (the E2E build
+# resets profiles on every launch), then wait for the WebView shell. Assumes
+# the caller already cold-started the app with ./launch-app.yaml. Called with
+# `runFlow: ../subflows/pair-direct-server.yaml`; the caller's env supplies
+# SERVER_URL.
+appId: app.getbb.mobile
+---
+- runFlow:
+    when:
+      visible: "Connect to a bb server"
+    commands:
+      - tapOn:
+          id: "server-url-input"
+      - inputText: "${SERVER_URL}"
+      - tapOn:
+          id: "server-label-input"
+      - inputText: "E2E backend"
+      # Tapping static text dismisses the keyboard (the screen sets
+      # keyboardShouldPersistTaps="handled"); Maestro's hideKeyboard swipe is
+      # unreliable on this screen since the bb connect row lengthened it.
+      - tapOn: "Server URL"
+      - tapOn:
+          id: "add-server-submit"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000

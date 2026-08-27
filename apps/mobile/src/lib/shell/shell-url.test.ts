@@ -23,9 +23,7 @@ describe("buildShellUrl", () => {
   it("keeps a server's path prefix", () => {
     // A reverse proxy or Tailscale Serve mount must not be dropped, or every
     // navigation lands on the proxy's root instead of bb.
-    expect(buildShellUrl(PREFIXED, "/")).toBe(
-      "https://box.example.ts.net/bb/",
-    );
+    expect(buildShellUrl(PREFIXED, "/")).toBe("https://box.example.ts.net/bb/");
     expect(buildShellUrl(PREFIXED, "/threads/thr_1")).toBe(
       "https://box.example.ts.net/bb/threads/thr_1",
     );

@@ -152,8 +152,9 @@ describe("shouldReloadForSession", () => {
   });
 
   it("reloads on the first successful mint", () => {
-    expect(shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED))
-      .toBe(true);
+    expect(
+      shouldReloadForSession({ status: "authenticating" }, AUTHENTICATED),
+    ).toBe(true);
   });
 
   it("does not reload on an unchanged session or a failure", () => {

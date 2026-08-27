@@ -2,11 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   addServerPathForLink,
   isDeveloperRoutePath,
-  mapSchemePathToMobilePath,
-  mapWebPathToMobilePath,
   matchProfileForWebLink,
   parseIncomingLink,
-  resolveIncomingLink,
 } from "./incoming-link";
 
 const sawyer = { id: "p1", serverUrl: "https://sawyer.getbb.app" };
@@ -52,49 +49,6 @@ describe("parseIncomingLink", () => {
   });
 });
 
-describe("mapWebPathToMobilePath", () => {
-  it.each([
-    ["/", "/"],
-    ["/threads/thr_1", "/threads/thr_1"],
-    ["/projects/prj_1/threads/thr_2", "/threads/thr_2"],
-    ["/projects/prj_1/settings", "/projects/prj_1/settings"],
-    ["/projects/prj_1/archived", "/settings/archived?projectId=prj_1"],
-    ["/projects/prj_1", "/?projectId=prj_1"],
-    ["/compose", "/?newThread=1"],
-    ["/archived", "/settings/archived"],
-    ["/settings", "/settings"],
-    ["/settings/servers", "/settings/servers"],
-    ["/settings/general", "/settings"],
-    ["/settings/providers/codex", "/settings"],
-    ["/extensions/plugins/foo", "/"],
-    ["/plugins/automations/automations", "/"],
-    ["/threads", "/"],
-  ])("%s → %s", (input, expected) => {
-    expect(mapWebPathToMobilePath(input)).toBe(expected);
-  });
-
-  it("opens the home dock for compose links and keeps their params", () => {
-    expect(mapWebPathToMobilePath("/compose", "?projectId=prj_1")).toBe(
-      "/?newThread=1&projectId=prj_1",
-    );
-    expect(mapSchemePathToMobilePath("/compose")).toBe("/?newThread=1");
-    expect(mapSchemePathToMobilePath("/compose?projectId=prj_1")).toBe(
-      "/?newThread=1&projectId=prj_1",
-    );
-    expect(mapSchemePathToMobilePath("/composer")).toBe("/composer");
-    expect(mapSchemePathToMobilePath("/threads/thr_1")).toBe("/threads/thr_1");
-  });
-
-  it("keeps the query string on thread and settings links", () => {
-    expect(mapWebPathToMobilePath("/threads/thr_1", "?x=1")).toBe(
-      "/threads/thr_1?x=1",
-    );
-    expect(mapWebPathToMobilePath("/settings/archived", "?projectId=p")).toBe(
-      "/settings/archived?projectId=p",
-    );
-  });
-});
-
 describe("matchProfileForWebLink", () => {
   it("matches by origin, ignoring scheme/port differences", () => {
     const profiles = [sawyer, lan];
@@ -134,95 +88,28 @@ describe("matchProfileForWebLink", () => {
   });
 });
 
-describe("resolveIncomingLink", () => {
-  const context = {
-    profiles: [sawyer, lan],
-    activeProfileId: "p2",
-    developerRoutesEnabled: false,
-  };
-
-  it("passes foreign URLs through untouched", () => {
-    expect(
-      resolveIncomingLink(
-        "exp+bb-app://expo-development-client/?url=x",
-        context,
-      ),
-    ).toEqual({ kind: "passthrough" });
+describe("isDeveloperRoutePath", () => {
+  it("recognises the route groups a release bundle does not ship", () => {
+    expect(isDeveloperRoutePath("/dev/webview-spike")).toBe(true);
+    expect(isDeveloperRoutePath("/e2e/reset?wipe=1")).toBe(true);
+    expect(isDeveloperRoutePath("/webview")).toBe(false);
+    // A prefix must match a whole segment, not a substring.
+    expect(isDeveloperRoutePath("/development")).toBe(false);
   });
+});
 
-  it("routes scheme links as typed without touching the active profile", () => {
-    expect(resolveIncomingLink("bb://threads/thr_1", context)).toEqual({
-      kind: "navigate",
-      path: "/threads/thr_1",
-      profileId: null,
-    });
-  });
-
-  it("sends developer-only scheme links home unless the bundle exposes them", () => {
-    // Any web page can open `bb://…`; the dev spike / e2e reset screens must
-    // stay unreachable in release bundles even though the route files ship.
-    for (const url of [
-      "bb://dev/connect-spike",
-      "bb://dev",
-      "bb://e2e/reset?x=1",
-    ]) {
-      expect(resolveIncomingLink(url, context)).toEqual({
-        kind: "navigate",
-        path: "/",
-        profileId: null,
-      });
-    }
-    // Only the route groups themselves, not paths that merely start with "dev".
-    expect(resolveIncomingLink("bb://devices/d1", context)).toMatchObject({
-      path: "/devices/d1",
-    });
+describe("addServerPathForLink", () => {
+  it("prefills the add-server screen and remembers where to go next", () => {
     expect(
-      resolveIncomingLink("bb://dev/connect-spike", {
-        ...context,
-        developerRoutesEnabled: true,
-      }),
-    ).toEqual({
-      kind: "navigate",
-      path: "/dev/connect-spike",
-      profileId: null,
-    });
-    expect(isDeveloperRoutePath("/e2e")).toBe(true);
-    expect(isDeveloperRoutePath("/settings/dev")).toBe(false);
-  });
-
-  it("switches to the profile that owns a universal link", () => {
-    expect(
-      resolveIncomingLink("https://sawyer.getbb.app/threads/thr_1", context),
-    ).toEqual({ kind: "navigate", path: "/threads/thr_1", profileId: "p1" });
-    expect(
-      resolveIncomingLink("http://192.168.1.20:3000/settings", context),
-    ).toEqual({ kind: "navigate", path: "/settings", profileId: null });
-  });
-
-  it("maps web-only paths of a known server onto the mobile surface", () => {
-    expect(
-      resolveIncomingLink(
-        "https://sawyer.getbb.app/projects/prj_1/threads/thr_2",
-        context,
-      ),
-    ).toEqual({ kind: "navigate", path: "/threads/thr_2", profileId: "p1" });
-  });
-
-  it("sends an unknown server to the add-server screen with the follow-up path", () => {
-    expect(
-      resolveIncomingLink("https://other.getbb.app/threads/thr_3", context),
-    ).toEqual({
-      kind: "unknown-server",
-      serverUrl: "https://other.getbb.app",
-      path: "/threads/thr_3",
-    });
-    expect(
-      addServerPathForLink("https://other.getbb.app", "/threads/thr_3"),
+      addServerPathForLink("https://bee.getbb.app", "/webview?path=%2Fthreads"),
     ).toBe(
-      "/settings/servers/add?serverUrl=https%3A%2F%2Fother.getbb.app&next=%2Fthreads%2Fthr_3",
+      "/settings/servers/add?serverUrl=https%3A%2F%2Fbee.getbb.app&next=%2Fwebview%3Fpath%3D%252Fthreads",
     );
-    expect(addServerPathForLink("https://other.getbb.app", "/")).toBe(
-      "/settings/servers/add?serverUrl=https%3A%2F%2Fother.getbb.app",
+  });
+
+  it("omits a follow-up path that is just the root", () => {
+    expect(addServerPathForLink("https://bee.getbb.app", "/")).toBe(
+      "/settings/servers/add?serverUrl=https%3A%2F%2Fbee.getbb.app",
     );
   });
 });

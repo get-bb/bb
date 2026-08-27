@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { useState, type ReactNode } from "react";
 import { Pressable, View, type PressableProps } from "react-native";
 import { haptic, hapticKindForButton, type ButtonHaptic } from "@/lib/haptics";
-import { withAlpha } from "@/markdown/colors";
+import { withAlpha } from "@/theme/colors";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { NativeThemeTokens } from "@/theme/theme.native";
 import { cn } from "./cn";

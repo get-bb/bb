@@ -7,7 +7,9 @@ import type { BridgeSharePayload } from "@bb/mobile-bridge";
  */
 
 export interface NativeSharePayload {
-  content: { title?: string; url: string } | { title?: string; message: string };
+  content:
+    | { title?: string; url: string }
+    | { title?: string; message: string };
   options: { dialogTitle: string; subject?: string };
 }
 

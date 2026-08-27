@@ -1,6 +1,6 @@
 import { usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { threadHref } from "@/screens/shell/hrefs";
+import { webViewShellHref } from "@/screens/shell/hrefs";
 import { useProfiles } from "./ProfilesProvider";
 
 /**
@@ -20,7 +20,8 @@ export function ThreadOpenSignalHandler() {
     if (!realtime) return;
     return realtime.onThreadOpen((signal) => {
       if (pathnameIsThread(pathname, signal.threadId)) return;
-      router.push(threadHref(signal.threadId));
+      // The page owns the thread view; the shell just carries the path.
+      router.push(webViewShellHref({ path: `/threads/${signal.threadId}` }));
     });
   }, [realtime, router, pathname]);
   return null;

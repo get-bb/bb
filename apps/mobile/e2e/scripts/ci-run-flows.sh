@@ -8,16 +8,15 @@
 #   SERVER_URL=http://127.0.0.1:41999 \
 #   e2e/scripts/ci-run-flows.sh <simulator udid> <artifacts dir> [flow...]
 #
-# Default flows (in this order; later ones depend on seeds the earlier ones
-# leave alone): smoke, phase1-shell, phase4a-timeline, phase3-compose,
-# phase4b-send, phase6-panel, phase2-webview-shell. The script creates the
-# threads the title-based flows open ("P4b send" idle; "P6 panel thread" with
-# a dirty managed worktree) through the API first.
+# Default flows (in this order): shell-launch, shell-deep-link, shell-send,
+# shell-unreachable-server. Every one drives the WebView shell, so the backend
+# must be started with BB_MOBILE_E2E_SERVE_APP=1 and apps/app must be built
+# (`pnpm exec turbo run build --filter=@bb/app`); without them the server
+# answers API routes only and the shell shows its native error state.
 #
-# phase2-webview-shell drives the page inside the WebView, so it needs the
-# backend started with BB_MOBILE_E2E_SERVE_APP=1 and a built apps/app. It runs
-# last because it leaves the shell switch off again but does touch a seeded
-# thread.
+# shell-connect is not in the default set: it needs the connect stub backend
+# (`pnpm --filter @bb/integration-tests e2e:mobile-connect-stub`), so it runs
+# on its own.
 #
 # Environment: SERVER_URL (default http://127.0.0.1:41999; the flows' own
 # env blocks point at the same port), MAESTRO_FLAGS (extra `maestro test`
@@ -42,27 +41,11 @@ ARTIFACTS="${2:?artifacts dir}"
 shift 2
 FLOWS=("$@")
 if [ ${#FLOWS[@]} -eq 0 ]; then
-  FLOWS=(smoke phase1-shell phase4a-timeline phase3-compose phase4b-send phase6-panel phase2-webview-shell)
+  FLOWS=(shell-launch shell-deep-link shell-send shell-unreachable-server)
 fi
 
 export SERVER_URL="${SERVER_URL:-http://127.0.0.1:41999}"
 mkdir -p "$ARTIFACTS"
-
-needs() {
-  local flow
-  for flow in "${FLOWS[@]}"; do
-    [ "$flow" = "$1" ] && return 0
-  done
-  return 1
-}
-
-# Seeds for the title-based flows (idempotent per title).
-if needs phase4b-send; then
-  THREAD_TITLE="P4b send" scripts/create-idle-thread.sh
-fi
-if needs phase6-panel; then
-  THREAD_TITLE="P6 panel thread" scripts/phase6-diff-setup.sh
-fi
 
 failed=()
 for flow in "${FLOWS[@]}"; do

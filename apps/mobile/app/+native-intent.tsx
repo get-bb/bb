@@ -7,10 +7,9 @@
 // the add-server screen with the link remembered.
 import { waitForActiveConnection } from "@/app-shell/connector";
 import { e2eModeEnabled } from "@/app-shell/e2e";
-import { addServerPathForLink, resolveIncomingLink } from "@/lib/links";
+import { addServerPathForLink } from "@/lib/links";
 import { getProfileStore } from "@/lib/native";
 import { resolveShellIncomingLink } from "@/lib/shell";
-import { getShellPreferenceStore } from "@/lib/shell/shell-preference-store";
 
 export async function redirectSystemPath({
   path,
@@ -27,11 +26,9 @@ export async function redirectSystemPath({
       activeProfileId: snapshot.activeProfileId,
       developerRoutesEnabled: e2eModeEnabled,
     };
-    // In shell mode the page owns almost every surface, so a link resolves to
-    // one WebView route carrying a web path instead of a native route.
-    const resolution = getShellPreferenceStore().isEnabled()
-      ? resolveShellIncomingLink(path, context)
-      : resolveIncomingLink(path, context);
+    // The page owns almost every surface, so a link resolves to one WebView
+    // route carrying a web path rather than a native route.
+    const resolution = resolveShellIncomingLink(path, context);
     switch (resolution.kind) {
       case "passthrough":
         return path;

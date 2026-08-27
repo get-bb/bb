@@ -108,9 +108,15 @@ export function WebViewSpikeScreen() {
     (GRANT_TYPES.find((value) => value === firstParam(params.grant)) ??
       "grant") as MediaCapturePermissionGrantType,
   );
-  const [showChrome, setShowChrome] = useState(firstParam(params.chrome) !== "0");
-  const [incognito, setIncognito] = useState(firstParam(params.incognito) === "1");
-  const [cacheEnabled, setCacheEnabled] = useState(firstParam(params.cache) !== "0");
+  const [showChrome, setShowChrome] = useState(
+    firstParam(params.chrome) !== "0",
+  );
+  const [incognito, setIncognito] = useState(
+    firstParam(params.incognito) === "1",
+  );
+  const [cacheEnabled, setCacheEnabled] = useState(
+    firstParam(params.cache) !== "0",
+  );
   // iOS puts a previous/next/Done accessory bar above the keyboard for every
   // web form field. The native app has no such bar, so the shell needs to know
   // whether hiding it closes part of the keyboard-quality gap.
@@ -218,7 +224,8 @@ export function WebViewSpikeScreen() {
       setLoadedUrl((previous) => (previous === urlParam ? previous : urlParam));
     }
     if (cacheParam !== undefined) setCacheEnabled(cacheParam !== "0");
-    if (accessoryParam !== undefined) setHideAccessoryBar(accessoryParam === "0");
+    if (accessoryParam !== undefined)
+      setHideAccessoryBar(accessoryParam === "0");
   }, [accessoryParam, cacheParam, urlParam]);
 
   const onMessage = useCallback(
@@ -252,7 +259,9 @@ export function WebViewSpikeScreen() {
     let cancelled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
     ids.forEach((id, index) => {
-      const probe = SPIKE_PROBES.find((entry) => entry.id === (id as SpikeProbeId));
+      const probe = SPIKE_PROBES.find(
+        (entry) => entry.id === (id as SpikeProbeId),
+      );
       if (probe === undefined) {
         record("native", { kind: "probe", id, error: "unknown probe" });
         return;

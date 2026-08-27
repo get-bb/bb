@@ -125,7 +125,8 @@ export function useShellBridge(
       const parsed = parsePageToShellMessage(event.nativeEvent.data);
       if (!parsed.ok) {
         // A newer page, or a page that is not bb at all. Both are survivable.
-        if (__DEV__) console.warn("shell bridge dropped a message", parsed.reason);
+        if (__DEV__)
+          console.warn("shell bridge dropped a message", parsed.reason);
         return;
       }
       if (__DEV__) console.log("shell bridge", JSON.stringify(parsed.message));

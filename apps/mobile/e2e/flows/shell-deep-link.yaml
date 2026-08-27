@@ -1,0 +1,45 @@
+# Deep links reach the page. A `bb://` scheme link and a web link for a saved
+# server both resolve to one shell route carrying a page path; the page's own
+# router takes it from there. The screens the shell keeps stay native.
+#
+# Runs after shell-launch, which leaves the E2E backend paired.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+- runFlow: ../subflows/pair-direct-server.yaml
+
+# A scheme link into a page surface.
+- openLink: "bb://threads"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000
+
+# A scheme link carrying a page path lands on that page.
+- openLink: "bb://"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 60000
+- takeScreenshot: shell-deep-link-page
+
+# There is deliberately no web-link step here. A universal link only reaches
+# the app for a domain in `associatedDomains` (`*.getbb.app`), and the harness
+# serves a loopback origin, so iOS hands `http://127.0.0.1:.../` to Safari —
+# correctly. The web-link branch of the resolver is covered by unit tests in
+# src/lib/shell/shell-links.test.ts.
+
+# Connect enrolment holds the Keychain credential, so it can never move into
+# the page. It stays native even while the shell is on.
+- openLink: "bb://connect"
+- extendedWaitUntil:
+    visible:
+      id: "connect-screen"
+    timeout: 20000
+- takeScreenshot: shell-deep-link-native

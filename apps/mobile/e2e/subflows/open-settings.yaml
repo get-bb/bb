@@ -1,9 +1,0 @@
-# Home → workspace menu (the native "Workspace" bar item on the header's
-# left; its items are matched by text) → Settings.
-appId: ${APP_ID}
----
-- tapOn: "Workspace"
-- extendedWaitUntil:
-    visible: "Settings"
-    timeout: 10000
-- tapOn: "Settings"

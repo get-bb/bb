@@ -48,9 +48,10 @@ describe("buildBridgeSharePayload", () => {
 
   it("does not repeat a url the text already carries", () => {
     const url = "https://bee.getbb.app/threads/thr_1";
-    expect(
-      buildBridgeSharePayload("ios", { text: url, url }).content,
-    ).toEqual({ title: undefined, message: url });
+    expect(buildBridgeSharePayload("ios", { text: url, url }).content).toEqual({
+      title: undefined,
+      message: url,
+    });
   });
 
   it("falls back to a plain dialog title", () => {

@@ -796,7 +796,7 @@ push key); nobody needs a local Xcode signing setup to ship.
   none, and adds it to the external group named by the `external_group`
   input (default `External testers`; empty skips the step). Run the script
   by hand with `node scripts/testflight-distribute.mjs --version X.Y.Z
-  --build N` from `apps/mobile` with the `.p8` in place.
+--build N` from `apps/mobile` with the `.p8` in place.
   Run it alone from the Actions tab ("Mobile iOS (EAS)") or
   `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
   The nightly `publish-bb-app.yml` calls the same workflow after the npm

@@ -1,14 +1,22 @@
 import { Redirect } from "expo-router";
-import { useWebViewShellEnabled } from "@/lib/shell";
-import { HomeScreen } from "@/screens";
+import { useProfiles } from "@/app-shell";
+import { Spinner } from "@/ui";
+import { View } from "react-native";
 
 /**
- * Home is either the native thread list or the WebView shell, decided by the
- * client-local switch in Settings -> General. Both ship in the same binary
- * while the shell is proven, so a user can turn it off after a bad build.
+ * The app's entry point. The page owns every product surface now, so home is
+ * the WebView shell — or the add-server screen when this phone has no server
+ * to render yet.
  */
 export default function HomeRoute() {
-  const [webViewShell] = useWebViewShellEnabled();
-  if (webViewShell) return <Redirect href="/webview" />;
-  return <HomeScreen />;
+  const { status, profiles } = useProfiles();
+  if (status !== "ready") {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <Spinner />
+      </View>
+    );
+  }
+  if (profiles.length === 0) return <Redirect href="/settings/servers/add" />;
+  return <Redirect href="/webview" />;
 }

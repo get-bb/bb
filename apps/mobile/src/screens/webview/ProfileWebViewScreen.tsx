@@ -81,7 +81,8 @@ export function ProfileWebViewScreen() {
   }, [preferences, profile, requestedPath]);
 
   const sourceUrl = useMemo(
-    () => (profile === null ? null : buildShellUrl(profile.serverUrl, initialPath)),
+    () =>
+      profile === null ? null : buildShellUrl(profile.serverUrl, initialPath),
     [initialPath, profile],
   );
 
@@ -313,7 +314,8 @@ export function ProfileWebViewScreen() {
           // The gate answers an unauthenticated WebView with its own sign-in
           // page on 401. Showing that inside the shell reads as a broken app.
           const { statusCode } = event.nativeEvent;
-          if (statusCode >= 400) setLoad({ kind: "http-error", status: statusCode });
+          if (statusCode >= 400)
+            setLoad({ kind: "http-error", status: statusCode });
         }}
         onContentProcessDidTerminate={retry}
       />

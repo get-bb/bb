@@ -1,0 +1,103 @@
+# Send a message through the page inside the WebView, and reach the native
+# device settings from the page.
+#
+# The acceptance test for the shell (Docs plans/mobile-webview-shell.md).
+# The page is web content rendered by react-native-webview;
+# Maestro reads it through the WKWebView accessibility tree, so the assertions
+# below target page text, not native test ids.
+#
+# Needs the harness backend started with BB_MOBILE_E2E_SERVE_APP=1 and a built
+# apps/app (`pnpm exec turbo run build --filter=@bb/app`). Without those the
+# server answers API routes only and the WebView shows the native error state.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+# Pairing lands in the shell, which loads the page the server serves. The
+# composer is page content.
+- openLink: "bb://"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 60000
+- takeScreenshot: shell-home
+
+# A deep link resolves to one shell route carrying a web path; the page's own
+# router takes it from there.
+- openLink: "bb://threads"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000
+
+# Reach a thread and send a message, the plan's acceptance test. The seeded
+# "Idle thread" echoes through the fake provider adapter.
+- openLink: "bb://"
+- extendedWaitUntil:
+    visible: ".*Idle thread.*"
+    timeout: 60000
+- tapOn: ".*Idle thread.*"
+- extendedWaitUntil:
+    visible: ".*follow-up.*"
+    timeout: 60000
+# The compact composer collapses when it is empty. Tapping expands it and
+# focuses the editor; wait for that transition to settle before typing, or the
+# text lands nowhere.
+- tapOn: ".*follow-up.*"
+- waitForAnimationToEnd:
+    timeout: 5000
+- inputText: "hello from the shell"
+- takeScreenshot: shell-composer
+# Send with the button, not the keyboard's return: whether the return submits
+# depends on the composer's mode, and a draft left sitting in the box would
+# still satisfy a "the text is visible" assertion. Only the provider's echo
+# proves the message actually left the phone.
+- tapOn: ".*Submit.*"
+- extendedWaitUntil:
+    visible: ".*Response to: hello from the shell.*"
+    timeout: 90000
+- takeScreenshot: shell-sent
+
+# The page reaches the native device screen over the bridge. This is the
+# discoverable entry; the failure screen and the Home Screen quick action are
+# the two that still work when the page will not load. Match on the row's text:
+# a WebView exposes no test ids to the accessibility tree.
+- openLink: "bb://settings"
+- extendedWaitUntil:
+    visible:
+      id: "shell-webview"
+    timeout: 30000
+# On a phone the settings navigation lives in the page's drawer, so the row is
+# one tap further in than it looks on a desktop viewport.
+- extendedWaitUntil:
+    visible: ".*Toggle sidebar.*"
+    timeout: 60000
+- tapOn: ".*Toggle sidebar.*"
+- extendedWaitUntil:
+    visible: ".*This device.*"
+    timeout: 30000
+- tapOn: ".*This device.*"
+- extendedWaitUntil:
+    visible:
+      id: "device-settings-screen"
+    timeout: 15000
+- takeScreenshot: shell-device-settings

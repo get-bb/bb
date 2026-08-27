@@ -1,0 +1,34 @@
+# A server this phone cannot reach never becomes a blank WebView.
+#
+# The add-server probe is the first line of defence: it refuses a URL it cannot
+# reach, so the shell is never pointed at a dead origin in the first place.
+#
+# The shell's own load-failure screen — the one that offers "Device settings"
+# when a paired server goes away mid-session — is verified by hand (plan
+# section 14.4). Automating it needs a harness that can stop answering on
+# demand, which the mobile e2e backend cannot do yet.
+#
+# Deliberately does not use the harness backend.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  # Reachable host, closed port: the load fails fast instead of hanging.
+  DEAD_SERVER_URL: "http://127.0.0.1:41998"
+---
+- runFlow: ../subflows/launch-app.yaml
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${DEAD_SERVER_URL}"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+
+# The add-server probe refuses a server it cannot reach, which is itself the
+# first line of defence.
+- extendedWaitUntil:
+    visible: ".*(could not|cannot|failed|unreachable|Connect to a bb server).*"
+    timeout: 30000
+- takeScreenshot: shell-offline-add-server

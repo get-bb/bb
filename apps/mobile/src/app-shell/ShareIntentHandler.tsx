@@ -5,8 +5,7 @@ import {
   loadShareIntentModule,
   type ShareIntentModule,
 } from "@/lib/share";
-import { useWebViewShellEnabled } from "@/lib/shell";
-import { newThreadHref, webViewShellHref } from "@/screens/shell/hrefs";
+import { webViewShellHref } from "@/screens/shell/hrefs";
 import { toast } from "@/ui";
 import { useProfiles } from "./ProfilesProvider";
 
@@ -31,7 +30,6 @@ function ShareIntentHandlerWithModule({
 }) {
   const router = useRouter();
   const { activeProfile } = useProfiles();
-  const [webViewShell] = useWebViewShellEnabled();
   const { hasShareIntent, shareIntent, resetShareIntent, error } =
     module.useShareIntent({ resetOnBackground: true });
   useEffect(() => {
@@ -53,21 +51,12 @@ function ShareIntentHandlerWithModule({
       return;
     }
     // The page's root is its compose view, so a shared link seeds it through
-    // the same `initialPrompt` query the native dock uses.
+    // the `initialPrompt` query.
     router.navigate(
-      webViewShell
-        ? webViewShellHref({
-            path: `/?initialPrompt=${encodeURIComponent(seed.initialPrompt)}`,
-          })
-        : newThreadHref({ initialPrompt: seed.initialPrompt }),
+      webViewShellHref({
+        path: `/?initialPrompt=${encodeURIComponent(seed.initialPrompt)}`,
+      }),
     );
-  }, [
-    activeProfile,
-    hasShareIntent,
-    resetShareIntent,
-    router,
-    shareIntent,
-    webViewShell,
-  ]);
+  }, [activeProfile, hasShareIntent, resetShareIntent, router, shareIntent]);
   return null;
 }

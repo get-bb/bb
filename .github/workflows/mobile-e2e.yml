@@ -248,9 +248,9 @@ jobs:
       # seeded project + threads) on the port the flows expect. Turbo builds
       # its prerequisites (plugin SDK, native modules) first; the script
       # prints one JSON line when it is ready and keeps running.
-      # phase2-webview-shell renders the real page inside the WebView, so the
-      # harness has to serve a built apps/app the way a bb server does.
-      - name: Build the web app for the WebView shell flow
+      # Every flow drives the WebView shell, so the harness has to serve a
+      # built apps/app the way a bb server does.
+      - name: Build the web app the shell renders
         run: pnpm exec turbo run build --filter=@bb/app
 
       - name: Start the e2e backend

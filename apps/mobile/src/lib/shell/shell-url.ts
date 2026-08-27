@@ -67,7 +67,10 @@ export function isShellNavigation(url: string, serverUrl: string): boolean {
  * The page path inside a shell URL, for remembering where the user was.
  * Returns null when the URL does not belong to the profile.
  */
-export function shellPathFromUrl(url: string, serverUrl: string): string | null {
+export function shellPathFromUrl(
+  url: string,
+  serverUrl: string,
+): string | null {
   if (!isShellNavigation(url, serverUrl)) return null;
   const server = parseServerUrl(serverUrl);
   if (server === null) return null;
@@ -80,7 +83,9 @@ export function shellPathFromUrl(url: string, serverUrl: string): string | null 
 export function isExternallyOpenable(url: string): boolean {
   try {
     const { protocol } = new URL(url);
-    return protocol === "http:" || protocol === "https:" || protocol === "mailto:";
+    return (
+      protocol === "http:" || protocol === "https:" || protocol === "mailto:"
+    );
   } catch {
     return false;
   }

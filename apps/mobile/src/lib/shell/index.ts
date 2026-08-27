@@ -18,8 +18,6 @@ export {
   createShellPreferenceStore,
   isRememberablePath,
   lastShellPathStorageKey,
-  parseWebViewShellEnabled,
-  WEBVIEW_SHELL_ENABLED_STORAGE_KEY,
   type ShellPreferenceStorage,
   type ShellPreferenceStore,
 } from "./shell-preferences";
@@ -41,4 +39,3 @@ export {
   type ShellCommand,
 } from "./shell-commands";
 export { getShellPreferenceStore } from "./shell-preference-store";
-export { useWebViewShellEnabled } from "./use-shell-preferences";

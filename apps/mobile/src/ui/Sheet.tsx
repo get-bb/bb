@@ -21,7 +21,7 @@ import {
 } from "react";
 import { Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { withAlpha } from "@/markdown/colors";
+import { withAlpha } from "@/theme/colors";
 import { useTheme } from "@/theme/ThemeProvider";
 import { scrimBaseColor } from "@/theme/scrim";
 import { cn } from "./cn";

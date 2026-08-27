@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blendOver } from "@/markdown/colors";
+import { blendOver } from "@/theme/colors";
 import { scrimBaseColor } from "./scrim";
 import { nativeThemes } from "./theme.native";
 
