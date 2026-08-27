@@ -258,7 +258,7 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useProjectWorkspaceDisplay: () => null,
+  useProjectDisplayName: () => null,
 }));
 
 vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
