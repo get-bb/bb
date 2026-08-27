@@ -1683,6 +1683,53 @@ export interface PluginComposerApi {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_setPluginInput(input: JsonValue | null): void;
+  /**
+   * Submit this composer's draft through the composer's OWN submit pipeline,
+   * parked until `holdUntil` instead of dispatched now.
+   *
+   * This is a real submission, not a plugin-issued send: the host builds the
+   * request exactly as pressing Enter would, so the draft's attachments and
+   * @-mentions, and — in the new-thread composer — the provider, model,
+   * reasoning level, service tier, permission mode and environment the user
+   * has selected on screen, all travel with it. A plugin cannot assemble that
+   * tuple itself, which is why sending from the backend instead would silently
+   * run the message with different settings than the ones in front of the user.
+   *
+   * In a thread composer the message is held rather than sent or queued. In the
+   * new-thread composer the thread is created idle and its first turn becomes
+   * the hold. Either way the resulting hold is core's: the held card above the
+   * composer, the countdown, Release now and Cancel all work with no further
+   * plugin involvement.
+   *
+   * Resolves once the host has accepted the submission and cleared the draft.
+   * Rejects when the composer refused to submit — a scope with no submit
+   * pipeline (a queued-message editor, a side chat), an empty draft, or a
+   * composer that is not ready (still loading its execution defaults, missing
+   * an environment). The rejection's message is safe to show to the user.
+   * Failures of the underlying request are reported by bb's own submit error
+   * handling and restore the draft, exactly as an interactive failure does.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_submit(
+    options: ExperimentalComposerSubmitOptions,
+  ): Promise<void>;
+}
+
+/**
+ * What `experimental_submit` does differently from pressing Enter.
+ *
+ * There is deliberately no zero-argument overload and no "submit now" arm: a
+ * plugin that wants a draft sent immediately is asking for the affordance the
+ * user already has, and handing plugins an unconditional "send this draft"
+ * button is a much larger surface than scheduling needs.
+ */
+export interface ExperimentalComposerSubmitOptions {
+  /**
+   * Epoch ms the submission should dispatch at. Must be in the future; the
+   * host does not second-guess how far ahead it is.
+   */
+  holdUntil: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1862,6 +1909,14 @@ export interface NewThreadRequest {
   executionInputSources: CreateExecutionInputSources;
   environment: CreateThreadEnvironmentArgs;
   input: PromptInput[];
+  /**
+   * Epoch ms the first turn should dispatch at. Present only when the
+   * submission came from `useComposer().experimental_submit` — a scheduled
+   * create — and absent otherwise, which is what makes an ordinary submission
+   * start work at once. Forward it to `threads.spawn` unchanged: the thread is
+   * created idle and its first turn becomes a user-releasable dispatch hold.
+   */
+  holdUntil?: number;
 }
 
 /**
@@ -2101,6 +2156,37 @@ export interface BbNavigate {
 }
 
 // ---------------------------------------------------------------------------
+// experimental_Dialog — the host-owned overlay.
+// ---------------------------------------------------------------------------
+
+/**
+ * Props of the host-owned `experimental_Dialog`.
+ *
+ * This is the one component a plugin cannot usefully vendor. BB's overlays are
+ * a centred dialog on wide viewports and a single shared *persistent*
+ * responsive drawer on compact ones — a drawer that never marks the app root
+ * `inert`/`aria-hidden` (iOS Safari restyles the whole app tree when it does),
+ * starts its transform before its content is realized, and coordinates focus
+ * trapping and Escape with any other open drawer through one per-document
+ * stack. A vendored copy gets its own stack and its own idea of what is on
+ * top, so plugin overlays stop cooperating with BB's. Rendering it host-side
+ * is what makes a plugin overlay behave like a native one.
+ *
+ * Controlled only: the plugin owns `open`, so the same state can drive whatever
+ * opened it (a `+` menu row, a composer action) without a hidden trigger.
+ */
+export interface ExperimentalDialogProps {
+  open: boolean;
+  /** Called with `false` on Escape, backdrop press, or drawer drag-dismiss. */
+  onOpenChange(open: boolean): void;
+  /** Heading; also the drawer's accessible name on compact viewports. */
+  title: string;
+  /** Supporting line under the heading. Omit for a heading-only overlay. */
+  description?: string;
+  children: ReactNode;
+}
+
+// ---------------------------------------------------------------------------
 // The whole runtime surface. Declaration-versus-runtime parity is tested
 // against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
@@ -2252,5 +2338,11 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_Diff: ComponentType<DiffProps>;
+  /**
+   * The host-owned overlay (see {@link ExperimentalDialogProps}) — a centred
+   * dialog on wide viewports and BB's shared persistent responsive drawer on
+   * compact ones. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_Dialog: ComponentType<ExperimentalDialogProps>;
   useComposerView(): ComposerView;
 }

@@ -21,6 +21,23 @@ export interface PluginComposerHost {
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
   focus(): void;
+  /**
+   * Runs this composer's own submit pipeline with the draft it holds right
+   * now, parking the result until `holdUntil` instead of dispatching it. Backs
+   * `useComposer().experimental_submit`.
+   *
+   * Omitted — not a no-op — by composers that have no schedulable submit of
+   * their own: a queued-message editor saves an edit rather than dispatching
+   * anything, and a side chat's send belongs to its child thread. The absence
+   * is what `experimental_submit` reports to the plugin, so a picker cannot
+   * claim to have scheduled a message that was never submitted.
+   *
+   * Rejects with a user-presentable message when the composer will not submit
+   * (empty draft, defaults still loading, no resolved environment). Request
+   * failures reject too, after the composer has restored the draft and shown
+   * its own error, so the caller can drop its success UI.
+   */
+  submit?(options: { holdUntil: number }): Promise<void>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

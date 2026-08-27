@@ -848,6 +848,42 @@ export function applySendThreadMessageSuccess({
   request,
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
+  if (delivery === "held" && transaction?.kind === "accepted-turn") {
+    // A scheduled send is parked in a dispatch hold: no turn started and
+    // nothing enters the transcript until it releases. Undo the whole
+    // optimistic accepted-turn — both the working thread state and the message
+    // row — because unlike the "deferred" case the message IS visible
+    // elsewhere: the held card above the composer renders it, with its
+    // countdown, Release now and Cancel, off the `queue-changed` notification
+    // the server sends. Leaving the optimistic row would show the message
+    // twice and imply it had already been sent.
+    if (transaction.optimisticRowId) {
+      removeOptimisticTimelineRow(
+        queryClient,
+        request.id,
+        transaction.optimisticRowId,
+      );
+    }
+    if (transaction.previousThread) {
+      queryClient.setQueryData<ThreadResponse>(
+        threadQueryKey(request.id),
+        transaction.previousThread,
+      );
+    }
+    prependThreadPromptHistory(
+      queryClient,
+      request.id,
+      buildAcceptedPromptHistoryEntry({
+        createdAt: transaction.optimisticCreatedAt,
+        input: request.input,
+      }),
+    );
+    // Unconditional, unlike the queued branch: the hold list is what renders
+    // this message now, and a `queue-changed` that crosses the response is a
+    // held card that never appears.
+    invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+    return;
+  }
   if (delivery === "deferred" && transaction?.kind === "accepted-turn") {
     if (transaction.previousThread) {
       queryClient.setQueryData<ThreadResponse>(

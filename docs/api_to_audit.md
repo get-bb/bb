@@ -2144,3 +2144,103 @@ against the request's 8KB `pluginInputs` budget.
    against the 8KB cap, so an oversized combination fails the whole send at
    the server boundary. Decide whether the client should refuse earlier and
    how that would surface.
+
+## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Runs the composer's own submit pipeline with the draft that
+is on screen, parking the result until `holdUntil` instead of dispatching it.
+In a thread composer that is a send that is held rather than sent or queued; in
+the new-thread composer the thread is created idle and its first turn becomes
+the hold. The point is that everything the user selected travels with the
+submission — attachments, @-mentions, and for a create the provider, model,
+reasoning level, service tier, permission mode, environment and any plugin
+picker entry — none of which is reachable from a plugin backend, so a
+plugin-issued `threads.send`/`threads.spawn` would silently schedule a
+different message from the one being composed. Backed host-side by an optional
+`submit` on the internal `PluginComposerHost`, supplied by the thread
+composer (`ThreadDetailPromptArea`) and the new-thread composer
+(`NewThreadComposer`) and omitted everywhere else. Rejects with a
+user-presentable message when the composer refuses; request failures reject
+too, after the host has restored the draft. Sole consumer:
+`plugins/scheduled-send`.
+
+**Audit before stabilizing.**
+
+1. **Options is a one-field object with no "submit now" arm.** `holdUntil` is
+   required, so the method can only schedule. That is deliberate — an
+   unconditional "send the user's draft" capability is a much larger surface
+   than scheduling needs — but confirm the shape before a second option
+   (`mode`, `senderThreadId`, a queue hint) has to be added, because adding one
+   makes `holdUntil` optional and re-opens the "submit now" question.
+2. **Two of four scopes are unsupported.** A queued-message editor and a side
+   chat have no `submit`, and the route-draft fallback (a plugin surface
+   mounted outside any composer) has none either. All three reject with the
+   same "cannot schedule a submission" message, so a plugin cannot tell
+   "unsupported here" from "no composer mounted". Decide whether
+   `ComposerView` should advertise submit capability so a `+` menu row can
+   disable itself instead of failing on click.
+3. **Double error reporting on the create path.** A failed scheduled *send*
+   is reported only through the rejection (`useSendThreadMessage` sets
+   `showErrorToast: false`). A failed scheduled *create* is also toasted by
+   the create mutation's default error handling, so the user sees the reason
+   twice — once in the plugin's picker and once in a toast. Decide whether the
+   host should suppress its toast for programmatic submissions.
+4. **Freshness of `holdUntil`.** The host rejects a non-future `holdUntil` at
+   call time and the server accepts any non-negative timestamp, releasing a
+   past one on its next sweep. The only guard against a time that goes stale
+   between the plugin computing it and the request landing is that window
+   being small. Decide whether the send/create routes should refuse a
+   `holdUntil` in the past outright.
+5. **No submission identity is returned.** The method resolves with nothing, so
+   a plugin cannot address the hold it just created (to amend or cancel it)
+   without listing the thread's holds. Confirm whether the hold id belongs in
+   the result.
+6. **`NewThreadRequest.holdUntil`.** The same field is now visible to plugins
+   hosting `experimental_NewThreadComposer`: a scheduled submission there
+   reaches the plugin's `onSubmit` carrying `holdUntil`, which the plugin must
+   forward to `threads.spawn`. A plugin that reconstructs the spawn request
+   field-by-field instead of forwarding it will drop the schedule silently.
+   Confirm that forwarding expectation is documented well enough, or make the
+   composer refuse to schedule when it is plugin-hosted.
+
+## `experimental_Dialog` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** The host-owned overlay: bb's `Dialog`, which is a centred
+dialog on wide viewports and the shared persistent responsive drawer on
+compact ones. Controlled only (`open` / `onOpenChange`), with a required
+`title` (Radix requires an accessible name and the compact projection labels
+the drawer with it) and an optional `description`. It exists as a deliberate
+exception to the "plugins vendor their own components" rule (§5.5) because the
+behaviour is process-wide, not visual: the compact drawer coordinates focus
+trapping, Escape and z-order across every open drawer through one
+per-`Document` stack held in module scope, never marks the app root
+`inert`/`aria-hidden`, and defers content realization behind the opening
+transform. A vendored copy is bundled per plugin and therefore gets its own
+stack, so plugin overlays would stop cooperating with bb's. Sole consumer:
+`plugins/scheduled-send`.
+
+**Audit before stabilizing.**
+
+1. **Smallest possible prop set.** No size, no footer, no `hideCloseButton`, no
+   `onAfterCloseAutoFocus`, no nesting guidance — a plugin that needs a wide
+   dialog or a sticky footer has to lay it out inside `children` against a
+   width it cannot set. Confirm the real demand before adding props, since
+   every prop added here is a host layout decision frozen into the contract.
+2. **Content is not deferred.** `ResponsiveDrawerShell` realizes content two
+   frames after the transform starts, but the plugin's children are an already
+   constructed React element, so an expensive plugin overlay still pays its
+   render cost inside the drawer's first frames. Measure a heavy plugin
+   overlay on iOS Safari before promising the drawer's motion guarantees to
+   plugins.
+3. **Crash containment.** The children render inside the host's dialog tree; a
+   throwing plugin overlay is not obviously covered by the slot's crash
+   fallback the way a banner body is. Verify what a thrown error inside an open
+   plugin dialog does to the host.
+4. **Mount point.** `plugins/scheduled-send` mounts it from a `chrome: "bare"`
+   composer banner that renders nothing visible — a banner used purely as a
+   mount point for a portalled overlay. If that becomes the common shape,
+   decide whether `ComposerCustomization` needs an explicit invisible-mount
+   slot rather than overloading `banners`.
+5. **No stacking policy.** Nothing stops two plugins opening dialogs at once,
+   or a plugin opening one over a host dialog. The drawer stack handles
+   compact viewports; the wide-viewport Radix path is untested for that case.

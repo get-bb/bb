@@ -21,6 +21,7 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
+  ExperimentalComposerSubmitOptions,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -825,6 +826,27 @@ export function useComposer(): PluginComposerApi {
     [pluginId, scopeOwnership, textEffectKey],
   );
 
+  const hostSubmit = composerHost?.submit;
+  const experimental_submit = useCallback(
+    async (options: ExperimentalComposerSubmitOptions) => {
+      // Scoped like every other write: a slot that has been replaced must not
+      // submit into a composer it no longer belongs to.
+      if (!scopeOwnership.isActive()) {
+        throw new Error("This composer is no longer active.");
+      }
+      if (hostSubmit === undefined) {
+        // The route-draft fallback and the scopes with no dispatch of their own
+        // land here. Saying so beats seeding a draft the user never sees sent.
+        throw new Error("This composer cannot schedule a submission.");
+      }
+      if (!Number.isFinite(options.holdUntil) || options.holdUntil <= Date.now()) {
+        throw new Error("Pick a time in the future.");
+      }
+      await hostSubmit({ holdUntil: options.holdUntil });
+    },
+    [hostSubmit, scopeOwnership],
+  );
+
   return useMemo(
     () => ({
       scope:
@@ -843,6 +865,7 @@ export function useComposer(): PluginComposerApi {
       insertMention,
       focus,
       experimental_setPluginInput,
+      experimental_submit,
     }),
     [
       addQuote,
@@ -850,6 +873,7 @@ export function useComposer(): PluginComposerApi {
       composerScope,
       composerText,
       experimental_setPluginInput,
+      experimental_submit,
       focus,
       insertMention,
       projectId,

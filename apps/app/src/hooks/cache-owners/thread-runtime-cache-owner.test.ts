@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   sidebarNavigationQueryKey,
+  threadDispatchHoldsQueryKey,
   threadListQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
@@ -928,6 +929,70 @@ describe("thread runtime cache owner", () => {
       )?.rows,
     ).toEqual([]);
   });
+  it("drops the optimistic turn when a scheduled send is parked in a dispatch hold", async () => {
+    // The inverse of the "deferred" case below. A deferred message keeps its
+    // optimistic row because that row is the only place it is visible; a
+    // scheduled one must lose it, because the held card above the composer
+    // renders it and an optimistic row would show the message twice and imply
+    // it had already been sent.
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    queryClient.setQueryData(threadQueryKey("thread-1"), {
+      id: "thread-1",
+      status: "idle",
+      updatedAt: 1,
+      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    });
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeTimelineResponse(),
+    );
+    queryClient.setQueryData(threadDispatchHoldsQueryKey("thread-1"), []);
+    const request = {
+      id: "thread-1",
+      mode: "queue-if-active" as const,
+      input: [{ type: "text" as const, text: "ship the notes", mentions: [] }],
+      holdUntil: Date.now() + 3_600_000,
+    };
+    const transaction = await beginSendThreadMessageTransaction({
+      queryClient,
+      request,
+    });
+    expect(transaction.kind).toBe("accepted-turn");
+
+    applySendThreadMessageSuccess({
+      delivery: "held",
+      queryClient,
+      realtimeConnected: true,
+      request,
+      transaction,
+    });
+    await Promise.resolve();
+
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      )?.rows,
+    ).toEqual([]);
+    // No turn started, so the working indicator must not mount.
+    expect(queryClient.getQueryData(threadQueryKey("thread-1"))).toMatchObject({
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+    });
+    // The draft is gone, so up-arrow recall is the only way back to the text.
+    expect(
+      queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
+    ).toMatchObject([{ input: request.input }]);
+    // Unconditional even with realtime up: a `queue-changed` that crosses the
+    // response is a held card that never appears.
+    expect(
+      queryClient.getQueryState(threadDispatchHoldsQueryKey("thread-1"))
+        ?.isInvalidated,
+    ).toBe(true);
+  });
+
   it("keeps a held message visible and the thread idle when the server defers the send", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },

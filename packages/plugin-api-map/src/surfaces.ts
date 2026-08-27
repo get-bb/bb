@@ -330,8 +330,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
+          "Open bb's own dialog from that callback and render a form inside it: a centred dialog on a wide window, a drawer on a phone",
+          "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
         ],
-        apiSymbols: ["ComposerPlusMenuItem"],
+        apiSymbols: [
+          "ComposerPlusMenuItem",
+          "ExperimentalComposerSubmitOptions",
+          "ExperimentalDialogProps",
+        ],
+        firstParty: ["Send later"],
       },
       {
         id: "provider-picker",

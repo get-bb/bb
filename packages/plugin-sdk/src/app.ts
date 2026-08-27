@@ -59,6 +59,9 @@ export const experimental_PermissionModePicker =
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).
 export const experimental_SourceCode = runtime.experimental_SourceCode;
 export const experimental_Diff = runtime.experimental_Diff;
+// The host-owned overlay: a dialog on wide viewports, BB's shared persistent
+// responsive drawer on compact ones (experimental — see docs/api_to_audit.md).
+export const experimental_Dialog = runtime.experimental_Dialog;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;

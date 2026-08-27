@@ -163,6 +163,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
+      holdUntil,
       senderThreadId,
       executionInputSources,
       pluginInputs,
@@ -175,6 +176,9 @@ export function useSendThreadMessage() {
         reasoningLevel,
         permissionMode,
         ...(pluginInputs === undefined ? {} : { pluginInputs }),
+        // Present ⇒ the server parks the send in a user-releasable dispatch
+        // hold and answers `delivery: "held"`, whatever `mode` says.
+        ...(holdUntil === undefined ? {} : { holdUntil }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),

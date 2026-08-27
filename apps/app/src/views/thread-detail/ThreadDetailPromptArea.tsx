@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -728,6 +729,21 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
+  // Identity-stable across keystrokes: the published host is held by large
+  // non-draft subscribers (the secondary-content body, the hosted-panel
+  // registry), so a per-keystroke host identity re-rendered the whole thread
+  // shell per character. The live draft flows through getCurrent/subscribeDraft.
+  // Indirection so the host object stays identity-stable: the scheduled submit
+  // closes over the live execution selection, which changes whenever the user
+  // touches a picker, and a host identity that changed with it would re-render
+  // the whole thread shell on every model change.
+  const submitScheduledRef = useRef<
+    (options: { holdUntil: number }) => Promise<void>
+  >(async () => {});
+  const submitScheduledThroughRef = useCallback(
+    (options: { holdUntil: number }) => submitScheduledRef.current(options),
+    [],
+  );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: thread.id },
@@ -736,6 +752,7 @@ export function ThreadDetailPromptArea({
       subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
+      submit: submitScheduledThroughRef,
     }),
     [
       focusBottomPluginComposer,
@@ -743,6 +760,7 @@ export function ThreadDetailPromptArea({
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
+      submitScheduledThroughRef,
       thread.id,
     ],
   );
@@ -842,6 +860,64 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
+  /**
+   * `handleSend` for a submission that is being scheduled rather than sent.
+   *
+   * Deliberately NOT `handleSend`'s queue/send fork: the server holds a
+   * `holdUntil` send whether or not the thread is busy, so scheduling while a
+   * turn runs must produce a hold, not a queued message that dispatches the
+   * moment the turn ends. Everything else is shared — the same draft, the same
+   * resolved attachments and @-mentions, the same frozen execution tuple, the
+   * same clear-and-restore-on-failure.
+   */
+  const submitScheduled = useCallback(
+    async ({ holdUntil }: { holdUntil: number }) => {
+      if (isDefaultExecutionOptionsLoading) {
+        throw new Error("This thread's model options are still loading.");
+      }
+      const submittedDraft = promptDraft.getCurrent();
+      const request = buildAutoFollowUpRequest({
+        threadId: thread.id,
+        input: promptDraftToInput(submittedDraft),
+        execution: followUpExecutionSelection,
+        pluginInputs: takeComposerPluginInputs(promptDraft.storageKey),
+      });
+      if (request === null) {
+        throw new Error("Type a message before scheduling it.");
+      }
+      const clearedSubmittedDraft =
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      try {
+        await sendMessage.mutateAsync({ ...request, holdUntil });
+      } catch (scheduleError) {
+        if (clearedSubmittedDraft) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
+        // The caller is a plugin surface with the user's attention on it, so it
+        // presents this instead of a toast landing behind the picker.
+        throw new Error(
+          getMutationErrorMessage({
+            error: scheduleError,
+            fallbackMessage: "Failed to schedule message",
+            lifecycleOperation: "send_message",
+          }),
+        );
+      }
+    },
+    [
+      followUpExecutionSelection,
+      isDefaultExecutionOptionsLoading,
+      promptDraft,
+      sendMessage,
+      setBottomAttachmentError,
+      thread.id,
+    ],
+  );
+  useEffect(() => {
+    submitScheduledRef.current = submitScheduled;
+  }, [submitScheduled]);
+
   const handleModifierSubmit = useCallback(async () => {
     if (!canSubmitModifierShortcut) {
       return;

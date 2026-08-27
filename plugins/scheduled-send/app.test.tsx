@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 // Frontend tests: the registration shape the host reads, and the plus-menu →
-// banner → rpc → clear flow that is the whole interaction.
+// dialog → composer-submit → clear flow that is the whole interaction.
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { ComposerView } from "@get-bb/plugin-sdk/app";
+import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk/app";
 
 // Load through the thunk so the test runtime is installed before app.tsx binds
 // `definePluginApp`; pull the pure helpers from the same evaluation.
@@ -14,12 +14,12 @@ const { composerScopeKey, openSendLater, resetSendLaterState } =
 
 const customization = app.composerCustomizations[0]!;
 const plusMenuItem = customization.plusMenu![0]!;
-const banner = customization.banners![0]!;
+const picker = customization.banners![0]!;
 
 const HOUR_MS = 60 * 60 * 1000;
 
 function composerView(overrides: {
-  threadId?: string;
+  scope?: PluginComposerScope;
   text?: string;
   isEmpty?: boolean;
   attachmentCount?: number;
@@ -27,7 +27,7 @@ function composerView(overrides: {
 }): ComposerView {
   const text = overrides.text ?? "ship the release notes";
   return {
-    scope: { kind: "thread", threadId: overrides.threadId ?? "thr_scope" },
+    scope: overrides.scope ?? { kind: "thread", threadId: "thr_scope" },
     layout: "expanded",
     draft: {
       text,
@@ -38,34 +38,16 @@ function composerView(overrides: {
   };
 }
 
-function openBanner(
-  options: {
-    threadId?: string;
-    text?: string;
-    attachmentCount?: number;
-    rpc?: Record<string, (input: unknown) => unknown>;
-  } = {},
+function openPicker(
+  options: { scope?: PluginComposerScope; text?: string } = {},
 ) {
-  const threadId = options.threadId ?? "thr_scope";
+  const scope: PluginComposerScope = options.scope ?? {
+    kind: "thread",
+    threadId: "thr_scope",
+  };
   const text = options.text ?? "ship the release notes";
-  openSendLater(composerView({ threadId, text }));
-  return renderSlot(
-    banner,
-    {},
-    {
-      composer: {
-        scope: { kind: "thread", threadId },
-        text,
-        attachmentCount: options.attachmentCount ?? 0,
-      },
-      rpc: options.rpc ?? {
-        scheduleSend: (input: unknown) => {
-          const { holdUntil } = input as { holdUntil: number };
-          return { delivery: "held", holdUntil };
-        },
-      },
-    },
-  );
+  openSendLater(composerView({ scope, text }));
+  return renderSlot(picker, {}, { composer: { scope, text } });
 }
 
 beforeEach(() => {
@@ -75,21 +57,24 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetSendLaterState();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("registration", () => {
-  it("registers one thread-scoped customization with a plus-menu row and banner", () => {
+  it("registers one customization covering both dispatchable composers", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "send-later",
-        // New-thread and side-chat composers are deliberately excluded: this
-        // plugin can only schedule a send into an existing thread.
-        scopes: ["thread"],
+        // Queued-message editors and side chats are deliberately excluded:
+        // neither owns a dispatchable submission of its own.
+        scopes: ["thread", "new-thread"],
         plusMenu: [
           { id: "send-later", label: "Send later…", icon: "Calendar" },
         ],
-        banners: [{ id: "send-later", chrome: "card" }],
+        // The picker is the host's portalled dialog, so the mount point wears
+        // no card chrome.
+        banners: [{ id: "send-later", chrome: "bare" }],
       },
     ]);
   });
@@ -102,69 +87,82 @@ describe("registration", () => {
   });
 });
 
-describe("banner visibility", () => {
-  it("renders nothing until the plus-menu row opens it", () => {
+describe("picker visibility", () => {
+  it("stays closed until the plus-menu row opens it", () => {
     const slot = renderSlot(
-      banner,
+      picker,
       {},
       { composer: { scope: { kind: "thread", threadId: "thr_scope" } } },
     );
-    expect(slot.container.innerHTML).toBe("");
+    expect(slot.queryByRole("dialog")).toBeNull();
   });
 
   it("stays closed in a composer other than the one it was opened from", () => {
-    // The store is module-level and every thread composer mounts this banner,
-    // so scope identity is what keeps the form in one place.
-    openSendLater(composerView({ threadId: "thr_a" }));
+    // The store is module-level and every composer mounts this slot, so scope
+    // identity is what keeps the picker in one place.
+    openSendLater(composerView({ scope: { kind: "thread", threadId: "thr_a" } }));
     const slot = renderSlot(
-      banner,
+      picker,
       {},
       { composer: { scope: { kind: "thread", threadId: "thr_b" } } },
     );
-    expect(slot.container.innerHTML).toBe("");
+    expect(slot.queryByRole("dialog")).toBeNull();
   });
 
   it("closes when the draft leaves from under it", async () => {
-    const slot = openBanner();
-    expect(slot.getByText("Send later")).toBeTruthy();
+    const slot = openPicker();
+    expect(slot.getByRole("dialog")).toBeTruthy();
 
-    // The user sent the message the ordinary way while the form was open.
+    // The user sent the message the ordinary way while the picker was open.
     await slot.behavior.setComposerText("");
 
-    await waitFor(() => expect(slot.container.innerHTML).toBe(""));
+    await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
   });
 });
 
 describe("scheduling", () => {
-  it("schedules the draft at a preset and clears the composer", async () => {
-    // Presets are computed from the clock the banner captured on mount, so the
-    // window this send must fall in opens before the banner does.
+  it("submits through the composer at a preset and clears the draft", async () => {
+    // Presets are computed from the clock the picker captured on mount, so the
+    // window this submission must fall in opens before the picker does.
     const before = Date.now();
-    const slot = openBanner();
+    const slot = openPicker();
 
     fireEvent.click(slot.getByRole("button", { name: /In 1 hour/ }));
 
-    await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(1));
-    const call = slot.inspection.rpcCalls[0]!;
-    expect(call.method).toBe("scheduleSend");
-    const input = call.input as {
-      threadId: string;
-      text: string;
-      holdUntil: number;
-    };
-    expect(input.threadId).toBe("thr_scope");
-    expect(input.text).toBe("ship the release notes");
-    expect(input.holdUntil).toBeGreaterThanOrEqual(before + HOUR_MS);
-    expect(input.holdUntil).toBeLessThanOrEqual(Date.now() + HOUR_MS);
+    await waitFor(() =>
+      expect(slot.inspection.composer.submits).toHaveLength(1),
+    );
+    const { holdUntil } = slot.inspection.composer.submits[0]!;
+    expect(holdUntil).toBeGreaterThanOrEqual(before + HOUR_MS);
+    expect(holdUntil).toBeLessThanOrEqual(Date.now() + HOUR_MS);
 
-    // The composer surface cannot consume a submission, so the plugin sends
-    // the draft itself and clears it; core renders the held card from here.
+    // The host's own submit pipeline consumed the draft, so nothing is left to
+    // schedule and the picker closes.
     await waitFor(() => expect(slot.inspection.composer.text).toBe(""));
-    await waitFor(() => expect(slot.container.innerHTML).toBe(""));
+    await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
+  });
+
+  it("schedules a new-thread draft the same way", async () => {
+    // The whole point of routing through the composer: a new-thread draft is
+    // scheduled with the execution selections the host resolves, not with
+    // anything this plugin could assemble.
+    const before = Date.now();
+    const slot = openPicker({
+      scope: { kind: "new-thread", projectId: "prj_1" },
+    });
+
+    fireEvent.click(slot.getByRole("button", { name: /In 1 hour/ }));
+
+    await waitFor(() =>
+      expect(slot.inspection.composer.submits).toHaveLength(1),
+    );
+    expect(slot.inspection.composer.submits[0]!.holdUntil).toBeGreaterThanOrEqual(
+      before + HOUR_MS,
+    );
   });
 
   it("schedules a freeform duration", async () => {
-    const slot = openBanner();
+    const slot = openPicker();
     const before = Date.now();
 
     fireEvent.change(slot.getByLabelText("Schedule for"), {
@@ -172,15 +170,16 @@ describe("scheduling", () => {
     });
     fireEvent.click(slot.getByRole("button", { name: "Schedule" }));
 
-    await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(1));
-    const { holdUntil } = slot.inspection.rpcCalls[0]!.input as {
-      holdUntil: number;
-    };
-    expect(holdUntil).toBeGreaterThanOrEqual(before + 90 * 60 * 1000);
+    await waitFor(() =>
+      expect(slot.inspection.composer.submits).toHaveLength(1),
+    );
+    expect(slot.inspection.composer.submits[0]!.holdUntil).toBeGreaterThanOrEqual(
+      before + 90 * 60 * 1000,
+    );
   });
 
-  it("reports an unparseable time without calling the backend", async () => {
-    const slot = openBanner();
+  it("reports an unparseable time without submitting", async () => {
+    const slot = openPicker();
 
     fireEvent.change(slot.getByLabelText("Schedule for"), {
       target: { value: "next tuesday" },
@@ -188,37 +187,27 @@ describe("scheduling", () => {
     fireEvent.click(slot.getByRole("button", { name: "Schedule" }));
 
     await waitFor(() => expect(slot.getByRole("alert")).toBeTruthy());
-    expect(slot.inspection.rpcCalls).toHaveLength(0);
+    expect(slot.inspection.composer.submits).toHaveLength(0);
     expect(slot.inspection.composer.text).toBe("ship the release notes");
   });
 
-  it("keeps the draft when the backend rejects the schedule", async () => {
-    const slot = openBanner({
-      rpc: {
-        scheduleSend: () => {
-          throw new Error("That time has already passed.");
-        },
-      },
-    });
+  it("refuses a preset that went stale while the picker sat open", async () => {
+    // The picker's clock only ticks every 30s, and it can sit open for hours.
+    // A preset resolved against that stale clock would be a past `holdUntil`,
+    // which the server releases on its next sweep — an instant send nobody
+    // asked for.
+    const slot = openPicker();
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 2 * HOUR_MS);
 
     fireEvent.click(slot.getByRole("button", { name: /In 1 hour/ }));
 
     await waitFor(() =>
-      expect(slot.getByRole("alert").textContent).toContain(
-        "That time has already passed.",
-      ),
+      expect(slot.getByRole("alert").textContent).toContain("just passed"),
     );
-    // Losing an unsent draft to a failed schedule would be the worst outcome
-    // here, so the clear only happens after the backend confirms.
+    expect(slot.inspection.composer.submits).toHaveLength(0);
     expect(slot.inspection.composer.text).toBe("ship the release notes");
-    expect(slot.getByText("Send later")).toBeTruthy();
-  });
-
-  it("warns that attachments are left behind", () => {
-    // The composer surface exposes only an attachment count, never the files,
-    // so a scheduled send cannot carry them.
-    const slot = openBanner({ attachmentCount: 2 });
-    expect(slot.getByText(/Attachments are not included/)).toBeTruthy();
+    expect(slot.getByRole("dialog")).toBeTruthy();
   });
 });
 

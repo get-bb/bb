@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
+import { PluginDialog } from "@/components/plugin/PluginDialog";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
@@ -61,6 +62,12 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     experimental_PermissionModePicker: PluginPermissionModePicker,
     experimental_SourceCode: PluginSourceCode,
     experimental_Diff: PluginDiff,
+    // Experimental (see docs/api_to_audit.md): the host-owned overlay. Not a
+    // UI-kit component — it is the only way a plugin overlay joins bb's single
+    // persistent-drawer stack instead of vendoring a rival one.
+    experimental_Dialog: PluginDialog,
+    // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
+    // plane, for plugins that replace the list itself.
     experimental_useSidebarThreads: useSidebarThreads,
     experimental_useSidebarThreadActions: useSidebarThreadActions,
     experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
