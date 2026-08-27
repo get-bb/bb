@@ -337,14 +337,14 @@ export function EnvironmentRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="Create new thread in this worktree"
+                aria-label="Create thread in worktree"
                 onClick={createThreadInWorktree}
                 className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="MessageSquarePlus" className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Create new thread in this worktree</TooltipContent>
+            <TooltipContent>Create thread in worktree</TooltipContent>
           </Tooltip>
         ) : null}
       </span>

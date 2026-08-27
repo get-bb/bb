@@ -34,12 +34,12 @@ describe("ThreadEnvironmentSummary", () => {
 
     fireEvent.focus(
       screen.getByRole("button", {
-        name: "Create new thread in this worktree",
+        name: "Create thread in worktree",
       }),
     );
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Create new thread in this worktree",
+      "Create thread in worktree",
     );
   });
 });
