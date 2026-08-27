@@ -12,6 +12,7 @@ import {
   bbDesktopBrowserRevealRequestSchema,
   type BbDesktopBrowserControlState,
   type BbDesktopBrowserRevealRequest,
+  bbDesktopCliCommandInstallResultSchema,
   bbDesktopCliCommandStatusSchema,
   bbDesktopInfoSchema,
   bbDesktopWindowStateSchema,
@@ -26,6 +27,7 @@ import {
   type BbDesktopBrowserStateHandler,
   type BbDesktopBrowserUnsubscribe,
   type BbDesktopBrowserViewBounds,
+  type BbDesktopCliCommandApi,
   type BbDesktopCloseWindowRequestHandler,
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
@@ -37,6 +39,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
+  BB_DESKTOP_CLI_COMMAND_AVAILABLE_CHANNEL,
   BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL,
   BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
@@ -327,6 +330,36 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
 };
 
+// Whether the cli-command settings row has anything to show: always
+// `app.isPackaged`, learned asynchronously from the main process since a
+// preload script has no direct access to that flag (it is "only defined in
+// the main process" per Electron's own docs). Starts `false` so a dev build
+// never briefly exposes `cliCommand` before the answer arrives; a packaged
+// build's answer arrives well before a user could navigate to Settings, and
+// `cliCommand`'s getter below reads this value fresh on every access.
+let cliCommandAvailable = false;
+void ipcRenderer
+  .invoke(BB_DESKTOP_CLI_COMMAND_AVAILABLE_CHANNEL)
+  .then((available: unknown) => {
+    cliCommandAvailable = available === true;
+  })
+  .catch(() => {
+    cliCommandAvailable = false;
+  });
+
+const cliCommandApi: BbDesktopCliCommandApi = {
+  async getStatus() {
+    return bbDesktopCliCommandStatusSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL),
+    );
+  },
+  async install() {
+    return bbDesktopCliCommandInstallResultSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL),
+    );
+  },
+};
+
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
   get lastCheckedAt() {
@@ -352,17 +385,8 @@ const bbDesktopApi: BbDesktopApi = {
   checkForUpdates() {
     return invokeDesktopInfo(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL);
   },
-  cliCommand: {
-    async getStatus() {
-      return bbDesktopCliCommandStatusSchema.parse(
-        await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL),
-      );
-    },
-    async install() {
-      return bbDesktopCliCommandStatusSchema.parse(
-        await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL),
-      );
-    },
+  get cliCommand(): BbDesktopCliCommandApi | undefined {
+    return cliCommandAvailable ? cliCommandApi : undefined;
   },
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);

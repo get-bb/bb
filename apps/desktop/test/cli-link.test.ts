@@ -7,6 +7,7 @@ import {
   createHomeCliWrapperScript,
 } from "../src/cli-wrapper-script.js";
 import {
+  refreshCliCommandLink,
   refreshHomeCliWrapper,
   resolveCliCommandName,
   resolveCliWrapperTarget,
@@ -239,5 +240,64 @@ describe("refreshHomeCliWrapper", () => {
       "console.log('not ours');\n",
     );
     await expect(readFile(wrapperPath, "utf8")).rejects.toThrow();
+  });
+});
+
+describe("refreshCliCommandLink", () => {
+  const macArgs = {
+    env: {},
+    homeDir: "",
+    logger: silentLogger,
+    platform: "darwin" as const,
+    productName: "bb" as const,
+    resourcesPath: "/Applications/bb.app/Contents/Resources",
+  };
+
+  it("does nothing and touches no files when not packaged", async () => {
+    // This is the critical gate: the settings-row install handler must never
+    // be able to reach a real write when the running app is a dev build. A
+    // dev build has no stable resourcesPath/app bundle, so writing anyway
+    // would overwrite a developer's real ~/.bb/bin/bb with a wrapper pointing
+    // at a path that will never exist.
+    const result = await refreshCliCommandLink({
+      ...macArgs,
+      homeDir,
+      isPackaged: false,
+    });
+
+    expect(result).toBeNull();
+    await expect(
+      readFile(join(homeDir, ".bb", "bin", "bb"), "utf8"),
+    ).rejects.toThrow();
+  });
+
+  it("writes the wrapper when packaged", async () => {
+    const result = await refreshCliCommandLink({
+      ...macArgs,
+      homeDir,
+      isPackaged: true,
+    });
+
+    expect(result).toEqual({
+      kind: "written",
+      path: join(homeDir, ".bb", "bin", "bb"),
+    });
+    expect(
+      await readFile(join(homeDir, ".bb", "bin", "bb"), "utf8"),
+    ).toContain(BB_CLI_WRAPPER_MARKER);
+  });
+
+  it("returns null when packaged but there is no stable target (Linux outside an AppImage)", async () => {
+    const result = await refreshCliCommandLink({
+      env: {},
+      homeDir,
+      isPackaged: true,
+      logger: silentLogger,
+      platform: "linux",
+      productName: "bb",
+      resourcesPath: "/opt/bb/resources",
+    });
+
+    expect(result).toBeNull();
   });
 });

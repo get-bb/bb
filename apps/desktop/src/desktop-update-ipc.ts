@@ -10,3 +10,12 @@ export const BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL =
   "bb-desktop:cli-command-status";
 export const BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL =
   "bb-desktop:cli-command-install";
+/**
+ * Whether the cli-command feature is available at all: always `app.isPackaged`.
+ * Always registered (unlike the status/install channels above, which are only
+ * registered when packaged) so the renderer can feature-detect and hide the
+ * settings row entirely in a dev build, rather than rendering it and then
+ * having its calls reject.
+ */
+export const BB_DESKTOP_CLI_COMMAND_AVAILABLE_CHANNEL =
+  "bb-desktop:cli-command-available";

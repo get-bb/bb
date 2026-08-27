@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { bbDesktopInfoSchema } from "../src/info.js";
+import {
+  bbDesktopCliCommandInstallResultSchema,
+  bbDesktopInfoSchema,
+} from "../src/info.js";
 
 const baseInfo = {
   lastCheckedAt: null,
@@ -45,6 +48,62 @@ describe("bbDesktopInfoSchema", () => {
       bbDesktopInfoSchema.safeParse({
         ...baseInfo,
         platform: "win32",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+const baseCliCommandStatus = {
+  binDir: "/home/user/.bb/bin",
+  commandName: "bb",
+  matches: [] as string[],
+  onPath: false,
+  ownEntryWins: false,
+  wrapperInstalled: false,
+};
+
+describe("bbDesktopCliCommandInstallResultSchema", () => {
+  it("accepts every outcome, with detail present where it carries meaning", () => {
+    for (const outcome of ["written", "unchanged", "foreign-file"] as const) {
+      expect(
+        bbDesktopCliCommandInstallResultSchema.safeParse({
+          detail: "/home/user/.bb/bin/bb",
+          outcome,
+          status: baseCliCommandStatus,
+        }).success,
+      ).toBe(true);
+    }
+    expect(
+      bbDesktopCliCommandInstallResultSchema.safeParse({
+        detail: "EACCES: permission denied",
+        outcome: "failed",
+        status: baseCliCommandStatus,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts 'unsupported' with no detail, for a build with no install target", () => {
+    expect(
+      bbDesktopCliCommandInstallResultSchema.safeParse({
+        outcome: "unsupported",
+        status: baseCliCommandStatus,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown outcome", () => {
+    expect(
+      bbDesktopCliCommandInstallResultSchema.safeParse({
+        outcome: "success",
+        status: baseCliCommandStatus,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a missing status", () => {
+    expect(
+      bbDesktopCliCommandInstallResultSchema.safeParse({
+        outcome: "written",
       }).success,
     ).toBe(false);
   });
