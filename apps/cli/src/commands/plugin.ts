@@ -488,21 +488,24 @@ async function probeSdkVersionPublished(): Promise<
 /** How many trailing lines of npm's own output to quote back. */
 const NPM_FAILURE_DETAIL_LINES = 8;
 
+function npmOutputTail(output: unknown): string {
+  if (typeof output !== "string") return "";
+  return output.trim().split("\n").slice(-NPM_FAILURE_DETAIL_LINES).join("\n");
+}
+
 /**
  * The tail of npm's own output, indented under the CLI's warning. Empty when
  * the process produced none — `npm` missing from PATH, for instance, fails
  * before it can say anything.
  */
 function npmFailureDetail(cause: unknown): string {
-  const streams = cause as { stderr?: unknown; stdout?: unknown };
-  const text = [streams.stderr, streams.stdout]
-    .map((stream) => (typeof stream === "string" ? stream : ""))
-    .join("\n")
-    .trim();
+  if (typeof cause !== "object" || cause === null) return "";
+  const stderr = "stderr" in cause ? npmOutputTail(cause.stderr) : "";
+  const stdout = "stdout" in cause ? npmOutputTail(cause.stdout) : "";
+  const text = stderr || stdout;
   if (text === "") return "";
   return `\n${text
     .split("\n")
-    .slice(-NPM_FAILURE_DETAIL_LINES)
     .map((line) => `  ${line}`)
     .join("\n")}`;
 }

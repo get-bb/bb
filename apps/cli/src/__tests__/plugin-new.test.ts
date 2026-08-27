@@ -214,6 +214,16 @@ describe.sequential("bb plugin new dependency install", () => {
     expect(warnings).toContain("Your cache folder contains root-owned files");
   });
 
+  it("keeps stderr details when a failed install also writes stdout", async () => {
+    vi.stubEnv("BB_TEST_NPM_INSTALL", "fail-noisy-stdout");
+
+    await runPluginNew(["npm-noisy"]);
+
+    const warnings = warned.join("\n");
+    expect(warnings).toContain("npm error code EPERM");
+    expect(warnings).not.toContain("progress line");
+  });
+
   it("falls back to the manual step when npm is not on PATH", async () => {
     vi.stubEnv("PATH", join(workDir, "empty-bin"));
 
