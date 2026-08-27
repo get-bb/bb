@@ -975,6 +975,31 @@ enrolled to other servers. Atomic reservations under
 `BB_DATA_DIR` locations. Its generated command accepts `--host-daemon-port
 <port>` when an explicit port is required.
 
+## The bb Command On PATH
+
+The packaged desktop app writes its own `bb` command to `~/.bb/bin` on every
+launch, and rewrites it when the app moves or updates. This is the directory
+to put on `PATH`; it is anchored to `$HOME` and does not follow a custom data
+directory, so the `export` line keeps working if you move your data
+elsewhere. Files here carry a `# bb-managed:` marker line; anything without
+it is left alone. A nightly install names the command `bb-nightly` instead of
+`bb`, so both channels can be on `PATH` at once. Run `bb install-cli` to
+install or repair the command, or use the "bb command" row in Settings.
+
+On Linux the command re-invokes the app's AppImage, so it inherits the
+AppImage's runtime requirements. A machine that runs the bb desktop app
+already has them; a container or headless server may not:
+
+- **`libfuse2`.** AppImage type 2 needs it, and Ubuntu 24.04 ships only
+  fuse3. A present `/dev/fuse` and `fusermount3` are not sufficient. Without
+  it the AppImage refuses to run at all with `AppImages require FUSE to
+  run`. Set `APPIMAGE_EXTRACT_AND_RUN=1` to work around it, at the cost of
+  extracting the whole image on every invocation.
+- **Chromium's shared libraries.** Even with `ELECTRON_RUN_AS_NODE`, the
+  Electron binary still dynamically links the GUI stack, and a minimal
+  system fails with `error while loading shared libraries: libnspr4.so`.
+  "It's just Node" is not true on Linux.
+
 ## Source Development
 
 For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`

@@ -31,6 +31,9 @@ upgrade, failed to load, or missing); run `bb plugin list` for the detail.
 
 All commands support --json for machine-readable output.
 
+A packaged desktop install can put its own `bb` on your shell PATH; run `bb
+install-cli` to install or repair it.
+
 To make a repo work with bb worktrees, run `bb guide environments` for the
 repo-level `.bb-env-setup.sh` setup hook. Run `bb guide agent-configuration` for
 the data-dir and workspace files that customize agent behavior.

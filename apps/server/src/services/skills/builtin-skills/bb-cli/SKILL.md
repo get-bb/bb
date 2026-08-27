@@ -8,6 +8,12 @@ description: Use this when controlling bb. The bb CLI lets you inspect, create, 
 Use `bb` when controlling bb itself: inspect current context, coordinate threads,
 message agents, or inspect projects, providers, and environments.
 
+The command is named for the channel the user installed. A stable desktop
+install provides `bb`; a nightly install provides `bb-nightly`, so both can be
+on `PATH` at once. If `bb` is not found, try `command -v bb || command -v
+bb-nightly` before concluding bb is unavailable. On a packaged desktop install
+with neither on `PATH`, `~/.bb/bin` is where the app puts them.
+
 ## Start With Context
 
 - Use `bb status` to identify the current project, thread, and environment.
