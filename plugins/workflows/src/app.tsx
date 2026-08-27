@@ -509,7 +509,7 @@ function useActiveWorkflowRuns(threadId: string): {
   return { state, setRuns };
 }
 
-function EmptyOrError({ children }: { children: ReactNode }) {
+export function EmptyOrError({ children }: { children: ReactNode }) {
   return (
     <div
       role="alert"
@@ -520,7 +520,7 @@ function EmptyOrError({ children }: { children: ReactNode }) {
   );
 }
 
-function LoadingPreview() {
+export function LoadingPreview() {
   return (
     <div
       className="my-2 space-y-2 rounded-lg border border-border p-3"
@@ -533,7 +533,7 @@ function LoadingPreview() {
   );
 }
 
-function WorkflowRunPanelState({ children }: { children: ReactNode }) {
+export function WorkflowRunPanelState({ children }: { children: ReactNode }) {
   return <div className="p-4">{children}</div>;
 }
 
