@@ -253,6 +253,10 @@ This index lists every command path that the core CLI registers. Read the task-s
 
 - `bb guide`
 
+## install-cli
+
+- `bb install-cli`
+
 ## voice
 
 - `bb voice`

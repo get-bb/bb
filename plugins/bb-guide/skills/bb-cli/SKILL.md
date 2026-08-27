@@ -8,6 +8,12 @@ description: "Inspect or manage BB state with the bb CLI; use for BB commands an
 Use bb for BB state and actions. Inspect context when the target project, host,
 workspace, or execution selection is not already established.
 
+The command is named for the channel the user installed. A stable desktop
+install provides `bb`; a nightly install provides `bb-nightly`, so both can be
+on `PATH` at once. If `bb` is not found, try `command -v bb || command -v
+bb-nightly` before concluding bb is unavailable. On a packaged desktop install
+with neither on `PATH`, `~/.bb/bin` is where the app puts them.
+
 ## Start with context
 
 ```sh
