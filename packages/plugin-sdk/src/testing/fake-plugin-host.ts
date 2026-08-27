@@ -42,6 +42,7 @@ import {
   RPC_METHOD_PATTERN,
   summarizeParseIssues,
   undeclaredIconProblem,
+  validatePluginAiCompletionRequest,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
   validateSettingsUpdate,
@@ -80,6 +81,7 @@ import type {
   PluginMentionTrigger,
   PluginThreadNote,
   PluginThreads,
+  PluginAiCompletionFailure,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -142,6 +144,21 @@ function migrationStatementHash(statement: string): string {
  * - background services/schedules never run on timers; `harness.runService`
  *   and `harness.runSchedule` invoke them deterministically.
  */
+
+/**
+ * Same shape (and name) the real host rejects `complete()` with, so a plugin
+ * that matches `error.name === "PluginAiCompletionError"` in production
+ * matches it here too.
+ */
+export class FakeAiCompletionError extends Error {
+  override readonly name = "PluginAiCompletionError" as const;
+  readonly failure: PluginAiCompletionFailure;
+
+  constructor(failure: PluginAiCompletionFailure, message?: string) {
+    super(message ?? `AI completion failed: ${failure}`);
+    this.failure = failure;
+  }
+}
 
 /** Same shape (and name) the real host throws for stale API handles. */
 export class PluginContextStaleError extends Error {
@@ -471,6 +488,28 @@ export interface CreateFakePluginHostOptions {
   experimental_callHostRpc?: (
     call: ExperimentalFakeHostRpcCall,
   ) => unknown | Promise<unknown>;
+  /**
+   * Deterministic stand-in for bb's helper-inference model, behind
+   * `bb.experimental_aiServices.complete`. The request is validated the way
+   * production validates it before this runs, so a malformed `outputSchema`
+   * still fails here; the resolved `timeoutMs` is the clamped one production
+   * would use, and nothing in the fake enforces it. Reject with a
+   * {@link FakeAiCompletionError} to exercise a plugin's failure handling.
+   *
+   * Unset means no inference is configured: `complete` rejects with
+   * `no-service-configured`, which is what an unconfigured bb does.
+   */
+  experimental_completeAiRequest?: (
+    request: ExperimentalFakeAiCompletionRequest,
+  ) => Record<string, JsonValue> | Promise<Record<string, JsonValue>>;
+}
+
+/** A `complete()` call as the fake host hands it to the stub. */
+export interface ExperimentalFakeAiCompletionRequest {
+  prompt: string;
+  outputSchema: Record<string, JsonValue>;
+  /** Resolved and clamped: what production would spend on this call. */
+  timeoutMs: number;
 }
 
 export interface FakePluginHost {
@@ -1373,6 +1412,30 @@ function createFakePluginHostInternal(
       };
       disposeHooks.push(dispose);
       return { dispose };
+    },
+    complete(request) {
+      assertLive();
+      try {
+        const validated = validatePluginAiCompletionRequest(request);
+        const stub = options.experimental_completeAiRequest;
+        if (stub === undefined) {
+          throw new FakeAiCompletionError(
+            "no-service-configured",
+            "no inference stub: pass createFakePluginHost({ experimental_completeAiRequest })",
+          );
+        }
+        return Promise.resolve(
+          stub({
+            prompt: validated.prompt,
+            outputSchema: request.outputSchema,
+            timeoutMs: validated.timeoutMs,
+          }),
+        );
+      } catch (error) {
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
     },
   };
 

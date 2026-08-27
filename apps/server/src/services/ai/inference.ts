@@ -33,6 +33,49 @@ export function isServerDirectAiServiceId(id: string): boolean {
   return SERVER_DIRECT_AI_SERVICE_IDS.includes(id);
 }
 
+/**
+ * Whether `BB_INFERENCE` names something this bb can actually reach, the
+ * inference twin of `resolveVoiceTranscriptionEnabled`.
+ *
+ * Answers the same routing question `inferenceComplete` asks — plugin service
+ * first for a non-server-direct id, builtin registry otherwise — without
+ * sending anything, so a caller that must report "no service configured" as a
+ * distinct outcome does not have to infer it from a null result that also
+ * means "the model answered with nothing usable". Credentials are not checked:
+ * a builtin provider with an expired key is reachable and fails at call time,
+ * which is a different problem with a different fix.
+ */
+export function resolveInferenceAvailability(
+  deps: LoggedWorkSessionDeps,
+): boolean {
+  let modelInfo: ProviderModelInfo;
+  try {
+    modelInfo = parseProviderModelConfig({
+      name: "BB_INFERENCE",
+      value: deps.config.inferenceModel,
+    });
+  } catch {
+    return false;
+  }
+  if (!isServerDirectAiServiceId(modelInfo.provider)) {
+    const service = deps.aiServices.get(modelInfo.provider);
+    if (service !== null) {
+      if (!service.kinds.includes("inference")) return false;
+      try {
+        requireConnectedPrimaryHostId(deps);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  // Truthiness, not `!== null`: the registry answers `undefined` for a pair it
+  // does not know, which is the same "no such model" `getInferenceModel` reads.
+  return Boolean(
+    getInferenceModels().getModel(modelInfo.provider, modelInfo.modelId),
+  );
+}
+
 function getInferenceModel(
   deps: BaseInferenceDeps,
   modelInfo: ProviderModelInfo,

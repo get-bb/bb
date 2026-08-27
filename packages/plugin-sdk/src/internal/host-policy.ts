@@ -1006,6 +1006,73 @@ export function validatePluginAiServiceDeclaration(
 }
 
 /**
+ * bb's budget for one short structured helper completion, used when a plugin
+ * states none. Pinned to `INFERENCE_POLICY.threadMetadata.timeoutMs` by
+ * apps/server/test/services/plugins/plugin-ai-completion.test.ts, which is
+ * what keeps this copy honest — the SDK cannot import the server's policy.
+ */
+export const PLUGIN_AI_COMPLETION_DEFAULT_TIMEOUT_MS = 5_000;
+
+/**
+ * The ceiling a plugin's `timeoutMs` is clamped to. A helper completion is a
+ * short structured answer on a latency-bound path; a plugin that wants to
+ * wait longer than this wants a different mechanism, and letting it park a
+ * dispatch gate behind a minute-long model call is not a favour to anyone.
+ */
+export const PLUGIN_AI_COMPLETION_MAX_TIMEOUT_MS = 30_000;
+
+/**
+ * The shape rules `bb.experimental_aiServices.complete` applies before any
+ * inference happens, shared so the fake host refuses exactly what production
+ * refuses. Returns the request with its timeout resolved and clamped, so the
+ * caller never has to reason about an absent one.
+ */
+export function validatePluginAiCompletionRequest(request: {
+  prompt: string;
+  outputSchema: Record<string, unknown>;
+  timeoutMs?: number;
+}): { prompt: string; outputSchema: Record<string, unknown>; timeoutMs: number } {
+  if (typeof request !== "object" || request === null) {
+    throw new Error("AI completion request must be an object");
+  }
+  const prompt = typeof request.prompt === "string" ? request.prompt : "";
+  if (prompt.trim().length === 0) {
+    throw new Error("AI completion request needs a non-empty prompt");
+  }
+  const outputSchema = request.outputSchema;
+  if (!isJsonSchemaObject(outputSchema)) {
+    throw new Error(
+      "AI completion request needs an outputSchema JSON Schema object",
+    );
+  }
+  // The answer is delivered as a tool call, whose arguments are always an
+  // object; a root schema of any other type could never be satisfied, so
+  // refusing here beats timing out against a model that cannot comply.
+  if (outputSchema.type !== "object") {
+    throw new Error(
+      `AI completion outputSchema must have root type "object", got ${JSON.stringify(outputSchema.type)}`,
+    );
+  }
+  assertNoRecursiveJsonSchemaReferences(
+    outputSchema,
+    "AI completion outputSchema",
+  );
+  const requested = request.timeoutMs;
+  if (requested !== undefined) {
+    if (!Number.isFinite(requested) || requested <= 0) {
+      throw new Error(
+        `AI completion timeoutMs must be a positive number of milliseconds, got ${JSON.stringify(requested)}`,
+      );
+    }
+  }
+  const timeoutMs = Math.min(
+    Math.floor(requested ?? PLUGIN_AI_COMPLETION_DEFAULT_TIMEOUT_MS),
+    PLUGIN_AI_COMPLETION_MAX_TIMEOUT_MS,
+  );
+  return { prompt, outputSchema, timeoutMs };
+}
+
+/**
  * What an AI service binds to, decided at the
  * `bb.experimental_aiServices.register` call: the plugin's built `bb.host`
  * artifact, or — when the plugin declares an entry that failed to build —

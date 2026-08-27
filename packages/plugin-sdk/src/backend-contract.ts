@@ -1510,6 +1510,80 @@ export interface PluginAiServices {
    * as unavailable. Throws on an id another live plugin already serves.
    */
   register(declaration: PluginAiServiceDeclaration): { dispose(): void };
+  /**
+   * Ask bb's configured helper-inference model for one structured value —
+   * the consumer half of the same machinery behind thread titles and commit
+   * messages, routed through whatever `BB_INFERENCE` names (a builtin
+   * provider the server serves itself, or a service a plugin registered
+   * above).
+   *
+   * Deliberately one attempt, not bb's own retry-and-fall-back-to
+   * `BB_INFERENCE_FALLBACK` ladder: `timeoutMs` is the whole budget, so a
+   * caller that is itself time-boxed — a dispatch gate, the only reason this
+   * exists — can size its call against its own box instead of against a
+   * ladder it cannot see. Retry by calling again.
+   *
+   * Rejects rather than answering a failure result, because there is no
+   * useful value to return; see {@link PluginAiCompletionError}.
+   */
+  complete(
+    request: PluginAiCompletionRequest,
+  ): Promise<Record<string, JsonValue>>;
+}
+
+/** One structured helper completion, as {@link PluginAiServices.complete} takes it. */
+export interface PluginAiCompletionRequest {
+  /** The whole prompt; bb adds no system preamble of its own. */
+  prompt: string;
+  /**
+   * A JSON Schema object — root `type: "object"` — the answer must satisfy.
+   * It is handed to the model as a tool's parameters and the answer is
+   * validated against it before this resolves, so a value that reaches the
+   * caller has already been checked. Recursive `$ref` is refused: some
+   * providers reject an entire tool list over one.
+   */
+  outputSchema: Record<string, JsonValue>;
+  /**
+   * Whole-call budget in milliseconds. Omit to use bb's own helper-inference
+   * budget, which is what bb considers a reasonable wait for a short
+   * structured answer; bb caps whatever is passed.
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * Why a completion produced no value.
+ *
+ * `no-service-configured` means `BB_INFERENCE` names nothing this bb can
+ * reach — no plugin registers it, or it is a builtin provider this build does
+ * not have — and is the one cause a plugin can report to its user as
+ * something to fix. `timeout` is the request's own budget expiring.
+ * `validation-failed` is a model that answered without a value satisfying
+ * `outputSchema`. `request-failed` is everything upstream: rate limits, a
+ * signed-out host, an unavailable service.
+ */
+export type PluginAiCompletionFailure =
+  | "no-service-configured"
+  | "timeout"
+  | "validation-failed"
+  | "request-failed";
+
+/**
+ * What {@link PluginAiServices.complete} rejects with. Like
+ * `NeedsConfigurationError`, the class stays host-side and is matched by
+ * NAME, so plugin code needs no runtime import:
+ *
+ * ```ts
+ * catch (error) {
+ *   if (error instanceof Error && error.name === "PluginAiCompletionError") {
+ *     // error.failure is a PluginAiCompletionFailure
+ *   }
+ * }
+ * ```
+ */
+export interface PluginAiCompletionError extends Error {
+  readonly name: "PluginAiCompletionError";
+  readonly failure: PluginAiCompletionFailure;
 }
 
 // ---------------------------------------------------------------------------

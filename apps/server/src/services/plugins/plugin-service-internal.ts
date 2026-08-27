@@ -3,6 +3,7 @@ import type { DbConnection } from "@bb/db";
 import type {
   DispatchHoldReportUpdate,
   DynamicTool,
+  JsonValue,
   Thread,
 } from "@bb/domain";
 import type { PluginDispatchAmendments } from "@get-bb/plugin-sdk";
@@ -101,6 +102,18 @@ export interface PluginServiceDeps {
       update: DispatchHoldReportUpdate;
     }): Promise<boolean>;
   };
+  /**
+   * One structured helper completion behind
+   * `bb.experimental_aiServices.complete`. Assembled in server.ts, where the
+   * full inference deps exist; omitted only by isolated plugin-runtime tests,
+   * where the call rejects.
+   */
+  completeAiRequest?: (args: {
+    pluginId: string;
+    prompt: string;
+    outputSchema: Record<string, JsonValue>;
+    timeoutMs?: number;
+  }) => Promise<Record<string, JsonValue>>;
   /**
    * Display-only timeline notes behind `bb.experimental_threads.appendNote`.
    * Assembled in server.ts alongside `dispatchHolds`; omitted only by isolated

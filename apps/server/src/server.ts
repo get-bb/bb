@@ -30,6 +30,7 @@ import { setPluginAgentContributions } from "./services/plugins/plugin-agent-con
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setDispatchGateProvider } from "./services/plugins/dispatch-gate-registry.js";
 import { appendPluginNote } from "./services/threads/plugin-notes.js";
+import { completePluginAiRequest } from "./services/ai/plugin-completion.js";
 import {
   createTurnFailedGateNotifier,
   setTurnFailedGateNotifier,
@@ -605,6 +606,10 @@ export function createApp(
     // forged by the caller.
     appendThreadNote: ({ pluginId, threadId, note }) =>
       appendPluginNote(deps, { pluginId, threadId, note }),
+    // `bb.experimental_aiServices.complete`. Assembled here because helper
+    // inference needs the full work-session deps (config, the AI-service
+    // registry, the primary host) that the plugin service does not carry.
+    completeAiRequest: (args) => completePluginAiRequest(deps, args),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });

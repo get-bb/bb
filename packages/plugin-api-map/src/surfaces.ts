@@ -364,6 +364,20 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "execution-picker-entry",
+        title: "Picker entries",
+        summary:
+          "Adds a choosable entry to the same picker, one that is not a provider. With this, a plugin can:",
+        bullets: [
+          "Offer a choice such as \"Auto\" beside the real agents, with its own label, description, and icon",
+          "Receive a fixed payload with every message sent while its entry is selected, so a picker choice and a `bb thread spawn --provider auto:<plugin>` choice arrive identically",
+          "Decide the actual agent and model from that payload as the message is dispatched, rather than having the entry remembered as a default",
+        ],
+        apiSymbols: ["PluginExecutionPickerEntryRegistration"],
+        firstParty: ["Model router"],
+        experimental: true,
+      },
+      {
         id: "composer-actions",
         title: "Inline actions",
         summary:
@@ -494,7 +508,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         title: "Data & platform",
-        surfaceIds: ["storage", "bb-sdk", "host-components"],
+        surfaceIds: ["storage", "bb-sdk", "ai-services", "host-components"],
       },
       {
         title: "Confidence",
@@ -679,6 +693,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Tasks",
           "Workflows",
         ],
+      },
+      {
+        id: "ai-services",
+        tagline: "Serve bb's helper model, or ask it a question",
+        title: "AI services",
+        summary:
+          "Connects a plugin to bb's own helper inference — the short model calls behind thread titles and commit messages — in either direction. With this, a plugin can:",
+        bullets: [
+          "Serve those calls from an enrolled machine, so bb's helper model can be one the plugin holds the credentials for",
+          "Serve voice transcription the same way, for the microphone button in the prompt box",
+          "Ask bb's own configured helper model one question and get a structured answer back, validated against a JSON Schema the plugin supplies",
+          "Report a failure by name — nothing configured, too slow, refused — so the plugin can tell what the person should fix from what it should shrug at",
+        ],
+        apiSymbols: [
+          "PluginAiServices",
+          "PluginAiCompletionRequest",
+          "PluginAiCompletionError",
+        ],
+        firstParty: ["Codex provider", "Model router"],
+        experimental: true,
       },
       {
         id: "host-components",

@@ -1413,6 +1413,56 @@ plugin fails to load. A host artifact may export a provider bridge
 (`experimental_providerBridge`) and default-export the host entry at the same
 time.
 
+#### Asking bb for a structured answer
+
+`register` offers inference **to** bb. The other direction — your plugin asking
+bb's own configured helper model one structured question — is `complete`. It
+routes through whatever `BB_INFERENCE` names and resolves the validated JSON
+object, so you never parse a model's prose:
+
+```ts
+try {
+  const choice = await bb.experimental_aiServices.complete({
+    prompt: "Pick a model for this request...",
+    // A JSON Schema object with root type "object". No zod here: the schema
+    // goes to the model as a tool's parameters and is validated on the way
+    // back, so what you get has already been checked against it.
+    outputSchema: {
+      type: "object",
+      properties: {
+        providerId: { type: "string" },
+        model: { type: "string" },
+      },
+      required: ["providerId", "model"],
+      additionalProperties: false,
+    },
+    timeoutMs: 7_000, // the WHOLE budget; omit for bb's default. bb caps it.
+  });
+  bb.log.info(`chose ${String(choice.providerId)}`);
+} catch (error) {
+  // Matched by name, like NeedsConfigurationError — no runtime import.
+  if (error instanceof Error && error.name === "PluginAiCompletionError") {
+    // error.failure: "no-service-configured" | "timeout"
+    //              | "validation-failed" | "request-failed"
+  }
+}
+```
+
+Two things differ from bb's own helper calls, both deliberate. It makes
+**one attempt** — it does not retry onto `BB_INFERENCE_FALLBACK` — because the
+caller this exists for is a dispatch gate, which is itself boxed at 10s and
+fails its dispatch if it overruns; a hidden second attempt would turn your
+honest 7s budget into a 14s failure. And it **rejects** rather than returning
+null, so you can tell "the user has nothing configured" (worth a
+`bb.status.needsConfiguration`) from "slow this time" (worth a shrug).
+
+To check availability before you call, read
+`(await bb.sdk.system.config()).aiServices.inferenceEnabled`. It reports
+whether `BB_INFERENCE` names something this bb can reach; it does not check
+credentials, so a stale key still fails at call time. The working reference is
+`plugins/model-router`, whose gates route each prompt this way and proceed
+unamended on every failure.
+
 ### bb.providers.register — agent providers
 
 A plugin can contribute a full agent provider: a picker entry whose threads

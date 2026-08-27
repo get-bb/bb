@@ -351,8 +351,8 @@ touched plugins, and `@bb/integration-tests` (output piped to a file);
   worktree pools or a real third-party provisioner need would be the first
   genuine consumer and should drive the design then. Both are purely
   additive later (a new gate stage; a new hold kind).
-- Model-call (classifier) routing — needs a placeholder-provider state; only
-  if rules-based routing proves insufficient.
+- ~~Model-call (classifier) routing~~ — **shipped instead of the rules**; see
+  "model-router routes by asking a model" below.
 - Further core wait-path convergence (`core:awaiting-interaction`). (Model
   policy is not on this list — it stays core with no planned extraction.)
 - An `environment.destroy` gate (evaluated: no v1 use case needs to
@@ -426,6 +426,31 @@ each chosen during implementation and worth knowing when reading the code:
 - **model-router clamps reasoning effort** to the chosen model's supported
   ladder, because an unhonourable amendment is a fail-closed dispatch
   failure, not a silent no-op.
+- **model-router routes by asking a model**, not by the rules phase 2
+  described. The fast/capable slots, the length threshold and the keyword list
+  were replaced by one plain-English routing prompt: the gate hands bb's helper
+  model that prompt, the request (head-truncated) and the eligible
+  provider/model rows, and takes back `{ providerId, model, reasoningLevel? }`.
+  The rules were a worse version of the thing the user was already describing
+  in prose, and five settings to approximate one sentence is a bad trade.
+  Model-call routing was on the Deferred list pending "a placeholder-provider
+  state"; the picker entry plus `pluginInput` turned out to be that state, so
+  no placeholder provider was needed. Every failure — no service, timeout, a
+  hallucinated model, a provider the thread cannot switch to — proceeds
+  unamended, which is Auto's documented fallback.
+- **The consumer half of `experimental_aiServices` had to be built for it.**
+  `register` only let a plugin *serve* inference to bb; the completion side
+  (`inferenceComplete`) was server-internal with no plugin surface at all. It
+  ships as `bb.experimental_aiServices.complete({ prompt, outputSchema,
+  timeoutMs? })`, delegating to the same `inferenceComplete`. Two narrowings
+  against bb's own callers, both forced by the gate: exactly **one** attempt
+  (no `BB_INFERENCE_FALLBACK` ladder, because a hidden second attempt would
+  push a 7s budget past the 10s box and fail the dispatch), and a **rejection**
+  carrying a named `failure` rather than a null, so a plugin can tell "nothing
+  configured" from "slow this time". `GET /system/config`
+  `.aiServices.inferenceEnabled` was added alongside, as the twin of
+  `voiceTranscriptionEnabled`, so a plugin can probe availability without
+  spending a call.
 
 ## Risks
 

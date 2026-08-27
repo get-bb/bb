@@ -60,6 +60,7 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
     inferenceFallback: "codex/gpt-5.5",
     transcription: "openai/gpt-4o-transcribe",
     services: [],
+    inferenceEnabled: false,
   },
 });
 
