@@ -305,6 +305,19 @@ beforeEach(() => {
 });
 
 describe("SecondaryPanelLayout", () => {
+  it("registers the thread and right panel as one two-pane resize grid", () => {
+    renderLayout({
+      isCompactViewport: false,
+      open: true,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-grid",
+    });
+
+    expect(
+      screen.getByTestId("panel-group").dataset.splitResizeGridRoot,
+    ).toBe("");
+  });
+
   it("preserves routed main content when the panel state identity changes", () => {
     const frames = installAnimationFrameQueue();
     const view = renderLayout({

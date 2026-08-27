@@ -363,6 +363,7 @@ export function ThreadSecondaryPanel({
   const {
     handleSecondaryPanelDragging: handleResizeDragging,
     handleSecondaryPanelResize,
+    handleSecondaryPanelResizePointerDownCapture,
     persistedWidthPercent,
     secondaryPanelRef: panelRef,
     secondaryResizablePanelRef: resizablePanelRef,
@@ -1185,6 +1186,7 @@ export function ThreadSecondaryPanel({
         isConversationCollapsed={isConversationCollapsed}
         matchesSplitDividers={hostLayout !== null}
         onDragging={handleSecondaryPanelDragging}
+        onPointerDown={handleSecondaryPanelResizePointerDownCapture}
       />
       <Panel
         ref={resizablePanelRef}
@@ -1325,6 +1327,7 @@ interface SecondaryPanelResizeHandleProps {
    */
   matchesSplitDividers: boolean;
   onDragging: SecondaryPanelDraggingHandler;
+  onPointerDown: (event: PointerEvent) => void;
 }
 
 function SecondaryPanelResizeHandle({
@@ -1332,6 +1335,7 @@ function SecondaryPanelResizeHandle({
   isConversationCollapsed,
   matchesSplitDividers,
   onDragging,
+  onPointerDown,
 }: SecondaryPanelResizeHandleProps) {
   const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
   return (
@@ -1342,6 +1346,8 @@ function SecondaryPanelResizeHandle({
       // that state.
       disabled={!isOpen || isConversationCollapsed}
       onDragging={onDragging}
+      onPointerDownCapture={(event) => onPointerDown(event.nativeEvent)}
+      data-panel-resize-snap-handle=""
       hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
       className={cn(
         "group relative shrink-0 overflow-visible transition-[width,opacity,background-color]",

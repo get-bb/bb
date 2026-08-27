@@ -334,6 +334,7 @@ export function SecondaryPanelLayout({
         <PanelGroup
           key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
+          data-split-resize-grid-root=""
           direction="horizontal"
           className="@container h-full min-w-0 flex-1"
           // A clipped group cannot be programmatically scrolled by an iframe's

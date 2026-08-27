@@ -147,8 +147,8 @@ vi.mock("react-resizable-panels", async () => {
       getLayout: () => number[];
       setLayout: (layout: number[]) => void;
     },
-    { children?: ReactNode }
-  >(({ children }, ref) => {
+    React.HTMLAttributes<HTMLDivElement> & { children?: ReactNode }
+  >(({ children, ...props }, ref) => {
     React.useImperativeHandle(
       ref,
       () => ({
@@ -159,7 +159,11 @@ vi.mock("react-resizable-panels", async () => {
       }),
       [],
     );
-    return <div data-testid="workspace-panel-group">{children}</div>;
+    return (
+      <div {...props} data-testid="workspace-panel-group">
+        {children}
+      </div>
+    );
   });
   PanelGroup.displayName = "MockPanelGroup";
   // Record each panel's lifecycle callbacks so a test can fire the ones the
@@ -1357,6 +1361,10 @@ describe("SplitThreadArea", () => {
     });
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
+    expect(
+      screen.getByTestId("workspace-panel-group").dataset
+        .splitResizeGridRoot,
+    ).toBe("");
     expect(
       screen.queryAllByTestId("split-workspace-panel-toggle"),
     ).toHaveLength(1);
