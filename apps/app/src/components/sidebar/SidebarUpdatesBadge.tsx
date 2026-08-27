@@ -139,6 +139,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
                       key={stale.provider}
                       data-provider-icon={providerId}
                       aria-hidden
+                      className="flex size-3 shrink-0 items-center justify-center"
                     >
                       {provider === undefined ? (
                         <iconInfo.icon className="size-3" />

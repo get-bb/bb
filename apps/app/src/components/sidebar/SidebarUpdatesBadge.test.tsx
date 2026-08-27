@@ -255,6 +255,11 @@ describe("SidebarUpdatesBadge", () => {
         node.getAttribute("data-provider-icon"),
       ),
     ).toEqual(["claude-code", "codex"]);
+    expect(
+      [...providerChip.querySelectorAll("[data-provider-icon]")].every((node) =>
+        node.classList.contains("flex"),
+      ),
+    ).toBe(true);
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
   });
 });
