@@ -42,6 +42,16 @@ const macConfigSchema = z
   .object({
     entitlements: z.string().min(1),
     entitlementsInherit: z.string().min(1),
+    extraResources: z
+      .array(
+        z
+          .object({
+            from: z.string().min(1),
+            to: z.string().min(1),
+          })
+          .passthrough(),
+      )
+      .optional(),
     gatekeeperAssess: z.literal(false),
     hardenedRuntime: z.literal(true),
     icon: z.string().min(1),
@@ -660,12 +670,16 @@ describe("electron-builder signing config", () => {
     expect(completeAppleCredentials.config.dmg.sign).toBe(false);
   });
 
-  it("ships an in-bundle CLI wrapper named for the channel", async () => {
+  it("ships an in-bundle CLI wrapper named for the channel, scoped to mac", async () => {
     const { config } = await readResolvedConfig({});
 
-    expect(config.extraResources).toEqual([
+    // Scoped to config.mac, not top-level: a top-level extraResources would
+    // also package this macOS-only wrapper into the Linux AppImage, where its
+    // Contents/MacOS/<app> assumption doesn't hold.
+    expect(config.mac.extraResources).toEqual([
       { from: ".bb-cli-wrapper.generated", to: "bin/bb" },
     ]);
+    expect(config.extraResources).toBeUndefined();
   });
 
   it("names the nightly in-bundle wrapper bb-nightly", async () => {
@@ -675,9 +689,10 @@ describe("electron-builder signing config", () => {
       BB_DESKTOP_RELEASE_CHANNEL: "nightly",
     });
 
-    expect(config.extraResources).toEqual([
+    expect(config.mac.extraResources).toEqual([
       { from: ".bb-cli-wrapper.generated", to: "bin/bb-nightly" },
     ]);
+    expect(config.extraResources).toBeUndefined();
   });
 
   it("writes an executable wrapper that execs the bundle's own Electron", async () => {
