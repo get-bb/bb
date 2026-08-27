@@ -647,11 +647,19 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
   return `${automation.trigger.cron} (${automation.trigger.timezone})`;
 }
 
-function printAutomation(automation: AutomationResponse): string {
+type PrintableAutomation =
+  | AutomationResponse
+  | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
+
+function printAutomation(
+  automation: PrintableAutomation,
+  status?: string,
+): string {
   const lines = [
     "",
     `  ID:        ${automation.id}`,
     `  Name:      ${automation.name}`,
+    ...(status === undefined ? [] : [`  Status:    ${status}`]),
     `  Enabled:   ${automation.enabled ? "yes" : "no"}`,
     `  Mode:      ${automation.execution.mode}`,
     `  Schedule:  ${formatAutomationTrigger(automation)}`,
@@ -746,38 +754,50 @@ function table(head: string[], rows: string[][]): string {
 }
 
 function printAutomationProblem(automation: AutomationReadProblem): string {
-  return [
-    "",
-    `  ID:        ${automation.id}`,
-    `  Name:      ${automation.name}`,
-    `  Status:    ${
-      automation.problem === "missing-agent-prompt"
-        ? "Needs prompt"
-        : "Invalid stored data"
-    }`,
-    "",
-  ].join("\n");
+  if (automation.problem === "missing-agent-prompt") {
+    return printAutomation(automation, "Prompt required");
+  }
+  return (
+    [
+      "",
+      `  ID:        ${automation.id}`,
+      `  Name:      ${automation.name}`,
+      "  Status:    Invalid data",
+      "",
+    ].join("\n") + "\n"
+  );
 }
 
 function printAutomationTable(automations: AutomationReadResult[]): string {
   return table(
-    ["ID", "Name", "On", "Schedule", "Next run", "Runs", "Origin"],
+    ["ID", "Name", "Status", "On", "Schedule", "Next run", "Runs", "Origin"],
     automations.map((automation) =>
       "problem" in automation
-        ? [
-            automation.id,
-            automation.name,
-            "-",
-            automation.problem === "missing-agent-prompt"
-              ? "Needs prompt"
-              : "Invalid stored data",
-            "-",
-            "-",
-            "-",
-          ]
+        ? automation.problem === "missing-agent-prompt"
+          ? [
+              automation.id,
+              automation.name,
+              "Prompt required",
+              automation.enabled ? "yes" : "no",
+              formatAutomationTrigger(automation),
+              formatTimestamp(automation.nextRunAt),
+              String(automation.runCount),
+              automation.origin,
+            ]
+          : [
+              automation.id,
+              automation.name,
+              "Invalid data",
+              "-",
+              "-",
+              "-",
+              "-",
+              "-",
+            ]
         : [
             automation.id,
             automation.name,
+            "-",
             automation.enabled ? "yes" : "no",
             formatAutomationTrigger(automation),
             formatTimestamp(automation.nextRunAt),

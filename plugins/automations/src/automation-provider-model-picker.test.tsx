@@ -127,6 +127,14 @@ describe("automation provider and model picker", () => {
       />,
     );
 
+    expect(
+      (screen.getByRole("button", { name: "Edit prompt" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Run now" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     const save = screen.getByRole("button", { name: "Save Prompt" });
     expect((save as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Automation prompt"), {
@@ -162,6 +170,7 @@ describe("automation provider and model picker", () => {
         }}
         actionPending={false}
         editing
+        requiresPrompt={false}
         onToggle={vi.fn()}
         onEdit={vi.fn()}
         onCancelEdit={vi.fn()}

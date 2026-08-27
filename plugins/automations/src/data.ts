@@ -460,6 +460,18 @@ export function updateAutomation(
   if (!existing) return null;
   const next = resolveAutomationUpdate(existing, args.patch);
   const now = Date.now();
+  const updated: AutomationRow = {
+    ...existing,
+    name: next.name,
+    triggerType: next.trigger.triggerType,
+    triggerConfig: serializeTrigger(next.trigger),
+    runMode: next.execution.mode,
+    execution: serializeExecution(next.execution),
+    targetThreadId: next.targetThreadId,
+    nextRunAt: next.nextRunAt,
+    updatedAt: now,
+  };
+  toAutomationResponse(updated);
   db.prepare(
     `UPDATE automations SET
        name = @name,
@@ -472,35 +484,18 @@ export function updateAutomation(
        updated_at = @now
      WHERE id = @automationId AND project_id = @projectId`,
   ).run({
-    automationId: args.automationId,
-    projectId: args.projectId,
-    name: next.name,
-    triggerType: next.trigger.triggerType,
-    triggerConfig: serializeTrigger(next.trigger),
-    runMode: next.execution.mode,
-    execution: serializeExecution(next.execution),
-    targetThreadId: next.targetThreadId,
-    nextRunAt: next.nextRunAt,
-    now,
+    automationId: updated.id,
+    projectId: updated.projectId,
+    name: updated.name,
+    triggerType: updated.triggerType,
+    triggerConfig: updated.triggerConfig,
+    runMode: updated.runMode,
+    execution: updated.execution,
+    targetThreadId: updated.targetThreadId,
+    nextRunAt: updated.nextRunAt,
+    now: updated.updatedAt,
   });
-  return getAutomationForProject(db, args);
-}
-
-export function assertCanonicalAutomationUpdate(
-  existing: AutomationRow,
-  patch: UpdateAutomationInput,
-): void {
-  const next = resolveAutomationUpdate(existing, patch);
-  toAutomationResponse({
-    ...existing,
-    name: next.name,
-    triggerType: next.trigger.triggerType,
-    triggerConfig: serializeTrigger(next.trigger),
-    runMode: next.execution.mode,
-    execution: serializeExecution(next.execution),
-    targetThreadId: next.targetThreadId,
-    nextRunAt: next.nextRunAt,
-  });
+  return updated;
 }
 
 export function setAutomationEnabled(
@@ -570,6 +565,20 @@ export function listDueAutomations(
          AND trigger_type IN ('schedule', 'once')
          AND next_run_at IS NOT NULL
          AND next_run_at <= ?
+         -- Forgiving reads keep degraded rows visible, but the scheduler must
+         -- not reconsider an unchanged agent execution that cannot possibly
+         -- pass the canonical parser on every sweep tick. CASE keeps JSON
+         -- access safe for malformed legacy values without mutating them.
+         AND CASE
+           WHEN run_mode = 'agent' THEN
+             CASE
+               WHEN json_valid(execution) = 1 THEN
+                 json_type(execution, '$.prompt') = 'text'
+                   AND json_extract(execution, '$.prompt') <> ''
+               ELSE 0
+             END
+           ELSE 1
+         END
        ORDER BY next_run_at ASC, created_at ASC, id ASC
        LIMIT ?`,
     )

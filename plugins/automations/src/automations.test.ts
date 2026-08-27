@@ -20,6 +20,7 @@ import {
   getAutomation,
   getRunningAutomationRun,
   listAutomationsForProject,
+  listDueAutomations,
   listAutomationRuns,
   migrations,
   setAutomationEnabled,
@@ -801,6 +802,43 @@ describe("automation data access", () => {
     expect(
       listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
     ).toHaveLength(0);
+  });
+
+  it("does not repeatedly select degraded agent executions for sweeping", () => {
+    const db = createTestDb();
+    const emptyPrompt = createScheduledAutomation(db, 1000, "auto_empty");
+    const invalidJson = createScheduledAutomation(db, 1000, "auto_invalid");
+    const healthy = createScheduledAutomation(db, 1000, "auto_healthy");
+    db.prepare("UPDATE automations SET execution = ? WHERE id = ?").run(
+      JSON.stringify({
+        mode: "agent",
+        prompt: "",
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "accept-edits",
+        environment: { type: "project-default" },
+      }),
+      emptyPrompt.id,
+    );
+    db.prepare("UPDATE automations SET execution = ? WHERE id = ?").run(
+      "not json",
+      invalidJson.id,
+    );
+
+    expect(
+      listDueAutomations(db, { now: 1000, limit: 100 }).map(
+        (automation) => automation.id,
+      ),
+    ).toEqual([healthy.id]);
+    expect(getAutomation(db, emptyPrompt.id)).toMatchObject({
+      enabled: true,
+      nextRunAt: 1000,
+    });
+    expect(getAutomation(db, invalidJson.id)).toMatchObject({
+      enabled: true,
+      nextRunAt: 1000,
+    });
   });
 
   it("dedupes manual runs by idempotency key", () => {

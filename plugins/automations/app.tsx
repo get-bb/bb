@@ -565,12 +565,35 @@ function DetailView({
 
   if ("problem" in automation && automation.problem === "invalid-stored-data") {
     return (
-      <ResourceListState
-        state="error"
-        message="The stored automation configuration cannot be read."
-        layout="detail"
-        onRetry={refetch}
-      />
+      <>
+        <div className="mx-auto w-full max-w-3xl space-y-3">
+          <ResourceListState
+            state="error"
+            message="The stored automation configuration cannot be read."
+            layout="detail"
+            onRetry={refetch}
+          />
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete automation
+            </Button>
+          </div>
+        </div>
+        <DeleteAutomationDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          name={automation.name}
+          pending={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      </>
     );
   }
 

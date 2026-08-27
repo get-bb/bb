@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
-  assertCanonicalAutomationUpdate,
   createAutomation,
   createManualRun,
   deleteAutomation,
@@ -244,6 +243,63 @@ function toAutomationReadProblem(
   }
 }
 
+type AutomationWriteOperation = "run" | "pause" | "resume" | "update";
+
+const MISSING_PROMPT_OPERATION: Record<AutomationWriteOperation, string> = {
+  run: "it can run",
+  pause: "it can be paused",
+  resume: "it can be resumed",
+  update: "other fields can be updated",
+};
+
+const INVALID_DATA_OPERATION: Record<AutomationWriteOperation, string> = {
+  run: "run",
+  pause: "paused",
+  resume: "resumed",
+  update: "updated",
+};
+
+function automationWriteProblem(
+  row: AutomationRow,
+): "missing-agent-prompt" | "invalid-stored-data" | null {
+  try {
+    toAutomationResponse(row);
+    return null;
+  } catch {
+    try {
+      toLegacyEmptyPromptAutomationResponse(row);
+      return "missing-agent-prompt";
+    } catch {
+      return "invalid-stored-data";
+    }
+  }
+}
+
+function automationWriteError(
+  row: AutomationRow,
+  operation: AutomationWriteOperation,
+): Error {
+  return automationWriteProblem(row) === "missing-agent-prompt"
+    ? new Error(
+        `Automation "${row.name}" requires a prompt before ${MISSING_PROMPT_OPERATION[operation]}. Edit it and add a prompt first.`,
+      )
+    : new Error(
+        `Automation "${row.name}" has invalid stored data and cannot be ${INVALID_DATA_OPERATION[operation]}. Delete it and recreate it.`,
+      );
+}
+
+function requireCanonicalAutomationForWrite(
+  pluginDataDir: string,
+  row: AutomationRow,
+  operation: AutomationWriteOperation,
+): AutomationResponse {
+  try {
+    return toStoredAutomationResponse(pluginDataDir, row);
+  } catch {
+    throw automationWriteError(row, operation);
+  }
+}
+
 function toStoredAutomationReadResult(
   bb: Pick<ServiceApi, "log">,
   pluginDataDir: string,
@@ -258,9 +314,9 @@ function toStoredAutomationReadResult(
 
 async function toEditableAutomationResponse(args: {
   pluginDataDir: string;
-  row: AutomationRow;
+  automation: AutomationResponse;
 }): Promise<AutomationResponse> {
-  const automation = toStoredAutomationResponse(args.pluginDataDir, args.row);
+  const { automation } = args;
   if (
     automation.execution.mode !== "script" ||
     automation.execution.scriptFile === undefined
@@ -286,11 +342,16 @@ async function toEditableAutomationReadResult(args: {
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationReadResult> {
+  let automation: AutomationResponse;
   try {
-    return await toEditableAutomationResponse(args);
+    automation = toStoredAutomationResponse(args.pluginDataDir, args.row);
   } catch (error) {
     return toAutomationReadProblem(args.bb, args.row, error);
   }
+  return toEditableAutomationResponse({
+    pluginDataDir: args.pluginDataDir,
+    automation,
+  });
 }
 
 async function cleanupSupersededScript(args: {
@@ -535,6 +596,10 @@ export function createAutomationService(args: {
     async update(input) {
       await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
+      const currentProblem = automationWriteProblem(current);
+      if (currentProblem === "invalid-stored-data") {
+        throw automationWriteError(current, "update");
+      }
       if (input.execution !== undefined && input.agent !== undefined) {
         throw new Error("execution and agent updates cannot be combined");
       }
@@ -593,9 +658,15 @@ export function createAutomationService(args: {
         }
         patch.execution = updatedExecution;
       }
+      if (
+        currentProblem === "missing-agent-prompt" &&
+        (patch.execution === undefined ||
+          (patch.execution.mode === "agent" && patch.execution.prompt === ""))
+      ) {
+        throw automationWriteError(current, "update");
+      }
       let updated: AutomationRow | null;
       try {
-        assertCanonicalAutomationUpdate(current, patch);
         updated = updateAutomation(db, {
           projectId: input.projectId,
           automationId: input.automationId,
@@ -648,7 +719,7 @@ export function createAutomationService(args: {
 
     pause(input) {
       const current = requireProjectAutomation(db, input);
-      toStoredAutomationResponse(pluginDataDir, current);
+      requireCanonicalAutomationForWrite(pluginDataDir, current, "pause");
       const updated = setAutomationEnabled(db, {
         projectId: input.projectId,
         automationId: current.id,
@@ -662,7 +733,7 @@ export function createAutomationService(args: {
 
     resume(input) {
       const current = requireProjectAutomation(db, input);
-      toStoredAutomationResponse(pluginDataDir, current);
+      requireCanonicalAutomationForWrite(pluginDataDir, current, "resume");
       const trigger = parseAutomationTrigger(current.triggerConfig);
       const now = Date.now();
       validateTrigger(trigger, now);
@@ -681,7 +752,7 @@ export function createAutomationService(args: {
 
     async run(input) {
       const automation = requireProjectAutomation(db, input);
-      toStoredAutomationResponse(pluginDataDir, automation);
+      requireCanonicalAutomationForWrite(pluginDataDir, automation, "run");
       const execution = parseAutomationExecution(automation.execution);
       const now = Date.now();
       const { run, deduped } = createManualRun(db, {

@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -416,6 +417,48 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("keeps a valid script row canonical when its stored file is missing", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const createdResult = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Missing script file",
+      "--in",
+      "1h",
+      "--script",
+      "echo ok",
+      "--json",
+    ]);
+    const created = automationResponseSchema.parse(
+      JSON.parse(createdResult.stdout ?? ""),
+    );
+    if (
+      created.execution.mode !== "script" ||
+      created.execution.storedScriptPath === undefined
+    ) {
+      throw new Error("Expected a stored script fixture");
+    }
+    await unlink(created.execution.storedScriptPath);
+
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+    );
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id: created.id, name: "Missing script file" }),
+    );
+    expect(listed[0]).not.toHaveProperty("problem");
+    await expect(
+      harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    ).rejects.toThrow("Script file was not found");
+
+    await harness.dispose();
+  });
+
   it.each([
     {
       supported: ["accept-edits", "auto", "full"] as const,
@@ -723,8 +766,14 @@ describe("automations server plugin harness", () => {
 
     const cliList = await harness.runCli(["list", "--project", PROJECT_ID]);
     expect(cliList).toMatchObject({ exitCode: 0 });
-    expect(cliList.stdout).toContain("Needs prompt");
-    expect(cliList.stdout).toContain("Invalid stored data");
+    expect(cliList.stdout).toContain("Prompt required");
+    expect(cliList.stdout).toContain("Invalid data");
+    const repairRow = cliList.stdout
+      ?.split("\n")
+      .find((line) => line.includes("Hidden legacy row"));
+    expect(repairRow).toContain("yes");
+    expect(repairRow).toContain("once at");
+    expect(repairRow).toContain("human");
 
     if (
       repairTarget === undefined ||
@@ -753,26 +802,60 @@ describe("automations server plugin harness", () => {
       PROJECT_ID,
     ]);
     expect(cliShow).toMatchObject({ exitCode: 0 });
-    expect(cliShow.stdout).toContain("Status:    Needs prompt");
+    expect(cliShow.stdout).toContain("Status:    Prompt required");
+    expect(cliShow.stdout).toContain("Enabled:   yes");
+    expect(cliShow.stdout).toContain("Schedule:  once at");
+    expect(cliShow.stdout?.endsWith("\n\n")).toBe(true);
     await expect(
       harness.callRpc("automations_run", {
         projectId: PROJECT_ID,
         automationId: repairTarget.id,
       }),
-    ).rejects.toThrow("Too small");
+    ).rejects.toThrow(
+      'Automation "Hidden legacy row" requires a prompt before it can run. Edit it and add a prompt first.',
+    );
     await expect(
       harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: repairTarget.id,
         name: "Must not be persisted",
       }),
-    ).rejects.toThrow("Too small");
+    ).rejects.toThrow(
+      'Automation "Hidden legacy row" requires a prompt before other fields can be updated. Edit it and add a prompt first.',
+    );
     await expect(
       harness.callRpc("automations_pause", {
         projectId: PROJECT_ID,
         automationId: repairTarget.id,
       }),
-    ).rejects.toThrow("Too small");
+    ).rejects.toThrow(
+      'Automation "Hidden legacy row" requires a prompt before it can be paused. Edit it and add a prompt first.',
+    );
+    await expect(
+      harness.callRpc("automations_resume", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+      }),
+    ).rejects.toThrow(
+      'Automation "Hidden legacy row" requires a prompt before it can be resumed. Edit it and add a prompt first.',
+    );
+    await expect(
+      harness.callRpc("automations_pause", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+      }),
+    ).rejects.toThrow(
+      'Automation "Invalid stored row" has invalid stored data and cannot be paused. Delete it and recreate it.',
+    );
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+        name: "Must not be persisted either",
+      }),
+    ).rejects.toThrow(
+      'Automation "Invalid stored row" has invalid stored data and cannot be updated. Delete it and recreate it.',
+    );
     expect(
       database
         .prepare("SELECT name, enabled FROM automations WHERE id = ?")

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AutomationReadProblem,
   AutomationResponse,
   AutomationsOverviewResponse,
 } from "./src/rpc-types.js";
@@ -195,19 +196,19 @@ function automationLifecycleSortRank(automation: AutomationResponse): number {
 }
 
 function OverviewRow({
-  entry,
+  automation,
+  project,
   onNavigate,
   onEnabledChange,
 }: {
-  entry: OverviewEntry;
+  automation: AutomationResponse;
+  project: OverviewEntry["project"];
   onNavigate: (route: AutomationDetailRoute) => void;
   onEnabledChange: (
     enabled: boolean,
     route: AutomationDetailRoute,
   ) => Promise<void>;
 }) {
-  const { automation } = entry;
-  if ("problem" in automation) return null;
   const [togglePending, setTogglePending] = useState(false);
   const route = routeOf(automation);
   const oneShotLifecycle = getOneShotLifecycle({
@@ -225,8 +226,8 @@ function OverviewRow({
     runCount: automation.runCount,
     lastRunStatus: automation.lastRunStatus,
   });
-  const projectLabel = automationProjectLabel(entry.project);
-  const personalProject = entry.project.id === PERSONAL_PROJECT_ID;
+  const projectLabel = automationProjectLabel(project);
+  const personalProject = project.id === PERSONAL_PROJECT_ID;
 
   return (
     <ResourceRow
@@ -286,22 +287,32 @@ function OverviewRow({
 }
 
 function AutomationProblemRow({
-  entry,
+  automation,
+  project,
   onNavigate,
 }: {
-  entry: OverviewEntry;
+  automation: AutomationReadProblem;
+  project: OverviewEntry["project"];
   onNavigate: (
     route: AutomationDetailRoute,
     options?: AutomationDetailNavigationOptions,
   ) => void;
 }) {
-  const { automation, project } = entry;
-  if (!("problem" in automation)) return null;
   const repairTarget =
     automation.problem === "missing-agent-prompt" ? automation : null;
   const projectLabel = automationProjectLabel(project);
-  const problemLabel =
-    repairTarget !== null ? "Prompt required" : "Invalid data";
+  const problemLabel = automationProblemLabel(automation);
+  const personalProject = project.id === PERSONAL_PROJECT_ID;
+  const scheduleMetadata =
+    repairTarget === null
+      ? null
+      : formatOverviewScheduleMetadata({
+          enabled: repairTarget.enabled,
+          nextRunAt: repairTarget.nextRunAt,
+          trigger: repairTarget.trigger,
+          runCount: repairTarget.runCount,
+          lastRunStatus: repairTarget.lastRunStatus,
+        });
   return (
     <ResourceRow
       leading={
@@ -330,9 +341,28 @@ function AutomationProblemRow({
       description={
         <ResourceMeta
           items={[
-            <AutomationMetadataItem icon="Folder" iconLabel="Project">
+            <AutomationMetadataItem
+              icon={personalProject ? "Laptop" : "Folder"}
+              iconLabel={personalProject ? "Local project" : "Project"}
+              title={projectLabel}
+            >
               {projectLabel}
             </AutomationMetadataItem>,
+            repairTarget !== null ? (
+              <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
+                {formatAutomationTrigger(repairTarget.trigger)}
+              </AutomationMetadataItem>
+            ) : null,
+            repairTarget !== null && scheduleMetadata !== null ? (
+              <AutomationMetadataItem
+                icon={
+                  scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined
+                }
+                iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
+              >
+                {scheduleMetadata.text}
+              </AutomationMetadataItem>
+            ) : null,
             repairTarget === null
               ? "The stored configuration cannot be read."
               : null,
@@ -372,6 +402,20 @@ function AutomationProblemRow({
       }
     />
   );
+}
+
+function automationProblemLabel(automation: AutomationReadProblem): string {
+  return automation.problem === "missing-agent-prompt"
+    ? "Prompt required"
+    : "Invalid data";
+}
+
+function automationProblemSearchText(
+  automation: AutomationReadProblem,
+): string {
+  return automation.problem === "missing-agent-prompt"
+    ? `${automationProblemLabel(automation)} needs prompt missing prompt`
+    : `${automationProblemLabel(automation)} invalid stored data`;
 }
 
 export function AutomationOverviewView({
@@ -452,15 +496,26 @@ export function AutomationOverviewView({
         return false;
       }
       if ("problem" in automation) {
-        if (statusFilters.length > 0) return false;
+        if (automation.problem === "invalid-stored-data") {
+          if (statusFilters.length > 0) return false;
+          if (normalizedQuery.length === 0) return true;
+          return [
+            automation.name,
+            project.name,
+            automationProblemSearchText(automation),
+          ].some((value) => value.toLowerCase().includes(normalizedQuery));
+        }
+        if (!matchesAutomationStatusFilters(automation, statusFilters)) {
+          return false;
+        }
         if (normalizedQuery.length === 0) return true;
-        const problemLabel =
-          automation.problem === "missing-agent-prompt"
-            ? "needs prompt missing prompt"
-            : "invalid stored data";
-        return [automation.name, project.name, problemLabel].some((value) =>
-          value.toLowerCase().includes(normalizedQuery),
-        );
+        return [
+          automation.name,
+          project.name,
+          automationProblemSearchText(automation),
+          formatScheduleStatusLabel(automation),
+          formatAutomationTrigger(automation.trigger),
+        ].some((value) => value?.toLowerCase().includes(normalizedQuery));
       }
       if (!matchesAutomationStatusFilters(automation, statusFilters)) {
         return false;
@@ -563,22 +618,25 @@ export function AutomationOverviewView({
   } else {
     body = (
       <ResourceListPanel>
-        {installedPagination.items.map((entry) =>
-          "problem" in entry.automation ? (
+        {installedPagination.items.map((entry) => {
+          const { automation, project } = entry;
+          return "problem" in automation ? (
             <AutomationProblemRow
-              key={entry.automation.id}
-              entry={entry}
+              key={automation.id}
+              automation={automation}
+              project={project}
               onNavigate={onOpenDetail}
             />
           ) : (
             <OverviewRow
-              key={entry.automation.id}
-              entry={entry}
+              key={automation.id}
+              automation={automation}
+              project={project}
               onNavigate={onOpenDetail}
               onEnabledChange={onEnabledChange}
             />
-          ),
-        )}
+          );
+        })}
       </ResourceListPanel>
     );
   }
