@@ -83,6 +83,10 @@ export function usePanelResizeSnap({
       let finished = false;
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
+        if (moveEvent.buttons === 0) {
+          clear();
+          return;
+        }
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
         const nextPointer =
@@ -103,6 +107,7 @@ export function usePanelResizeSnap({
         ownerWindow.removeEventListener("pointermove", move, true);
         ownerWindow.removeEventListener("pointerup", finish, true);
         ownerWindow.removeEventListener("pointercancel", finish, true);
+        ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
         ownerWindow.removeEventListener("blur", finishOnBlur);
         snapSession.clear();
         if (grid !== null) {
@@ -118,12 +123,14 @@ export function usePanelResizeSnap({
         }
         if (cleanupRef.current === finish) cleanupRef.current = null;
       };
+      const finishOnMouseUp = () => finish();
       const finishOnBlur = () => finish();
 
       cleanupRef.current = finish;
       ownerWindow.addEventListener("pointermove", move, true);
       ownerWindow.addEventListener("pointerup", finish, true);
       ownerWindow.addEventListener("pointercancel", finish, true);
+      ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
       ownerWindow.addEventListener("blur", finishOnBlur);
     },
     [axis, boundaryIndex, childCount, clear, onResize],

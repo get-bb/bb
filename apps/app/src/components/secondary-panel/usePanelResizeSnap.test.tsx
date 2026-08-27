@@ -61,7 +61,11 @@ describe("usePanelResizeSnap", () => {
 
     try {
       fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 40 });
-      fireEvent.pointerMove(document.body, { clientX: 450, pointerId: 40 });
+      fireEvent.pointerMove(document.body, {
+        buttons: 1,
+        clientX: 450,
+        pointerId: 40,
+      });
 
       expect(rawPanelMove).not.toHaveBeenCalled();
       expect(onResize).toHaveBeenLastCalledWith(0.4375);
@@ -96,6 +100,76 @@ describe("usePanelResizeSnap", () => {
     );
   });
 
+  it("releases when the panel library consumes pointerup before the snap handler", () => {
+    const onResize = vi.fn();
+    render(<SnapHarness onResize={onResize} />);
+    const grid = screen.getByTestId("grid");
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const hitTarget = screen.getByTestId("hit-target");
+    const next = screen.getByTestId("next");
+    grid.getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 370);
+    divider.getBoundingClientRect = () => rect(470, 1);
+    next.getBoundingClientRect = () => rect(471, 429);
+    grid.style.setProperty("--panel-collapse-duration", "220ms");
+    const consumePointerUp = (event: PointerEvent) =>
+      event.stopImmediatePropagation();
+    window.addEventListener("pointerup", consumePointerUp, true);
+
+    try {
+      fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 43 });
+      fireEvent.pointerMove(document.body, {
+        buttons: 1,
+        clientX: 450,
+        pointerId: 43,
+      });
+      const resizeCountBeforeRelease = onResize.mock.calls.length;
+
+      fireEvent.pointerUp(document.body, { clientX: 450, pointerId: 43 });
+      fireEvent.mouseUp(window, { clientX: 450 });
+      fireEvent.pointerMove(document.body, {
+        buttons: 0,
+        clientX: 430,
+        pointerId: 43,
+      });
+
+      expect(onResize).toHaveBeenCalledTimes(resizeCountBeforeRelease);
+      expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
+        "220ms",
+      );
+    } finally {
+      window.removeEventListener("pointerup", consumePointerUp, true);
+    }
+  });
+
+  it("releases when pointer movement reports that no buttons remain held", () => {
+    const onResize = vi.fn();
+    render(<SnapHarness onResize={onResize} />);
+    const grid = screen.getByTestId("grid");
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const hitTarget = screen.getByTestId("hit-target");
+    const next = screen.getByTestId("next");
+    grid.getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 370);
+    divider.getBoundingClientRect = () => rect(470, 1);
+    next.getBoundingClientRect = () => rect(471, 429);
+    grid.style.setProperty("--panel-collapse-duration", "220ms");
+
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 44 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 0,
+      clientX: 450,
+      pointerId: 44,
+    });
+
+    expect(onResize).not.toHaveBeenCalled();
+    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
+  });
+
   it("bridges a fast outer-panel crossing into the shared two-pane grid", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
@@ -110,7 +184,11 @@ describe("usePanelResizeSnap", () => {
     next.getBoundingClientRect = () => rect(471, 429);
 
     fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 41 });
-    fireEvent.pointerMove(document.body, { clientX: 560, pointerId: 41 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 560,
+      pointerId: 41,
+    });
 
     expect(onResize).toHaveBeenLastCalledWith(0.5);
     expect(
