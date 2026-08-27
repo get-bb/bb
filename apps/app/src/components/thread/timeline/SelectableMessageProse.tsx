@@ -33,6 +33,8 @@ interface SelectableMessageProseProps {
 
 export const MULTI_CLICK_SELECTION_REPORT_DELAY_MS = 180;
 const SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+const CLIPBOARD_REPLACED_CONTENT_SELECTOR =
+  "audio, canvas, embed, iframe, img, object, video";
 
 /**
  * Pure predicate: does `selection` fall entirely within `node`?
@@ -195,6 +197,97 @@ function readSelectionWithinNode(
   }
 
   return null;
+}
+
+function clippedRangeForWhitespaceBoundarySpill(
+  node: HTMLElement,
+  range: Range,
+): Range | null {
+  if (
+    typeof range.intersectsNode !== "function" ||
+    !range.intersectsNode(node)
+  ) {
+    return null;
+  }
+
+  const clippedRange = range.cloneRange();
+  if (!node.contains(range.startContainer)) {
+    const leadingRange = range.cloneRange();
+    leadingRange.setEnd(node, 0);
+    if (
+      leadingRange.toString().trim().length > 0 ||
+      leadingRange
+        .cloneContents()
+        .querySelector(CLIPBOARD_REPLACED_CONTENT_SELECTOR) !== null
+    ) {
+      return null;
+    }
+    clippedRange.setStart(node, 0);
+  }
+  if (!node.contains(range.endContainer)) {
+    const trailingRange = range.cloneRange();
+    trailingRange.setStart(node, node.childNodes.length);
+    if (
+      trailingRange.toString().trim().length > 0 ||
+      trailingRange
+        .cloneContents()
+        .querySelector(CLIPBOARD_REPLACED_CONTENT_SELECTOR) !== null
+    ) {
+      return null;
+    }
+    clippedRange.setEnd(node, node.childNodes.length);
+  }
+
+  return clippedRange.toString().trim().length > 0 ? clippedRange : null;
+}
+
+function clipWhitespaceOnlyBoundarySpillForCopy(node: HTMLElement): boolean {
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  if (
+    node.contains(range.startContainer) &&
+    node.contains(range.endContainer)
+  ) {
+    return false;
+  }
+  const clippedRange = clippedRangeForWhitespaceBoundarySpill(node, range);
+  if (clippedRange === null) return false;
+
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+  range.setStart(clippedRange.startContainer, clippedRange.startOffset);
+  range.setEnd(clippedRange.endContainer, clippedRange.endOffset);
+  const clippedStartContainer = range.startContainer;
+  const clippedStartOffset = range.startOffset;
+  const clippedEndContainer = range.endContainer;
+  const clippedEndOffset = range.endOffset;
+
+  // Chromium serializes the live range after the copy event returns. Restore
+  // the user's selection in the next task, after both clipboard formats exist.
+  window.setTimeout(() => {
+    if (
+      anchorNode?.isConnected &&
+      focusNode?.isConnected &&
+      selection.rangeCount > 0
+    ) {
+      const liveRange = selection.getRangeAt(0);
+      if (
+        liveRange.startContainer !== clippedStartContainer ||
+        liveRange.startOffset !== clippedStartOffset ||
+        liveRange.endContainer !== clippedEndContainer ||
+        liveRange.endOffset !== clippedEndOffset
+      ) {
+        return;
+      }
+      selection.setBaseAndExtent(
+        anchorNode,
+        anchorOffset,
+        focusNode,
+        focusOffset,
+      );
+    }
+  }, 0);
+  return true;
 }
 
 // Every assistant message mounts one SelectableMessageProse, so per-instance
@@ -405,6 +498,21 @@ function handleSharedKeyUp(): void {
   scheduleSharedReport();
 }
 
+function handleSharedCopy(): void {
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount !== 1) return;
+  const range = selection.getRangeAt(0);
+  for (const instance of proseInstances) {
+    if (
+      typeof range.intersectsNode === "function" &&
+      range.intersectsNode(instance.node) &&
+      clipWhitespaceOnlyBoundarySpillForCopy(instance.node)
+    ) {
+      return;
+    }
+  }
+}
+
 function attachSharedDocumentListeners(): void {
   // Passive: none of the pointer handlers call preventDefault, so declare it
   // and keep every tap off the compositor's blocking-handler list.
@@ -420,6 +528,7 @@ function attachSharedDocumentListeners(): void {
   document.addEventListener("mouseup", handleSharedPointerRelease);
   document.addEventListener("selectionchange", handleSharedSelectionChange);
   document.addEventListener("keyup", handleSharedKeyUp);
+  document.addEventListener("copy", handleSharedCopy);
 }
 
 function detachSharedDocumentListeners(): void {
@@ -429,6 +538,7 @@ function detachSharedDocumentListeners(): void {
   document.removeEventListener("mouseup", handleSharedPointerRelease);
   document.removeEventListener("selectionchange", handleSharedSelectionChange);
   document.removeEventListener("keyup", handleSharedKeyUp);
+  document.removeEventListener("copy", handleSharedCopy);
 }
 
 function registerSelectableProseInstance(
