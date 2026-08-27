@@ -98,6 +98,7 @@ export function createSplitResizeSnapSession(
   target: SplitResizeGridTarget,
 ): SplitResizeSnapSession {
   let guide: HTMLElement | null = null;
+  let fastCrossingAnchor: number | null = null;
   let lastPointer: number | null = null;
   let snapped = false;
   const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
@@ -111,6 +112,7 @@ export function createSplitResizeSnapSession(
   const clear = () => {
     guide?.remove();
     guide = null;
+    fastCrossingAnchor = null;
     lastPointer = null;
     snapped = false;
   };
@@ -153,16 +155,40 @@ export function createSplitResizeSnapSession(
       const coordinate = start + contentSpan * fraction + extent / 2;
       const reachable = Math.abs(coordinate - gridCoordinate) <= 0.01;
       const distance = Math.abs(pointer - gridCoordinate);
+      const previousDelta =
+        previousPointer === null ? null : previousPointer - gridCoordinate;
+      const pointerDelta = pointer - gridCoordinate;
       const crossedGrid =
-        previousPointer !== null &&
-        (previousPointer - gridCoordinate) * (pointer - gridCoordinate) <= 0;
-      const shouldSnap =
-        reachable &&
-        (snapped
-          ? distance <= SPLIT_RESIZE_SNAP_RELEASE_PX
-          : distance <= SPLIT_RESIZE_SNAP_CAPTURE_PX ||
-            (crossedGrid && distance <= SPLIT_RESIZE_SNAP_RELEASE_PX));
+        previousDelta !== null &&
+        ((previousDelta < 0 && pointerDelta >= 0) ||
+          (previousDelta > 0 && pointerDelta <= 0));
+      let shouldSnap = false;
+      if (reachable) {
+        if (distance <= SPLIT_RESIZE_SNAP_CAPTURE_PX) {
+          fastCrossingAnchor = null;
+          shouldSnap = true;
+        } else if (crossedGrid) {
+          // Pointer events can jump over the entire release zone during a
+          // fast drag. Anchor hysteresis at that sample so the crossing still
+          // produces a deliberate stop instead of being discarded.
+          fastCrossingAnchor =
+            distance > SPLIT_RESIZE_SNAP_RELEASE_PX ? pointer : null;
+          shouldSnap = true;
+        } else if (snapped) {
+          if (distance <= SPLIT_RESIZE_SNAP_RELEASE_PX) {
+            fastCrossingAnchor = null;
+            shouldSnap = true;
+          } else if (
+            fastCrossingAnchor !== null &&
+            Math.abs(pointer - fastCrossingAnchor) <=
+              SPLIT_RESIZE_SNAP_RELEASE_PX
+          ) {
+            shouldSnap = true;
+          }
+        }
+      }
       if (!shouldSnap) {
+        fastCrossingAnchor = null;
         snapped = false;
         hideGuide();
         return {

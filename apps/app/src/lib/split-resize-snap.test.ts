@@ -145,6 +145,33 @@ describe("split resize snapping", () => {
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
+  it("captures a fast crossing when the next pointer sample lands beyond the release threshold", () => {
+    const source = divider(
+      rect({ left: 500 }),
+      rect({ left: 100, width: 800 }),
+    );
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
+
+    expect(
+      session.resolve({ end: 900, pointer: 470, start: 100 }).snapped,
+    ).toBe(false);
+    expect(
+      session.resolve({ end: 900, pointer: 560, start: 100 }),
+    ).toMatchObject({ coordinate: 500, snapped: true });
+    expect(
+      session.resolve({ end: 900, pointer: 560, start: 100 }).snapped,
+    ).toBe(true);
+    expect(
+      session.resolve({ end: 900, pointer: 584, start: 100 }).snapped,
+    ).toBe(true);
+    expect(
+      session.resolve({ end: 900, pointer: 585, start: 100 }).snapped,
+    ).toBe(false);
+  });
+
   it("reads the divider and grid geometry once instead of during pointer movement", () => {
     const source = divider(
       rect({ left: 500 }),
