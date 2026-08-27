@@ -243,6 +243,9 @@ export function createAcpAgentConnection(
       terminal: false,
     });
     stdoutLines.on("line", (line) => {
+      if (stopping) {
+        return;
+      }
       const message = parseAgentLine(line);
       if (!message) {
         return;

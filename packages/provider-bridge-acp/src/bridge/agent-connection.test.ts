@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -161,7 +164,6 @@ describe("ACP agent stdio lifecycle", () => {
 
   it("makes an intentionally stopped connection unavailable before stdin teardown", async () => {
     const ready = deferred<void>();
-    const stdinClosed = deferred<void>();
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
       recordThreadId: null,
@@ -171,7 +173,7 @@ describe("ACP agent stdio lifecycle", () => {
         [
           'const fs = require("node:fs");',
           'const send = (method) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method }) + "\\n");',
-          'process.on("SIGTERM", () => { fs.closeSync(0); send("stdin-closed"); setTimeout(() => process.exit(0), 50); });',
+          'process.on("SIGTERM", () => { fs.closeSync(0); setTimeout(() => process.exit(0), 50); });',
           'send("ready");',
           "setInterval(() => {}, 1000);",
         ].join(" "),
@@ -180,7 +182,6 @@ describe("ACP agent stdio lifecycle", () => {
       env: process.env,
       onNotification(method) {
         if (method === "ready") ready.resolve();
-        if (method === "stdin-closed") stdinClosed.resolve();
       },
       onRequest() {},
       onExit: exited.resolve,
@@ -199,7 +200,6 @@ describe("ACP agent stdio lifecycle", () => {
           (error: Error) => error,
         );
       connection.kill();
-      await stdinClosed.promise;
       // Reproduce the write that used to win the race with child exit and
       // replace the pending request's release result with an EPIPE message.
       connection.notify("construction/continues", {
@@ -232,6 +232,48 @@ describe("ACP agent stdio lifecycle", () => {
       });
     } finally {
       await stopConnection(connection, exited.promise);
+    }
+  });
+
+  it("ignores an ACP request emitted during SIGTERM", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "bb-acp-stop-"));
+    const lateWrite = join(workspace, "late-write.txt");
+    const ready = deferred<void>();
+    const exited = deferred<AcpAgentExitInfo>();
+    let requestCount = 0;
+    const connection = createAcpAgentConnection({
+      recordThreadId: null,
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          'const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");',
+          'process.on("SIGTERM", () => { send({ jsonrpc: "2.0", id: 1, method: "fs/write_text_file", params: {} }); setTimeout(() => process.exit(0), 50); });',
+          'send({ jsonrpc: "2.0", method: "ready" });',
+          "setInterval(() => {}, 1000);",
+        ].join(" "),
+      ],
+      cwd: workspace,
+      env: process.env,
+      onNotification(method) {
+        if (method === "ready") ready.resolve();
+      },
+      onRequest() {
+        requestCount += 1;
+        writeFileSync(lateWrite, "written after release");
+      },
+      onExit: exited.resolve,
+    });
+
+    try {
+      await ready.promise;
+      connection.kill();
+      await exited.promise;
+      expect(requestCount).toBe(0);
+      expect(existsSync(lateWrite)).toBe(false);
+    } finally {
+      await stopConnection(connection, exited.promise);
+      rmSync(workspace, { recursive: true });
     }
   });
 
