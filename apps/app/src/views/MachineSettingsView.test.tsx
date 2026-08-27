@@ -219,6 +219,13 @@ describe("MachineSettingsView", () => {
       document.querySelector('[data-provider-icon="acp-cursor"]'),
     ).not.toBeNull();
     expect(
+      [...document.querySelectorAll("[data-provider-icon]")].every(
+        (node) =>
+          node.classList.contains("flex") &&
+          node.classList.contains("size-3.5"),
+      ),
+    ).toBe(true);
+    expect(
       screen
         .getByRole("heading", { name: "Provider CLIs" })
         .querySelector("[data-icon]"),

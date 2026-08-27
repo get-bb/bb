@@ -1267,7 +1267,11 @@ export function MachineUpdatesRows({
         onOpen={() => onOpenProvider(providerId)}
         leading={
           ProviderIcon === undefined ? null : (
-            <span data-provider-icon={providerId} aria-hidden>
+            <span
+              data-provider-icon={providerId}
+              aria-hidden
+              className="flex size-3.5 shrink-0 items-center justify-center"
+            >
               <ProviderIcon className="size-3.5 text-muted-foreground" />
             </span>
           )

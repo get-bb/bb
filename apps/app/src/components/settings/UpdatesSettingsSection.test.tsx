@@ -1004,6 +1004,8 @@ The canonical release summary.
     expect(
       providerIcon?.querySelector("[data-provider-logo]")?.getAttribute("class"),
     ).toContain("text-muted-foreground");
+    expect(providerIcon?.classList.contains("flex")).toBe(true);
+    expect(providerIcon?.classList.contains("size-3.5")).toBe(true);
     // Icon-only. The accessible name is the state and the verb — the row
     // already prints the CLI, its versions, and the machine above it. Row and
     // bulk actions share the same quiet treatment so neither competes with the

@@ -361,6 +361,7 @@ export function MachineSettingsView() {
                             <span
                               data-provider-icon={entry.providerId}
                               aria-hidden
+                              className="flex size-3.5 shrink-0 items-center justify-center"
                             >
                               {entry.provider === undefined ? (
                                 <entry.ProviderIcon className="size-3.5" />
