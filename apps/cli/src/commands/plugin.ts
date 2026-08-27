@@ -485,6 +485,28 @@ async function probeSdkVersionPublished(): Promise<
  * started. Best-effort overall: authors need npm anyway (design §5.5), so a
  * failure surfaces the manual step rather than failing the scaffold.
  */
+/** How many trailing lines of npm's own output to quote back. */
+const NPM_FAILURE_DETAIL_LINES = 8;
+
+/**
+ * The tail of npm's own output, indented under the CLI's warning. Empty when
+ * the process produced none — `npm` missing from PATH, for instance, fails
+ * before it can say anything.
+ */
+function npmFailureDetail(cause: unknown): string {
+  const streams = cause as { stderr?: unknown; stdout?: unknown };
+  const text = [streams.stderr, streams.stdout]
+    .map((stream) => (typeof stream === "string" ? stream : ""))
+    .join("\n")
+    .trim();
+  if (text === "") return "";
+  return `\n${text
+    .split("\n")
+    .slice(-NPM_FAILURE_DETAIL_LINES)
+    .map((line) => `  ${line}`)
+    .join("\n")}`;
+}
+
 async function installScaffoldDependencies(
   targetDir: string,
 ): Promise<boolean> {
@@ -496,9 +518,12 @@ async function installScaffoldDependencies(
       ["install", "--include=dev", "--no-fund", "--no-audit"],
       { cwd: targetDir },
     );
-  } catch {
+  } catch (cause) {
+    // npm's own output IS the diagnosis — an unwritable cache, a refused
+    // proxy, a missing platform binary. Swallowing it leaves the author
+    // rerunning the same command by hand just to read the reason.
     console.warn(
-      "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
+      `Could not run npm install — run it in the plugin directory before \`bb plugin build\`.${npmFailureDetail(cause)}`,
     );
     return false;
   }

@@ -201,6 +201,19 @@ describe.sequential("bb plugin new dependency install", () => {
     expect(warned.join("\n")).not.toContain("was not found on npm");
   });
 
+  it("passes npm's own reason through when the install fails", async () => {
+    vi.stubEnv("BB_TEST_NPM_INSTALL", "fail");
+
+    await runPluginNew(["npm-broken"]);
+
+    const warnings = warned.join("\n");
+    expect(warnings).toContain("Could not run npm install");
+    // The reason, not just the symptom: without it the author reruns npm by
+    // hand to discover what the CLI already knew.
+    expect(warnings).toContain("npm error code EPERM");
+    expect(warnings).toContain("Your cache folder contains root-owned files");
+  });
+
   it("falls back to the manual step when npm is not on PATH", async () => {
     vi.stubEnv("PATH", join(workDir, "empty-bin"));
 
