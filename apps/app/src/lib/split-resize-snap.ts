@@ -29,10 +29,6 @@ export interface SplitResizeGridTarget {
   childCount: number;
 }
 
-interface SplitResizeSnapSessionOptions {
-  releasePx?: number;
-}
-
 function createGuide(
   document: Document,
   axis: SplitResizeAxis,
@@ -100,9 +96,7 @@ export function createSplitResizeSnapSession(
   divider: HTMLElement,
   axis: SplitResizeAxis,
   target: SplitResizeGridTarget,
-  options: SplitResizeSnapSessionOptions = {},
 ): SplitResizeSnapSession {
-  const releasePx = options.releasePx ?? SPLIT_RESIZE_SNAP_RELEASE_PX;
   let guide: HTMLElement | null = null;
   let fastCrossingAnchor: number | null = null;
   let lastPointer: number | null = null;
@@ -177,15 +171,17 @@ export function createSplitResizeSnapSession(
           // Pointer events can jump over the entire release zone during a
           // fast drag. Anchor hysteresis at that sample so the crossing still
           // produces a deliberate stop instead of being discarded.
-          fastCrossingAnchor = distance > releasePx ? pointer : null;
+          fastCrossingAnchor =
+            distance > SPLIT_RESIZE_SNAP_RELEASE_PX ? pointer : null;
           shouldSnap = true;
         } else if (snapped) {
-          if (distance <= releasePx) {
+          if (distance <= SPLIT_RESIZE_SNAP_RELEASE_PX) {
             fastCrossingAnchor = null;
             shouldSnap = true;
           } else if (
             fastCrossingAnchor !== null &&
-            Math.abs(pointer - fastCrossingAnchor) <= releasePx
+            Math.abs(pointer - fastCrossingAnchor) <=
+              SPLIT_RESIZE_SNAP_RELEASE_PX
           ) {
             shouldSnap = true;
           }

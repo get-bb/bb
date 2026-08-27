@@ -39,7 +39,10 @@ export function useSecondaryPanelResize({
     },
     [],
   );
-  const handleSecondaryPanelResizePointerDownCapture = usePanelResizeSnap({
+  const {
+    finish: finishSecondaryPanelResizeSnap,
+    onPointerDownCapture: handleSecondaryPanelResizePointerDownCapture,
+  } = usePanelResizeSnap({
     axis: "x",
     onResize: handleSecondaryPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
@@ -100,9 +103,14 @@ export function useSecondaryPanelResize({
           return;
         }
 
+        finishSecondaryPanelResizeSnap();
         finishSecondaryPanelDragging();
       },
-      [finishSecondaryPanelDragging, setIsResizing],
+      [
+        finishSecondaryPanelDragging,
+        finishSecondaryPanelResizeSnap,
+        setIsResizing,
+      ],
     );
 
   useEffect(

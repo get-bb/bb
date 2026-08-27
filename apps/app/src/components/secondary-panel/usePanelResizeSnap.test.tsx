@@ -19,7 +19,7 @@ function rect(left: number, width: number): DOMRect {
 }
 
 function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
-  const onPointerDownCapture = usePanelResizeSnap({
+  const { onPointerDownCapture } = usePanelResizeSnap({
     axis: "x",
     onResize,
     target: { boundaryIndex: 1, childCount: 2 },
@@ -44,7 +44,7 @@ function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
 afterEach(() => cleanup());
 
 describe("usePanelResizeSnap", () => {
-  it("owns unsnapped pointer movement instead of letting the panel library resize first", () => {
+  it("previews pointer movement locally and commits once at drag end", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
     const grid = screen.getByTestId("grid");
@@ -68,6 +68,12 @@ describe("usePanelResizeSnap", () => {
       });
 
       expect(rawPanelMove).not.toHaveBeenCalled();
+      expect(onResize).not.toHaveBeenCalled();
+      expect(previous.style.flex).toBe("0.4375 1 0px");
+      expect(next.style.flex).toBe("0.5625 1 0px");
+
+      fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
+      expect(onResize).toHaveBeenCalledOnce();
       expect(onResize).toHaveBeenLastCalledWith(0.4375);
     } finally {
       fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
@@ -124,17 +130,19 @@ describe("usePanelResizeSnap", () => {
         clientX: 450,
         pointerId: 43,
       });
-      const resizeCountBeforeRelease = onResize.mock.calls.length;
-
       fireEvent.pointerUp(document.body, { clientX: 450, pointerId: 43 });
       fireEvent.mouseUp(window, { clientX: 450 });
+      expect(onResize).toHaveBeenCalledOnce();
+      expect(onResize).toHaveBeenLastCalledWith(0.4375);
+      const resizeCountAfterRelease = onResize.mock.calls.length;
+
       fireEvent.pointerMove(document.body, {
         buttons: 0,
         clientX: 430,
         pointerId: 43,
       });
 
-      expect(onResize).toHaveBeenCalledTimes(resizeCountBeforeRelease);
+      expect(onResize).toHaveBeenCalledTimes(resizeCountAfterRelease);
       expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
         "220ms",
       );
@@ -190,49 +198,16 @@ describe("usePanelResizeSnap", () => {
       pointerId: 41,
     });
 
-    expect(onResize).toHaveBeenLastCalledWith(0.5);
+    expect(onResize).not.toHaveBeenCalled();
+    expect(previous.style.flex).toBe("0.5 1 0px");
+    expect(next.style.flex).toBe("0.5 1 0px");
     expect(
       document.querySelector("[data-split-resize-snap-guide]"),
     ).not.toBeNull();
 
     fireEvent.pointerUp(window, { clientX: 560, pointerId: 41 });
+    expect(onResize).toHaveBeenLastCalledWith(0.5);
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
-  it("holds the outer divider for 12.5% farther than direct split dividers", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-
-    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 45 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 500,
-      pointerId: 45,
-    });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 533,
-      pointerId: 45,
-    });
-
-    expect(onResize).toHaveBeenLastCalledWith(0.5);
-
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 534,
-      pointerId: 45,
-    });
-    expect(onResize).toHaveBeenLastCalledWith(0.5425);
-
-    fireEvent.pointerUp(window, { clientX: 534, pointerId: 45 });
-  });
 });

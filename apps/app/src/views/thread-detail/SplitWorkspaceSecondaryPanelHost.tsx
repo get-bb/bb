@@ -184,7 +184,10 @@ export function SplitWorkspaceSecondaryPanelHost({
     },
     [],
   );
-  const handleEmptyPanelResizePointerDownCapture = usePanelResizeSnap({
+  const {
+    finish: finishEmptyPanelResizeSnap,
+    onPointerDownCapture: handleEmptyPanelResizePointerDownCapture,
+  } = usePanelResizeSnap({
     axis: "x",
     onResize: handleEmptyPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
@@ -193,7 +196,9 @@ export function SplitWorkspaceSecondaryPanelHost({
     if (size > 0) lastEmptyPanelSizeRef.current = size;
   };
   const handleEmptyPanelDragging = (isDragging: boolean) => {
-    if (isDragging || lastEmptyPanelSizeRef.current <= 0) return;
+    if (isDragging) return;
+    finishEmptyPanelResizeSnap();
+    if (lastEmptyPanelSizeRef.current <= 0) return;
     setPanelWidthPercent(lastEmptyPanelSizeRef.current);
   };
   const handleEmptyPanelCollapse = () => {
