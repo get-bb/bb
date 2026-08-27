@@ -125,11 +125,10 @@ export async function main(args = process.argv.slice(2)) {
   const parsedArgs = parseStartBbArgs(args);
   await buildRuntimeArtifacts();
   await buildBundledPlugins();
-  ensureNativeModules({ repoRoot });
-
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {
+    beforeServerStart: () => ensureNativeModules({ repoRoot }),
     worktreePolicy: parsedArgs.useWorktreeRuntimePolicy
       ? resolveWorktreeRuntimePolicy({
           env: process.env,

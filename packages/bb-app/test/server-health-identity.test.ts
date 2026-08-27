@@ -239,6 +239,35 @@ describe("startFullStackServerProcess", () => {
     }
   });
 
+  it("runs the server preflight before it starts a child", async () => {
+    const serverPort = await reserveFreePort();
+    const context = createStartContext({
+      serverEntry: writeFakeServerEntry(),
+      serverPort,
+    });
+    const processes: ManagedFullStackProcesses = {
+      daemonRun: null,
+      serverRun: null,
+    };
+    const preflightError = new Error("native module ABI mismatch");
+
+    await expect(
+      startFullStackServerProcess({
+        beforeStart: () => {
+          throw preflightError;
+        },
+        context,
+        env: {
+          BB_SERVER_PORT: String(context.serverPort),
+          PATH: process.env.PATH,
+        },
+        outputBuffer: silentOutputBuffer,
+        processes,
+      }),
+    ).rejects.toBe(preflightError);
+    expect(processes.serverRun).toBeNull();
+  });
+
   it("fails startup instead of adopting a server that already owns the port", async () => {
     const foreign = await listen((_request, response) => {
       answerHealth(response, { ok: true });

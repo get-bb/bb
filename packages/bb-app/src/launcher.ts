@@ -227,6 +227,7 @@ interface ResolveWorktreeRuntimePolicyArgs {
 }
 
 interface RunBbAppOptions {
+  beforeServerStart?: () => Promise<void> | void;
   worktreePolicy: WorktreeRuntimePolicy | null;
 }
 
@@ -395,6 +396,7 @@ interface SpawnNamedManagedProcessArgs {
 }
 
 interface StartFullStackServerProcessArgs {
+  beforeStart?: () => Promise<void> | void;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
   outputBuffer: OutputBuffer;
@@ -3076,6 +3078,8 @@ function logManagedProcessStartupFailureContext(
 export async function startFullStackServerProcess(
   args: StartFullStackServerProcessArgs,
 ): Promise<ManagedProcessRun> {
+  await args.beforeStart?.();
+
   // Fresh per spawn: the probe must match this child, not any earlier one.
   const launchId = randomUUID();
   const serverRun = spawnNamedManagedProcess({
@@ -3508,6 +3512,9 @@ export async function runBbApp(
   };
   const startServer = (): Promise<ManagedProcessRun> =>
     startFullStackServerProcess({
+      ...(options.beforeServerStart === undefined
+        ? {}
+        : { beforeStart: options.beforeServerStart }),
       context,
       env: serverEnv,
       outputBuffer,
