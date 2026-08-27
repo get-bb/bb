@@ -699,6 +699,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       <div
         ref={preservedScrollWorkspaceRef}
         className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
+        data-split-resize-grid-root=""
       >
         <SplitWorkspaceSecondaryPanelHost
           focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
@@ -1438,6 +1439,8 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         divider,
         horizontal ? "x" : "y",
       );
+      const pointerDownPosition = horizontal ? event.clientX : event.clientY;
+      snapSession.resolve({ end, pointer: pointerDownPosition, start });
 
       const previousGrow = Number.parseFloat(
         window.getComputedStyle(previous).flexGrow,

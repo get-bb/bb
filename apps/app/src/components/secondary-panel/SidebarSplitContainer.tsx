@@ -491,6 +491,7 @@ export function SidebarSplitContainer({
     <div
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       data-sidebar-split-container=""
+      data-split-resize-grid-root=""
       data-sidebar-split-root-direction={
         presentedLayout.root.type === "split"
           ? presentedLayout.root.dir
@@ -762,6 +763,7 @@ function SidebarSplitDivider({
         divider,
         horizontal ? "x" : "y",
       );
+      snapSession.resolve({ end, pointer: pointerDownPosition, start });
       let pendingFraction: number | null = null;
       let receivedPointerMove = false;
       let finished = false;

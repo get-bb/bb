@@ -2,7 +2,8 @@ import { clampSplitPairFraction } from "@/lib/split-layout";
 
 export type SplitResizeAxis = "x" | "y";
 
-export const SPLIT_RESIZE_SNAP_THRESHOLD_PX = 8;
+export const SPLIT_RESIZE_SNAP_CAPTURE_PX = 12;
+export const SPLIT_RESIZE_SNAP_RELEASE_PX = 24;
 
 interface ResolveSplitResizePositionArgs {
   end: number;
@@ -27,41 +28,74 @@ function createGuide(
   document: Document,
   axis: SplitResizeAxis,
   coordinate: number,
+  gridRect: DOMRect,
 ): HTMLElement {
   const guide = document.createElement("div");
   guide.setAttribute("aria-hidden", "true");
   guide.dataset.splitResizeSnapGuide = axis;
   guide.className =
     axis === "x"
-      ? "pointer-events-none fixed inset-y-0 z-[100] w-px -translate-x-1/2 bg-ring/50"
-      : "pointer-events-none fixed inset-x-0 z-[100] h-px -translate-y-1/2 bg-ring/50";
-  if (axis === "x") guide.style.left = `${coordinate}px`;
-  else guide.style.top = `${coordinate}px`;
+      ? "pointer-events-none fixed z-[100] w-px -translate-x-1/2 bg-ring/50"
+      : "pointer-events-none fixed z-[100] h-px -translate-y-1/2 bg-ring/50";
+  if (axis === "x") {
+    guide.style.height = `${gridRect.height}px`;
+    guide.style.left = `${coordinate}px`;
+    guide.style.top = `${gridRect.top}px`;
+  } else {
+    guide.style.left = `${gridRect.left}px`;
+    guide.style.top = `${coordinate}px`;
+    guide.style.width = `${gridRect.width}px`;
+  }
   document.body.appendChild(guide);
   return guide;
 }
 
+function axisCoordinate(rect: DOMRect, axis: SplitResizeAxis): number {
+  return axis === "x"
+    ? rect.left + rect.width / 2
+    : rect.top + rect.height / 2;
+}
+
+function axisExtent(rect: DOMRect, axis: SplitResizeAxis): number {
+  return axis === "x" ? rect.width : rect.height;
+}
+
 /**
- * Starts one divider drag's snap lifecycle. Each split has one fixed grid
- * point at 50/50 on the divider's active axis: vertical dividers move only
- * left/right, and horizontal dividers move only up/down. The pointer-move path
- * uses the adjacent pair bounds captured by the caller and never reads layout.
+ * Starts one divider drag's snap lifecycle. Every divider within a split
+ * surface shares that surface's 50% grid line on its active axis, so dividers
+ * in separate branches can align exactly. Capture and release use different
+ * thresholds to create magnetic resistance, and geometry is read only once.
  */
 export function createSplitResizeSnapSession(
   divider: HTMLElement,
   axis: SplitResizeAxis,
 ): SplitResizeSnapSession {
   let guide: HTMLElement | null = null;
+  let lastPointer: number | null = null;
+  let snapped = false;
+  const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
+  const gridRect = grid?.getBoundingClientRect() ?? null;
+  const gridCoordinate =
+    gridRect === null ? null : axisCoordinate(gridRect, axis);
+  const extent = axisExtent(divider.getBoundingClientRect(), axis);
 
   const clear = () => {
     guide?.remove();
     guide = null;
+    lastPointer = null;
+    snapped = false;
   };
 
   const showGuide = (coordinate: number) => {
-    guide ??= createGuide(divider.ownerDocument, axis, coordinate);
+    if (gridRect === null) return;
+    guide ??= createGuide(divider.ownerDocument, axis, coordinate, gridRect);
     if (axis === "x") guide.style.left = `${coordinate}px`;
     else guide.style.top = `${coordinate}px`;
+  };
+
+  const hideGuide = () => {
+    guide?.remove();
+    guide = null;
   };
 
   return {
@@ -71,8 +105,12 @@ export function createSplitResizeSnapSession(
       const unsnappedFraction = clampSplitPairFraction(
         span > 0 ? (pointer - start) / span : 0.5,
       );
-      if (span <= 0) {
-        clear();
+      const previousPointer = lastPointer;
+      lastPointer = pointer;
+      const contentSpan = span - extent;
+      if (gridCoordinate === null || contentSpan <= 0) {
+        snapped = false;
+        hideGuide();
         return {
           coordinate: start + span * unsnappedFraction,
           fraction: unsnappedFraction,
@@ -80,9 +118,24 @@ export function createSplitResizeSnapSession(
         };
       }
 
-      const coordinate = start + span / 2;
-      if (Math.abs(pointer - coordinate) > SPLIT_RESIZE_SNAP_THRESHOLD_PX) {
-        clear();
+      const fraction = clampSplitPairFraction(
+        (gridCoordinate - start - extent / 2) / contentSpan,
+      );
+      const coordinate = start + contentSpan * fraction + extent / 2;
+      const reachable = Math.abs(coordinate - gridCoordinate) <= 0.01;
+      const distance = Math.abs(pointer - gridCoordinate);
+      const crossedGrid =
+        previousPointer !== null &&
+        (previousPointer - gridCoordinate) * (pointer - gridCoordinate) <= 0;
+      const shouldSnap =
+        reachable &&
+        (snapped
+          ? distance <= SPLIT_RESIZE_SNAP_RELEASE_PX
+          : distance <= SPLIT_RESIZE_SNAP_CAPTURE_PX ||
+            (crossedGrid && distance <= SPLIT_RESIZE_SNAP_RELEASE_PX));
+      if (!shouldSnap) {
+        snapped = false;
+        hideGuide();
         return {
           coordinate: start + span * unsnappedFraction,
           fraction: unsnappedFraction,
@@ -90,8 +143,9 @@ export function createSplitResizeSnapSession(
         };
       }
 
+      snapped = true;
       showGuide(coordinate);
-      return { coordinate, fraction: 0.5, snapped: true };
+      return { coordinate, fraction, snapped: true };
     },
   };
 }

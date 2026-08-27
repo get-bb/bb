@@ -1175,7 +1175,7 @@ describe("SplitThreadArea", () => {
     expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
   });
 
-  it("snaps a workspace divider to its horizontal midpoint and clears its guide", () => {
+  it("snaps a workspace divider to the shared surface midpoint and clears its guide", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -1193,6 +1193,9 @@ describe("SplitThreadArea", () => {
     ) {
       throw new Error("Expected adjacent workspace split items");
     }
+    const grid = separator.parentElement;
+    if (grid === null) throw new Error("Expected a workspace split grid");
+    grid.dataset.splitResizeGridRoot = "";
     Object.defineProperties(hitTarget, {
       releasePointerCapture: { configurable: true, value: vi.fn() },
       setPointerCapture: { configurable: true, value: vi.fn() },
@@ -1200,52 +1203,66 @@ describe("SplitThreadArea", () => {
     vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 0,
-      right: 400,
+      left: 300,
+      right: 500,
       top: 0,
-      width: 400,
-      x: 0,
+      width: 200,
+      x: 300,
       y: 0,
       toJSON: () => ({}),
     });
     vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 406,
-      right: 806,
+      left: 501,
+      right: 900,
       top: 0,
-      width: 400,
-      x: 406,
+      width: 399,
+      x: 501,
       y: 0,
       toJSON: () => ({}),
     });
     vi.spyOn(separator, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 403,
-      right: 404,
+      left: 500,
+      right: 501,
       top: 0,
       width: 1,
-      x: 403,
+      x: 500,
       y: 0,
       toJSON: () => ({}),
     });
-    fireEvent.pointerDown(hitTarget, { clientX: 403.5, pointerId: 31 });
-    fireEvent.pointerMove(hitTarget, { clientX: 410, pointerId: 31 });
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 100,
+      right: 900,
+      top: 0,
+      width: 800,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 31 });
+    fireEvent.pointerMove(hitTarget, { clientX: 518, pointerId: 31 });
 
-    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.5, 5);
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(
+      199.5 / 599,
+      5,
+    );
     expect(
       document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
         ?.style.left,
-    ).toBe("403px");
+    ).toBe("500px");
 
-    fireEvent.pointerUp(hitTarget, { clientX: 410, pointerId: 31 });
+    fireEvent.pointerUp(hitTarget, { clientX: 518, pointerId: 31 });
 
     const root = store.get(splitLayoutAtom)?.root;
     expect(root?.type).toBe("split");
     if (root?.type === "split") {
-      expect(root.sizes[0]).toBeCloseTo(0.5, 5);
-      expect(root.sizes[1]).toBeCloseTo(0.5, 5);
+      expect(root.sizes[0]).toBeCloseTo(199.5 / 599, 5);
+      expect(root.sizes[1]).toBeCloseTo(399.5 / 599, 5);
     }
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });

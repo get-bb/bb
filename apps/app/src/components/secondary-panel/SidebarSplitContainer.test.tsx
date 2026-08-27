@@ -755,8 +755,8 @@ describe("SidebarSplitContainer", () => {
       clientY: 400,
       pointerId: 3,
     });
-    expect(Number.parseFloat(previous.style.flex)).toBeCloseTo(0.5, 3);
-    expect(Number.parseFloat(next.style.flex)).toBeCloseTo(0.5, 3);
+    expect(Number.parseFloat(previous.style.flex)).toBeCloseTo(0.499, 3);
+    expect(Number.parseFloat(next.style.flex)).toBeCloseTo(0.501, 3);
 
     fireEvent.pointerMove(hitTarget, {
       clientX: 700,
@@ -783,7 +783,7 @@ describe("SidebarSplitContainer", () => {
     });
   });
 
-  it("snaps a right-panel divider to its horizontal midpoint and persists 50/50", () => {
+  it("snaps a right-panel divider to the shared surface midpoint and persists it", () => {
     persistState(createTwoPaneState());
     renderContainer({
       renderPane: ({ paneId }) => <div>{paneId}</div>,
@@ -799,6 +799,11 @@ describe("SidebarSplitContainer", () => {
     ) {
       throw new Error("Expected adjacent right-panel split items");
     }
+    const grid = document.querySelector<HTMLElement>(
+      "[data-sidebar-split-container]",
+    );
+    if (grid === null) throw new Error("Expected a right-panel split grid");
+    grid.dataset.splitResizeGridRoot = "";
     Object.defineProperties(hitTarget, {
       releasePointerCapture: { configurable: true, value: vi.fn() },
       setPointerCapture: { configurable: true, value: vi.fn() },
@@ -806,46 +811,60 @@ describe("SidebarSplitContainer", () => {
     vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 0,
-      right: 400,
+      left: 300,
+      right: 500,
       top: 0,
-      width: 400,
-      x: 0,
+      width: 200,
+      x: 300,
       y: 0,
       toJSON: () => ({}),
     });
     vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 401,
-      right: 801,
+      left: 501,
+      right: 900,
       top: 0,
-      width: 400,
-      x: 401,
+      width: 399,
+      x: 501,
       y: 0,
       toJSON: () => ({}),
     });
     vi.spyOn(separator, "getBoundingClientRect").mockReturnValue({
       bottom: 600,
       height: 600,
-      left: 400,
-      right: 401,
+      left: 500,
+      right: 501,
       top: 0,
       width: 1,
-      x: 400,
+      x: 500,
       y: 0,
       toJSON: () => ({}),
     });
-    fireEvent.pointerDown(hitTarget, { clientX: 400.5, pointerId: 32 });
-    fireEvent.pointerMove(hitTarget, { clientX: 407.5, pointerId: 32 });
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 100,
+      right: 900,
+      top: 0,
+      width: 800,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 32 });
+    fireEvent.pointerMove(hitTarget, { clientX: 518, pointerId: 32 });
 
-    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.5, 5);
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(
+      199.5 / 599,
+      5,
+    );
     expect(
       document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
         ?.style.left,
-    ).toBe("400.5px");
+    ).toBe("500px");
 
-    fireEvent.pointerUp(hitTarget, { clientX: 407.5, pointerId: 32 });
+    fireEvent.pointerUp(hitTarget, { clientX: 518, pointerId: 32 });
 
     const persisted = parseSidebarSplitState(
       window.localStorage.getItem(sidebarSplitStorageKey(PANEL_STATE_ID)),
@@ -854,8 +873,8 @@ describe("SidebarSplitContainer", () => {
     );
     expect(persisted.layout.root.type).toBe("split");
     if (persisted.layout.root.type === "split") {
-      expect(persisted.layout.root.sizes[0]).toBeCloseTo(0.5, 5);
-      expect(persisted.layout.root.sizes[1]).toBeCloseTo(0.5, 5);
+      expect(persisted.layout.root.sizes[0]).toBeCloseTo(199.5 / 599, 5);
+      expect(persisted.layout.root.sizes[1]).toBeCloseTo(399.5 / 599, 5);
     }
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
