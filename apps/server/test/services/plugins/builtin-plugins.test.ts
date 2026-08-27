@@ -472,6 +472,31 @@ describe("builtin plugin reconciliation", () => {
     expect(monacoEditor?.defaultEnabled).toBe(false);
   });
 
+  it("ships the Plugin Guide disabled on a fresh database", async () => {
+    const pluginGuide = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "plugin-api-docs",
+    );
+    expect(pluginGuide?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "plugin-api-docs",
+      defaultEnabled: pluginGuide?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("plugin-api-docs"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "plugin-api-docs",
+        source: "builtin:plugin-api-docs",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+  });
+
   it("ships Workflows disabled on a fresh database", async () => {
     const workflows = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "workflows",

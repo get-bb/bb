@@ -129,7 +129,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "plugin-api-docs",
     pluginId: "plugin-api-docs",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Developer tools",
   },
   {
