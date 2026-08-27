@@ -1,32 +1,23 @@
-// End-to-end wiring through the fake plugin host: settings in, catalog
-// fetched by the background service, gate verdicts out.
+// What this plugin promises today is narrow, so the tests are too: it must
+// recognise an Auto selection, and it must never change or block a dispatch.
 //
-// The routing arithmetic is covered in routing.test.ts and the catalog shape
-// in catalog.test.ts; what this file checks is that the pieces are connected
-// to the right inputs — that the gate reads `pluginInput` and the execution
-// sources it claims to, that the catalog reaches it, and that neither stage
-// produces an amendment the server would reject.
+// The second half is the one that matters. Gates are fail-closed and run under
+// a server-wide lock, so a gate that threw, held, or amended something core
+// could not honour would break every send in the server with this plugin
+// named. "Installed and idle" has to be provably indistinguishable from "not
+// installed".
 
-import type {
-  BbPluginApi,
-  PluginDispatchGateContext,
-  PluginThreadEventPayloads,
-} from "@get-bb/plugin-sdk";
+import type { PluginDispatchGateContext } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import plugin from "./server.js";
-
-type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type ProviderInfo = Awaited<
-  ReturnType<BbPluginApi["sdk"]["providers"]["list"]>
->[number];
-type ExecutionOptions = Awaited<
-  ReturnType<BbPluginApi["sdk"]["providers"]["models"]>
->;
-type AvailableModel = ExecutionOptions["models"][number];
+import plugin, {
+  EMPTY_ROUTING_PROMPT,
+  NO_INFERENCE_CONSUMER,
+  readAutoEntry,
+} from "./server.js";
 
 const PLUGIN_ID = "model-router";
 
@@ -39,59 +30,8 @@ const PROJECT = {
   updatedAt: 1,
 };
 
-function providerInfo(id: string): ProviderInfo {
-  return {
-    id,
-    pluginId: id,
-    displayName: id,
-    logoUrl: null,
-    maintenance: { health: false, usage: false, installation: false },
-    capabilities: {
-      supportsThreadArchive: false,
-      supportsThreadRename: false,
-      supportsServiceTier: false,
-      supportsNativeUserQuestion: false,
-      supportsFork: false,
-      supportsSessionRewind: false,
-      permissionModes: ["full"],
-      modelCatalogScope: "host",
-    },
-    composerActions: [],
-    available: true,
-  } as ProviderInfo;
-}
-
-function availableModel(name: string): AvailableModel {
-  return {
-    id: name,
-    model: name,
-    displayName: name,
-    description: "",
-    supportedReasoningEfforts: [
-      { reasoningEffort: "low", description: "" },
-      { reasoningEffort: "high", description: "" },
-    ],
-    defaultReasoningEffort: "low",
-    isDefault: false,
-  } as AvailableModel;
-}
-
-const MODELS: Record<string, string[]> = {
-  codex: ["gpt-5-mini", "gpt-5"],
-  "claude-code": ["opus"],
-};
-
-interface ContextOverrides {
-  text?: string;
-  pluginInput?: PluginDispatchGateContext<"thread.create">["pluginInput"];
-  providerId?: string;
-  model?: string | null;
-  modelSource?: "explicit" | null;
-  isReleaseReevaluation?: boolean;
-}
-
 function createContext(
-  overrides: ContextOverrides = {},
+  pluginInput: PluginDispatchGateContext<"thread.create">["pluginInput"],
 ): PluginDispatchGateContext<"thread.create"> {
   return {
     stage: "thread.create",
@@ -99,17 +39,17 @@ function createContext(
     project: PROJECT,
     environment: null,
     host: null,
-    input: { blocks: [], text: overrides.text ?? "fix typo" },
+    input: { blocks: [], text: "refactor the dispatch pipeline" },
     requestedExecution: {
-      providerId: overrides.providerId ?? "codex",
-      model: overrides.model ?? null,
+      providerId: "codex",
+      model: null,
       reasoningLevel: null,
       serviceTier: null,
       permissionMode: null,
     },
     executionSources: {
       providerId: null,
-      model: overrides.modelSource ?? null,
+      model: null,
       reasoningLevel: null,
       serviceTier: null,
       permissionMode: null,
@@ -118,204 +58,86 @@ function createContext(
     originPluginId: null,
     startedOnBehalfOf: null,
     parentThreadId: null,
-    // `??` would be wrong here: `null` is the meaningful "did not pick Auto"
-    // value these tests need to pass through.
-    pluginInput:
-      overrides.pluginInput === undefined
-        ? { entry: "default" }
-        : overrides.pluginInput,
-    isReleaseReevaluation: overrides.isReleaseReevaluation ?? false,
+    pluginInput,
+    isReleaseReevaluation: false,
     hold: null,
   };
 }
-
-function submitContext(
-  thread: ThreadResponse,
-  overrides: ContextOverrides = {},
-): PluginDispatchGateContext<"turn.submit"> {
-  return { ...createContext(overrides), stage: "turn.submit", thread };
-}
-
-const CONFIGURED = {
-  fastModel: "codex/gpt-5-mini",
-  capableModel: "claude-code/opus",
-  lengthThreshold: "100",
-  capableKeywords: "refactor",
-};
 
 async function setup(settings: Record<string, string | boolean> = {}) {
   const { bb, harness } = createFakePluginHost({
     pluginId: PLUGIN_ID,
     settings,
-    sdk: {
-      providers: {
-        list: async () => Object.keys(MODELS).map(providerInfo),
-        models: async ({ providerId }: { providerId?: string } = {}) =>
-          ({
-            providers: [],
-            permissionCeiling: "full",
-            models: (MODELS[providerId ?? ""] ?? []).map(availableModel),
-            selectedOnlyModels: [],
-            modelLoadError: null,
-          }) as ExecutionOptions,
-      },
-    },
   });
   await plugin(bb);
-  return { bb, harness };
+  return harness;
 }
 
-/** Run the catalog service exactly once, then stop it. */
-async function loadCatalog(
-  harness: Awaited<ReturnType<typeof setup>>["harness"],
-): Promise<void> {
-  const service = harness.behavior.runService("catalog");
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  service.controller.abort();
-  await service.done;
-}
-
-function createGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
-  const gate = harness.registrations.dispatchGates["thread.create"];
-  if (gate === null) throw new Error("thread.create gate was not registered");
-  return gate;
-}
-
-function submitGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
-  const gate = harness.registrations.dispatchGates["turn.submit"];
-  if (gate === null) throw new Error("turn.submit gate was not registered");
-  return gate;
-}
-
-describe("registration", () => {
-  it("registers a gate at both stages", async () => {
-    const { harness } = await setup(CONFIGURED);
-    expect(harness.registrations.dispatchGates["thread.create"]).not.toBeNull();
-    expect(harness.registrations.dispatchGates["turn.submit"]).not.toBeNull();
-  });
-
-  it("reports unconfigured slots and changes nothing", async () => {
-    // Installing the plugin must not alter dispatch behaviour before it is
-    // configured — and must say so rather than throw, because a gate that
-    // threw would fail every dispatch in the server with this plugin named.
-    const { harness } = await setup();
-    await loadCatalog(harness);
-    expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
-    });
-  });
-
-  it("reports a slot that no available provider offers", async () => {
-    const { harness } = await setup({
-      ...CONFIGURED,
-      fastModel: "codex/gpt-4",
-    });
-    await loadCatalog(harness);
-    expect(harness.needsConfigurationMessages.join(" ")).toContain(
-      "codex/gpt-4",
-    );
-  });
-
-  it("proceeds unamended before the catalog has loaded", async () => {
-    // The service has not run, so there is nothing to route with. An Auto
-    // request falls back to the project default rather than holding.
-    const { harness } = await setup(CONFIGURED);
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
-    });
+describe("readAutoEntry", () => {
+  it("accepts only an object carrying a non-empty string entry", () => {
+    // `pluginInput` is freeform JSON off a request body, so every one of these
+    // is reachable from a caller that guessed at the convention. Anything but
+    // the real shape has to read as "did not pick Auto" rather than as an
+    // entry named "undefined".
+    expect(readAutoEntry({ entry: "default" })).toBe("default");
+    expect(readAutoEntry({ entry: "fast", extra: 1 })).toBe("fast");
+    expect(readAutoEntry(null)).toBeNull();
+    expect(readAutoEntry("default")).toBeNull();
+    expect(readAutoEntry(["default"])).toBeNull();
+    expect(readAutoEntry({})).toBeNull();
+    expect(readAutoEntry({ entry: "" })).toBeNull();
+    expect(readAutoEntry({ entry: "   " })).toBeNull();
+    expect(readAutoEntry({ entry: 7 })).toBeNull();
+    expect(readAutoEntry({ entry: null })).toBeNull();
   });
 });
 
-describe("the create gate", () => {
-  it("amends provider, model and reasoning level for an Auto request", async () => {
-    const { harness } = await setup(CONFIGURED);
-    await loadCatalog(harness);
-    expect(await createGate(harness)(createContext({ text: "fix typo" }))).toEqual(
-      {
+describe("gates", () => {
+  it("proceeds unamended at both stages whether or not Auto was picked", async () => {
+    const harness = await setup({
+      routingPrompt: "Fast for edits, capable for refactors.",
+    });
+    const create = harness.registrations.dispatchGates["thread.create"];
+    const submit = harness.registrations.dispatchGates["turn.submit"];
+    if (create === null || submit === null) {
+      throw new Error("both dispatch gates must be registered");
+    }
+
+    const thread = makeThreadResponse({ id: "thr_1", projectId: PROJECT.id });
+    for (const pluginInput of [{ entry: "default" }, null]) {
+      // `proceed` with no `amend` key at all: an `amend: {}` would still be an
+      // amendment record core has to validate and attribute to this plugin.
+      expect(await create(createContext(pluginInput))).toEqual({
         action: "proceed",
-        amend: {
-          providerId: "codex",
-          model: "gpt-5-mini",
-          reasoningLevel: "low",
-        },
-      },
-    );
-  });
-
-  it("promotes a keyword prompt to the capable provider", async () => {
-    const { harness } = await setup(CONFIGURED);
-    await loadCatalog(harness);
-    expect(
-      await createGate(harness)(createContext({ text: "refactor this" })),
-    ).toEqual({
-      action: "proceed",
-      amend: {
-        providerId: "claude-code",
-        model: "opus",
-        reasoningLevel: "high",
-      },
-    });
-  });
-
-  it("ignores a request that did not select Auto", async () => {
-    const { harness } = await setup(CONFIGURED);
-    await loadCatalog(harness);
-    expect(
-      await createGate(harness)(createContext({ pluginInput: null })),
-    ).toEqual({ action: "proceed" });
-  });
-
-  it("never amends the provider while releasing a hold", async () => {
-    // The thread row already carries its provider; amending it here fails the
-    // dispatch outright, so the provider is as fixed as it is at submit.
-    const { harness } = await setup(CONFIGURED);
-    await loadCatalog(harness);
-    const verdict = await createGate(harness)(
-      createContext({ text: "refactor this", isReleaseReevaluation: true }),
-    );
-    expect(verdict).toEqual({
-      action: "proceed",
-      amend: { model: "gpt-5-mini", reasoningLevel: "high" },
-    });
+      });
+      expect(
+        await submit({
+          ...createContext(pluginInput),
+          stage: "turn.submit",
+          thread,
+        }),
+      ).toEqual({ action: "proceed" });
+    }
   });
 });
 
-describe("the submit gate", () => {
-  it("amends the model within the thread's provider and never the provider", async () => {
-    const { harness } = await setup(CONFIGURED);
-    await loadCatalog(harness);
-    const thread = makeThreadResponse({ id: "thr_1", providerId: "codex" });
-    const verdict = await submitGate(harness)(
-      submitContext(thread, { text: "refactor this" }),
-    );
-    // `claude-code/opus` is the capable slot, but this thread runs on codex —
-    // so the codex model runs the prompt, at capable effort.
-    expect(verdict).toEqual({
-      action: "proceed",
-      amend: { model: "gpt-5-mini", reasoningLevel: "high" },
+describe("status", () => {
+  it("explains that routing is unavailable even when the prompt is set", async () => {
+    const harness = await setup({
+      routingPrompt: "Capable model for planning.",
     });
+    expect(harness.needsConfigurationMessages.join(" ")).toContain(
+      NO_INFERENCE_CONSUMER,
+    );
+    expect(harness.needsConfigurationMessages.join(" ")).not.toContain(
+      EMPTY_ROUTING_PROMPT,
+    );
   });
 
-  it("leaves an explicitly chosen model alone in defaulted mode", async () => {
-    const { harness } = await setup({
-      ...CONFIGURED,
-      routeDefaultedFields: true,
-    });
-    await loadCatalog(harness);
-    const thread = makeThreadResponse({ id: "thr_1", providerId: "codex" });
-    const verdict = await submitGate(harness)(
-      submitContext(thread, {
-        text: "refactor this",
-        pluginInput: null,
-        model: "gpt-5",
-        modelSource: "explicit",
-      }),
-    );
-    expect(verdict).toEqual({
-      action: "proceed",
-      amend: { reasoningLevel: "high" },
-    });
+  it("also asks for a routing prompt when there is none", async () => {
+    const harness = await setup();
+    const reported = harness.needsConfigurationMessages.join(" ");
+    expect(reported).toContain(EMPTY_ROUTING_PROMPT);
+    expect(reported).toContain(NO_INFERENCE_CONSUMER);
   });
 });

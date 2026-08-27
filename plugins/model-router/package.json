@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Route each prompt to a fast or capable model from length and keyword rules.",
+  "description": "An \"Auto\" picker entry that routes each prompt from rules you write in plain English.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Model router",
-    "description": "Route each prompt to a fast or capable model from length and keyword rules.",
+    "description": "An \"Auto\" picker entry that routes each prompt from rules you write in plain English.",
     "branding": {
       "icon": "Brain"
     },
