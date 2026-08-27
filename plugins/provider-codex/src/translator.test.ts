@@ -728,6 +728,22 @@ describe("codex command output capture across reordering", () => {
 describe("codex subagent activity correlation", () => {
   const rootProviderThreadId = "root-provider-thread";
 
+  function rawCollaborationCall(args: {
+    callId: string;
+    name: "followup_task" | "send_message";
+  }) {
+    return codexEvent("rawResponseItem/completed", {
+      threadId: rootProviderThreadId,
+      turnId: "parent-turn",
+      item: {
+        type: "function_call",
+        name: args.name,
+        arguments: '{"target":"/root/lifecycle_child"}',
+        call_id: args.callId,
+      },
+    });
+  }
+
   function subAgentActivity(args: {
     agentThreadId?: string;
     id: string;
@@ -945,6 +961,92 @@ describe("codex subagent activity correlation", () => {
         }),
       }),
     ]);
+  });
+
+  // A provider-session reap discards the translator's in-memory spawn map,
+  // but Codex can resume an agent from the durable rollout. The raw collab
+  // call is the surviving authority that distinguishes a turn-producing
+  // followup from a message that must not reserve the next native turn.
+  it("links an unknown resumed subagent from the raw followup intent after translator restart", () => {
+    const harness = createHarness();
+
+    expect(
+      harness.translate(
+        rawCollaborationCall({
+          callId: "message-call",
+          name: "send_message",
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "message-call", kind: "interacted" }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        rawCollaborationCall({
+          callId: "followup-call",
+          name: "followup_task",
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "followup-call", kind: "interacted" }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("followup-call"),
+          childRef: "agent-thread-1",
+          status: "pending",
+        }),
+      }),
+    ]);
+
+    expect(
+      harness.translate(childTurnStarted("resumed-child-turn")),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope(harness.turnId("resumed-child-turn")),
+        parentToolCallId: harness.itemId("followup-call"),
+      }),
+    );
+  });
+
+  it("does not reopen a known terminal subagent for send_message", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
+    );
+    harness.translate(childTurnStarted("child-turn-1"));
+    harness.translate(childTurnCompleted("child-turn-1"));
+
+    harness.translate(
+      rawCollaborationCall({ callId: "message-call", name: "send_message" }),
+    );
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "message-call", kind: "interacted" }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translator.prepareTurnStart({
+        clientRequestId: "creq_after_message",
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).not.toBeNull();
+    const nextRootTurn = harness
+      .translate(childTurnStarted("next-root-turn"))
+      .find((event) => event.type === "turn/started");
+    expect(nextRootTurn).not.toHaveProperty("parentToolCallId");
   });
 
   // Follow-ups queue: two interactions owe two more child turns. The re-arm is
