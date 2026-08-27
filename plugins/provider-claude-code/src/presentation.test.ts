@@ -385,6 +385,19 @@ describe("claude item presentation", () => {
     });
   });
 
+  it("uses the established skill glyph for native Skill calls", () => {
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate(
+      toolUse("skill-1", "Skill", { skill: "debugging" }),
+    );
+
+    expect(presentationOf(startedItems(events)[0])).toEqual({
+      label: { pending: "Loading skill", completed: "Loaded skill" },
+      icon: { glyph: "Zap" },
+      title: "debugging",
+    });
+  });
+
   it("maps MultiEdit and NotebookEdit to file changes with their own verbs", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate({
