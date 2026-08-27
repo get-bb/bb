@@ -25,6 +25,7 @@ out
 /packages/bb-app/host-daemon/
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
+/apps/desktop/.bb-cli-wrapper.generated
 
 # Generated at build time by turbo `generate:*` / `build:types` tasks (see
 # turbo.json). Never commit these: they are pure functions of tracked sources

@@ -37,6 +37,9 @@ export function createDesktopReleaseConfig(channel) {
       // The Linux binary name must differ from stable so both channels can be
       // installed at once without one shadowing the other on PATH.
       linuxExecutableName: "bb-nightly",
+      // Both channels can be installed at once, so the CLI command is
+      // channel-suffixed for the same reason the Linux executable is.
+      cliCommandName: "bb-nightly",
       macIconPath: "assets/icon-nightly.icns",
       releaseTag: "desktop-nightly",
       updateMetadataFileNames: {
@@ -50,6 +53,7 @@ export function createDesktopReleaseConfig(channel) {
     appId: "dev.bb.desktop",
     applicationName: "bb",
     artifactName: "${productName}-${version}-${arch}.${ext}",
+    cliCommandName: "bb",
     iconFileName: "icon.png",
     linuxExecutableName: "bb",
     macIconPath: "assets/icon.icns",

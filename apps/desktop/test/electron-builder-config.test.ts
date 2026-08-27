@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { createBundleCliWrapperScript } from "../src/cli-wrapper-script.js";
 import {
   createDesktopReleaseInfo,
   DESKTOP_AUTO_UPDATE_FEED_CONFIG,
@@ -101,6 +102,16 @@ const electronBuilderConfigSchema = z
         sign: z.boolean(),
       })
       .passthrough(),
+    extraResources: z
+      .array(
+        z
+          .object({
+            from: z.string().min(1),
+            to: z.string().min(1),
+          })
+          .passthrough(),
+      )
+      .optional(),
     files: z.array(electronBuilderFilePatternSchema),
     linux: linuxConfigSchema,
     mac: macConfigSchema,
@@ -647,5 +658,50 @@ describe("electron-builder signing config", () => {
     );
     expect(completeAppleCredentials.config.mac.notarize).toBe(true);
     expect(completeAppleCredentials.config.dmg.sign).toBe(false);
+  });
+
+  it("ships an in-bundle CLI wrapper named for the channel", async () => {
+    const { config } = await readResolvedConfig({});
+
+    expect(config.extraResources).toEqual([
+      { from: ".bb-cli-wrapper.generated", to: "bin/bb" },
+    ]);
+  });
+
+  it("names the nightly in-bundle wrapper bb-nightly", async () => {
+    // A shared name would let one channel shadow the other when both bundles'
+    // bin directories are on PATH.
+    const { config } = await readResolvedConfig({
+      BB_DESKTOP_RELEASE_CHANNEL: "nightly",
+    });
+
+    expect(config.extraResources).toEqual([
+      { from: ".bb-cli-wrapper.generated", to: "bin/bb-nightly" },
+    ]);
+  });
+
+  it("writes an executable wrapper that execs the bundle's own Electron", async () => {
+    // --print-config writes the wrapper as a side effect so the packaged file
+    // can be asserted without running a full electron-builder pass.
+    await readResolvedConfig({ BB_DESKTOP_RELEASE_CHANNEL: "nightly" });
+    const wrapperPath = resolve(
+      desktopPackageRoot,
+      ".bb-cli-wrapper.generated",
+    );
+    const wrapper = await readFile(wrapperPath, "utf8");
+
+    // Byte-for-byte against the TS source of truth: run-electron-builder.mjs
+    // cannot import cli-wrapper-script.ts (it's plain .mjs outside the TS
+    // build), so it carries its own copy of the generator. This proves that
+    // copy has not drifted, rather than merely asserting the same substrings
+    // against both independently.
+    expect(wrapper).toBe(
+      createBundleCliWrapperScript({
+        commandName: "bb-nightly",
+        macExecutableName: "bb Nightly",
+      }),
+    );
+    // A non-executable wrapper is a silent packaging failure.
+    expect((await stat(wrapperPath)).mode & 0o777).toBe(0o755);
   });
 });
