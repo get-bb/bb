@@ -563,9 +563,9 @@ describe("MarkdownPreview thread mentions", () => {
     vi.useFakeTimers();
     try {
       const threadId = "thr_2222222222";
-      vi.mocked(sdk.threads.resolveMentions).mockRejectedValue(
-        new Error("temporary failure"),
-      );
+    vi.mocked(sdk.threads.resolveMentions)
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockRejectedValueOnce(new Error("temporary failure"));
       renderMarkdown(
         <ThreadTitleMentions title={`Review @thread:${threadId}`} />,
         [],
