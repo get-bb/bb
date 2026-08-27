@@ -345,6 +345,36 @@ function isRepoName(value: unknown): value is string {
   return typeof value === "string" && /^[\w.-]+\/[\w.-]+$/.test(value);
 }
 
+/**
+ * Split the `extraRepos` setting into the names we track and the entries we
+ * cannot. Anything that is not `owner/repo` — a `SOME-ORG/*` wildcard, a typo,
+ * a bare owner — is reported rather than dropped, so a setting that was stored
+ * but not honored is distinguishable from one that matched nothing.
+ */
+export function parseExtraRepos(raw: string): {
+  repos: string[];
+  ignored: string[];
+} {
+  const repos: string[] = [];
+  const ignored: string[] = [];
+  for (const entry of raw.split(/[\s,]+/)) {
+    if (entry === "") continue;
+    if (isRepoName(entry)) {
+      if (!repos.includes(entry)) repos.push(entry);
+    } else if (!ignored.includes(entry)) {
+      ignored.push(entry);
+    }
+  }
+  return { repos, ignored };
+}
+
+function describeIgnoredExtraRepos(ignored: string[]): string {
+  return (
+    `ignoring ${ignored.length} extraRepos ${ignored.length === 1 ? "entry" : "entries"} ` +
+    `that ${ignored.length === 1 ? "is" : "are"} not "owner/repo": ${ignored.join(", ")}`
+  );
+}
+
 function run(
   file: string,
   args: string[],
@@ -578,6 +608,11 @@ export default async function plugin(bb: BbPluginApi) {
   // ------------------------------------------------------------------
   let repoCache: { repos: RepoInfo[]; fetchedAt: number } | null = null;
 
+  // The extraRepos entries the last discovery could not use, kept so `bb github
+  // repos` can say so on the surface the reporter looked at.
+  let ignoredExtraRepos: string[] = [];
+  let lastIgnoredExtraReposKey: string | null = null;
+
   async function discoverRepos(force = false): Promise<RepoInfo[]> {
     if (!force && repoCache !== null && Date.now() - repoCache.fetchedAt < 60_000) {
       return repoCache.repos;
@@ -609,11 +644,23 @@ export default async function plugin(bb: BbPluginApi) {
       );
     }
     const { extraRepos } = await settings.get();
-    for (const raw of extraRepos.split(/[\s,]+/)) {
-      if (isRepoName(raw) && !byRepo.has(raw)) {
+    const parsed = parseExtraRepos(extraRepos);
+    for (const raw of parsed.repos) {
+      if (!byRepo.has(raw)) {
         byRepo.set(raw, { repo: raw, projectId: null });
       }
     }
+    // Warn on the set rather than on every discovery: discoverRepos re-reads
+    // settings whenever the 60s cache lapses, and a background sync would
+    // otherwise repeat the same line forever.
+    const ignoredKey = parsed.ignored.join(",");
+    if (ignoredKey !== lastIgnoredExtraReposKey) {
+      lastIgnoredExtraReposKey = ignoredKey;
+      if (parsed.ignored.length > 0) {
+        bb.log.warn(describeIgnoredExtraRepos(parsed.ignored));
+      }
+    }
+    ignoredExtraRepos = parsed.ignored;
     const repos = [...byRepo.values()];
     repoCache = { repos, fetchedAt: Date.now() };
     return repos;
@@ -1567,14 +1614,23 @@ export default async function plugin(bb: BbPluginApi) {
         }
         if (sub === "repos") {
           const repos = await discoverRepos(true);
+          const warning =
+            ignoredExtraRepos.length > 0
+              ? { stderr: `${describeIgnoredExtraRepos(ignoredExtraRepos)}\n` }
+              : {};
           if (repos.length === 0) {
-            return { exitCode: 0, stdout: "No tracked repos. Attach a project with a GitHub remote or set extraRepos." };
+            return {
+              exitCode: 0,
+              stdout: "No tracked repos. Attach a project with a GitHub remote or set extraRepos.",
+              ...warning,
+            };
           }
           return {
             exitCode: 0,
             stdout: repos
               .map((entry) => `${entry.repo}${entry.projectId !== null ? `\t(${entry.projectId})` : ""}`)
               .join("\n"),
+            ...warning,
           };
         }
         if (sub === "issues" || sub === "prs") {

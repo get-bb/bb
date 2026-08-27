@@ -195,16 +195,61 @@ afterEach(() => {
   rmSync(binDir, { recursive: true, force: true });
 });
 
-async function loadPlugin() {
+async function loadPlugin(extraRepos = "acme/widgets") {
   const host = createFakePluginHost({
     pluginId: "github",
-    settings: { extraRepos: "acme/widgets" },
+    settings: { extraRepos },
   });
   await plugin(host.bb);
   return host;
 }
 
 describe("github plugin RPC behavior", () => {
+  // A stored-but-unusable extraRepos entry used to look exactly like one that
+  // matched nothing: no log line, and `bb github repos` listed the usable names
+  // without mentioning what it had dropped.
+  it("reports extraRepos entries it cannot honor instead of dropping them", async () => {
+    const { harness } = await loadPlugin("acme/widgets, ACME-ORG/*, nonsense");
+
+    await expect(harness.runCli(["repos"])).resolves.toEqual({
+      exitCode: 0,
+      stdout: "acme/widgets",
+      stderr:
+        'ignoring 2 extraRepos entries that are not "owner/repo": ACME-ORG/*, nonsense\n',
+    });
+    expect(harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: 'ignoring 2 extraRepos entries that are not "owner/repo": ACME-ORG/*, nonsense',
+        }),
+      ]),
+    );
+
+    // The warning is emitted per distinct set, not per discovery: `repos`
+    // forces a fresh read every time and a background sync lapses the cache on
+    // its own, so warning per pass would repeat this line forever.
+    await harness.runCli(["repos"]);
+    expect(
+      harness.logEntries.filter(
+        (entry) => entry.level === "warn" && entry.message.includes("extraRepos"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("says nothing about extraRepos when every entry is usable", async () => {
+    const { harness } = await loadPlugin("acme/widgets");
+
+    await expect(harness.runCli(["repos"])).resolves.toEqual({
+      exitCode: 0,
+      stdout: "acme/widgets",
+      stderr: "",
+    });
+    expect(
+      harness.logEntries.filter((entry) => entry.message.includes("extraRepos")),
+    ).toEqual([]);
+  });
+
   it("syncs, filters, mutates, and exposes the same cached issue across surfaces", async () => {
     const { harness } = await loadPlugin();
 
