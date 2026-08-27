@@ -230,7 +230,7 @@ function completeDaemonActiveWorkDisconnectGrace(
 
   interruptActiveThreadsForHost(deps, {
     hostId: args.hostId,
-    reason: "host-daemon-restarted",
+    reason: "host-connection-lost",
   });
 }
 

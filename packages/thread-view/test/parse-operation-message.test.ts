@@ -137,6 +137,9 @@ describe("parseOperationMessage operation titles", () => {
       expect(interruptedTitle("host-daemon-restarted", THREAD_NAME)).toBe(
         "Stopped — host daemon restarted",
       );
+      expect(interruptedTitle("host-connection-lost", THREAD_NAME)).toBe(
+        "Stopped — connection to host was lost",
+      );
     });
   });
 
