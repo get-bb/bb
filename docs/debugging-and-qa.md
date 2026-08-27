@@ -7,6 +7,7 @@
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
+- `./bin/bb` does what `pnpm bb:dev` does without the pnpm and turbo startup cost, and works from any directory: `./bin/bb status`, `/path/to/checkout/bin/bb project list`. It resolves the dev instance from its own location, following symlinks, so a symlink to it stays pinned to that checkout: `ln -s /path/to/checkout/bin/bb ~/.bb/bin/bb-main`. Do not put `<repo>/bin` on `PATH`; it provides `bb` and would shadow a packaged app's `bb`. Note `apps/cli/bin/bb` is not equivalent: it targets the packaged app, not this checkout's dev instance.
 
 ## Local Dev QA Launcher
 

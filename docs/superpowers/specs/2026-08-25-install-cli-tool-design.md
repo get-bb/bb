@@ -352,6 +352,58 @@ guaranteed absolute path should use `BB_CLI`.
   `/usr/local/bin`; we deliberately do not, which is the main reason for
   choosing `~/.bb/bin` over `/usr/local/bin`.
 
+## Local dev: `<repo>/bin/bb`
+
+The packaged app ships `bin/bb` inside its bundle (layer 1). The repo now ships
+the same affordance for a checkout: `bin/bb` at the repo root, run as
+`./bin/bb`.
+
+It exists because the obvious shortcuts are both wrong. `pnpm bb:dev` is
+correct but pays pnpm and turbo startup on every invocation and must be run from
+the repo. `apps/cli/bin/bb` is already present and is *not* equivalent: it execs
+`apps/cli/dist/index.js` directly and never sets the dev environment, so it
+targets the packaged app rather than the checkout's dev instance.
+
+`bin/bb` delegates to `packages/scripts/dist/commands/run-cli.js`, which is what
+applies the dev instance environment via `resolveCurrentDevProcessEnv`
+(`packages/config/src/runtime.ts:341`). `run-cli.ts` applies it whenever
+`NODE_ENV !== "production"`, and `bin/bb` leaves `NODE_ENV` unset, so behavior
+matches `pnpm bb:dev`. Missing builds are handled with `cli:prepare`, mirroring
+the existing `apps/cli/bin/bb`.
+
+**A symlink to `apps/cli/bin/bb` would not have worked.** That script derives
+its paths from `dirname "$0"` without resolving symlinks, so invoking it through
+a link at the repo root computes `CLI_ENTRY` as `<repo>/dist/index.js` and
+`REPO_ROOT` as two levels above the repo. It fails, and it fails confusingly.
+`bin/bb` therefore walks symlinks by hand rather than depending on `realpath(1)`,
+which is the BSD variant on macOS and has not always been present. This is the
+same reason VS Code hand-rolls the walk in `code.sh`.
+
+The walk also makes one pattern deliberate rather than accidental:
+
+| | Resolves via | Meaning |
+| --- | --- | --- |
+| `<repo>/bin/bb` | `$0`, symlinks resolved | Pinned to the checkout it lives in |
+| `bb-dev` | `$PWD` | Whichever checkout you are standing in |
+
+So `ln -s /path/to/checkout/bin/bb ~/.bb/bin/bb-main` yields a command
+permanently bound to that checkout, which is useful next to `bb-dev` as long as
+the two are not confused.
+
+**Do not add `<repo>/bin` to `PATH`.** It provides `bb`, which would shadow a
+packaged app's `bb` depending on order. That is the silent-wrong-version failure
+this design exists to prevent. Symlink it under another name instead.
+
+`apps/cli/bin/bb` is intentionally left alone. Adding symlink resolution there
+would be a real fix, but it is the published npm `bin` entry and carries its own
+blast radius.
+
+**Verified:** correct version from the repo root, from an unrelated working
+directory, and through absolute, relative, and chained symlinks. Confirmed to
+target the checkout's dev instance by observing the request land on
+`127.0.0.1:26817/api/v1/projects`, the port derived for that repo root, rather
+than the packaged app's 38886.
+
 ## `bb-dev` (assumption, needs confirmation)
 
 `bb-dev` is categorically different from `bb` and `bb-nightly`. Those are
