@@ -86,8 +86,6 @@ const EDITOR_CSS = `
 .bb-tasks-editor .tiptap :is(th, td) > p { margin-top: 0; }
 .bb-tasks-editor .tiptap :is(th, td) > p + p { margin-top: 0.5em; }
 .bb-tasks-editor .tiptap .selectedCell::after { position: absolute; inset: 0; z-index: 2; pointer-events: none; content: ""; background: color-mix(in oklab, var(--primary) 14%, transparent); }
-.bb-tasks-editor .tiptap .column-resize-handle { position: absolute; top: 0; right: -2px; bottom: -1px; width: 4px; z-index: 3; pointer-events: none; background: var(--primary); }
-.bb-tasks-editor .tiptap.resize-cursor { cursor: col-resize; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }
 .bb-tasks-editor .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.3em; padding-left: 0; }

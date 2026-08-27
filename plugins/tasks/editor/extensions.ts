@@ -115,6 +115,7 @@ interface TableMarkdownState {
   write(value: string): void;
   ensureNewLine(): void;
   closeBlock(node: ProseMirrorNode): void;
+  render(node: ProseMirrorNode, parent: ProseMirrorNode, index: number): void;
   renderInline(node: ProseMirrorNode): void;
 }
 
@@ -154,9 +155,10 @@ function renderTableCell(
   cell: ProseMirrorNode,
 ): void {
   const content = cell.firstChild;
-  if (!content?.textContent.trim()) return;
+  if (!content) return;
   const start = state.out.length;
-  state.renderInline(content);
+  if (content.type.name === "image") state.render(content, cell, 0);
+  else if (content.childCount > 0) state.renderInline(content);
   state.out =
     state.out.slice(0, start) +
     state.out.slice(start).replaceAll("|", "\\|");
@@ -433,7 +435,7 @@ export function createEditorExtensions(options?: {
     Image.configure({ allowBase64: false }),
     TightTaskList,
     TaskItem.configure({ nested: true }),
-    MarkdownTable.configure({ resizable: true, lastColumnResizable: false }),
+    MarkdownTable.configure({ renderWrapper: true }),
     TableRow,
     TableHeader,
     TableCell,
