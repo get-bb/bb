@@ -115,6 +115,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program) => m.registerGuideCommand(program),
   ),
   group(
+    "install-cli",
+    () => import("./commands/install-cli.js"),
+    (m) => (program) => m.registerInstallCliCommand(program),
+  ),
+  group(
     "voice",
     () => import("./commands/voice.js"),
     (m) => (program, deps) => m.registerVoiceCommands(program, deps.getUrl),
