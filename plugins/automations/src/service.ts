@@ -2,6 +2,8 @@ import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
+  assertCanonicalAutomationUpdate,
+  assertLegacyEmptyPromptAutomationRow,
   createAutomation,
   createManualRun,
   deleteAutomation,
@@ -29,10 +31,12 @@ import {
 import { publishAutomationChange } from "./realtime.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
+  automationReadProblemSchema,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
+  type AutomationReadResult,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -67,11 +71,11 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
-  list(input: { projectId: string }): AutomationResponse[];
+  list(input: { projectId: string }): AutomationReadResult[];
   get(input: {
     projectId: string;
     automationId: string;
-  }): Promise<AutomationResponse>;
+  }): Promise<AutomationReadResult>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -215,6 +219,43 @@ function toStoredAutomationResponse(
   return withStoredScriptPath(pluginDataDir, toAutomationResponse(row));
 }
 
+function toAutomationReadProblem(
+  bb: Pick<ServiceApi, "log">,
+  row: AutomationRow,
+  error: unknown,
+): AutomationReadResult {
+  let problem: "missing-agent-prompt" | "invalid-stored-data";
+  try {
+    assertLegacyEmptyPromptAutomationRow(row);
+    problem = "missing-agent-prompt";
+  } catch {
+    problem = "invalid-stored-data";
+    bb.log.warn(
+      `Malformed stored automation ${row.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  return automationReadProblemSchema.parse({
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    problem,
+  });
+}
+
+function toStoredAutomationReadResult(
+  bb: Pick<ServiceApi, "log">,
+  pluginDataDir: string,
+  row: AutomationRow,
+): AutomationReadResult {
+  try {
+    return toStoredAutomationResponse(pluginDataDir, row);
+  } catch (error) {
+    return toAutomationReadProblem(bb, row, error);
+  }
+}
+
 async function toEditableAutomationResponse(args: {
   pluginDataDir: string;
   row: AutomationRow;
@@ -238,6 +279,18 @@ async function toEditableAutomationResponse(args: {
       }),
     },
   };
+}
+
+async function toEditableAutomationReadResult(args: {
+  bb: Pick<ServiceApi, "log">;
+  pluginDataDir: string;
+  row: AutomationRow;
+}): Promise<AutomationReadResult> {
+  try {
+    return await toEditableAutomationResponse(args);
+  } catch (error) {
+    return toAutomationReadProblem(args.bb, args.row, error);
+  }
 }
 
 async function cleanupSupersededScript(args: {
@@ -402,22 +455,13 @@ export function createAutomationService(args: {
           rows.map(async (row) => {
             const projectName = projects.get(row.projectId);
             if (projects.size > 0 && projectName === undefined) return null;
-            try {
-              return {
-                automation: toStoredAutomationResponse(pluginDataDir, row),
-                project: {
-                  id: row.projectId,
-                  name: projectName ?? row.projectId,
-                },
-              };
-            } catch (error) {
-              bb.log.warn(
-                `Skipping malformed automation ${row.id}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
-              return null;
-            }
+            return {
+              automation: toStoredAutomationReadResult(bb, pluginDataDir, row),
+              project: {
+                id: row.projectId,
+                name: projectName ?? row.projectId,
+              },
+            };
           }),
         )
       ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
@@ -426,12 +470,13 @@ export function createAutomationService(args: {
 
     list(input) {
       return listAutomationsForProject(db, input.projectId).map((row) =>
-        toStoredAutomationResponse(pluginDataDir, row),
+        toStoredAutomationReadResult(bb, pluginDataDir, row),
       );
     },
 
     get(input) {
-      return toEditableAutomationResponse({
+      return toEditableAutomationReadResult({
+        bb,
         pluginDataDir,
         row: requireProjectAutomation(db, input),
       });
@@ -550,6 +595,7 @@ export function createAutomationService(args: {
       }
       let updated: AutomationRow | null;
       try {
+        assertCanonicalAutomationUpdate(current, patch);
         updated = updateAutomation(db, {
           projectId: input.projectId,
           automationId: input.automationId,
@@ -602,6 +648,7 @@ export function createAutomationService(args: {
 
     pause(input) {
       const current = requireProjectAutomation(db, input);
+      toStoredAutomationResponse(pluginDataDir, current);
       const updated = setAutomationEnabled(db, {
         projectId: input.projectId,
         automationId: current.id,
@@ -615,6 +662,7 @@ export function createAutomationService(args: {
 
     resume(input) {
       const current = requireProjectAutomation(db, input);
+      toStoredAutomationResponse(pluginDataDir, current);
       const trigger = parseAutomationTrigger(current.triggerConfig);
       const now = Date.now();
       validateTrigger(trigger, now);
@@ -633,6 +681,7 @@ export function createAutomationService(args: {
 
     async run(input) {
       const automation = requireProjectAutomation(db, input);
+      toStoredAutomationResponse(pluginDataDir, automation);
       const execution = parseAutomationExecution(automation.execution);
       const now = Date.now();
       const { run, deduped } = createManualRun(db, {

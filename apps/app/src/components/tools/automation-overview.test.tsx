@@ -128,6 +128,51 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByRole("button", { name: "New automation" })).toBeTruthy();
   });
 
+  it("keeps degraded rows visible and offers repair only for a missing prompt", () => {
+    const onRepair = vi.fn();
+    const entries: AutomationsOverviewResponse["automations"] = [
+      {
+        automation: {
+          id: "auto_repair",
+          projectId: "proj_1",
+          name: "Needs a prompt",
+          problem: "missing-agent-prompt",
+        },
+        project: { id: "proj_1", name: "bb" },
+      },
+      {
+        automation: {
+          id: "auto_invalid",
+          projectId: "proj_1",
+          name: "Unreadable automation",
+          problem: "invalid-stored-data",
+        },
+        project: { id: "proj_1", name: "bb" },
+      },
+      ...INSTALLED_AUTOMATIONS,
+    ];
+    render(
+      <AutomationOverviewView
+        entries={entries}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onRepair={onRepair}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.getByText("Unreadable automation")).toBeTruthy();
+    expect(screen.getByText("Nightly digest")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Repair" }));
+    expect(onRepair).toHaveBeenCalledWith(entries[0]?.automation);
+    expect(screen.getAllByRole("button", { name: "Repair" })).toHaveLength(1);
+  });
+
   it("offers Projects and Status as groups inside one filter menu", async () => {
     render(
       <AutomationOverviewView

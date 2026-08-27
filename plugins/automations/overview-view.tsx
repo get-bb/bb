@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AutomationReadProblem,
   AutomationResponse,
   AutomationsOverviewResponse,
 } from "./src/rpc-types.js";
@@ -37,6 +38,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Button } from "@bb/shared-ui/button";
 import {
   type AutomationStatusFilter,
   formatAutomationTrigger,
@@ -88,6 +90,10 @@ export const AUTOMATION_CREATE_TEMPLATES = [
 ] as const;
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
+type AutomationRepairTarget = Extract<
+  AutomationReadProblem,
+  { problem: "missing-agent-prompt" }
+>;
 type AutomationProjectFilter = `project:${string}`;
 type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
@@ -153,7 +159,7 @@ export function automationProjectLabel(
 function automationProjectFilterId(
   entry: OverviewEntry,
 ): AutomationProjectFilter {
-  const projectId = entry.project?.id ?? entry.automation.projectId;
+  const projectId = entry.project.id;
   return `project:${projectId}`;
 }
 
@@ -202,6 +208,7 @@ function OverviewRow({
   ) => Promise<void>;
 }) {
   const { automation } = entry;
+  if ("problem" in automation) return null;
   const [togglePending, setTogglePending] = useState(false);
   const route = routeOf(automation);
   const oneShotLifecycle = getOneShotLifecycle({
@@ -279,11 +286,76 @@ function OverviewRow({
   );
 }
 
+function AutomationProblemRow({
+  entry,
+  onNavigate,
+  onRepair,
+}: {
+  entry: OverviewEntry;
+  onNavigate: (route: AutomationDetailRoute) => void;
+  onRepair?: (target: AutomationRepairTarget) => void;
+}) {
+  const { automation, project } = entry;
+  if (!("problem" in automation)) return null;
+  const repairTarget =
+    automation.problem === "missing-agent-prompt" ? automation : null;
+  const projectLabel = automationProjectLabel(project);
+  return (
+    <ResourceRow
+      leading={
+        <Icon
+          name={repairTarget !== null ? "AlertCircle" : "CircleX"}
+          className={cn(
+            repairTarget !== null ? "text-warning" : "text-destructive",
+            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+          )}
+          aria-label={
+            repairTarget !== null ? "Needs repair" : "Invalid stored data"
+          }
+        />
+      }
+      title={automation.name}
+      description={
+        <ResourceMeta
+          items={[
+            <AutomationMetadataItem icon="Folder" iconLabel="Project">
+              {projectLabel}
+            </AutomationMetadataItem>,
+            repairTarget !== null
+              ? "A prompt is required before this automation can run."
+              : "The stored configuration cannot be read.",
+          ]}
+        />
+      }
+      muted
+      onOpen={() =>
+        onNavigate({
+          projectId: automation.projectId,
+          automationId: automation.id,
+        })
+      }
+      persistentActions={
+        repairTarget !== null && onRepair !== undefined ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onRepair(repairTarget)}
+          >
+            Repair
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
 export function AutomationOverviewView({
   entries,
   error,
   onRetry,
   onOpenDetail,
+  onRepair,
   onEnabledChange,
   onCreateViaChat,
   activeMode,
@@ -293,6 +365,7 @@ export function AutomationOverviewView({
   error: string | null;
   onRetry: () => void;
   onOpenDetail: (route: AutomationDetailRoute) => void;
+  onRepair?: (target: AutomationRepairTarget) => void;
   onEnabledChange: (
     enabled: boolean,
     route: AutomationDetailRoute,
@@ -353,6 +426,17 @@ export function AutomationOverviewView({
       ) {
         return false;
       }
+      if ("problem" in automation) {
+        if (statusFilters.length > 0) return false;
+        if (normalizedQuery.length === 0) return true;
+        const problemLabel =
+          automation.problem === "missing-agent-prompt"
+            ? "needs repair missing prompt"
+            : "invalid stored data";
+        return [automation.name, project.name, problemLabel].some((value) =>
+          value.toLowerCase().includes(normalizedQuery),
+        );
+      }
       if (!matchesAutomationStatusFilters(automation, statusFilters)) {
         return false;
       }
@@ -367,6 +451,14 @@ export function AutomationOverviewView({
   }, [entries, normalizedQuery, projectFilters, statusFilters]);
   const visibleEntries = useMemo(() => {
     return [...filteredEntries].sort((left, right) => {
+      if ("problem" in left.automation && "problem" in right.automation) {
+        return applyAutomationSortDirection(
+          left.automation.name.localeCompare(right.automation.name),
+          sortDirection,
+        );
+      }
+      if ("problem" in left.automation) return -1;
+      if ("problem" in right.automation) return 1;
       const lifecycleOrder =
         automationLifecycleSortRank(left.automation) -
         automationLifecycleSortRank(right.automation);
@@ -446,14 +538,23 @@ export function AutomationOverviewView({
   } else {
     body = (
       <ResourceListPanel>
-        {installedPagination.items.map((entry) => (
-          <OverviewRow
-            key={entry.automation.id}
-            entry={entry}
-            onNavigate={onOpenDetail}
-            onEnabledChange={onEnabledChange}
-          />
-        ))}
+        {installedPagination.items.map((entry) =>
+          "problem" in entry.automation ? (
+            <AutomationProblemRow
+              key={entry.automation.id}
+              entry={entry}
+              onNavigate={onOpenDetail}
+              onRepair={onRepair}
+            />
+          ) : (
+            <OverviewRow
+              key={entry.automation.id}
+              entry={entry}
+              onNavigate={onOpenDetail}
+              onEnabledChange={onEnabledChange}
+            />
+          ),
+        )}
       </ResourceListPanel>
     );
   }

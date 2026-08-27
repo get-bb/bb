@@ -615,7 +615,9 @@ describe("automations server plugin harness", () => {
       await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
     );
     expect(listed).toHaveLength(1);
-    expect(listed[0]?.execution).toMatchObject({ prompt: longPrompt });
+    expect(automationResponseSchema.parse(listed[0]).execution).toMatchObject({
+      prompt: longPrompt,
+    });
 
     const shown = await harness.runCli([
       "show",
@@ -670,40 +672,137 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
-  it("repairs a desktop v0.40.0 empty-prompt row through the public update path", async () => {
+  it("lists degraded rows and repairs a desktop v0.40.0 failed create", async () => {
     const host = await bootAutomationsPlugin();
     const { harness } = host;
-    const created = await createAgentAutomation(harness);
-    if (created.execution.mode !== "agent") {
-      throw new Error("Expected an agent automation");
-    }
-    host.bb.storage
-      .database()
-      .prepare("UPDATE automations SET execution = ? WHERE id = ?")
-      .run(JSON.stringify({ ...created.execution, prompt: "" }), created.id);
+    await createAgentAutomation(harness, { name: "Hidden legacy row" });
+    await createAgentAutomation(harness, { name: "Invalid stored row" });
+    const healthy = await createAgentAutomation(harness, { name: "Healthy" });
+    const database = host.bb.storage.database();
+    database
+      .prepare("UPDATE automations SET execution = ? WHERE name = ?")
+      .run(
+        JSON.stringify({ ...agentExecution(), prompt: "" }),
+        "Hidden legacy row",
+      );
+    database
+      .prepare("UPDATE automations SET execution = ? WHERE name = ?")
+      .run("not json", "Invalid stored row");
 
-    await expect(
-      harness.callRpc("automations_list", { projectId: PROJECT_ID }),
-    ).rejects.toThrow("Too small");
-
-    const repaired = automationResponseSchema.parse(
-      await harness.callRpc("automations_update", {
-        projectId: PROJECT_ID,
-        automationId: created.id,
-        agent: { prompt: "repaired prompt" },
-      }),
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
     );
-    expect(repaired.execution).toMatchObject({ prompt: "repaired prompt" });
+    const repairTarget = listed.find(
+      (item) => "problem" in item && item.problem === "missing-agent-prompt",
+    );
+    const invalidTarget = listed.find(
+      (item) => "problem" in item && item.problem === "invalid-stored-data",
+    );
+    expect(repairTarget).toMatchObject({
+      name: "Hidden legacy row",
+      projectId: PROJECT_ID,
+    });
+    expect(invalidTarget).toMatchObject({ name: "Invalid stored row" });
+    expect(listed).toContainEqual(expect.objectContaining({ id: healthy.id }));
+    expect(
+      automationsOverviewResponseSchema.parse(
+        await harness.callRpc("automations_overview"),
+      ).automations,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ automation: repairTarget }),
+        expect.objectContaining({ automation: invalidTarget }),
+      ]),
+    );
+
+    const cliList = await harness.runCli(["list", "--project", PROJECT_ID]);
+    expect(cliList).toMatchObject({ exitCode: 0 });
+    expect(cliList.stdout).toContain("Needs prompt");
+    expect(cliList.stdout).toContain("Invalid stored data");
+
+    if (
+      repairTarget === undefined ||
+      "execution" in repairTarget ||
+      invalidTarget === undefined ||
+      "execution" in invalidTarget
+    ) {
+      throw new Error("Expected degraded automation descriptors");
+    }
+    expect(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+      }),
+    ).toEqual(repairTarget);
+    expect(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: invalidTarget.id,
+      }),
+    ).toEqual(invalidTarget);
+    const cliShow = await harness.runCli([
+      "show",
+      repairTarget.id,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(cliShow).toMatchObject({ exitCode: 0 });
+    expect(cliShow.stdout).toContain("Status:    Needs prompt");
+    await expect(
+      harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+      }),
+    ).rejects.toThrow("Too small");
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+        name: "Must not be persisted",
+      }),
+    ).rejects.toThrow("Too small");
+    await expect(
+      harness.callRpc("automations_pause", {
+        projectId: PROJECT_ID,
+        automationId: repairTarget.id,
+      }),
+    ).rejects.toThrow("Too small");
+    expect(
+      database
+        .prepare("SELECT name, enabled FROM automations WHERE id = ?")
+        .get(repairTarget.id),
+    ).toEqual({ name: "Hidden legacy row", enabled: 1 });
+
+    const update = await harness.runCli([
+      "update",
+      repairTarget.id,
+      "--project",
+      PROJECT_ID,
+      "--prompt",
+      "repaired prompt",
+    ]);
+    expect(update.exitCode).toBe(0);
     expect(
       automationListResponseSchema.parse(
         await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
       ),
-    ).toEqual([
-      expect.objectContaining({
-        id: created.id,
-        execution: expect.objectContaining({ prompt: "repaired prompt" }),
-      }),
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: repairTarget.id,
+          execution: expect.objectContaining({ prompt: "repaired prompt" }),
+        }),
+        invalidTarget,
+        expect.objectContaining({ id: healthy.id }),
+      ]),
+    );
+    expect(
+      automationListResponseSchema.parse(
+        await harness.callRpc("automations_list", {
+          projectId: MISSING_PROJECT_ID,
+        }),
+      ),
+    ).toEqual([]);
 
     await harness.dispose();
   });
