@@ -559,6 +559,39 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
   });
 
+  it("retries a failed title mention batch once", async () => {
+    vi.useFakeTimers();
+    try {
+      const threadId = "thr_2222222222";
+      vi.mocked(sdk.threads.resolveMentions).mockRejectedValue(
+        new Error("temporary failure"),
+      );
+      renderMarkdown(
+        <ThreadTitleMentions title={`Review @thread:${threadId}`} />,
+        [],
+      );
+
+      await act(async () => vi.advanceTimersByTimeAsync(60));
+      expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(2);
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks an omitted title mention unavailable", async () => {
+    const threadId = "thr_2222222222";
+    vi.mocked(sdk.threads.resolveMentions).mockResolvedValueOnce([]);
+    renderMarkdown(
+      <ThreadTitleMentions title={`Review @thread:${threadId}`} />,
+      [],
+    );
+
+    expect(await screen.findByText("Unavailable thread")).not.toBeNull();
+    expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
+  });
+
   it("shares one raw-id resolution across sibling messages and a title", async () => {
     const threadId = "thr_2222222222";
     vi.mocked(sdk.threads.resolveMentions).mockResolvedValueOnce([

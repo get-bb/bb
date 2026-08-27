@@ -204,12 +204,14 @@ export function useSidebarThreadTitleMentionResources(
 interface RawThreadMentionResolverContextValue {
   register: (threadId: string) => void;
   resourceById: ReadonlyMap<string, PromptMentionResource>;
+  unavailableIds: ReadonlySet<string>;
 }
 
 const EMPTY_RAW_THREAD_MENTION_RESOLVER: RawThreadMentionResolverContextValue =
   {
     register: () => {},
     resourceById: new Map(),
+    unavailableIds: new Set(),
   };
 
 const RawThreadMentionResolverContext =
@@ -223,6 +225,7 @@ function RawThreadMentionResolverProvider({
   children: ReactNode;
 }) {
   const scheduledOrResolvedIdsRef = useRef(new Set<string>());
+  const retriedIdsRef = useRef(new Set<string>());
   const pendingIdsRef = useRef(new Set<string>());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushPendingRef = useRef<() => void>(() => {});
@@ -230,6 +233,9 @@ function RawThreadMentionResolverProvider({
   const [resourceById, setResourceById] = useState<
     ReadonlyMap<string, PromptMentionResource>
   >(new Map());
+  const [unavailableIds, setUnavailableIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
 
   flushPendingRef.current = () => {
     const threadIds = [...pendingIdsRef.current].slice(
@@ -248,6 +254,9 @@ function RawThreadMentionResolverProvider({
       .resolveMentions({ threadIds, signal: controller.signal })
       .then((resolutions) => {
         if (controller.signal.aborted) return;
+        const resolvedIds = new Set(
+          resolutions.map((resolution) => resolution.threadId),
+        );
         setResourceById((current) => {
           const next = new Map(current);
           for (const resolution of resolutions) {
@@ -260,10 +269,21 @@ function RawThreadMentionResolverProvider({
           }
           return next;
         });
+        setUnavailableIds((current) => {
+          const next = new Set(current);
+          for (const threadId of threadIds) {
+            if (resolvedIds.has(threadId)) next.delete(threadId);
+            else next.add(threadId);
+          }
+          return next;
+        });
       })
       .catch(() => {
+        if (controller.signal.aborted) return;
         for (const threadId of threadIds) {
-          scheduledOrResolvedIdsRef.current.delete(threadId);
+          if (retriedIdsRef.current.has(threadId)) continue;
+          retriedIdsRef.current.add(threadId);
+          pendingIdsRef.current.add(threadId);
         }
       })
       .finally(() => {
@@ -291,8 +311,8 @@ function RawThreadMentionResolverProvider({
   }, []);
 
   const value = useMemo(
-    () => ({ register, resourceById }),
-    [register, resourceById],
+    () => ({ register, resourceById, unavailableIds }),
+    [register, resourceById, unavailableIds],
   );
 
   useEffect(
@@ -303,6 +323,7 @@ function RawThreadMentionResolverProvider({
       }
       pendingIdsRef.current.clear();
       scheduledOrResolvedIdsRef.current.clear();
+      retriedIdsRef.current.clear();
       for (const controller of activeControllersRef.current) {
         controller.abort();
       }
@@ -321,6 +342,7 @@ function RawThreadMentionResolverProvider({
 const EMPTY_RAW_THREAD_MENTION_BATCH: RawThreadMentionResolverContextValue = {
   register: () => {},
   resourceById: new Map(),
+  unavailableIds: new Set(),
 };
 
 const RawThreadMentionBatchContext =
@@ -341,8 +363,12 @@ function RawThreadMentionBatchScope({ children }: { children: ReactNode }) {
     [resolver],
   );
   const value = useMemo(
-    () => ({ register, resourceById: resolver.resourceById }),
-    [register, resolver.resourceById],
+    () => ({
+      register,
+      resourceById: resolver.resourceById,
+      unavailableIds: resolver.unavailableIds,
+    }),
+    [register, resolver.resourceById, resolver.unavailableIds],
   );
   useEffect(
     () => () => {
@@ -487,14 +513,16 @@ function threadMentionResource(
 }
 
 const UNRESOLVED_THREAD_MENTION_LABEL = "Thread";
+const UNAVAILABLE_THREAD_MENTION_LABEL = "Unavailable thread";
 
 function unresolvedThreadMentionResource(
   threadId: string,
+  label = UNRESOLVED_THREAD_MENTION_LABEL,
 ): PromptMentionResource {
   return {
     kind: "thread",
     threadId,
-    label: UNRESOLVED_THREAD_MENTION_LABEL,
+    label,
   };
 }
 
@@ -639,9 +667,18 @@ export function resolveThreadTitleDisplayText(
     .join("");
 }
 
+function useUnavailableRawThreadMentionIds(): ReadonlySet<string> {
+  const batch = useContext(RawThreadMentionBatchContext);
+  const resolver = useContext(RawThreadMentionResolverContext);
+  return batch === EMPTY_RAW_THREAD_MENTION_BATCH
+    ? resolver.unavailableIds
+    : batch.unavailableIds;
+}
+
 /** Resolves serialized mentions in a thread title to one plain display label. */
 export function useThreadTitleDisplayText(title: string): string {
   const resources = useContext(ThreadTitleMentionResourcesContext);
+  const unavailableThreadIds = useUnavailableRawThreadMentionIds();
   const segments = useMemo(
     () => threadTitleTextSegments(title, resources),
     [resources, title],
@@ -663,10 +700,12 @@ export function useThreadTitleDisplayText(title: string): string {
           segment.unresolvedThreadId === null
             ? segment.text
             : (resolvedThreadsById.get(segment.unresolvedThreadId)?.label ??
-              segment.text),
+              (unavailableThreadIds.has(segment.unresolvedThreadId)
+                ? UNAVAILABLE_THREAD_MENTION_LABEL
+                : segment.text)),
         )
         .join(""),
-    [resolvedThreadsById, segments],
+    [resolvedThreadsById, segments, unavailableThreadIds],
   );
 }
 
@@ -817,11 +856,17 @@ function ResolvingThreadTitleMention({
   threadId,
 }: ResolvingThreadTitleMentionProps) {
   const resource = useRawThreadMentionResource(threadId);
+  const unavailableIds = useUnavailableRawThreadMentionIds();
   if (resource === null) {
     return renderFallbackPill ? (
       <PromptMentionPill
         interactive={false}
-        resource={unresolvedThreadMentionResource(threadId)}
+        resource={unresolvedThreadMentionResource(
+          threadId,
+          unavailableIds.has(threadId)
+            ? UNAVAILABLE_THREAD_MENTION_LABEL
+            : UNRESOLVED_THREAD_MENTION_LABEL,
+        )}
         serializedText={serializedText}
       />
     ) : (
