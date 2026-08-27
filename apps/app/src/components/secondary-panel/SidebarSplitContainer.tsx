@@ -838,7 +838,6 @@ function SidebarSplitDivider({
   return (
     <div
       role="separator"
-      data-split-resize-axis={horizontal ? "x" : "y"}
       aria-hidden={hidden || undefined}
       aria-label={
         horizontal
@@ -847,7 +846,7 @@ function SidebarSplitDivider({
       }
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
-        "group relative z-[25] shrink-0 bg-border-seam transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40 data-[split-resize-snap-target]:bg-ring/60",
+        "group relative z-[25] shrink-0 bg-border-seam transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40",
         MACOS_APP_REGION_NO_DRAG_CLASS,
         "pointer-events-auto",
         hidden && "invisible pointer-events-none",

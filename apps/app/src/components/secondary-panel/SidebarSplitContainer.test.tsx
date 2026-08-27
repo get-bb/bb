@@ -755,8 +755,8 @@ describe("SidebarSplitContainer", () => {
       clientY: 400,
       pointerId: 3,
     });
-    expect(Number.parseFloat(previous.style.flex)).toBeCloseTo(0.499, 3);
-    expect(Number.parseFloat(next.style.flex)).toBeCloseTo(0.501, 3);
+    expect(Number.parseFloat(previous.style.flex)).toBeCloseTo(0.5, 3);
+    expect(Number.parseFloat(next.style.flex)).toBeCloseTo(0.5, 3);
 
     fireEvent.pointerMove(hitTarget, {
       clientX: 700,
@@ -783,7 +783,7 @@ describe("SidebarSplitContainer", () => {
     });
   });
 
-  it("snaps a right-panel divider to a workspace divider and persists the exact fraction", () => {
+  it("snaps a right-panel divider to its horizontal midpoint and persists 50/50", () => {
     persistState(createTwoPaneState());
     renderContainer({
       renderPane: ({ paneId }) => <div>{paneId}</div>,
@@ -836,34 +836,16 @@ describe("SidebarSplitContainer", () => {
       y: 0,
       toJSON: () => ({}),
     });
-    const workspaceDivider = document.createElement("div");
-    workspaceDivider.dataset.splitResizeAxis = "x";
-    workspaceDivider.getBoundingClientRect = () => ({
-      bottom: 600,
-      height: 600,
-      left: 560,
-      right: 561,
-      top: 0,
-      width: 1,
-      x: 560,
-      y: 0,
-      toJSON: () => ({}),
-    });
-    const workspaceSplit = document.createElement("div");
-    workspaceSplit.appendChild(workspaceDivider);
-    document.body.appendChild(workspaceSplit);
-
     fireEvent.pointerDown(hitTarget, { clientX: 400.5, pointerId: 32 });
-    fireEvent.pointerMove(hitTarget, { clientX: 567, pointerId: 32 });
+    fireEvent.pointerMove(hitTarget, { clientX: 407.5, pointerId: 32 });
 
-    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
-    expect(workspaceDivider.dataset.splitResizeSnapTarget).toBe("true");
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.5, 5);
     expect(
       document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
         ?.style.left,
-    ).toBe("560.5px");
+    ).toBe("400.5px");
 
-    fireEvent.pointerUp(hitTarget, { clientX: 567, pointerId: 32 });
+    fireEvent.pointerUp(hitTarget, { clientX: 407.5, pointerId: 32 });
 
     const persisted = parseSidebarSplitState(
       window.localStorage.getItem(sidebarSplitStorageKey(PANEL_STATE_ID)),
@@ -872,12 +854,10 @@ describe("SidebarSplitContainer", () => {
     );
     expect(persisted.layout.root.type).toBe("split");
     if (persisted.layout.root.type === "split") {
-      expect(persisted.layout.root.sizes[0]).toBeCloseTo(0.7, 5);
-      expect(persisted.layout.root.sizes[1]).toBeCloseTo(0.3, 5);
+      expect(persisted.layout.root.sizes[0]).toBeCloseTo(0.5, 5);
+      expect(persisted.layout.root.sizes[1]).toBeCloseTo(0.5, 5);
     }
-    expect(workspaceDivider.dataset.splitResizeSnapTarget).toBeUndefined();
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
-    workspaceSplit.remove();
   });
 
   it("clears the resize overlay when the divider loses pointer capture", () => {

@@ -1520,7 +1520,6 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
   return (
     <div
       role="separator"
-      data-split-resize-axis={horizontal ? "x" : "y"}
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         // A one-pixel seam between flush tiles — squared ends, no rounding,
@@ -1533,7 +1532,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         // lower divider layer loses the grab target to that header.
         "group relative z-[25] flex-shrink-0 transition-colors",
         "bg-border-seam",
-        "hover:bg-ring/40 data-[dragging]:bg-ring/40 data-[split-resize-snap-target]:bg-ring/60",
+        "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
