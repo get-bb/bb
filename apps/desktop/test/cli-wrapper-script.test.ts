@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rmdir, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
-import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
