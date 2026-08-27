@@ -100,6 +100,7 @@ export function createSplitResizeSnapSession(
   let guide: HTMLElement | null = null;
   let fastCrossingAnchor: number | null = null;
   let lastPointer: number | null = null;
+  let releasePending = false;
   let snapped = false;
   const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
   const gridRect = grid?.getBoundingClientRect() ?? null;
@@ -114,6 +115,7 @@ export function createSplitResizeSnapSession(
     guide = null;
     fastCrossingAnchor = null;
     lastPointer = null;
+    releasePending = false;
     snapped = false;
   };
 
@@ -140,6 +142,7 @@ export function createSplitResizeSnapSession(
       lastPointer = pointer;
       const contentSpan = span - extent;
       if (gridCoordinate === null || contentSpan <= 0) {
+        releasePending = false;
         snapped = false;
         hideGuide();
         return {
@@ -166,6 +169,7 @@ export function createSplitResizeSnapSession(
       if (reachable) {
         if (distance <= SPLIT_RESIZE_SNAP_CAPTURE_PX) {
           fastCrossingAnchor = null;
+          releasePending = false;
           shouldSnap = true;
         } else if (crossedGrid) {
           // Pointer events can jump over the entire release zone during a
@@ -173,22 +177,33 @@ export function createSplitResizeSnapSession(
           // produces a deliberate stop instead of being discarded.
           fastCrossingAnchor =
             distance > SPLIT_RESIZE_SNAP_RELEASE_PX ? pointer : null;
+          releasePending = false;
           shouldSnap = true;
         } else if (snapped) {
           if (distance <= SPLIT_RESIZE_SNAP_RELEASE_PX) {
             fastCrossingAnchor = null;
+            releasePending = false;
             shouldSnap = true;
           } else if (
             fastCrossingAnchor !== null &&
             Math.abs(pointer - fastCrossingAnchor) <=
               SPLIT_RESIZE_SNAP_RELEASE_PX
           ) {
+            releasePending = false;
+            shouldSnap = true;
+          } else if (!releasePending) {
+            // A fast pointer can cross the entire exit band between rendered
+            // frames. Require a second consecutive out-of-band sample so the
+            // captured state produces real resistance instead of a one-frame
+            // guide flash; returning to either band cancels the pending exit.
+            releasePending = true;
             shouldSnap = true;
           }
         }
       }
       if (!shouldSnap) {
         fastCrossingAnchor = null;
+        releasePending = false;
         snapped = false;
         hideGuide();
         return {

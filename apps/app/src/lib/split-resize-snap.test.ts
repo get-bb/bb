@@ -134,15 +134,22 @@ describe("split resize snapping", () => {
         start: 100,
       }).snapped,
     ).toBe(true);
+    expect(
+      session.resolve({
+        end: 900,
+        pointer: 500 + SNAP_RELEASE_PX + 1,
+        start: 100,
+      }).snapped,
+    ).toBe(true);
     const result = session.resolve({
       end: 900,
-      pointer: 500 + SNAP_RELEASE_PX + 1,
+      pointer: 500 + SNAP_RELEASE_PX + 2,
       start: 100,
     });
 
     expect(result.snapped).toBe(false);
     expect(result.fraction).toBeCloseTo(
-      (500 + SNAP_RELEASE_PX + 1 - 100) / 800,
+      (500 + SNAP_RELEASE_PX + 2 - 100) / 800,
       6,
     );
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
@@ -180,6 +187,40 @@ describe("split resize snapping", () => {
         pointer: 560 + SNAP_RELEASE_PX + 1,
         start: 100,
       }).snapped,
+    ).toBe(true);
+    expect(
+      session.resolve({
+        end: 900,
+        pointer: 560 + SNAP_RELEASE_PX + 2,
+        start: 100,
+      }).snapped,
+    ).toBe(false);
+  });
+
+  it("confirms release after a fast crossing instead of dropping the snap on the next coarse sample", () => {
+    const source = divider(
+      rect({ left: 500 }),
+      rect({ left: 100, width: 800 }),
+    );
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
+
+    expect(
+      session.resolve({ end: 900, pointer: 470, start: 100 }).snapped,
+    ).toBe(false);
+    expect(
+      session.resolve({ end: 900, pointer: 560, start: 100 }).snapped,
+    ).toBe(true);
+
+    // Browsers may coalesce fast hardware motion into samples that leap over
+    // both snap bands. One such sample arms release; a second confirms intent.
+    expect(
+      session.resolve({ end: 900, pointer: 640, start: 100 }).snapped,
+    ).toBe(true);
+    expect(
+      session.resolve({ end: 900, pointer: 641, start: 100 }).snapped,
     ).toBe(false);
   });
 
