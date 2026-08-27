@@ -1,0 +1,45 @@
+#!/bin/sh
+# Run this checkout's bb CLI against this checkout's dev instance.
+#
+# Prefer this over `pnpm bb:dev` for interactive use: it skips the pnpm and
+# turbo startup cost and works from any directory. It delegates to run-cli.js
+# rather than apps/cli/dist/index.js directly, because run-cli.js is what
+# applies the dev instance environment (BB_SERVER_URL, BB_HOST_DAEMON_PORT)
+# derived from this repo root. Running apps/cli directly would target the
+# packaged app instead.
+#
+# Do not add this directory to PATH. It provides `bb`, which would shadow a
+# packaged app's `bb` depending on order. Symlink it under another name if you
+# want it on PATH:
+#
+#   ln -s /path/to/checkout/bin/bb ~/.bb/bin/bb-main
+#
+# The symlink walk below makes that work: resolution follows the link back to
+# the checkout this script lives in, so such a symlink stays pinned to that
+# checkout regardless of the current directory.
+
+set -e
+
+# Follow symlinks by hand. macOS ships the BSD realpath(1), which has not always
+# been present, so do not depend on it.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF")
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname -- "$SELF")/$LINK" ;;
+  esac
+done
+
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+CLI_ENTRY="$REPO_ROOT/packages/scripts/dist/commands/run-cli.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "bb: missing built CLI at $CLI_ENTRY and pnpm is not available to build it." >&2
+    exit 1
+  fi
+  pnpm -C "$REPO_ROOT" run --silent cli:prepare 1>&2 || exit $?
+fi
+
+exec node "$CLI_ENTRY" "$@"
