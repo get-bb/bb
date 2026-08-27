@@ -165,7 +165,7 @@ const ACTIVE_MESSAGE_DIRECTIVES: MarkdownMessageDirectives = {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   setPreferredTheme("system");
 });
 
