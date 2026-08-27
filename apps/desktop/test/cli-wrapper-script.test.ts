@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { mkdir, rmdir, writeFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   BB_CLI_BUNDLE_RELATIVE_CLI_PATH,
   BB_CLI_WRAPPER_MARKER,
@@ -62,7 +67,8 @@ describe("createHomeCliWrapperScript", () => {
     expect(script).toContain("'/Applications/bb.app/Contents/Resources/bin/bb'");
     // A dangling symlink would say "command not found" and send the user
     // looking in the wrong place; the wrapper names the real cause.
-    expect(script).toContain("no longer installed at /Applications/bb.app");
+    // The diagnostic references the variable to prevent shell injection.
+    expect(script).toContain("no longer installed at $APP_BUNDLE");
     expect(script).toContain("exit 127");
   });
 
@@ -79,6 +85,9 @@ describe("createHomeCliWrapperScript", () => {
     expect(script).toContain("ELECTRON_RUN_AS_NODE=1");
     expect(script).toContain("'/home/user/bb.AppImage'");
     expect(script).toContain("'/home/user/.bb/bin/bb-bootstrap.mjs'");
+    // Diagnostics reference variables to prevent shell injection
+    expect(script).toContain("no longer at $APPIMG");
+    expect(script).toContain("missing bootstrap at $BOOTSTRAP");
     expect(script).toContain("exit 127");
   });
 
@@ -114,6 +123,44 @@ describe("createHomeCliWrapperScript", () => {
     expect(script).toContain("WRAPPER='/Applications/bb$2.app/Contents/Resources/bin/bb'");
     // If it were double-quoted, the $2 would be treated as a variable at runtime
     expect(script).not.toContain('WRAPPER="/Applications/bb$2');
+  });
+
+  it("does not execute command substitutions in paths", async () => {
+    // Even though paths with backticks or $() are rare, the wrapper must handle
+    // them safely. This test executes the generated shell script to verify that
+    // a command substitution payload in appBundlePath does NOT execute.
+    const tempDir = await mkdtemp(join(tmpdir(), "bb-wrapper-"));
+    try {
+      const markerFile = join(tempDir, "pwned-marker");
+      const script = createHomeCliWrapperScript({
+        commandName: "bb",
+        target: {
+          kind: "macos-bundle",
+          appBundlePath: `/Applications/bb\`touch ${markerFile}\`.app`,
+          wrapperPath: "/Applications/bb.app/Contents/Resources/bin/bb",
+        },
+      });
+
+      const scriptFile = join(tempDir, "wrapper.sh");
+      await writeFile(scriptFile, script);
+
+      // Run the wrapper through /bin/sh. It will fail because the wrapper doesn't
+      // exist, but the payload should not execute.
+      try {
+        execSync(`/bin/sh ${scriptFile}`, { stdio: "pipe" });
+      } catch {
+        // Expected: wrapper execution will fail
+      }
+
+      // If the payload had executed, markerFile would exist. It must not.
+      const markerExists = await mkdir(markerFile, { recursive: true }).then(
+        () => false,
+        () => true,
+      );
+      expect(markerExists).toBe(false);
+    } finally {
+      await rmdir(tempDir, { recursive: true });
+    }
   });
 });
 
