@@ -1,18 +1,35 @@
 import type { Thread } from "@bb/domain";
 import type { DispatchHoldResponse } from "@bb/server-contract";
+import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { durationToCompactString } from "@bb/thread-view";
 import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
   PROMPT_STACK_INLAY_INSET_CLASS,
   PROMPT_STACK_INLAY_SEGMENT_CLASS,
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
+  PROMPT_STACK_ROW_CLASS,
+  PROMPT_STACK_ROW_OVERFLOW_TRIGGER_CLASS,
   PromptBannerActionButton,
   PromptBannerActionSlot,
+  PromptStackRowActionButton,
+  PromptStackRowActions,
+  PromptStackRowPendingLabel,
 } from "@/components/promptbox/banner/prompt-banner-actions";
-import type { HeldDispatchAction } from "@/components/promptbox/banner/HeldDispatchCard";
+import {
+  HeldDispatchSummary,
+  type HeldDispatchAction,
+} from "@/components/promptbox/banner/HeldDispatchCard";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import {
@@ -75,74 +92,94 @@ export function ThreadHeldBanner({
       )}
     >
       <div
-        className={cn(
-          "flex items-center gap-0.5 text-xs",
-          PROMPT_STACK_INLAY_INSET_CLASS,
-        )}
+        className={PROMPT_STACK_ROW_CLASS}
+        style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
       >
-        <div
-          className={cn(
-            "flex min-w-0 items-center gap-1.5",
-            PROMPT_STACK_INLAY_SEGMENT_CLASS,
-          )}
-          role="status"
-        >
-          <Icon
-            name="Clock"
-            className={cn(
-              "size-3.5 shrink-0",
-              stale ? "text-warning-text" : "text-muted-foreground",
-            )}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 truncate text-foreground">
-            {hold.reason}
-          </span>
-          {scheduleLabel ? (
-            <span className="shrink-0 text-muted-foreground">
-              · {scheduleLabel}
-            </span>
-          ) : null}
-          {showCountdown ? (
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              in {durationToCompactString(remainingMs)}
-            </span>
-          ) : null}
-          {stale ? (
-            <span className="shrink-0 text-warning-text">
-              No update for {durationToCompactString(silentForMs)}
-            </span>
-          ) : null}
-          {additionalHoldCount > 0 ? (
-            <span className="shrink-0 text-muted-foreground">
-              +{additionalHoldCount} more held
-            </span>
-          ) : null}
-        </div>
-        <PromptBannerActionSlot>
+        <div className="flex min-h-7 items-center gap-1.5">
+          <div className="min-w-0 flex-1 py-1" role="status">
+            <HeldDispatchSummary reason={hold.reason} stale={stale}>
+              {scheduleLabel ? (
+                <span className="shrink-0 text-muted-foreground">
+                  · {scheduleLabel}
+                </span>
+              ) : null}
+              {showCountdown ? (
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  in {durationToCompactString(remainingMs)}
+                </span>
+              ) : null}
+              {stale ? (
+                <span className="shrink-0 text-warning-text">
+                  No update for {durationToCompactString(silentForMs)}
+                </span>
+              ) : null}
+              {additionalHoldCount > 0 ? (
+                <span className="shrink-0 text-muted-foreground">
+                  +{additionalHoldCount} more held
+                </span>
+              ) : null}
+            </HeldDispatchSummary>
+          </div>
           {pendingAction === null ? (
             <>
-              {hold.userReleasable ? (
-                <PromptBannerActionButton
+              <PromptStackRowActions label="Held thread actions">
+                {hold.userReleasable ? (
+                  <PromptStackRowActionButton
+                    icon="Play"
+                    label="Release now"
+                    disabled={actionDisabled}
+                    onClick={() => onRelease(hold)}
+                  />
+                ) : null}
+                <PromptStackRowActionButton
+                  icon="X"
+                  label="Cancel held dispatch"
+                  destructive
                   disabled={actionDisabled}
-                  onClick={() => onRelease(hold)}
-                >
-                  Release now
-                </PromptBannerActionButton>
-              ) : null}
-              <PromptBannerActionButton
-                disabled={actionDisabled}
-                onClick={() => onCancel(hold)}
-              >
-                Cancel
-              </PromptBannerActionButton>
+                  onClick={() => onCancel(hold)}
+                />
+              </PromptStackRowActions>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className={PROMPT_STACK_ROW_OVERFLOW_TRIGGER_CLASS}
+                    disabled={actionDisabled}
+                    aria-label="Held thread actions"
+                  >
+                    <Icon
+                      name="MoreHorizontal"
+                      className="size-4"
+                      aria-hidden
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[7rem]">
+                  {hold.userReleasable ? (
+                    <DropdownMenuItem onSelect={() => onRelease(hold)}>
+                      <Icon name="Play" aria-hidden />
+                      Release now
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => onCancel(hold)}
+                  >
+                    <Icon name="X" aria-hidden />
+                    Cancel
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           ) : (
-            <span className="whitespace-nowrap px-1">
+            <PromptStackRowPendingLabel>
               {HELD_BANNER_ACTION_LABELS[pendingAction]}
-            </span>
+            </PromptStackRowPendingLabel>
           )}
-        </PromptBannerActionSlot>
+        </div>
       </div>
     </PromptStackCard>
   );

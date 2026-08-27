@@ -1132,6 +1132,49 @@ function TimelineSystemDetailBlock({
   );
 }
 
+/**
+ * The body of a held-dispatch row, in the order a reader needs it: why the turn
+ * is waiting, which message is waiting, then whatever the hold's owner has
+ * reported.
+ *
+ * The message is quoted rather than folded into the monospace report block
+ * because it is the user's own prose — it gets the same left-rule treatment
+ * that quoted message text gets everywhere else in the app. A hold with no
+ * message of its own (a retry re-submitting a turn already rendered above)
+ * simply omits it, as do rows recorded before holds carried a preview.
+ */
+function TimelineDispatchHoldBody({
+  row,
+}: {
+  row: Extract<
+    ThreadTimelineViewRow,
+    { kind: "system"; systemKind: "operation"; operationKind: "dispatch-hold" }
+  >;
+}) {
+  const reason = row.reason.trim();
+  if (reason.length === 0 && row.inputPreview === null && !row.detail) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {reason.length > 0 ? (
+        <p className="text-xs text-subtle-foreground">{reason}</p>
+      ) : null}
+      {row.inputPreview === null ? null : (
+        <blockquote className="break-words border-l-2 border-surface-selected-border pl-3 text-sm leading-5 text-muted-foreground">
+          {row.inputPreview}
+        </blockquote>
+      )}
+      {row.detail ? (
+        <TimelineSystemDetailBlock
+          detail={row.detail}
+          streaming={row.status === "pending"}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
@@ -1238,6 +1281,12 @@ function TimelineExpandableBody({
         />
       );
     case "system":
+      if (
+        row.systemKind === "operation" &&
+        row.operationKind === "dispatch-hold"
+      ) {
+        return <TimelineDispatchHoldBody row={row} />;
+      }
       return row.detail ? (
         <TimelineSystemDetailBlock
           detail={row.detail}

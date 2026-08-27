@@ -4,6 +4,12 @@ import {
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
+import {
+  DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH,
+  systemDispatchHoldEventDataSchema,
+  type PromptInput,
+  type SystemDispatchHoldEventData,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -14,6 +20,7 @@ import {
 import {
   createThreadDispatchHold,
   parseDispatchHoldPayload,
+  updateLiveDispatchHold,
 } from "../../src/services/threads/dispatch-holds.js";
 import {
   runDueDispatchHoldSweep,
@@ -499,6 +506,161 @@ describe("dispatch hold sweeps", () => {
           liveOnly: true,
         }),
       ).toHaveLength(1);
+    });
+  });
+});
+
+/**
+ * The held-message preview on a hold's timeline row. The row's whole job is to
+ * say which message is waiting, so what lands in the event — and what
+ * deliberately does not — is the contract worth pinning.
+ */
+describe("dispatch hold input preview", () => {
+  function seedHoldableThread(harness: TestAppHarness, hostId: string) {
+    const { environment, project } = seedHeldCreateFixture(harness, hostId);
+    const thread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      projectId: project.id,
+      status: "idle",
+    });
+    return { environment, thread };
+  }
+
+  function holdWithInput(
+    harness: TestAppHarness,
+    args: { environmentId: string; input: PromptInput[]; threadId: string },
+  ) {
+    return createThreadDispatchHold(harness.deps, {
+      environmentId: args.environmentId,
+      holder: "plugin:scheduled-send",
+      payload: {
+        kind: "inline",
+        input: args.input,
+        execution: {
+          model: "gpt-5",
+          permissionMode: "auto",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        pluginInputs: {},
+      },
+      reason: "Scheduled",
+      resumeAt: null,
+      threadId: args.threadId,
+      userReleasable: true,
+    });
+  }
+
+  function holdEventData(harness: TestAppHarness, threadId: string) {
+    return listEvents(harness.db, { threadId })
+      .filter((event) => event.type === "system/dispatch-hold")
+      .map(
+        (event) =>
+          systemDispatchHoldEventDataSchema.parse(
+            JSON.parse(event.data),
+          ) satisfies SystemDispatchHoldEventData,
+      );
+  }
+
+  it("carries the visible message text and drops agent-only context", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedHoldableThread(harness, "host-preview");
+      holdWithInput(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        input: [
+          {
+            type: "text",
+            text: "Ship the release notes",
+            mentions: [],
+          },
+          {
+            type: "text",
+            text: "<context>secret repo dump</context>",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ],
+      });
+
+      expect(holdEventData(harness, thread.id).at(-1)?.inputPreview).toBe(
+        "Ship the release notes",
+      );
+    });
+  });
+
+  it("truncates to exactly the schema's cap, and leaves a message at the cap whole", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedHoldableThread(harness, "host-cap");
+      const atCap = "a".repeat(DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH);
+      holdWithInput(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        input: textInput(atCap),
+      });
+      expect(holdEventData(harness, thread.id).at(-1)?.inputPreview).toBe(atCap);
+    });
+
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedHoldableThread(harness, "host-over");
+      holdWithInput(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        input: textInput("b".repeat(DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH + 1)),
+      });
+
+      const preview = holdEventData(harness, thread.id).at(-1)?.inputPreview;
+      // The schema caps the field, so an off-by-one here would make the event
+      // unparseable rather than merely ugly.
+      expect(preview).toHaveLength(DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH);
+      expect(preview?.endsWith("…")).toBe(true);
+    });
+  });
+
+  it("omits the field entirely when the hold has no message of its own", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedHoldableThread(harness, "host-retry");
+      createThreadDispatchHold(harness.deps, {
+        environmentId: environment.id,
+        holder: "plugin:provider-retry",
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "creq_abcdefghjk",
+          attempt: 2,
+        },
+        reason: "Rate limited",
+        resumeAt: Date.now() + 60_000,
+        threadId: thread.id,
+        userReleasable: false,
+      });
+
+      const data = holdEventData(harness, thread.id).at(-1);
+      // Absent, not empty: a reader that sees the field can trust it names a
+      // message the user actually wrote.
+      expect(data).not.toHaveProperty("inputPreview");
+    });
+  });
+
+  it("re-emits the row when the user edits the held message", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedHoldableThread(harness, "host-edit");
+      const hold = holdWithInput(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        input: textInput("First draft"),
+      });
+
+      updateLiveDispatchHold(harness.deps, {
+        holdId: hold.id,
+        input: textInput("Second draft"),
+      });
+
+      // Without a fresh event the timeline row would keep quoting "First
+      // draft" forever — the row is built from events alone.
+      expect(holdEventData(harness, thread.id).at(-1)?.inputPreview).toBe(
+        "Second draft",
+      );
     });
   });
 });

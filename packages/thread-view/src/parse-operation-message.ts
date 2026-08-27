@@ -536,7 +536,7 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "system/dispatch-hold") {
-    const { holdId, holder, status, reason } = decoded;
+    const { holdId, holder, inputPreview, status, reason } = decoded;
     const transcript = readProvisioningTranscript(decoded.entries);
     return op(decoded, meta, "dispatch-hold", {
       opType: "dispatch-hold",
@@ -547,6 +547,7 @@ export function parseOperationMessage(
         holder,
         holdStatus: status,
         reason,
+        ...(inputPreview ? { inputPreview } : {}),
         ...(transcript ? { transcript } : {}),
       },
     });

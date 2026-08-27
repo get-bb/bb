@@ -284,6 +284,9 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
   pluginId?: string;
   iconName?: string | null;
   level?: TimelinePluginNoteSystemRow["level"];
+  /** Dispatch-hold rows only. */
+  reason?: string;
+  inputPreview?: string | null;
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
@@ -303,6 +306,8 @@ interface NonOperationSystemRowArgs extends Omit<
   | "pluginId"
   | "iconName"
   | "level"
+  | "reason"
+  | "inputPreview"
 > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
@@ -1166,6 +1171,8 @@ export function systemRow({
   pluginId,
   iconName,
   level,
+  reason,
+  inputPreview,
   seq,
   sourceSeqEnd,
   sourceSeqStart,
@@ -1227,6 +1234,16 @@ export function systemRow({
         nextParentThreadId: null,
         nextParentThreadTitle: null,
       },
+    };
+  }
+  if (resolvedOperationKind === "dispatch-hold") {
+    return {
+      ...base,
+      systemKind,
+      operationKind: resolvedOperationKind,
+      completedAt: resolvedCompletedAt,
+      reason: reason ?? "Scheduled",
+      inputPreview: inputPreview ?? null,
     };
   }
   if (resolvedOperationKind === "plugin-note") {

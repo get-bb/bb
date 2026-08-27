@@ -205,7 +205,7 @@ type TimelineWorkflowMessage = Extract<
  * do not carry their own extra fields in the read model. */
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "parent-change" | "plugin-note"
+  "dispatch-hold" | "parent-change" | "plugin-note"
 >;
 
 function operationKindForMessage(
@@ -299,6 +299,31 @@ function buildPluginNoteSystemRow(args: {
     pluginId: args.pluginNote.pluginId,
     iconName: args.pluginNote.iconName,
     level: args.pluginNote.level,
+  };
+}
+
+/**
+ * A hold's own row shape. The three things it has to say — what it waits for,
+ * which message is waiting, and what its owner has reported — are different
+ * kinds of text, so they stay separate fields for the client to render rather
+ * than being flattened into one detail string.
+ */
+function buildDispatchHoldSystemRow(args: {
+  base: TimelineRowBase;
+  dispatchHold: NonNullable<TimelineOperationMessage["dispatchHold"]>;
+  message: TimelineOperationMessage;
+}): TimelineSystemRow {
+  return {
+    ...args.base,
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "dispatch-hold",
+    title: args.message.title,
+    detail: buildDispatchHoldDetail(args.message),
+    status: args.message.status ?? null,
+    completedAt: args.message.completedAt,
+    reason: args.dispatchHold.reason,
+    inputPreview: args.dispatchHold.inputPreview ?? null,
   };
 }
 
@@ -519,28 +544,26 @@ function provisioningTerminalDetailLine(
 }
 
 /**
- * A hold row reads as its reason plus whatever its owner reported. The
- * transcript uses the provisioning entry shape, so it flattens the same way —
- * this is the only place a hold's steps and log tails are rendered.
+ * A hold row's `detail` is its owner's report and nothing else. The reason and
+ * the held message are their own row fields, because one is a label and the
+ * other is the user's prose — neither belongs in the monospace output block the
+ * transcript renders as. The transcript uses the provisioning entry shape, so
+ * it flattens the same way; this is the only place a hold's steps and log tails
+ * are rendered.
  */
 function buildDispatchHoldDetail(
   message: TimelineOperationMessage,
 ): string | null {
-  const hold = message.dispatchHold;
-  const reason = hold?.reason.trim() ?? "";
-  const lines = reason.length > 0 ? [reason] : [];
-  lines.push(
-    ...(hold?.transcript?.flatMap(formatProvisioningTranscriptEntryLines) ?? []),
-  );
+  const lines =
+    message.dispatchHold?.transcript?.flatMap(
+      formatProvisioningTranscriptEntryLines,
+    ) ?? [];
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function buildTimelineOperationDetail(
   message: TimelineOperationMessage,
 ): string | null {
-  if (message.opType === "dispatch-hold") {
-    return buildDispatchHoldDetail(message);
-  }
   if (message.opType !== "thread-provisioning") {
     return message.detail ?? null;
   }
@@ -849,6 +872,27 @@ function convertMessage(
                 base,
                 message,
                 pluginNote: message.pluginNote,
+              }),
+            ];
+      }
+      if (operationKind === "dispatch-hold") {
+        // The metadata is written with the row, so its absence means a
+        // malformed projection rather than a hold without a reason. A generic
+        // row still shows the title and the report, which beats dropping the
+        // one line explaining why the thread has not run.
+        return message.dispatchHold === undefined
+          ? [
+              buildGenericOperationSystemRow({
+                base,
+                message,
+                operationKind: "generic",
+              }),
+            ]
+          : [
+              buildDispatchHoldSystemRow({
+                base,
+                dispatchHold: message.dispatchHold,
+                message,
               }),
             ];
       }

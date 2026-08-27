@@ -186,7 +186,6 @@ const timelineGenericSystemOperationKindSchema = z.enum([
   "compaction",
   "context-clear",
   "thread-provisioning",
-  "dispatch-hold",
   "thread-interrupted",
   "provider-unhandled",
   "warning",
@@ -253,6 +252,34 @@ export type TimelinePluginNoteSystemRow = z.infer<
   typeof timelinePluginNoteSystemRowSchema
 >;
 
+/**
+ * A held dispatch. It earns its own row shape because it is the one system row
+ * that speaks for a message the user wrote: the row has to show *which* message
+ * is waiting, and message text is quoted, not dumped into the monospace block
+ * that carries the holder's progress report. So the three parts are separate
+ * fields — `reason` (what it waits for), `inputPreview` (the message), and the
+ * inherited `detail` (the transcript alone) — and the client renders them in
+ * that order instead of flattening them into one string.
+ */
+export const timelineDispatchHoldSystemRowSchema =
+  timelineSystemRowBaseSchema.extend({
+    systemKind: z.literal("operation"),
+    operationKind: z.literal("dispatch-hold"),
+    /** What the dispatch is waiting for, e.g. "Scheduled". */
+    reason: z.string(),
+    /**
+     * Truncated plain text of the held message. Null when the hold has no
+     * message of its own — a retry hold references a turn already rendered
+     * further up the timeline — and for rows recorded before holds carried a
+     * preview at all.
+     */
+    inputPreview: z.string().nullable(),
+    completedAt: z.number().nullable(),
+  });
+export type TimelineDispatchHoldSystemRow = z.infer<
+  typeof timelineDispatchHoldSystemRowSchema
+>;
+
 export const timelineParentChangeSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
@@ -269,6 +296,7 @@ export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   "operationKind",
   [
     timelineGenericOperationSystemRowSchema,
+    timelineDispatchHoldSystemRowSchema,
     timelineParentChangeSystemRowSchema,
     timelinePluginNoteSystemRowSchema,
   ],

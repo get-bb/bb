@@ -55,6 +55,7 @@ import {
   PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
+import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
@@ -153,8 +154,10 @@ const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
 const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
+// Shared with the held-dispatch rows so both halves of the pending region fade
+// their text under the same action takeover.
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
-  "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
+  PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
 function getWorkspaceHeight({

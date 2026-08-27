@@ -58,6 +58,20 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
     case "conversation":
       return false;
     case "system":
+      if (
+        row.systemKind === "operation" &&
+        row.operationKind === "dispatch-hold"
+      ) {
+        // A hold keeps its reason and the held message in dedicated fields
+        // rather than in `detail`, which carries the owner's report alone. The
+        // ordinary hold has never reported anything, so testing `detail` would
+        // make the row that most needs explaining the one that cannot open.
+        return (
+          row.reason.trim().length > 0 ||
+          row.inputPreview !== null ||
+          (row.detail !== null && row.detail.trim().length > 0)
+        );
+      }
       return row.detail !== null && row.detail.trim().length > 0;
     case "bundle-summary":
     case "step-summary":

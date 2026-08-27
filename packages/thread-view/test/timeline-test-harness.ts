@@ -263,6 +263,8 @@ interface DispatchHoldArgs extends EventFactoryRowOptions {
   entries?: ProvisioningTranscriptEntry[];
   holdId?: string;
   holder?: DispatchHoldHolder;
+  /** Omitted entirely when absent, matching a hold with no message of its own. */
+  inputPreview?: string;
   reason?: string;
   status: SystemDispatchHoldStatus;
 }
@@ -970,6 +972,9 @@ export function createTimelineEventFactory(
           holder: args.holder ?? "user",
           status: args.status,
           reason: args.reason ?? "Scheduled",
+          ...(args.inputPreview === undefined
+            ? {}
+            : { inputPreview: args.inputPreview }),
           entries: args.entries ?? [],
         },
       };

@@ -380,6 +380,12 @@ export interface EventProjectionDispatchHoldMetadata {
   holder: DispatchHoldHolder;
   holdStatus: SystemDispatchHoldStatus;
   reason: string;
+  /**
+   * Truncated plain text of the held message. Absent — not empty — when the
+   * hold has no message of its own (a retry hold references a turn already on
+   * the timeline) and on rows recorded before holds carried a preview.
+   */
+  inputPreview?: string;
   transcript?: EventProjectionProvisioningTranscriptEntry[];
 }
 

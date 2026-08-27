@@ -73,11 +73,19 @@ export function mergeDispatchHoldMetadata(
     existing.transcript,
     incoming.transcript,
   );
+  // The preview follows the reason: while the hold is live it tracks the
+  // message (which the user can still edit), and once it settles the row keeps
+  // what it dispatched. Falling back to `existing` also means a settling event
+  // that omits the preview cannot blank a row that already had one.
+  const inputPreview = settled
+    ? (existing.inputPreview ?? incoming.inputPreview)
+    : (incoming.inputPreview ?? existing.inputPreview);
   return {
     holdId: incoming.holdId,
     holder: incoming.holder,
     holdStatus: settled ? existing.holdStatus : incoming.holdStatus,
     reason: settled ? existing.reason : incoming.reason,
+    ...(inputPreview ? { inputPreview } : {}),
     ...(transcript ? { transcript } : {}),
   };
 }

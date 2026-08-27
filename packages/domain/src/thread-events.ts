@@ -290,6 +290,14 @@ export type SystemDispatchHoldStatus = z.infer<
 >;
 
 /**
+ * Longest held-message preview carried on a `system/dispatch-hold` row. The row
+ * says why a turn is waiting; the preview is only there to answer "which
+ * message?", so it is sized for a couple of wrapped lines. The full message is
+ * always one release away, and until then it is editable on the held card.
+ */
+export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
+
+/**
  * The one timeline row a hold owns, rewritten in place as the hold progresses.
  * It sits where the held turn will land and renders exactly like
  * `system/thread-provisioning` — hence the shared transcript entry shape, which
@@ -300,6 +308,22 @@ export const systemDispatchHoldEventDataSchema = z.object({
   holder: dispatchHoldHolderSchema,
   status: systemDispatchHoldStatusSchema,
   reason: z.string(),
+  /**
+   * Truncated plain text of the held message, when the hold carries one of its
+   * own. Optional because omission is real: a retry hold references a turn that
+   * is already persisted and already rendered further up the timeline, so it
+   * has no message to preview, and an inline hold whose visible input is empty
+   * (attachments only) has nothing to say either. Absent and empty must not be
+   * confused, hence `min(1)` — a reader that sees the field can trust it.
+   *
+   * Rows written before this field existed simply lack it and render as they
+   * always did.
+   */
+  inputPreview: z
+    .string()
+    .min(1)
+    .max(DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH)
+    .optional(),
   entries: z.array(provisioningTranscriptEntrySchema),
 });
 export type SystemDispatchHoldEventData = z.infer<

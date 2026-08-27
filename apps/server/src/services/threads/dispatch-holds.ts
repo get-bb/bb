@@ -11,6 +11,7 @@ import {
   type DispatchHoldRow,
 } from "@bb/db";
 import {
+  DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH,
   dispatchHoldPayloadSchema,
   promptInputSchema,
   type DispatchHoldHolder,
@@ -216,6 +217,45 @@ function dispatchHoldStatusForReleaseKind(
 }
 
 /**
+ * Plain text of the message a hold is sitting on, for its timeline row. The row
+ * otherwise says only why the thread has not run, which leaves the reader
+ * guessing which of their messages is waiting.
+ *
+ * Undefined — never an empty string — when there is nothing of the user's to
+ * show: a retry hold re-submits a turn that is already rendered further up the
+ * timeline, and an inline hold can be attachments or agent-only context with no
+ * visible prose. The field is omitted in those cases so a reader that sees it
+ * knows it means something.
+ */
+function dispatchHoldInputPreview(
+  payload: DispatchHoldPayload,
+): string | undefined {
+  if (payload.kind !== "inline") {
+    return undefined;
+  }
+  const text = payload.input
+    .filter(
+      (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
+        chunk.type === "text" && chunk.visibility !== "agent-only",
+    )
+    .map((chunk) => chunk.text)
+    .join("\n\n")
+    // A preview is one run of prose on a row that is already a summary, so
+    // paragraph breaks and indentation collapse rather than fighting the
+    // row's layout.
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (text.length === 0) {
+    return undefined;
+  }
+  return text.length <= DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH
+    ? text
+    : // The ellipsis is one character and replaces one, so a truncated preview
+      // lands exactly on the cap the schema enforces.
+      `${text.slice(0, DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH - 1)}…`;
+}
+
+/**
  * The one timeline row a hold owns. Events are append-only, so a status change
  * appends another row carrying the same `holdId`; the timeline projection
  * collapses them by that id exactly as it does `system/thread-provisioning`.
@@ -230,6 +270,9 @@ function appendDispatchHoldEvent(
     status: SystemDispatchHoldStatus;
   },
 ): void {
+  const inputPreview = dispatchHoldInputPreview(
+    parseDispatchHoldPayload(args.row),
+  );
   appendThreadEvent(deps, {
     threadId: args.row.threadId,
     environmentId: args.environmentId,
@@ -240,6 +283,7 @@ function appendDispatchHoldEvent(
       holder: args.row.holder,
       status: args.status,
       reason: args.row.reason,
+      ...(inputPreview === undefined ? {} : { inputPreview }),
       entries: args.entries,
     },
   });
@@ -539,6 +583,18 @@ export function updateLiveDispatchHold(
     });
   }
   const updated = requireDispatchHold(deps, args.holdId);
+  if (args.input !== undefined) {
+    // The hold's timeline row quotes this message, and that row is built from
+    // events alone. Without a fresh event it would keep showing the text the
+    // user just replaced. Rescheduling needs no event: `resumeAt` is not on the
+    // row.
+    appendDispatchHoldEvent(deps, {
+      entries: [],
+      environmentId: getThread(deps.db, updated.threadId)?.environmentId ?? null,
+      row: updated,
+      status: "active",
+    });
+  }
   deps.hub.notifyThread(updated.threadId, ["queue-changed"]);
   return updated;
 }
