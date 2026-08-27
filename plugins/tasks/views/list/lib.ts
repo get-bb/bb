@@ -6,6 +6,7 @@ import {
   type TaskStatus,
 } from "../../shared/contract.js";
 import type { TaskSort } from "../../shared/pagination.js";
+import { sortTasks } from "../../shared/sort.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -30,6 +31,42 @@ export const SORT_LABELS: Record<TaskSort, string> = {
   due: "Due date",
 };
 
+export interface TaskHierarchyGroup {
+  root: Task;
+  children: Task[];
+}
+
+/**
+ * Builds the one-level task hierarchy used by the list. Roots and each child
+ * group use the selected sort independently, which keeps every child directly
+ * below its parent. A task becomes a root when its parent is absent from the
+ * filtered result. Invalid deeper data is also promoted instead of hidden.
+ */
+export function taskHierarchyGroups(
+  tasks: readonly Task[],
+  sort: TaskSort,
+): TaskHierarchyGroup[] {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const roots: Task[] = [];
+  const childrenByParent = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    const parent =
+      task.parentTaskId === null ? undefined : byId.get(task.parentTaskId);
+    if (parent === undefined || parent.parentTaskId !== null) {
+      roots.push(task);
+      continue;
+    }
+    const children = childrenByParent.get(parent.id);
+    if (children) children.push(task);
+    else childrenByParent.set(parent.id, [task]);
+  }
+
+  return sortTasks(roots, sort).map((root) => ({
+    root,
+    children: sortTasks(childrenByParent.get(root.id) ?? [], sort),
+  }));
+}
 interface StatusGroup {
   status: TaskStatus;
   tasks: Task[];

@@ -109,9 +109,19 @@ function LabelChips({
   );
 }
 
+export type TaskRowHierarchy =
+  | {
+      level: 0;
+      childCount: number;
+      collapsed: boolean;
+      onToggle: () => void;
+    }
+  | { level: 1 };
+
 interface TaskRowProps {
   /** Task with any pending optimistic edit already applied. */
   task: Task;
+  hierarchy: TaskRowHierarchy;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -134,6 +144,7 @@ interface TaskRowProps {
  */
 export function TaskRow({
   task,
+  hierarchy,
   meta,
   project,
   showProject,
@@ -149,6 +160,7 @@ export function TaskRow({
     <TaskContextMenu task={task} onEdit={onEdit} projectLabels={projectLabels}>
       <div
         data-task-key={task.key}
+        data-task-level={hierarchy.level}
         aria-busy={pending || undefined}
         className={cn(
           // Narrow containers get a two-line hierarchy: status + full-width
@@ -156,8 +168,9 @@ export function TaskRow({
           // From @md up the same children lay out as the classic single flex
           // row (the grid placement classes are inert in flex), so desktop
           // keeps its exact 34px rows.
-          "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
+          "relative grid w-full grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
           "@md:flex @md:h-[34px] @md:py-0",
+          hierarchy.level === 1 && "pl-7",
           pending && "opacity-70",
         )}
       >
@@ -178,14 +191,44 @@ export function TaskRow({
           }}
           className="absolute inset-0 rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
         />
+        {hierarchy.level === 1 ? (
+          <span
+            aria-hidden
+            className="col-start-1 row-span-2 row-start-1 flex size-4 shrink-0 items-center justify-center"
+          >
+            <span className="h-2 w-2 -translate-y-0.5 rounded-bl-sm border-b border-l border-border" />
+          </span>
+        ) : hierarchy.childCount > 0 ? (
+          <button
+            type="button"
+            aria-expanded={!hierarchy.collapsed}
+            aria-label={`${hierarchy.collapsed ? "Expand" : "Collapse"} ${hierarchy.childCount} ${hierarchy.childCount === 1 ? "subtask" : "subtasks"} for ${task.key}`}
+            onClick={hierarchy.onToggle}
+            className="relative z-10 col-start-1 row-span-2 row-start-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Icon
+              name="ChevronRight"
+              aria-hidden
+              className={cn(
+                "size-3 transition-transform",
+                !hierarchy.collapsed && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <span
+            aria-hidden
+            className="col-start-1 row-span-2 row-start-1 size-4 shrink-0"
+          />
+        )}
         <PriorityEditor
           task={task}
           onEdit={onEdit}
           open={openMenu === "priority"}
           onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
-          className="col-start-1 row-start-2"
+          className="col-start-2 row-start-2"
         />
-        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
+        <span className="col-start-3 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
           {task.key}
         </span>
         <StatusEditor
@@ -193,12 +236,12 @@ export function TaskRow({
           onEdit={onEdit}
           open={openMenu === "status"}
           onOpenChange={(next) => setOpenMenu(next ? "status" : null)}
-          className="col-start-1 row-start-1"
+          className="col-start-2 row-start-1"
         />
-        <span className="col-start-2 col-span-2 row-start-1 min-w-0 truncate text-sm @md:flex-1">
+        <span className="col-start-3 col-span-2 row-start-1 min-w-0 truncate text-sm @md:flex-1">
           {task.title}
         </span>
-        <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
+        <span className="col-start-4 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
           <LabelChips task={task} labelsById={labelsById} />
           {task.dueDate !== null ? (
