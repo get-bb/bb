@@ -15,6 +15,7 @@ import {
   type AppDefaultKeybinding,
   type AppKeybinding,
 } from "@bb/domain";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {
   removePluginSlotRegistrations,
@@ -156,7 +157,7 @@ function Handler({ command }: { command: AppCommandId }) {
   return null;
 }
 
-function renderPalette() {
+function renderPalette(isCompactViewport = false) {
   const result = render(
     <MemoryRouter>
       <AppCommandProvider>
@@ -171,6 +172,13 @@ function renderPalette() {
         <LocationProbe />
       </AppCommandProvider>
     </MemoryRouter>,
+    {
+      wrapper: ({ children }) => (
+        <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+          {children}
+        </CompactViewportOverrideProvider>
+      ),
+    },
   );
   screen.getByTestId("origin").focus();
   return result;
@@ -266,6 +274,18 @@ describe("CommandPalette", () => {
 
     await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
     expect(screen.queryByRole("combobox")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId("origin"));
+  });
+
+  it("runs a compact selection once after restoring focus", async () => {
+    renderPalette(true);
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: ">toggle panel" } });
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 

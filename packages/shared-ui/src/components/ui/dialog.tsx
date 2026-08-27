@@ -231,6 +231,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 type DialogContentProps = React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
 > & {
+  /** Called after either responsive projection restores focus on close. */
+  onAfterCloseAutoFocus?: () => void;
   /**
    * Drop the corner close button, for content that occupies that corner.
    * Escape and the overlay still close the dialog.
@@ -239,7 +241,17 @@ type DialogContentProps = React.ComponentPropsWithoutRef<
 };
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, hideCloseButton = false, ...props }, ref) => {
+  (
+    {
+      className,
+      children,
+      hideCloseButton = false,
+      onAfterCloseAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
+    ref,
+  ) => {
     const { isCompactViewport, open, onOpenChange, titleId, descriptionId } =
       useResponsiveDialog();
     useBrowserDimmingModal(open);
@@ -253,6 +265,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         <ResponsiveDrawerShell
           open={open}
           onOpenChange={onOpenChange}
+          onAfterCloseAutoFocus={onAfterCloseAutoFocus}
           labelledBy={titleId}
           describedBy={descriptionId}
         >
@@ -279,6 +292,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         <DialogPrimitive.Content
           ref={ref}
           {...scopeProps}
+          onCloseAutoFocus={(event) => {
+            onCloseAutoFocus?.(event);
+            queueMicrotask(() => onAfterCloseAutoFocus?.());
+          }}
           className={cn(
             "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
             className,

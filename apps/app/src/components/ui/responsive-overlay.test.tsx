@@ -390,6 +390,7 @@ describe("PersistentResponsiveDrawerShell", () => {
 
   it("traps focus on coarse pointers and restores the trigger after close", () => {
     mockPointerCoarse(true);
+    const onAfterCloseAutoFocus = vi.fn();
 
     function FocusDrawer() {
       const [open, setOpen] = useState(false);
@@ -401,6 +402,9 @@ describe("PersistentResponsiveDrawerShell", () => {
           <PersistentResponsiveDrawerShell
             open={open}
             onOpenChange={setOpen}
+            onAfterCloseAutoFocus={() =>
+              onAfterCloseAutoFocus(document.activeElement)
+            }
             srLabel="Details"
           >
             <button type="button">First action</button>
@@ -428,6 +432,8 @@ describe("PersistentResponsiveDrawerShell", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(document.activeElement).toBe(trigger);
+    expect(onAfterCloseAutoFocus).toHaveBeenCalledOnce();
+    expect(onAfterCloseAutoFocus).toHaveBeenCalledWith(trigger);
   });
 
   it("keeps panel focus and uses the latest close callback after a parent rerender", () => {
