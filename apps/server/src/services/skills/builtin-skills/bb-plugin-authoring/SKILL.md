@@ -686,7 +686,7 @@ Read and edit existing threads with the same area — you do not need a
 sidebar panel or a spawned thread to reach them:
 
 ```ts
-const { threads } = await bb.sdk.threads.list({ projectId, limit: 50 });
+const threads = await bb.sdk.threads.list({ projectId, limit: 50 });
 const thread = await bb.sdk.threads.get({ threadId });
 const timeline = await bb.sdk.threads.timeline({ threadId });
 await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
