@@ -961,7 +961,7 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 
-  it("ignores sidebar search scroll state for a different thread", () => {
+  it("ignores thread-search scroll state for a different thread", () => {
     // Row wrappers schedule frames of their own (containment arming), so run
     // every frame synchronously and assert on the reveal itself.
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -1007,7 +1007,7 @@ describe("ThreadTimelineRows actions", () => {
     ).toBe(false);
   });
 
-  it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {
+  it("scrolls thread-search matches to the nested row instead of the containing parent", async () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -1122,7 +1122,7 @@ describe("ThreadTimelineRows actions", () => {
     }
   });
 
-  it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
+  it("loads older timeline rows before scrolling to an older thread-search match", async () => {
     const onLoadOlderRows = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());

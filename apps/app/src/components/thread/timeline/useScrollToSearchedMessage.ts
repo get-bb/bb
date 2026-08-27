@@ -157,7 +157,7 @@ export function collectSearchedMessageAncestorRowIds(
   return ancestorIds;
 }
 
-// Sidebar search hands the matched message's event sequence to the thread route
+// Thread search hands the matched message's event sequence to the thread route
 // via `navigate(path, { state: { searchMessageSeq, searchThreadId } })`.
 export function readSearchMessageTarget(
   state: unknown,
@@ -182,7 +182,7 @@ export function readSearchMessageTarget(
 }
 
 /**
- * When the thread was opened from a sidebar search result whose match was in a
+ * When the thread was opened from a thread-search result whose match was in a
  * message body, scroll that message into view and briefly highlight it.
  *
  * Keyed off `location.key` so it fires once per navigation (not on every render

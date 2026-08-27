@@ -1581,13 +1581,14 @@ one toast.
 2. **Fallback discoverability.** Confirm one toast is the right signal when a
    crash silently swaps the user's sidebar back.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
-   the New-thread button, search field, plugin nav rows, and footer stay
+   the New-thread button, search action, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
    of them) and a replaced list must not remove them. Confirm no real sidebar
    needs to claim more, and that passing those regions down as props — letting
    a plugin place them, at the risk of dropping them — stays the wrong trade.
-4. **Search ownership.** The host owns the search field and passes
-   `searchQuery` down. Confirm a plugin list never needs its own field.
+4. **Search compatibility.** Confirm released plugins no longer need the
+   required deprecated `searchQuery` field before removing it in a deliberate
+   breaking change. Until then, the host supplies `""`.
 5. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.

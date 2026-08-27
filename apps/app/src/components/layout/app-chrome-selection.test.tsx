@@ -81,8 +81,8 @@ describe("app chrome opts out of text selection", () => {
 
   it("restores native selection on editable controls inside opted-out chrome", () => {
     // `user-select: auto` resolves from the parent, so without this rule
-    // WebKit would refuse to select text in the sidebar thread search and the
-    // inline thread-title rename input.
+    // WebKit would refuse to select text in the inline thread-title rename
+    // input.
     const css = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../../app.css"),
       "utf8",

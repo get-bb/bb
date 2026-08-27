@@ -60,8 +60,8 @@
    * selection with `select-none` so drags and Select All only pick up
    * content. `user-select: auto` resolves from the parent, so WebKit would
    * carry that opt-out into editable controls inside those regions (the
-   * sidebar thread search, the inline thread-title rename) and refuse to
-   * select their text. Restore native selection on the controls themselves.
+   * inline thread-title rename, for example) and refuse to select their text.
+   * Restore native selection on the controls themselves.
    */
   .select-none
     :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
@@ -725,7 +725,7 @@
   }
 }
 
-/* Briefly highlight a conversation message that a sidebar search result
+/* Briefly highlight a conversation message that a thread-search result
  * deep-links to, then fade back to transparent. */
 @keyframes bb-search-flash {
   from {
