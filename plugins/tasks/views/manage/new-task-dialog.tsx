@@ -48,6 +48,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CheckboxField, DEFAULT_COLOR } from "./shared.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
+import {
+  clearNewTaskDraft,
+  loadNewTaskDraft,
+  storeNewTaskDraft,
+} from "./new-task-draft.js";
 
 const CHIP_TRIGGER =
   "h-7 w-auto gap-1.5 rounded-md px-2 text-xs text-muted-foreground";
@@ -101,12 +106,15 @@ export function NewTaskDialog({
   const titleRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Each open starts a fresh draft seeded from the invoking context.
+  // Each open seeds context (project/status/parent) fresh, but restores any
+  // unsubmitted title/description the user typed before navigating away. Drafts
+  // are the normal new-task flow only, never the "Add sub-task" variant.
   useEffect(() => {
     if (!open) return;
+    const draft = subtaskMode ? null : loadNewTaskDraft();
     setSelectedProjectId(projectId);
-    setTitle("");
-    setDescription("");
+    setTitle(draft?.title ?? "");
+    setDescription(draft?.description ?? "");
     setStatus(defaultStatus ?? "todo");
     setPriority("none");
     setLabelIds([]);
@@ -118,6 +126,14 @@ export function NewTaskDialog({
     setError(null);
     // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
+
+  // Mirror the typed title/description into the browser profile while the
+  // compose step is open, so navigating away and returning keeps the draft.
+  // storeNewTaskDraft clears storage once both fields are blank again.
+  useEffect(() => {
+    if (!open || subtaskMode || createdTask !== null) return;
+    storeNewTaskDraft({ title, description });
+  }, [open, subtaskMode, createdTask, title, description]);
 
   const projectList = projects.data ?? [];
   const effectiveProjectId =
@@ -281,6 +297,9 @@ export function NewTaskDialog({
         setError(result.error.message);
         return;
       }
+      // The task now exists, so the saved draft is spent — drop it before the
+      // attachment phase so it never lingers past a successful create.
+      if (!subtaskMode) clearNewTaskDraft();
       // The task now exists; upload the staged files to it. Failures become
       // retryable chips bound to the created task instead of vanishing.
       const staged = pendingFiles.filter((entry) => entry.status === "staged");
