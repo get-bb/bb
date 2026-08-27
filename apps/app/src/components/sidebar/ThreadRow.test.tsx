@@ -246,6 +246,7 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
+  expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
   // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -666,31 +667,37 @@ describe("ThreadRow", () => {
         },
       ]);
 
-    render(
-      <ThreadTitleMentionResourcesProvider
-        sectionNamesById={new Map()}
-        projectNamesById={new Map()}
-        threadById={new Map()}
-      >
-        <ThreadRowTestHarness
-          thread={createThread({
-            title: "Continue from @thread:thr_dcwivn5n8w",
-            titleFallback: "Continue from @thread:thr_dcwivn5n8w",
-          })}
-        />
-      </ThreadTitleMentionResourcesProvider>,
-    );
+    try {
+      render(
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map()}
+          threadById={new Map()}
+        >
+          <ThreadRowTestHarness
+            thread={createThread({
+              title: "Continue from @thread:thr_dcwivn5n8w",
+              titleFallback: "Continue from @thread:thr_dcwivn5n8w",
+            })}
+          />
+        </ThreadTitleMentionResourcesProvider>,
+      );
 
-    expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "Open Continue from Thread" }),
-    ).not.toBeNull();
-    await waitFor(() => expect(resolveMentions).toHaveBeenCalledTimes(1));
-    expect(screen.getByText("Mention target")).not.toBeNull();
-    expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "Open Continue from Mention target" }),
-    ).not.toBeNull();
+      expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+      expect(
+        screen.getByRole("link", { name: "Open Continue from Thread" }),
+      ).not.toBeNull();
+      await waitFor(() => expect(resolveMentions).toHaveBeenCalledTimes(1));
+      expect(screen.getByText("Mention target")).not.toBeNull();
+      expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+      expect(
+        screen.getByRole("link", {
+          name: "Open Continue from Mention target",
+        }),
+      ).not.toBeNull();
+    } finally {
+      resolveMentions.mockRestore();
+    }
   });
 
   it("marks a child from another project with the project name", () => {
