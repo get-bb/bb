@@ -300,6 +300,8 @@ function AutomationProblemRow({
   const repairTarget =
     automation.problem === "missing-agent-prompt" ? automation : null;
   const projectLabel = automationProjectLabel(project);
+  const problemLabel =
+    repairTarget !== null ? "Prompt required" : "Invalid data";
   return (
     <ResourceRow
       leading={
@@ -309,12 +311,22 @@ function AutomationProblemRow({
             repairTarget !== null ? "text-warning" : "text-destructive",
             COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
           )}
-          aria-label={
-            repairTarget !== null ? "Needs prompt" : "Invalid stored data"
-          }
+          aria-hidden
         />
       }
       title={automation.name}
+      state={
+        <span
+          className={cn(
+            "inline-flex shrink-0 self-center items-center whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-medium",
+            repairTarget !== null
+              ? "bg-warning/10 text-warning-text"
+              : "bg-destructive/10 text-destructive-text",
+          )}
+        >
+          {problemLabel}
+        </span>
+      }
       description={
         <ResourceMeta
           items={[
@@ -327,7 +339,7 @@ function AutomationProblemRow({
           ]}
         />
       }
-      muted
+      className="items-start"
       onOpen={() => {
         const route = {
           projectId: automation.projectId,
