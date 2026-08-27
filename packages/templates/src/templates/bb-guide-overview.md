@@ -29,10 +29,11 @@ Run `bb status` to see your current context (resolved project and thread IDs).
 It also warns when an enabled plugin is not running (incompatible after a bb
 upgrade, failed to load, or missing); run `bb plugin list` for the detail.
 
-All commands support --json for machine-readable output.
+Most commands support --json for machine-readable output (`bb install-cli` does not).
 
 A packaged desktop install can put its own `bb` on your shell PATH; run `bb
-install-cli` to install or repair it.
+install-cli` to install or repair it (macOS only — on Linux the AppImage
+self-manages `~/.bb/bin` at launch instead).
 
 To make a repo work with bb worktrees, run `bb guide environments` for the
 repo-level `.bb-env-setup.sh` setup hook. Run `bb guide agent-configuration` for

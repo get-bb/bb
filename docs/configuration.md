@@ -985,6 +985,9 @@ elsewhere. Files here carry a `# bb-managed:` marker line; anything without
 it is left alone. A nightly install names the command `bb-nightly` instead of
 `bb`, so both channels can be on `PATH` at once. Run `bb install-cli` to
 install or repair the command, or use the "bb command" row in Settings.
+Typing `bb` inside a bb source checkout with `~/.bb/bin` on `PATH` runs the
+*packaged* app's CLI, not the checkout's dev instance; use `./bin/bb` for that
+(see [docs/debugging-and-qa.md](./debugging-and-qa.md)).
 
 On Linux the command re-invokes the app's AppImage, so it inherits the
 AppImage's runtime requirements. A machine that runs the bb desktop app

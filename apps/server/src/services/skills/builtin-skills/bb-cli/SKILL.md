@@ -12,7 +12,9 @@ The command is named for the channel the user installed. A stable desktop
 install provides `bb`; a nightly install provides `bb-nightly`, so both can be
 on `PATH` at once. If `bb` is not found, try `command -v bb || command -v
 bb-nightly` before concluding bb is unavailable. On a packaged desktop install
-with neither on `PATH`, `~/.bb/bin` is where the app puts them.
+with neither on `PATH`, `~/.bb/bin` is where the app puts them: use `BB_CLI` to
+run `bb install-cli`, which puts the app's own command there for the user's
+shell.
 
 ## Start With Context
 
