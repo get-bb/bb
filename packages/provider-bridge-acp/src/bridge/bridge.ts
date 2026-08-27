@@ -430,6 +430,9 @@ function handleDynamicToolBridgeSocket(
 ): void {
   let buffer = "";
   socket.setEncoding("utf8");
+  // One-shot clients hang up as soon as they have the reply. A reset or a
+  // write-after-close is normal; without this listener Node kills the process.
+  socket.on("error", () => {});
   socket.on("data", (chunk) => {
     buffer += chunk;
     const newlineIndex = buffer.indexOf("\n");
@@ -472,6 +475,7 @@ async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
   dynamicToolBridgePromise = new Promise((resolveBridge, rejectBridge) => {
     const host = "127.0.0.1";
     const server = createServer((socket) => {
+      socket.on("error", () => {});
       void dynamicToolBridgePromise?.then((bridge) => {
         handleDynamicToolBridgeSocket(bridge, socket);
       });

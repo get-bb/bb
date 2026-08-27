@@ -1824,6 +1824,134 @@ describe("acp bridge", () => {
     });
   });
 
+  it("keeps the dynamic-tool TCP server alive after a client reset on initialize", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      dynamicTools: [
+        {
+          name: "update_environment_directory",
+          description: "Move this thread to another environment directory.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    const configPrefix = "mcp-server-config:";
+    const configText = agentMessageTexts().find((text) =>
+      text.startsWith(configPrefix),
+    );
+    if (!configText) {
+      throw new Error("Fake ACP agent did not report MCP server config");
+    }
+    const [mcpServerConfig] = JSON.parse(
+      configText.slice(configPrefix.length),
+    ) as { env: { name: string; value: string }[]; name: string }[];
+    if (!mcpServerConfig) {
+      throw new Error("Fake ACP agent reported no MCP server config");
+    }
+    const env = new Map(
+      mcpServerConfig.env.map(({ name, value }) => [name, value]),
+    );
+    const host = env.get("BB_ACP_DYNAMIC_TOOL_HOST");
+    const port = Number(env.get("BB_ACP_DYNAMIC_TOOL_PORT"));
+    const threadId = env.get("BB_ACP_DYNAMIC_TOOL_THREAD_ID");
+    const token = env.get("BB_ACP_DYNAMIC_TOOL_TOKEN");
+    if (!host || !Number.isInteger(port) || !threadId || !token) {
+      throw new Error("MCP server config is missing dynamic tool bridge env");
+    }
+
+    const uncaught: Error[] = [];
+    const recordUncaught = (error: Error) => {
+      uncaught.push(error);
+    };
+    process.on("uncaughtException", recordUncaught);
+    try {
+      await new Promise<void>((resolve) => {
+        const socket = createConnection({ host, port });
+        socket.on("connect", () => {
+          socket.write(
+            `${JSON.stringify({
+              kind: "initialized",
+              threadId,
+              token,
+              toolCount: 1,
+            })}\n`,
+          );
+          socket.resetAndDestroy();
+        });
+        socket.on("error", () => {
+          resolve();
+        });
+        socket.on("close", () => {
+          resolve();
+        });
+      });
+      await new Promise((resolveTick) => realSetTimeout(resolveTick, 50));
+    } finally {
+      process.off("uncaughtException", recordUncaught);
+    }
+    expect(uncaught).toEqual([]);
+
+    const bridgeCall = callDynamicToolBridge({
+      callId: "test-dynamic-tool-call-after-reset",
+      host,
+      port,
+      threadId,
+      token,
+      tool: "update_environment_directory",
+      toolArguments: { path: "/tmp/next-worktree" },
+    });
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "item/tool/call" &&
+            message.id !== undefined &&
+            (message.params as { callId?: unknown }).callId ===
+              "test-dynamic-tool-call-after-reset",
+        ),
+      "forwarded dynamic tool call after reset",
+    );
+    expect(forwarded.params).toMatchObject({
+      arguments: { path: "/tmp/next-worktree" },
+      callId: "test-dynamic-tool-call-after-reset",
+      providerThreadId,
+      threadId: bbThreadId,
+      tool: "update_environment_directory",
+      turnId: null,
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          success: true,
+          contentItems: [
+            { type: "inputText", text: "environment directory updated" },
+          ],
+        },
+      }),
+    );
+
+    await expect(bridgeCall).resolves.toEqual({
+      content: "environment directory updated",
+      contentBlocks: [{ type: "text", text: "environment directory updated" }],
+      images: [],
+      isError: false,
+      ok: true,
+    });
+  });
+
   // Canonical sessions carry no skill roots in their options; the roots the
   // runtime configures once per process must reach the session instructions of
   // every session built afterwards, or injected skills are silently dropped.
