@@ -103,7 +103,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Render every row, and decide the grouping, the ordering, and what each row shows",
           "Read the same live thread data and run statuses bb's own list reads",
-          "Replace only the list. The New thread button, the search field, the plugin rows, and the sidebar footer stay bb's",
+          "Replace only the list. The New thread button, the search action, the plugin rows, and the sidebar footer stay bb's",
         ],
         apiSymbols: [
           "PluginThreadListRegistration",

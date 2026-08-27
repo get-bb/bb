@@ -429,7 +429,8 @@ function MeasuredBadge({
     if (!element || !(container instanceof HTMLElement)) return;
     // Anchors can live outside the positioning parent (a sibling frame), so
     // resolve within the slide; ids repeat across slides, so never wider.
-    const scope = container.closest<HTMLElement>("[data-map-section]") ?? container;
+    const scope =
+      container.closest<HTMLElement>("[data-map-section]") ?? container;
     const target = scope.querySelector<HTMLElement>(anchor);
     if (!target) return;
 
@@ -512,9 +513,8 @@ function MeasuredBadge({
       // cannot hang chips past that frame's edge — they would clip to
       // nothing. Clamp into the frame's interior instead; the chip then
       // rides the container's edge when the frame leaves no margin.
-      const clippingFrame = container.closest<HTMLElement>(
-        "[data-guide-frame]",
-      );
+      const clippingFrame =
+        container.closest<HTMLElement>("[data-guide-frame]");
       if (clippingFrame) {
         const clipOrigin = layoutOrigin(clippingFrame);
         const clipLeft = clipOrigin.x - containerOrigin.x;
@@ -669,7 +669,7 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
 
 /**
  * Sidebar sections, in anatomy-manifest order (mirrors AppSidebar.tsx:
- * top-reserve chrome, the New-thread/search block, plugin nav rows, the
+ * top-reserve chrome, the New-thread/search-action block, plugin nav rows, the
  * scrolling thread list, the footer).
  */
 const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
@@ -1024,7 +1024,7 @@ export function CommandPaletteWireframe() {
                   <input
                     aria-label="Search commands"
                     readOnly
-                    value="release"
+                    value=">release"
                     className="h-11 min-w-0 flex-1 bg-transparent text-foreground outline-none"
                   />
                 </div>

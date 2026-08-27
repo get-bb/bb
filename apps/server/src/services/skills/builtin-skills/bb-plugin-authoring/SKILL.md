@@ -1619,7 +1619,7 @@ The user can pin BB's list or a specific provider under
 **Settings → Appearance → Sidebar**. The choice is per client.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
-the search field, the plugin nav rows, and the footer stay host-rendered —
+the search action, the plugin nav rows, and the footer stay host-rendered —
 other plugins live in two of those, so a replaced list must not remove them.
 Put your own controls at the top of your scroll area instead.
 
@@ -1634,11 +1634,10 @@ interface PluginThreadListProps {
   activeThreadId: string | null;
   activeProjectId: string | null;
   isCompactViewport: boolean;
-  /** Closes the mobile drawer and clears the host search field. Always call it
-      after opening a thread, or the sidebar stays in search mode. */
+  /** Closes the mobile drawer. Always call it after opening a thread. */
   onNavigate: () => void;
-  /** The host search field's text; "" when the field is closed. The host owns
-      that field — filter by this rather than shipping a second one. */
+  /** Deprecated compatibility value for the removed sidebar search field.
+      The host always supplies "". */
   searchQuery: string;
   /** BB's bound thread list. Render it to delegate conditionally without
       re-entering plugin replacement resolution. */

@@ -117,15 +117,14 @@ export interface PluginThreadListProps {
   /** True on phone-width viewports and coarse pointers. */
   isCompactViewport: boolean;
   /**
-   * Call after the user opens a thread. It closes the mobile sidebar drawer,
-   * and it clears the host search field on every viewport. Always call it, or
-   * the sidebar stays in search mode after the thread opens.
+   * Call after the user opens a thread. It closes the mobile sidebar drawer.
    */
   onNavigate: () => void;
   /**
-   * The host search field's current text, or "" when the field is closed.
-   * The host owns that field, so a plugin list filters by this rather than
-   * shipping a second search box.
+   * Compatibility value for the former sidebar search field. BB now searches
+   * threads in the quick palette, so the host always supplies "".
+   *
+   * @deprecated The quick palette owns thread search. Ignore this value.
    */
   searchQuery: string;
   /**
@@ -952,7 +951,7 @@ export interface PluginSidebarThreadSplit {
  * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
- * the search field, the plugin nav rows, and the footer stay host-rendered in
+ * the search action, the plugin nav rows, and the footer stay host-rendered in
  * every sidebar — they are shared surfaces (other plugins live in two of
  * them), and a replaced list must not be able to remove them.
  */

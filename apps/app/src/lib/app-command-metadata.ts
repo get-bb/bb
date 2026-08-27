@@ -51,7 +51,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "thread.search",
         "Search threads",
-        "Focus the sidebar thread search.",
+        "Search threads in the quick palette.",
       ),
       command("thread.rename", "Rename thread", "Rename the focused thread."),
       command(

@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultAppSettings,
@@ -37,6 +37,20 @@ const PALETTE_BINDING: AppKeybinding = {
   command: "palette.open",
   desktopOnly: false,
   shortcut: PALETTE_SHORTCUT,
+  when: { all: ["mainSurface"], none: ["modalOpen"] },
+};
+
+const THREAD_SEARCH_BINDING: AppKeybinding = {
+  command: "thread.search",
+  desktopOnly: false,
+  shortcut: {
+    key: "k",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  },
   when: { all: ["mainSurface"], none: ["modalOpen"] },
 };
 
@@ -73,9 +87,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         ...defaultAppSettings,
         showKeyboardHints: false,
       },
-      keybindings: [PALETTE_BINDING, THREAD_NEW_BINDING],
+      keybindings: [PALETTE_BINDING, THREAD_SEARCH_BINDING, THREAD_NEW_BINDING],
       defaultKeybindings: [
         PALETTE_BINDING,
+        THREAD_SEARCH_BINDING,
         ...defaults(
           "thread.new",
           "thread.next",
@@ -90,6 +105,48 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
 }));
+
+vi.mock("./ThreadPaletteResults", () => ({
+  ThreadPaletteResults: ({
+    onSelect,
+    query,
+  }: {
+    onSelect: (item: {
+      id: string;
+      optionId: string;
+      projectId: string;
+      threadId: string;
+      messageSeq: number | null;
+    }) => void;
+    query: string;
+  }) => (
+    <button
+      type="button"
+      role="option"
+      aria-selected="true"
+      onClick={() =>
+        onSelect({
+          id: "active:thr_message",
+          optionId: "thread-option",
+          projectId: "proj_search",
+          threadId: "thr_message",
+          messageSeq: 7,
+        })
+      }
+    >
+      Matched thread {query}
+    </button>
+  ),
+}));
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {JSON.stringify({ pathname: location.pathname, state: location.state })}
+    </output>
+  );
+}
 
 function Handler({ command }: { command: AppCommandId }) {
   useAppCommandHandler(command, () => {
@@ -111,6 +168,7 @@ function renderPalette() {
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
         <CommandPalette threadId={null} projectId={null} />
+        <LocationProbe />
       </AppCommandProvider>
     </MemoryRouter>,
   );
@@ -123,6 +181,17 @@ function openPalette(): KeyboardEvent {
     key: "p",
     ctrlKey: true,
     shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  (document.activeElement ?? window).dispatchEvent(event);
+  return event;
+}
+
+function openThreadSearch(): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key: "k",
+    ctrlKey: true,
     bubbles: true,
     cancelable: true,
   });
@@ -152,10 +221,11 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(searchField()).toBeTruthy());
     // Chrome maps Mod+Shift+P to print; only preventDefault stops it.
     expect(event.defaultPrevented).toBe(true);
+    expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    // Every mounted handler is listed; nothing else is.
-    expect(titles).toHaveLength(4);
+    // Every mounted handler is listed, including the palette's thread mode.
+    expect(titles).toHaveLength(5);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -165,7 +235,7 @@ describe("CommandPalette", () => {
 
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
-    fireEvent.change(searchField(), { target: { value: "terminal" } });
+    fireEvent.change(searchField(), { target: { value: ">terminal" } });
 
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
     expect(selectedOption()?.textContent).toContain("Open terminal");
@@ -188,7 +258,7 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
-    fireEvent.change(searchField(), { target: { value: "toggle panel" } });
+    fireEvent.change(searchField(), { target: { value: ">toggle panel" } });
     await waitFor(() =>
       expect(selectedOption()?.textContent).toContain("Toggle panel"),
     );
@@ -203,7 +273,7 @@ describe("CommandPalette", () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
-    fireEvent.change(searchField(), { target: { value: "toggle panel" } });
+    fireEvent.change(searchField(), { target: { value: ">toggle panel" } });
     await waitFor(() =>
       expect(selectedOption()?.textContent).toContain("Toggle panel"),
     );
@@ -300,7 +370,7 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
-    fireEvent.change(searchField(), { target: { value: "linear" } });
+    fireEvent.change(searchField(), { target: { value: ">linear" } });
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
     expect(optionTitles()?.[0]).toContain("Linear: open issue");
     fireEvent.keyDown(searchField(), { key: "Enter" });
@@ -313,12 +383,74 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
-    fireEvent.change(searchField(), { target: { value: "zzzzz" } });
+    fireEvent.change(searchField(), { target: { value: ">zzzzz" } });
 
     await waitFor(() =>
       expect(screen.getByText("No matching commands")).toBeTruthy(),
     );
     fireEvent.keyDown(searchField(), { key: "Enter" });
     expect(testState.calls).toEqual([]);
+  });
+
+  it("opens thread search without a prefix", async () => {
+    renderPalette();
+    const event = openThreadSearch();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    expect(event.defaultPrevented).toBe(true);
+    expect((searchField() as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("listbox").getAttribute("aria-label")).toBe(
+      "Thread search results",
+    );
+  });
+
+  it("switches the open command palette to thread search", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: ">search threads" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Search threads"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Search threads",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("");
+  });
+
+  it("opens a matched thread at its matched message", async () => {
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option", { name: /Matched thread/u }),
+      ).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByRole("option", { name: /Matched thread/u }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain(
+        "thr_message",
+      ),
+    );
+    const location = JSON.parse(
+      screen.getByTestId("location").textContent ?? "{}",
+    ) as { pathname: string; state: Record<string, unknown> };
+    expect(location.pathname).toContain("thr_message");
+    expect(location.state).toEqual({
+      searchMessageSeq: 7,
+      searchThreadId: "thr_message",
+    });
   });
 });

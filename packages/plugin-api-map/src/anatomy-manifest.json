@@ -45,7 +45,7 @@
           "path": "apps/app/src/components/commands/CommandPalette.tsx",
           "anchors": [
             "top-[12%] max-w-xl translate-y-0 gap-0 p-0",
-            "aria-label={PALETTE_PLACEHOLDER}",
+            "aria-label={inputLabel}",
             "role=\"listbox\"",
             "aria-selected={isActive}",
             "LAUNCHER_ACTION_ROW_BASE_CLASS",
