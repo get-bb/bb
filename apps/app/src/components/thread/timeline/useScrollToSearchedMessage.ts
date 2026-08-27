@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import {
+  escapeTimelineRowId,
+  flashTimelineRowElement,
+  scrollTimelineRowElementIntoView,
+} from "./timelineRowNavigation.js";
 
 // Structural subset of a timeline view row — every row carries an event-sequence
 // range, which is how we map a searched message's sequence to its rendered row.
@@ -28,16 +33,7 @@ interface SeqRange {
   max: number;
 }
 
-const FLASH_CLASS_NAME = "bb-search-flash";
-const FLASH_DURATION_MS = 1700;
 const POST_WINDOW_SETTLE_REVEAL_MS = 800;
-
-function escapeTimelineRowId(rowId: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(rowId);
-  }
-  return rowId.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
 
 function containsSeq(row: SeqAnchoredRow, seq: number): boolean {
   return row.sourceSeqStart <= seq && seq <= row.sourceSeqEnd;
@@ -285,22 +281,12 @@ export function useScrollToSearchedMessage(
       if (element === null) {
         return;
       }
-      if (bottomAnchor !== null) {
-        // scrollElementIntoView suppresses stick-to-bottom so this wins over the
-        // default open-at-bottom behavior.
-        bottomAnchor.scrollElementIntoView({
-          element,
-          options: { block: "center" },
-        });
-      } else {
-        element.scrollIntoView({ block: "center" });
-      }
+      scrollTimelineRowElementIntoView(element, bottomAnchor, {
+        block: "center",
+      });
       if (!flashed) {
         flashed = true;
-        element.classList.add(FLASH_CLASS_NAME);
-        window.setTimeout(() => {
-          element.classList.remove(FLASH_CLASS_NAME);
-        }, FLASH_DURATION_MS);
+        flashTimelineRowElement(element);
       }
     };
 
