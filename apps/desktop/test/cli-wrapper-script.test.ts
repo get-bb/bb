@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rmdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -152,13 +152,13 @@ describe("createHomeCliWrapperScript", () => {
       }
 
       // If the payload had executed, markerFile would exist. It must not.
-      const markerExists = await mkdir(markerFile, { recursive: true }).then(
-        () => false,
+      const markerExists = await stat(markerFile).then(
         () => true,
+        () => false,
       );
       expect(markerExists).toBe(false);
     } finally {
-      await rmdir(tempDir, { recursive: true });
+      await rm(tempDir, { recursive: true, force: true });
     }
   });
 });

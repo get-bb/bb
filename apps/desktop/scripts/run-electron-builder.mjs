@@ -233,6 +233,19 @@ function resolveElectronBuilderConfig(baseConfig, env) {
     ...config.mac,
     icon: releaseConfig.macIconPath,
     notarize: signingPlan.notarizationEnabled,
+    // Scoped to mac, not top-level: a top-level extraResources applies to
+    // every packaged target, including the Linux AppImage, where this
+    // in-bundle wrapper assumes a Contents/MacOS/<app> layout that doesn't
+    // exist. An AppImage self-mounts at a different ephemeral path every
+    // launch, so no path inside it is stable enough to put on PATH anyway;
+    // Linux is covered by ~/.bb/bin re-invoking the recorded $APPIMAGE
+    // instead.
+    extraResources: [
+      {
+        from: generatedCliWrapperRelativePath,
+        to: `bin/${releaseConfig.cliCommandName}`,
+      },
+    ],
   };
 
   if (signingPlan.mode === "disabled") {
@@ -258,15 +271,6 @@ function resolveElectronBuilderConfig(baseConfig, env) {
       channel: releaseChannel,
       provider: "generic",
       url: createDesktopUpdateReleaseBaseUrl(releaseConfig.releaseTag),
-    },
-  ];
-  // macOS only: an AppImage self-mounts at a different ephemeral path every
-  // launch, so no path inside it is stable enough to put on PATH. Linux is
-  // covered by ~/.bb/bin re-invoking the recorded $APPIMAGE instead.
-  config.extraResources = [
-    {
-      from: generatedCliWrapperRelativePath,
-      to: `bin/${releaseConfig.cliCommandName}`,
     },
   ];
 
