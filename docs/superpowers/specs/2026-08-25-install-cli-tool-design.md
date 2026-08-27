@@ -131,6 +131,12 @@ all corrected on the next launch.
 `~/.bb/` is already the app's data directory, so this writes nothing outside
 territory the app already owns. No privilege escalation, ever.
 
+**The path is anchored to `$HOME`, not to the configured data directory.**
+`BB_PROD_DATA_DIR_NAME` is `.bb` (`packages/config/src/runtime.ts:81`) and that
+is the default, but a user can point the app's data directory elsewhere. The
+`PATH` line has to be a fixed, predictable string that survives a data-directory
+change, so layer 2 always writes `join(homedir(), ".bb", "bin")`.
+
 **What it points at differs by platform:**
 
 | | Layer 2 target |
@@ -173,11 +179,13 @@ feature-detect idiom used by `getDesktopBrowserApi()` in
 `apps/app/src/lib/bb-desktop.ts`, so web and older desktop shells simply do not
 render it.
 
-**Login-PATH probing is unverified.** `apps/desktop/src/desktop-shell-path.ts`
-exports exactly one function, `ensurePackagedUserShellPath`. That its mechanism
-can be reused to *report* the login `PATH` rather than to *ensure* one is an
-assumption; confirm before designing the row around it, and be prepared to
-extract a read-only probe from it.
+**Login-PATH probing needs no new mechanism.**
+`apps/desktop/src/desktop-shell-path.ts` exports `ensurePackagedUserShellPath`,
+which main.ts already calls at startup on packaged builds. It runs the login
+shell with `-ilc 'printf "%s" "$PATH"'` and **assigns the result to
+`process.env.PATH`**. So by the time any IPC handler runs, the main process's
+own `process.env.PATH` *is* the user's login `PATH`. The settings row reads it
+directly; no read-only probe has to be extracted.
 
 ## Where the code lives
 
@@ -222,16 +230,30 @@ varies. Because layer 1 supports adding the bundle's `bin` directory to `PATH`
 directly, ours must be per-channel; otherwise putting both channels' `bin`
 directories on `PATH` means one silently shadows the other.
 
-### Ships with this feature: templating the `bb-cli` skill
+### Ships with this feature: a `bb-cli` skill note
 
-`apps/server/src/services/skills/global-skill-install.ts:21` installs a
-generated `bb-cli` skill into `~/.agents/skills` and `~/.claude/skills`, telling
-agents outside bb to run `bb`. On a nightly-only machine that command does not
-exist, so the skill instructs agents to run something that is not there.
+`apps/server/src/services/skills/global-skill-install.ts:21` installs the
+built-in `bb-cli` skill into `~/.agents/skills` and `~/.claude/skills`, telling
+agents outside bb to run `bb`. On a nightly-only machine that command is
+`bb-nightly`, so the skill names something that is not there.
 
-**The generated skill must be templated with the command name the app actually
-installs.** This is a requirement of shipping channel-suffixed names, not a
-nice-to-have, and it belongs in the same change.
+**Templating the skill per channel is the wrong mechanism, and this is a
+correction to an earlier reading of it.** The skill is a content-hashed tree:
+`resolveGlobalCliSkills` resolves it to a `treeHash`, and the daemon pulls the
+tree bytes back over the internal skill-tree route. Three things follow:
+
+- Varying the bytes per channel varies the hash, which turns one shared tree
+  into N and defeats the status comparison the settings row depends on.
+- The command name is a property of the desktop app on a given *machine*. The
+  server installs to many machines and does not know each one's channel.
+- A single machine can have both channels installed, so there is no one right
+  answer to template in.
+
+**The v1 answer is a static sentence in the skill**, telling agents that a
+nightly install names the command `bb-nightly` and that `command -v bb ||
+command -v bb-nightly` disambiguates. No templating, no hash variance, correct
+on every machine. Per `docs/cli-guide-and-skill.md` the same note belongs in the
+guide chapter.
 
 ## Platform matrix
 
@@ -420,7 +442,8 @@ guaranteed absolute path should use `BB_CLI`.
   leaves a foreign file untouched and reports it.
 - Layer 1 packaging: assert the shipped wrapper is present and executable in a
   built bundle, for both channels.
-- `bb-cli` skill templating: the generated skill names the channel's command.
+- `bb install-cli` self-location: resolves the bundle from a packaged CLI path
+  and errors clearly when run from an npm-global install with no app.
 - Path computation follows the `apps/desktop/test/app-paths.test.ts` pattern.
 
 ## Risks
