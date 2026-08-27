@@ -298,6 +298,20 @@ const remoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   onCreateNewThreadInWorktree: noop,
 });
 
+const unmanagedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    name: "Linked review tree",
+    managed: false,
+    isWorktree: true,
+    workspaceProvisionType: "unmanaged",
+    status: "ready",
+  }),
+  host: localEnvironmentDisplayHost,
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
+  onCreateNewThreadInWorktree: noop,
+});
+
 const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
     name: "Design system polish",
@@ -317,6 +331,7 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
+  machineName: "Bersabel's MacBook Pro",
   environmentCheckout: formatWorkspaceCheckoutDisplay({
     checkout: {
       kind: "detached",
@@ -842,6 +857,7 @@ function StackedCardsWithPillsRow() {
       stack={contextBannerElement}
       queuedMessages={queuedMessages}
       contextWindowUsage={usage}
+      environmentSummary={remoteEnvironmentSummary}
     />
   );
 }
@@ -854,6 +870,9 @@ export function ControlEmphasis() {
   );
 }
 
+// This catalog is intentionally mixed across direct/worktree and local/remote
+// environments. Leaving every functional row on Row's local default hides the
+// environment icon and label variants this overview is meant to expose.
 export function Overview() {
   return (
     <StoryCard>
@@ -868,6 +887,7 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
           contextWindowUsage={usage}
+          environmentSummary={worktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -877,13 +897,17 @@ export function Overview() {
         <Row
           submitMode={{ kind: "stop-only", onStop: noop }}
           threadRuntimeDisplayStatus="host-reconnecting"
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
         label="blocked: pending interaction"
         hint="agent is waiting on a tool decision — composer locked"
       >
-        <Row submitMode={{ kind: "blocked", reason: "pending-interaction" }} />
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          environmentSummary={remoteWorktreeEnvironmentSummary}
+        />
       </StoryRow>
       <StoryRow
         label="stop-only: starting"
@@ -904,6 +928,7 @@ export function Overview() {
           isFollowUpSubmitting
           threadRuntimeDisplayStatus="active"
           initialMessage="And confirm the new env summary renders correctly."
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -923,6 +948,7 @@ export function Overview() {
               loadFailed: false,
             },
           }}
+          environmentSummary={unmanagedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -943,6 +969,7 @@ export function Overview() {
               loadError: codexModelLoadError,
             },
           }}
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow label="no models" hint="locked provider with empty catalog">
@@ -960,6 +987,7 @@ export function Overview() {
               loadError: null,
             },
           }}
+          environmentSummary={detachedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -971,10 +999,15 @@ export function Overview() {
           threadRuntimeDisplayStatus="active"
           queuedMessages={queuedMessages}
           contextWindowUsage={usage}
+          environmentSummary={remoteWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow label="with promptbox context banner">
-        <Row submitMode={{ kind: "ready" }} stack={contextBannerElement} />
+        <Row
+          submitMode={{ kind: "ready" }}
+          stack={contextBannerElement}
+          environmentSummary={localEnvironmentSummary}
+        />
       </StoryRow>
       <StoryRow
         label="plan mode: permission locked"
@@ -990,6 +1023,7 @@ export function Overview() {
             providerId: "claude-code",
             prompt: "inspect the failing command before making changes",
           }}
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1022,6 +1056,7 @@ export function Overview() {
           stack={contextBannerElement}
           queuedMessages={queuedMessages}
           contextWindowUsage={usage}
+          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1084,6 +1119,7 @@ export function Overview() {
           execution={readOnlyExecution}
           permission={readOnlyPermission}
           readOnly
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
     </StoryCard>
@@ -1130,7 +1166,7 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · local worktree"
-        hint="worktree icon · Local worktree tooltip"
+        hint="managed worktree · worktree icon · Local worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
@@ -1139,11 +1175,38 @@ export function EnvironmentMatrix() {
       </StoryRow>
       <StoryRow
         label="ready · remote worktree"
-        hint="worktree icon · Remote worktree tooltip"
+        hint="managed worktree · worktree icon · Remote worktree tooltip"
       >
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · unmanaged worktree"
+        hint="linked worktree · same worktree icon; ownership is not encoded here"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={unmanagedWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · named worktree"
+        hint="worktree icon · custom environment name"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={namedWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · detached worktree"
+        hint="worktree icon · detached commit checkout"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={detachedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
