@@ -285,7 +285,12 @@ describe("first-party provider plugins", () => {
           displayName: "Codex",
           logoUrl: expectedLogoUrl("codex"),
           available: true,
-          maintenance: { health: true, usage: true, installation: true, permissionProfiles: true },
+          maintenance: {
+            health: true,
+            usage: true,
+            installation: true,
+            permissionProfiles: true,
+          },
           capabilities: {
             supportsThreadArchive: true,
             supportsThreadRename: true,
@@ -303,7 +308,7 @@ describe("first-party provider plugins", () => {
           displayName: "Claude Code",
           logoUrl: expectedLogoUrl("claude-code"),
           available: true,
-          maintenance: { health: true, usage: true, installation: true, permissionProfiles: false },
+          maintenance: { health: true, usage: true, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -321,7 +326,7 @@ describe("first-party provider plugins", () => {
           displayName: "Pi",
           logoUrl: expectedLogoUrl("pi"),
           available: true,
-          maintenance: { health: true, usage: false, installation: true, permissionProfiles: false },
+          maintenance: { health: true, usage: false, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -339,7 +344,7 @@ describe("first-party provider plugins", () => {
           displayName: "Cursor",
           logoUrl: expectedLogoUrl("acp-cursor"),
           available: true,
-          maintenance: { health: true, usage: true, installation: true, permissionProfiles: false },
+          maintenance: { health: true, usage: true, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,

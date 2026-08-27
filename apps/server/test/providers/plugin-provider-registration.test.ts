@@ -48,7 +48,7 @@ describe("buildPluginProviderRegistration", () => {
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
-      maintenance: { health: true, usage: false, installation: true, permissionProfiles: false },
+      maintenance: { health: true, usage: false, installation: true },
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,

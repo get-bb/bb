@@ -7,7 +7,7 @@ describe("provider info schema", () => {
     pluginId: "provider-codex",
     displayName: "Codex",
     logoUrl: null,
-    maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+    maintenance: { health: true, usage: true, installation: false },
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,

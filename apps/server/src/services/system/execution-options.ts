@@ -59,19 +59,15 @@ type ModelListResult = Pick<
 
 type PermissionProfileListResult = Pick<
   SystemExecutionOptionsResponse,
-  | "permissionProfileLoadError"
-  | "permissionProfiles"
-  | "permissionProfilesSupported"
+  "permissionProfiles"
 >;
 
 function emptyPermissionProfileResult(
   supported: boolean,
 ): PermissionProfileListResult {
-  return {
-    permissionProfiles: [],
-    permissionProfilesSupported: supported,
-    permissionProfileLoadError: null,
-  };
+  return supported
+    ? { permissionProfiles: { profiles: [], loadError: null } }
+    : {};
 }
 
 function unavailableProviderModelResult(providerId: string): ModelListResult {
@@ -494,7 +490,7 @@ export async function resolveSystemExecutionOptions(
       permissionCeiling,
       ...unavailableProviderModelResult(modelsProvider.id),
       ...emptyPermissionProfileResult(
-        modelsProvider.maintenance.permissionProfiles,
+        modelsProvider.maintenance.permissionProfiles === true,
       ),
     };
   }
@@ -521,17 +517,20 @@ export async function resolveSystemExecutionOptions(
               error: hostLookupError,
               provider: modelsProvider,
             }),
-      permissionProfiles: [],
-      permissionProfilesSupported:
-        modelsProvider.maintenance.permissionProfiles,
-      permissionProfileLoadError:
-        !modelsProvider.maintenance.permissionProfiles ||
-        hostLookupError === null
-          ? null
-          : buildModelLoadError({
-              error: hostLookupError,
-              provider: modelsProvider,
-            }),
+      ...(modelsProvider.maintenance.permissionProfiles
+        ? {
+            permissionProfiles: {
+              profiles: [],
+              loadError:
+                hostLookupError === null
+                  ? null
+                  : buildModelLoadError({
+                      error: hostLookupError,
+                      provider: modelsProvider,
+                    }),
+            },
+          }
+        : {}),
     };
   }
 
@@ -605,9 +604,10 @@ async function loadSystemProviderPermissionProfiles(
     });
     return result.supported
       ? {
-          permissionProfiles: result.profiles,
-          permissionProfilesSupported: true,
-          permissionProfileLoadError: null,
+          permissionProfiles: {
+            profiles: result.profiles,
+            loadError: null,
+          },
         }
       : emptyPermissionProfileResult(false);
   } catch (error) {
@@ -626,9 +626,10 @@ async function loadSystemProviderPermissionProfiles(
       "Failed to resolve provider permission profiles",
     );
     return {
-      permissionProfiles: [],
-      permissionProfilesSupported: true,
-      permissionProfileLoadError: buildModelLoadError({ error, provider }),
+      permissionProfiles: {
+        profiles: [],
+        loadError: buildModelLoadError({ error, provider }),
+      },
     };
   }
 }

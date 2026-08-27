@@ -141,9 +141,6 @@ function executionOptions({
     models,
     selectedOnlyModels,
     permissionCeiling: "full",
-    permissionProfiles: [],
-    permissionProfilesSupported: false,
-    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }

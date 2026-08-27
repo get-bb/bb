@@ -58,11 +58,16 @@ export const systemExecutionOptionsResponseSchema = z.object({
    * lookup completed or no provider was available to query.
    */
   modelLoadError: systemExecutionOptionsModelLoadErrorSchema.nullable(),
-  /** Provider-native named profiles available for the routed workspace. */
-  permissionProfiles: z.array(providerPermissionProfileSchema),
-  permissionProfilesSupported: z.boolean(),
-  permissionProfileLoadError:
-    systemExecutionOptionsModelLoadErrorSchema.nullable(),
+  /**
+   * Provider-native named profiles for the routed workspace. Omitted when
+   * the provider does not support named permission profiles.
+   */
+  permissionProfiles: z
+    .object({
+      profiles: z.array(providerPermissionProfileSchema),
+      loadError: systemExecutionOptionsModelLoadErrorSchema.nullable(),
+    })
+    .optional(),
 });
 export type SystemExecutionOptionsResponse = z.infer<
   typeof systemExecutionOptionsResponseSchema

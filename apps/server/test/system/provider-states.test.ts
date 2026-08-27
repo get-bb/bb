@@ -94,7 +94,7 @@ describe("getProviderStates", () => {
             displayName: "No Health",
             logoUrl: null,
             available: true,
-            maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
+            maintenance: { health: false, usage: false, installation: false },
             capabilities: {
               supportsThreadArchive: false,
               supportsThreadRename: false,

@@ -184,11 +184,16 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     pluginId: args.pluginId,
     displayName: declaration.displayName,
-    ...(declaration.family === undefined
-      ? {}
-      : { family: declaration.family }),
+    ...(declaration.family === undefined ? {} : { family: declaration.family }),
     available: args.available,
-    maintenance: { ...declaration.maintenance },
+    maintenance: {
+      health: declaration.maintenance.health,
+      usage: declaration.maintenance.usage,
+      installation: declaration.maintenance.installation,
+      ...(declaration.maintenance.permissionProfiles
+        ? { permissionProfiles: true as const }
+        : {}),
+    },
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so

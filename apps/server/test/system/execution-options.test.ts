@@ -304,14 +304,16 @@ describe("named permission profiles", () => {
         providerId: "codex",
       });
 
-      expect(response.permissionProfilesSupported).toBe(true);
-      expect(response.permissionProfiles).toEqual([
-        {
-          id: ":workspace",
-          description: "Workspace access",
-          allowed: true,
-        },
-      ]);
+      expect(response.permissionProfiles).toEqual({
+        profiles: [
+          {
+            id: ":workspace",
+            description: "Workspace access",
+            allowed: true,
+          },
+        ],
+        loadError: null,
+      });
       expect(
         responder.requests.some(
           (request) =>

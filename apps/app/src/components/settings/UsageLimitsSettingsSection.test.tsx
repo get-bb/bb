@@ -37,7 +37,7 @@ function provider(
     displayName,
     logoUrl: null,
     available: true,
-    maintenance: { health: true, usage: supportsUsage, installation: false, permissionProfiles: false },
+    maintenance: { health: true, usage: supportsUsage, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

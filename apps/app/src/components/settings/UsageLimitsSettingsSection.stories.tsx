@@ -140,7 +140,7 @@ function provider(id: string, displayName: string): ProviderInfo {
     displayName,
     logoUrl: null,
     available: true,
-    maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+    maintenance: { health: true, usage: true, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ef4f4716-ade2-4fbe-84dd-d03a4ab4ce92",
+  "id": "2dbd26a7-76af-4e7e-86bf-73e60a84a7f2",
   "prevId": "e66624da-3e23-42f0-9760-275442c0d59b",
   "tables": {
     "app_settings": {
@@ -2855,6 +2855,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "permission_profile": {
+          "name": "permission_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "service_tier": {

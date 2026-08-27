@@ -50,7 +50,7 @@ function provider(
     displayName: id,
     logoUrl: null,
     available: true,
-    maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+    maintenance: { health: true, usage: true, installation: false },
     strings: {
       signInHint: "Sign in",
       expiredHint: "Sign in again",
@@ -84,9 +84,6 @@ function executionOptions(
     models: [],
     selectedOnlyModels: [],
     permissionCeiling,
-    permissionProfiles: [],
-    permissionProfilesSupported: false,
-    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }

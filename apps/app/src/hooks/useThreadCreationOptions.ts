@@ -556,14 +556,14 @@ export function useThreadCreationOptions(
     [permissionCeiling, permissionModes],
   );
   const permissionProfiles = useMemo(
-    () => executionOptionsQuery.data?.permissionProfiles ?? [],
-    [executionOptionsQuery.data?.permissionProfiles],
+    () => executionOptionsQuery.data?.permissionProfiles?.profiles ?? [],
+    [executionOptionsQuery.data?.permissionProfiles?.profiles],
   );
   const permissionProfilesVerified =
     executionOptionsQuery.data !== undefined &&
     !executionOptionsQuery.isPlaceholderData &&
     !executionOptionsQuery.isError &&
-    executionOptionsQuery.data.permissionProfileLoadError === null;
+    executionOptionsQuery.data.permissionProfiles?.loadError === null;
   const rawPermissionProfile = usesStoredCreateSelections
     ? storedPermissionProfile || renderedThreadSelections.permissionProfile
     : renderedThreadSelections.permissionProfile;
@@ -610,7 +610,7 @@ export function useThreadCreationOptions(
     [permissionCeiling, permissionProfiles],
   );
   const supportsPermissionProfileSelection =
-    executionOptionsQuery.data?.permissionProfilesSupported === true;
+    executionOptionsQuery.data?.permissionProfiles !== undefined;
 
   const serviceTierSupportByProvider = useMemo(() => {
     const supportByProvider: Record<string, boolean> = {};

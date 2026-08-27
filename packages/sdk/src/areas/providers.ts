@@ -26,8 +26,9 @@ export type ProviderPermissionProfilesArgs = ProviderHostRoutingArgs & {
 
 export type ProviderListResult = SystemProviderInfo[];
 export type ProviderModelsResult = SystemExecutionOptionsResponse;
-export type ProviderPermissionProfilesResult =
-  SystemExecutionOptionsResponse["permissionProfiles"];
+export type ProviderPermissionProfilesResult = NonNullable<
+  SystemExecutionOptionsResponse["permissionProfiles"]
+>["profiles"];
 
 export interface ProvidersArea {
   /** List providers on the environment host, explicit host, or primary host. */
@@ -84,7 +85,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
           ...signalRequestArgs(input.signal),
         ),
       );
-      return executionOptions.permissionProfiles;
+      return executionOptions.permissionProfiles?.profiles ?? [];
     },
   };
 }

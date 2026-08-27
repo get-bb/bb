@@ -867,51 +867,51 @@ function validateProviderFallbackModels(
           description: requireNonBlankString({
             providerId,
             field: `${field}.supportedReasoningEfforts[${effortIndex}].description`,
-             value: Reflect.get(effort, "description"),
-           }),
-         });
+            value: Reflect.get(effort, "description"),
+          }),
+        });
       },
     );
     const defaultReasoningEffort = record.defaultReasoningEffort;
-     if (
-       typeof defaultReasoningEffort !== "string" ||
-       !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
+    if (
+      typeof defaultReasoningEffort !== "string" ||
+      !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
     ) {
       throw new Error(
         `provider "${providerId}" ${field}.defaultReasoningEffort must be one of its supportedReasoningEfforts`,
-       );
+      );
     }
     if (typeof record.isDefault !== "boolean") {
       throw new Error(
         `provider "${providerId}" ${field}.isDefault must be a boolean`,
-       );
+      );
     }
     if (record.isDefault) defaults += 1;
     return Object.freeze({
-       id,
-       displayName,
-       description,
-       supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
-       defaultReasoningEffort:
-         defaultReasoningEffort as PluginProviderReasoningLevel,
+      id,
+      displayName,
+      description,
+      supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
+      defaultReasoningEffort:
+        defaultReasoningEffort as PluginProviderReasoningLevel,
       isDefault: record.isDefault,
     });
   });
-   if (normalized.length > 0 && defaults !== 1) {
-     throw new Error(
-       `provider "${providerId}" models.fallback must mark exactly one model isDefault (found ${defaults})`,
+  if (normalized.length > 0 && defaults !== 1) {
+    throw new Error(
+      `provider "${providerId}" models.fallback must mark exactly one model isDefault (found ${defaults})`,
     );
   }
   return Object.freeze(normalized);
- }
- 
- const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
+}
+
+const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
 
 /**
  * AI-service ids the server serves itself: `openai` transcription and the
-  * builtin inference providers (pi-ai 0.84). A plugin cannot register one —
-  * it would capture the user's prompts and audio. This list is the one source
-  * for both the fake host and production (`isServerDirectAiServiceId`);
+ * builtin inference providers (pi-ai 0.84). A plugin cannot register one —
+ * it would capture the user's prompts and audio. This list is the one source
+ * for both the fake host and production (`isServerDirectAiServiceId`);
  * apps/server/test/services/plugins/plugin-ai-services.test.ts pins it to
  * pi-ai's provider registry, so a pi-ai bump must move it in the same change.
  */

@@ -75,7 +75,7 @@ const PROVIDER_SOURCE = (icon: string): string => `
       id: "marked-agent",
       displayName: "Marked Agent",
       icon: ${JSON.stringify(icon)},
-      maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
+      maintenance: { health: false, usage: false, installation: false },
       capabilities: {
         supportsServiceTier: false,
         supportsNativeUserQuestion: false,

@@ -14,7 +14,7 @@ export function makeProviderInfo(
     displayName: id,
     logoUrl: `/api/v1/system/providers/${id}/logo`,
     available: true,
-    maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
+    maintenance: { health: false, usage: false, installation: false },
     composerActions: [],
     capabilities: {
       supportsThreadArchive: true,

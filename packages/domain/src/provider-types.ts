@@ -186,7 +186,8 @@ export const providerInfoSchema = z.object({
     health: z.boolean(),
     usage: z.boolean(),
     installation: z.boolean(),
-    permissionProfiles: z.boolean(),
+    /** Present only when the provider offers named permission profiles. */
+    permissionProfiles: z.literal(true).optional(),
   }),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),

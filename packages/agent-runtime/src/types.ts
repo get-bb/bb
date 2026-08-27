@@ -416,9 +416,13 @@ export interface AgentRuntime {
     selectedOnlyModels: AvailableModel[];
   }>;
 
-  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
+  providerHealth(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ProviderHealthResult>;
 
-  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
+  providerUsage(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ProviderUsageResult>;
 
   listPermissionProfiles(
     args: ProviderMaintenanceArgs,

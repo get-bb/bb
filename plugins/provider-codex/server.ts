@@ -57,7 +57,12 @@ export default function plugin(bb: BbPluginApi) {
     // codex plugin's skills), since `CODEX_HOME` can move them and plugin
     // installs differ per machine. See `src/native-roots.ts`.
     ...CODEX_NATIVE_ROOTS_DECLARATION,
-    maintenance: { health: true, usage: true, installation: true, experimental_permissionProfiles: true },
+    maintenance: {
+      health: true,
+      usage: true,
+      installation: true,
+      experimental_permissionProfiles: true,
+    },
     capabilities: {
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,

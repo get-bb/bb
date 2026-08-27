@@ -1,1 +1,0 @@
-ALTER TABLE `project_execution_defaults` ADD `permission_profile` text;

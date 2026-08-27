@@ -257,12 +257,13 @@ describe("GET /api/v1/system/providers", () => {
         ).toEqual([]);
       }
       for (const provider of systemProviderInfoSchema.array().parse(raw)) {
-        expect(provider.maintenance).toEqual({
-          health: expect.any(Boolean),
-          usage: expect.any(Boolean),
-          installation: expect.any(Boolean),
-          permissionProfiles: expect.any(Boolean),
-        });
+        expect(provider.maintenance).toEqual(
+          expect.objectContaining({
+            health: expect.any(Boolean),
+            usage: expect.any(Boolean),
+            installation: expect.any(Boolean),
+          }),
+        );
       }
     });
   });

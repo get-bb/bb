@@ -61,7 +61,7 @@ const REGISTER_AI_SERVICE_AND_PROVIDER_SOURCE = (
       id: ${JSON.stringify(id)},
       displayName: "Acme Agent",
       icon: "./icons/agent.svg",
-      maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+      maintenance: { health: true, usage: true, installation: false },
       capabilities: {
         supportsServiceTier: false,
         supportsNativeUserQuestion: false,

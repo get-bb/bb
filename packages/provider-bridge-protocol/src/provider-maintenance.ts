@@ -119,21 +119,29 @@ export const providerHealthResultSchema = z.discriminatedUnion(
         health: providerHealthSchema,
       })
       .passthrough(),
-  ]);
+  ],
+);
 
-export type ProviderHealthResult = z.infer<typeof providerHealthResultSchema>;
+export type ProviderHealthResult = z.infer<
+  typeof providerHealthResultSchema
+>;
 
-export const providerUsageResultSchema = z.discriminatedUnion("supported", [
-  z.object({ supported: z.literal(false) }).passthrough(),
-  z
-    .object({
-      supported: z.literal(true),
-      usage: providerUsageSchema,
-    })
-    .passthrough(),
-]);
+export const providerUsageResultSchema = z.discriminatedUnion(
+  "supported",
+  [
+    z.object({ supported: z.literal(false) }).passthrough(),
+    z
+      .object({
+        supported: z.literal(true),
+        usage: providerUsageSchema,
+      })
+      .passthrough(),
+  ],
+);
 
-export type ProviderUsageResult = z.infer<typeof providerUsageResultSchema>;
+export type ProviderUsageResult = z.infer<
+  typeof providerUsageResultSchema
+>;
 
 export const providerPermissionProfileListResultSchema = z.discriminatedUnion(
   "supported",
@@ -145,7 +153,8 @@ export const providerPermissionProfileListResultSchema = z.discriminatedUnion(
         profiles: z.array(providerPermissionProfileSchema),
       })
       .passthrough(),
-  ]);
+  ],
+);
 export type ProviderPermissionProfileListResult = z.infer<
   typeof providerPermissionProfileListResultSchema
 >;

@@ -19,7 +19,7 @@ function provider(
     pluginId: `provider-${info.id}`,
     available: true,
     logoUrl: `/api/v1/system/providers/${info.id}/logo`,
-    maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
+    maintenance: { health: false, usage: false, installation: false },
   };
 }
 
@@ -129,9 +129,6 @@ const MODELS: readonly AvailableModel[] = [
 export const SYSTEM_EXECUTION_OPTIONS: SystemExecutionOptionsResponse = {
   providers: [...PROVIDERS],
   permissionCeiling: "full",
-  permissionProfiles: [],
-  permissionProfilesSupported: false,
-  permissionProfileLoadError: null,
   models: [...MODELS],
   selectedOnlyModels: [],
   modelLoadError: null,

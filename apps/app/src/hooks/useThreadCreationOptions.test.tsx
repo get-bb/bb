@@ -109,7 +109,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Global Provider",
         logoUrl: null,
         available: true,
-        maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [
           { kind: "skills", trigger: "/" },
           {
@@ -134,7 +134,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Project Provider",
         logoUrl: null,
         available: true,
-        maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsThreadArchive: true,
@@ -176,9 +176,6 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
     ],
     selectedOnlyModels: [],
     permissionCeiling: "full",
-    permissionProfiles: [],
-    permissionProfilesSupported: false,
-    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }
@@ -230,7 +227,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Claude Code",
         logoUrl: null,
         available: true,
-        maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -272,9 +269,6 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
     ],
     selectedOnlyModels: [],
     permissionCeiling: "full",
-    permissionProfiles: [],
-    permissionProfilesSupported: false,
-    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }
@@ -732,9 +726,6 @@ describe("useThreadCreationOptions", () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue({
       ...executionOptionsResponse(),
       permissionCeiling: "auto",
-      permissionProfiles: [],
-      permissionProfilesSupported: false,
-      permissionProfileLoadError: null,
     });
     const { wrapper } = createQueryClientTestHarness();
 
@@ -775,19 +766,21 @@ describe("useThreadCreationOptions", () => {
   it("lists allowed named profiles and disables managed-policy blocks", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue({
       ...executionOptionsResponse(),
-      permissionProfiles: [
-        {
-          id: ":workspace",
-          description: "Workspace access",
-          allowed: true,
-        },
-        {
-          id: "managed-root",
-          description: "Managed root access",
-          allowed: false,
-        },
-      ],
-      permissionProfilesSupported: true,
+      permissionProfiles: {
+        profiles: [
+          {
+            id: ":workspace",
+            description: "Workspace access",
+            allowed: true,
+          },
+          {
+            id: "managed-root",
+            description: "Managed root access",
+            allowed: false,
+          },
+        ],
+        loadError: null,
+      },
     });
     const { wrapper } = createQueryClientTestHarness();
 

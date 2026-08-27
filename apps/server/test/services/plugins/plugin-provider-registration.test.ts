@@ -107,7 +107,7 @@ describe("bb.providers.register (server)", () => {
           displayName: "My Remote Agent",
           available: true,
           logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
-          maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
+          maintenance: { health: true, usage: true, installation: false },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,

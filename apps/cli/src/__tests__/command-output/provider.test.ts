@@ -160,13 +160,16 @@ describe("bb provider command output", () => {
 
   it("bb provider permission-profiles lists provider-native profiles", async () => {
     const get = vi.fn(async () => ({
-      permissionProfiles: [
-        {
-          id: ":workspace",
-          description: "Workspace access",
-          allowed: true,
-        },
-      ],
+      permissionProfiles: {
+        profiles: [
+          {
+            id: ":workspace",
+            description: "Workspace access",
+            allowed: true,
+          },
+        ],
+        loadError: null,
+      },
     }));
     stubServerApi({ "v1.system.execution-options.$get": get });
 

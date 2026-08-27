@@ -55,7 +55,7 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     displayName: provider.label,
     logoUrl: null,
     available: true,
-    maintenance: { health: true, usage: true, installation: true, permissionProfiles: false },
+    maintenance: { health: true, usage: true, installation: true },
     composerActions: [
       ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
     ],
@@ -120,9 +120,6 @@ function makeExecutionOptions(
     models,
     selectedOnlyModels,
     permissionCeiling: "full",
-    permissionProfiles: [],
-    permissionProfilesSupported: false,
-    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }
