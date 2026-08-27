@@ -3106,9 +3106,6 @@ describe("PromptBoxInternal selection reveal", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`);
     const { promptBoxRef } = renderPromptBox(lines.join("\n"));
 
-    await focusPromptEnd(promptBoxRef);
-    await nextAnimationFrame();
-
     const scrollContainer = document.querySelector(
       "[data-promptbox-editor-scroll]",
     );
@@ -3144,8 +3141,16 @@ describe("PromptBoxInternal selection reveal", () => {
       });
 
     try {
-      await waitFor(() => expect(view).not.toBeNull());
-      const liveView = view as unknown as EditorView;
+      // Install the layout spies above before triggering the reveal whose
+      // EditorView this test uses; there is no guaranteed later reveal.
+      await focusPromptEnd(promptBoxRef);
+      await nextAnimationFrame();
+
+      expect(view).not.toBeNull();
+      if (view === null) {
+        throw new Error("Expected focus reveal to capture the editor view");
+      }
+      const liveView: EditorView = view;
       const { doc } = liveView.state;
       // The focusEnd reveal above captured `view`; reset the baseline it set.
       scrollTop = 500;
