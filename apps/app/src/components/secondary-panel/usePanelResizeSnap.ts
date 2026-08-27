@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   createSplitResizeSnapSession,
+  SPLIT_RESIZE_SNAP_RELEASE_PX,
   type SplitResizeAxis,
   type SplitResizeGridTarget,
 } from "@/lib/split-resize-snap";
+
+const OUTER_PANEL_SNAP_RELEASE_PX = SPLIT_RESIZE_SNAP_RELEASE_PX * 1.25;
 
 interface UsePanelResizeSnapArgs {
   axis: SplitResizeAxis;
@@ -55,10 +58,21 @@ export function usePanelResizeSnap({
       const end = axis === "x" ? nextRect.right : nextRect.bottom;
       if (end <= start) return;
 
-      const snapSession = createSplitResizeSnapSession(divider, axis, {
-        boundaryIndex,
-        childCount,
-      });
+      const snapSession = createSplitResizeSnapSession(
+        divider,
+        axis,
+        {
+          boundaryIndex,
+          childCount,
+        },
+        {
+          // The panel library mediates this divider rather than letting bb move
+          // its adjacent flex panes directly, so the same numeric band feels
+          // lighter. A modestly longer hold restores perceptual parity without
+          // changing capture or the direct split defaults.
+          releasePx: OUTER_PANEL_SNAP_RELEASE_PX,
+        },
+      );
       const grid = divider.closest<HTMLElement>(
         "[data-split-resize-grid-root]",
       );

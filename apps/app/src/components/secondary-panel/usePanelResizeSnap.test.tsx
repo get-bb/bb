@@ -198,4 +198,41 @@ describe("usePanelResizeSnap", () => {
     fireEvent.pointerUp(window, { clientX: 560, pointerId: 41 });
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
+
+  it("holds the outer divider for 25% farther than direct split dividers", () => {
+    const onResize = vi.fn();
+    render(<SnapHarness onResize={onResize} />);
+    const grid = screen.getByTestId("grid");
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const hitTarget = screen.getByTestId("hit-target");
+    const next = screen.getByTestId("next");
+    grid.getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 370);
+    divider.getBoundingClientRect = () => rect(470, 1);
+    next.getBoundingClientRect = () => rect(471, 429);
+
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 45 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 500,
+      pointerId: 45,
+    });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 536,
+      pointerId: 45,
+    });
+
+    expect(onResize).toHaveBeenLastCalledWith(0.5);
+
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 539,
+      pointerId: 45,
+    });
+    expect(onResize).toHaveBeenLastCalledWith(0.54875);
+
+    fireEvent.pointerUp(window, { clientX: 539, pointerId: 45 });
+  });
 });
