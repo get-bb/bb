@@ -356,6 +356,13 @@ function readForkThreadCreateSeedFromLocationState(
     return null;
   }
   if (
+    value.permissionProfile !== undefined &&
+    value.permissionProfile !== null &&
+    typeof value.permissionProfile !== "string"
+  ) {
+    return null;
+  }
+  if (
     value.sourceSeqEnd !== undefined &&
     (typeof value.sourceSeqEnd !== "number" ||
       !Number.isInteger(value.sourceSeqEnd) ||
@@ -367,6 +374,8 @@ function readForkThreadCreateSeedFromLocationState(
     environmentId: value.environmentId,
     model: value.model,
     permissionMode: seedPermissionMode,
+    permissionProfile:
+      (value.permissionProfile as string | null | undefined) ?? null,
     projectId: value.projectId,
     providerId: value.providerId,
     reasoningLevel: value.reasoningLevel as ReasoningLevel,
@@ -514,6 +523,10 @@ export function RootComposeView() {
   );
   const handleSubmit = useCallback(
     async (request: NewThreadRequest) => {
+      const {
+        experimental_permissionProfile: permissionProfile = null,
+        ...threadRequest
+      } = request;
       const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
@@ -521,7 +534,8 @@ export function RootComposeView() {
       const createRequest =
         forkSeed === null
           ? {
-              ...request,
+              ...threadRequest,
+              permissionProfile,
               ...(rootComposeSectionId
                 ? { sectionId: rootComposeSectionId }
                 : {}),
@@ -531,6 +545,7 @@ export function RootComposeView() {
               input: request.input,
               model: request.model,
               permissionMode: request.permissionMode,
+              permissionProfile,
               providerSupportsFork:
                 findCachedProviderInfo(queryClient, forkSeed.providerId)
                   ?.capabilities.supportsFork ?? false,
@@ -570,6 +585,7 @@ export function RootComposeView() {
             reasoningLevel: forkSeed.reasoningLevel,
             serviceTier: forkSeed.serviceTier,
             permissionMode: forkSeed.permissionMode,
+            permissionProfile: forkSeed.permissionProfile,
             environment: {
               type: "reuse" as const,
               environmentId: forkSeed.environmentId,

@@ -11,6 +11,7 @@ export interface InlineQueuedMessageEditState {
   model: ThreadQueuedMessage["model"];
   ownerThreadId: string;
   permissionMode: ThreadQueuedMessage["permissionMode"];
+  permissionProfile: ThreadQueuedMessage["permissionProfile"];
   queuedMessageId: string;
   queuedMessageIndex: number;
   reasoningLevel: ThreadQueuedMessage["reasoningLevel"];
@@ -146,6 +147,7 @@ export function useInlineQueuedMessageEditing({
         model: queuedMessage.model,
         ownerThreadId,
         permissionMode: queuedMessage.permissionMode,
+        permissionProfile: queuedMessage.permissionProfile,
         queuedMessageId,
         queuedMessageIndex,
         reasoningLevel: queuedMessage.reasoningLevel,

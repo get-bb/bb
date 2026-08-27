@@ -42,10 +42,12 @@ import {
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
+import { PermissionProfilePicker } from "@/components/pickers/PermissionProfilePicker";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
   type ExecutionPermissionConfig,
+  type ExecutionPermissionProfileConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -199,6 +201,7 @@ export interface FollowUpPromptBoxProps {
   execution: ExecutionControlsProps;
   /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
+  permissionProfile?: ExecutionPermissionProfileConfig;
   /**
    * Render all footer controls (model/reasoning + permission pickers) as
    * non-interactive, dimmed labels. The composer text input stays editable.
@@ -302,6 +305,7 @@ function FollowUpPromptBoxWithComposer({
   contextWindowUsage,
   execution,
   permission,
+  permissionProfile,
   readOnly,
   executionReadOnly,
   permissionReadOnly,
@@ -646,22 +650,32 @@ function FollowUpPromptBoxWithComposer({
   // diverge from the provider mode driving the current turn.
   const permissionControl = useMemo(
     () => (
-      <PermissionModePicker
-        value={permission.value}
-        options={permission.options}
-        onChange={permission.onChange}
-        supported={permission.supported}
-        disabled={permissionPickerDisabled}
-        showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
-        displayOverride={permissionDisplayOverride}
-        className="h-6"
-      />
+      <div className="flex items-center gap-2">
+        {permissionProfile ? (
+          <PermissionProfilePicker
+            {...permissionProfile}
+            disabled={permissionPickerDisabled}
+            className="h-6"
+          />
+        ) : null}
+        <PermissionModePicker
+          value={permission.value}
+          options={permission.options}
+          onChange={permission.onChange}
+          supported={permission.supported}
+          disabled={permissionPickerDisabled}
+          showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
+          displayOverride={permissionDisplayOverride}
+          className="h-6"
+        />
+      </div>
     ),
     [
       permission.onChange,
       permission.options,
       permission.supported,
       permission.value,
+      permissionProfile,
       permissionDisplayOverride,
       permissionPickerDisabledByPlanMode,
       permissionPickerDisabled,

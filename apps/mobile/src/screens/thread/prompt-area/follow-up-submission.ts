@@ -128,6 +128,7 @@ export function buildFollowUpExecutionInputSources({
       model: "explicit",
       reasoningLevel: "explicit",
       permissionMode: "explicit",
+      permissionProfile: "explicit",
       ...(hasServiceTier ? { serviceTier: "explicit" } : {}),
     };
   }

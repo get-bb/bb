@@ -371,6 +371,8 @@ export function ShowcaseHeroCarousel({
                     model: request.model,
                     reasoningLevel: request.reasoningLevel,
                     permissionMode: request.permissionMode,
+                    permissionProfile:
+                      request.experimental_permissionProfile ?? null,
                     ...(request.serviceTier
                       ? { serviceTier: request.serviceTier }
                       : {}),

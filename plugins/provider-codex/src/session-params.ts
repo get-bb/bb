@@ -41,6 +41,7 @@ export type CodexSessionOptions = {
   providerSubagentsEnabled?: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
+  permissionProfile?: string | null;
 } & RuntimePermissionPolicy;
 
 interface CodexPermissionSettings {
@@ -70,6 +71,8 @@ export type BbThreadForkParams = {
   approvalPolicy?: AskForApproval | null;
   approvalsReviewer?: ApprovalsReviewer | null;
   sandbox?: CodexSandboxMode | null;
+  permissions?: string | null;
+  runtimeWorkspaceRoots?: string[] | null;
   config?: { [key in string]?: JsonValue } | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
@@ -523,7 +526,11 @@ export function combineWorkspaceWriteRoots(
 export function shouldCaptureWorkspaceWriteGitRoots(
   options: CodexSessionOptions,
 ): boolean {
-  return options.permissionScope === "workspace";
+  return (
+    (options.permissionProfile !== null &&
+      options.permissionProfile !== undefined) ||
+    options.permissionScope === "workspace"
+  );
 }
 
 function toCodexApprovalsReviewer(
@@ -662,7 +669,11 @@ export function buildCodexConfig(
   }
   config["memories.use_memories"] = args.options?.memoryEnabled ?? true;
   config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;
-  if (args.options?.permissionScope === "workspace") {
+  if (
+    args.options?.permissionScope === "workspace" &&
+    (args.options.permissionProfile === null ||
+      args.options.permissionProfile === undefined)
+  ) {
     const writableRoots = combineWorkspaceWriteRoots(
       args.gitWritableRoots,
       args.additionalWorkspaceWriteRoots,

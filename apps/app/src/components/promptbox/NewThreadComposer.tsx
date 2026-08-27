@@ -99,6 +99,7 @@ export interface NewThreadComposerSeed {
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   permissionMode?: PermissionMode;
+  permissionProfile?: string | null;
   environment?: NewThreadRequest["environment"];
   initialPrompt?: string;
 }
@@ -478,6 +479,7 @@ export function NewThreadComposer({
     seed?.reasoningLevel ?? null,
     seed?.serviceTier ?? null,
     seed?.permissionMode ?? null,
+    seed?.permissionProfile ?? null,
     seed?.environment ?? null,
   ]);
   const environmentSeed = useMemo(
@@ -554,6 +556,10 @@ export function NewThreadComposer({
       seed?.reasoningLevel ?? projectDefaults?.reasoningLevel,
     initialPermissionMode:
       seed?.permissionMode ?? projectDefaults?.permissionMode,
+    initialPermissionProfile:
+      seed?.permissionProfile !== undefined
+        ? seed.permissionProfile
+        : projectDefaults?.permissionProfile,
     initialEnvironmentSelectionValue: environmentSeed?.selectionValue,
   });
   const {
@@ -569,6 +575,8 @@ export function NewThreadComposer({
     moreModelOptions,
     permissionMode,
     permissionModeOptions,
+    permissionProfile,
+    permissionProfileOptions,
     providerOptions,
     reasoningLevel,
     reasoningOptions,
@@ -581,12 +589,14 @@ export function NewThreadComposer({
     serviceTierFastLabel,
     setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
+    setPermissionProfile,
     setProviderModelReasoning,
     setReasoningLevel,
     setSelectedModel,
     setSelectedProviderId,
     setServiceTier,
     supportsPermissionModeSelection,
+    supportsPermissionProfileSelection,
     supportsServiceTier,
     clearReuseEnvironment,
   } = creationOptions;
@@ -1052,10 +1062,14 @@ export function NewThreadComposer({
       ...(seed?.permissionMode !== undefined
         ? { permissionMode: "explicit" as const }
         : {}),
+      ...(seed?.permissionProfile !== undefined
+        ? { permissionProfile: "explicit" as const }
+        : {}),
     }),
     [
       seed?.model,
       seed?.permissionMode,
+      seed?.permissionProfile,
       seed?.providerId,
       seed?.reasoningLevel,
       seed?.serviceTier,
@@ -1119,6 +1133,7 @@ export function NewThreadComposer({
         model: selectedThreadModel,
         reasoningLevel,
         permissionMode,
+        experimental_permissionProfile: permissionProfile,
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
         executionInputSources: sources,
         environment: submissionEnvironment,
@@ -1150,6 +1165,7 @@ export function NewThreadComposer({
       managedWorktreeUnavailable,
       onSubmit,
       permissionMode,
+      permissionProfile,
       projectDefaultsUnavailable,
       projectId,
       promptDraft,
@@ -1199,6 +1215,23 @@ export function NewThreadComposer({
       setPermissionMode(value);
     },
     [permissionMode, setPermissionMode, snapshotDraftBeforeOptionChange],
+  );
+  const handlePermissionProfileChange = useCallback(
+    (value: string | null) => {
+      if (!hasPromptOptionValueChanged(permissionProfile, value)) return;
+      snapshotDraftBeforeOptionChange();
+      if (value !== null && permissionMode === "full") {
+        setPermissionMode("auto");
+      }
+      setPermissionProfile(value);
+    },
+    [
+      permissionMode,
+      permissionProfile,
+      setPermissionMode,
+      setPermissionProfile,
+      snapshotDraftBeforeOptionChange,
+    ],
   );
   const handleServiceTierChange = useCallback(
     (value: ServiceTier | undefined) => {
@@ -1337,6 +1370,12 @@ export function NewThreadComposer({
               onChange: handlePermissionChange,
               supported: supportsPermissionModeSelection,
             },
+            permissionProfile: {
+              value: permissionProfile,
+              options: permissionProfileOptions,
+              onChange: handlePermissionProfileChange,
+              supported: supportsPermissionProfileSelection,
+            },
             banner: options.banner,
             header: options.header,
           }}
@@ -1412,6 +1451,7 @@ export function NewThreadComposer({
       handleEditorFocus,
       handleModelChange,
       handlePermissionChange,
+      handlePermissionProfileChange,
       handleProjectChange,
       handleProviderChange,
       handleReasoningChange,
@@ -1430,6 +1470,8 @@ export function NewThreadComposer({
       moreModelOptions,
       permissionMode,
       permissionModeOptions,
+      permissionProfile,
+      permissionProfileOptions,
       projectId,
       projectOptions,
       projectSources,
@@ -1451,6 +1493,7 @@ export function NewThreadComposer({
       serviceTierSupportByProvider,
       sidebarNavigationSettled,
       supportsPermissionModeSelection,
+      supportsPermissionProfileSelection,
       supportsServiceTier,
       submitDisabledReason,
       textEffects,

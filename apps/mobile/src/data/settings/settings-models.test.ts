@@ -190,7 +190,7 @@ describe("usage limits model", () => {
       displayName: "Agent A",
       logoUrl: null,
       available: true,
-      maintenance: { health: true, usage: true, installation: false },
+      maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
       capabilities: {
         supportsThreadArchive: false,
         supportsThreadRename: false,
@@ -214,7 +214,7 @@ describe("usage limits model", () => {
       displayName: "Agent B",
       logoUrl: null,
       available: true,
-      maintenance: { health: true, usage: true, installation: false },
+      maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
       capabilities: {
         supportsThreadArchive: false,
         supportsThreadRename: false,
@@ -233,7 +233,7 @@ describe("usage limits model", () => {
       displayName: "No Usage",
       logoUrl: null,
       available: true,
-      maintenance: { health: true, usage: false, installation: false },
+      maintenance: { health: true, usage: false, installation: false, permissionProfiles: false },
       capabilities: {
         supportsThreadArchive: false,
         supportsThreadRename: false,

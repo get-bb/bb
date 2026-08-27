@@ -261,6 +261,7 @@ describe("GET /api/v1/system/providers", () => {
           health: expect.any(Boolean),
           usage: expect.any(Boolean),
           installation: expect.any(Boolean),
+          permissionProfiles: expect.any(Boolean),
         });
       }
     });

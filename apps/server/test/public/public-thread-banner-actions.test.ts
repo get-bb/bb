@@ -91,6 +91,7 @@ function seedActivePlan(harness: TestAppHarness, fixture: BannerFixture): void {
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         source: "client/turn/requested",
       },
       initiator: "user",

@@ -57,6 +57,23 @@ type ModelListResult = Pick<
   "modelLoadError" | "models" | "selectedOnlyModels"
 >;
 
+type PermissionProfileListResult = Pick<
+  SystemExecutionOptionsResponse,
+  | "permissionProfileLoadError"
+  | "permissionProfiles"
+  | "permissionProfilesSupported"
+>;
+
+function emptyPermissionProfileResult(
+  supported: boolean,
+): PermissionProfileListResult {
+  return {
+    permissionProfiles: [],
+    permissionProfilesSupported: supported,
+    permissionProfileLoadError: null,
+  };
+}
+
 function unavailableProviderModelResult(providerId: string): ModelListResult {
   return {
     models: [],
@@ -467,6 +484,7 @@ export async function resolveSystemExecutionOptions(
       models: [],
       selectedOnlyModels: [],
       modelLoadError: null,
+      ...emptyPermissionProfileResult(false),
     };
   }
 
@@ -475,6 +493,9 @@ export async function resolveSystemExecutionOptions(
       providers,
       permissionCeiling,
       ...unavailableProviderModelResult(modelsProvider.id),
+      ...emptyPermissionProfileResult(
+        modelsProvider.maintenance.permissionProfiles,
+      ),
     };
   }
 
@@ -500,17 +521,40 @@ export async function resolveSystemExecutionOptions(
               error: hostLookupError,
               provider: modelsProvider,
             }),
+      permissionProfiles: [],
+      permissionProfilesSupported:
+        modelsProvider.maintenance.permissionProfiles,
+      permissionProfileLoadError:
+        !modelsProvider.maintenance.permissionProfiles ||
+        hostLookupError === null
+          ? null
+          : buildModelLoadError({
+              error: hostLookupError,
+              provider: modelsProvider,
+            }),
     };
   }
 
-  const modelResult =
+  const modelResultPromise =
     earlyModelResultPromise !== null
-      ? await earlyModelResultPromise
-      : await loadSystemProviderModels(deps, {
+      ? earlyModelResultPromise
+      : loadSystemProviderModels(deps, {
           ...(cwd !== undefined ? { cwd } : {}),
           hostId,
           provider: modelsProvider,
         });
+  const permissionProfileResultPromise = loadSystemProviderPermissionProfiles(
+    deps,
+    {
+      ...(cwd !== undefined ? { cwd } : {}),
+      hostId,
+      provider: modelsProvider,
+    },
+  );
+  const [modelResult, permissionProfileResult] = await Promise.all([
+    modelResultPromise,
+    permissionProfileResultPromise,
+  ]);
 
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
@@ -528,7 +572,65 @@ export async function resolveSystemExecutionOptions(
     models,
     selectedOnlyModels,
     modelLoadError: modelResult.modelLoadError,
+    ...permissionProfileResult,
   };
+}
+
+async function loadSystemProviderPermissionProfiles(
+  deps: LoggedWorkSessionDeps,
+  {
+    cwd,
+    hostId,
+    provider,
+  }: {
+    cwd?: string;
+    hostId: string;
+    provider: ProviderInfo;
+  },
+): Promise<PermissionProfileListResult> {
+  if (!provider.maintenance.permissionProfiles) {
+    return emptyPermissionProfileResult(false);
+  }
+  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, provider.id);
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "provider.list_permission_profiles",
+        providerId: provider.id,
+        bridgeLaunch,
+        ...(cwd !== undefined ? { cwd } : {}),
+      },
+    });
+    return result.supported
+      ? {
+          permissionProfiles: result.profiles,
+          permissionProfilesSupported: true,
+          permissionProfileLoadError: null,
+        }
+      : emptyPermissionProfileResult(false);
+  } catch (error) {
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 502 && error.status !== 504)
+    ) {
+      throw error;
+    }
+    deps.logger.warn(
+      {
+        ...expectedFallbackErrorLogFields(error),
+        hostId,
+        providerId: provider.id,
+      },
+      "Failed to resolve provider permission profiles",
+    );
+    return {
+      permissionProfiles: [],
+      permissionProfilesSupported: true,
+      permissionProfileLoadError: buildModelLoadError({ error, provider }),
+    };
+  }
 }
 
 async function loadSystemProviderModels(

@@ -243,6 +243,7 @@ export function seedQueuedMessage(
     model?: string;
     reasoningLevel?: string;
     permissionMode?: PermissionMode;
+    permissionProfile?: string | null;
     senderThreadId?: string | null;
     serviceTier?: string;
   },
@@ -253,6 +254,7 @@ export function seedQueuedMessage(
     model: args.model ?? "gpt-5",
     reasoningLevel: args.reasoningLevel ?? "medium",
     permissionMode: args.permissionMode ?? "full",
+    permissionProfile: args.permissionProfile ?? null,
     senderThreadId: args.senderThreadId ?? null,
     serviceTier: args.serviceTier ?? "default",
   });
@@ -327,6 +329,7 @@ export function seedThreadRuntimeState(
     model?: string;
     providerThreadId: string;
     permissionMode?: RecordedPermissionMode;
+    permissionProfile?: string | null;
     reasoningLevel?: string;
     sequenceStart?: number;
     serviceTier?: string;
@@ -365,6 +368,7 @@ export function seedThreadRuntimeState(
         serviceTier: args.serviceTier ?? "default",
         reasoningLevel: args.reasoningLevel ?? "medium",
         permissionMode: args.permissionMode ?? "full",
+        permissionProfile: args.permissionProfile ?? null,
         source: "client/turn/requested",
       },
       initiator: "user",

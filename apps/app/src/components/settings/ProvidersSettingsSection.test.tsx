@@ -24,7 +24,7 @@ function provider(id: string, displayName: string): ProviderInfo {
     displayName,
     logoUrl: null,
     available: true,
-    maintenance: { health: false, usage: false, installation: false },
+    maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

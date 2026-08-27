@@ -60,6 +60,7 @@ function makeQueuedMessage(
     model: "codex-test",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,
@@ -106,6 +107,7 @@ const executionInputSources = {
   serviceTier: "client-preference",
   reasoningLevel: "explicit",
   permissionMode: "client-preference",
+  permissionProfile: "client-preference",
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {

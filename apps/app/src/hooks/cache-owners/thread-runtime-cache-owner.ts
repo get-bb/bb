@@ -408,6 +408,10 @@ function buildOptimisticQueuedMessage({
       request.permissionMode ??
       defaultExecutionOptions?.permissionMode ??
       "auto",
+    permissionProfile:
+      request.permissionProfile ??
+      defaultExecutionOptions?.permissionProfile ??
+      null,
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,

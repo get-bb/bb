@@ -158,6 +158,39 @@ describe("bb provider command output", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["[]"]);
   });
 
+  it("bb provider permission-profiles lists provider-native profiles", async () => {
+    const get = vi.fn(async () => ({
+      permissionProfiles: [
+        {
+          id: ":workspace",
+          description: "Workspace access",
+          allowed: true,
+        },
+      ],
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(
+      ["provider", "permission-profiles", "codex", "--json"],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({ query: { providerId: "codex" } });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(
+        [
+          {
+            id: ":workspace",
+            description: "Workspace access",
+            allowed: true,
+          },
+        ],
+        null,
+        2,
+      ),
+    ]);
+  });
+
   it("rejects simultaneous machine and environment selectors", async () => {
     await expect(
       runCommand(

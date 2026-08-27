@@ -47,6 +47,7 @@ const earlierTurnEventData = {
     serviceTier: "default",
     reasoningLevel: "medium",
     permissionMode: "full",
+    permissionProfile: null,
     source: "client/turn/requested",
   },
   initiator: "user",

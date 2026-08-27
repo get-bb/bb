@@ -172,6 +172,9 @@ function resolveExecutionOptionsPlaceholder({
     models: cached?.models ?? [],
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
     permissionCeiling: PLACEHOLDER_PERMISSION_CEILING,
+    permissionProfiles: [],
+    permissionProfilesSupported: false,
+    permissionProfileLoadError: null,
     modelLoadError: null,
   };
 }

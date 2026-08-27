@@ -76,6 +76,7 @@ export function useForkThreadFromMessage({
           environmentId: source.environmentId,
           model: executionOptions.model,
           permissionMode: executionOptions.permissionMode,
+          permissionProfile: executionOptions.permissionProfile,
           projectId: source.projectId,
           providerId: source.providerId,
           reasoningLevel: executionOptions.reasoningLevel,

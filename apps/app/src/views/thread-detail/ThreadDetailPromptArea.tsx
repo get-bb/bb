@@ -244,6 +244,7 @@ interface InlineDraftComposerOptions {
   onEscape?: FollowUpComposerProps["onEscape"];
   onSelectHistoryEntry: (draft: PromptDraftState) => void;
   permission: FollowUpPromptBoxProps["permission"];
+  permissionProfile?: FollowUpPromptBoxProps["permissionProfile"];
   pluginComposerHost: PluginComposerHost;
   promptActions: FollowUpPromptBoxProps["promptActions"];
   promptPlaceholder: string;
@@ -303,6 +304,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
       execution={options.execution}
       executionReadOnly
       permission={options.permission}
+      permissionProfile={options.permissionProfile}
       permissionReadOnly
       typeahead={options.typeahead}
       promptActions={options.promptActions}
@@ -680,6 +682,8 @@ export function ThreadDetailPromptArea({
     setReasoningLevel,
     permissionMode,
     setPermissionMode,
+    permissionProfile,
+    setPermissionProfile,
     activeModel,
     modelOptions,
     moreModelOptions,
@@ -688,7 +692,9 @@ export function ThreadDetailPromptArea({
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
+    permissionProfileOptions,
     supportsPermissionModeSelection,
+    supportsPermissionProfileSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
     serviceTierFastLabel,
@@ -705,6 +711,7 @@ export function ThreadDetailPromptArea({
     initialServiceTier: defaultExecutionOptions?.serviceTier,
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
+    initialPermissionProfile: defaultExecutionOptions?.permissionProfile,
     initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
   });
   const fallbackIdentity = modelFallback
@@ -848,6 +855,7 @@ export function ThreadDetailPromptArea({
       serviceTier,
       reasoningLevel,
       permissionMode,
+      permissionProfile,
       executionInputSources,
     };
   }, [
@@ -855,6 +863,7 @@ export function ThreadDetailPromptArea({
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
     permissionMode,
+    permissionProfile,
     reasoningLevel,
     serviceTier,
     supportsServiceTier,
@@ -1255,6 +1264,42 @@ export function ThreadDetailPromptArea({
         : null,
     [bottomPermissionConfig, inlineEditingQueuedMessage],
   );
+  const bottomPermissionProfileConfig = useMemo(
+    () => ({
+      value: hasConcreteDefaultExecutionOptions ? permissionProfile : null,
+      options: hasConcreteDefaultExecutionOptions
+        ? permissionProfileOptions
+        : [],
+      onChange: (value: string | null) => {
+        if (value !== null && permissionMode === "full") {
+          setPermissionMode("auto");
+        }
+        setPermissionProfile(value);
+      },
+      supported:
+        hasConcreteDefaultExecutionOptions &&
+        supportsPermissionProfileSelection,
+    }),
+    [
+      hasConcreteDefaultExecutionOptions,
+      permissionMode,
+      permissionProfile,
+      permissionProfileOptions,
+      setPermissionMode,
+      setPermissionProfile,
+      supportsPermissionProfileSelection,
+    ],
+  );
+  const inlinePermissionProfileConfig = useMemo(
+    () =>
+      inlineEditingQueuedMessage
+        ? {
+            ...bottomPermissionProfileConfig,
+            value: inlineEditingQueuedMessage.permissionProfile,
+          }
+        : null,
+    [bottomPermissionProfileConfig, inlineEditingQueuedMessage],
+  );
 
   const environmentSummary = useMemo(
     () =>
@@ -1389,6 +1434,7 @@ export function ThreadDetailPromptArea({
         onChangeMessage: handleComposerMessageChange,
         onSelectHistoryEntry: setActiveComposerDraft,
         permission: inlinePermissionConfig,
+        permissionProfile: inlinePermissionProfileConfig ?? undefined,
         pluginComposerHost: queuedMessagePluginComposerHost,
         promptActions,
         promptPlaceholder,
@@ -1414,6 +1460,7 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessage,
     inlineExecutionConfig,
     inlinePermissionConfig,
+    inlinePermissionProfileConfig,
     isAttachingInlineFiles,
     isUpdateQueuedMessagePending,
     projectId,
@@ -1515,6 +1562,7 @@ export function ThreadDetailPromptArea({
           onSelectHistoryEntry: (nextDraft) =>
             sentMessageEdit.updateDraft(() => nextDraft),
           permission: bottomPermissionConfig,
+          permissionProfile: bottomPermissionProfileConfig,
           pluginComposerHost: sentMessagePluginComposerHost,
           promptActions,
           promptPlaceholder: "Edit message",
@@ -1532,6 +1580,7 @@ export function ThreadDetailPromptArea({
     );
   }, [
     bottomPermissionConfig,
+    bottomPermissionProfileConfig,
     canSubmitSentMessageEdit,
     compactExecutionConfig,
     editFocusNonce,
@@ -1749,6 +1798,7 @@ export function ThreadDetailPromptArea({
       contextWindowUsage={contextWindowUsage ?? null}
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
+      permissionProfile={bottomPermissionProfileConfig}
       typeahead={typeaheadConfig}
       promptActions={promptActions}
     />

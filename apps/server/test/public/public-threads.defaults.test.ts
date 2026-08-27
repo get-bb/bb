@@ -61,6 +61,7 @@ describe("public thread default routes", () => {
           serviceTier: "fast",
           reasoningLevel: "high",
           permissionMode: "workspace-write",
+          permissionProfile: null,
           input: [
             { type: "text", text: "Create with explicit execution options" },
           ],
@@ -90,6 +91,7 @@ describe("public thread default routes", () => {
           reasoningLevel: "high",
           permissionMode: "accept-edits",
           permissionEscalation: "ask",
+          providerOptions: expect.objectContaining({ permissionProfile: null }),
         },
       });
       expect(
@@ -102,6 +104,7 @@ describe("public thread default routes", () => {
         serviceTier: "fast",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
       });
     });
   });
@@ -193,6 +196,7 @@ describe("public thread default routes", () => {
           serviceTier: "fast",
           reasoningLevel: "high",
           permissionMode: "workspace-write",
+          permissionProfile: null,
           input: [
             { type: "text", text: "Create without mutating project defaults" },
           ],
@@ -232,6 +236,7 @@ describe("public thread default routes", () => {
         serviceTier: "fast",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -265,6 +270,7 @@ describe("public thread default routes", () => {
           reasoningLevel: "high",
           permissionMode: "accept-edits",
           permissionEscalation: "ask",
+          providerOptions: expect.objectContaining({ permissionProfile: null }),
         },
       });
     });
@@ -306,6 +312,7 @@ describe("public thread default routes", () => {
         serviceTier: "fast",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -531,6 +538,7 @@ describe("public thread default routes", () => {
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
       });
 
       const response = await harness.app.request(
@@ -547,6 +555,7 @@ describe("public thread default routes", () => {
             serviceTier: "fast",
             reasoningLevel: "high",
             permissionMode: "workspace-write",
+            permissionProfile: null,
           }),
         },
       );
@@ -564,6 +573,7 @@ describe("public thread default routes", () => {
           reasoningLevel: "high",
           permissionMode: "accept-edits",
           permissionEscalation: "ask",
+          providerOptions: expect.objectContaining({ permissionProfile: null }),
         },
       });
       expect(
@@ -576,6 +586,7 @@ describe("public thread default routes", () => {
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
       });
     });
   });

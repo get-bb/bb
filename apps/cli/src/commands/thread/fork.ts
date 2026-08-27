@@ -12,7 +12,9 @@ import {
   buildPromptInputs,
   collectOption,
   parsePermissionMode,
+  parsePermissionProfile,
   PERMISSION_MODE_HELP,
+  PERMISSION_PROFILE_HELP,
 } from "./helpers.js";
 
 interface ThreadForkCommandOptions {
@@ -21,6 +23,7 @@ interface ThreadForkCommandOptions {
   image?: string[];
   json?: boolean;
   permissionMode?: string;
+  permissionProfile?: string;
   prompt?: string;
   sourceSeqEnd?: string;
   title?: string;
@@ -77,6 +80,7 @@ export function registerForkCommand(
     )
     .option("--workspace <mode>", "Workspace: isolated (default) or reuse")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--permission-profile <id>", PERMISSION_PROFILE_HELP)
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .option(
       "--agent-context-seed <text>",
@@ -108,6 +112,9 @@ export function registerForkCommand(
           const input = buildForkInput(opts);
           const sourceSeqEnd = parseSourceSeqEnd(opts.sourceSeqEnd);
           const permissionMode = parsePermissionMode(opts.permissionMode);
+          const permissionProfile = parsePermissionProfile(
+            opts.permissionProfile,
+          );
           const visibility =
             opts.visibility === undefined
               ? undefined
@@ -123,7 +130,12 @@ export function registerForkCommand(
               ...(input === undefined ? {} : { input }),
               ...(sourceSeqEnd === undefined ? {} : { sourceSeqEnd }),
               ...(opts.title === undefined ? {} : { title: opts.title }),
-              ...(permissionMode === undefined ? {} : { permissionMode }),
+              ...(permissionMode !== undefined
+                ? { permissionMode }
+                : permissionProfile !== undefined
+                  ? { permissionMode: "auto" as const }
+                  : {}),
+              ...(permissionProfile === undefined ? {} : { permissionProfile }),
               ...(visibility === undefined ? {} : { visibility }),
               ...(opts.agentContextSeed === undefined
                 ? {}

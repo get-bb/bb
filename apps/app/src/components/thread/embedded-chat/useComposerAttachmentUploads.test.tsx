@@ -27,6 +27,7 @@ function makeInlineEdit(editSessionId: number): InlineQueuedMessageEditState {
     model: "gpt-5",
     ownerThreadId: "thr_1",
     permissionMode: "auto",
+    permissionProfile: null,
     queuedMessageId: "qmsg_1",
     queuedMessageIndex: 0,
     reasoningLevel: "medium",

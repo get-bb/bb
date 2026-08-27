@@ -40,6 +40,7 @@ import {
   providerHealthSchema,
   providerHealthResultSchema,
   providerInstallationStatusSchema,
+  providerPermissionProfileListResultSchema,
   providerUsageResultSchema,
   providerUsageSchema,
   providerUsageWindowSchema,
@@ -948,6 +949,15 @@ const providerListModelsCommandSchema = z.object({
 const providerHealthCommandSchema = z
   .object({
     type: z.literal("provider.health"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+  })
+  .strict();
+
+const providerListPermissionProfilesCommandSchema = z
+  .object({
+    type: z.literal("provider.list_permission_profiles"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
@@ -1958,6 +1968,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.health",
     schema: providerHealthCommandSchema,
     resultSchema: providerHealthResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.list_permission_profiles": defineHostDaemonCommandDescriptor({
+    type: "provider.list_permission_profiles",
+    schema: providerListPermissionProfilesCommandSchema,
+    resultSchema: providerPermissionProfileListResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

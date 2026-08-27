@@ -322,6 +322,7 @@ export function buildQueuedMessageFixtures(): ThreadQueuedMessage[] {
     model: "fake-model",
     reasoningLevel: "medium" as const,
     permissionMode: "auto" as const,
+    permissionProfile: null,
     serviceTier: "default" as const,
     createdAt: 1,
     updatedAt: 1,

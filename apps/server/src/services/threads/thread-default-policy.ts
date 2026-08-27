@@ -205,6 +205,7 @@ export function buildProviderThreadExecutionDefaults(
       providerId: args.providerId,
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,
     }),
+    permissionProfile: null,
     serviceTier: DEFAULT_SERVICE_TIER,
   };
 }

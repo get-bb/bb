@@ -19,15 +19,25 @@ export type ProviderModelsArgs = ProviderHostRoutingArgs & {
   providerId?: string;
   signal?: AbortSignal;
 };
+export type ProviderPermissionProfilesArgs = ProviderHostRoutingArgs & {
+  providerId?: string;
+  signal?: AbortSignal;
+};
 
 export type ProviderListResult = SystemProviderInfo[];
 export type ProviderModelsResult = SystemExecutionOptionsResponse;
+export type ProviderPermissionProfilesResult =
+  SystemExecutionOptionsResponse["permissionProfiles"];
 
 export interface ProvidersArea {
   /** List providers on the environment host, explicit host, or primary host. */
   list(args?: ProviderListArgs): Promise<ProviderListResult>;
   /** List models on the environment host, explicit host, or primary host. */
   models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
+  /** List named permission profiles exposed by a provider on the target host. */
+  permissionProfiles(
+    args?: ProviderPermissionProfilesArgs,
+  ): Promise<ProviderPermissionProfilesResult>;
 }
 
 export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
@@ -60,6 +70,21 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
           ...signalRequestArgs(input.signal),
         ),
       );
+    },
+    async permissionProfiles(input = {}) {
+      const executionOptions = await transport.readJson(
+        transport.api.v1.system["execution-options"].$get(
+          {
+            query: {
+              environmentId: input.environmentId,
+              hostId: input.hostId,
+              providerId: input.providerId,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return executionOptions.permissionProfiles;
     },
   };
 }

@@ -23,9 +23,11 @@ import {
 } from "../helpers.js";
 import {
   parsePermissionMode,
+  parsePermissionProfile,
   buildPromptInputs,
   collectOption,
   PERMISSION_MODE_HELP,
+  PERMISSION_PROFILE_HELP,
   PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
@@ -44,6 +46,7 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
+  permissionProfile?: string;
   plan?: boolean;
   parentSelf?: boolean;
   machine?: string;
@@ -204,6 +207,7 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--permission-profile <id>", PERMISSION_PROFILE_HELP)
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -274,6 +278,9 @@ export function registerSpawnCommand(
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
+        const permissionProfile = parsePermissionProfile(
+          opts.permissionProfile,
+        );
         const visibility =
           opts.visibility === undefined
             ? undefined
@@ -313,7 +320,12 @@ export function registerSpawnCommand(
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),
-            ...(permissionMode ? { permissionMode } : {}),
+            ...(permissionMode
+              ? { permissionMode }
+              : permissionProfile
+                ? { permissionMode: "auto" as const }
+                : {}),
+            ...(permissionProfile ? { permissionProfile } : {}),
             ...(visibility ? { visibility } : {}),
             environment,
             // The typed $post client types this body against the schema's

@@ -22,6 +22,7 @@ export function PluginNewThreadComposer({
   defaultReasoningLevel,
   defaultServiceTier,
   defaultPermissionMode,
+  experimental_defaultPermissionProfile,
   defaultEnvironment,
   initialPrompt,
   placeholder,
@@ -48,6 +49,7 @@ export function PluginNewThreadComposer({
     reasoningLevel: defaultReasoningLevel,
     serviceTier: defaultServiceTier,
     permissionMode: defaultPermissionMode,
+    permissionProfile: experimental_defaultPermissionProfile,
     environment: defaultEnvironment,
     initialPrompt,
   };

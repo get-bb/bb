@@ -96,6 +96,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
     serviceTier: "default" as const,
     reasoningLevel: "medium" as const,
     permissionMode: "auto" as const,
+    permissionProfile: null,
   };
 
   it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {

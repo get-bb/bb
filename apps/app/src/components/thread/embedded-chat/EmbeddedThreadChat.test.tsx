@@ -47,11 +47,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
     "@/components/plugin/plugin-composer-host"
   );
   // A host-draft subscriber, like plugin surfaces reading useComposerView().
-  function BottomHostDraftProbe({
-    host,
-  }: {
-    host: PluginComposerHost | null;
-  }) {
+  function BottomHostDraftProbe({ host }: { host: PluginComposerHost | null }) {
     // Record what the CURRENT host's getCurrent() returns at the exact moment
     // subscribeDraft notifies. useSyncExternalStore reads the snapshot inside
     // the notification to decide whether to re-render, so a notify that fires
@@ -183,6 +179,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     reasoningLevel: "medium",
     setReasoningLevel: vi.fn(),
     permissionMode: "auto",
+    permissionProfile: null,
     setPermissionMode: vi.fn(),
     activeModel: { model: "gpt-5" },
     modelOptions: [],
@@ -254,6 +251,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
     data: {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: undefined,
     },
@@ -489,6 +487,7 @@ describe("EmbeddedThreadChat", () => {
         input: [{ type: "text", text: "Queue me", mentions: [] }],
         model: "gpt-5",
         permissionMode: "auto",
+        permissionProfile: null,
       }),
     );
     expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();

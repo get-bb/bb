@@ -15,6 +15,7 @@ import type {
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  ProviderPermissionProfileListResult,
 } from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
@@ -73,6 +74,11 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderUsageResult>;
+  listPermissionProfiles?: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderPermissionProfileListResult>;
   providerInstallationStatus: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

@@ -395,6 +395,7 @@ interface ClearGitWritableRootsByProviderThreadIdArgs {
 
 interface PreparedWorkspaceWriteGitRoots {
   config: { [key in string]?: JsonValue } | undefined;
+  gitWritableRoots: string[];
   permissionSettings: CodexThreadPermissionSettings;
 }
 
@@ -512,6 +513,7 @@ export function createCodexEventTranslator(
         options: command.options,
         threadId: command.threadId,
       }),
+      gitWritableRoots: writableRoots,
       permissionSettings: toCodexThreadPermissionSettings(command.options),
     };
   }

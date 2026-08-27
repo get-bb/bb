@@ -144,6 +144,17 @@ export type ProviderExtensionKinds = z.infer<
   typeof providerExtensionKindsSchema
 >;
 
+/** One provider-native permission profile offered for the routed workspace. */
+export const providerPermissionProfileSchema = z.object({
+  id: z.string().min(1).max(256),
+  description: z.string().nullable(),
+  /** False when provider-managed requirements prohibit selecting the profile. */
+  allowed: z.boolean(),
+});
+export type ProviderPermissionProfile = z.infer<
+  typeof providerPermissionProfileSchema
+>;
+
 export const providerInfoSchema = z.object({
   id: z.string(),
   /**
@@ -175,6 +186,7 @@ export const providerInfoSchema = z.object({
     health: z.boolean(),
     usage: z.boolean(),
     installation: z.boolean(),
+    permissionProfiles: z.boolean(),
   }),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),

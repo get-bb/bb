@@ -594,6 +594,7 @@ describe("internal event and tool-call routes", () => {
             mode: "queue-if-active",
             model: "gpt-5",
             permissionMode: "full",
+            permissionProfile: null,
             reasoningLevel: "medium",
             serviceTier: "default",
           }),

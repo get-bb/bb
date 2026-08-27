@@ -25,6 +25,7 @@ import {
   ExecutionControls,
   type ExecutionControlsProps,
   type ExecutionPermissionConfig,
+  type ExecutionPermissionProfileConfig,
 } from "@/components/promptbox/ExecutionControls";
 import {
   PromptBoxInternal,
@@ -52,6 +53,7 @@ import {
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
+import { PermissionProfilePicker } from "@/components/pickers/PermissionProfilePicker";
 import {
   ProjectSelector,
   type ProjectSelectorCreateProjectConfig,
@@ -156,6 +158,7 @@ export interface NewThreadModeConfig {
   branch: NewThreadBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  permissionProfile?: ExecutionPermissionProfileConfig;
   /** Slot rendered above the prompt box card, matching the follow-up banner stack. */
   banner?: ReactNode;
   /** Slot rendered inside the prompt box card, above the text area.
@@ -449,6 +452,12 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {modeConfig.permissionProfile ? (
+            <PermissionProfilePicker
+              {...modeConfig.permissionProfile}
+              disabled={permissionPickerDisabledByPlanMode}
+            />
+          ) : null}
           <PermissionModePicker
             value={modeConfig.permission.value}
             options={modeConfig.permission.options}
@@ -602,6 +611,7 @@ interface NewThreadConnectedModeConfig {
   branch: NewThreadConnectedBranchConfig;
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
+  permissionProfile?: ExecutionPermissionProfileConfig;
   banner?: ReactNode;
   header?: ReactNode;
 }

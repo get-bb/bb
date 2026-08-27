@@ -48,6 +48,10 @@ export const permissionModeValues = ["accept-edits", "auto", "full"] as const;
 export const permissionModeSchema = z.enum(permissionModeValues);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
 
+/** Provider-native named permission profile, such as Codex `:workspace`. */
+export const permissionProfileIdSchema = z.string().min(1).max(256);
+export type PermissionProfileId = z.infer<typeof permissionProfileIdSchema>;
+
 export function permissionModeRank(permissionMode: PermissionMode): number {
   return permissionModeValues.indexOf(permissionMode);
 }
@@ -511,6 +515,7 @@ const threadExecutionOptionsSchema = z.object({
   serviceTier: serviceTierSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
+  permissionProfile: permissionProfileIdSchema.nullable().optional(),
   source: threadExecutionSourceSchema.optional(),
   seq: z.number().int().optional(),
 });
@@ -524,6 +529,7 @@ export const resolvedThreadExecutionOptionsSchema =
     serviceTier: serviceTierSchema,
     reasoningLevel: reasoningLevelSchema,
     permissionMode: permissionModeSchema,
+    permissionProfile: permissionProfileIdSchema.nullable().default(null),
     source: threadExecutionSourceSchema,
   });
 export type ResolvedThreadExecutionOptions = z.infer<
@@ -612,6 +618,7 @@ export const projectExecutionDefaultsSchema = z.object({
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,
+  permissionProfile: permissionProfileIdSchema.nullable().default(null),
 });
 export type ProjectExecutionDefaults = z.infer<
   typeof projectExecutionDefaultsSchema

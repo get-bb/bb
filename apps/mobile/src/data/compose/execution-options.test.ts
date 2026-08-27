@@ -35,6 +35,9 @@ function response(
   return {
     providers: [],
     permissionCeiling: "full",
+    permissionProfiles: [],
+    permissionProfilesSupported: false,
+    permissionProfileLoadError: null,
     models: [],
     selectedOnlyModels: [],
     modelLoadError: null,
@@ -210,7 +213,7 @@ describe("buildProviderOptions", () => {
     const base: Omit<ProviderInfo, "id" | "displayName" | "logoUrl"> = {
       pluginId: "provider-test",
       available: true,
-      maintenance: { health: false, usage: false, installation: false },
+      maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
       capabilities: {
         supportsThreadArchive: false,
         supportsThreadRename: false,

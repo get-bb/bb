@@ -27,6 +27,7 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
+    --permission-profile <id>      Provider permission profile; bb adds its runtime workspace roots
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
@@ -45,6 +46,11 @@ Spawning:
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
   Subagents inherit the parent's permission mode by default, and the parent's mode is a hard ceiling: a child's requested mode can lower it but never exceed it, so a sandboxed parent cannot spawn a full-access child.
+  Named profiles are provider-specific. List them with
+  `bb provider permission-profiles <provider-id>`. Codex applies the selected
+  profile first, then bb extends it with the thread workspace, Git roots, and
+  bb writable roots. Profiles require a machine permission limit of Full Access
+  because bb cannot compare an arbitrary profile with a lower machine limit.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
@@ -69,6 +75,7 @@ Forking:
     --workspace <mode>             isolated (default) or reuse
     --title <title>                Thread title
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
+    --permission-profile <id>      Named provider profile; inherit source by default
     --visibility <visibility>      visible (default) or hidden
     --agent-context-seed <text>    Persist agent-only context without a first run
     --file <path>                  Host-readable absolute or uploaded file path
@@ -185,6 +192,8 @@ Messaging:
     --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
+    --permission-mode <mode>               Permission mode override
+    --permission-profile <id>              Named provider profile override
     --plan                                 Send the message as the provider's /plan action
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path

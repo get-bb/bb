@@ -19,6 +19,7 @@ export interface ThreadPromptSelections {
   serviceTier: ServiceTier | undefined;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
   environmentSelectionValue: string;
 }
 
@@ -47,6 +48,7 @@ export interface UsePromptModelReasoningOptions {
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;
   initialPermissionMode?: PermissionMode;
+  initialPermissionProfile?: string | null;
   initialEnvironmentSelectionValue?: string;
   preferenceProjectId?: string | null;
   resolveProviderRouting?: (
@@ -68,6 +70,7 @@ interface StoredCreateExecutionValues {
   serviceTier: StoredServiceTier;
   reasoningLevel: StoredReasoningLevel;
   permissionMode: StoredPermissionMode;
+  permissionProfile: string;
 }
 
 interface EffectiveCreateExecutionValues {
@@ -76,6 +79,7 @@ interface EffectiveCreateExecutionValues {
   serviceTier: ServiceTier | undefined;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
 }
 
 interface BuildExecutionInputSourcesArgs {
@@ -144,6 +148,7 @@ export function getInitialThreadPromptSelections(
     serviceTier: options?.initialServiceTier,
     reasoningLevel: options?.initialReasoningLevel ?? "medium",
     permissionMode: options?.initialPermissionMode ?? "auto",
+    permissionProfile: options?.initialPermissionProfile ?? null,
     environmentSelectionValue: options?.initialEnvironmentSelectionValue ?? "",
   };
 }
@@ -192,6 +197,13 @@ export function syncUntouchedThreadPromptSelections({
     changed = true;
   }
   if (
+    !touchedFields.has("permissionProfile") &&
+    currentSelections.permissionProfile !== nextSelections.permissionProfile
+  ) {
+    updatedSelections.permissionProfile = nextSelections.permissionProfile;
+    changed = true;
+  }
+  if (
     !touchedFields.has("environmentSelectionValue") &&
     currentSelections.environmentSelectionValue !==
       nextSelections.environmentSelectionValue
@@ -233,7 +245,8 @@ export function buildExecutionInputSources({
     touchedFields.has("selectedModel") ||
     touchedFields.has("serviceTier") ||
     touchedFields.has("reasoningLevel") ||
-    touchedFields.has("permissionMode");
+    touchedFields.has("permissionMode") ||
+    touchedFields.has("permissionProfile");
   // Existing-thread submissions are all-or-nothing once an execution control is
   // touched, so the server never merges stale last-run values with new UI picks.
   const forcesExplicitExecutionFields =
@@ -283,6 +296,16 @@ export function buildExecutionInputSources({
     touched:
       forcesExplicitExecutionFields || touchedFields.has("permissionMode"),
   });
+  const permissionProfileTouched =
+    forcesExplicitExecutionFields || touchedFields.has("permissionProfile");
+  const permissionProfileSource: ExecutionInputFieldSource | undefined =
+    permissionProfileTouched
+      ? "explicit"
+      : usesStoredValues &&
+          storedValues.permissionProfile.length > 0 &&
+          storedValues.permissionProfile === effectiveValues.permissionProfile
+        ? "client-preference"
+        : undefined;
 
   if (scope === "component-local") {
     return {
@@ -290,6 +313,9 @@ export function buildExecutionInputSources({
       ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
       ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
       ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
+      ...(permissionProfileSource
+        ? { permissionProfile: permissionProfileSource }
+        : {}),
     };
   }
 
@@ -299,6 +325,9 @@ export function buildExecutionInputSources({
     ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
     ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
     ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
+    ...(permissionProfileSource
+      ? { permissionProfile: permissionProfileSource }
+      : {}),
   };
 }
 

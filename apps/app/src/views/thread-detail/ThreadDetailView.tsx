@@ -1135,6 +1135,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             ? {
                 model: execution.model,
                 permissionMode: execution.permissionMode,
+                permissionProfile: execution.permissionProfile,
                 reasoningLevel: execution.reasoningLevel,
                 executionInputSources: execution.executionInputSources,
                 ...(execution.supportsServiceTier && execution.serviceTier

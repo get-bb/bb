@@ -526,6 +526,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     mode: args.mode,
     model: args.model,
     permissionMode: args.permissionMode,
+    permissionProfile: args.permissionProfile,
     reasoningLevel: args.reasoningLevel,
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,

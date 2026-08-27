@@ -642,6 +642,19 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
+  "provider.list_permission_profiles": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (
+      (await options.listPermissionProfiles?.({
+        providerId: command.providerId,
+        ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+        bridgeLaunch,
+      })) ?? { supported: false }
+    );
+  },
   "provider.usage": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,

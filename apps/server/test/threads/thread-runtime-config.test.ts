@@ -204,6 +204,7 @@ describe("thread runtime config", () => {
         const execution = {
           model: "model-a",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -358,6 +359,7 @@ describe("thread runtime config", () => {
         const execution = {
           model: requestedModel,
           permissionMode: "accept-edits",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -515,6 +517,7 @@ describe("thread runtime config", () => {
           model: "gpt-5",
           reasoningLevel: "medium",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           serviceTier: "default",
         },
         requestedExecution: {
@@ -548,6 +551,7 @@ describe("thread runtime config", () => {
         environmentId: environment.id,
         providerThreadId: "provider-parent-permission-mode",
         permissionMode: "accept-edits",
+        permissionProfile: null,
       });
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -563,6 +567,7 @@ describe("thread runtime config", () => {
           model: "gpt-5",
           reasoningLevel: "medium",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           serviceTier: "default",
         },
         requestedExecution: {
@@ -608,6 +613,7 @@ describe("thread runtime config", () => {
           model: "gpt-5",
           reasoningLevel: "medium",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           serviceTier: "default",
         },
         requestedExecution: {
@@ -642,6 +648,7 @@ describe("thread runtime config", () => {
         requestedExecution: {
           model: "gpt-5",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           source: "client/turn/requested",
         },
       });
@@ -674,6 +681,7 @@ describe("thread runtime config", () => {
           requestedExecution: {
             model: "openai/codex-mini",
             permissionMode: "accept-edits",
+            permissionProfile: null,
             source: "client/turn/requested",
           },
         }),
@@ -706,6 +714,7 @@ describe("thread runtime config", () => {
           requestedExecution: {
             model: "openai-codex/gpt-5.6-luna",
             permissionMode: "full",
+            permissionProfile: null,
             reasoningLevel,
             source: "client/turn/requested",
           },
@@ -883,6 +892,7 @@ describe("thread runtime config", () => {
       const codex = await build("codex");
       expect(codex.options.providerOptions).toEqual({
         memoryEnabled: true,
+        permissionProfile: null,
         providerSubagentsEnabled: true,
       });
       expect(codex.options.promptMode).toBeUndefined();
@@ -929,6 +939,7 @@ describe("thread runtime config", () => {
               projectId: context.projectId,
               model: context.model,
               permissionMode: context.permissionMode,
+              permissionProfile: null,
               promptMode: context.promptMode ?? null,
             },
             verbose: context.settings.verbose === true,
@@ -963,6 +974,7 @@ describe("thread runtime config", () => {
         execution: {
           model: "hook-model",
           permissionMode: "auto",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -983,6 +995,7 @@ describe("thread runtime config", () => {
           projectId: project.id,
           model: "hook-model",
           permissionMode: "auto",
+          permissionProfile: null,
           promptMode: null,
         },
         verbose: true,
@@ -1034,6 +1047,7 @@ describe("thread runtime config", () => {
         execution: {
           model: "claude-sonnet-4-6",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -1068,6 +1082,7 @@ describe("thread runtime config", () => {
         execution: {
           model: "pi-model",
           permissionMode: "full",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",

@@ -30,6 +30,7 @@ export interface SendQueuedMessageByIdRequest {
 interface ThreadExecutionSelection {
   model: string;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
   reasoningLevel: ReasoningLevel;
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
@@ -41,6 +42,7 @@ export type FollowUpExecutionSelection = ThreadExecutionSelection | null;
 interface SharedThreadExecutionRequestFields {
   model?: string;
   permissionMode?: PermissionMode;
+  permissionProfile?: string | null;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   executionInputSources?: ExistingThreadExecutionInputSources;
@@ -321,6 +323,7 @@ function buildSharedThreadExecutionRequestFields(
       : {}),
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
+    permissionProfile: execution.permissionProfile,
     executionInputSources: execution.executionInputSources,
   };
 }

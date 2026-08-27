@@ -57,7 +57,7 @@ export default function plugin(bb: BbPluginApi) {
     // codex plugin's skills), since `CODEX_HOME` can move them and plugin
     // installs differ per machine. See `src/native-roots.ts`.
     ...CODEX_NATIVE_ROOTS_DECLARATION,
-    maintenance: { health: true, usage: true, installation: true },
+    maintenance: { health: true, usage: true, installation: true, experimental_permissionProfiles: true },
     capabilities: {
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
@@ -89,6 +89,7 @@ export default function plugin(bb: BbPluginApi) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
+        permissionProfile: context.experimental_permissionProfile,
       };
     },
     // Codex goals (thread state) and the macOS permission profile (an item

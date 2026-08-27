@@ -37,6 +37,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
 
@@ -48,6 +49,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
         input: textInput("Reuse one-off"),
         environment: { type: "reuse", environmentId: environment.id },
@@ -62,6 +64,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
     });
@@ -82,6 +85,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
 
@@ -93,6 +97,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
         input: textInput("Set new defaults"),
         environment: {
@@ -114,6 +119,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
       });
     });
@@ -148,6 +154,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
 
@@ -163,6 +170,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
         input: textInput("Quick question"),
         environment: {
@@ -181,6 +189,7 @@ describe("project execution defaults persistence", () => {
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
     });

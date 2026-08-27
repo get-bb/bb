@@ -20,6 +20,45 @@ the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
 `PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
 type of `presentation.label`.
 
+## Provider named permission profiles
+
+### `PluginProviderMaintenance.experimental_permissionProfiles`
+
+**What it does.** Declares that a provider can list named permission profiles.
+BB then exposes the provider's list in the composer and through the SDK and CLI.
+
+**Audit before stabilizing.** Confirm a boolean capability remains sufficient,
+or whether profile discovery needs a richer declaration for providers that
+only support profiles in some environments or runtime versions.
+
+### `PluginProviderOptionsContext.experimental_permissionProfile`
+
+**What it does.** Passes the selected named profile, or `null` for BB's legacy
+permission policy, into the provider's execution-option derivation boundary.
+
+**Audit before stabilizing.** Confirm this belongs in the generic provider
+options context. Check whether providers need the whole profile descriptor or
+only its stable ID, and whether BB should expose separate sandbox and approval
+policy fields before stabilizing it.
+
+### `NewThreadRequest.experimental_permissionProfile`
+
+**What it does.** Carries the named profile selected in the host-owned plugin
+composer back to the plugin. The plugin can forward it as `permissionProfile`
+to `bb.sdk.threads.spawn`.
+
+**Audit before stabilizing.** Audit with the provider context field above.
+Confirm plugins need this raw provider ID instead of a host-owned opaque token.
+
+### `NewThreadComposerProps.experimental_defaultPermissionProfile`
+
+**What it does.** Seeds the provider-native named permission profile in the
+host-owned new-thread composer. Null keeps BB's legacy permission policy.
+
+**Audit before stabilizing.** Audit with
+`NewThreadRequest.experimental_permissionProfile`. Stabilize both only when
+the provider contract and naming are stable.
+
 ## One-release compatibility windows (removal target: bb 0.42)
 
 - The app runtime keeps deprecated aliases for plugin bundles compiled

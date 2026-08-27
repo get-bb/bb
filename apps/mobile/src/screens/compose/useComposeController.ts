@@ -680,6 +680,9 @@ export function useComposeController(params: ComposeParams): ComposeController {
     prefs.permissionMode || projectDefaults?.permissionMode,
     { permissionModes, ceiling },
   );
+  const permissionProfile = providerMatchesDefaults
+    ? (projectDefaults?.permissionProfile ?? null)
+    : null;
 
   const selectProvider = useCallback(
     (nextProviderId: string) => {
@@ -759,6 +762,11 @@ export function useComposeController(params: ComposeParams): ComposeController {
           stored: prefs.permissionMode,
           touched: touched.has("permissionMode"),
         },
+        permissionProfile: {
+          value: permissionProfile ?? undefined,
+          stored: "",
+          touched: false,
+        },
       },
       { forceExplicitModel: modelSelection.isRecovery },
     );
@@ -792,6 +800,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
             input: result.request.input,
             model: modelSelection.selectedModel,
             permissionMode,
+            permissionProfile,
             providerId,
             providerSupportsFork:
               providerInfo?.capabilities.supportsFork ?? false,
@@ -814,6 +823,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
     modelSelection.isRecovery,
     modelSelection.selectedModel,
     permissionMode,
+    permissionProfile,
     prefs.permissionMode,
     prefs.providerId,
     prefs.serviceTier,

@@ -27,6 +27,7 @@ export interface ThreadCreateServiceRequestInput {
   originKind?: ThreadOriginKind | null;
   parentThreadId?: string;
   permissionMode?: CreateThreadRequest["permissionMode"];
+  permissionProfile?: CreateThreadRequest["permissionProfile"];
   projectId: string;
   providerId?: CreateThreadRequest["providerId"];
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];

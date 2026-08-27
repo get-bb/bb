@@ -115,6 +115,7 @@ function turnRequestData({
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "workspace-write",
+      permissionProfile: null,
       source: "client/turn/requested",
       serviceTier: "default",
     },

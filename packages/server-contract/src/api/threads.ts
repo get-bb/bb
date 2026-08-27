@@ -8,6 +8,7 @@ import {
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
   permissionModeInputSchema,
+  permissionProfileIdSchema,
   promptInputSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
@@ -61,6 +62,7 @@ export const createExecutionInputSourcesSchema = z
     serviceTier: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
+    permissionProfile: executionInputFieldSourceSchema.optional(),
   })
   .strict();
 export type CreateExecutionInputSources = z.infer<
@@ -73,6 +75,7 @@ export const existingThreadExecutionInputSourcesSchema = z
     serviceTier: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
+    permissionProfile: executionInputFieldSourceSchema.optional(),
   })
   .strict();
 export type ExistingThreadExecutionInputSources = z.infer<
@@ -119,6 +122,7 @@ export const createThreadRequestSchema = z
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeInputSchema.optional(),
+    permissionProfile: permissionProfileIdSchema.nullable().optional(),
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
@@ -179,6 +183,7 @@ export const forkThreadRequestSchema = z
     agentContextSeed: z.array(agentOnlyPromptInputSchema).min(1).optional(),
     title: z.string().min(1).optional(),
     permissionMode: permissionModeInputSchema.optional(),
+    permissionProfile: permissionProfileIdSchema.nullable().optional(),
     visibility: threadVisibilitySchema.default("visible"),
     workspace: z.enum(["isolated", "reuse"]).default("isolated"),
     origin: threadCreateOriginSchema.default("sdk"),
@@ -208,6 +213,7 @@ export const sendMessageRequestSchema = z.object({
   serviceTier: serviceTierSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeInputSchema.optional(),
+  permissionProfile: permissionProfileIdSchema.nullable().optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
@@ -259,6 +265,7 @@ export const createQueuedMessageRequestSchema = z.object({
   serviceTier: serviceTierSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeInputSchema.optional(),
+  permissionProfile: permissionProfileIdSchema.nullable().optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   senderThreadId: z.string().min(1).optional(),
 });

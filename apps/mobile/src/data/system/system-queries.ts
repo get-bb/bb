@@ -156,6 +156,9 @@ export function useSystemExecutionOptions(
         models: [],
         selectedOnlyModels: [],
         permissionCeiling: previousData.permissionCeiling,
+        permissionProfiles: [],
+        permissionProfilesSupported: false,
+        permissionProfileLoadError: null,
         modelLoadError: null,
       };
     },

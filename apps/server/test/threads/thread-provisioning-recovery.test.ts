@@ -42,6 +42,7 @@ const THREAD_START_EXECUTION = {
   serviceTier: "default",
   reasoningLevel: "medium",
   permissionMode: "accept-edits",
+  permissionProfile: null,
   source: "client/turn/requested",
 } satisfies ResolvedThreadExecutionOptions;
 

@@ -704,7 +704,21 @@ function dropEventToolNameColumn(db: DbConnection): void {
 }
 
 function dropEventParentToolCallIdColumn(db: DbConnection): void {
-  // Every rewind before 0103 also rewinds the later generated tool-name column.
+  // Every rewind before 0103 also rewinds the later permission-profile
+  // columns and generated tool-name column.
+  for (const tableName of [
+    "project_execution_defaults",
+    "queued_thread_messages",
+  ]) {
+    const columns = db.$client
+      .prepare<[], TableInfoRow>(`PRAGMA table_info(${tableName})`)
+      .all();
+    if (columns.some((column) => column.name === "permission_profile")) {
+      db.$client
+        .prepare(`ALTER TABLE ${tableName} DROP COLUMN permission_profile`)
+        .run();
+    }
+  }
   dropEventToolNameColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
@@ -1947,6 +1961,7 @@ describe("migrate", () => {
         ],
         model: "gpt-5",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: "default",
       });
@@ -1955,6 +1970,7 @@ describe("migrate", () => {
         content: [{ type: "text", text: "legacy side chat", mentions: [] }],
         model: "gpt-5",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: "default",
       });
@@ -1963,6 +1979,7 @@ describe("migrate", () => {
         content: [{ type: "text", text: "legacy fallback", mentions: [] }],
         model: "gpt-5",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: "default",
       });

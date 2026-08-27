@@ -672,6 +672,7 @@ describe("thread creation child-thread boundary validation", () => {
             environmentId:
               getThread(harness.db, sourceThreadId)?.environmentId ?? null,
             permissionMode: sourcePermissionMode,
+            permissionProfile: null,
             inputText: "Source question",
             model: "gpt-5",
             reasoningLevel: "medium",
@@ -727,6 +728,7 @@ describe("thread creation child-thread boundary validation", () => {
             environmentId:
               getThread(harness.db, sourceThreadId)?.environmentId ?? null,
             permissionMode: sourcePermissionMode === "full" ? "auto" : "full",
+            permissionProfile: null,
             threadId: sourceThreadId,
             inputText: "Source permission changed",
             model: "gpt-5",
@@ -1015,6 +1017,7 @@ describe("thread creation child-thread boundary validation", () => {
           threadId: sideChat.id,
           content: textInput("Queued first side-chat question"),
           permissionMode: "auto",
+          permissionProfile: null,
         });
 
         await reportQueuedCommandSuccess(harness, queuedStart, {

@@ -48,7 +48,7 @@ describe("buildPluginProviderRegistration", () => {
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
-      maintenance: { health: true, usage: false, installation: true },
+      maintenance: { health: true, usage: false, installation: true, permissionProfiles: false },
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,
@@ -103,6 +103,7 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m",
         permissionMode: "full",
+        experimental_permissionProfile: null,
       }),
     ).toStrictEqual({});
   });
@@ -199,6 +200,7 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m-1",
         permissionMode: "auto",
+        experimental_permissionProfile: null,
         promptMode: "plan",
       }),
     ).toStrictEqual({ memory: false, plan: true, thread: "thr_1" });
@@ -239,6 +241,7 @@ describe("buildPluginProviderRegistration", () => {
         projectId: "proj_1",
         model: "m",
         permissionMode: "full",
+        experimental_permissionProfile: null,
       }),
     ).toThrow(/deriveProviderOptions result/);
   });

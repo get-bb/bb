@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,4 +120,62 @@ it("keeps an auto-reviewed session when only escalation intent changes", async (
   expect(
     harness.messages.filter((message) => message.method === "session/replaced"),
   ).toEqual([]);
+}, 30_000);
+
+it("applies a named profile and extends it with BB runtime workspace roots", async () => {
+  const requestLogPath = join(workspaceDir, "requests.jsonl");
+  const scriptPath = join(workspaceDir, "script.json");
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
+  vi.stubEnv(
+    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
+    JSON.stringify([fakeAppServerPath, scriptPath]),
+  );
+  const profileOptions = {
+    ...autoAskSessionOptions,
+    providerOptions: {
+      permissionProfile: ":workspace",
+      additionalWorkspaceWriteRoots: ["/bb/storage"],
+    },
+  };
+
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: profileOptions,
+  });
+  const started = await harness.waitForResponse(1);
+  const providerThreadId = (started.result as { providerThreadId: string })
+    .providerThreadId;
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_23456789ab",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: profileOptions,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+
+  const requests = readFileSync(requestLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          method: string;
+          params?: Record<string, unknown>;
+        },
+    );
+  for (const method of ["thread/start", "turn/start"]) {
+    const params = requests.find(
+      (request) => request.method === method,
+    )?.params;
+    expect(params).toMatchObject({
+      permissions: ":workspace",
+      runtimeWorkspaceRoots: ["/bb/storage", workspaceDir],
+    });
+    expect(params).not.toHaveProperty("sandbox");
+    expect(params).not.toHaveProperty("sandboxPolicy");
+    expect(params).not.toHaveProperty("approvalPolicy");
+  }
 }, 30_000);

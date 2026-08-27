@@ -14,6 +14,7 @@ const MODEL_STORAGE_KEY = "bb.promptbox.model";
 const SERVICE_TIER_STORAGE_KEY = "bb.promptbox.service-tier";
 const REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
 const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
+const PERMISSION_PROFILE_STORAGE_KEY = "bb.promptbox.permission-profile";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
 const PROVIDER_SELECTION_STORAGE_VERSION = "1";
@@ -94,6 +95,7 @@ const providerIdAtom = atomWithStorage<string>(
 );
 const emptyModelAtom = atom("");
 const emptyReasoningLevelAtom = atom<StoredReasoningLevel>("");
+const emptyPermissionProfileAtom = atom("");
 
 function getProviderSelectionStorageKey(
   storageKey: string,
@@ -182,6 +184,14 @@ const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
   "",
   permissionModePreferenceStorage,
   { getOnInit: true },
+);
+const permissionProfileAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<string>(
+    getProviderSelectionStorageKey(PERMISSION_PROFILE_STORAGE_KEY, providerId),
+    "",
+    rawStringLocalStorage,
+    { getOnInit: true },
+  ),
 );
 const environmentSelectionAtom = atomWithStorage<string>(
   ENVIRONMENT_STORAGE_KEY,
@@ -279,6 +289,20 @@ export function usePromptBoxPermissionModePreference(): PersistedPermissionModeS
     (nextValue: StoredPermissionMode) => {
       setAtomValue(nextValue);
     },
+    [setAtomValue],
+  );
+  return { setValue, value };
+}
+
+export function usePromptBoxPermissionProfilePreference(
+  providerId: string,
+): PersistedStringSelectionField {
+  const selectionAtom = providerId
+    ? permissionProfileAtomFamily(providerId)
+    : emptyPermissionProfileAtom;
+  const [value, setAtomValue] = useAtom(selectionAtom);
+  const setValue = useCallback(
+    (nextValue: string) => setAtomValue(nextValue),
     [setAtomValue],
   );
   return { setValue, value };

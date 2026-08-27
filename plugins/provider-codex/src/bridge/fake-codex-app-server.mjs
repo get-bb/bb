@@ -164,6 +164,8 @@ const archivedThreadIds = new Set();
  * see the children die on release, archive, and bridge shutdown.
  */
 const processLogPath = script?.processLogPath ?? null;
+/** `requestLogPath`: one JSON request per line for bridge parameter tests. */
+const requestLogPath = script?.requestLogPath ?? null;
 /** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
 const startDelayMs = script?.startDelayMs ?? 0;
 
@@ -307,6 +309,9 @@ function replayLastTurnUsage(threadId) {
 }
 
 async function handleRequest(message) {
+  if (requestLogPath !== null) {
+    appendFileSync(requestLogPath, `${JSON.stringify(message)}\n`);
+  }
   const { id, method } = message;
   const params = message.params ?? {};
   switch (method) {
@@ -335,6 +340,23 @@ async function handleRequest(message) {
             isDefault: true,
           },
         ],
+      });
+      return;
+    case "permissionProfile/list":
+      respond(id, {
+        data: [
+          {
+            id: ":workspace",
+            description: "Workspace access",
+            allowed: true,
+          },
+          {
+            id: "managed-root",
+            description: "Managed root access",
+            allowed: false,
+          },
+        ],
+        nextCursor: null,
       });
       return;
     case "skills/extraRoots/set":

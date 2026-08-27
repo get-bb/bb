@@ -10,6 +10,7 @@ import {
   featureFlagsSchema,
   permissionModeSchema,
   pluginThemeMetaSchema,
+  providerPermissionProfileSchema,
   providerInfoSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
@@ -57,6 +58,11 @@ export const systemExecutionOptionsResponseSchema = z.object({
    * lookup completed or no provider was available to query.
    */
   modelLoadError: systemExecutionOptionsModelLoadErrorSchema.nullable(),
+  /** Provider-native named profiles available for the routed workspace. */
+  permissionProfiles: z.array(providerPermissionProfileSchema),
+  permissionProfilesSupported: z.boolean(),
+  permissionProfileLoadError:
+    systemExecutionOptionsModelLoadErrorSchema.nullable(),
 });
 export type SystemExecutionOptionsResponse = z.infer<
   typeof systemExecutionOptionsResponseSchema

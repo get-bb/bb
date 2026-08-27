@@ -1,6 +1,7 @@
 import {
   createBuiltinPlanCommandTextInput,
   permissionModeInputSchema,
+  permissionProfileIdSchema,
   type PermissionMode,
   type PromptInput,
   serviceTierSchema,
@@ -21,6 +22,8 @@ export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
+export const PERMISSION_PROFILE_HELP =
+  "Provider permission profile ID; for Codex, bb extends the profile with its runtime workspace roots";
 export const PLAN_HELP =
   "Send the message as the provider's /plan action so the agent proposes a plan for approval before executing";
 
@@ -96,4 +99,15 @@ export function parsePermissionMode(
   throw new Error(
     `Invalid permission mode '${value}'. Expected accept-edits, auto, or full.`,
   );
+}
+
+export function parsePermissionProfile(
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const parsed = permissionProfileIdSchema.safeParse(value.trim());
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error("Permission profile must be a non-empty profile ID.");
 }

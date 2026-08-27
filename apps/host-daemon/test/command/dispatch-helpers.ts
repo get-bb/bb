@@ -456,6 +456,9 @@ export function createFakeRuntime() {
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
     },
+    async listPermissionProfiles() {
+      return { supported: false };
+    },
     async providerHealth() {
       return { supported: false as const };
     },

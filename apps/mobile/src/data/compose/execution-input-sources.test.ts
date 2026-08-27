@@ -16,6 +16,7 @@ describe("buildComposeExecutionInputSources", () => {
         serviceTier: field("fast", "default"),
         reasoningLevel: field("high"),
         permissionMode: field(undefined, "auto"),
+        permissionProfile: field(undefined),
       }),
     ).toEqual({
       providerId: "client-preference",
@@ -32,6 +33,7 @@ describe("buildComposeExecutionInputSources", () => {
           serviceTier: field(undefined),
           reasoningLevel: field(undefined),
           permissionMode: field(undefined),
+          permissionProfile: field(undefined),
         },
         { forceExplicitModel: true },
       ),

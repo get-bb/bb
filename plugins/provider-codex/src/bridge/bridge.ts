@@ -93,6 +93,7 @@ import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
 import {
   resolveCodexInstructionOverrides,
+  combineWorkspaceWriteRoots,
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
@@ -131,6 +132,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
     params: initializeParamsSchema,
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("permissionProfile/list"),
+    params: providerMaintenanceParamsSchema,
+  }),
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
@@ -531,6 +536,7 @@ const codexProviderOptionsSchema = z
      * field for it — same delivery as the ACP launch spec.
      */
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
+    permissionProfile: z.string().min(1).nullable().optional(),
   })
   .passthrough();
 
@@ -554,6 +560,7 @@ function decodeCodexOptions(
       ...(decoded.providerSubagentsEnabled !== undefined
         ? { providerSubagentsEnabled: decoded.providerSubagentsEnabled }
         : {}),
+      permissionProfile: decoded.permissionProfile ?? null,
     },
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots ?? [],
   };
@@ -585,6 +592,7 @@ function constructionSignature(
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
+    permissionProfile: sessionOptions.permissionProfile,
     approvalPolicy: permissionSettings.approvalPolicy,
     approvalsReviewer: permissionSettings.approvalsReviewer,
     sandbox: permissionSettings.sandbox,
@@ -1129,10 +1137,24 @@ async function constructThreadSession(
       instructionMode: args.instructionMode,
       options: decoded.sessionOptions,
     });
+    const permissionProfile = decoded.sessionOptions.permissionProfile;
+    const sharedPermissionParams =
+      permissionProfile === null
+        ? {
+            approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            approvalsReviewer:
+              preparedGitRoots.permissionSettings.approvalsReviewer,
+            sandbox: preparedGitRoots.permissionSettings.sandbox,
+          }
+        : {
+            permissions: permissionProfile,
+            runtimeWorkspaceRoots: combineWorkspaceWriteRoots(
+              [args.cwd, ...preparedGitRoots.gitWritableRoots],
+              decoded.additionalWorkspaceWriteRoots,
+            ),
+          };
     const sharedConstructionParams = {
-      approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
-      approvalsReviewer: preparedGitRoots.permissionSettings.approvalsReviewer,
-      sandbox: preparedGitRoots.permissionSettings.sandbox,
+      ...sharedPermissionParams,
       cwd: args.cwd,
       ...instructionOverrides,
       model: decoded.sessionOptions.model ?? undefined,
@@ -1496,6 +1518,55 @@ async function handleModelList(id: string | number): Promise<void> {
   }
 }
 
+const codexPermissionProfileListResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      description: z.string().nullable(),
+      allowed: z.boolean(),
+    }),
+  ),
+  nextCursor: z.string().nullable(),
+});
+
+async function handlePermissionProfileList(
+  id: string | number,
+  cwd: string | undefined,
+): Promise<void> {
+  let connection: CodexAppServerConnection | null = null;
+  try {
+    connection = await getModelListConnection();
+    const profiles: z.infer<
+      typeof codexPermissionProfileListResponseSchema
+    >["data"] = [];
+    let cursor: string | null = null;
+    do {
+      const result: z.infer<typeof codexPermissionProfileListResponseSchema> =
+        await connection.request({
+          method: "permissionProfile/list",
+          params: {
+            ...(cwd !== undefined ? { cwd } : {}),
+            ...(cursor !== null ? { cursor } : {}),
+          },
+          resultSchema: codexPermissionProfileListResponseSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+      profiles.push(...result.data);
+      cursor = result.nextCursor;
+    } while (cursor !== null);
+    sendResult(id, { supported: true, profiles });
+  } catch (error) {
+    if (connection !== null) {
+      retireModelListConnection(connection);
+    }
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      describeCodexLaunchError(error),
+    );
+  }
+}
+
 function sendConstructionError(
   id: string | number,
   error: unknown,
@@ -1701,21 +1772,38 @@ async function handleTurnStart(
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       });
     } else {
-      const permissionSettings = toCodexPermissionSettings({
-        additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-        gitWritableRoots: session.translator.getThreadGitWritableRoots(
-          params.threadId,
-        ),
-        options: decoded.sessionOptions,
-      });
+      const gitWritableRoots = session.translator.getThreadGitWritableRoots(
+        params.threadId,
+      );
+      const permissionProfile = decoded.sessionOptions.permissionProfile;
+      const permissionParams =
+        permissionProfile === null
+          ? (() => {
+              const permissionSettings = toCodexPermissionSettings({
+                additionalWorkspaceWriteRoots:
+                  decoded.additionalWorkspaceWriteRoots,
+                gitWritableRoots,
+                options: decoded.sessionOptions,
+              });
+              return {
+                approvalPolicy: permissionSettings.approvalPolicy,
+                approvalsReviewer: permissionSettings.approvalsReviewer,
+                sandboxPolicy: permissionSettings.sandboxPolicy,
+              };
+            })()
+          : {
+              permissions: permissionProfile,
+              runtimeWorkspaceRoots: combineWorkspaceWriteRoots(
+                [session.construction.cwd, ...gitWritableRoots],
+                decoded.additionalWorkspaceWriteRoots,
+              ),
+            };
       await connection.request({
         method: "turn/start",
         params: {
           threadId: codexThreadId,
           input: toCodexUserInput(input),
-          approvalPolicy: permissionSettings.approvalPolicy,
-          approvalsReviewer: permissionSettings.approvalsReviewer,
-          sandboxPolicy: permissionSettings.sandboxPolicy,
+          ...permissionParams,
           model: decoded.sessionOptions.model ?? undefined,
           serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
         },
@@ -2039,6 +2127,9 @@ async function handleRequest(
       break;
     case "model/list":
       await handleModelList(request.id);
+      break;
+    case "permissionProfile/list":
+      await handlePermissionProfileList(request.id, request.params.cwd);
       break;
     case "provider/health":
       sendResult(request.id, await getCodexProviderHealth());

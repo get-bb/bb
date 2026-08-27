@@ -50,6 +50,7 @@ function makeDefaults(
   return {
     model: "gpt-5",
     permissionMode: "full",
+    permissionProfile: null,
     providerId: "codex",
     reasoningLevel: "medium",
     serviceTier: "default",
@@ -149,6 +150,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     const storedDefaults = makeDefaults({
       model: "gpt-5.1",
       permissionMode: "accept-edits",
+      permissionProfile: null,
     });
 
     expect(

@@ -105,6 +105,7 @@ function turnRequestData(input: PromptInput[]) {
       serviceTier: "default" as const,
       reasoningLevel: "medium" as const,
       permissionMode: "full" as const,
+      permissionProfile: null,
       source: "client/turn/requested" as const,
     },
   };

@@ -14,6 +14,7 @@ export interface ForkThreadCreateSeed {
   environmentId: string;
   model: string;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
   projectId: string;
   providerId: string;
   reasoningLevel: ReasoningLevel;
@@ -50,6 +51,7 @@ export function buildForkThreadRequest({
   input,
   model,
   permissionMode,
+  permissionProfile,
   projectId,
   providerId,
   providerSupportsFork,
@@ -76,6 +78,7 @@ export function buildForkThreadRequest({
     model,
     originKind: "fork",
     permissionMode,
+    permissionProfile,
     projectId,
     providerId,
     reasoningLevel,

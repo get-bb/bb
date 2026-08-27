@@ -108,6 +108,8 @@ describe("bb thread tell command output", () => {
         "high",
         "--permission-mode",
         "accept-edits",
+        "--permission-profile",
+        ":workspace",
       ],
       register,
     );
@@ -121,6 +123,7 @@ describe("bb thread tell command output", () => {
         serviceTier: "fast",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: ":workspace",
       },
     });
   });

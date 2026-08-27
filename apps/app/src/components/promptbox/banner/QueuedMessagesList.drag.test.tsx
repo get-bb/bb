@@ -24,6 +24,7 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     model: "gpt-5.5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 0,

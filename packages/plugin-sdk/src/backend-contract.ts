@@ -649,6 +649,11 @@ export interface PluginProviderOptionsContext {
   /** BB's permission mode for this command (already clamped to the host). */
   permissionMode: PluginProviderPermissionMode;
   /**
+   * Provider-native named permission profile selected for this command.
+   * Null means the provider should keep using BB's legacy permission mode.
+   */
+  experimental_permissionProfile: string | null;
+  /**
    * `"plan"` when the prompt entered plan mode through this provider's
    * declared `plan` composer action. Absent for an ordinary prompt — plan
    * mode is a BB prompt mode, so the bridge maps it onto whatever the agent
@@ -704,6 +709,8 @@ export interface PluginProviderMaintenance {
   /** `provider/installation/status` and `provider/installation/run`:
    * host-local installation management. */
   installation?: boolean;
+  /** `permissionProfile/list`: provider-native named permission profiles. */
+  experimental_permissionProfiles?: boolean;
 }
 
 /** One provider-native root as a plugin declares it: a path, or a path with options. */

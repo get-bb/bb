@@ -55,6 +55,13 @@ export interface ExecutionPermissionConfig {
   supported: boolean;
 }
 
+export interface ExecutionPermissionProfileConfig {
+  value: string | null;
+  options: readonly PickerOption<string>[];
+  onChange: (value: string | null) => void;
+  supported: boolean;
+}
+
 export interface ExecutionControlsProps {
   /** Host route reused by provider-tab model previews. */
   providerRouting?: SystemProvidersQuery;

@@ -11,6 +11,11 @@ interface ClampPermissionModeToHostArgs {
   providerId?: string;
 }
 
+interface ValidatePermissionProfileForHostArgs {
+  hostId: string | null;
+  permissionProfile: string | null;
+}
+
 /**
  * No permission mode at or below the machine's limit is one the provider can
  * run in, so this pairing cannot execute at all. Its own class so read paths
@@ -74,4 +79,26 @@ export function clampPermissionModeToHost(
     );
   }
   return clamped;
+}
+
+/**
+ * Named provider profiles can express arbitrary filesystem access. BB cannot
+ * compare that policy with a lower machine ceiling, so only a Full Access
+ * machine can opt into one.
+ */
+export function validatePermissionProfileForHost(
+  deps: PermissionCeilingDeps,
+  args: ValidatePermissionProfileForHostArgs,
+): void {
+  if (
+    args.permissionProfile === null ||
+    getHostPermissionCeiling(deps, args.hostId) === "full"
+  ) {
+    return;
+  }
+  throw new HostPermissionCeilingConflictError(
+    400,
+    "host_permission_ceiling_conflict",
+    "Named permission profiles require this machine's permission limit to be Full Access.",
+  );
 }

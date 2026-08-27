@@ -46,6 +46,28 @@ it("reuses one initialized app-server across model catalog requests", async () =
   expect(second.result).toEqual(first.result);
 });
 
+it("lists Codex permission profiles with managed-policy availability", async () => {
+  harness.sendRequest(1, "permissionProfile/list", { providerId: "codex" });
+  const response = await harness.waitForResponse(1);
+
+  expect(response.error).toBeUndefined();
+  expect(response.result).toEqual({
+    supported: true,
+    profiles: [
+      {
+        id: ":workspace",
+        description: "Workspace access",
+        allowed: true,
+      },
+      {
+        id: "managed-root",
+        description: "Managed root access",
+        allowed: false,
+      },
+    ],
+  });
+});
+
 it("replaces the cached app-server after a model catalog failure", async () => {
   const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-list-"));
   temporaryDirectories.push(workDir);

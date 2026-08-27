@@ -201,6 +201,8 @@ message agents, or inspect projects, providers, and environments.
   anchor with `--source-seq-end` on a completed source turn (the clone and the
   inherited timeline both end with the turn containing that sequence).
   Permission mode inherits the source thread unless explicitly overridden.
+  Named permission profiles also inherit. Use `--permission-profile <id>` to
+  override one.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention. `bb thread list` excludes them by
@@ -328,6 +330,12 @@ environment pull-request show <id>`. Diff commands require an explicit target
   `auto` when no inherited or project default applies.
 - Subagents inherit the parent's permission mode by default;
   `--permission-mode full` only takes effect when the parent itself runs full.
+- Inspect named profiles with
+  `bb provider permission-profiles <provider-id> [--machine <id-or-name>]`.
+  Pass one to `thread spawn`, `thread fork`, or `thread tell` with
+  `--permission-profile <id>`. Codex applies that profile and bb adds its
+  runtime workspace roots. Named profiles require a machine permission limit
+  of Full Access.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.

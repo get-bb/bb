@@ -404,6 +404,7 @@ describe("prompt history service", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: null,
       serviceTier: "default",
     });
 

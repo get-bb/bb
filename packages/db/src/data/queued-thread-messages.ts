@@ -32,6 +32,7 @@ export interface CreateQueuedThreadMessageInput {
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
   serviceTier: string;
 }
 
@@ -216,6 +217,7 @@ function queuedMessageGroupingEnvelopeMatches(
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
+    queuedMessage.permissionProfile === firstQueuedMessage.permissionProfile &&
     queuedMessage.serviceTier === firstQueuedMessage.serviceTier
   );
 }
@@ -494,6 +496,7 @@ export function createQueuedThreadMessageInTransaction(
       model: input.model,
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
+      permissionProfile: input.permissionProfile,
       serviceTier: input.serviceTier,
       groupWithNext: false,
       claimedAt: null,

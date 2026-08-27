@@ -45,6 +45,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: ":workspace",
       serviceTier: "default",
     });
 
@@ -57,6 +58,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: ":workspace",
       serviceTier: "default",
     });
   });
@@ -70,6 +72,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: ":workspace",
       serviceTier: "default",
     });
     upsertProjectExecutionDefaults(db, {
@@ -78,6 +81,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5-mini",
       reasoningLevel: "high",
       permissionMode: "accept-edits",
+      permissionProfile: null,
       serviceTier: "fast",
     });
 
@@ -90,6 +94,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5-mini",
       reasoningLevel: "high",
       permissionMode: "accept-edits",
+      permissionProfile: null,
       serviceTier: "fast",
     });
   });
@@ -103,6 +108,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: ":workspace",
       serviceTier: "default",
     });
     upsertProjectExecutionDefaults(db, {
@@ -111,6 +117,7 @@ describe("project-execution-defaults", () => {
       model: "claude-opus-4-1",
       reasoningLevel: "high",
       permissionMode: "auto",
+      permissionProfile: null,
       serviceTier: "fast",
     });
 
@@ -133,6 +140,7 @@ describe("project-execution-defaults", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: null,
       serviceTier: "default",
     });
 

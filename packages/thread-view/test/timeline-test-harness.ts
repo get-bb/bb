@@ -489,6 +489,7 @@ const defaultExecution: ResolvedThreadExecutionOptions = {
   serviceTier: "default",
   reasoningLevel: "medium",
   permissionMode: "full",
+  permissionProfile: null,
   source: "client/turn/requested",
 };
 

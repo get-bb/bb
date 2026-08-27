@@ -138,6 +138,7 @@ export const projectExecutionDefaults = sqliteTable(
     serviceTier: text("service_tier").$type<ServiceTier>().notNull(),
     reasoningLevel: text("reasoning_level").$type<ReasoningLevel>().notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
+    permissionProfile: text("permission_profile"),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
@@ -927,6 +928,7 @@ export const queuedThreadMessages = sqliteTable(
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
+    permissionProfile: text("permission_profile"),
     serviceTier: text("service_tier").notNull(),
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()

@@ -166,6 +166,7 @@ describe("named managed-worktree base branch", () => {
       seedThreadRuntimeState(harness.deps, {
         environmentId: environment.id,
         permissionMode: "full",
+        permissionProfile: null,
         providerThreadId: "provider-fork-source",
         threadId: sourceThread.id,
       });

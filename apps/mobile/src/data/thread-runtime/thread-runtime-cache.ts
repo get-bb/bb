@@ -580,6 +580,7 @@ function buildOptimisticQueuedMessage({
     model: request.model ?? "pending",
     reasoningLevel: request.reasoningLevel ?? "medium",
     permissionMode: request.permissionMode ?? "auto",
+    permissionProfile: request.permissionProfile ?? null,
     serviceTier: request.serviceTier ?? "default",
     groupWithNext: false,
     createdAt,

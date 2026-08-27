@@ -1774,6 +1774,11 @@ export interface NewThreadRequest {
   model: string;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
+  /**
+   * Selected provider-native named permission profile. Null keeps BB's legacy
+   * permission policy. Experimental while providers converge on this model.
+   */
+  experimental_permissionProfile?: string | null;
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;
   /**
@@ -1840,6 +1845,12 @@ export interface NewThreadComposerProps {
   defaultServiceTier?: ServiceTier;
   /** Seeds the permission-mode picker. Same seed semantics as {@link defaultProviderId}. */
   defaultPermissionMode?: PermissionMode;
+  /**
+   * Seeds the provider-native named permission profile. Null keeps BB's
+   * legacy permission policy. Experimental while providers converge on this
+   * model.
+   */
+  experimental_defaultPermissionProfile?: string | null;
   /**
    * Seeds the environment and branch pickers from a previously submitted
    * `NewThreadRequest.environment`. Same seed semantics as

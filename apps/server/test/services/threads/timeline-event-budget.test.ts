@@ -27,6 +27,7 @@ const execution = {
   serviceTier: "default",
   reasoningLevel: "medium",
   permissionMode: "full",
+  permissionProfile: null,
   source: "client/turn/requested",
 } as const;
 

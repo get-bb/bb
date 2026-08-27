@@ -335,9 +335,14 @@
 // capacity implied by each model id. The usage event meaning changed across
 // the daemon boundary, so enrolled daemons must update with the server.
 //
+// Version 172 adds the `provider.list_permission_profiles` online RPC. The
+// server uses it to load provider-native named permission profiles from the
+// selected machine before the UI or SDK offers them. Older daemons do not
+// recognize the command, so the version bump triggers their update.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 172 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

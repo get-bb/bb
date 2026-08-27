@@ -47,6 +47,9 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   models: [],
   selectedOnlyModels: [],
   permissionCeiling: "full",
+  permissionProfiles: [],
+  permissionProfilesSupported: false,
+  permissionProfileLoadError: null,
   modelLoadError: null,
 };
 
@@ -87,7 +90,7 @@ describe("useSystemProviderInfo", () => {
       displayName: "Codex",
       logoUrl: null,
       available: true,
-      maintenance: { health: false, usage: false, installation: false },
+      maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
       composerActions: [],
       capabilities: {
         supportsThreadArchive: true,
@@ -136,7 +139,7 @@ describe("useSystemProviderInfo", () => {
         displayName: "Codex",
         logoUrl: null,
         available: true,
-        maintenance: { health: false, usage: false, installation: false },
+        maintenance: { health: false, usage: false, installation: false, permissionProfiles: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -235,7 +238,7 @@ describe("useSystemExecutionOptions", () => {
         displayName: "Codex",
         logoUrl: null,
         available: true,
-        maintenance: { health: true, usage: true, installation: false },
+        maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -254,7 +257,7 @@ describe("useSystemExecutionOptions", () => {
         displayName: "OpenCode",
         logoUrl: null,
         available: true,
-        maintenance: { health: true, usage: true, installation: false },
+        maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: false,
@@ -356,7 +359,7 @@ describe("useSystemExecutionOptions", () => {
     displayName: id,
     logoUrl: null,
     available: true,
-    maintenance: { health: true, usage: true, installation: false },
+    maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
     composerActions: [],
     capabilities: {
       supportsThreadArchive: false,
@@ -426,7 +429,7 @@ describe("useSystemExecutionOptions", () => {
       pluginId: "provider-acp:my-agent",
       displayName: "My agent",
       logoUrl: null,
-      maintenance: { health: true, usage: true, installation: false },
+      maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
       capabilities: CODEX_CATALOG.providers[0]!.capabilities,
       composerActions: [],
       available: true,

@@ -1378,7 +1378,12 @@ describe("providers.register", () => {
 
     expect(
       harness.registrations.providerRegistrations[0]?.maintenance,
-    ).toEqual({ health: false, usage: false, installation: false });
+    ).toEqual({
+      health: false,
+      usage: false,
+      installation: false,
+      permissionProfiles: false,
+    });
   });
 
   it("clears registrations on dispose", async () => {

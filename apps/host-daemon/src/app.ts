@@ -785,6 +785,13 @@ export async function createHostDaemonApp(
         (runtime) => runtime.providerHealth(args),
       );
     },
+    listPermissionProfiles: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.listPermissionProfiles(args),
+      );
+    },
     providerUsage: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(

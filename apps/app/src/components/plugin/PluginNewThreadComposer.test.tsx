@@ -347,6 +347,9 @@ function composerElement(
         defaultReasoningLevel={seed.reasoningLevel}
         defaultServiceTier={seed.serviceTier}
         defaultPermissionMode={seed.permissionMode}
+        experimental_defaultPermissionProfile={
+          seed.experimental_permissionProfile
+        }
         defaultEnvironment={seed.environment}
         initialPrompt="review every PR for slop"
         onSubmit={onSubmit}
@@ -369,6 +372,7 @@ const STORED_REQUEST: NewThreadRequest = {
   model: "gpt-5.6-sol",
   reasoningLevel: "high",
   permissionMode: "full",
+  experimental_permissionProfile: null,
   // Every seeded field must carry caller-explicit provenance. Without it the
   // server drops the requested providerId/model and re-derives them from the
   // project's stored defaults, undoing the seed.
@@ -377,6 +381,7 @@ const STORED_REQUEST: NewThreadRequest = {
     model: "explicit",
     reasoningLevel: "explicit",
     permissionMode: "explicit",
+    permissionProfile: "explicit",
   },
   environment: {
     type: "host",

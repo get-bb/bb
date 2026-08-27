@@ -363,6 +363,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
         mode: "start",
         model: "gpt-5",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: "default",
       },
@@ -465,6 +466,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
           mode: "start",
           model: "gpt-5",
           permissionMode: "full",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
         },
@@ -493,6 +495,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       mode: "start" as const,
       model: "gpt-5",
       permissionMode: "full" as const,
+      permissionProfile: null,
       reasoningLevel: "medium" as const,
       serviceTier: "default" as const,
     };

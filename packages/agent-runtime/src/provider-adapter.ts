@@ -68,6 +68,7 @@ export type AdapterCommand =
   | { type: "model/list"; cwd?: string }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
+  | { type: "permissionProfile/list"; cwd?: string }
   | {
       type: "provider/installation/status";
       cwd?: string;

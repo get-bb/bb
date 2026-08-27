@@ -365,6 +365,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       loginCommand: "agent login",
     },
   },
+  "provider.list_permission_profiles": {
+    supported: true,
+    profiles: [
+      {
+        id: ":workspace",
+        description: "Workspace access",
+        allowed: true,
+      },
+    ],
+  },
   "provider.usage": {
     supported: true,
     usage: {
@@ -948,6 +958,9 @@ const ACP_BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
+  // Version 172 adds provider-native permission-profile discovery. The
+  // selected profile itself rides thread execution options on existing
+  // commands, so old daemons must update before those sessions start.
   // Version 169 advertises Cursor's parameterized model picker through the
   // provider bridge options, keeps a curated bare-id primary list ahead of
   // "More models", and sends effort plus explicit Fast/default values.
@@ -1046,7 +1059,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(171);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(172);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

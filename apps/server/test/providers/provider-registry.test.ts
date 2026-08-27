@@ -5,7 +5,7 @@ import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 const CURSOR_LIKE_INFO = {
   pluginId: "provider-acp",
   available: true,
-  maintenance: { health: true, usage: true, installation: false },
+  maintenance: { health: true, usage: true, installation: false, permissionProfiles: false },
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,

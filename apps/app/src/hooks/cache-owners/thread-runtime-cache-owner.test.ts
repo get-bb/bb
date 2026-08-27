@@ -149,6 +149,7 @@ function makeQueuedMessage(
     model: "codex-test",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,
@@ -299,6 +300,7 @@ describe("thread runtime cache owner", () => {
         model: "codex-default",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
       },
     );
@@ -322,6 +324,7 @@ describe("thread runtime cache owner", () => {
       model: "codex-default",
       reasoningLevel: "high",
       permissionMode: "accept-edits",
+      permissionProfile: null,
       serviceTier: "fast",
     });
 

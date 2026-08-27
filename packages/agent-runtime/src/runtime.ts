@@ -15,6 +15,7 @@ import {
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
+  providerPermissionProfileListResultSchema,
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
@@ -2527,6 +2528,26 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         proc,
         message: plan,
         resultSchema: providerUsageResultSchema,
+      });
+    },
+
+    async listPermissionProfiles({ providerId, bridgeLaunch, cwd }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const plan = proc.adapter.buildCommandPlan({
+        type: "permissionProfile/list",
+        ...(cwd !== undefined ? { cwd } : {}),
+      });
+      if (plan.kind === "noop") {
+        return { supported: false };
+      }
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: providerPermissionProfileListResultSchema,
       });
     },
 

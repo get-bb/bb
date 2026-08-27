@@ -128,6 +128,7 @@ function seedTurn(
         serviceTier: "default",
         reasoningLevel: "medium" as const,
         permissionMode: "full",
+        permissionProfile: null,
         source: "client/turn/requested",
       },
       initiator: args.initiator ?? "user",
@@ -310,6 +311,7 @@ describe("editThreadMessage", () => {
               { type: "text", text: "Replacement by agent", mentions: [] },
             ],
             permissionMode: "accept-edits",
+            permissionProfile: null,
             senderThreadId: senderThread.id,
           },
         }),
@@ -323,6 +325,7 @@ describe("editThreadMessage", () => {
         senderThreadId: senderThread.id,
         execution: {
           permissionMode: "accept-edits",
+          permissionProfile: null,
         },
         input: [
           expect.objectContaining({
@@ -539,6 +542,7 @@ describe("editThreadMessage", () => {
         serviceTier: "default" as const,
         reasoningLevel: "medium" as const,
         permissionMode: "full" as const,
+        permissionProfile: null,
       };
       const editPromise = editThreadMessage(harness.deps, {
         environment,

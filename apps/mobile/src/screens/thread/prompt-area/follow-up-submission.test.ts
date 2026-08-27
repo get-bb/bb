@@ -12,6 +12,7 @@ const INPUT: PromptInput[] = [{ type: "text", text: "hello", mentions: [] }];
 const EXECUTION = {
   model: "fake-model",
   permissionMode: "auto" as const,
+  permissionProfile: null,
   reasoningLevel: "medium" as const,
   serviceTier: "fast" as const,
   supportsServiceTier: true,
@@ -75,6 +76,7 @@ describe("buildFollowUpSubmission", () => {
         serviceTier: "fast",
         reasoningLevel: "medium",
         permissionMode: "auto",
+        permissionProfile: null,
         executionInputSources: { model: "explicit" },
       },
     });
@@ -96,6 +98,7 @@ describe("buildFollowUpSubmission", () => {
       model: "fake-model",
       reasoningLevel: "medium",
       permissionMode: "auto",
+      permissionProfile: null,
       executionInputSources: { model: "explicit" },
     });
     // A "send" intent on a provisioning thread also queues (web handleSend).
@@ -130,6 +133,7 @@ describe("buildFollowUpSubmission", () => {
         mode: "steer-if-active",
         model: "fake-model",
         permissionMode: "auto",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: "fast",
         executionInputSources: { model: "explicit" },
@@ -186,6 +190,7 @@ describe("buildFollowUpExecutionInputSources", () => {
       model: "explicit",
       reasoningLevel: "explicit",
       permissionMode: "explicit",
+      permissionProfile: "explicit",
       serviceTier: "explicit",
     });
     expect(

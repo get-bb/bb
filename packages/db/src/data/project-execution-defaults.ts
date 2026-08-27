@@ -21,6 +21,7 @@ export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionD
   model: string;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
+  permissionProfile: string | null;
   serviceTier: ServiceTier;
   updatedAt?: number;
 }
@@ -35,6 +36,7 @@ export function getProjectExecutionDefaults(
       model: projectExecutionDefaults.model,
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
+      permissionProfile: projectExecutionDefaults.permissionProfile,
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
@@ -60,6 +62,7 @@ export function listProjectExecutionDefaultsByProjectIds(
       model: projectExecutionDefaults.model,
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
+      permissionProfile: projectExecutionDefaults.permissionProfile,
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
@@ -86,6 +89,7 @@ export function upsertProjectExecutionDefaults(
       model: args.model,
       reasoningLevel: args.reasoningLevel,
       permissionMode: args.permissionMode,
+      permissionProfile: args.permissionProfile,
       serviceTier: args.serviceTier,
       updatedAt,
     })
@@ -96,6 +100,7 @@ export function upsertProjectExecutionDefaults(
         model: args.model,
         reasoningLevel: args.reasoningLevel,
         permissionMode: args.permissionMode,
+        permissionProfile: args.permissionProfile,
         serviceTier: args.serviceTier,
         updatedAt,
       },
@@ -105,6 +110,7 @@ export function upsertProjectExecutionDefaults(
       model: projectExecutionDefaults.model,
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
+      permissionProfile: projectExecutionDefaults.permissionProfile,
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .get();

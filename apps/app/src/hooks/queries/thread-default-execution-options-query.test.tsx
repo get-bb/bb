@@ -23,6 +23,7 @@ const RESOLVED: ResolvedThreadExecutionOptions = {
   serviceTier: "default",
   reasoningLevel: "xhigh",
   permissionMode: "full",
+  permissionProfile: null,
   source: "client/turn/start",
 };
 

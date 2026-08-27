@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, ProviderPermissionProfile } from "@bb/domain";
 import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -21,6 +21,8 @@ interface ProviderModelsCommandOptions {
   machine?: string;
   selectedModel?: string;
 }
+
+type ProviderPermissionProfilesCommandOptions = ProviderListCommandOptions;
 
 interface IncludeSelectedOnlyModelArgs {
   models: AvailableModel[];
@@ -98,6 +100,34 @@ export function registerProviderCommands(
         },
       ),
     );
+
+  addProviderRoutingOptions(
+    provider.command("permission-profiles [providerId]"),
+  )
+    .description("List named permission profiles for a provider")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string | undefined,
+          opts: ProviderPermissionProfilesCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const profiles = await createCliBbSdk(
+            serverUrl,
+          ).providers.permissionProfiles({
+            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+            ...(providerId ? { providerId } : {}),
+          });
+          if (outputJson(opts, profiles)) return;
+          if (profiles.length === 0) {
+            console.log("No named permission profiles available");
+            return;
+          }
+          printPermissionProfileTable(profiles, providerId);
+        },
+      ),
+    );
 }
 
 function includeSelectedOnlyModel(
@@ -154,6 +184,35 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
     rows,
   );
 
+  console.log("");
+  console.log(table);
+  console.log("");
+}
+
+function printPermissionProfileTable(
+  profiles: ProviderPermissionProfile[],
+  providerId?: string,
+): void {
+  if (providerId) {
+    console.log(`Permission profiles for ${providerId}:`);
+  }
+  const rows = profiles.map((profile) => [
+    profile.id,
+    profile.description ?? "",
+    profile.allowed ? "yes" : "no",
+  ]);
+  const table = renderBorderlessTable(
+    {
+      head: ["ID", "Description", "Allowed"],
+      colWidths: [
+        Math.max(2, ...rows.map((row) => row[0].length)),
+        Math.max(11, ...rows.map((row) => row[1].length)),
+        7,
+      ],
+      trimTrailingWhitespace: true,
+    },
+    rows,
+  );
   console.log("");
   console.log(table);
   console.log("");

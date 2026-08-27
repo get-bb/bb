@@ -70,6 +70,7 @@ function seedForkSource(
     environmentId: environment.id,
     ...(args.model === undefined ? {} : { model: args.model }),
     permissionMode: args.permissionMode ?? "full",
+    permissionProfile: null,
     providerThreadId: "provider-fork-source",
     ...(args.reasoningLevel === undefined
       ? {}
@@ -105,6 +106,7 @@ function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
     permissionMode: "full",
+    permissionProfile: null,
     providerThreadId: "provider-personal-directory-source",
     threadId: sourceThread.id,
   });
@@ -371,6 +373,7 @@ describe("public thread fork route", () => {
             input: firstInput,
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -410,6 +413,7 @@ describe("public thread fork route", () => {
             input: secondInput,
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -449,6 +453,7 @@ describe("public thread fork route", () => {
             input: firstInput,
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -472,6 +477,7 @@ describe("public thread fork route", () => {
             input: rapidInput,
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -507,6 +513,7 @@ describe("public thread fork route", () => {
             input: secondInput,
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -548,6 +555,7 @@ describe("public thread fork route", () => {
           inputGroups,
           mode: "start",
           permissionMode: "full",
+          permissionProfile: null,
         },
         thread,
         trigger: "user",
@@ -665,6 +673,7 @@ describe("public thread fork route", () => {
               execution: {
                 model: "gpt-5",
                 permissionMode: "full",
+                permissionProfile: null,
                 reasoningLevel: "medium",
                 serviceTier: "default",
                 source: "client/turn/requested",
@@ -684,6 +693,7 @@ describe("public thread fork route", () => {
             input: textInput("Losing concurrent turn"),
             mode: "start",
             permissionMode: "full",
+            permissionProfile: null,
           },
           thread,
           trigger: "user",
@@ -831,6 +841,7 @@ describe("public thread fork route", () => {
             input: [{ type: "text", text: "Continue the fork" }],
             mode: "auto",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -875,6 +886,7 @@ function seedHistoryUserRequest(
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         source: "client/turn/requested",
       },
       initiator: "user",
@@ -915,6 +927,7 @@ function seedConversationForkSource(
     environmentId: environment.id,
     inputText: "Reply only with ok.",
     permissionMode: "full",
+    permissionProfile: null,
     providerThreadId: HISTORY_PROVIDER_THREAD_ID,
     threadId: sourceThread.id,
   });

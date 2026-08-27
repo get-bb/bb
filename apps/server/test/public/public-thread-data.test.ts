@@ -533,6 +533,7 @@ describe("public thread data routes", () => {
               model: "gpt-5",
               reasoningLevel: "medium",
               permissionMode: "full",
+              permissionProfile: null,
               serviceTier: "default",
               source: "client/turn/requested",
             },
@@ -778,6 +779,7 @@ describe("public thread data routes", () => {
             model: "gpt-5",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "default",
             source: "client/turn/requested",
           },
@@ -1211,6 +1213,7 @@ describe("public thread data routes", () => {
           model: "gpt-5",
           reasoningLevel: "medium",
           permissionMode: "full" as const,
+          permissionProfile: null,
           serviceTier: "default",
           source: "client/turn/requested" as const,
         },
@@ -1820,6 +1823,7 @@ describe("public thread data routes", () => {
             model: "gpt-4o-mini",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "fast",
             source: "client/turn/requested",
           },
@@ -1873,6 +1877,7 @@ describe("public thread data routes", () => {
             model: "gpt-4o-mini",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "fast",
             source: "client/turn/requested",
           },
@@ -2030,6 +2035,7 @@ describe("public thread data routes", () => {
             model: "gpt-4o-mini",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "fast",
             source: "client/turn/requested",
           },
@@ -2089,6 +2095,7 @@ describe("public thread data routes", () => {
         model: "gpt-4o-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "fast",
         source: "client/turn/requested",
       });
@@ -2205,6 +2212,7 @@ describe("public thread data routes", () => {
             model: "gpt-5",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "default",
             source: "client/turn/requested",
           },
@@ -2232,6 +2240,7 @@ describe("public thread data routes", () => {
             model: "gpt-5-mini",
             reasoningLevel: "high",
             permissionMode: "workspace-write",
+            permissionProfile: null,
             serviceTier: "fast",
             source: "client/turn/requested",
           },
@@ -2253,6 +2262,7 @@ describe("public thread data routes", () => {
         model: "gpt-5-mini",
         reasoningLevel: "high",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         serviceTier: "fast",
         source: "client/turn/requested",
       });
@@ -2279,6 +2289,7 @@ describe("public thread data routes", () => {
             model: "claude-sonnet-4-6",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "default",
             source: "client/turn/requested",
           },
@@ -2306,6 +2317,7 @@ describe("public thread data routes", () => {
         model: "claude-opus-4-8",
         reasoningLevel: "high",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
         source: "client/turn/requested",
       });
@@ -2332,6 +2344,7 @@ describe("public thread data routes", () => {
             model: "openai/codex-mini",
             reasoningLevel: "medium",
             permissionMode: "workspace-write",
+            permissionProfile: null,
             serviceTier: "default",
             source: "client/turn/requested",
           },
@@ -2374,6 +2387,7 @@ describe("public thread data routes", () => {
             serviceTier: "default",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             source: "client/turn/requested",
           },
           initiator: "user",
@@ -2477,6 +2491,7 @@ describe("public thread data routes", () => {
             serviceTier: "default",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             source: "client/turn/requested",
           },
           initiator: "user",
@@ -2500,6 +2515,7 @@ describe("public thread data routes", () => {
             input: [{ type: "text", text: "Queued message from test" }],
             reasoningLevel: "high",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -2616,6 +2632,7 @@ describe("public thread data routes", () => {
             mode: "queue-if-active",
             model: "gpt-5",
             permissionMode: "full",
+            permissionProfile: null,
             reasoningLevel: "medium",
             serviceTier: "default",
             senderThreadId: senderThread.id,
@@ -2678,6 +2695,7 @@ describe("public thread data routes", () => {
             mode: "queue-if-active",
             model: "gpt-5",
             permissionMode: "full",
+            permissionProfile: null,
             reasoningLevel: "medium",
             serviceTier: "default",
             senderThreadId: crossProjectSender.id,
@@ -2719,6 +2737,7 @@ describe("public thread data routes", () => {
             input: [{ type: "text", text: "Queued agent follow-up" }],
             model: "gpt-5",
             permissionMode: "full",
+            permissionProfile: null,
             reasoningLevel: "medium",
             serviceTier: "default",
             senderThreadId: senderThread.id,
@@ -3162,6 +3181,7 @@ describe("public thread data routes", () => {
           body: JSON.stringify({
             input: [{ type: "text", text: "Queued message ready to send" }],
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -3331,6 +3351,7 @@ describe("public thread data routes", () => {
         model: "gpt-5",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "default",
       });
       seedQueuedMessage(harness.deps, {
@@ -3339,6 +3360,7 @@ describe("public thread data routes", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "full",
+        permissionProfile: null,
         serviceTier: "fast",
       });
 
@@ -3358,6 +3380,7 @@ describe("public thread data routes", () => {
             model: "gpt-5",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "default",
           }),
           expect.objectContaining({
@@ -3365,6 +3388,7 @@ describe("public thread data routes", () => {
             model: "gpt-5",
             reasoningLevel: "high",
             permissionMode: "full",
+            permissionProfile: null,
             serviceTier: "fast",
           }),
         ]),
@@ -3391,6 +3415,7 @@ describe("public thread data routes", () => {
             serviceTier: "default",
             reasoningLevel: "medium",
             permissionMode: "full",
+            permissionProfile: null,
             source: "client/turn/requested",
           },
           initiator: "user",
@@ -3427,6 +3452,7 @@ describe("public thread data routes", () => {
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
       });
     });
   });
@@ -3463,6 +3489,7 @@ describe("public thread data routes", () => {
             serviceTier: "default",
             reasoningLevel: "high",
             permissionMode: "full",
+            permissionProfile: null,
           }),
         },
       );
@@ -3967,6 +3994,7 @@ describe("public thread data routes", () => {
             projectId: project.id,
             providerId: "codex",
             model: "gpt-5",
+            permissionProfile: ":workspace",
             input: [{ type: "text", text: "Initial start request" }],
             environment: {
               type: "reuse",
@@ -4027,6 +4055,7 @@ describe("public thread data routes", () => {
         getQueuedThreadMessage(harness.db, createdQueuedMessage.id),
       ).toMatchObject({
         id: createdQueuedMessage.id,
+        permissionProfile: ":workspace",
       });
       const requestedEvents = harness.db
         .select({ type: events.type })
@@ -4944,6 +4973,7 @@ describe("public thread data routes", () => {
           serviceTier: "default",
           reasoningLevel: "medium",
           permissionMode: "full",
+          permissionProfile: null,
           claimedAt: null,
           sortKey: "V",
           createdAt: now,

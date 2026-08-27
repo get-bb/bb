@@ -200,6 +200,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     modelOptions: [],
     moreModelOptions: [],
     permissionMode: "auto",
+    permissionProfile: null,
     permissionModeOptions: [],
     providerOptions: [],
     reasoningLevel: "medium",
@@ -266,6 +267,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
     data: {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -306,6 +308,7 @@ function makeQueuedMessage(): ThreadQueuedMessage {
     model: "gpt-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,

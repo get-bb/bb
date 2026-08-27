@@ -15,6 +15,7 @@ import {
   clampPermissionModeToHost,
   isHostPermissionCeilingConflictError,
   resolveEnvironmentHostId,
+  validatePermissionProfileForHost,
 } from "../hosts/permission-ceiling.js";
 import {
   DEFAULT_REASONING_LEVEL,
@@ -32,6 +33,7 @@ interface ExecutionPlanFieldInput<TValue> {
 interface ExistingThreadExecutionInput {
   model?: ExecutionPlanFieldInput<string>;
   permissionMode?: ExecutionPlanFieldInput<PermissionMode>;
+  permissionProfile?: ExecutionPlanFieldInput<string | null>;
   reasoningLevel?: ExecutionPlanFieldInput<ReasoningLevel>;
   serviceTier?: ExecutionPlanFieldInput<ServiceTier>;
 }
@@ -39,6 +41,7 @@ interface ExistingThreadExecutionInput {
 export interface ExistingThreadExecutionInputRequest {
   model?: string;
   permissionMode?: PermissionMode;
+  permissionProfile?: string | null;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   executionInputSources?: ExistingThreadExecutionInputRequestSources;
@@ -47,6 +50,7 @@ export interface ExistingThreadExecutionInputRequest {
 interface ExistingThreadExecutionInputRequestSources {
   model?: CallerExecutionInputSource;
   permissionMode?: CallerExecutionInputSource;
+  permissionProfile?: CallerExecutionInputSource;
   reasoningLevel?: CallerExecutionInputSource;
   serviceTier?: CallerExecutionInputSource;
 }
@@ -145,6 +149,7 @@ function hasExecutionInput(input: ExistingThreadExecutionInput): boolean {
   return (
     input.model !== undefined ||
     input.permissionMode !== undefined ||
+    input.permissionProfile !== undefined ||
     input.reasoningLevel !== undefined ||
     input.serviceTier !== undefined
   );
@@ -190,12 +195,35 @@ export function buildExistingThreadExecutionInput(
     request.permissionMode,
     resolveRequestInputSource(sources, "permissionMode"),
   );
+  const permissionProfile = toRequestInputField(
+    request.permissionProfile,
+    resolveRequestInputSource(sources, "permissionProfile"),
+  );
   return {
     ...(model ? { model } : {}),
     ...(serviceTier ? { serviceTier } : {}),
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...(permissionMode ? { permissionMode } : {}),
+    ...(permissionProfile ? { permissionProfile } : {}),
   };
+}
+
+function validateProviderPermissionProfile(
+  registry: ProviderRegistryService,
+  providerId: string,
+  permissionProfile: string | null,
+): void {
+  if (
+    permissionProfile === null ||
+    registry.get(providerId)?.info.maintenance.permissionProfiles === true
+  ) {
+    return;
+  }
+  throw new ProviderCapabilityValidationError(
+    400,
+    "invalid_request",
+    `Provider ${providerId} does not support named permission profiles.`,
+  );
 }
 
 function validateProviderPermissionMode(
@@ -297,11 +325,12 @@ export async function resolveExistingThreadExecutionPlan(
 
   // The machine's ceiling wins over every other source, including an explicit
   // request, so a capped machine cannot be talked into privileged work.
+  const hostId =
+    args.hostId === undefined
+      ? resolveEnvironmentHostId(deps, thread.environmentId)
+      : args.hostId;
   const permissionMode = clampPermissionModeToHost(deps, {
-    hostId:
-      args.hostId === undefined
-        ? resolveEnvironmentHostId(deps, thread.environmentId)
-        : args.hostId,
+    hostId,
     permissionMode: resolveThreadExecutionPermissionMode(
       deps.providerRegistry,
       {
@@ -320,6 +349,18 @@ export async function resolveExistingThreadExecutionPlan(
     thread.providerId,
     permissionMode,
   );
+
+  const permissionProfile = resolveRequiredField<string | null>([
+    args.input.permissionProfile?.value,
+    lastExecution?.permissionProfile,
+    projectExecution?.permissionProfile,
+  ]);
+  validateProviderPermissionProfile(
+    deps.providerRegistry,
+    thread.providerId,
+    permissionProfile,
+  );
+  validatePermissionProfileForHost(deps, { hostId, permissionProfile });
 
   const reasoningLevel = resolveFieldWithDefault<ReasoningLevel>(
     [
@@ -348,6 +389,7 @@ export async function resolveExistingThreadExecutionPlan(
   const resolvedExecution = {
     model,
     permissionMode,
+    permissionProfile,
     reasoningLevel,
     serviceTier,
     source: args.executionSource,

@@ -139,6 +139,9 @@ export function queuedMessagePayloadFromSendRequest(
     ...(payload.permissionMode !== undefined
       ? { permissionMode: payload.permissionMode }
       : {}),
+    ...(payload.permissionProfile !== undefined
+      ? { permissionProfile: payload.permissionProfile }
+      : {}),
     ...(payload.executionInputSources !== undefined
       ? { executionInputSources: payload.executionInputSources }
       : {}),
@@ -224,6 +227,7 @@ export async function createQueuedMessageForThread(
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,
           permissionMode: execution.permissionMode,
+          permissionProfile: execution.permissionProfile,
           serviceTier: execution.serviceTier,
         });
         return { currentThread, providerThreadId, queuedMessage };
@@ -285,6 +289,7 @@ function sendQueuedMessagePayload(
     mode,
     model: queuedMessage.model,
     permissionMode: queuedMessage.permissionMode,
+    permissionProfile: queuedMessage.permissionProfile,
     reasoningLevel: queuedMessage.reasoningLevel,
     serviceTier: queuedMessage.serviceTier,
     ...(senderThreadId !== null ? { senderThreadId } : {}),

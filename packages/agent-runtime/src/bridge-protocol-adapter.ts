@@ -320,6 +320,18 @@ export function createBridgeProtocolAdapter(
                 : {}),
             },
           };
+        case "permissionProfile/list":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.permissionProfileList,
+            params: {
+              providerId: options.id,
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+            },
+          };
         case "provider/installation/status":
           return {
             kind: "request",

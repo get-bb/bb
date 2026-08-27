@@ -843,6 +843,7 @@ describe("public thread interaction routes", () => {
         serviceTier: "default",
         reasoningLevel: "medium",
         permissionMode: "full",
+        permissionProfile: null,
       });
       const pending = registerPendingInteraction(
         harness.deps,
@@ -1036,6 +1037,7 @@ describe("public thread interaction routes", () => {
       expect(queued.command.options).toMatchObject({
         permissionMode: "full",
         permissionEscalation: null,
+        providerOptions: expect.objectContaining({ permissionProfile: null }),
       });
     });
   });
@@ -1073,6 +1075,7 @@ describe("public thread interaction routes", () => {
             input: [{ type: "text", text: "Queue legacy writable alias" }],
             mode: "queue-if-active",
             permissionMode: "workspace-write",
+            permissionProfile: null,
           }),
         },
       );
@@ -1090,6 +1093,7 @@ describe("public thread interaction routes", () => {
             input: [{ type: "text", text: "Do not widen readonly" }],
             mode: "queue-if-active",
             permissionMode: "readonly",
+            permissionProfile: null,
           }),
         },
       );
@@ -1130,6 +1134,7 @@ describe("public thread interaction routes", () => {
             input: [{ type: "text", text: "Run the command" }],
             model: "openai/codex-mini",
             permissionMode: "workspace-write",
+            permissionProfile: null,
           }),
         },
       );

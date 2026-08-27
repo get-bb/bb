@@ -287,6 +287,7 @@ function EmbeddedThreadChatWithComposer({
     initialServiceTier: defaultExecutionOptions?.serviceTier,
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
+    initialPermissionProfile: defaultExecutionOptions?.permissionProfile,
   });
   const {
     executionOptionsRouting,
@@ -302,6 +303,7 @@ function EmbeddedThreadChatWithComposer({
     setReasoningLevel,
     permissionMode,
     setPermissionMode,
+    permissionProfile,
     activeModel,
     modelOptions,
     moreModelOptions,
@@ -327,7 +329,11 @@ function EmbeddedThreadChatWithComposer({
     composer.permissionPolicy === "snapshot"
       ? snapshotPermissionMode
       : permissionMode;
-
+  const snapshotPermissionProfile = defaultExecutionOptions?.permissionProfile;
+  const effectivePermissionProfile =
+    composer.permissionPolicy === "snapshot"
+      ? snapshotPermissionProfile
+      : permissionProfile;
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
   const executionRequestFields = useMemo(
     () => ({
@@ -345,9 +351,13 @@ function EmbeddedThreadChatWithComposer({
       ...(effectivePermissionMode !== undefined
         ? { permissionMode: effectivePermissionMode }
         : {}),
+      ...(effectivePermissionProfile !== undefined
+        ? { permissionProfile: effectivePermissionProfile }
+        : {}),
     }),
     [
       effectivePermissionMode,
+      effectivePermissionProfile,
       reasoningLevel,
       selectedExecutionModel,
       selectedExecutionServiceTier,

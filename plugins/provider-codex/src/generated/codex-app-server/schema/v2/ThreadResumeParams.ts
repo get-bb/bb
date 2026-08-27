@@ -26,8 +26,10 @@ import type { SandboxMode } from "./SandboxMode.js";
 export type ThreadResumeParams = {threadId: string, /**
  * Configuration overrides for the resumed thread, if any.
  */
-model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null, approvalPolicy?: AskForApproval | null, /**
+model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null, /** Replace the thread's runtime workspace roots. Paths must be absolute. */
+runtimeWorkspaceRoots?: Array<string> | null, approvalPolicy?: AskForApproval | null, /**
  * Override where approval requests are routed for review on this thread
  * and subsequent turns.
  */
-approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, config?: { [key in string]?: JsonValue } | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null};
+approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, /** Named profile id for the resumed thread. Cannot be combined with `sandbox`. */
+permissions?: string | null, config?: { [key in string]?: JsonValue } | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null};

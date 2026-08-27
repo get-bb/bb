@@ -23,8 +23,10 @@ import {
 } from "../../context-env.js";
 import {
   parsePermissionMode,
+  parsePermissionProfile,
   parseServiceTier,
   PERMISSION_MODE_HELP,
+  PERMISSION_PROFILE_HELP,
   PLAN_HELP,
   buildPromptInputs,
   collectOption,
@@ -68,6 +70,7 @@ interface ThreadTellCommandOptions {
   json?: boolean;
   model?: string;
   permissionMode?: string;
+  permissionProfile?: string;
   reasoningLevel?: string;
   serviceTier?: string;
   mode?: string;
@@ -97,6 +100,7 @@ interface PostThreadMessageArgs {
   mode: ThreadTellDeliveryMode;
   model?: string;
   permissionMode?: PermissionMode;
+  permissionProfile?: string;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   senderThreadId?: string;
@@ -425,6 +429,7 @@ export function registerActionsCommands(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--permission-profile <id>", PERMISSION_PROFILE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
     .option("--plan", PLAN_HELP)
     .option(
@@ -449,6 +454,7 @@ export function registerActionsCommands(
             mode: resolveThreadMessageMode(opts.mode),
             model: opts.model,
             permissionMode: parsePermissionMode(opts.permissionMode),
+            permissionProfile: parsePermissionProfile(opts.permissionProfile),
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
             serviceTier: parseServiceTier(opts.serviceTier),
             senderThreadId: resolveSenderThreadId(id),
@@ -542,7 +548,14 @@ async function postThreadMessage(
           ? "auto"
           : "queue-if-active",
     ...(args.model ? { model: args.model } : {}),
-    ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
+    ...(args.permissionMode
+      ? { permissionMode: args.permissionMode }
+      : args.permissionProfile
+        ? { permissionMode: "auto" as const }
+        : {}),
+    ...(args.permissionProfile
+      ? { permissionProfile: args.permissionProfile }
+      : {}),
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),

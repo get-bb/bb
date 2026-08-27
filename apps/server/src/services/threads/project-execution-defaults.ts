@@ -118,6 +118,7 @@ export function rememberProjectExecutionDefaultsForCreate(
     model: args.execution.model,
     reasoningLevel: args.execution.reasoningLevel,
     permissionMode: args.execution.permissionMode,
+    permissionProfile: args.execution.permissionProfile,
     serviceTier: args.execution.serviceTier,
   });
 }

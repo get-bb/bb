@@ -224,6 +224,7 @@ function toRuntimeExecutionOptions(
       projectId: args.projectId,
       model: args.execution.model,
       permissionMode,
+      experimental_permissionProfile: args.execution.permissionProfile,
       ...(promptMode !== undefined ? { promptMode } : {}),
     }) ?? {};
   const base = {

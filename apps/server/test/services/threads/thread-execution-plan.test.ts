@@ -26,12 +26,14 @@ describe("thread execution plan input sources", () => {
       buildExistingThreadExecutionInput({
         model: "gpt-5",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         reasoningLevel: "high",
         serviceTier: "fast",
       }),
     ).toEqual({
       model: { source: "explicit", value: "gpt-5" },
       permissionMode: { source: "explicit", value: "accept-edits" },
+      permissionProfile: { source: "explicit", value: null },
       reasoningLevel: { source: "explicit", value: "high" },
       serviceTier: { source: "explicit", value: "fast" },
     });
@@ -42,6 +44,7 @@ describe("thread execution plan input sources", () => {
       buildExistingThreadExecutionInput({
         model: "gpt-5",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         reasoningLevel: "high",
         serviceTier: "fast",
         executionInputSources: {},
@@ -54,6 +57,7 @@ describe("thread execution plan input sources", () => {
       buildExistingThreadExecutionInput({
         model: "gpt-5",
         permissionMode: "accept-edits",
+        permissionProfile: null,
         reasoningLevel: "high",
         serviceTier: "fast",
         executionInputSources: {
@@ -85,6 +89,7 @@ describe("thread execution plan input sources", () => {
         model: "gpt-5",
         reasoningLevel: "medium",
         permissionMode: "auto",
+        permissionProfile: null,
         serviceTier: "default",
       });
 
@@ -174,6 +179,7 @@ describe("machine permission ceiling", () => {
     seedThreadRuntimeState(harness.deps, {
       environmentId: environment.id,
       permissionMode: "full",
+      permissionProfile: null,
       providerThreadId: `provider-${args.id}`,
       threadId: thread.id,
     });
@@ -198,6 +204,48 @@ describe("machine permission ceiling", () => {
       // The stored history said "full"; the ceiling wins for display too.
       expect(resolveExistingThreadPermissionMode(harness.deps, thread.id)).toBe(
         "auto",
+      );
+    });
+  });
+
+  it("keeps a named profile on a Full Access machine", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-profile-full",
+        maxPermissionMode: "full",
+        providerId: "codex",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {
+          permissionProfile: { source: "explicit", value: ":workspace" },
+        },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.permissionProfile).toBe(":workspace");
+    });
+  });
+
+  it("rejects a named profile below the machine's Full Access limit", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-profile-capped",
+        maxPermissionMode: "auto",
+        providerId: "codex",
+      });
+
+      await expect(
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input: {
+            permissionProfile: { source: "explicit", value: ":workspace" },
+          },
+          threadId: thread.id,
+        }),
+      ).rejects.toThrow(
+        "Named permission profiles require this machine's permission limit to be Full Access.",
       );
     });
   });

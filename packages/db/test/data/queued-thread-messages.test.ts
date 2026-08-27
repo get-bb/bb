@@ -5,7 +5,8 @@ import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
-  createQueuedThreadMessage,
+  createQueuedThreadMessage as createQueuedThreadMessageRaw,
+  type CreateQueuedThreadMessageInput,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
@@ -27,6 +28,21 @@ function textInput(text: string): PromptInput[] {
 
 const defaultInput = textInput("hello");
 const altInput = textInput("world");
+
+function createQueuedThreadMessage(
+  ...[db, notifier, input]: [
+    Parameters<typeof createQueuedThreadMessageRaw>[0],
+    Parameters<typeof createQueuedThreadMessageRaw>[1],
+    Omit<CreateQueuedThreadMessageInput, "permissionProfile"> & {
+      permissionProfile?: string | null;
+    },
+  ]
+) {
+  return createQueuedThreadMessageRaw(db, notifier, {
+    permissionProfile: null,
+    ...input,
+  });
+}
 
 function setup() {
   const db = createMigratedConnection();
@@ -54,6 +70,7 @@ describe("queued thread messages", () => {
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
+      permissionProfile: ":workspace",
       serviceTier: "default",
     });
 
@@ -61,6 +78,7 @@ describe("queued thread messages", () => {
     expect(queuedMessage.threadId).toBe(thread.id);
     expect(queuedMessage.content).toBe(JSON.stringify(defaultInput));
     expect(queuedMessage.model).toBe("gpt-5");
+    expect(queuedMessage.permissionProfile).toBe(":workspace");
     expect(queuedMessage.serviceTier).toBe("default");
     expect(queuedMessage.groupWithNext).toBe(false);
   });

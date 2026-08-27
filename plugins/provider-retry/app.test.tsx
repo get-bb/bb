@@ -22,7 +22,7 @@ const claudeCodeProvider: ProviderInfo = {
   displayName: "Claude Code",
   logoUrl: null,
   available: true,
-  maintenance: { health: true, usage: true, installation: true },
+  maintenance: { health: true, usage: true, installation: true, permissionProfiles: false },
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,

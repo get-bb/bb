@@ -458,6 +458,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
       modelOptions: [],
       moreModelOptions: [],
       permissionMode: "auto",
+      permissionProfile: null,
       permissionModeOptions: [],
       providerOptions: [],
       reasoningLevel: "medium",
@@ -569,6 +570,7 @@ function makeQueuedMessage(
     model: "gpt-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,
@@ -759,6 +761,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -833,6 +836,7 @@ describe("ThreadDetailPromptArea", () => {
       execution: {
         model: "gpt-5",
         permissionMode: "auto",
+        permissionProfile: null,
         reasoningLevel: "medium",
         serviceTier: undefined,
         supportsServiceTier: false,
@@ -867,6 +871,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -956,6 +961,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -1243,6 +1249,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "bottom-model",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -1251,6 +1258,7 @@ describe("ThreadDetailPromptArea", () => {
       makeQueuedMessage({
         model: "queued-model",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "high",
         serviceTier: "fast",
       }),
@@ -1451,6 +1459,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
       permissionMode: "auto",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -1638,6 +1647,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.defaultExecutionOptions = {
       model: "claude-fable-5",
       permissionMode: "full",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",

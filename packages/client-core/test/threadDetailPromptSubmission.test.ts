@@ -43,6 +43,7 @@ describe("threadDetailPromptSubmission", () => {
         execution: {
           model: "gpt-5.6-luna",
           permissionMode: "full",
+          permissionProfile: null,
           reasoningLevel: "low",
           serviceTier: "fast",
           supportsServiceTier: false,
@@ -64,6 +65,7 @@ describe("threadDetailPromptSubmission", () => {
         mode: "steer-if-active",
         model: "gpt-5.6-luna",
         permissionMode: "full",
+        permissionProfile: null,
         reasoningLevel: "low",
         executionInputSources: {
           model: "explicit",
@@ -109,6 +111,7 @@ describe("threadDetailPromptSubmission", () => {
         execution: {
           model: "gpt-5",
           permissionMode: "full",
+          permissionProfile: null,
           reasoningLevel: "medium",
           serviceTier: "default",
           supportsServiceTier: true,
@@ -123,6 +126,7 @@ describe("threadDetailPromptSubmission", () => {
       mode: "queue-if-active",
       model: "gpt-5",
       permissionMode: "full",
+      permissionProfile: null,
       reasoningLevel: "medium",
       serviceTier: "default",
       executionInputSources: {},
@@ -149,6 +153,7 @@ describe("threadDetailPromptSubmission", () => {
         execution: {
           model: "gpt-5",
           permissionMode: "accept-edits",
+          permissionProfile: null,
           reasoningLevel: "high",
           serviceTier: "fast",
           supportsServiceTier: false,
@@ -166,6 +171,7 @@ describe("threadDetailPromptSubmission", () => {
       input: textInput,
       model: "gpt-5",
       permissionMode: "accept-edits",
+      permissionProfile: null,
       reasoningLevel: "high",
       executionInputSources: {
         model: "explicit",

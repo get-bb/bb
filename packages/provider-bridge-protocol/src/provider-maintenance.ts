@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerPermissionProfileSchema } from "@bb/domain";
 
 /**
  * Sessionless provider maintenance query. `providerOptions` carries the same
@@ -118,28 +119,35 @@ export const providerHealthResultSchema = z.discriminatedUnion(
         health: providerHealthSchema,
       })
       .passthrough(),
-  ],
-);
+  ]);
 
-export type ProviderHealthResult = z.infer<
-  typeof providerHealthResultSchema
->;
+export type ProviderHealthResult = z.infer<typeof providerHealthResultSchema>;
 
-export const providerUsageResultSchema = z.discriminatedUnion(
+export const providerUsageResultSchema = z.discriminatedUnion("supported", [
+  z.object({ supported: z.literal(false) }).passthrough(),
+  z
+    .object({
+      supported: z.literal(true),
+      usage: providerUsageSchema,
+    })
+    .passthrough(),
+]);
+
+export type ProviderUsageResult = z.infer<typeof providerUsageResultSchema>;
+
+export const providerPermissionProfileListResultSchema = z.discriminatedUnion(
   "supported",
   [
     z.object({ supported: z.literal(false) }).passthrough(),
     z
       .object({
         supported: z.literal(true),
-        usage: providerUsageSchema,
+        profiles: z.array(providerPermissionProfileSchema),
       })
       .passthrough(),
-  ],
-);
-
-export type ProviderUsageResult = z.infer<
-  typeof providerUsageResultSchema
+  ]);
+export type ProviderPermissionProfileListResult = z.infer<
+  typeof providerPermissionProfileListResultSchema
 >;
 
 export const providerInstallationActionKindSchema = z.enum([

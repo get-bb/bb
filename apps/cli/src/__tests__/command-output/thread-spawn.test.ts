@@ -247,6 +247,8 @@ describe("bb thread spawn command output", () => {
         "fast",
         "--permission-mode",
         "auto",
+        "--permission-profile",
+        ":workspace",
       ],
       register,
     );
@@ -261,6 +263,7 @@ describe("bb thread spawn command output", () => {
         model: "gpt-5",
         reasoningLevel: "high",
         permissionMode: "auto",
+        permissionProfile: ":workspace",
         serviceTier: "fast",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {

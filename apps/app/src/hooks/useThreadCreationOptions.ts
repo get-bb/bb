@@ -45,6 +45,7 @@ import {
   usePromptBoxEnvironmentPreference,
   usePromptBoxModelPreference,
   usePromptBoxPermissionModePreference,
+  usePromptBoxPermissionProfilePreference,
   usePromptBoxProviderPreference,
   usePromptBoxReasoningLevelPreference,
   usePromptBoxServiceTierPreference,
@@ -80,6 +81,7 @@ type StringSelectionSetter = (value: string) => void;
 type ServiceTierSelectionSetter = (value: ServiceTier | undefined) => void;
 type ReasoningLevelSelectionSetter = (value: ReasoningLevel) => void;
 type PermissionModeSelectionSetter = (value: PermissionMode) => void;
+type PermissionProfileSelectionSetter = (value: string | null) => void;
 type ClearSelectionHandler = () => void;
 
 interface ModelReasoningSelection {
@@ -112,6 +114,8 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   setReasoningLevel: ReasoningLevelSelectionSetter;
   permissionMode: PermissionMode;
   setPermissionMode: PermissionModeSelectionSetter;
+  permissionProfile: string | null;
+  setPermissionProfile: PermissionProfileSelectionSetter;
   environmentSelectionValue: string;
   setEnvironmentSelectionValue: StringSelectionSetter;
   clearReuseEnvironment: ClearSelectionHandler;
@@ -125,7 +129,9 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelCatalogIsVerified: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
+  permissionProfileOptions: PickerOption<string>[];
   supportsPermissionModeSelection: boolean;
+  supportsPermissionProfileSelection: boolean;
   /** True once provider capabilities and the routed permission ceiling are authoritative. */
   permissionModeIsVerified: boolean;
   supportsServiceTier: boolean;
@@ -218,6 +224,7 @@ export function useThreadCreationOptions(
     initialModel,
     initialProviderId,
     initialPermissionMode,
+    initialPermissionProfile,
     initialReasoningLevel,
     initialServiceTier,
     preferReadyProviderWhenUnset = false,
@@ -250,6 +257,7 @@ export function useThreadCreationOptions(
         initialModel,
         initialProviderId,
         initialPermissionMode,
+        initialPermissionProfile,
         initialReasoningLevel,
         initialServiceTier,
       }),
@@ -274,6 +282,7 @@ export function useThreadCreationOptions(
         initialModel,
         initialProviderId,
         initialPermissionMode,
+        initialPermissionProfile,
         initialReasoningLevel,
         initialServiceTier,
       }),
@@ -282,6 +291,7 @@ export function useThreadCreationOptions(
       initialModel,
       initialProviderId,
       initialPermissionMode,
+      initialPermissionProfile,
       initialReasoningLevel,
       initialServiceTier,
     ],
@@ -439,6 +449,10 @@ export function useThreadCreationOptions(
     usePromptBoxModelPreference(effectiveProviderId);
   const { setValue: setStoredReasoningLevel, value: storedReasoningLevel } =
     usePromptBoxReasoningLevelPreference(effectiveProviderId);
+  const {
+    setValue: setStoredPermissionProfile,
+    value: storedPermissionProfile,
+  } = usePromptBoxPermissionProfilePreference(effectiveProviderId);
   const effectiveProviderMatchesInitialProvider =
     effectiveProviderId.length > 0 &&
     effectiveProviderId === renderedThreadSelections.selectedProviderId;
@@ -541,6 +555,62 @@ export function useThreadCreationOptions(
       ),
     [permissionCeiling, permissionModes],
   );
+  const permissionProfiles = useMemo(
+    () => executionOptionsQuery.data?.permissionProfiles ?? [],
+    [executionOptionsQuery.data?.permissionProfiles],
+  );
+  const permissionProfilesVerified =
+    executionOptionsQuery.data !== undefined &&
+    !executionOptionsQuery.isPlaceholderData &&
+    !executionOptionsQuery.isError &&
+    executionOptionsQuery.data.permissionProfileLoadError === null;
+  const rawPermissionProfile = usesStoredCreateSelections
+    ? storedPermissionProfile || renderedThreadSelections.permissionProfile
+    : renderedThreadSelections.permissionProfile;
+  const permissionProfile =
+    rawPermissionProfile !== null &&
+    permissionProfilesVerified &&
+    !permissionProfiles.some(
+      (profile) => profile.id === rawPermissionProfile && profile.allowed,
+    )
+      ? null
+      : rawPermissionProfile;
+  useEffect(() => {
+    if (
+      !usesStoredCreateSelections ||
+      !permissionProfilesVerified ||
+      storedPermissionProfile.length === 0 ||
+      permissionProfiles.some(
+        (profile) => profile.id === storedPermissionProfile && profile.allowed,
+      )
+    ) {
+      return;
+    }
+    setStoredPermissionProfile("");
+  }, [
+    permissionProfiles,
+    permissionProfilesVerified,
+    setStoredPermissionProfile,
+    storedPermissionProfile,
+    usesStoredCreateSelections,
+  ]);
+  const permissionProfileOptions = useMemo(
+    () =>
+      permissionProfiles.map((profile) => ({
+        value: profile.id,
+        label: profile.id,
+        description: profile.description ?? undefined,
+        disabled: !profile.allowed || permissionCeiling !== "full",
+        ...(!profile.allowed
+          ? { disabledReason: "Blocked by Codex managed requirements." }
+          : permissionCeiling !== "full"
+            ? { disabledReason: PERMISSION_CEILING_REASON }
+            : {}),
+      })),
+    [permissionCeiling, permissionProfiles],
+  );
+  const supportsPermissionProfileSelection =
+    executionOptionsQuery.data?.permissionProfilesSupported === true;
 
   const serviceTierSupportByProvider = useMemo(() => {
     const supportByProvider: Record<string, boolean> = {};
@@ -618,6 +688,7 @@ export function useThreadCreationOptions(
           serviceTier,
           reasoningLevel,
           permissionMode,
+          permissionProfile,
         },
         forceExplicitModel: isUnavailableModelRecovery,
         initialProviderSource: effectiveInitialProviderSource,
@@ -628,6 +699,7 @@ export function useThreadCreationOptions(
           serviceTier: storedServiceTier,
           reasoningLevel: storedReasoningLevel,
           permissionMode: storedPermissionMode,
+          permissionProfile: storedPermissionProfile,
         },
         touchedFields: touchedFieldsPendingReset
           ? new Set<ThreadPromptField>()
@@ -638,11 +710,13 @@ export function useThreadCreationOptions(
       effectiveInitialProviderSource,
       isUnavailableModelRecovery,
       permissionMode,
+      permissionProfile,
       reasoningLevel,
       scope,
       selectedModel,
       serviceTier,
       storedPermissionMode,
+      storedPermissionProfile,
       storedProviderId,
       storedReasoningLevel,
       storedSelectedModel,
@@ -880,6 +954,23 @@ export function useThreadCreationOptions(
     },
     [setStoredPermissionMode, usesStoredCreateSelections],
   );
+  const setPermissionProfile = useCallback(
+    (value: string | null) => {
+      touchedThreadFieldsRef.current.add("permissionProfile");
+      if (usesStoredCreateSelections) {
+        setStoredPermissionProfile(value ?? "");
+        return;
+      }
+      setThreadSelections((currentSelections) =>
+        updateThreadPromptSelections({
+          currentSelections,
+          field: "permissionProfile",
+          value,
+        }),
+      );
+    },
+    [setStoredPermissionProfile, usesStoredCreateSelections],
+  );
   const setEnvironmentSelectionValue = useCallback(
     (value: string) => {
       if (scope === "new-thread") {
@@ -932,6 +1023,8 @@ export function useThreadCreationOptions(
     setReasoningLevel,
     permissionMode,
     setPermissionMode,
+    permissionProfile,
+    setPermissionProfile,
     environmentSelectionValue,
     setEnvironmentSelectionValue,
     clearReuseEnvironment,
@@ -944,7 +1037,9 @@ export function useThreadCreationOptions(
     modelCatalogIsVerified,
     reasoningOptions,
     permissionModeOptions,
+    permissionProfileOptions,
     supportsPermissionModeSelection,
+    supportsPermissionProfileSelection,
     permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,

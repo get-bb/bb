@@ -264,6 +264,64 @@ describe("appendCustomModels", () => {
   });
 });
 
+describe("named permission profiles", () => {
+  it("loads Codex profiles from the routed host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-permission-profiles",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: { models: [], selectedOnlyModels: [] },
+            };
+          }
+          if (request.command.type === "provider.list_permission_profiles") {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                profiles: [
+                  {
+                    id: ":workspace",
+                    description: "Workspace access",
+                    allowed: true,
+                  },
+                ],
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+
+      expect(response.permissionProfilesSupported).toBe(true);
+      expect(response.permissionProfiles).toEqual([
+        {
+          id: ":workspace",
+          description: "Workspace access",
+          allowed: true,
+        },
+      ]);
+      expect(
+        responder.requests.some(
+          (request) =>
+            request.command.type === "provider.list_permission_profiles",
+        ),
+      ).toBe(true);
+    });
+  });
+});
+
 describe("resolveSystemExecutionOptions", () => {
   it("keeps an unavailable provider in the roster and returns its picker error without probing it", async () => {
     await withTestHarness(
@@ -1332,6 +1390,19 @@ function registerHeldModelListResponder(
             commandType: message.command.type,
             ok: true,
             result: providerDiscoveryHealth(false),
+          },
+        });
+        return;
+      }
+      if (message.command.type === "provider.list_permission_profiles") {
+        harness.hub.recordHostOnlineRpcResponse({
+          sessionId: args.sessionId,
+          message: {
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: message.command.type,
+            ok: true,
+            result: { supported: true, profiles: [] },
           },
         });
         return;

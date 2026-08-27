@@ -214,6 +214,7 @@ export function useThreadExecutionOptions({
       serviceTier,
       reasoningLevel,
       permissionMode,
+      permissionProfile: defaults?.permissionProfile ?? null,
       executionInputSources: buildFollowUpExecutionInputSources({
         touched: picks.touched,
         forceExplicitModel: modelSelection.isRecovery,
@@ -222,6 +223,7 @@ export function useThreadExecutionOptions({
     };
   }, [
     effectiveModel,
+    defaults?.permissionProfile,
     hasConcreteDefaults,
     modelSelection.isRecovery,
     permissionMode,

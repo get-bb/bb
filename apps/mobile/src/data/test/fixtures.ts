@@ -136,6 +136,7 @@ export function queuedMessage(
     model: "fake-model",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    permissionProfile: null,
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,

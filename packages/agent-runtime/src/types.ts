@@ -19,6 +19,7 @@ import type {
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  ProviderPermissionProfileListResult,
   ProviderUsageResult,
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
@@ -415,13 +416,13 @@ export interface AgentRuntime {
     selectedOnlyModels: AvailableModel[];
   }>;
 
-  providerHealth(
-    args: ProviderMaintenanceArgs,
-  ): Promise<ProviderHealthResult>;
+  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
-  providerUsage(
+  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
+
+  listPermissionProfiles(
     args: ProviderMaintenanceArgs,
-  ): Promise<ProviderUsageResult>;
+  ): Promise<ProviderPermissionProfileListResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,

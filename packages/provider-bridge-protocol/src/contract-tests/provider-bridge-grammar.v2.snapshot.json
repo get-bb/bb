@@ -299,6 +299,7 @@
   "requestMethods": [
     "initialize",
     "model/list",
+    "permissionProfile/list",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",
