@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   BB_CLI_MARKER_TEXT,
@@ -189,14 +189,22 @@ export async function refreshHomeCliWrapper(
       );
     }
 
+    // Read content and mode together: if either lookup fails (including the
+    // file not existing), treat the wrapper as needing a rewrite. That is the
+    // safe direction, and it means a mode-only drift (a stray chmod, a
+    // cloud-sync restore, an archive/quarantine extraction) still gets healed
+    // on the next launch even though the content never changed.
     let current: string | null = null;
+    let currentMode: number | null = null;
     try {
       current = await readFile(wrapperPath, "utf8");
+      currentMode = (await stat(wrapperPath)).mode & 0o777;
     } catch {
       current = null;
+      currentMode = null;
     }
 
-    if (current === desired) {
+    if (current === desired && currentMode === WRAPPER_MODE) {
       return { kind: "unchanged", path: wrapperPath };
     }
 
