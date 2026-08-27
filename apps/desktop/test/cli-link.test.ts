@@ -2,7 +2,10 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BB_CLI_WRAPPER_MARKER } from "../src/cli-wrapper-script.js";
+import {
+  BB_CLI_WRAPPER_MARKER,
+  createHomeCliWrapperScript,
+} from "../src/cli-wrapper-script.js";
 import {
   refreshHomeCliWrapper,
   resolveCliCommandName,
@@ -128,6 +131,29 @@ describe("refreshHomeCliWrapper", () => {
     });
 
     expect(second.kind).toBe("unchanged");
+  });
+
+  it("re-applies the executable bit even when content is already correct", async () => {
+    // Content can survive a cloud-sync restore, an archive/quarantine
+    // extraction, or a stray chmod while the mode bits do not. The
+    // content-only comparison must not be enough to call this "unchanged".
+    const wrapperPath = join(homeDir, ".bb", "bin", "bb");
+    await mkdir(join(homeDir, ".bb", "bin"), { recursive: true });
+    await writeFile(
+      wrapperPath,
+      createHomeCliWrapperScript({ commandName: "bb", target: macTarget }),
+    );
+    await chmod(wrapperPath, 0o644);
+
+    const status = await refreshHomeCliWrapper({
+      commandName: "bb",
+      homeDir,
+      logger: silentLogger,
+      target: macTarget,
+    });
+
+    expect(status).toEqual({ kind: "written", path: wrapperPath });
+    expect((await stat(wrapperPath)).mode & 0o777).toBe(0o755);
   });
 
   it("corrects a wrapper left over from a previous install location", async () => {
