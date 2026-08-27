@@ -1409,11 +1409,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               candidate.sourceBuiltinName === bundled.name,
           );
           if (row === undefined) continue;
-          const manifest = await readPluginManifest(bundled.rootDir);
           const loop = createPluginDevLoop({
             pluginId: row.id,
-            hasApp: manifest.appEntry !== undefined,
-            hasHost: manifest.hostEntry !== undefined,
+            targets: async () => {
+              const manifest = await readPluginManifest(bundled.rootDir);
+              const hasApp = manifest.appEntry !== undefined;
+              const hasHost = manifest.hostEntry !== undefined;
+              // A dropped entry can no longer rebuild, so its last build
+              // problem would otherwise stick forever.
+              if (!hasApp) setDevBuildProblem(row.id, "frontend", null);
+              if (!hasHost) setDevBuildProblem(row.id, "host", null);
+              return { hasApp, hasHost };
+            },
             buildApp: async () => {
               try {
                 await buildPluginApp(
