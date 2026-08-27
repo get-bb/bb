@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -80,6 +81,7 @@ export function ProjectSelector({
   modal,
 }: ProjectSelectorProps) {
   const disabled = disabledProp || isLoading;
+  const isCompactViewport = useIsCompactViewport();
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
   // When allowNoProject is false and the caller's value doesn't match any
   // project (shouldn't happen in normal use), the trigger falls back to the
@@ -141,7 +143,23 @@ export function ProjectSelector({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="bottom" className="w-52">
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        className={cn(
+          "w-52",
+          // Radix measures the room between the trigger and the viewport edge
+          // and publishes it as `--radix-dropdown-menu-content-available-height`.
+          // Without the cap the list renders at its full natural height and the
+          // projects past the window edge are unreachable, because the shared
+          // menu is `overflow-hidden` (#2551). `overscroll-contain` keeps the
+          // wheel from chaining to the page once the list bottoms out. The
+          // compact branch is a drawer, not a popper: it sizes itself and the
+          // variable is not defined there.
+          !isCompactViewport &&
+            "max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto overscroll-contain",
+        )}
+      >
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         {projects.map((project) => (
           <DropdownMenuItem
