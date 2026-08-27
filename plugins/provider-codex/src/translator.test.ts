@@ -962,10 +962,10 @@ describe("codex subagent activity correlation", () => {
     ]);
   });
 
-  // A provider-session reap discards the translator's in-memory spawn map,
-  // but Codex can resume an agent from the durable rollout. The raw collab
-  // call is the surviving authority that distinguishes a turn-producing
-  // followup from a message that must not reserve the next native turn.
+  // When app-server supplies the raw collaboration call, it distinguishes a
+  // turn-producing followup from a message that must not reserve the next
+  // native turn. Resumed sessions can omit this notification; the rawless
+  // cases below cover that event shape.
   it("links an unknown resumed subagent from the raw followup intent after translator restart", () => {
     const harness = createHarness();
 
@@ -1078,6 +1078,73 @@ describe("codex subagent activity correlation", () => {
     ]);
     expect(resumedEvents[0]).not.toHaveProperty("parentToolCallId");
     expect(resumedEvents[0]).not.toHaveProperty("item.parentToolCallId");
+  });
+
+  // Production resumes report the interaction on the root thread and the
+  // resulting child turn on the agent's own provider thread. Once the parent
+  // settles, a new root prompt can start while that child is still running;
+  // the two provider-thread-scoped correlations must remain independent.
+  it("keeps root input correlation independent from a rawless resumed child thread", () => {
+    const harness = createHarness();
+
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "rawless-followup", kind: "interacted" }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        childTurnStarted("rawless-child-turn", "agent-thread-1"),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("rawless-followup"),
+          childRef: "agent-thread-1",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope(harness.turnId("rawless-child-turn")),
+        parentToolCallId: harness.itemId("rawless-followup"),
+      }),
+    ]);
+
+    harness.translate(childTurnCompleted("parent-turn"));
+    expect(
+      harness.translator.prepareTurnStart({
+        clientRequestId: "creq_while_child_running",
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).not.toBeNull();
+
+    const rootEvents = harness.translate(childTurnStarted("next-root-turn"));
+    expect(rootEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope(harness.turnId("next-root-turn")),
+      }),
+    );
+    expect(rootEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/input/accepted",
+        scope: turnScope(harness.turnId("next-root-turn")),
+        clientRequestId: "creq_while_child_running",
+      }),
+    );
+    expect(
+      rootEvents.find((event) => event.type === "turn/started"),
+    ).not.toHaveProperty("parentToolCallId");
+
+    expect(
+      harness
+        .translate(childTurnCompleted("rawless-child-turn", "agent-thread-1"))
+        .map((event) => event.type),
+    ).toEqual(["turn/completed", "item/completed"]);
   });
 
   it("discards a rawless message interaction at its parent boundary", () => {

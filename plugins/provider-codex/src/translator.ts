@@ -1043,9 +1043,9 @@ export function createCodexEventTranslator(
     if (openDelta?.kind === "item.open") {
       tracked.parentToolCallId = openDelta.key.parentRef;
     }
-    // Codex currently multiplexes child turns onto the root provider thread,
-    // even though the activity includes a distinct agent thread id. Queue a
-    // FIFO fallback in addition to the explicit id mapping.
+    // Codex can report child turns on the agent's own provider thread. Retain
+    // a FIFO fallback as well for older/multiplexed event shapes that report
+    // them on the root provider thread.
     enqueuePendingDelegationTurnLink({
       callId: tracked.callId,
       parentTurnId: tracked.parentTurnId,
