@@ -511,10 +511,7 @@ function useActiveWorkflowRuns(threadId: string): {
 
 export function EmptyOrError({ children }: { children: ReactNode }) {
   return (
-    <div
-      role="alert"
-      className="my-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-    >
+    <div role="alert" className="text-sm text-muted-foreground">
       {children}
     </div>
   );
@@ -522,10 +519,7 @@ export function EmptyOrError({ children }: { children: ReactNode }) {
 
 export function LoadingPreview() {
   return (
-    <div
-      className="my-2 space-y-2 rounded-lg border border-border p-3"
-      aria-busy="true"
-    >
+    <div className="space-y-2" aria-busy="true">
       <Skeleton className="h-3.5 w-44 rounded-sm" />
       <Skeleton className="h-3 w-2/3 rounded-sm" />
       <Skeleton className="h-3 w-1/2 rounded-sm" />

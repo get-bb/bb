@@ -726,6 +726,9 @@ describe("workflow thread panel", () => {
         slot.container.querySelector('[aria-busy="true"]') ??
         slot.container.querySelector('[role="alert"]');
       expect(state?.parentElement?.className).toContain("p-4");
+      expect(state?.className).not.toMatch(
+        /\b(?:bg-muted|border|p-3|px-3|rounded-lg|rounded-md)\b/,
+      );
     });
   });
 

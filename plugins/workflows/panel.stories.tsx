@@ -109,7 +109,7 @@ export function PanelStates() {
         {STATES.map(([label, message]) => (
           <section key={label}>
             <h2 className="mb-1 text-xs text-muted-foreground">{label}</h2>
-            <div className="h-32 w-full max-w-sm overflow-hidden border border-border-seam bg-border">
+            <div className="w-full max-w-sm overflow-hidden border border-border-seam bg-border">
               <WorkflowRunPanelState>
                 {message === null ? (
                   <LoadingPreview />
