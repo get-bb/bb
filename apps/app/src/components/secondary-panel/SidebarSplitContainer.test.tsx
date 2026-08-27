@@ -880,6 +880,57 @@ describe("SidebarSplitContainer", () => {
     workspaceSplit.remove();
   });
 
+  it("clears the resize overlay when the divider loses pointer capture", () => {
+    persistState(createTwoPaneState());
+    renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+    const separator = screen.getByRole("separator");
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected adjacent right-panel split items");
+    }
+    Object.defineProperties(hitTarget, {
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 401,
+      right: 801,
+      top: 0,
+      width: 400,
+      x: 401,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400.5, pointerId: 34 });
+    expect(screen.getByTestId("iframe-drag-guard-overlay")).not.toBeNull();
+
+    fireEvent.lostPointerCapture(hitTarget, { pointerId: 34 });
+
+    expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();
+  });
+
   it("keeps right-panel separators out of the tab order", () => {
     persistState(createTwoPaneState());
     renderContainer({

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSplitResizeSnapSession,
   SPLIT_RESIZE_SNAP_THRESHOLD_PX,
@@ -105,5 +105,20 @@ describe("split resize snapping", () => {
     expect(result.fraction).toBe(0.15);
     expect(target.dataset.splitResizeSnapTarget).toBeUndefined();
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+  });
+
+  it("reads target geometry once per drag instead of forcing layout on every pointer move", () => {
+    const source = divider("x", rect({ left: 300 }));
+    const target = divider("x", rect({ left: 500 }));
+    const sourceRect = vi.spyOn(source, "getBoundingClientRect");
+    const targetRect = vi.spyOn(target, "getBoundingClientRect");
+    const session = createSplitResizeSnapSession(source, "x");
+
+    for (let pointer = 495; pointer <= 505; pointer += 1) {
+      session.resolve({ end: 900, pointer, start: 100 });
+    }
+
+    expect(sourceRect).toHaveBeenCalledTimes(1);
+    expect(targetRect).toHaveBeenCalledTimes(1);
   });
 });

@@ -792,6 +792,7 @@ function SidebarSplitDivider({
         hitTarget.removeEventListener("pointermove", move);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", cancel);
+        hitTarget.removeEventListener("lostpointercapture", lostCapture);
         if (hitTarget.hasPointerCapture?.(pointerId)) {
           hitTarget.releasePointerCapture(pointerId);
         }
@@ -821,9 +822,14 @@ function SidebarSplitDivider({
         if (cancelEvent.pointerId !== pointerId) return;
         finish(false);
       };
+      const lostCapture = (lostEvent: PointerEvent) => {
+        if (lostEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
       hitTarget.addEventListener("pointermove", move);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", cancel);
+      hitTarget.addEventListener("lostpointercapture", lostCapture);
       finishResizeRef.current = () => finish(false);
       onResizeDragChange(horizontal ? "col-resize" : "row-resize");
     },

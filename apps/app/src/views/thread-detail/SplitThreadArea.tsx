@@ -1481,6 +1481,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         hitTarget.removeEventListener("pointermove", onMove);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", onCancel);
+        hitTarget.removeEventListener("lostpointercapture", onLostCapture);
         if (hitTarget.hasPointerCapture?.(pointerId)) {
           hitTarget.releasePointerCapture(pointerId);
         }
@@ -1503,9 +1504,14 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         if (cancelEvent.pointerId !== pointerId) return;
         finish(false);
       };
+      const onLostCapture = (lostEvent: PointerEvent) => {
+        if (lostEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
       hitTarget.addEventListener("pointermove", onMove);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", onCancel);
+      hitTarget.addEventListener("lostpointercapture", onLostCapture);
       finishResizeRef.current = () => finish(false);
     },
     [horizontal, onResize],

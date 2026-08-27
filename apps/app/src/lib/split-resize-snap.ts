@@ -50,13 +50,16 @@ function isVisibleSnapTarget(element: HTMLElement, rect: DOMRect): boolean {
   );
 }
 
-function nearestSnapTarget(
+interface SplitResizeSnapTarget {
+  coordinate: number;
+  element: HTMLElement;
+}
+
+function listSnapTargets(
   divider: HTMLElement,
   axis: SplitResizeAxis,
-  pointer: number,
-): { coordinate: number; element: HTMLElement } | null {
-  let nearest: { coordinate: number; element: HTMLElement } | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
+): SplitResizeSnapTarget[] {
+  const targets: SplitResizeSnapTarget[] = [];
   const candidates = divider.ownerDocument.querySelectorAll<HTMLElement>(
     `[data-split-resize-axis="${axis}"]`,
   );
@@ -72,15 +75,30 @@ function nearestSnapTarget(
     }
     const rect = candidate.getBoundingClientRect();
     if (!isVisibleSnapTarget(candidate, rect)) continue;
-    const coordinate = dividerCoordinate(rect, axis);
-    const distance = Math.abs(coordinate - pointer);
+    targets.push({
+      coordinate: dividerCoordinate(rect, axis),
+      element: candidate,
+    });
+  }
+  return targets;
+}
+
+function nearestSnapTarget(
+  targets: SplitResizeSnapTarget[],
+  pointer: number,
+): SplitResizeSnapTarget | null {
+  let nearest: SplitResizeSnapTarget | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of targets) {
+    if (!candidate.element.isConnected) continue;
+    const distance = Math.abs(candidate.coordinate - pointer);
     if (
       distance > SPLIT_RESIZE_SNAP_THRESHOLD_PX ||
       distance >= nearestDistance
     ) {
       continue;
     }
-    nearest = { coordinate, element: candidate };
+    nearest = candidate;
     nearestDistance = distance;
   }
   return nearest;
@@ -106,8 +124,10 @@ function createGuide(
 
 /**
  * Starts one divider drag's snap lifecycle. Compatible dividers opt in with
- * `data-split-resize-axis`; candidates are re-read for each move because a
- * nested divider can itself move while an ancestor pair is resized.
+ * `data-split-resize-axis`. Candidate geometry is captured once so the hot
+ * pointer-move path never forces layout after it writes the source pair's flex
+ * values. Ancestor and descendant dividers are excluded because their
+ * coordinates can move with the source pair.
  */
 export function createSplitResizeSnapSession(
   divider: HTMLElement,
@@ -115,6 +135,8 @@ export function createSplitResizeSnapSession(
 ): SplitResizeSnapSession {
   let guide: HTMLElement | null = null;
   let target: HTMLElement | null = null;
+  const targets = listSnapTargets(divider, axis);
+  const extent = dividerExtent(divider.getBoundingClientRect(), axis);
 
   const clear = () => {
     guide?.remove();
@@ -141,7 +163,7 @@ export function createSplitResizeSnapSession(
       const unsnappedFraction = clampSplitPairFraction(
         span > 0 ? (pointer - start) / span : 0.5,
       );
-      const candidate = nearestSnapTarget(divider, axis, pointer);
+      const candidate = nearestSnapTarget(targets, pointer);
       if (candidate === null || span <= 0) {
         clear();
         return {
@@ -154,7 +176,6 @@ export function createSplitResizeSnapSession(
       // Flex lays the adjacent panes out in the pair's outer span minus this
       // divider. Account for that one-pixel seam so the divider centers land
       // on the same viewport coordinate instead of merely sharing a ratio.
-      const extent = dividerExtent(divider.getBoundingClientRect(), axis);
       const contentSpan = span - extent;
       if (contentSpan <= 0) {
         clear();
