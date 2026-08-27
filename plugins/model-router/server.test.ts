@@ -1,13 +1,15 @@
-// End-to-end wiring through the fake plugin host: settings and system config
-// in, the catalog fetched by the background service, one stubbed structured
-// completion, gate verdicts out.
+// End-to-end wiring through the fake plugin host: settings and the provider
+// catalog in, a gate that holds, a hidden routing thread spawned and read, and
+// a release — amended or not — out.
 //
-// The prompt assembly and answer validation are covered in routing.test.ts and
-// the catalog shape in catalog.test.ts. What this file checks is the part only
-// the wiring can get wrong: that a completion is asked for exactly when Auto
-// was picked, that every way it can fail still leaves the dispatch untouched,
-// and that the provider is amended only where a provider may still change —
-// each of the last two being a fail-closed dispatch failure if it is wrong.
+// Prompt assembly, JSON extraction and answer validation are covered in
+// routing.test.ts and the catalog shape in catalog.test.ts. What this file
+// checks is the part only the wiring can get wrong: that a hold is taken
+// exactly when Auto was picked, that the routing thread cannot route itself,
+// that every way the route can fail still releases the user's message, that
+// the routing thread is always cleaned up, and that the provider is amended
+// only where a provider may still change — the last being a refused amendment
+// if it is wrong.
 
 import type {
   BbPluginApi,
@@ -15,20 +17,17 @@ import type {
   PluginDispatchGateContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
-import {
-  createFakePluginHost,
-  FakeAiCompletionError,
-  makeThreadResponse,
-  type ExperimentalFakeAiCompletionRequest,
-} from "@get-bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import plugin, {
   EMPTY_ROUTING_PROMPT,
-  NO_INFERENCE_SERVICE,
   readAutoEntry,
+  readHeldText,
+  ROUTING_HOLD_REASON,
 } from "./server.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
+type DispatchHoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
 type ProviderInfo = Awaited<
   ReturnType<BbPluginApi["sdk"]["providers"]["list"]>
 >[number];
@@ -36,9 +35,9 @@ type ExecutionOptions = Awaited<
   ReturnType<BbPluginApi["sdk"]["providers"]["models"]>
 >;
 type AvailableModel = ExecutionOptions["models"][number];
-type SystemConfig = Awaited<ReturnType<BbPluginApi["sdk"]["system"]["config"]>>;
 
 const PLUGIN_ID = "model-router";
+const OWN_HOLDER = `plugin:${PLUGIN_ID}` as const;
 
 const PROJECT = {
   id: "proj_1",
@@ -93,11 +92,15 @@ const MODELS: Record<string, string[]> = {
   "claude-code": ["opus"],
 };
 
+/** A well-behaved routing answer against MODELS. */
+const CHOSE_GPT5 = '```json\n{"providerId":"codex","model":"gpt-5","reasoningLevel":"high"}\n```';
+
 interface ContextOverrides {
   text?: string;
   pluginInput?: PluginDispatchGateContext<"thread.create">["pluginInput"];
   providerId?: string;
   isReleaseReevaluation?: boolean;
+  originPluginId?: string | null;
 }
 
 function createContext(
@@ -125,7 +128,7 @@ function createContext(
       permissionMode: null,
     },
     origin: null,
-    originPluginId: null,
+    originPluginId: overrides.originPluginId ?? null,
     startedOnBehalfOf: null,
     parentThreadId: null,
     // `??` would be wrong here: `null` is the meaningful "did not pick Auto"
@@ -139,43 +142,95 @@ function createContext(
   };
 }
 
-function submitContext(
-  thread: ThreadResponse,
-  overrides: ContextOverrides = {},
-): PluginDispatchGateContext<"turn.submit"> {
-  return { ...createContext(overrides), stage: "turn.submit", thread };
+function threadResponse(overrides: Partial<ThreadResponse> = {}): ThreadResponse {
+  return {
+    id: "thr_1",
+    projectId: PROJECT.id,
+    environmentId: null,
+    providerId: "codex",
+    title: null,
+    titleFallback: null,
+    sectionId: null,
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    archivedAt: null,
+    pinnedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  } as ThreadResponse;
+}
+
+type HoldPayload = DispatchHoldResponse["payload"];
+
+function inlinePayload(
+  input: Extract<HoldPayload, { kind: "inline" }>["input"],
+): HoldPayload {
+  return {
+    kind: "inline",
+    input,
+    execution: {
+      model: "gpt-5-mini",
+      serviceTier: "default",
+      reasoningLevel: "low",
+      permissionMode: "full",
+      source: "client/turn/requested",
+    },
+    editable: true,
+  };
+}
+
+function heldDispatch(
+  overrides: Partial<DispatchHoldResponse> = {},
+): DispatchHoldResponse {
+  return {
+    id: "hold_1",
+    kind: "turn",
+    threadId: "thr_1",
+    holder: OWN_HOLDER,
+    userReleasable: true,
+    reason: ROUTING_HOLD_REASON,
+    payload: inlinePayload([
+      { type: "text", text: "refactor the dispatch pipeline", mentions: [] },
+    ]),
+    resumeAt: null,
+    expectedReleaseAt: null,
+    staleAfterMs: null,
+    lastReportAt: null,
+    createdAt: 1,
+    releasedAt: null,
+    releaseKind: null,
+    ...overrides,
+  } as DispatchHoldResponse;
 }
 
 interface SetupOptions {
   settings?: Record<string, string | boolean>;
-  inferenceEnabled?: boolean;
-  complete?: (
-    request: ExperimentalFakeAiCompletionRequest,
-  ) => Record<string, JsonValue> | Promise<Record<string, JsonValue>>;
+  /** Turn events the routed thread already has; none means "never started". */
+  turnEvents?: number;
+  thread?: Partial<ThreadResponse>;
+  /** The routing thread's final output, or a thrower to fail the read. */
+  output?: string | null;
+  liveHolds?: DispatchHoldResponse[];
+  spawn?: () => Promise<ThreadResponse>;
+  wait?: () => Promise<unknown>;
 }
 
 async function setup(options: SetupOptions = {}) {
-  const requests: ExperimentalFakeAiCompletionRequest[] = [];
+  const spawned: unknown[][] = [];
+  const stopped: string[] = [];
+  const deleted: string[] = [];
   const { bb, harness } = createFakePluginHost({
     pluginId: PLUGIN_ID,
     settings: options.settings ?? { routingPrompt: ROUTING_PROMPT },
     sdk: {
-      system: {
-        // Only `aiServices` is read here, and SystemConfig has eighteen other
-        // fields whose values this plugin never looks at; the empty spread is
-        // the one cast, rather than eighteen invented values that would go
-        // stale the moment the response grows a field.
-        config: async (): Promise<SystemConfig> => ({
-          ...({} as SystemConfig),
-          aiServices: {
-            inference: "codex/gpt-5",
-            inferenceFallback: "codex/gpt-5",
-            transcription: "openai/whisper-1",
-            services: [],
-            inferenceEnabled: options.inferenceEnabled ?? true,
-          },
-        }),
-      },
       providers: {
         list: async () => Object.keys(MODELS).map(providerInfo),
         models: async ({ providerId }: { providerId?: string } = {}) =>
@@ -187,45 +242,80 @@ async function setup(options: SetupOptions = {}) {
             modelLoadError: null,
           }) as ExecutionOptions,
       },
-    },
-    ...(options.complete === undefined
-      ? {}
-      : {
-          experimental_completeAiRequest: (request) => {
-            requests.push(request);
-            return options.complete!(request);
-          },
+      threads: {
+        get: async () => threadResponse(options.thread ?? {}),
+        events: {
+          list: async () =>
+            Array.from({ length: options.turnEvents ?? 0 }, () => ({
+              type: "client/turn/requested",
+            })),
+        },
+        holds: {
+          list: async () => options.liveHolds ?? [],
+        },
+        spawn: async (...args: unknown[]) => {
+          spawned.push(args);
+          if (options.spawn !== undefined) return options.spawn();
+          return threadResponse({ id: "thr_routing", visibility: "hidden" });
+        },
+        wait: async () => {
+          if (options.wait !== undefined) return options.wait();
+          return { matched: true };
+        },
+        output: async () => ({
+          output: options.output === undefined ? CHOSE_GPT5 : options.output,
         }),
+        stop: async ({ threadId }: { threadId: string }) => {
+          stopped.push(threadId);
+          return { ok: true };
+        },
+        delete: async ({ threadId }: { threadId: string }) => {
+          deleted.push(threadId);
+          return { ok: true };
+        },
+      },
+    },
   });
   await plugin(bb);
-  return { bb, harness, requests };
+  return { bb, harness, spawned, stopped, deleted };
 }
 
-/** Run the catalog service exactly once, then stop it. */
-async function loadCatalog(
-  harness: Awaited<ReturnType<typeof setup>>["harness"],
-): Promise<void> {
+type Harness = Awaited<ReturnType<typeof setup>>["harness"];
+
+/** Run the catalog service once (which also runs hold recovery), then stop it. */
+async function loadCatalog(harness: Harness): Promise<void> {
   const service = harness.behavior.runService("catalog");
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  await flush();
   service.controller.abort();
   await service.done;
 }
 
-function createGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
+async function flush(): Promise<void> {
+  for (let index = 0; index < 12; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function createGate(harness: Harness) {
   const gate = harness.registrations.dispatchGates["thread.create"];
   if (gate === null) throw new Error("thread.create gate was not registered");
   return gate;
 }
 
-function submitGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
+function submitGate(harness: Harness) {
   const gate = harness.registrations.dispatchGates["turn.submit"];
   if (gate === null) throw new Error("turn.submit gate was not registered");
   return gate;
 }
 
-/** The answer a well-behaved routing model gives against MODELS. */
-const CHOSE_GPT5 = { providerId: "codex", model: "gpt-5", reasoningLevel: "high" };
+/** Drive one held dispatch through the plugin the way core would. */
+async function route(
+  harness: Harness,
+  hold: DispatchHoldResponse = heldDispatch(),
+): Promise<void> {
+  await harness.behavior.emitThreadEvent("dispatch.held", { hold });
+  await flush();
+}
 
 describe("readAutoEntry", () => {
   it("accepts only an object carrying a non-empty string entry", () => {
@@ -246,9 +336,24 @@ describe("readAutoEntry", () => {
   });
 });
 
-describe("trigger detection", () => {
-  it("asks for a completion only when Auto was picked", async () => {
-    const { harness, requests } = await setup({ complete: () => CHOSE_GPT5 });
+describe("readHeldText", () => {
+  it("joins the text blocks", () => {
+    expect(
+      readHeldText(
+        heldDispatch({
+          payload: inlinePayload([
+            { type: "text", text: "one", mentions: [] },
+            { type: "text", text: "two", mentions: [] },
+          ]),
+        }),
+      ),
+    ).toBe("one\ntwo");
+  });
+});
+
+describe("the gate", () => {
+  it("holds only when Auto was picked", async () => {
+    const { harness } = await setup();
     await loadCatalog(harness);
     const gate = createGate(harness);
 
@@ -258,215 +363,303 @@ describe("trigger detection", () => {
     expect(await gate(createContext({ pluginInput: { other: 1 } }))).toEqual({
       action: "proceed",
     });
-    // Not merely "no amendment": a dispatch that did not pick Auto must not
-    // pay for an inference call at all, since this gate runs on every send.
-    expect(requests).toHaveLength(0);
-
-    await gate(createContext());
-    expect(requests).toHaveLength(1);
+    expect(await gate(createContext())).toEqual({
+      action: "hold",
+      reason: ROUTING_HOLD_REASON,
+    });
   });
 
-  it("sends the rules, the request and a budget inside the gate box", async () => {
-    const { harness, requests } = await setup({ complete: () => CHOSE_GPT5 });
+  it("holds without a resumeAt, so no timer dispatches mid-decision", async () => {
+    // A timer release would send the message while the routing thread was
+    // still deciding, and the answer would arrive with nothing left to amend.
+    const { harness } = await setup();
     await loadCatalog(harness);
-    await createGate(harness)(createContext({ text: "refactor the pipeline" }));
 
-    const request = requests[0];
-    expect(request.prompt).toContain(ROUTING_PROMPT);
-    expect(request.prompt).toContain("refactor the pipeline");
-    expect(request.prompt).toContain('model "opus"');
-    // A gate is boxed at 10s and fail-closed, so the budget has to leave the
-    // rest of the pass room to finish.
-    expect(request.timeoutMs).toBeLessThan(10_000);
+    const verdict = await createGate(harness)(createContext());
+    expect(verdict).not.toHaveProperty("resumeAt");
   });
 
-  it("never asks before a catalog exists", async () => {
-    // The gate must not query anything, so an unfetched catalog means there is
-    // nothing to route with — not that it should go and find out.
-    const { harness, requests } = await setup({ complete: () => CHOSE_GPT5 });
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
-    });
-    expect(requests).toHaveLength(0);
-  });
-
-  it("never asks without a routing prompt", async () => {
-    const { harness, requests } = await setup({
-      settings: { routingPrompt: "   " },
-      complete: () => CHOSE_GPT5,
-    });
+  it("never routes its own spawn, which is what stops the recursion", async () => {
+    // The routing thread is itself a thread.create dispatch. Without this it
+    // would be routed by a routing thread, forever.
+    const { harness, spawned } = await setup();
     await loadCatalog(harness);
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
-    });
-    expect(requests).toHaveLength(0);
-  });
-});
 
-describe("amendments", () => {
-  it("amends provider, model and level when a thread is being created", async () => {
-    const { harness } = await setup({ complete: () => CHOSE_GPT5 });
-    await loadCatalog(harness);
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
-      amend: { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
-    });
+    expect(
+      await createGate(harness)(
+        createContext({ originPluginId: PLUGIN_ID, pluginInput: { entry: "default" } }),
+      ),
+    ).toEqual({ action: "proceed" });
+    expect(spawned).toHaveLength(0);
   });
 
-  it("never amends providerId at submit or on a release re-evaluation", async () => {
-    // Both would fail the dispatch outright: a thread's provider is fixed when
-    // its row is inserted. This is the guard, and it is the one mistake in
-    // this plugin that produces a user-visible outage rather than a no-op.
-    const { harness } = await setup({
-      complete: () => ({ providerId: "codex", model: "gpt-5-mini" }),
-    });
+  it("proceeds on a release re-evaluation instead of re-holding", async () => {
+    // Releasing re-runs this gate against the dispatch just decided. Holding
+    // again would re-hold what was released, forever.
+    const { harness } = await setup();
     await loadCatalog(harness);
-    const thread = makeThreadResponse({ id: "thr_1", projectId: PROJECT.id });
 
-    expect(await submitGate(harness)(submitContext(thread))).toEqual({
-      action: "proceed",
-      amend: { model: "gpt-5-mini" },
-    });
     expect(
       await createGate(harness)(createContext({ isReleaseReevaluation: true })),
-    ).toEqual({ action: "proceed", amend: { model: "gpt-5-mini" } });
-  });
-
-  it("offers a locked thread only its own provider's models", async () => {
-    const { harness, requests } = await setup({
-      complete: () => ({ providerId: "codex", model: "gpt-5" }),
-    });
-    await loadCatalog(harness);
-    const thread = makeThreadResponse({ id: "thr_1", projectId: PROJECT.id });
-    await submitGate(harness)(submitContext(thread, { providerId: "codex" }));
-    expect(requests[0].prompt).not.toContain("opus");
-  });
-
-  it("clamps a level the chosen model does not advertise", async () => {
-    // The fixture models advertise only low and high; `ultra` would be an
-    // amendment core refuses, so it must never leave this plugin.
-    const { harness } = await setup({
-      complete: () => ({
-        providerId: "codex",
-        model: "gpt-5",
-        reasoningLevel: "ultra",
+    ).toEqual({ action: "proceed" });
+    expect(
+      await submitGate(harness)({
+        ...createContext({ isReleaseReevaluation: true }),
+        stage: "turn.submit",
+        thread: threadResponse(),
       }),
-    });
+    ).toEqual({ action: "proceed" });
+  });
+
+  it("proceeds when there is no routing prompt, and says so", async () => {
+    const { harness, bb } = await setup({ settings: { routingPrompt: "  " } });
     await loadCatalog(harness);
+
     expect(await createGate(harness)(createContext())).toEqual({
       action: "proceed",
-      amend: { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
+    });
+    expect(harness.needsConfigurationMessages).toContain(EMPTY_ROUTING_PROMPT);
+    expect(bb.pluginId).toBe(PLUGIN_ID);
+  });
+
+  it("proceeds when no catalog has loaded yet", async () => {
+    // Holding a send to then discover there was nothing to choose between is
+    // a pause that buys nothing.
+    const { harness } = await setup();
+
+    expect(await createGate(harness)(createContext())).toEqual({
+      action: "proceed",
     });
   });
 });
 
-describe("fallbacks", () => {
-  const cases: Array<[string, SetupOptions["complete"]]> = [
+describe("routing a held dispatch", () => {
+  it("spawns a hidden routing thread and releases with its answer", async () => {
+    const { harness, spawned } = await setup();
+    await loadCatalog(harness);
+    await route(harness);
+
+    const [args] = spawned;
+    const request = args?.[0] as Record<string, unknown>;
+    expect(request.visibility).toBe("hidden");
+    expect(request.projectId).toBe(PROJECT.id);
+    // Attribution is what exempts the routing thread from the concurrency
+    // limiter; without it a full pool would deadlock every Auto send.
+    expect(request.originPluginId).toBe(PLUGIN_ID);
+    expect(String(request.prompt)).toContain(ROUTING_PROMPT);
+    expect(String(request.prompt)).toContain("refactor the dispatch pipeline");
+
+    // No `providerId`: the answer chose the provider the thread already has,
+    // which the "changes nothing" case below covers.
+    expect(harness.registrations.releasedDispatchHolds).toEqual([
+      { holdId: "hold_1", amend: { model: "gpt-5", reasoningLevel: "high" } },
+    ]);
+  });
+
+  it("routes a never-started thread across providers", async () => {
+    // The invariant is that a provider is immutable once a provider SESSION
+    // exists — a thread whose first turn is still parked has none.
+    const { harness } = await setup({
+      thread: { providerId: "claude-code" },
+      turnEvents: 0,
+    });
+    await loadCatalog(harness);
+    await route(harness);
+
+    const [release] = harness.registrations.releasedDispatchHolds;
+    expect(release?.amend).toMatchObject({
+      providerId: "codex",
+      model: "gpt-5",
+    });
+  });
+
+  it("never amends the provider of a thread that has already run", async () => {
+    // An amendment core refuses is a wasted round trip at best, so the menu
+    // the routing thread is shown is scoped instead of the answer filtered.
+    const { harness, spawned } = await setup({
+      thread: { providerId: "claude-code" },
+      turnEvents: 1,
+      output: '```json\n{"providerId":"claude-code","model":"opus"}\n```',
+    });
+    await loadCatalog(harness);
+    await route(harness);
+
+    const request = spawned[0]?.[0] as Record<string, unknown>;
+    expect(String(request.prompt)).toContain("cannot change provider");
+    expect(String(request.prompt)).not.toContain("gpt-5");
+
+    const [release] = harness.registrations.releasedDispatchHolds;
+    expect(release?.amend).not.toHaveProperty("providerId");
+    expect(release?.amend).toMatchObject({ model: "opus" });
+  });
+
+  it("omits a providerId that would change nothing", async () => {
+    // A provider amendment makes core re-validate the model and rewrite the
+    // thread row; asking for the provider the thread already has pays for both
+    // to change nothing.
+    const { harness } = await setup({ thread: { providerId: "codex" } });
+    await loadCatalog(harness);
+    await route(harness);
+
+    const [release] = harness.registrations.releasedDispatchHolds;
+    expect(release?.amend).not.toHaveProperty("providerId");
+  });
+
+  it("reuses the target thread's environment when it has one", async () => {
+    const { harness, spawned } = await setup({
+      thread: { environmentId: "env_1" },
+    });
+    await loadCatalog(harness);
+    await route(harness);
+
+    const request = spawned[0]?.[0] as Record<string, unknown>;
+    expect(request.environment).toEqual({
+      type: "reuse",
+      environmentId: "env_1",
+    });
+  });
+
+  it("asks for the project default when the thread has no environment yet", async () => {
+    const { harness, spawned } = await setup({ thread: { environmentId: null } });
+    await loadCatalog(harness);
+    await route(harness);
+
+    const request = spawned[0]?.[0] as Record<string, unknown>;
+    expect(request.environment).toEqual({ type: "project-default" });
+  });
+
+  it("routes one hold once, however many times it is announced", async () => {
+    // A restart landing mid-flight fires both the event and the recovery pass
+    // for the same hold; two flows would spawn twice and race to release.
+    const { harness, spawned } = await setup();
+    await loadCatalog(harness);
+    const hold = heldDispatch();
+    await Promise.all([route(harness, hold), route(harness, hold)]);
+
+    expect(spawned).toHaveLength(1);
+    expect(harness.registrations.releasedDispatchHolds).toHaveLength(1);
+  });
+
+  it("ignores holds it does not own", async () => {
+    const { harness, spawned } = await setup();
+    await loadCatalog(harness);
+    await route(harness, heldDispatch({ holder: "plugin:scheduled-send" }));
+
+    expect(spawned).toHaveLength(0);
+    expect(harness.registrations.releasedDispatchHolds).toHaveLength(0);
+  });
+});
+
+describe("failure and cleanup", () => {
+  const failures: Array<[string, SetupOptions]> = [
+    ["the spawn fails", { spawn: () => Promise.reject(new Error("no host")) }],
+    ["the wait times out", { wait: () => Promise.reject(new Error("timed out")) }],
+    ["the answer is empty", { output: null }],
+    ["the answer is not JSON", { output: "I could not decide." }],
     [
-      "a model that is not in the catalog",
-      () => ({ providerId: "codex", model: "gpt-9" }),
+      "the answer names a model nobody offers",
+      { output: '```json\n{"providerId":"codex","model":"gpt-9"}\n```' },
     ],
     [
-      "a provider that is not in the catalog",
-      () => ({ providerId: "gemini", model: "gpt-5" }),
-    ],
-    [
-      "a reasoning level bb does not have",
-      () => ({
-        providerId: "codex",
-        model: "gpt-5",
-        reasoningLevel: "turbo",
-      }),
-    ],
-    [
-      "a timeout",
-      () => {
-        throw new FakeAiCompletionError("timeout");
-      },
-    ],
-    [
-      "no inference service",
-      () => {
-        throw new FakeAiCompletionError("no-service-configured");
-      },
-    ],
-    [
-      "an upstream failure",
-      () => {
-        throw new FakeAiCompletionError("request-failed");
-      },
-    ],
-    [
-      "a rejection that is not bb's at all",
-      () => {
-        throw new Error("boom");
+      "the answer names a provider the thread cannot use",
+      {
+        turnEvents: 1,
+        output: '```json\n{"providerId":"claude-code","model":"opus"}\n```',
       },
     ],
   ];
 
-  for (const [label, complete] of cases) {
-    it(`proceeds unamended on ${label}`, async () => {
-      // `proceed` with no `amend` key at all: an `amend: {}` would still be an
-      // amendment record core has to validate and attribute to this plugin.
-      const { harness } = await setup({ complete });
+  for (const [label, options] of failures) {
+    it(`releases the message unamended when ${label}`, async () => {
+      // Auto's documented fallback is bb's own resolved provider and model. A
+      // stranded hold would be strictly worse than no routing plugin at all.
+      const { harness } = await setup(options);
       await loadCatalog(harness);
-      const thread = makeThreadResponse({ id: "thr_1", projectId: PROJECT.id });
-      expect(await createGate(harness)(createContext())).toEqual({
-        action: "proceed",
-      });
-      expect(await submitGate(harness)(submitContext(thread))).toEqual({
-        action: "proceed",
-      });
+      await route(harness);
+
+      expect(harness.registrations.releasedDispatchHolds).toEqual([
+        { holdId: "hold_1", amend: undefined },
+      ]);
     });
   }
 
-  it("proceeds unamended when no completion API is available at all", async () => {
-    // An unstubbed fake host rejects with `no-service-configured`, which is
-    // what an unconfigured bb does — the plugin must survive it.
-    const { harness } = await setup();
-    await loadCatalog(harness);
-    expect(await createGate(harness)(createContext())).toEqual({
-      action: "proceed",
+  it("deletes the routing thread even when the route fails", async () => {
+    // A routing thread that outlives its route is untidy forever, and the
+    // timeout path is exactly when one is still running.
+    const { harness, stopped, deleted } = await setup({
+      wait: () => Promise.reject(new Error("timed out")),
     });
+    await loadCatalog(harness);
+    await route(harness);
+
+    expect(stopped).toEqual(["thr_routing"]);
+    expect(deleted).toEqual(["thr_routing"]);
+  });
+
+  it("deletes the routing thread after a successful route", async () => {
+    const { harness, deleted } = await setup();
+    await loadCatalog(harness);
+    await route(harness);
+
+    expect(deleted).toEqual(["thr_routing"]);
+  });
+
+  it("releases unamended when core refuses the amended release", async () => {
+    // Core refuses a providerId amendment BEFORE it settles anything, so the
+    // hold is still live and the message can still be sent.
+    const { harness, bb } = await setup({ thread: { providerId: "claude-code" } });
+    await loadCatalog(harness);
+    let attempts = 0;
+    const realRelease = bb.experimental_dispatch.release.bind(
+      bb.experimental_dispatch,
+    );
+    bb.experimental_dispatch.release = async (holdId, releaseOptions) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("provider_not_amendable");
+      return realRelease(holdId, releaseOptions);
+    };
+    await route(harness);
+
+    expect(attempts).toBe(2);
+    expect(harness.registrations.releasedDispatchHolds).toEqual([
+      { holdId: "hold_1", amend: undefined },
+    ]);
+  });
+
+  it("does not route a retry hold, which carries no prompt to route", async () => {
+    const { harness, spawned } = await setup();
+    await loadCatalog(harness);
+    await route(
+      harness,
+      heldDispatch({
+        payload: { kind: "retry", retryOfTurnRequestId: "req_1" },
+      }),
+    );
+
+    expect(spawned).toHaveLength(0);
+    expect(harness.registrations.releasedDispatchHolds).toEqual([
+      { holdId: "hold_1", amend: undefined },
+    ]);
   });
 });
 
-describe("status", () => {
-  it("asks for a routing prompt when there is none", async () => {
-    const { harness } = await setup({ settings: { routingPrompt: "" } });
-    expect(harness.needsConfigurationMessages.join(" ")).toContain(
-      EMPTY_ROUTING_PROMPT,
-    );
-  });
-
-  it("stays quiet once the prompt is set and inference is available", async () => {
-    const { harness } = await setup();
-    await loadCatalog(harness);
-    expect(harness.needsConfigurationMessages).toEqual([]);
-  });
-
-  it("reports a missing inference service found by the startup probe", async () => {
-    const { harness } = await setup({ inferenceEnabled: false });
-    await loadCatalog(harness);
-    expect(harness.needsConfigurationMessages.join(" ")).toContain(
-      NO_INFERENCE_SERVICE,
-    );
-  });
-
-  it("reports a missing inference service a real call proved", async () => {
-    // The probe can be stale — a service can be disabled between refreshes —
-    // so the call that failed is the more current answer and must be believed.
-    const { harness } = await setup({
-      complete: () => {
-        throw new FakeAiCompletionError("no-service-configured");
-      },
+describe("restart recovery", () => {
+  it("re-drives the live holds it already owns at startup", async () => {
+    // A restart between the hold and its release leaves a live hold with
+    // nobody deciding about it; core's orphan sweep is the backstop, not the
+    // plan.
+    const { harness, spawned } = await setup({
+      liveHolds: [heldDispatch({ id: "hold_restarted" })],
     });
     await loadCatalog(harness);
-    expect(harness.needsConfigurationMessages).toEqual([]);
+    await flush();
 
-    await createGate(harness)(createContext());
-    expect(harness.needsConfigurationMessages.join(" ")).toContain(
-      NO_INFERENCE_SERVICE,
-    );
+    expect(spawned).toHaveLength(1);
+    expect(harness.registrations.releasedDispatchHolds).toEqual([
+      {
+        holdId: "hold_restarted",
+        amend: { model: "gpt-5", reasoningLevel: "high" },
+      },
+    ]);
   });
 });

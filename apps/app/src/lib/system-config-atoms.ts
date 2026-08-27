@@ -43,7 +43,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     inferenceFallback: DEFAULTS.inferenceFallbackModel,
     transcription: DEFAULTS.transcriptionModel,
     services: [],
-    inferenceEnabled: false,
   },
   dataDir: "",
 };

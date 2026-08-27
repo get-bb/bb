@@ -167,7 +167,14 @@ answers `none` or `retry(reason, resumeAt)`, and a `retry` parks a hold that
 re-submits the ORIGINAL turn when released.
 
 `release(holdId, { amend? })` and `report(holdId, update)` act on holds this
-plugin owns; both refuse another plugin's hold.
+plugin owns; both refuse another plugin's hold. `release` takes
+`PluginDispatchReleaseAmendments`, which is the shared amendment shape plus
+`providerId`: a thread's provider is immutable once a PROVIDER SESSION exists,
+not once its row is inserted, so a hold parking a never-started thread's first
+turn may still be released onto a different provider. Core refuses that
+amendment — on a thread that has already run, and on a fork, whose provisioning
+clones the source provider's session — BEFORE it releases anything, so the hold
+survives a refusal and can be released again unamended.
 
 Gates run as a deterministic chain in plugin install order with a per-stage
 override in app settings (`dispatchGateOrder`), amendments accumulate left to
@@ -220,14 +227,24 @@ two failures arriving together cannot park the same turn twice.
   a gate asks for, one per failure, forever. The bundled policy caps itself at
   five attempts; a third-party gate need not. Decide whether core should own a
   ceiling before this is stable.
-- **`PluginDispatchAmendments` vs `PluginDispatchCreateAmendments`.** The split
-  keeps `providerId`/`environment` off follow-up turns structurally. Two
-  interfaces with an `extends` is the cheapest encoding; check whether a
-  per-stage mapped type reads better once a third stage exists. Also settle
+- **`PluginDispatchAmendments` vs `PluginDispatchCreateAmendments` vs
+  `PluginDispatchReleaseAmendments`.** The split keeps `providerId`/
+  `environment` off follow-up turns structurally, and the release shape adds
+  `providerId` back without `environment`. Three interfaces with an `extends`
+  is the cheapest encoding; check whether a per-stage mapped type reads better
+  once a third stage exists. Also settle
   whether an `environment` amendment should be honoured when a never-started
   thread's first-turn hold is released — the plan says yes, and it is currently
   refused (re-resolving an environment intent at release means re-running the
   whole creation environment pipeline).
+- **"Never started" is an event-log fact, not a thread-row one.** A provider
+  amendment at release is admitted when the thread has no provider session
+  (`getLastProviderThreadId(...) === null`) and is not a fork. The thread row
+  cannot express that — `status` is `idle` both before a thread's first turn
+  and between two of them — so the check reads the event log on a hot-ish path.
+  Confirm that predicate is the one every "has this thread run" caller should
+  share, and decide whether the hold DTO should carry a `coldStart` flag so an
+  owner plugin can tell before it asks rather than by being refused.
 - **The context DTOs.** `project`/`environment`/`host` are the `@bb/domain`
   records and `thread` is `ThreadResponse`. Confirm these are the shapes we
   want frozen into a plugin contract, and that nothing on them is
@@ -1763,7 +1780,7 @@ one toast.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## AI services (`bb.experimental_aiServices.register` / `.complete`, `@get-bb/plugin-sdk/ai-services`)
+## AI services (`bb.experimental_aiServices.register`, `@get-bb/plugin-sdk/ai-services`)
 
 **Kept experimental (2026-08-22).** one consumer (the codex plugin); the 5 MB plugin-served transcription cap (the old direct path allowed 25 MB) and the host-pull alternative are still open; the reserved-id model is now one static SDK list (`SERVER_DIRECT_AI_SERVICE_IDS`), pinned to pi-ai's provider registry by plugin-ai-services.test.ts.
 
@@ -1786,28 +1803,6 @@ codex plugin is the first registrant (its ChatGPT client moved out of the
 daemon); `GET /system/config` and `bb settings ai-services` list the registered
 options.
 
-`bb.experimental_aiServices.complete({ prompt, outputSchema, timeoutMs? })` is
-the consumer half: a plugin asking bb's own configured helper model one
-structured question, resolving the validated JSON object. It reuses
-`inferenceComplete` — the same `BB_INFERENCE` setting, the same
-server-direct/plugin-service routing, the same tool-call validation as a
-thread title — with two deliberate narrowings. It makes exactly **one**
-attempt, so `timeoutMs` is the whole budget rather than the first rung of the
-`BB_INFERENCE_FALLBACK` ladder bb's own callers get; and it **rejects** with a
-name-matched `PluginAiCompletionError` carrying `failure`
-(`no-service-configured` | `timeout` | `validation-failed` | `request-failed`)
-instead of returning null. Both exist for the only consumer: `model-router`'s
-dispatch gates, which are boxed at 10s and fail their dispatch when the box
-expires, and which must tell "nothing is configured" (report it) from "slow
-this time" (shrug). `timeoutMs` defaults to
-`PLUGIN_AI_COMPLETION_DEFAULT_TIMEOUT_MS` and is clamped to
-`PLUGIN_AI_COMPLETION_MAX_TIMEOUT_MS`. The plugin's JSON Schema needs no
-conversion: TypeBox 1.x types `TSchema` as an empty interface and pi-ai's
-`validateToolCall` detects an unbranded schema and coerces before checking, so
-the schema is handed to bb's own validator as-is. `GET /system/config`
-`.aiServices.inferenceEnabled` (the twin of `voiceTranscriptionEnabled`) is how
-a plugin probes availability without sending anything.
-
 **Audit before stabilizing.**
 
 1. **Chooser.** Confirm `BB_INFERENCE` / `BB_TRANSCRIPTION` strings stay the
@@ -1827,29 +1822,6 @@ a plugin probes availability without sending anything.
    every-call shape and the first-registered-wins collision rule.
 5. **Host choice.** Calls go to the primary host; decide whether a service may
    declare which host(s) can serve it.
-6. **`complete` has no fallback ladder.** One attempt was chosen for the gate
-   caller. Decide whether a second consumer with a looser latency budget should
-   be able to opt into `inferenceCompleteWithFallback` (an explicit
-   `attempts`/`fallback` field) rather than re-implementing retry per plugin.
-7. **No per-plugin budget or rate limit.** Any loaded plugin may spend the
-   user's `BB_INFERENCE` tokens on every dispatch, with only `timeoutMs` capped.
-   Decide whether calls should be attributed and quota'd per plugin before this
-   stabilizes; the `pluginId` already reaches `completePluginAiRequest`, and is
-   used only for the debug log today.
-8. **`validation-failed` is not exact.** A model that answers with a value the
-   schema rejects surfaces as `validation-failed` only when it arrives as a
-   null result or as an `invalid_response` from a serving plugin; a TypeBox
-   validation error thrown inside `inferenceComplete` is indistinguishable from
-   an upstream failure and lands in `request-failed`. Decide whether
-   `inferenceComplete` should distinguish the two before the vocabulary is
-   frozen.
-9. **`aiServices.inferenceEnabled` reports reachability, not credentials.** A
-   builtin provider with a stale key reads as enabled and fails at call time.
-   Confirm that split, or fold a credential check in the way
-   `resolveVoiceTranscriptionEnabled` checks `openAiApiKey`.
-10. **`PluginAiCompletionError` is matched by name, not `instanceof`.** Confirm
-    the `NeedsConfigurationError` precedent is the right ergonomics for an
-    error a plugin is expected to branch on, rather than a result union.
 
 ## `PluginFileOpenerSource.experimental_hostId` (`@get-bb/plugin-sdk/app`)
 

@@ -426,31 +426,58 @@ each chosen during implementation and worth knowing when reading the code:
 - **model-router clamps reasoning effort** to the chosen model's supported
   ladder, because an unhonourable amendment is a fail-closed dispatch
   failure, not a silent no-op.
-- **model-router routes by asking a model**, not by the rules phase 2
-  described. The fast/capable slots, the length threshold and the keyword list
-  were replaced by one plain-English routing prompt: the gate hands bb's helper
-  model that prompt, the request (head-truncated) and the eligible
-  provider/model rows, and takes back `{ providerId, model, reasoningLevel? }`.
-  The rules were a worse version of the thing the user was already describing
-  in prose, and five settings to approximate one sentence is a bad trade.
+- **model-router routes by asking an AGENT**, not by the rules phase 2
+  described and not by a helper-model completion. The fast/capable slots, the
+  length threshold and the keyword list were replaced by one plain-English
+  routing prompt. When Auto is picked the gate does not decide at all: it
+  returns `hold` with the reason "Choosing a model…", and a background flow
+  spawns a HIDDEN routing thread (the pattern `plugins/workflows` uses),
+  hands it the routing prompt, the head-truncated request and the eligible
+  provider/model rows, waits for it to go idle, parses a fenced JSON
+  `{ providerId, model, reasoningLevel? }` out of its final message, and
+  releases its own hold with that as the amendment.
+
+  Holding rather than deciding inline is forced by the gate box: an agent takes
+  longer than 10s, so a gate that waited would fail the send. The UX cost is
+  visible and deliberate — **an Auto send sits briefly held, showing "Choosing
+  a model…" on the held-dispatch card, with Release-now and Cancel available
+  the whole time.** No `resumeAt` is set: the plugin releases its own hold, and
+  a timer that beat it would dispatch the send mid-decision.
+
+  Every failure — spawn error, timeout (90s budget), unparseable answer, a
+  hallucinated model, a provider the thread cannot switch to, a refused
+  amendment — releases the hold UNAMENDED, so the send proceeds on bb's own
+  resolved provider and model. Auto never strands a hold. The routing thread is
+  stopped and deleted on every path, and the plugin tracks its own live holds
+  through `dispatch.held` plus a startup pass over
+  `threads.holds.list({ holder })`, so a restart mid-route re-drives the
+  decision rather than waiting for the orphan sweep.
+
   Model-call routing was on the Deferred list pending "a placeholder-provider
-  state"; the picker entry plus `pluginInput` turned out to be that state, so
-  no placeholder provider was needed. Every failure — no service, timeout, a
-  hallucinated model, a provider the thread cannot switch to — proceeds
-  unamended, which is Auto's documented fallback.
-- **The consumer half of `experimental_aiServices` had to be built for it.**
-  `register` only let a plugin *serve* inference to bb; the completion side
-  (`inferenceComplete`) was server-internal with no plugin surface at all. It
-  ships as `bb.experimental_aiServices.complete({ prompt, outputSchema,
-  timeoutMs? })`, delegating to the same `inferenceComplete`. Two narrowings
-  against bb's own callers, both forced by the gate: exactly **one** attempt
-  (no `BB_INFERENCE_FALLBACK` ladder, because a hidden second attempt would
-  push a 7s budget past the 10s box and fail the dispatch), and a **rejection**
-  carrying a named `failure` rather than a null, so a plugin can tell "nothing
-  configured" from "slow this time". `GET /system/config`
-  `.aiServices.inferenceEnabled` was added alongside, as the twin of
-  `voiceTranscriptionEnabled`, so a plugin can probe availability without
-  spending a call.
+  state"; the picker entry plus `pluginInput` turned out to be that state.
+- **`bb.experimental_aiServices.complete()` was built for this and then
+  removed.** A one-shot structured completion was the wrong shape for the job:
+  it bought a decision inside the 10s box only by asking a helper model to do
+  an agent's work, and it added a whole consumer API (plus a
+  `GET /system/config` `aiServices.inferenceEnabled` probe) whose only consumer
+  was this plugin. Routing through a hidden agent needs no new API at all — it
+  is `threads.spawn` + `threads.wait` + `threads.output`, which plugins already
+  have. `experimental_aiServices` is back to `register` alone: serving bb's
+  helper inference, not consuming it.
+- **Provider immutability was restated, not relaxed.** The rule was written as
+  "a thread's provider is locked when its row is inserted", which is not the
+  real invariant: the real one is **a provider is immutable once a PROVIDER
+  SESSION exists**, because the session is the conversation and no other
+  provider can continue one it never started. A held creation has a row and no
+  session, so releasing that hold may repoint it. `release()` therefore takes
+  `PluginDispatchReleaseAmendments` (the shared shape plus `providerId`), and a
+  `thread.create` gate may amend `providerId` on a release re-evaluation. Core
+  refuses on a thread that has taken any turn
+  (`getLastProviderThreadId(...) !== null`), on a fork (its provisioning clones
+  the source provider's session), and when no model accompanies the provider
+  (the frozen tuple's model belongs to the provider being left). Every refusal
+  happens BEFORE the hold is settled, which is what lets the router ask
+  optimistically and still release the message when told no.
 
 ## Risks
 
@@ -463,5 +490,7 @@ each chosen during implementation and worth knowing when reading the code:
   up to the box. Acceptable v1; scope the lock per project/host if it bites.
 - **Limiter bookkeeping bursts**: serial evaluation + count-own-proceeds is
   documented; a core-computed count on context is a purely additive later fix.
-- **Provider staleness on long holds**: provider locks at insert; a hold
-  released past a provider outage fails as today's `provider_unavailable`.
+- **Provider staleness on long holds**: a hold released past a provider outage
+  fails as today's `provider_unavailable`. A never-started thread's hold can be
+  released onto a different provider (see above), so this is recoverable for a
+  held creation and terminal for a thread that has already run.

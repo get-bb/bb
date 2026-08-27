@@ -7,8 +7,8 @@ import type { CatalogModel, ModelCatalog } from "./catalog.js";
 import {
   buildRoutingPrompt,
   MAX_ROUTED_TEXT_CHARS,
+  readFencedJsonObject,
   readRouteChoice,
-  ROUTING_OUTPUT_SCHEMA,
   truncateRoutedText,
 } from "./routing.js";
 
@@ -87,8 +87,8 @@ describe("buildRoutingPrompt", () => {
   });
 
   it("declines to ask when there is nothing to choose or nothing to classify", () => {
-    // Both are the "proceed on bb's answer" path; spending an inference call
-    // to be told so is pure latency on every send.
+    // Both are the "proceed on bb's answer" path; holding a send and spawning
+    // a routing thread to be told so is pure latency on every send.
     expect(buildRoutingPrompt({ ...base, catalog: EMPTY })).toBeNull();
     expect(
       buildRoutingPrompt({ ...base, lockedProviderId: "gemini" }),
@@ -97,12 +97,56 @@ describe("buildRoutingPrompt", () => {
   });
 });
 
-describe("ROUTING_OUTPUT_SCHEMA", () => {
-  it("requires the pair that identifies a row and leaves the level optional", () => {
-    // A model id is not unique across providers, so `model` alone cannot be
-    // looked up; a level, by contrast, has a real "no opinion" meaning.
-    expect(ROUTING_OUTPUT_SCHEMA.required).toEqual(["providerId", "model"]);
-    expect(ROUTING_OUTPUT_SCHEMA.type).toBe("object");
+describe("readFencedJsonObject", () => {
+  const answer = { providerId: "codex", model: "gpt-5" };
+
+  it("reads the object out of the shapes an agent actually replies with", () => {
+    // Nothing constrains a thread's final message, so each of these is a real
+    // reply shape rather than a hypothetical one.
+    expect(
+      readFencedJsonObject('```json\n{"providerId":"codex","model":"gpt-5"}\n```'),
+    ).toEqual(answer);
+    expect(
+      readFencedJsonObject('```\n{"providerId":"codex","model":"gpt-5"}\n```'),
+    ).toEqual(answer);
+    expect(readFencedJsonObject('{"providerId":"codex","model":"gpt-5"}')).toEqual(
+      answer,
+    );
+    expect(
+      readFencedJsonObject(
+        'This one is a refactor, so:\n{"providerId":"codex","model":"gpt-5"} — done.',
+      ),
+    ).toEqual(answer);
+  });
+
+  it("takes the LAST candidate, so working shown before an answer never wins", () => {
+    // A model that rules a row out first would otherwise be read as choosing
+    // the row it rejected — the exact opposite of what it said.
+    expect(
+      readFencedJsonObject(
+        'Not ```json\n{"providerId":"claude","model":"opus"}\n``` because it is slow.\n' +
+          '```json\n{"providerId":"codex","model":"gpt-5"}\n```',
+      ),
+    ).toEqual(answer);
+  });
+
+  it("is not fooled by a brace inside a string value", () => {
+    // A naive last-`}` slice would cut this in the middle of the string and
+    // then fail to parse, losing a perfectly good answer.
+    expect(
+      readFencedJsonObject('{"providerId":"codex","model":"gpt-5","why":"a } brace"}'),
+    ).toEqual({ ...answer, why: "a } brace" });
+  });
+
+  it("answers null for everything that is not an object", () => {
+    // Each of these is a routing failure that must degrade to an unamended
+    // release rather than throw somewhere further in.
+    expect(readFencedJsonObject(null)).toBeNull();
+    expect(readFencedJsonObject("")).toBeNull();
+    expect(readFencedJsonObject("I could not decide.")).toBeNull();
+    expect(readFencedJsonObject('```json\n{"providerId": \n```')).toBeNull();
+    expect(readFencedJsonObject('["codex","gpt-5"]')).toBeNull();
+    expect(readFencedJsonObject('"gpt-5"')).toBeNull();
   });
 });
 

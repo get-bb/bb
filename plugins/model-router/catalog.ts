@@ -95,12 +95,12 @@ export function formatModelSlot(slot: ModelSlot): string {
  * reasoning levels it actually offers.
  *
  * `scopeToProviderId` is not a filter for tidiness — it is the whole reason a
- * submit-stage route is safe. A thread's provider is fixed once its row
- * exists, so on `turn.submit` (and on any release re-evaluation) the only
- * models that can legally be chosen are that provider's. Showing the model a
- * larger menu than it may order from would make every out-of-provider answer a
- * discarded round trip; scoping the menu makes the constraint the model's
- * problem rather than the validator's.
+ * submit-stage route is safe. A thread's provider is immutable once a provider
+ * session exists, so for any thread that has taken a turn the only models that
+ * can legally be chosen are its own provider's. Showing the model a larger menu
+ * than it may order from would make every out-of-provider answer a discarded
+ * round trip; scoping the menu makes the constraint the model's problem rather
+ * than the validator's.
  *
  * Returns an empty string when there is nothing to offer, which callers read
  * as "do not route".

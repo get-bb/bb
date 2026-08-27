@@ -31,7 +31,6 @@ export function makeSystemConfig(
       inferenceFallback: DEFAULTS.inferenceFallbackModel,
       transcription: DEFAULTS.transcriptionModel,
       services: [],
-      inferenceEnabled: false,
     },
     dataDir: "/tmp/bb-test",
     ...overrides,

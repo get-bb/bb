@@ -27,35 +27,29 @@ export const MAX_ROUTED_TEXT_CHARS = 2_000;
 const TRUNCATION_MARKER = "\n[… prompt truncated for routing …]";
 
 /**
- * The JSON Schema the routed answer must satisfy.
+ * How the answer is asked for and read back.
  *
- * `reasoningLevel` is deliberately optional: "leave bb's answer alone" is a
- * real routing outcome, and a required field would make the model invent an
- * effort level for a prompt whose effort it has no opinion about. `providerId`
- * and `model` are required together because a model name without its provider
- * cannot be looked up — model ids are not unique across providers.
+ * The routing agent is a real thread, not a tool-call: nothing constrains its
+ * output to a schema, so the shape is requested in prose and enforced here.
+ * `reasoningLevel` stays optional for the same reason it always was — "leave
+ * bb's answer alone" is a real routing outcome, and a required field would
+ * make the model invent an effort level for a prompt whose effort it has no
+ * opinion about. `providerId` and `model` are required together because a
+ * model name without its provider cannot be looked up: model ids are not
+ * unique across providers.
  */
-export const ROUTING_OUTPUT_SCHEMA: Record<string, JsonValue> = {
-  type: "object",
-  properties: {
-    providerId: {
-      type: "string",
-      description: "The providerId of the chosen row, copied exactly.",
-    },
-    model: {
-      type: "string",
-      description: "The model of the chosen row, copied exactly.",
-    },
-    reasoningLevel: {
-      type: "string",
-      enum: [...REASONING_LADDER],
-      description:
-        "How much reasoning effort to spend, from the levels the chosen model lists. Omit to leave bb's own choice alone.",
-    },
-  },
-  required: ["providerId", "model"],
-  additionalProperties: false,
-};
+const ANSWER_INSTRUCTIONS = [
+  "Answer with ONE fenced JSON object and nothing else after it:",
+  "",
+  "```json",
+  '{ "providerId": "…", "model": "…", "reasoningLevel": "…" }',
+  "```",
+  "",
+  '"providerId" and "model" are required and must be copied EXACTLY from the',
+  'row you chose. "reasoningLevel" is optional — include it only to ask for a',
+  `specific effort, and only one of ${REASONING_LADDER.join(", ")} that the`,
+  "chosen row lists. Omit it to leave the default effort alone.",
+].join("\n");
 
 export function truncateRoutedText(text: string): string {
   const trimmed = text.trim();
@@ -98,13 +92,15 @@ export function buildRoutingPrompt(args: BuildRoutingPromptArgs): string | null 
 
   return [
     "You are choosing which model should handle one request in a coding assistant.",
+    "This is a routing decision only: do not answer the request, do not read or",
+    "edit any files, and do not use tools. Reply with the chosen row.",
     "",
     "Available rows:",
     options,
     "",
     scope,
-    'Answer with the "providerId" and "model" copied exactly from the row you chose.',
-    'Optionally add "reasoningLevel", but only one of the levels that row lists.',
+    "",
+    ANSWER_INSTRUCTIONS,
     "",
     "The request:",
     "<request>",
@@ -116,6 +112,97 @@ export function buildRoutingPrompt(args: BuildRoutingPromptArgs): string | null 
     args.routingPrompt,
     "</rules>",
   ].join("\n");
+}
+
+/** A fenced block's body, in the order they appear. */
+function fencedBlocks(text: string): string[] {
+  const blocks: string[] = [];
+  const pattern = /```[^\n]*\n([\s\S]*?)```/g;
+  let match = pattern.exec(text);
+  while (match !== null) {
+    if (match[1] !== undefined) blocks.push(match[1]);
+    match = pattern.exec(text);
+  }
+  return blocks;
+}
+
+function parseJsonObject(text: string): Record<string, JsonValue> | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, JsonValue>;
+}
+
+/**
+ * Pull the routing answer out of an agent's final message.
+ *
+ * Tolerant on purpose, because the answer is prose from a real thread rather
+ * than a validated tool call: a model that explains itself first, forgets the
+ * `json` info string, or wraps the object in a sentence is still answering.
+ * The three shapes accepted are a fenced block, a bare object anywhere in the
+ * text, and the whole message being the object.
+ *
+ * The LAST candidate wins throughout. A model that restates its answer means
+ * the restatement, and a model that shows its working ("not `codex/gpt-5`,
+ * because…") would otherwise be read as choosing the row it rejected.
+ *
+ * Null means "no object in there", which is a routing failure like any other
+ * and proceeds on bb's defaults.
+ */
+export function readFencedJsonObject(
+  output: string | null,
+): Record<string, JsonValue> | null {
+  if (output === null) return null;
+  const blocks = fencedBlocks(output);
+  for (const block of [...blocks].reverse()) {
+    const parsed = parseJsonObject(block.trim());
+    if (parsed !== null) return parsed;
+  }
+  const whole = parseJsonObject(output.trim());
+  if (whole !== null) return whole;
+  // Balanced-brace scan from each `{`, last first: `JSON.parse` on the widest
+  // span would fail on any prose around it, and a `}` inside a string value
+  // makes a naive last-`}` slice wrong.
+  const starts: number[] = [];
+  for (let index = 0; index < output.length; index += 1) {
+    if (output[index] === "{") starts.push(index);
+  }
+  for (const start of starts.reverse()) {
+    const end = matchingBraceEnd(output, start);
+    if (end === null) continue;
+    const parsed = parseJsonObject(output.slice(start, end + 1));
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+/** Index of the `}` closing the `{` at `start`, string-aware; null if unclosed. */
+function matchingBraceEnd(text: string, start: number): number | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return null;
 }
 
 /**
@@ -144,7 +231,7 @@ function isReasoningLevel(value: unknown): value is ReasoningLevel {
 }
 
 export interface ReadRouteChoiceArgs {
-  /** The completion's answer. Schema-validated by bb, catalog-checked here. */
+  /** The object parsed out of the routing agent's answer. */
   value: Record<string, JsonValue>;
   catalog: ModelCatalog;
   lockedProviderId: string | null;
@@ -153,12 +240,12 @@ export interface ReadRouteChoiceArgs {
 /**
  * Turn an answer into an amendment, or explain why it cannot be one.
  *
- * bb has already checked the answer against `ROUTING_OUTPUT_SCHEMA`, so the
- * shape is sound; what it cannot check is that the named row exists, that the
- * provider is one this dispatch may still choose, and that the level is one
- * the chosen model advertises. All three are checked here because an
- * amendment core cannot honour does not degrade — it fails the dispatch with
- * this plugin named.
+ * Nothing upstream has checked this object: it was parsed out of an agent's
+ * prose, so every field is a claim. Four things are checked here — that the
+ * pair is even a pair of strings, that the named row exists, that the provider
+ * is one this dispatch may still choose, and that the level is one the chosen
+ * model advertises — because an amendment core cannot honour does not degrade.
+ * It is refused, and a refused amendment is a routing decision thrown away.
  */
 export function readRouteChoice(args: ReadRouteChoiceArgs): RouteOutcome {
   const { providerId, model, reasoningLevel } = args.value;

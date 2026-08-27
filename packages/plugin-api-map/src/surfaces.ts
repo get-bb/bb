@@ -696,22 +696,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "ai-services",
-        tagline: "Serve bb's helper model, or ask it a question",
+        tagline: "Serve bb's helper model from your own machine",
         title: "AI services",
         summary:
-          "Connects a plugin to bb's own helper inference — the short model calls behind thread titles and commit messages — in either direction. With this, a plugin can:",
+          "Lets a plugin answer bb's own helper-model calls — the short model calls behind thread titles and commit messages, and the microphone button's transcription. With this, a plugin can:",
         bullets: [
           "Serve those calls from an enrolled machine, so bb's helper model can be one the plugin holds the credentials for",
           "Serve voice transcription the same way, for the microphone button in the prompt box",
-          "Ask bb's own configured helper model one question and get a structured answer back, validated against a JSON Schema the plugin supplies",
-          "Report a failure by name — nothing configured, too slow, refused — so the plugin can tell what the person should fix from what it should shrug at",
+          "Appear as a choice in the AI-service settings, alongside the models bb reaches itself",
         ],
-        apiSymbols: [
-          "PluginAiServices",
-          "PluginAiCompletionRequest",
-          "PluginAiCompletionError",
-        ],
-        firstParty: ["Codex provider", "Model router"],
+        apiSymbols: ["PluginAiServices", "PluginAiServiceDeclaration"],
+        firstParty: ["Codex provider"],
         experimental: true,
       },
       {
