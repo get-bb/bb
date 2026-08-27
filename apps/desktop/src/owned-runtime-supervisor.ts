@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createNodeVerifiedProcessOps,
@@ -100,11 +101,22 @@ export async function writeOwnedRuntimePidFile(
     startedAt: new Date().toISOString(),
   };
   await mkdir(args.userDataPath, { recursive: true });
-  await writeFile(
-    ownedRuntimePidFilePath(args.userDataPath),
-    `${JSON.stringify(pidFile, null, 2)}\n`,
-    "utf8",
+  // Keep staging in the same directory so rename publishes only complete JSON.
+  const temporaryPath = join(
+    args.userDataPath,
+    `.${OWNED_RUNTIME_PID_FILE_NAME}.${process.pid}.${randomUUID()}.tmp`,
   );
+  try {
+    await writeFile(
+      temporaryPath,
+      `${JSON.stringify(pidFile, null, 2)}\n`,
+      "utf8",
+    );
+    await rename(temporaryPath, ownedRuntimePidFilePath(args.userDataPath));
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function clearOwnedRuntimePidFile(
