@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
@@ -262,7 +262,11 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     revision: tasksQuery.data?.length ?? 0,
   });
 
-  const renderTaskRow = (task: Task, hierarchy: TaskRowHierarchy) => (
+  const renderTaskRow = (
+    task: Task,
+    hierarchy: TaskRowHierarchy,
+    subtaskList?: React.ReactNode,
+  ) => (
     <TaskRow
       key={task.id}
       task={task}
@@ -275,6 +279,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       onEdit={edits.edit}
       onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
       pending={edits.pending.has(task.id)}
+      subtaskList={subtaskList}
     />
   );
 
@@ -338,9 +343,21 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       );
     }
   } else {
-    body = groups.map((group) => (
-      <section key={group.status}>
-        {/*
+    body = groups.map((group) => {
+      const statusHeaderId = `task-status-${group.status}`;
+      const visibleTaskCount = group.tasks.reduce((count, task) => {
+        const taskGroup = hierarchyByRoot.get(task.id);
+        if (taskGroup === undefined || collapsedTaskIds.has(task.id)) {
+          return count + 1;
+        }
+        return count + 1 + taskGroup.children.length;
+      }, 0);
+      const mainTaskCount = `${group.tasks.length} ${group.tasks.length === 1 ? "main task" : "main tasks"}`;
+      const visibleTaskLabel = `${visibleTaskCount} ${visibleTaskCount === 1 ? "visible task" : "visible tasks"}`;
+
+      return (
+        <section key={group.status} aria-labelledby={statusHeaderId}>
+          {/*
           Opaque canvas fill + stacking above row chrome: task rows keep
           relative z-10 property editors so they stay clickable above the
           stretched open overlay. The stuck status header must sit higher
@@ -351,38 +368,57 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
           Hairline bottom border separates the pin band from scrolling rows
           (same token family as the filter bar and row dividers).
         */}
-        <div
-          data-status-group-header={group.status}
-          className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
-        >
-          <StatusIcon status={group.status} />
-          {STATUS_LABELS[group.status]}
-          <span className="text-xs font-normal tabular-nums text-subtle-foreground">
-            {group.tasks.length}
-          </span>
-        </div>
-        {group.tasks.map((task) => {
-          const taskGroup = hierarchyByRoot.get(task.id);
-          if (taskGroup === undefined) return null;
-          const collapsed = collapsedTaskIds.has(task.id);
-          return (
-            <Fragment key={task.id}>
-              {renderTaskRow(task, {
-                level: 0,
-                childCount: taskGroup.children.length,
-                collapsed,
-                onToggle: () => toggleTask(task.id),
-              })}
-              {collapsed
-                ? null
-                : taskGroup.children.map((child) =>
-                    renderTaskRow(child, { level: 1 }),
-                  )}
-            </Fragment>
-          );
-        })}
-      </section>
-    ));
+          <h2
+            id={statusHeaderId}
+            data-status-group-header={group.status}
+            className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+          >
+            <StatusIcon status={group.status} />
+            {STATUS_LABELS[group.status]}
+            <span className="text-xs font-normal tabular-nums text-subtle-foreground">
+              {mainTaskCount} · {visibleTaskLabel}
+            </span>
+          </h2>
+          <div role="list" aria-labelledby={statusHeaderId}>
+            {group.tasks.map((task) => {
+              const taskGroup = hierarchyByRoot.get(task.id);
+              if (taskGroup === undefined) return null;
+              const collapsed = collapsedTaskIds.has(task.id);
+              const subtaskListId = `task-subtasks-${task.id}`;
+              const subtaskList =
+                taskGroup.children.length === 0 ? undefined : (
+                  <div
+                    id={subtaskListId}
+                    role="list"
+                    aria-label={`Subtasks for ${task.key}`}
+                  >
+                    {collapsed
+                      ? null
+                      : taskGroup.children.map((child) =>
+                          renderTaskRow(child, {
+                            level: 1,
+                            parentTaskKey: task.key,
+                          }),
+                        )}
+                  </div>
+                );
+
+              return renderTaskRow(
+                task,
+                {
+                  level: 0,
+                  childCount: taskGroup.children.length,
+                  collapsed,
+                  onToggle: () => toggleTask(task.id),
+                  subtaskListId,
+                },
+                subtaskList,
+              );
+            })}
+          </div>
+        </section>
+      );
+    });
   }
 
   return (

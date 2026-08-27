@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -145,9 +145,17 @@ async function expectTaskKeys(
 function taskLevel(
   slot: ReturnType<typeof renderSlot>,
   key: string,
-): string | undefined {
-  return slot.container.querySelector<HTMLElement>(`[data-task-key="${key}"]`)
-    ?.dataset.taskLevel;
+): string | null {
+  return (
+    slot.container
+      .querySelector<HTMLElement>(`[data-task-key="${key}"]`)
+      ?.closest('[role="listitem"]')
+      ?.getAttribute("aria-level") ?? null
+  );
+}
+
+function expectClasses(element: Element, expected: readonly string[]) {
+  expect([...element.classList]).toEqual(expect.arrayContaining(expected));
 }
 
 async function selectFilter(
@@ -179,12 +187,30 @@ describe("task list hierarchy", () => {
     ]);
 
     await expectTaskKeys(slot, ["TSK-1", "TSK-2", "TSK-4", "TSK-3"]);
-    expect(taskLevel(slot, "TSK-1")).toBe("0");
-    expect(taskLevel(slot, "TSK-2")).toBe("1");
-    expect(taskLevel(slot, "TSK-4")).toBe("1");
+    expect(taskLevel(slot, "TSK-1")).toBe("1");
+    expect(taskLevel(slot, "TSK-2")).toBe("2");
+    expect(taskLevel(slot, "TSK-4")).toBe("2");
     expect(listTasksCalls.some((input) => "parentTaskId" in input)).toBe(false);
     expect(
       slot.getByRole("button", { name: "Open TSK-2: Task 2" }),
+    ).toBeDefined();
+    expect(
+      slot.container.querySelector('[data-status-group-header="todo"]')
+        ?.lastElementChild?.textContent,
+    ).toBe("1 main task · 3 visible tasks");
+    expect(
+      slot.container.querySelector('[data-status-group-header="done"]')
+        ?.lastElementChild?.textContent,
+    ).toBe("1 main task · 1 visible task");
+    expect(
+      slot.container.querySelector('[data-status-group-header="in_progress"]'),
+    ).toBeNull();
+    expect(
+      within(
+        slot.container.querySelector('[data-task-key="TSK-4"]')!,
+      ).getByRole("button", {
+        name: "Change status, currently In Progress",
+      }),
     ).toBeDefined();
 
     const collapse = slot.getByRole("button", {
@@ -193,6 +219,10 @@ describe("task list hierarchy", () => {
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(collapse);
     await expectTaskKeys(slot, ["TSK-1", "TSK-3"]);
+    expect(
+      slot.container.querySelector('[data-status-group-header="todo"]')
+        ?.lastElementChild?.textContent,
+    ).toBe("1 main task · 1 visible task");
 
     const expand = slot.getByRole("button", {
       name: "Expand 2 subtasks for TSK-1",
@@ -200,6 +230,84 @@ describe("task list hierarchy", () => {
     expect(expand.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(expand);
     await expectTaskKeys(slot, ["TSK-1", "TSK-2", "TSK-4", "TSK-3"]);
+  });
+
+  it("exposes nested list semantics and parent context", async () => {
+    const parent = task(1);
+    const child = task(2, {
+      parentTaskId: parent.id,
+      status: "done",
+    });
+    const { slot } = renderTasks(() => [parent, child]);
+
+    await expectTaskKeys(slot, ["TSK-1", "TSK-2"]);
+    const statusList = slot.getByRole("list", { name: /Todo/ });
+    const parentItem = within(statusList).getByRole("listitem", {
+      name: "TSK-1: Task 1. Status Todo.",
+    });
+    expect(parentItem.getAttribute("aria-level")).toBe("1");
+
+    const subtaskList = within(parentItem).getByRole("list", {
+      name: "Subtasks for TSK-1",
+    });
+    const childItem = within(subtaskList).getByRole("listitem", {
+      name: "TSK-2: Task 2. Subtask of TSK-1. Status Done.",
+    });
+    expect(childItem.getAttribute("aria-level")).toBe("2");
+    expect(
+      within(parentItem)
+        .getByRole("button", { name: "Collapse 1 subtask for TSK-1" })
+        .getAttribute("aria-controls"),
+    ).toBe(subtaskList.id);
+  });
+
+  it("keeps visible indentation, connector styling, and narrow placement", async () => {
+    const parent = task(1);
+    const child = task(2, { parentTaskId: parent.id });
+    const { slot } = renderTasks(() => [parent, child]);
+
+    await expectTaskKeys(slot, ["TSK-1", "TSK-2"]);
+    const row = slot.container.querySelector<HTMLElement>(
+      '[data-task-key="TSK-2"]',
+    )!;
+    expectClasses(row, [
+      "pl-7",
+      "pr-3.5",
+      "grid-cols-[auto_auto_auto_minmax(0,1fr)]",
+    ]);
+
+    const connector = row.querySelector<HTMLElement>(
+      "[data-subtask-connector]",
+    )!;
+    expectClasses(connector, ["col-start-1", "row-span-2", "row-start-1"]);
+    expectClasses(connector.firstElementChild!, [
+      "rounded-bl-sm",
+      "border-b",
+      "border-l",
+      "border-border",
+    ]);
+    expectClasses(
+      within(row).getByRole("button", {
+        name: "Change status, currently Todo",
+      }),
+      ["col-start-2", "row-start-1"],
+    );
+    expectClasses(
+      within(row).getByRole("button", {
+        name: "Set priority, currently No priority",
+      }),
+      ["col-start-2", "row-start-2"],
+    );
+    expectClasses(within(row).getByText("TSK-2"), [
+      "col-start-3",
+      "row-start-2",
+    ]);
+    expectClasses(within(row).getByText("Task 2"), [
+      "col-start-3",
+      "col-span-2",
+      "row-start-1",
+    ]);
+    expectClasses(row.lastElementChild!, ["col-start-4", "row-start-2"]);
   });
 
   it.each([
@@ -235,7 +343,7 @@ describe("task list hierarchy", () => {
       await selectFilter(slot, filter, option);
 
       await expectTaskKeys(slot, ["TSK-2"]);
-      expect(taskLevel(slot, "TSK-2")).toBe("0");
+      expect(taskLevel(slot, "TSK-2")).toBe("1");
     },
   );
 
@@ -244,7 +352,7 @@ describe("task list hierarchy", () => {
     const { slot } = renderTasks(() => [child]);
 
     await expectTaskKeys(slot, ["TSK-2"]);
-    expect(taskLevel(slot, "TSK-2")).toBe("0");
+    expect(taskLevel(slot, "TSK-2")).toBe("1");
   });
 
   it("promotes a child after its parent is deleted", async () => {
@@ -253,12 +361,12 @@ describe("task list hierarchy", () => {
     let tasks: Task[] = [parent, child];
     const { slot } = renderTasks(() => tasks);
     await expectTaskKeys(slot, ["TSK-1", "TSK-2"]);
-    expect(taskLevel(slot, "TSK-2")).toBe("1");
+    expect(taskLevel(slot, "TSK-2")).toBe("2");
 
     tasks = [{ ...child, parentTaskId: null }];
     await slot.emitRealtime("tasks:changed", {});
 
     await expectTaskKeys(slot, ["TSK-2"]);
-    expect(taskLevel(slot, "TSK-2")).toBe("0");
+    expect(taskLevel(slot, "TSK-2")).toBe("1");
   });
 });
