@@ -1166,6 +1166,57 @@ describe("codex subagent activity correlation", () => {
     expect(nextRootTurn).not.toHaveProperty("parentToolCallId");
   });
 
+  // A rawless message is not evidence that the next turn belongs to its
+  // target. If a different known child starts on the multiplexed root thread,
+  // that child's explicit pending delegation must win; the message is then
+  // discarded with its parent and cannot claim a later root turn either.
+  it("does not attach a rawless message to an unrelated multiplexed child", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        subAgentActivity({
+          agentThreadId: "message-target-thread",
+          id: "rawless-message",
+          kind: "interacted",
+        }),
+      ),
+    ).toEqual([]);
+
+    harness.translate(
+      subAgentActivity({
+        agentThreadId: "unrelated-agent-thread",
+        id: "unrelated-subagent-call",
+        kind: "started",
+      }),
+    );
+    const unrelatedChild = harness
+      .translate(childTurnStarted("unrelated-child-turn"))
+      .find((event) => event.type === "turn/started");
+    expect(unrelatedChild).toEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        parentToolCallId: harness.itemId("unrelated-subagent-call"),
+      }),
+    );
+    expect(unrelatedChild).not.toHaveProperty(
+      "parentToolCallId",
+      harness.itemId("rawless-message"),
+    );
+
+    harness.translate(childTurnCompleted("unrelated-child-turn"));
+    harness.translate(childTurnCompleted("parent-turn"));
+    expect(
+      harness.translator.prepareTurnStart({
+        clientRequestId: "creq_after_unrelated_child",
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).not.toBeNull();
+    const nextRootTurn = harness
+      .translate(childTurnStarted("next-root-after-unrelated-child"))
+      .find((event) => event.type === "turn/started");
+    expect(nextRootTurn).not.toHaveProperty("parentToolCallId");
+  });
+
   // Each child turn consumes one ambiguous interaction. Settling the first
   // resumed turn must not discard the second interaction that still awaits
   // its own turn-producing proof.

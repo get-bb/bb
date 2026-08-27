@@ -76,18 +76,18 @@ describe("daemon-to-server event payload sizes", () => {
     expect(measurements).toEqual([
       {
         eventCount: 1,
-        legacyEnvelope: { gzipBytes: 192, jsonBytes: 413 },
-        grouped: { gzipBytes: 196, jsonBytes: 421 },
+        legacyEnvelope: { gzipBytes: 194, jsonBytes: 413 },
+        grouped: { gzipBytes: 198, jsonBytes: 421 },
       },
       {
         eventCount: 10,
-        legacyEnvelope: { gzipBytes: 243, jsonBytes: 3_554 },
-        grouped: { gzipBytes: 243, jsonBytes: 3_049 },
+        legacyEnvelope: { gzipBytes: 246, jsonBytes: 3_554 },
+        grouped: { gzipBytes: 247, jsonBytes: 3_049 },
       },
       {
         eventCount: 50,
-        legacyEnvelope: { gzipBytes: 405, jsonBytes: 17_554 },
-        grouped: { gzipBytes: 406, jsonBytes: 14_769 },
+        legacyEnvelope: { gzipBytes: 406, jsonBytes: 17_554 },
+        grouped: { gzipBytes: 407, jsonBytes: 14_769 },
       },
     ]);
 
