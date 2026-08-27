@@ -5,7 +5,7 @@ import {
 
 type DesktopReleaseChannel = "latest" | "nightly";
 
-interface DesktopReleaseInfo {
+export interface DesktopReleaseInfo {
   applicationName: "bb" | "bb Nightly";
   channel: DesktopReleaseChannel;
   iconFileName: "icon.png" | "icon-nightly.png";
