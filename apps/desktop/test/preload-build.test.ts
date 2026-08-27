@@ -337,7 +337,9 @@ describe("desktop build", () => {
     );
 
     expect(mainSource).toContain('"use strict";');
-    expect(mainSource).not.toMatch(/^import\s/mu);
+    // Use node --check to verify valid CommonJS syntax (no top-level imports).
+    const mainPath = resolve(desktopPackageRoot, "dist", "main.js");
+    await execFileAsync(process.execPath, ["--check", mainPath]);
 
     expect(preloadSource).toContain(desktopVersion);
     expect(preloadSource).not.toContain("BB_DESKTOP_VERSION");
