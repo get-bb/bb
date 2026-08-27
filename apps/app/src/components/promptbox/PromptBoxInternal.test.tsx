@@ -1652,6 +1652,8 @@ describe("PromptBoxInternal size controls", () => {
       name: "Collapse prompt box",
     });
     expect(collapseButton.classList).toContain("text-subtle-foreground/75");
+    expect(collapseButton.classList).toContain("w-6");
+    expect(collapseButton.classList).toContain("px-0");
     fireEvent.click(collapseButton);
 
     expect(onCollapse).toHaveBeenCalledOnce();

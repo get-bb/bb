@@ -87,6 +87,7 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
@@ -3033,6 +3034,7 @@ export function PromptBoxInternal({
                       className={cn(
                         CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
                         COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+                        PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
                       )}
                     >
                       <Icon name="ChevronDown" className="size-3" />
