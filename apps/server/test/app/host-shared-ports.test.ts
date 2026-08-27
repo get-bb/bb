@@ -179,6 +179,38 @@ describe("HostSharedPortCoordinator", () => {
     );
   });
 
+  it("rejects a registered credentialless session after its lease stales", () => {
+    const { db, host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
+    sharedPorts.recordHostConnectCapability({
+      hostId: host.id,
+      sessionId: session.id,
+      hasMachineCredential: false,
+    });
+    heartbeatSession(db, session.id, Date.now() - 1);
+
+    let declarationError: unknown;
+    try {
+      sharedPorts.declareSharedPorts({
+        ownerId: "connect",
+        hostId: host.id,
+        ports: [3000],
+      });
+    } catch (error) {
+      declarationError = error;
+    }
+
+    expect(declarationError).toBeInstanceOf(ApiError);
+    expect(declarationError).toMatchObject({
+      body: { code: "connect_host_unenrolled" },
+    });
+    expect(sharedPorts.reconcileSharedPortsForHost(host.id)).toEqual({
+      generation: 0,
+      ports: [],
+    });
+  });
+
   it("retains changed generations through a full disconnect and reconnect", () => {
     const { db, host, hub, session, sharedPorts } = setup();
     if (!session) throw new Error("expected an online host session");

@@ -103,7 +103,6 @@ export class HostSharedPortCoordinator {
       const state = this.connectCapabilityState(hostId);
       if (
         state !== null &&
-        state.leaseExpiresAt > Date.now() &&
         !state.capability.hasMachineCredential
       ) {
         this.throwMissingMachineCredential(host);
