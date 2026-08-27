@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type {
   Label,
   Project,
@@ -8,7 +8,12 @@ import type {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { TaskRowMeta } from "./data.js";
-import { activeWorkLabel, formatDueDate, partitionLabels } from "./lib.js";
+import {
+  activeWorkLabel,
+  formatDueDate,
+  partitionLabels,
+  STATUS_LABELS,
+} from "./lib.js";
 import type { EditFn } from "./property-menus.js";
 import {
   isBareKey,
@@ -109,9 +114,20 @@ function LabelChips({
   );
 }
 
+export type TaskRowHierarchy =
+  | {
+      level: 0;
+      childCount: number;
+      collapsed: boolean;
+      onToggle: () => void;
+      subtaskListId: string;
+    }
+  | { level: 1; parentTaskKey: string };
+
 interface TaskRowProps {
   /** Task with any pending optimistic edit already applied. */
   task: Task;
+  hierarchy: TaskRowHierarchy;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -122,6 +138,8 @@ interface TaskRowProps {
   onOpen: () => void;
   /** A mutation for this row is in flight. */
   pending: boolean;
+  /** Nested list for this task's direct subtasks. */
+  subtaskList?: ReactNode;
 }
 
 /**
@@ -134,6 +152,7 @@ interface TaskRowProps {
  */
 export function TaskRow({
   task,
+  hierarchy,
   meta,
   project,
   showProject,
@@ -142,81 +161,131 @@ export function TaskRow({
   onEdit,
   onOpen,
   pending,
+  subtaskList,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
+  const rowLabel =
+    hierarchy.level === 0
+      ? `${task.key}: ${task.title}. Status ${STATUS_LABELS[task.status]}.`
+      : `${task.key}: ${task.title}. Subtask of ${hierarchy.parentTaskKey}. Status ${STATUS_LABELS[task.status]}.`;
 
   return (
-    <TaskContextMenu task={task} onEdit={onEdit} projectLabels={projectLabels}>
-      <div
-        data-task-key={task.key}
-        aria-busy={pending || undefined}
-        className={cn(
-          // Narrow containers get a two-line hierarchy: status + full-width
-          // title on top, then priority, key, and the metadata rail below.
-          // From @md up the same children lay out as the classic single flex
-          // row (the grid placement classes are inert in flex), so desktop
-          // keeps its exact 34px rows.
-          "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
-          "@md:flex @md:h-[34px] @md:py-0",
-          pending && "opacity-70",
-        )}
+    <div
+      role="listitem"
+      aria-level={hierarchy.level + 1}
+      aria-label={rowLabel}
+      aria-busy={pending || undefined}
+    >
+      <TaskContextMenu
+        task={task}
+        onEdit={onEdit}
+        projectLabels={projectLabels}
       >
-        <button
-          type="button"
-          aria-label={`Open ${task.key}: ${task.title}`}
-          onClick={onOpen}
-          onKeyDown={(event) => {
-            if (!isBareKey(event)) return;
-            const key = event.key.toLowerCase();
-            if (key === "s") {
-              event.preventDefault();
-              setOpenMenu("status");
-            } else if (key === "p") {
-              event.preventDefault();
-              setOpenMenu("priority");
-            }
-          }}
-          className="absolute inset-0 rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-        />
-        <PriorityEditor
-          task={task}
-          onEdit={onEdit}
-          open={openMenu === "priority"}
-          onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
-          className="col-start-1 row-start-2"
-        />
-        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
-          {task.key}
-        </span>
-        <StatusEditor
-          task={task}
-          onEdit={onEdit}
-          open={openMenu === "status"}
-          onOpenChange={(next) => setOpenMenu(next ? "status" : null)}
-          className="col-start-1 row-start-1"
-        />
-        <span className="col-start-2 col-span-2 row-start-1 min-w-0 truncate text-sm @md:flex-1">
-          {task.title}
-        </span>
-        <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
-          {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
-          <LabelChips task={task} labelsById={labelsById} />
-          {task.dueDate !== null ? (
-            <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>
-              <Icon name="Clock" className="size-3 shrink-0" />
-              {formatDueDate(task.dueDate)}
-            </span>
-          ) : null}
-          {showProject && project !== undefined ? (
+        <div
+          data-task-row
+          data-task-key={task.key}
+          className={cn(
+            // Narrow containers get a two-line hierarchy: status + full-width
+            // title on top, then priority, key, and the metadata rail below.
+            // From @md up the same children lay out as the classic single flex
+            // row (the grid placement classes are inert in flex), so desktop
+            // keeps its exact 34px rows.
+            "relative grid w-full grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline py-1.5 text-left transition-opacity hover:bg-state-hover",
+            "@md:flex @md:h-[34px] @md:py-0",
+            hierarchy.level === 1 ? "pl-7 pr-3.5" : "px-3.5",
+            pending && "opacity-70",
+          )}
+        >
+          <button
+            type="button"
+            aria-label={`Open ${task.key}: ${task.title}`}
+            onClick={onOpen}
+            onKeyDown={(event) => {
+              if (!isBareKey(event)) return;
+              const key = event.key.toLowerCase();
+              if (key === "s") {
+                event.preventDefault();
+                setOpenMenu("status");
+              } else if (key === "p") {
+                event.preventDefault();
+                setOpenMenu("priority");
+              }
+            }}
+            className="absolute inset-0 rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          />
+          {hierarchy.level === 1 ? (
             <span
               aria-hidden
-              title={project.name}
-              className="size-2.5 shrink-0 rounded-sm"
-              style={{ backgroundColor: project.color }}
+              data-subtask-connector
+              className="col-start-1 row-span-2 row-start-1 flex size-4 shrink-0 items-center justify-center"
+            >
+              <span className="h-2 w-2 -translate-y-0.5 rounded-bl-sm border-b border-l border-border" />
+            </span>
+          ) : hierarchy.childCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={!hierarchy.collapsed}
+              aria-controls={hierarchy.subtaskListId}
+              aria-label={`${hierarchy.collapsed ? "Expand" : "Collapse"} ${hierarchy.childCount} ${hierarchy.childCount === 1 ? "subtask" : "subtasks"} for ${task.key}`}
+              onClick={hierarchy.onToggle}
+              className="relative z-10 col-start-1 row-span-2 row-start-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <Icon
+                name="ChevronRight"
+                aria-hidden
+                className={cn(
+                  "size-3 transition-transform",
+                  !hierarchy.collapsed && "rotate-90",
+                )}
+              />
+            </button>
+          ) : (
+            <span
+              aria-hidden
+              className="col-start-1 row-span-2 row-start-1 size-4 shrink-0"
             />
-          ) : null}
-        </span>
-      </div>
-    </TaskContextMenu>
+          )}
+          <PriorityEditor
+            task={task}
+            onEdit={onEdit}
+            open={openMenu === "priority"}
+            onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
+            className="col-start-2 row-start-2"
+          />
+          <span className="col-start-3 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
+            {task.key}
+          </span>
+          <StatusEditor
+            task={task}
+            onEdit={onEdit}
+            open={openMenu === "status"}
+            onOpenChange={(next) => setOpenMenu(next ? "status" : null)}
+            className="col-start-2 row-start-1"
+          />
+          <span className="col-start-3 col-span-2 row-start-1 min-w-0 truncate text-sm @md:flex-1">
+            {task.title}
+          </span>
+          <span className="col-start-4 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
+            {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
+            <LabelChips task={task} labelsById={labelsById} />
+            {task.dueDate !== null ? (
+              <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>
+                <Icon name="Clock" className="size-3 shrink-0" />
+                {formatDueDate(task.dueDate)}
+              </span>
+            ) : null}
+            {showProject && project !== undefined ? (
+              <span
+                aria-hidden
+                title={project.name}
+                className="size-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: project.color }}
+              />
+            ) : null}
+          </span>
+        </div>
+      </TaskContextMenu>
+      {subtaskList}
+    </div>
   );
 }

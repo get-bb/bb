@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Label } from "../../shared/contract.js";
+import type { Label, Task } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
@@ -21,7 +21,6 @@ import {
   storeListPreference,
   type ListPreference,
 } from "./list-preference.js";
-import { sortTasks } from "../../shared/sort.js";
 import type { TaskSort } from "../../shared/pagination.js";
 import { StatusIcon } from "./icons.js";
 import {
@@ -33,10 +32,11 @@ import {
   labelFilterOptions,
   selectedLabelIds,
   STATUS_LABELS,
+  taskHierarchyGroups,
 } from "./lib.js";
 import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
-import { TaskRow } from "./row.js";
+import { TaskRow, type TaskRowHierarchy } from "./row.js";
 
 interface ListViewProps {
   /** null renders the cross-project "All tasks" list. */
@@ -123,6 +123,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     });
   };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const toggleTask = (taskId: string) =>
+    setCollapsedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
 
   const labelProjectIds = useMemo(
     () =>
@@ -173,10 +183,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     [projects.data],
   );
 
-  // Optimistic edits are overlaid before sorting/grouping so an edited row jumps
-  // to its new status group immediately, and the active status/priority/label
-  // filters are re-applied so a row that no longer matches drops out at once
-  // instead of waiting for the server refetch.
+  // Optimistic edits are overlaid before hierarchy and status
+  // grouping. The active filters are re-applied so a row that no longer
+  // matches drops out immediately. A matching child whose parent drops out is
+  // then promoted to a root by taskHierarchyGroups.
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
     return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
@@ -194,11 +204,6 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     filters.priorities,
     labelIds,
   ]);
-  const groups = useMemo(
-    () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
-    [displayTasks, sort],
-  );
-
   const showProject = projectId === null;
   const filtered = hasActiveFilters(filters);
 
@@ -207,6 +212,18 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   // user left off. Restore only once the real rows have loaded.
   const scrollRef = useRef<HTMLDivElement>(null);
   const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
+  const hierarchy = useMemo(
+    () => taskHierarchyGroups(displayTasks ?? [], sort),
+    [displayTasks, sort],
+  );
+  const hierarchyByRoot = useMemo(
+    () => new Map(hierarchy.map((group) => [group.root.id, group])),
+    [hierarchy],
+  );
+  const groups = useMemo(
+    () => groupTasksByStatus(hierarchy.map((group) => group.root)),
+    [hierarchy],
+  );
   // `useListTasks` keeps the previous scope's rows on screen while it refetches
   // and only flips `isLoading` in a later effect, so on the first render after a
   // filter/sort change the rows are stale but `isLoading` is still false. Treat
@@ -244,6 +261,27 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     loading: tasksQuery.isLoading || scopeChanged,
     revision: tasksQuery.data?.length ?? 0,
   });
+
+  const renderTaskRow = (
+    task: Task,
+    hierarchy: TaskRowHierarchy,
+    subtaskList?: React.ReactNode,
+  ) => (
+    <TaskRow
+      key={task.id}
+      task={task}
+      hierarchy={hierarchy}
+      meta={meta.data?.get(task.id)}
+      project={projectsById.get(task.projectId)}
+      showProject={showProject}
+      labelsById={labelsById}
+      projectLabels={labelsByProject.get(task.projectId) ?? []}
+      onEdit={edits.edit}
+      onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
+      pending={edits.pending.has(task.id)}
+      subtaskList={subtaskList}
+    />
+  );
 
   let body: React.ReactNode;
   if (
@@ -305,9 +343,21 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       );
     }
   } else {
-    body = groups.map((group) => (
-      <section key={group.status}>
-        {/*
+    body = groups.map((group) => {
+      const statusHeaderId = `task-status-${group.status}`;
+      const visibleTaskCount = group.tasks.reduce((count, task) => {
+        const taskGroup = hierarchyByRoot.get(task.id);
+        if (taskGroup === undefined || collapsedTaskIds.has(task.id)) {
+          return count + 1;
+        }
+        return count + 1 + taskGroup.children.length;
+      }, 0);
+      const mainTaskCount = `${group.tasks.length} ${group.tasks.length === 1 ? "main task" : "main tasks"}`;
+      const visibleTaskLabel = `${visibleTaskCount} ${visibleTaskCount === 1 ? "visible task" : "visible tasks"}`;
+
+      return (
+        <section key={group.status} aria-labelledby={statusHeaderId}>
+          {/*
           Opaque canvas fill + stacking above row chrome: task rows keep
           relative z-10 property editors so they stay clickable above the
           stretched open overlay. The stuck status header must sit higher
@@ -318,32 +368,57 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
           Hairline bottom border separates the pin band from scrolling rows
           (same token family as the filter bar and row dividers).
         */}
-        <div
-          data-status-group-header={group.status}
-          className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
-        >
-          <StatusIcon status={group.status} />
-          {STATUS_LABELS[group.status]}
-          <span className="text-xs font-normal tabular-nums text-subtle-foreground">
-            {group.tasks.length}
-          </span>
-        </div>
-        {group.tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            meta={meta.data?.get(task.id)}
-            project={projectsById.get(task.projectId)}
-            showProject={showProject}
-            labelsById={labelsById}
-            projectLabels={labelsByProject.get(task.projectId) ?? []}
-            onEdit={edits.edit}
-            onOpen={() => navigation.go({ kind: "task", taskKey: task.key })}
-            pending={edits.pending.has(task.id)}
-          />
-        ))}
-      </section>
-    ));
+          <h2
+            id={statusHeaderId}
+            data-status-group-header={group.status}
+            className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"
+          >
+            <StatusIcon status={group.status} />
+            {STATUS_LABELS[group.status]}
+            <span className="text-xs font-normal tabular-nums text-subtle-foreground">
+              {mainTaskCount} · {visibleTaskLabel}
+            </span>
+          </h2>
+          <div role="list" aria-labelledby={statusHeaderId}>
+            {group.tasks.map((task) => {
+              const taskGroup = hierarchyByRoot.get(task.id);
+              if (taskGroup === undefined) return null;
+              const collapsed = collapsedTaskIds.has(task.id);
+              const subtaskListId = `task-subtasks-${task.id}`;
+              const subtaskList =
+                taskGroup.children.length === 0 ? undefined : (
+                  <div
+                    id={subtaskListId}
+                    role="list"
+                    aria-label={`Subtasks for ${task.key}`}
+                  >
+                    {collapsed
+                      ? null
+                      : taskGroup.children.map((child) =>
+                          renderTaskRow(child, {
+                            level: 1,
+                            parentTaskKey: task.key,
+                          }),
+                        )}
+                  </div>
+                );
+
+              return renderTaskRow(
+                task,
+                {
+                  level: 0,
+                  childCount: taskGroup.children.length,
+                  collapsed,
+                  onToggle: () => toggleTask(task.id),
+                  subtaskListId,
+                },
+                subtaskList,
+              );
+            })}
+          </div>
+        </section>
+      );
+    });
   }
 
   return (
