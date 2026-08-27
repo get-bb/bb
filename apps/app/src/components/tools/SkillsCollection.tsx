@@ -153,7 +153,11 @@ export function SkillProvenanceTooltip({
   return (
     <span className="inline-flex items-center gap-1.5">
       <span>{prefix}</span>
-      <span data-provider-icon={providerId ?? "bb"} aria-hidden="true">
+      <span
+        data-provider-icon={providerId ?? "bb"}
+        aria-hidden="true"
+        className="flex size-3.5 shrink-0 items-center justify-center"
+      >
         {providerId === null ? (
           <BbLogo className="size-3.5 brightness-0 invert" />
         ) : (

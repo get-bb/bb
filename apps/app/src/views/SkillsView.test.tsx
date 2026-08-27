@@ -1609,9 +1609,15 @@ describe("SkillDetailDialogView", () => {
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip.textContent).toContain("Included with");
     expect(tooltip.textContent).toContain(example.tooltipName);
+    const providerIcon = tooltip.querySelector(
+      `[data-provider-icon="${example.providerIcon}"]`,
+    );
+    expect(providerIcon).not.toBeNull();
     expect(
-      tooltip.querySelector(`[data-provider-icon="${example.providerIcon}"]`),
-    ).not.toBeNull();
+      ["flex", "size-3.5", "shrink-0", "items-center", "justify-center"].every(
+        (className) => providerIcon?.classList.contains(className),
+      ),
+    ).toBe(true);
   });
 
   it("labels externally discovered provider skills as imported", async () => {
