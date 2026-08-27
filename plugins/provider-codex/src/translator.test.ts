@@ -916,13 +916,15 @@ describe("codex subagent activity correlation", () => {
     );
     harness.translate(childTurnCompleted("child-turn-1"));
 
-    // A follow-up to a settled agent re-opens its delegation row (same item
-    // id): the agent works again, and an open delegation is open work.
+    // `interacted` alone is ambiguous: Codex uses it for both followup_task
+    // and send_message. Wait for the child turn before reopening the row.
     expect(
       harness.translate(
         subAgentActivity({ id: "interaction-1", kind: "interacted" }),
       ),
-    ).toEqual([
+    ).toEqual([]);
+
+    expect(harness.translate(childTurnStarted("child-turn-2"))).toEqual([
       expect.objectContaining({
         type: "item/started",
         scope: turnScope(harness.turnId("parent-turn")),
@@ -932,15 +934,12 @@ describe("codex subagent activity correlation", () => {
           status: "pending",
         }),
       }),
-    ]);
-
-    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
         scope: turnScope(harness.turnId("child-turn-2")),
         parentToolCallId: harness.itemId("subagent-call-1"),
       }),
-    );
+    ]);
 
     // The resumed turn settles the re-opened delegation again.
     const resumedTurnCompleted = harness.translate(
@@ -1049,9 +1048,60 @@ describe("codex subagent activity correlation", () => {
     expect(nextRootTurn).not.toHaveProperty("parentToolCallId");
   });
 
-  // Follow-ups queue: two interactions owe two more child turns. The re-arm is
-  // counted, so terminalizing the agent after the first follow-up must not
-  // discard the link the second one still needs.
+  it("links a rawless resumed subagent when its child turn starts", () => {
+    const harness = createHarness();
+
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "rawless-followup", kind: "interacted" }),
+      ),
+    ).toEqual([]);
+
+    const resumedEvents = harness.translate(
+      childTurnStarted("rawless-child-turn"),
+    );
+    expect(resumedEvents).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("rawless-followup"),
+          childRef: "agent-thread-1",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope(harness.turnId("rawless-child-turn")),
+        parentToolCallId: harness.itemId("rawless-followup"),
+      }),
+    ]);
+    expect(resumedEvents[0]).not.toHaveProperty("parentToolCallId");
+    expect(resumedEvents[0]).not.toHaveProperty("item.parentToolCallId");
+  });
+
+  it("discards a rawless message interaction at its parent boundary", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "rawless-message", kind: "interacted" }),
+      ),
+    ).toEqual([]);
+    harness.translate(childTurnCompleted("parent-turn"));
+
+    harness.translator.prepareTurnStart({
+      clientRequestId: "creq_after_rawless_message",
+      providerThreadId: rootProviderThreadId,
+    });
+    const nextRootTurn = harness
+      .translate(childTurnStarted("next-root-after-message"))
+      .find((event) => event.type === "turn/started");
+    expect(nextRootTurn).not.toHaveProperty("parentToolCallId");
+  });
+
+  // Each child turn consumes one ambiguous interaction. Settling the first
+  // resumed turn must not discard the second interaction that still awaits
+  // its own turn-producing proof.
   it("preserves the parent link across queued follow-up resumes", () => {
     const harness = createHarness();
     harness.translate(
@@ -1060,14 +1110,15 @@ describe("codex subagent activity correlation", () => {
     harness.translate(childTurnStarted("child-turn-1"));
     harness.translate(childTurnCompleted("child-turn-1"));
 
-    // The first follow-up re-opens the delegation; the second finds it open.
+    // Neither ambiguous interaction re-opens the delegation until a child
+    // turn proves that it was a turn-producing follow-up.
     expect(
       harness
         .translate(
           subAgentActivity({ id: "interaction-1", kind: "interacted" }),
         )
         .map((event) => event.type),
-    ).toEqual(["item/started"]);
+    ).toEqual([]);
     expect(
       harness.translate(
         subAgentActivity({ id: "interaction-2", kind: "interacted" }),
@@ -1077,21 +1128,25 @@ describe("codex subagent activity correlation", () => {
     for (const index of [2, 3]) {
       expect(
         harness.translate(childTurnStarted(`child-turn-${index}`)),
-      ).toContainEqual(
+      ).toEqual([
+        expect.objectContaining({
+          type: "item/started",
+          item: expect.objectContaining({
+            type: "delegation",
+            id: harness.itemId("subagent-call-1"),
+          }),
+        }),
         expect.objectContaining({
           type: "turn/started",
           scope: turnScope(harness.turnId(`child-turn-${index}`)),
           parentToolCallId: harness.itemId("subagent-call-1"),
         }),
-      );
-      // The delegation closes only once the last owed follow-up turn settles.
+      ]);
       expect(
         harness
           .translate(childTurnCompleted(`child-turn-${index}`))
           .map((event) => event.type),
-      ).toEqual(
-        index === 3 ? ["turn/completed", "item/completed"] : ["turn/completed"],
-      );
+      ).toEqual(["turn/completed", "item/completed"]);
     }
   });
 
