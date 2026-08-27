@@ -68,6 +68,9 @@ describe("automation overview recovery rows", () => {
 
     const status = screen.getByText("Prompt required");
     expect(status.className).toContain("text-warning-text");
+    expect(
+      screen.queryByText("A prompt is required before this automation can run."),
+    ).toBeNull();
 
     const row = status.closest("[data-resource-row]");
     expect(row).not.toBeNull();

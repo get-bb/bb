@@ -333,9 +333,9 @@ function AutomationProblemRow({
             <AutomationMetadataItem icon="Folder" iconLabel="Project">
               {projectLabel}
             </AutomationMetadataItem>,
-            repairTarget !== null
-              ? "A prompt is required before this automation can run."
-              : "The stored configuration cannot be read.",
+            repairTarget === null
+              ? "The stored configuration cannot be read."
+              : null,
           ]}
         />
       }
