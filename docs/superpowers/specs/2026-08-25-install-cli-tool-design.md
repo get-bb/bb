@@ -208,6 +208,74 @@ into `~/.bb/bin/<name>` that re-invokes the AppImage file recorded from
 `process.env.APPIMAGE`. Moving the AppImage breaks the command until the app is
 next launched, at which point it self-heals.
 
+### Linux mechanism, verified
+
+Spiked against the published `bb-0.40.0-x86_64.AppImage` in an amd64 OrbStack
+Ubuntu 24.04 machine. All of the following were run, not reasoned about.
+
+**`AppRun` passes environment and arguments through.** It is a bash script
+ending in `exec "$BIN" "${args[@]}"` with no `env -i`, so inheritance is
+structural rather than incidental. Confirmed empirically: with
+`ELECTRON_RUN_AS_NODE=1` set, `AppRun -e '...'` runs as plain Node and exits 0.
+
+**No display is required.** `ELECTRON_RUN_AS_NODE` skips Chromium
+initialization, and every test ran with `DISPLAY` unset. X11 forwarding is
+irrelevant to this feature; it only matters for testing the GUI itself.
+
+**Both `APPDIR` and `APPIMAGE` are visible to the Node process.** `APPDIR` is
+the ephemeral mount, `APPIMAGE` the stable file path. This is what makes the
+design possible, because it lets an external bootstrap find the CLI inside a
+mount whose path it could not otherwise know:
+
+```
+APPDIR=/tmp/.mount_bb.AppGtuCFR
+APPIMAGE=/home/user/bb.AppImage
+```
+
+**Shape.** The wrapper hardcodes the recorded AppImage path and delegates
+resolution of the internal path to a bootstrap module beside it:
+
+```sh
+exec env ELECTRON_RUN_AS_NODE=1 "$APPIMG" "$HOME/.bb/bin/bb-bootstrap.mjs" "$@"
+```
+
+```js
+// bb-bootstrap.mjs
+const dir = process.env.APPDIR;
+await import(join(dir, "resources/app.asar.unpacked/node_modules/bb-app/host-daemon/dist/bb"));
+```
+
+Note the Linux internal path has no `Contents/` segment, unlike macOS.
+
+End-to-end results: `bb --version` returned `0.40.0`; `bb --help` returned real
+CLI help with arguments passed through; renaming the AppImage produced the
+intended diagnostic and exit 127.
+
+### Two Linux runtime prerequisites
+
+Neither is caused by this design, but both determine whether the command works
+and both should be surfaced rather than discovered.
+
+**`libfuse2`.** AppImage type 2 requires it, and Ubuntu 24.04 ships only fuse3.
+Without it the AppImage refuses to run at all, GUI included, with `AppImages
+require FUSE to run`. Note `/dev/fuse` and `fusermount3` being present is not
+sufficient. `APPIMAGE_EXTRACT_AND_RUN=1` is the escape hatch, at the cost of
+extracting the whole image per invocation.
+
+**Chromium's shared libraries.** Even in `ELECTRON_RUN_AS_NODE` mode the
+Electron binary still dynamically links the GUI stack. On a minimal system it
+fails with `error while loading shared libraries: libnspr4.so`. Running it
+required `libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64
+libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1
+libasound2t64 libgtk-3-0t64`. A user running the desktop app already has these;
+a container or headless server does not. "It's just Node" is not true on Linux.
+
+### `dist/bb` is not self-contained
+
+As of 0.40.0 the CLI bundle is code-split: `dist/bb` is 43 KB beside a
+`dist/bb-chunks/` directory. Referencing it in place, as this design does, is
+fine. Copying `dist/bb` alone to another location would not be.
+
 ## Interference with existing modes
 
 Putting `~/.bb/bin` on `PATH` introduces a `bb` where there may already be
@@ -342,11 +410,10 @@ already works.
 
 ## Risks
 
-1. **`ELECTRON_RUN_AS_NODE` through an AppImage `AppRun` is unverified.** The
-   mechanism is confirmed on macOS against the real bundle. There was no Linux
-   machine available. If `AppRun` swallows the environment variable or the
-   arguments, the Linux half needs a different shape. This is a short spike and
-   it must happen before the Linux code, not after.
+1. ~~`ELECTRON_RUN_AS_NODE` through an AppImage `AppRun` is unverified.~~
+   **Retired.** Spiked against the published x86_64 AppImage in an amd64
+   OrbStack machine; environment and arguments both pass through, headless, and
+   the full wrapper works end to end. See "Linux mechanism, verified" above.
 2. **Layer 1 changes the packaging surface** (`extraResources`, plus a build
    step to template the channel name into the script), which touches the release
    pipeline. Worth review from whoever owns it.
@@ -354,6 +421,16 @@ already works.
    `/Applications/bb.app`, so moving or renaming the app breaks the user's shell
    until they edit their rc. This is visible and self-inflicted rather than
    mysterious, and it is the reason layer 2 exists.
+4. **Linux runtime prerequisites are outside our control.** `libfuse2` and
+   Chromium's shared libraries determine whether the command works at all. The
+   settings row and `bb install-cli` should detect and report these rather than
+   emitting a raw loader error, since both failures are confusing out of
+   context.
+5. **The AppImage path is recorded, not discovered.** Unlike macOS, where the
+   in-bundle wrapper always knows where it is, Linux depends on `$APPIMAGE`
+   captured at launch. Moving the AppImage while the app is closed leaves a
+   wrapper pointing at nothing until the app is next launched. The wrapper
+   reports this clearly, but it cannot self-repair without the app running.
 
 ## Open questions
 
