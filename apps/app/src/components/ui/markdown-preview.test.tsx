@@ -407,6 +407,25 @@ describe("MarkdownPreview", () => {
     expect(resolveSrc).toHaveBeenCalledTimes(2);
   });
 
+  it("leaves Cmd+click to the anchor default instead of in-app routing", () => {
+    const onOpenLink = vi.fn(() => true);
+    const href = "https://example.com/docs";
+
+    render(
+      <MarkdownPreview
+        content={`Open [docs](${href}).`}
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "docs" });
+    fireEvent.click(link, { metaKey: true });
+    expect(onOpenLink).not.toHaveBeenCalled();
+
+    fireEvent.click(link);
+    expect(onOpenLink).toHaveBeenCalledWith({ href });
+  });
+
   it("keeps absolute app-origin URLs on the app-route path", () => {
     const onOpenLink = vi.fn(() => true);
     const href = `${window.location.origin}/threads/thr_localhost`;

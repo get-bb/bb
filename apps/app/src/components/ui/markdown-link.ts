@@ -10,3 +10,14 @@ interface MarkdownPreviewLink {
  * anchor with its default behavior.
  */
 export type MarkdownPreviewLinkHandler = (link: MarkdownPreviewLink) => boolean;
+
+/**
+ * Cmd/Ctrl+click means "open this elsewhere" everywhere else in the OS, so it
+ * opts out of in-app routing and falls back to the external browser.
+ */
+export function isExternalBrowserModifierClick(event: {
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): boolean {
+  return event.metaKey || event.ctrlKey;
+}
