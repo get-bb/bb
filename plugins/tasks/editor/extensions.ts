@@ -454,6 +454,7 @@ export function createEditorExtensions(options?: {
       tightLists: true,
       bulletListMarker: "-",
       linkify: true,
+      transformPastedText: true,
     }),
   ];
 }

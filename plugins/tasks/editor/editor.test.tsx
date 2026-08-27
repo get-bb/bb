@@ -425,6 +425,26 @@ describe("TasksEditor component", () => {
     ).toBeTruthy();
   });
 
+  it("renders pasted Markdown as rich content", async () => {
+    const markdown =
+      "| Task |\n| --- |\n| [TSK-42](bbtask://TSK-42) |";
+    const onChange = vi.fn();
+    const screen = render(<TasksEditor value="" onChange={onChange} />);
+
+    fireEvent.paste(getEditorSurface(screen.container), {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === "text/plain" ? markdown : ""),
+      },
+    });
+
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
+    expect(
+      screen.container.querySelector('[data-task-mention="TSK-42"]'),
+    ).toBeTruthy();
+    expect(onChange.mock.lastCall?.[0]?.trimEnd()).toBe(markdown);
+  });
+
   it("routes pasted and dropped files to onAttachFiles instead of inline upload", () => {
     const onAttachFiles = vi.fn();
     const onUploadImage = vi.fn();
