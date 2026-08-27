@@ -175,15 +175,18 @@ export function SplitWorkspaceSecondaryPanelHost({
   // pane's panel shows next. Dragging it collapsed closes the window panel.
   const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
-  const handleEmptyPanelSnap = useCallback((leadingFraction: number) => {
-    panelGroupRef.current?.setLayout([
-      leadingFraction * 100,
-      (1 - leadingFraction) * 100,
-    ]);
-  }, []);
+  const handleEmptyPanelPointerResize = useCallback(
+    (leadingFraction: number) => {
+      panelGroupRef.current?.setLayout([
+        leadingFraction * 100,
+        (1 - leadingFraction) * 100,
+      ]);
+    },
+    [],
+  );
   const handleEmptyPanelResizePointerDownCapture = usePanelResizeSnap({
     axis: "x",
-    onSnap: handleEmptyPanelSnap,
+    onResize: handleEmptyPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
   const handleEmptyPanelResize = (size: number) => {

@@ -33,12 +33,15 @@ export function useSecondaryPanelResize({
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
   const isSecondaryPanelDraggingRef = useRef(false);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
-  const handleSecondaryPanelSnap = useCallback((leadingFraction: number) => {
-    secondaryResizablePanelRef.current?.resize((1 - leadingFraction) * 100);
-  }, []);
+  const handleSecondaryPanelPointerResize = useCallback(
+    (leadingFraction: number) => {
+      secondaryResizablePanelRef.current?.resize((1 - leadingFraction) * 100);
+    },
+    [],
+  );
   const handleSecondaryPanelResizePointerDownCapture = usePanelResizeSnap({
     axis: "x",
-    onSnap: handleSecondaryPanelSnap,
+    onResize: handleSecondaryPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
 

@@ -7,18 +7,19 @@ import {
 
 interface UsePanelResizeSnapArgs {
   axis: SplitResizeAxis;
-  onSnap: (leadingFraction: number) => void;
+  onResize: (leadingFraction: number) => void;
   target: SplitResizeGridTarget;
 }
 
 /**
- * Bridges react-resizable-panels' outer divider into bb's shared magnetic
- * split grid. The library applies its raw pointer layout first; this listener
- * runs afterward and overrides only samples captured by the snap session.
+ * Gives react-resizable-panels' outer divider the same single-writer drag path
+ * as bb's other split dividers. A window-capture listener resolves every
+ * pointer sample through the shared magnetic grid before the panel library's
+ * body listener can apply a second raw layout.
  */
 export function usePanelResizeSnap({
   axis,
-  onSnap,
+  onResize,
   target,
 }: UsePanelResizeSnapArgs): (event: PointerEvent) => void {
   const { boundaryIndex, childCount } = target;
@@ -54,11 +55,20 @@ export function usePanelResizeSnap({
       const end = axis === "x" ? nextRect.right : nextRect.bottom;
       if (end <= start) return;
 
-      const snapSession = createSplitResizeSnapSession(
-        divider,
-        axis,
-        { boundaryIndex, childCount },
+      const snapSession = createSplitResizeSnapSession(divider, axis, {
+        boundaryIndex,
+        childCount,
+      });
+      const grid = divider.closest<HTMLElement>(
+        "[data-split-resize-grid-root]",
       );
+      const transitionDuration = grid?.style.getPropertyValue(
+        "--panel-collapse-duration",
+      );
+      const transitionPriority = grid?.style.getPropertyPriority(
+        "--panel-collapse-duration",
+      );
+      grid?.style.setProperty("--panel-collapse-duration", "0ms");
       const pointerId = event.pointerId;
       const pointer = axis === "x" ? event.clientX : event.clientY;
       snapSession.resolve({ end, pointer, start });
@@ -73,6 +83,8 @@ export function usePanelResizeSnap({
       let finished = false;
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
         const nextPointer =
           axis === "x" ? moveEvent.clientX : moveEvent.clientY;
         const result = snapSession.resolve({
@@ -80,7 +92,7 @@ export function usePanelResizeSnap({
           pointer: nextPointer,
           start,
         });
-        if (result.snapped) onSnap(result.fraction);
+        onResize(result.fraction);
       };
       const finish = (finishEvent?: PointerEvent) => {
         if (finishEvent !== undefined && finishEvent.pointerId !== pointerId) {
@@ -88,24 +100,32 @@ export function usePanelResizeSnap({
         }
         if (finished) return;
         finished = true;
-        ownerDocument.body.removeEventListener("pointermove", move, true);
+        ownerWindow.removeEventListener("pointermove", move, true);
         ownerWindow.removeEventListener("pointerup", finish, true);
         ownerWindow.removeEventListener("pointercancel", finish, true);
         ownerWindow.removeEventListener("blur", finishOnBlur);
         snapSession.clear();
+        if (grid !== null) {
+          if (transitionDuration === "" || transitionDuration === undefined) {
+            grid.style.removeProperty("--panel-collapse-duration");
+          } else {
+            grid.style.setProperty(
+              "--panel-collapse-duration",
+              transitionDuration,
+              transitionPriority,
+            );
+          }
+        }
         if (cleanupRef.current === finish) cleanupRef.current = null;
       };
       const finishOnBlur = () => finish();
 
       cleanupRef.current = finish;
-      // react-resizable-panels installs its body capture listener first. The
-      // shared snap listener is added after pointer-down so it sees and can
-      // override the library's raw layout within the same event turn.
-      ownerDocument.body.addEventListener("pointermove", move, true);
+      ownerWindow.addEventListener("pointermove", move, true);
       ownerWindow.addEventListener("pointerup", finish, true);
       ownerWindow.addEventListener("pointercancel", finish, true);
       ownerWindow.addEventListener("blur", finishOnBlur);
     },
-    [axis, boundaryIndex, childCount, clear, onSnap],
+    [axis, boundaryIndex, childCount, clear, onResize],
   );
 }
