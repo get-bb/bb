@@ -9,9 +9,10 @@ prepends the daemon bundle directory and sets `BB_CLI`), and on `PATH` nowhere
 else. A user with only the desktop app installed has no `bb` in their own
 terminal.
 
-The in-repo comment at `plugins/automations/src/script-runner.ts:15-20` already
-names this: "on a packaged install bb lives in the daemon bundle directory,
-which is on no shell `PATH`."
+The in-repo comment at `plugins/automations/src/script-runner.ts:44-47` already
+names this: "the server process does not reliably inherit a `PATH` containing
+bb: on a packaged install bb lives in the daemon bundle directory, which is on
+no shell `PATH`."
 
 ## Scope: which distribution modes actually need this
 
@@ -19,12 +20,14 @@ which is on no shell `PATH`."
 | --- | --- | --- |
 | `npm i -g bb-app` | Yes, npm links the `bb` bin | No |
 | `npx bb-app` | Ephemeral by design | No |
-| Local dev checkout | `pnpm bb` / `pnpm bb:dev` | No |
+| Local dev checkout | `pnpm bb:dev`, or `./bin/bb` (appendix A) | No |
 | Agent subprocess inside bb | Yes, via `runtime-shell-env.ts` | No |
 | **Packaged macOS `.app`** | No | **Yes** |
 | **Packaged Linux AppImage** | No | **Yes** |
 
-Two cells of six. The feature is scoped to packaged desktop installs.
+Two cells of six. **The feature is scoped to packaged desktop installs**, and
+every surface it adds is gated on `app.isPackaged`. Dev builds install nothing;
+see "Deferred: `bb-dev`" for why that is a decision rather than an oversight.
 
 **Windows is out of scope and cannot be in scope.**
 `apps/desktop/scripts/desktop-release-channel.mjs:25` throws on any platform
@@ -39,17 +42,32 @@ app you actually have open. The value proposition is version lock: the `bb` you
 type is the `bb` your app runs. That promise is the whole feature, and any
 design that lets it silently become false is worse than shipping nothing.
 
-## Design: three layers
+## Design
 
-### Layer 1: `bin/bb` inside the bundle
+The user-visible feature is one directory, `~/.bb/bin`, added to `PATH` once.
+Everything else exists to keep that one line working.
+
+Two things are worth stating before the layer descriptions, because the layer
+names otherwise imply a uniformity that does not exist:
+
+- **Layer 1 is macOS-only.** On Linux there is no stable path inside the
+  bundle, so layer 2 uses a different mechanism there. "Layer 2 wraps layer 1"
+  is true on macOS and false on Linux.
+- **Layer 1 is not primarily a user-facing affordance.** Its job is to keep the
+  exec incantation and the bundle-internal path *inside the bundle*, versioned
+  with the app, so that a layer-2 wrapper written months ago does not need to
+  know today's internal layout. Putting the bundle's `bin` directory on `PATH`
+  directly is a supported side effect, not the reason it exists (see Risk 3).
+
+### Layer 1: `bin/<name>` inside the bundle (macOS)
 
 electron-builder ships a wrapper script at `<app>/Contents/Resources/bin/<name>`
-via `extraResources`. The script locates itself with `$0` plus `realpath`, walks
-up to the bundle root, and execs the app's own Electron as node:
+via `extraResources`. The script locates itself with `$0` plus a symlink walk,
+walks up to the bundle root, and execs the app's own Electron as node:
 
 ```sh
 #!/usr/bin/env bash
-SELF=$(realpath "$0")
+SELF=$(resolve_symlinks "$0")
 APP=$(dirname "$(dirname "$(dirname "$(dirname "$SELF")")")")
 export BB_NODE_OPTIONS="$NODE_OPTIONS"; unset NODE_OPTIONS
 exec env ELECTRON_RUN_AS_NODE=1 \
@@ -58,7 +76,8 @@ exec env ELECTRON_RUN_AS_NODE=1 \
 ```
 
 Because the wrapper lives inside the bundle, it needs no resolution chain, no
-recorded install path, and no refresh. It moves with the app.
+recorded install path, and no refresh. It moves with the app, and it is the
+single place that knows the internal layout.
 
 This mirrors VS Code's `Contents/Resources/app/bin/code`, generated from
 `resources/darwin/bin/code.sh` by `build/gulpfile.vscode.ts`.
@@ -67,12 +86,12 @@ This mirrors VS Code's `Contents/Resources/app/bin/code`, generated from
 invocation, invocation via `PATH`, and invocation through a symlink in a
 separate directory all return the correct version.
 
-The snippet above is illustrative; `<name>` and `<executable>` are templated at
-build time from the release channel. Note that `realpath(1)` is the BSD variant
-on macOS and was not always present on older releases. VS Code hand-rolls a
-symlink walk in `code.sh` rather than depending on it. Either confirm the
-minimum supported macOS ships `/bin/realpath` or hand-roll the walk; do not
-assume GNU `realpath` semantics.
+`<name>` and `<executable>` are templated at build time from the release
+channel.
+
+**Hand-roll the symlink walk; do not depend on `realpath(1)`.** It is the BSD
+variant on macOS and was not always present. VS Code hand-rolls the walk in
+`code.sh` for this reason, and `bin/bb` in this repo already does (appendix A).
 
 **The `NODE_OPTIONS` stash is required.** With `NODE_OPTIONS` set in the
 environment, Electron prints
@@ -83,22 +102,24 @@ appear on every single command. Stash rather than discard, so the CLI can
 re-apply it to any node child it spawns; VS Code does the same via
 `VSCODE_NODE_OPTIONS`.
 
-A user can stop here:
+#### Packaging surface, unverified
 
-```sh
-export PATH="/Applications/bb.app/Contents/Resources/bin:$PATH"
-```
+`apps/desktop/electron-builder.config.json` has **no `extraResources` key
+today**. Layer 1 adds one, plus a build step to template the channel name into
+the script. Two things to confirm during implementation rather than assume:
+
+- that the executable bit survives packaging (electron-builder is expected to
+  preserve mode, but a non-executable wrapper is a classic and silent failure)
+- that the templating step runs for both channels and for both arches
 
 ### Layer 2: `~/.bb/bin`, refreshed on launch
 
-On startup the app writes a small generated wrapper to `~/.bb/bin/<name>`
-pointing at its own layer-1 wrapper.
+On startup the app writes a small generated wrapper to `~/.bb/bin/<name>`.
 
-**This is the layer that matters most to users.** It is added to `PATH` exactly
+**This is the layer that matters to users.** It is added to `PATH` exactly
 once, by hand, and then never touched again: it is independent of where the app
 is installed, which channel is installed, and whether the app has since moved or
 updated. That makes it dotfiles-portable, which a bundle-internal path is not.
-Everything else in this design exists to make this one line keep working:
 
 ```sh
 export PATH="$HOME/.bb/bin:$PATH"
@@ -109,6 +130,13 @@ all corrected on the next launch.
 
 `~/.bb/` is already the app's data directory, so this writes nothing outside
 territory the app already owns. No privilege escalation, ever.
+
+**What it points at differs by platform:**
+
+| | Layer 2 target |
+| --- | --- |
+| macOS `.app` | the layer-1 wrapper at `<app>/Contents/Resources/bin/<name>` |
+| Linux AppImage | the recorded `$APPIMAGE` path, plus a bootstrap sidecar |
 
 **A generated wrapper, not a symlink, on both platforms.** A symlink would be
 the obvious macOS choice, but when the app is deleted a dangling symlink reports
@@ -122,7 +150,8 @@ bb: reinstall it, or remove ~/.bb/bin/bb
 ```
 
 Using a wrapper on both platforms also collapses macOS and Linux into a single
-code path instead of two.
+code path for generation, refresh, and the not-installed diagnostic, even though
+the exec line inside differs.
 
 ### Layer 3: settings row
 
@@ -133,15 +162,22 @@ vocabulary.
 
 It shows:
 
-- whether `~/.bb/bin` is on the user's login `PATH`, probed with the existing
-  `apps/desktop/src/desktop-shell-path.ts` mechanism
+- whether `~/.bb/bin` is on the user's login `PATH`
 - the resolved command name and the version it reports, next to the app's own
   version, so skew is visible rather than silent
+- every `bb` on `PATH`, flagging when the app's own entry is not first
 - the `export` line, and an action to append it to the detected shell profile
 
-Gated on `getBbDesktopInfo()?.cliCommand !== undefined`, the existing
-feature-detect idiom in `apps/app/src/lib/bb-desktop.ts:111-117`, so web and
-older desktop shells simply do not render it.
+Gated on `getBbDesktopInfo()?.cliCommand !== undefined`, matching the
+feature-detect idiom used by `getDesktopBrowserApi()` in
+`apps/app/src/lib/bb-desktop.ts`, so web and older desktop shells simply do not
+render it.
+
+**Login-PATH probing is unverified.** `apps/desktop/src/desktop-shell-path.ts`
+exports exactly one function, `ensurePackagedUserShellPath`. That its mechanism
+can be reused to *report* the login `PATH` rather than to *ensure* one is an
+assumption; confirm before designing the row around it, and be prepared to
+extract a read-only probe from it.
 
 ## Where the code lives
 
@@ -167,13 +203,13 @@ host-local action rather than a server resource.
 
 ## Naming
 
-Channel-suffixed, no bare-`bb` opt-in:
+Channel-suffixed:
 
-| Channel | Command |
+| Channel | Command installed |
 | --- | --- |
 | stable | `bb` |
 | nightly | `bb-nightly` |
-| dev | `bb-dev` (see below) |
+| dev (unpackaged) | none, by design |
 
 This matches the policy already established for Linux executables at
 `apps/desktop/scripts/desktop-release-channel.mjs:37-39`, which names the
@@ -186,20 +222,23 @@ varies. Because layer 1 supports adding the bundle's `bin` directory to `PATH`
 directly, ours must be per-channel; otherwise putting both channels' `bin`
 directories on `PATH` means one silently shadows the other.
 
-### Known consequence: the `bb-cli` skill
+### Ships with this feature: templating the `bb-cli` skill
 
-`apps/server/src/services/skills/global-skill-install.ts` generates a
-`bb-cli` skill installed into `~/.agents/skills` and `~/.claude/skills`, telling
+`apps/server/src/services/skills/global-skill-install.ts:21` installs a
+generated `bb-cli` skill into `~/.agents/skills` and `~/.claude/skills`, telling
 agents outside bb to run `bb`. On a nightly-only machine that command does not
-exist. The generated skill must be templated with the command name the app
-actually installs. Cheap now, annoying later.
+exist, so the skill instructs agents to run something that is not there.
+
+**The generated skill must be templated with the command name the app actually
+installs.** This is a requirement of shipping channel-suffixed names, not a
+nice-to-have, and it belongs in the same change.
 
 ## Platform matrix
 
 | | Layer 1 (in-bundle `bin/`) | Layer 2 (`~/.bb/bin`) |
 | --- | --- | --- |
-| macOS `.app` | Works, stable path | Generated wrapper |
-| Linux AppImage | **Not possible** | Generated wrapper |
+| macOS `.app` | Works, stable path | Wrapper to layer 1 |
+| Linux AppImage | **Not possible** | Wrapper to `$APPIMAGE` + bootstrap |
 
 An AppImage self-mounts at `/tmp/.mount_bbXXXX`, a different ephemeral path
 every launch, so no path inside it is stable enough to put on `PATH`. Layer 1
@@ -207,6 +246,9 @@ does not exist on Linux. Layer 2 covers it: at launch the app writes a wrapper
 into `~/.bb/bin/<name>` that re-invokes the AppImage file recorded from
 `process.env.APPIMAGE`. Moving the AppImage breaks the command until the app is
 next launched, at which point it self-heals.
+
+The consequence for implementation: layer 2's generator has two exec-line
+templates, and layer 1 is a macOS-only build artifact.
 
 ### Linux mechanism, verified
 
@@ -301,6 +343,19 @@ Two consequences worth stating:
   paths differ and it re-execs to nightly automatically. The correct binary wins
   without this design doing anything.
 
+### The automations plugin's own bb resolver
+
+`plugins/automations/src/script-runner.ts` has a third resolution path:
+`resolveBbBinary` walks a stat-ed candidate list (`bbBinaryCandidates`) to put
+bb on an automation script's `PATH`, returning null rather than throwing.
+
+Once `~/.bb/bin` exists it becomes a candidate that resolver can find, which is
+probably an improvement. **Confirm the ordering during implementation**: if the
+expanded `PATH` yields `~/.bb/bin/bb` ahead of the daemon bundle's own binary,
+an automation running inside a nightly app could resolve stable's wrapper. The
+`BB_CLI` re-exec above should correct it, but that composition has not been
+exercised.
+
 ### A globally installed `bb-app` (npm/pnpm)
 
 Both provide `bb`; `PATH` order decides, and the loser is invisible. This is the
@@ -319,8 +374,11 @@ disappears on a node version switch. `~/.bb/bin` has no such coupling.
 With `~/.bb/bin` on `PATH`, typing `bb` in a checkout runs the **packaged app's**
 CLI against the packaged app's server and `~/.bb` data directory, not the
 checkout's dev instance. That is the correct and predictable behavior, but it is
-surprising while working on bb. This is what `bb-dev` is for, and the docs must
-say so plainly.
+surprising while working on bb.
+
+The answer for v1 is `./bin/bb` from the checkout (appendix A) or
+`pnpm bb:dev`. The docs must say so plainly, because this is the one case where
+the version-lock promise points at an app the developer did not mean.
 
 ### Both channels installed
 
@@ -352,15 +410,113 @@ guaranteed absolute path should use `BB_CLI`.
   `/usr/local/bin`; we deliberately do not, which is the main reason for
   choosing `~/.bb/bin` over `/usr/local/bin`.
 
-## Local dev: `<repo>/bin/bb`
+## Testing
 
-The packaged app ships `bin/bb` inside its bundle (layer 1). The repo now ships
-the same affordance for a checkout: `bin/bb` at the repo root, run as
-`./bin/bb`.
+- Wrapper generation: snapshot per platform and channel.
+- Wrapper resolution: exec a generated wrapper from a temp directory, directly
+  and through a symlink, and assert it reports the expected version.
+- `NODE_OPTIONS` hygiene: assert stderr is clean when `NODE_OPTIONS` is set.
+- Layer 2 refresh: idempotent on repeated launch; corrects a stale link;
+  leaves a foreign file untouched and reports it.
+- Layer 1 packaging: assert the shipped wrapper is present and executable in a
+  built bundle, for both channels.
+- `bb-cli` skill templating: the generated skill names the channel's command.
+- Path computation follows the `apps/desktop/test/app-paths.test.ts` pattern.
 
-It exists because the obvious shortcuts are both wrong. `pnpm bb:dev` is
-correct but pays pnpm and turbo startup on every invocation and must be run from
-the repo. `apps/cli/bin/bb` is already present and is *not* equivalent: it execs
+## Risks
+
+1. ~~`ELECTRON_RUN_AS_NODE` through an AppImage `AppRun` is unverified.~~
+   **Retired.** Spiked against the published x86_64 AppImage in an amd64
+   OrbStack machine; environment and arguments both pass through, headless, and
+   the full wrapper works end to end. See "Linux mechanism, verified" above.
+2. **Layer 1 changes the packaging surface.** `extraResources` is a net-new key
+   in `electron-builder.config.json`, plus a build step to template the channel
+   name into the script, plus an unconfirmed assumption about the executable
+   bit. This touches the release pipeline and is worth review from whoever owns
+   it.
+3. **Putting the bundle's `bin` on `PATH` directly is a sharp edge.** The
+   `PATH` line would contain `/Applications/bb.app`, so moving or renaming the
+   app breaks the user's shell until they edit their rc. Layer 2 exists so that
+   nobody has to do this, and the docs should not present it as an option;
+   layer 1 is an implementation detail with a usable side effect, not a
+   recommended setup.
+4. **Linux runtime prerequisites are outside our control.** `libfuse2` and
+   Chromium's shared libraries determine whether the command works at all. The
+   settings row and `bb install-cli` should detect and report these rather than
+   emitting a raw loader error, since both failures are confusing out of
+   context.
+5. **The AppImage path is recorded, not discovered.** Unlike macOS, where the
+   in-bundle wrapper always knows where it is, Linux depends on `$APPIMAGE`
+   captured at launch. Moving the AppImage while the app is closed leaves a
+   wrapper pointing at nothing until the app is next launched. The wrapper
+   reports this clearly, but it cannot self-repair without the app running.
+
+## Deferred: `bb-dev`
+
+**Not in v1.** A dev-channel command is the most optional part of this design
+and the least resolved, and cutting it is what lets the rest be scoped cleanly
+to packaged installs.
+
+Why it is categorically different from `bb` and `bb-nightly`, and therefore
+cannot simply be a third row in the Naming table: those are app-owned, one
+bundle each, self-refreshed on launch. There is no single dev app to own
+`bb-dev`, because a developer has N checkouts, each with its own instance. If
+the dev desktop app wrote `~/.bb/bin/bb-dev` pointing at itself, whichever
+checkout was launched last would hijack every other one. Any `bb-dev` must
+therefore resolve from `$PWD` at call time, which makes it a different kind of
+artifact from everything else here.
+
+What already covers the need:
+
+- `./bin/bb` from a checkout (appendix A), pinned to the checkout it lives in
+- `eval "$(scripts/bb-dev-app env)"; pnpm bb:dev`
+- `ln -s /path/to/checkout/bin/bb ~/.bb/bin/bb-<name>` for a per-checkout command
+
+**Precedent.** VS Code deliberately ships no working install-in-PATH for source
+builds. The palette entry appears (the action has no dev gate) but fails,
+because `getShellCommandLink()` resolves `<appRoot>/bin/code` and `bin/code`
+only exists as a build artifact. Their documented answer is
+`./scripts/code-cli.sh`, run from the repo.
+
+### What a follow-up would have to resolve
+
+A spike derived ports from `$PWD` and matched `scripts/bb-dev-app status`
+exactly for two live checkouts (offsets 1470 and 7817). That is real, but it is
+narrower than it looks, and three things block turning it into a design:
+
+- **The derivation is not `realpath`-based.** `scripts/bb-dev-app:167` hashes
+  `path.resolve(repoRoot)`, which does not resolve symlinks, and
+  `packages/config/src/runtime.ts:104` hashes whatever string it is handed. A
+  symlinked checkout path, or anything under macOS's `/tmp`, can therefore
+  derive a different instance than the tooling it is meant to match. The two
+  checkouts that matched had no symlink in their paths.
+- **Ports are not enough.** `resolveCurrentDevProcessEnv`
+  (`packages/config/src/runtime.ts:341`) produces a full environment: data
+  directory, instance id, `NODE_ENV`, `BB_SERVER_URL`. A standalone `bb-dev`
+  would need to reproduce all of it, and nothing has established which parts the
+  CLI actually depends on.
+- **It would be a third implementation of the same derivation.** See below.
+  Shelling out to `scripts/bb-dev-app env` avoids that but reintroduces the
+  problem of finding a checkout's script from a checkout-agnostic command.
+
+### Noticed, out of scope
+
+`scripts/bb-dev-app` reimplements the port derivation in shell, duplicating
+`resolveDevInstanceConfig` in TypeScript. **These are already out of sync**, not
+merely at risk of drifting: `resolvePorts` emits `cloudPort` (through
+`reservePackagedAppPorts`) and `cloudWorkerPort`; the shell version emits only
+app, server, and daemon. Worth a separate issue.
+
+## Appendix A: `<repo>/bin/bb` (local dev, already landed)
+
+Not part of this feature. Recorded here because the design references it as the
+in-checkout answer, and because the reasoning behind its shape is reused by
+layer 1.
+
+The repo ships `bin/bb` at its root, run as `./bin/bb`. It exists because the
+obvious shortcuts are both wrong. `pnpm bb:dev` is correct but pays pnpm and
+turbo startup on every invocation and must be run from the repo.
+`apps/cli/bin/bb` is already present and is *not* equivalent: it execs
 `apps/cli/dist/index.js` directly and never sets the dev environment, so it
 targets the packaged app rather than the checkout's dev instance.
 
@@ -377,18 +533,17 @@ a link at the repo root computes `CLI_ENTRY` as `<repo>/dist/index.js` and
 `REPO_ROOT` as two levels above the repo. It fails, and it fails confusingly.
 `bin/bb` therefore walks symlinks by hand rather than depending on `realpath(1)`,
 which is the BSD variant on macOS and has not always been present. This is the
-same reason VS Code hand-rolls the walk in `code.sh`.
+same reason VS Code hand-rolls the walk in `code.sh`, and the same reason layer
+1 does.
 
-The walk also makes one pattern deliberate rather than accidental:
-
-| | Resolves via | Meaning |
-| --- | --- | --- |
-| `<repo>/bin/bb` | `$0`, symlinks resolved | Pinned to the checkout it lives in |
-| `bb-dev` | `$PWD` | Whichever checkout you are standing in |
+The walk also makes one pattern deliberate rather than accidental: `bin/bb`
+resolves via `$0` with symlinks resolved, so it is pinned to the checkout it
+lives in, no matter where it is invoked from or symlinked to. A hypothetical
+`bb-dev` would resolve via `$PWD` instead, meaning whichever checkout you are
+standing in. The two are easy to confuse and should not share a naming scheme.
 
 So `ln -s /path/to/checkout/bin/bb ~/.bb/bin/bb-main` yields a command
-permanently bound to that checkout, which is useful next to `bb-dev` as long as
-the two are not confused.
+permanently bound to that checkout.
 
 **Do not add `<repo>/bin` to `PATH`.** It provides `bb`, which would shadow a
 packaged app's `bb` depending on order. That is the silent-wrong-version failure
@@ -404,90 +559,10 @@ target the checkout's dev instance by observing the request land on
 `127.0.0.1:26817/api/v1/projects`, the port derived for that repo root, rather
 than the packaged app's 38886.
 
-## `bb-dev` (assumption, needs confirmation)
-
-`bb-dev` is categorically different from `bb` and `bb-nightly`. Those are
-app-owned: one bundle each, self-refreshed on launch. There is no single dev app
-to own `bb-dev`, because a developer has N checkouts, each with its own
-instance. If the dev desktop app wrote `~/.bb/bin/bb-dev` pointing at itself,
-whichever checkout was launched last would hijack every other one.
-
-**Assumption taken, pending confirmation:** `bb-dev` ships as a static,
-checkout-agnostic repo script (`scripts/bb-dev-cli`), **copied** into
-`~/.bb/bin/bb-dev` once. It is never rewritten, because it resolves at call
-time. The settings row is hidden when `app.isPackaged === false`.
-
-Copied rather than symlinked, for the same reason layer 2 is a wrapper: the
-script is self-contained and checkout-agnostic, so a symlink into one particular
-checkout would break `bb-dev` for *every* checkout the moment that one is
-deleted, and would break it with a misleading `command not found`.
-
-It resolves the target instance from `$PWD` by walking up for a bb checkout,
-then reproducing the derivation in `scripts/bb-dev-app:160-200`:
-
-```
-hash   = sha256(realpath(repoRoot))
-offset = parseInt(hash[0:8], 16) % 8000
-app = 11000+offset   server = 19000+offset   daemon = 27000+offset
-```
-
-**Verified working** (spike): resolves correctly from a checkout root, from deep
-inside a checkout, and through a relative/symlinked path; errors cleanly outside
-any checkout. Derived ports matched `scripts/bb-dev-app status` exactly for two
-live checkouts (offsets 1470 and 7817).
-
-It should probe the derived server port and report "no dev server for this
-checkout, run `pnpm dev`" rather than surfacing a raw connection error.
-
-**Precedent note:** VS Code deliberately ships no working install-in-PATH for
-source builds. The palette entry appears (the action has no dev gate) but fails,
-because `getShellCommandLink()` resolves `<appRoot>/bin/code` and `bin/code`
-only exists as a build artifact. Their documented answer is
-`./scripts/code-cli.sh`, run from the repo. `bb-dev` is a deliberate improvement
-on that precedent, justified by bb's multi-checkout tooling, and it is the most
-optional part of this design: `eval "$(scripts/bb-dev-app env)"; pnpm bb:dev`
-already works.
-
-## Testing
-
-- Wrapper generation: snapshot per platform and channel.
-- Wrapper resolution: exec a generated wrapper from a temp directory, directly
-  and through a symlink, and assert it reports the expected version.
-- `NODE_OPTIONS` hygiene: assert stderr is clean when `NODE_OPTIONS` is set.
-- Layer 2 refresh: idempotent on repeated launch; corrects a stale link;
-  leaves a foreign file untouched and reports it.
-- `bb-dev` resolution: derived ports match `bb-dev-app` for a set of fixture
-  paths; clean error outside a checkout.
-- Path computation follows the `apps/desktop/test/app-paths.test.ts` pattern.
-
-## Risks
-
-1. ~~`ELECTRON_RUN_AS_NODE` through an AppImage `AppRun` is unverified.~~
-   **Retired.** Spiked against the published x86_64 AppImage in an amd64
-   OrbStack machine; environment and arguments both pass through, headless, and
-   the full wrapper works end to end. See "Linux mechanism, verified" above.
-2. **Layer 1 changes the packaging surface** (`extraResources`, plus a build
-   step to template the channel name into the script), which touches the release
-   pipeline. Worth review from whoever owns it.
-3. **Layer 1 without layer 2 has a sharp edge**: the `PATH` line contains
-   `/Applications/bb.app`, so moving or renaming the app breaks the user's shell
-   until they edit their rc. This is visible and self-inflicted rather than
-   mysterious, and it is the reason layer 2 exists.
-4. **Linux runtime prerequisites are outside our control.** `libfuse2` and
-   Chromium's shared libraries determine whether the command works at all. The
-   settings row and `bb install-cli` should detect and report these rather than
-   emitting a raw loader error, since both failures are confusing out of
-   context.
-5. **The AppImage path is recorded, not discovered.** Unlike macOS, where the
-   in-bundle wrapper always knows where it is, Linux depends on `$APPIMAGE`
-   captured at launch. Moving the AppImage while the app is closed leaves a
-   wrapper pointing at nothing until the app is next launched. The wrapper
-   reports this clearly, but it cannot self-repair without the app running.
-
 ## Open questions
 
-- Confirm the `bb-dev` assumption above, and confirm hiding the settings row in
-  dev builds.
+Both are small and can be answered during planning.
+
 - Does `bb install-cli` need an uninstall counterpart in v1, or is deleting the
   file sufficient?
 - Should layer 2 refresh happen on every launch, or only when the resolved
