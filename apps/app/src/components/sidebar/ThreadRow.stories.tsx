@@ -563,6 +563,25 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="long title + rich pills"
+        hint="title truncates in reading order through mention pills; hover reveals row actions"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            crossProjectId={null}
+            thread={makeThread({
+              title:
+                "Review this branch using @docs/CODE_REVIEW.md and @apps/app/src/components/sidebar/ThreadRow.tsx before merging",
+              titleFallback:
+                "Review this branch using @docs/CODE_REVIEW.md and @apps/app/src/components/sidebar/ThreadRow.tsx before merging",
+            })}
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="long title + draft"
         hint="title truncates before the right-aligned draft icon"
       >
