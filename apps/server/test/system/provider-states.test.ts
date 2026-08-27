@@ -74,6 +74,7 @@ describe("getProviderStates", () => {
         "claude-code",
         "pi",
         "acp-cursor",
+        "acp-junie",
         "acp-opencode",
       ]);
       expect(result.providers[0]).toMatchObject({
@@ -214,7 +215,7 @@ describe("getProviderStates", () => {
       expect(primaryCalls).toBe(0);
       expect(healthCwds.filter((cwd) => cwd === undefined)).toHaveLength(4);
       expect(healthCwds.filter((cwd) => cwd !== undefined)).toEqual(
-        Array(4).fill(environment.path),
+        Array(5).fill(environment.path),
       );
     });
   });
