@@ -167,7 +167,7 @@ const BUILTIN_TOOL_PRESENTATIONS: Readonly<
   },
   Skill: {
     label: { pending: "Loading skill", completed: "Loaded skill" },
-    glyph: "Puzzle",
+    glyph: "Zap",
     titleField: "skill",
   },
   StructuredOutput: {

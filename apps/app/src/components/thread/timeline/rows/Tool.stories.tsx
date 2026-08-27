@@ -36,6 +36,26 @@ const toolSearchTool: TimelineRow = toolRow({
   durationMs: 105,
 });
 
+const nativeSkillTool: TimelineRow = toolRow({
+  id: "thr_skill_native:tool:toolu_skill_native",
+  threadId: "thr_skill_native",
+  turnId: "turn_skill_native_1",
+  sourceSeqStart: 1,
+  sourceSeqEnd: 2,
+  status: "completed",
+  callId: "toolu_skill_native",
+  toolName: "Skill",
+  toolArgs: { skill: "visual-qa-loop" },
+  output: "Skill loaded",
+  approvalStatus: null,
+  durationMs: 120,
+  presentation: {
+    label: { pending: "Loading skill", completed: "Loaded skill" },
+    icon: { glyph: "Zap" },
+    title: "visual-qa-loop",
+  },
+});
+
 const longOutputTool: TimelineRow = toolRow({
   id: "thr_tool_long_output:tool:toolu_long_output",
   threadId: "thr_tool_long_output",
@@ -432,6 +452,21 @@ export function SkillReads() {
           </TimelineStage>
         </StoryRow>
       ))}
+    </StoryCard>
+  );
+}
+
+export function NativeSkillCall() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="Claude native Skill call"
+        hint="provider presentation uses the established lightning glyph"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows {...baseProps} timelineRows={[nativeSkillTool]} />
+        </TimelineStage>
+      </StoryRow>
     </StoryCard>
   );
 }
