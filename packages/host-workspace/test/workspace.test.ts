@@ -1245,6 +1245,26 @@ describe("Workspace", () => {
     expect(files).toEqual(["nested/notes.txt"]);
   });
 
+  it("does not overflow the call stack merging a large subdirectory", async () => {
+    const folder = await makeTempDir("bb-workspace-large-files-");
+    const nested = path.join(folder, "many");
+    await fs.mkdir(nested);
+    const fileCount = 150_000;
+    const batchSize = 500;
+    for (let start = 0; start < fileCount; start += batchSize) {
+      const end = Math.min(start + batchSize, fileCount);
+      await Promise.all(
+        Array.from({ length: end - start }, (_, offset) =>
+          fs.writeFile(path.join(nested, `f${start + offset}.txt`), ""),
+        ),
+      );
+    }
+
+    const files = await new Workspace(folder).listFiles();
+
+    expect(files).toHaveLength(fileCount);
+  }, 60_000);
+
   it("returns null when HEAD is unavailable in an empty repository", async () => {
     const repoPath = await makeTempDir("bb-workspace-empty-repo-");
     await runGit(["init", "-b", "main"], { cwd: repoPath });

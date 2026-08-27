@@ -429,12 +429,11 @@ async function listWorkspaceFilesRecursively(
     }
     const fullPath = path.join(args.dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(
-        ...(await listWorkspaceFilesRecursively({
-          dir: fullPath,
-          root: args.root,
-        })),
-      );
+      const childResults = await listWorkspaceFilesRecursively({
+        dir: fullPath,
+        root: args.root,
+      });
+      for (const childResult of childResults) results.push(childResult);
       continue;
     }
     results.push(path.relative(args.root, fullPath));
