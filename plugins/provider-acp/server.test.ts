@@ -103,6 +103,23 @@ describe("the ACP plugin's registrations", () => {
     expect(registeredIds(host)).toContain("acp-amp");
   });
 
+  it("registers a configured agent with one of the plugin's declared icons", async () => {
+    const host = await loadPlugin({
+      customAgents: customAgents({
+        id: "antigravity",
+        displayName: "Antigravity",
+        icon: "provider-acp/antigravity",
+        command: "agy-acp",
+      }),
+    });
+
+    expect(
+      host.harness.registrations.providerRegistrations.find(
+        (declaration) => declaration.id === "acp-antigravity",
+      )?.icon,
+    ).toBe("provider-acp/antigravity");
+  });
+
   // The documented override of an installed-only agent: one registration for
   // that id, and it is the user's.
   it("replaces a shipped installed-only agent with a configured one", async () => {

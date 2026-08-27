@@ -117,7 +117,8 @@ Each entry needs id (lowercase letters, digits and dashes), displayName, and
 command. bb derives provider id acp-<id> from the slug id. The id is permanent.
 The id cursor is reserved because bb always lists that agent. The ids opencode,
 omp, grok and hermes-agent are not reserved, so an entry with one of those ids
-replaces the shipped agent. Use args, env, and cwd for the launch, modelCli
+replaces the shipped agent. Use icon for a host glyph or one of the ACP
+plugin's declared marks, args, env, and cwd for the launch, modelCli
 for CLI model listing/selection, reasoningCli for launch-time reasoning flags,
 nativeReasoning for ACP session/set_config_option reasoning, permissionCli for
 permission-mode launch flags, and dialect (cursor, opencode, omp, or grok) for
@@ -133,9 +134,9 @@ config refresh is needed.
 
 The old customAcpAgents array in the app data-dir config.json is deprecated. bb
 still reads it and logs a warning for each agent it finds, until 0.41. Move each
-entry into the customAgents setting. The shapes match except for logo, which the
-setting does not accept: bb drops that field when it reads the old array, and a
-configured agent shows the generic tool glyph.
+entry into the customAgents setting. The shapes match except that the setting
+uses icon instead of logo: bb drops the old field when it reads the deprecated
+array. icon accepts a host glyph or an asset declared by the ACP plugin.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

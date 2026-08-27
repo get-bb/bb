@@ -171,7 +171,8 @@ You can still use the Pi CLI and `/login` to create this configuration.
 
 Custom ACP agents are configured through the ACP providers plugin's
 `customAgents` setting: `bb plugin config provider-acp set customAgents
-'[...]'`. See the configuration docs for the optional `modelCli` and
+'[...]'`. The optional `icon` field selects a host glyph or an ACP
+plugin-declared mark. See the configuration docs for the optional `modelCli` and
 `reasoningCli` or `nativeReasoning` reasoning settings. The optional
 `nativeSkillRoots` field adds provider-native skills to the composer. Its
 `user` paths resolve from the target host home directory. Its `project` paths

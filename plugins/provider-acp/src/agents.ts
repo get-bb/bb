@@ -104,6 +104,7 @@ export const customAcpAgentSchema = z
   .object({
     id: z.string().regex(SLUG_PATTERN),
     displayName: z.string().min(1),
+    icon: z.string().min(1).optional(),
     command: z.string().min(1),
     args: z.array(z.string()).default([]),
     env: z.record(z.string().regex(ENV_NAME_PATTERN), z.string()).default({}),
@@ -119,7 +120,7 @@ export const customAcpAgentSchema = z
   .strict();
 export type CustomAcpAgent = z.infer<typeof customAcpAgentSchema>;
 
-/** The glyph a user-configured agent shows in the picker. */
+/** The fallback glyph a user-configured agent shows in the picker. */
 const CUSTOM_AGENT_GLYPH = "Toolbox";
 
 /**
@@ -148,7 +149,7 @@ export function customAcpAgentDefinition(
   return {
     id: formatCustomAcpProviderId(agent.id),
     displayName: agent.displayName,
-    icon: CUSTOM_AGENT_GLYPH,
+    icon: agent.icon ?? CUSTOM_AGENT_GLYPH,
     launch: {
       displayName: agent.displayName,
       command: agent.command,

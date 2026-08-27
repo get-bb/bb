@@ -347,7 +347,9 @@ lists only where the agent is installed (`opencode`, `omp`, `grok`,
 A replacing entry keeps the shipped agent's `nativeSkillRoots` unless it sets
 its own, and bb still lists the roots that agent's host config names (its
 config directory, compat trees, configured paths, plugins) either way.
-Optional fields: `args`, `env`, `cwd`, `modelCli` (CLI model listing and
+Optional fields: `icon` (a host glyph such as `Sparkles`, or one of this
+plugin's declared marks such as `provider-acp/antigravity`), `args`, `env`,
+`cwd`, `modelCli` (CLI model listing and
 selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 (ACP `session/set_config_option` reasoning), `nativeSkillRoots` (native skills
 in the composer, as `{"user": [...], "project": [...]}` relative paths; an
@@ -370,11 +372,11 @@ Before ACP agents were plugin-owned, custom agents lived in `customAcpAgents`
 in `~/.bb/config.json`. bb still **reads** that array so an existing agent keeps
 working, logs a deprecation warning for each one, and never writes to it.
 Support ends in 0.41 — move each entry into the `customAgents` setting above.
-The two shapes are identical except that the setting has no `logo` field: a
-plugin-registered provider's icon is a host glyph or an asset the plugin ships,
-so a configured agent shows the generic tool glyph, and bb drops the field when
-it reads the old array. A setting entry wins over a config entry with the same
-`id`.
+The two shapes are identical except that the setting replaces `logo` with
+`icon`: a plugin-registered provider can use a host glyph or an asset the plugin
+ships, but it cannot read an arbitrary data-directory image. bb drops the old
+field when it reads the deprecated array. A setting entry wins over a config
+entry with the same `id`.
 
 ## Custom Models
 

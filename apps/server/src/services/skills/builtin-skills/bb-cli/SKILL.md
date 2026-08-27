@@ -350,7 +350,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   `cursor` is reserved; `opencode`, `omp`, `grok` and `hermes-agent` are not,
   so an entry with one of those ids replaces the shipped agent. The plugin
   re-registers as soon as the setting changes. The configured command is local code execution and only works with a
-  co-located daemon. Optional per-agent fields: `args`, `env`, `cwd`,
+  co-located daemon. Optional per-agent fields: `icon` (a host glyph or an ACP
+  plugin-declared mark), `args`, `env`, `cwd`,
   `modelCli`, `reasoningCli`, `nativeReasoning`, `nativeSkillRoots`
   (`{"user": [...], "project": [...]}` relative paths), `permissionCli`,
   `supportsManualCompaction`, and `dialect` (`cursor`, `opencode`, `omp`, or

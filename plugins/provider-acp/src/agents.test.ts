@@ -149,6 +149,25 @@ describe("parseCustomAcpAgents", () => {
 });
 
 describe("customAcpAgentDefinition", () => {
+  it("uses a configured icon instead of the generic tool glyph", () => {
+    const [agent] = parseCustomAcpAgents({
+      entries: [
+        {
+          id: "antigravity",
+          displayName: "Antigravity",
+          icon: "provider-acp/antigravity",
+          command: "agy-acp",
+        },
+      ],
+      reservedProviderIds: reserved,
+    }).agents;
+    if (agent === undefined) throw new Error("expected the agent to parse");
+
+    expect(customAcpAgentDefinition(agent).icon).toBe(
+      "provider-acp/antigravity",
+    );
+  });
+
   it("carries the launch spec and drops a model CLI with nothing to list", () => {
     // Through the schema, because dropping an empty model CLI is the launch
     // spec schema's own rule, not something the definition builder does.

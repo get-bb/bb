@@ -43,9 +43,9 @@ function legacyConfigPath(dataDir: string): string {
  *
  * The old config let a user point at a logo file, which the server served
  * from a route of its own. A plugin's icon is a host glyph or an asset the
- * plugin ships, so a configured agent takes the generic glyph. Stripping it
- * HERE, in the module that dies with the deprecation, is what lets the
- * `customAgents` setting schema stay strict about a field it does not have.
+ * plugin ships, so the replacement setting uses `icon` instead. Stripping
+ * `logo` HERE, in the module that dies with the deprecation, keeps the new
+ * setting strict rather than silently treating a data-dir path as a glyph.
  */
 function withoutLegacyLogo(entry: unknown): unknown {
   if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -79,13 +79,18 @@ export async function readLegacyCustomAcpAgents(
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    return { entries: [], problem: `${path} is not valid JSON: ${String(error)}` };
+    return {
+      entries: [],
+      problem: `${path} is not valid JSON: ${String(error)}`,
+    };
   }
   const config = legacyConfigSchema.safeParse(parsed);
   if (!config.success) {
     return { entries: [], problem: `${path} is not a bb config file` };
   }
-  return { entries: (config.data.customAcpAgents ?? []).map(withoutLegacyLogo) };
+  return {
+    entries: (config.data.customAcpAgents ?? []).map(withoutLegacyLogo),
+  };
 }
 
 /** The deprecation notice for one legacy agent, ready to log. */
