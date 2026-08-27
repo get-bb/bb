@@ -3,18 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Limit how many threads run at once, globally, per host, per provider, or by host load.",
+  "description": "Limit how many threads run at once, in total and per host.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Concurrency limit",
-    "description": "Limit how many threads run at once, globally, per host, per provider, or by host load.",
+    "description": "Limit how many threads run at once, in total and per host.",
     "branding": {
       "icon": "Pause"
     },
-    "server": "./server.ts",
-    "host": "./host.ts"
+    "server": "./server.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -22,9 +21,6 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

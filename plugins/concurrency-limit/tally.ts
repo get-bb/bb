@@ -27,8 +27,8 @@
 // observed set. `settled` makes that decision once per thread, so a duplicate
 // free (idle then archived) cannot decrement the baseline twice.
 
-import type { DispatchScope, ScopeKey } from "./scope.js";
-import { GLOBAL_SCOPE_KEY, hostScopeKey, providerScopeKey } from "./scope.js";
+import type { ScopeKey } from "./scope.js";
+import { GLOBAL_SCOPE_KEY, hostScopeKey } from "./scope.js";
 
 /**
  * How long a `proceed` stays counted before we stop believing in it.
@@ -46,43 +46,30 @@ export interface SeedCounts {
   global: number;
   /** Occupying threads per host id. */
   byHost: Record<string, number>;
-  /** Occupying threads per provider id. */
-  byProvider: Record<string, number>;
 }
 
-export const EMPTY_SEED: SeedCounts = {
-  global: 0,
-  byHost: {},
-  byProvider: {},
-};
-
 interface InFlight {
-  scope: DispatchScope;
+  hostId: string | null;
   expiresAt: number;
 }
 
-function matchesScope(scope: DispatchScope, key: ScopeKey): boolean {
+function matchesScope(hostId: string | null, key: ScopeKey): boolean {
   if (key === GLOBAL_SCOPE_KEY) return true;
-  if (scope.hostId !== null && hostScopeKey(scope.hostId) === key) return true;
-  if (scope.providerId !== null && providerScopeKey(scope.providerId) === key) {
-    return true;
-  }
-  return false;
+  return hostId !== null && hostScopeKey(hostId) === key;
 }
 
 export class OccupancyTally {
   private baselineGlobal = 0;
   private baselineByHost = new Map<string, number>();
-  private baselineByProvider = new Map<string, number>();
 
-  /** Threads we watched become occupied since the last seed. */
-  private readonly occupied = new Map<string, DispatchScope>();
+  /** Threads we watched become occupied since the last seed, by host id. */
+  private readonly occupied = new Map<string, string | null>();
   /** Threads already accounted for as free, so a second free is a no-op. */
   private readonly settled = new Set<string>();
 
   /**
    * `thread.create` proceeds. There is no thread id yet, so these are matched
-   * to the `thread.created` event that follows by scope, oldest first.
+   * to the `thread.created` event that follows by host, oldest first.
    */
   private readonly pendingCreates: InFlight[] = [];
   /** `turn.submit` proceeds, which do have a thread id to key on. */
@@ -104,25 +91,23 @@ export class OccupancyTally {
     this.baselineByHost = new Map(
       Object.entries(counts.byHost).map(([id, n]) => [id, Math.max(0, n)]),
     );
-    this.baselineByProvider = new Map(
-      Object.entries(counts.byProvider).map(([id, n]) => [id, Math.max(0, n)]),
-    );
     this.occupied.clear();
     this.settled.clear();
   }
 
   /** A gate said `proceed` at `thread.create`. */
-  notePendingCreate(scope: DispatchScope, now: number): void {
-    this.pendingCreates.push({
-      scope,
-      expiresAt: now + IN_FLIGHT_TIMEOUT_MS,
-    });
+  notePendingCreate(hostId: string | null, now: number): void {
+    this.pendingCreates.push({ hostId, expiresAt: now + IN_FLIGHT_TIMEOUT_MS });
   }
 
   /** A gate said `proceed` at `turn.submit` for an existing thread. */
-  notePendingSubmit(threadId: string, scope: DispatchScope, now: number): void {
+  notePendingSubmit(
+    threadId: string,
+    hostId: string | null,
+    now: number,
+  ): void {
     this.pendingSubmits.set(threadId, {
-      scope,
+      hostId,
       expiresAt: now + IN_FLIGHT_TIMEOUT_MS,
     });
   }
@@ -130,42 +115,42 @@ export class OccupancyTally {
   /**
    * `thread.created`: the row now exists and the thread is starting. This is
    * where an anonymous create proceed becomes a tracked thread — matched by
-   * scope so that a create for host A does not consume the slot reserved for a
+   * host so that a create for host A does not consume the slot reserved for a
    * create on host B.
    */
-  noteCreated(threadId: string, scope: DispatchScope): void {
-    this.consumeMatchingCreate(scope);
-    this.markOccupied(threadId, scope);
+  noteCreated(threadId: string, hostId: string | null): void {
+    this.consumeMatchingCreate(hostId);
+    this.markOccupied(threadId, hostId);
   }
 
   /** `thread.active`: the thread is running. */
-  noteActive(threadId: string, scope: DispatchScope): void {
+  noteActive(threadId: string, hostId: string | null): void {
     this.pendingSubmits.delete(threadId);
-    this.markOccupied(threadId, scope);
+    this.markOccupied(threadId, hostId);
   }
 
   /** `thread.idle` / `failed` / `archived` / `deleted`: the slot is free. */
-  noteFreed(threadId: string, scope: DispatchScope): void {
+  noteFreed(threadId: string, hostId: string | null): void {
     this.pendingSubmits.delete(threadId);
     if (this.settled.has(threadId)) return;
     this.settled.add(threadId);
     if (this.occupied.delete(threadId)) return;
     // Never observed occupying, so its slot came from the seed.
-    this.releaseFromBaseline(scope);
+    this.releaseFromBaseline(hostId);
   }
 
   /** Current occupancy in a scope, in-flight proceeds included. */
   count(key: ScopeKey, now: number): number {
     this.sweep(now);
     let total = this.baselineFor(key);
-    for (const scope of this.occupied.values()) {
-      if (matchesScope(scope, key)) total += 1;
+    for (const hostId of this.occupied.values()) {
+      if (matchesScope(hostId, key)) total += 1;
     }
     for (const entry of this.pendingCreates) {
-      if (matchesScope(entry.scope, key)) total += 1;
+      if (matchesScope(entry.hostId, key)) total += 1;
     }
     for (const entry of this.pendingSubmits.values()) {
-      if (matchesScope(entry.scope, key)) total += 1;
+      if (matchesScope(entry.hostId, key)) total += 1;
     }
     return total;
   }
@@ -183,9 +168,9 @@ export class OccupancyTally {
     }
   }
 
-  private markOccupied(threadId: string, scope: DispatchScope): void {
+  private markOccupied(threadId: string, hostId: string | null): void {
     this.settled.delete(threadId);
-    this.occupied.set(threadId, scope);
+    this.occupied.set(threadId, hostId);
   }
 
   /**
@@ -203,22 +188,17 @@ export class OccupancyTally {
    * sit alongside the thread it belongs to, counting the same dispatch twice
    * until it expired.
    */
-  private consumeMatchingCreate(scope: DispatchScope): void {
+  private consumeMatchingCreate(hostId: string | null): void {
     const exact = this.pendingCreates.findIndex(
-      (entry) =>
-        entry.scope.hostId === scope.hostId &&
-        entry.scope.providerId === scope.providerId,
+      (entry) => entry.hostId === hostId,
     );
-    if (exact >= 0) {
-      this.pendingCreates.splice(exact, 1);
-      return;
-    }
-    const loose = this.pendingCreates.findIndex(
-      (entry) =>
-        (entry.scope.hostId === null || scope.hostId === null) &&
-        entry.scope.providerId === scope.providerId,
-    );
-    if (loose >= 0) this.pendingCreates.splice(loose, 1);
+    const index =
+      exact >= 0
+        ? exact
+        : this.pendingCreates.findIndex(
+            (entry) => entry.hostId === null || hostId === null,
+          );
+    if (index >= 0) this.pendingCreates.splice(index, 1);
   }
 
   private baselineFor(key: ScopeKey): number {
@@ -226,21 +206,13 @@ export class OccupancyTally {
     for (const [hostId, count] of this.baselineByHost) {
       if (hostScopeKey(hostId) === key) return count;
     }
-    for (const [providerId, count] of this.baselineByProvider) {
-      if (providerScopeKey(providerId) === key) return count;
-    }
     return 0;
   }
 
-  private releaseFromBaseline(scope: DispatchScope): void {
+  private releaseFromBaseline(hostId: string | null): void {
     this.baselineGlobal = Math.max(0, this.baselineGlobal - 1);
-    if (scope.hostId !== null) {
-      const current = this.baselineByHost.get(scope.hostId) ?? 0;
-      this.baselineByHost.set(scope.hostId, Math.max(0, current - 1));
-    }
-    if (scope.providerId !== null) {
-      const current = this.baselineByProvider.get(scope.providerId) ?? 0;
-      this.baselineByProvider.set(scope.providerId, Math.max(0, current - 1));
-    }
+    if (hostId === null) return;
+    const current = this.baselineByHost.get(hostId) ?? 0;
+    this.baselineByHost.set(hostId, Math.max(0, current - 1));
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HoldRegistry, type HeldRecord } from "./holds.js";
-import { GLOBAL_SCOPE_KEY, hostScopeKey, providerScopeKey } from "./scope.js";
+import { GLOBAL_SCOPE_KEY, hostScopeKey } from "./scope.js";
 
 const HOLDER = "plugin:concurrency-limit";
 
@@ -43,11 +43,11 @@ describe("attributing a hold to the limit that caused it", () => {
     // reason matching is what keeps attribution right if they ever are not.
     const registry = new HoldRegistry(HOLDER);
     registry.expectHold("global", GLOBAL_SCOPE_KEY);
-    registry.expectHold("provider", providerScopeKey("codex"));
-    registry.noteHeld(heldRecord({ id: "hold_p", reason: "provider" }));
+    registry.expectHold("host", hostScopeKey("host-a"));
+    registry.noteHeld(heldRecord({ id: "hold_p", reason: "host" }));
     registry.noteHeld(heldRecord({ id: "hold_g", reason: "global" }));
     const byId = new Map(registry.liveHolds().map((h) => [h.holdId, h.scopeKey]));
-    expect(byId.get("hold_p")).toBe(providerScopeKey("codex"));
+    expect(byId.get("hold_p")).toBe(hostScopeKey("host-a"));
     expect(byId.get("hold_g")).toBe(GLOBAL_SCOPE_KEY);
   });
 

@@ -87,7 +87,6 @@ function holdResponse(overrides: Partial<HoldResponse> = {}): HoldResponse {
 
 interface GateContextOverrides {
   hostId?: string | null;
-  providerId?: string;
   parentThreadId?: string | null;
   originPluginId?: string | null;
 }
@@ -104,7 +103,7 @@ function createContext(
     host: hostId === null ? null : hostRecord(hostId),
     input: { blocks: [], text: "go" },
     requestedExecution: {
-      providerId: overrides.providerId ?? "codex",
+      providerId: "codex",
       model: null,
       reasoningLevel: null,
       serviceTier: null,
@@ -135,7 +134,7 @@ function submitContext(
 }
 
 interface SetupOptions {
-  settings?: Record<string, string | boolean>;
+  settings?: Record<string, string>;
   counts?: ThreadCountResponse;
   holds?: HoldResponse[];
   hosts?: HostRecord[];
@@ -253,15 +252,6 @@ describe("the create gate", () => {
     });
   });
 
-  it("counts child threads once the user opts in", async () => {
-    const { harness } = await setup({
-      settings: { maxConcurrentThreads: "0", includeChildThreads: true },
-    });
-    expect(
-      await createGate(harness)(createContext({ parentThreadId: "thr_p" })),
-    ).toEqual({ action: "hold", reason: "0 of 0 running on all hosts" });
-  });
-
   it("keeps separate host pools separate", async () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreadsPerHost: "1" },
@@ -291,8 +281,8 @@ describe("the create gate", () => {
       },
     });
     await reconcileOnce(harness);
-    // Four count calls: active/starting, each grouped by host and by provider.
-    expect(harness.inspection.sdk.callsTo("threads.count")).toHaveLength(4);
+    // Two count calls: active and starting, each grouped by host.
+    expect(harness.inspection.sdk.callsTo("threads.count")).toHaveLength(2);
     const gate = createGate(harness);
     // Seed contributes 2 (one active + one starting from the same stub), so
     // the pool of 2 is already full.
@@ -302,22 +292,13 @@ describe("the create gate", () => {
     });
   });
 
-  it("excludes child threads from the seed when they are exempt", async () => {
+  it("excludes child threads from the seed, as the gate excludes them", async () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "2" },
     });
     await reconcileOnce(harness);
     const [args] = harness.inspection.sdk.callsTo("threads.count");
     expect(args?.[0]).toMatchObject({ parentThreadId: "none" });
-  });
-
-  it("counts every root thread when children are included", async () => {
-    const { harness } = await setup({
-      settings: { maxConcurrentThreads: "2", includeChildThreads: true },
-    });
-    await reconcileOnce(harness);
-    const [args] = harness.inspection.sdk.callsTo("threads.count");
-    expect(args?.[0]).not.toHaveProperty("parentThreadId");
   });
 });
 
@@ -546,42 +527,18 @@ describe("the tally follows lifecycle events", () => {
   });
 });
 
-describe("host load", () => {
-  it("does not sample any host until a threshold is configured", async () => {
+describe("gate latency", () => {
+  it("decides synchronously, without awaiting any I/O", async () => {
+    // The property that keeps a gate inside its decision box under core's
+    // server-wide lock: every input is already in memory when it runs.
     const { harness } = await setup({
-      settings: { maxConcurrentThreads: "4" },
+      settings: { maxConcurrentThreadsPerHost: "0" },
+      hosts: [hostRecord("host-a", "mac-mini")],
     });
     await reconcileOnce(harness);
-    expect(harness.experimental_hostRpcCalls).toEqual([]);
-  });
-
-  it("holds on a cached CPU reading without the gate awaiting any I/O", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: PLUGIN_ID,
-      settings: { maxHostCpuPercent: "90" },
-      sdk: {
-        threads: {
-          count: async () => emptyCount(),
-          holds: { list: async () => [] },
-        },
-        hosts: { list: async () => [hostRecord("host-a", "mac-mini")] },
-      },
-      experimental_callHostRpc: async () => ({
-        cpuPercent: 95,
-        memoryPercent: 20,
-        sampledAt: 1,
-        cpuSupported: true,
-      }),
-    });
-    await plugin(bb);
-    await reconcileOnce(harness);
-
-    expect(harness.experimental_hostRpcCalls).toHaveLength(1);
-    // Synchronous: the verdict is available without awaiting, which is the
-    // property that keeps a gate inside its decision box under the global lock.
     expect(createGate(harness)(createContext({ hostId: "host-a" }))).toEqual({
       action: "hold",
-      reason: "CPU 95% on mac-mini",
+      reason: "0 of 0 running on host mac-mini",
     });
   });
 });

@@ -4,8 +4,8 @@ Merged plan. Supersedes the earlier draft in this file and
 `plans/dispatch-gates.md` from thread `thr_qxp4sch469` (whose mechanics this
 adopts where they were stronger; conflicts resolved by explicit decision).
 
-Motivating use cases: concurrency limiting (global / per host / per provider /
-by host CPU-RAM), prompt-based auto provider/model selection, cloud-sandbox
+Motivating use cases: concurrency limiting (global / per host),
+prompt-based auto provider/model selection, cloud-sandbox
 provisioning, scheduled sends, and rate-limit retries that re-dispatch the
 original turn.
 
@@ -322,8 +322,8 @@ Each independently shippable; no phase touches the daemon protocol.
    (order, lock, 10s box, fail-closed, amendment validation, provenance),
    wired into create/send/drain; `pluginInputs`; `threads.count` + route +
    CLI; picker entry + value arm; "chosen by" chip; reject surfaces;
-   reference plugins `concurrency-limit` (with optional CPU/RAM via own host
-   worker; child exemption) and `model-router` (Auto entry, rules-based).
+   reference plugins `concurrency-limit` (global and per-host limits; child
+   exemption) and `model-router` (Auto entry, rules-based).
    Exit: limit-2 spawn-5 holds 3 with visible reasons and releases one per
    completion; Auto routes inline and is never remembered as a default; a
    throwing gate fails the dispatch naming the plugin within the box.
@@ -404,6 +404,19 @@ each chosen during implementation and worth knowing when reading the code:
   surface; the "Mobile (v1)" row above is satisfied by the app rather than by
   separate native views. The action-sheet cancel confirmation is moot: the app
   has a draft to restore into, so cancel stays confirmation-free everywhere.
+- **`concurrency-limit` ships two settings**, "Max concurrent threads" and
+  "Max concurrent threads per host". The per-provider limit, the host CPU/RAM
+  thresholds and their host worker (`host.ts` / `contract.ts` / `load.ts`, the
+  plugin's only `bb.host` entry and its only `zod` dependency), and the
+  "Include child threads" toggle were all cut: a limiter people can hold in
+  their head beats one with five knobs, and load thresholds guess at a machine's
+  capacity where a thread count states it. Child and plugin-spawned threads are
+  now *unconditionally* exempt — the workflows deadlock argument (a parent
+  occupies a slot for the whole time it waits on hidden children) is a
+  correctness rule, not a preference, and it was the only sound setting of that
+  toggle. The disjoint seed/observed/in-flight tally and the 60s reconciler are
+  unchanged; the seed is now two grouped `count(*)` queries instead of four.
+  The plugin is ~760 lines lighter (2,894 → 2,129 lines of source and tests).
 - **Plugin notes are in-process only** (`bb.experimental_threads.appendNote`),
   no public route.
 - **The plugin-facing `ExperimentalProviderModelPickerValue` deliberately

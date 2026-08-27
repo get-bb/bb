@@ -1,19 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  GLOBAL_SCOPE_KEY,
-  hostScopeKey,
-  providerScopeKey,
-  type DispatchScope,
-} from "./scope.js";
+import { GLOBAL_SCOPE_KEY, hostScopeKey } from "./scope.js";
 import { IN_FLIGHT_TIMEOUT_MS, OccupancyTally } from "./tally.js";
 
 const NOW = 1_000_000;
-const A: DispatchScope = { hostId: "host-a", providerId: "codex" };
-const B: DispatchScope = { hostId: "host-b", providerId: "claude-code" };
+const A = "host-a";
+const B = "host-b";
 
 function seeded(counts?: Parameters<OccupancyTally["seed"]>[0]) {
   const tally = new OccupancyTally();
-  tally.seed(counts ?? { global: 0, byHost: {}, byProvider: {} });
+  tally.seed(counts ?? { global: 0, byHost: {} });
   return tally;
 }
 
@@ -22,11 +17,9 @@ describe("seeding", () => {
     const tally = seeded({
       global: 5,
       byHost: { "host-a": 3, "host-b": 2 },
-      byProvider: { codex: 4, "claude-code": 1 },
     });
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(5);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(3);
-    expect(tally.count(providerScopeKey("codex"), NOW)).toBe(4);
     expect(tally.count(hostScopeKey("unknown"), NOW)).toBe(0);
   });
 
@@ -37,7 +30,7 @@ describe("seeding", () => {
     const tally = seeded();
     tally.noteCreated("thr_1", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
-    tally.seed({ global: 1, byHost: { "host-a": 1 }, byProvider: { codex: 1 } });
+    tally.seed({ global: 1, byHost: { "host-a": 1 } });
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
   });
 
@@ -47,7 +40,7 @@ describe("seeding", () => {
     // limit every single minute.
     const tally = seeded();
     tally.notePendingCreate(A, NOW);
-    tally.seed({ global: 2, byHost: { "host-a": 2 }, byProvider: { codex: 2 } });
+    tally.seed({ global: 2, byHost: { "host-a": 2 } });
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(3);
   });
 });
@@ -87,7 +80,7 @@ describe("in-flight proceeds", () => {
     // The common create case: no environment yet, so the reservation carries
     // no host and must still be claimed by the thread that lands with one.
     const tally = seeded();
-    tally.notePendingCreate({ hostId: null, providerId: "codex" }, NOW);
+    tally.notePendingCreate(null, NOW);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(0);
     tally.noteCreated("thr_1", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
@@ -102,9 +95,9 @@ describe("in-flight proceeds", () => {
     // expires — which at a limit of 1 means the pool never reopens.
     const tally = seeded();
     tally.notePendingCreate(A, NOW);
-    tally.noteCreated("thr_1", { hostId: null, providerId: "codex" });
+    tally.noteCreated("thr_1", null);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
-    tally.noteFreed("thr_1", { hostId: null, providerId: "codex" });
+    tally.noteFreed("thr_1", null);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(0);
   });
 
@@ -155,25 +148,16 @@ describe("freeing slots", () => {
     // Threads that were already running when we seeded have no entry in the
     // observed set; their slot has to come off the baseline instead or the
     // limiter never recovers the capacity.
-    const tally = seeded({
-      global: 2,
-      byHost: { "host-a": 2 },
-      byProvider: { codex: 2 },
-    });
+    const tally = seeded({ global: 2, byHost: { "host-a": 2 } });
     tally.noteFreed("thr_old", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(1);
-    expect(tally.count(providerScopeKey("codex"), NOW)).toBe(1);
   });
 
   it("does not decrement twice when a thread goes idle and is then archived", () => {
     // Both events fire for the same thread and both mean "free"; treating the
     // second as another freed slot would inflate available capacity.
-    const tally = seeded({
-      global: 2,
-      byHost: { "host-a": 2 },
-      byProvider: { codex: 2 },
-    });
+    const tally = seeded({ global: 2, byHost: { "host-a": 2 } });
     tally.noteFreed("thr_old", A);
     tally.noteFreed("thr_old", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
@@ -200,20 +184,19 @@ describe("freeing slots", () => {
 });
 
 describe("scope isolation", () => {
-  it("keeps hosts and providers in separate pools while sharing the global one", () => {
+  it("keeps hosts in separate pools while sharing the global one", () => {
     const tally = seeded();
     tally.noteActive("thr_a", A);
     tally.noteActive("thr_b", B);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(2);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(1);
     expect(tally.count(hostScopeKey("host-b"), NOW)).toBe(1);
-    expect(tally.count(providerScopeKey("codex"), NOW)).toBe(1);
   });
 
-  it("counts a thread with no provider globally but under no provider pool", () => {
+  it("counts a thread with no known host globally but under no host pool", () => {
     const tally = seeded();
-    tally.noteActive("thr_1", { hostId: "host-a", providerId: null });
+    tally.noteActive("thr_1", null);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
-    expect(tally.count(providerScopeKey("codex"), NOW)).toBe(0);
+    expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(0);
   });
 });

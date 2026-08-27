@@ -10,29 +10,20 @@
 // The bookkeeping this implies — a tally seeded from `threads.count`,
 // maintained by lifecycle events, with the plugin's own in-flight `proceed`s
 // counted until their rows land — lives in ./tally.ts. Hold attribution lives
-// in ./holds.ts, load caching in ./load.ts, settings parsing in ./limits.ts.
-// This file is wiring.
+// in ./holds.ts, settings parsing in ./limits.ts. This file is wiring.
 
 import type {
   BbPluginApi,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
-import { concurrencyLimitHostContract } from "./contract.js";
 import { HoldRegistry, type HeldRecord } from "./holds.js";
-import { HostLoadCache } from "./load.js";
 import {
   isFullyUnlimited,
-  needsLoadSampling,
   resolveLimits,
   SETTING_LABELS,
   type ResolvedLimits,
 } from "./limits.js";
-import {
-  evaluateDispatch,
-  isExemptDispatch,
-  scopeKeysFor,
-  type DispatchScope,
-} from "./scope.js";
+import { evaluateDispatch, isExemptDispatch, scopeKeysFor } from "./scope.js";
 import { OccupancyTally, type SeedCounts } from "./tally.js";
 
 // The SDK exports neither DTO by name — the event payload map is where a
@@ -53,13 +44,10 @@ const ROOT_PARENT_SENTINEL = "none";
  *
  * The event stream keeps the tally accurate between passes; this pass is what
  * makes a *missed* event self-correcting instead of permanent. A minute is
- * short enough that drift never lasts long and long enough that four grouped
+ * short enough that drift never lasts long and long enough that two grouped
  * `count(*)` queries are free.
  */
 const RECONCILE_INTERVAL_MS = 60_000;
-
-/** Load polling shares the reconcile tick, so this is also the sample rate. */
-const LOAD_POLL_TIMEOUT_MS = 10_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -95,42 +83,14 @@ export default async function concurrencyLimitPlugin(
       type: "string",
       label: SETTING_LABELS.maxConcurrentThreads,
       description:
-        "How many threads may run at once across every host and provider. Leave empty for no limit. 0 holds everything.",
+        "How many threads may run at once across every host. A thread counts while it is starting or running, not while it is idle. Anything over the limit waits as a held dispatch and starts automatically when a slot frees. Leave empty for no limit; 0 pauses all new work. Child threads and plugin-spawned threads never count.",
       default: "",
     },
     maxConcurrentThreadsPerHost: {
       type: "string",
       label: SETTING_LABELS.maxConcurrentThreadsPerHost,
       description:
-        "How many threads may run at once on any one machine. Leave empty for no limit.",
-      default: "",
-    },
-    maxConcurrentThreadsPerProvider: {
-      type: "string",
-      label: SETTING_LABELS.maxConcurrentThreadsPerProvider,
-      description:
-        "How many threads may run at once on any one agent provider. Leave empty for no limit.",
-      default: "",
-    },
-    includeChildThreads: {
-      type: "boolean",
-      label: "Include child threads",
-      description:
-        "Off by default: child threads and plugin-spawned threads are exempt, because a parent thread stays running while it waits on its children — counting both would let parents fill the pool and deadlock against the children they are waiting for. Turn this on only if nothing you run spawns child threads.",
-      default: false,
-    },
-    maxHostCpuPercent: {
-      type: "string",
-      label: SETTING_LABELS.maxHostCpuPercent,
-      description:
-        "Hold new work for a machine whose CPU load is at or above this percentage (1–100). Leave empty to turn it off. Sampled once a minute from the host's load average; has no effect on Windows hosts, which report no load average.",
-      default: "",
-    },
-    maxHostMemoryPercent: {
-      type: "string",
-      label: SETTING_LABELS.maxHostMemoryPercent,
-      description:
-        "Hold new work for a machine whose memory use is at or above this percentage (1–100). Leave empty to turn it off. Sampled once a minute.",
+        "How many threads may run at once on any one machine. Applies per host, on top of the overall limit, and only once a thread's host is known. Leave empty for no limit.",
       default: "",
     },
   });
@@ -138,10 +98,6 @@ export default async function concurrencyLimitPlugin(
   const holder = `plugin:${bb.pluginId}`;
   const tally = new OccupancyTally();
   const holds = new HoldRegistry(holder);
-  const loadCache = new HostLoadCache();
-  const hostClient = bb.hosts.experimental_client({
-    contract: concurrencyLimitHostContract,
-  });
 
   /**
    * environmentId → hostId. Thread lifecycle events carry `environmentId` but
@@ -152,14 +108,7 @@ export default async function concurrencyLimitPlugin(
   /** Host display names, for hold reasons. Refreshed on each reconcile. */
   const hostNames = new Map<string, string>();
 
-  let limits: ResolvedLimits = {
-    global: null,
-    perHost: null,
-    perProvider: null,
-    maxCpuPercent: null,
-    maxMemoryPercent: null,
-    includeChildThreads: false,
-  };
+  let limits: ResolvedLimits = { global: null, perHost: null };
   let wakeReconciler: (() => void) | null = null;
 
   async function applySettings(): Promise<void> {
@@ -200,18 +149,10 @@ export default async function concurrencyLimitPlugin(
     }
   }
 
-  async function scopeForThread(thread: ThreadResponse): Promise<DispatchScope> {
-    return {
-      hostId: await hostIdForEnvironment(thread.environmentId),
-      providerId: thread.providerId ?? null,
-    };
-  }
-
   function isExemptThread(thread: ThreadResponse): boolean {
     return isExemptDispatch({
       parentThreadId: thread.parentThreadId,
       originPluginId: thread.originPluginId,
-      includeChildThreads: limits.includeChildThreads,
     });
   }
 
@@ -223,27 +164,19 @@ export default async function concurrencyLimitPlugin(
    * "decide in milliseconds" contract.
    */
   function decide(args: {
-    scope: DispatchScope;
+    hostId: string | null;
     exempt: boolean;
     threadId: string | null;
-  }):
-    | { action: "proceed" }
-    | { action: "hold"; reason: string } {
+  }): { action: "proceed" } | { action: "hold"; reason: string } {
     if (args.exempt || isFullyUnlimited(limits)) return { action: "proceed" };
 
     const now = Date.now();
     const verdict = evaluateDispatch({
       limits,
-      scope: args.scope,
+      hostId: args.hostId,
       hostName:
-        args.scope.hostId === null
-          ? null
-          : (hostNames.get(args.scope.hostId) ?? null),
+        args.hostId === null ? null : (hostNames.get(args.hostId) ?? null),
       countInScope: (key) => tally.count(key, now),
-      load:
-        args.scope.hostId === null
-          ? null
-          : loadCache.get(args.scope.hostId, now),
     });
 
     if (verdict.action === "hold") {
@@ -254,24 +187,20 @@ export default async function concurrencyLimitPlugin(
     // A `proceed` is a commitment to a slot the database does not know about
     // yet. Count it now or a limit of 1 admits every dispatch that arrives
     // before the first thread's row lands.
-    if (args.threadId === null) tally.notePendingCreate(args.scope, now);
-    else tally.notePendingSubmit(args.threadId, args.scope, now);
+    if (args.threadId === null) tally.notePendingCreate(args.hostId, now);
+    else tally.notePendingSubmit(args.threadId, args.hostId, now);
     return { action: "proceed" };
   }
 
   bb.experimental_dispatch.gate("thread.create", (context) => {
     return decide({
-      scope: {
-        // Null whenever the environment is not chosen yet, which is the normal
-        // case at create: such a dispatch counts globally and per provider but
-        // against no host's pool.
-        hostId: context.host?.id ?? null,
-        providerId: context.requestedExecution.providerId,
-      },
+      // Null whenever the environment is not chosen yet, which is the normal
+      // case at create: such a dispatch counts globally but against no host's
+      // pool.
+      hostId: context.host?.id ?? null,
       exempt: isExemptDispatch({
         parentThreadId: context.parentThreadId,
         originPluginId: context.originPluginId,
-        includeChildThreads: limits.includeChildThreads,
       }),
       threadId: null,
     });
@@ -281,14 +210,14 @@ export default async function concurrencyLimitPlugin(
     // A thread that is already occupying its slot is not asking for a new one.
     // Re-evaluating it would hold a running thread's own follow-up behind the
     // pool it is itself filling.
-    if (context.thread.status === "active" || context.thread.status === "starting") {
+    if (
+      context.thread.status === "active" ||
+      context.thread.status === "starting"
+    ) {
       return { action: "proceed" };
     }
     return decide({
-      scope: {
-        hostId: context.host?.id ?? null,
-        providerId: context.requestedExecution.providerId,
-      },
+      hostId: context.host?.id ?? null,
       exempt: isExemptThread(context.thread),
       threadId: context.thread.id,
     });
@@ -298,12 +227,12 @@ export default async function concurrencyLimitPlugin(
 
   bb.events.on("thread.created", async ({ thread }) => {
     if (isExemptThread(thread)) return;
-    tally.noteCreated(thread.id, await scopeForThread(thread));
+    tally.noteCreated(thread.id, await hostIdForEnvironment(thread.environmentId));
   });
 
   bb.events.on("thread.active", async ({ thread }) => {
     if (isExemptThread(thread)) return;
-    tally.noteActive(thread.id, await scopeForThread(thread));
+    tally.noteActive(thread.id, await hostIdForEnvironment(thread.environmentId));
   });
 
   /**
@@ -324,10 +253,10 @@ export default async function concurrencyLimitPlugin(
    */
   async function noteThreadFreed(thread: ThreadResponse): Promise<void> {
     if (isExemptThread(thread)) return;
-    const scope = await scopeForThread(thread);
-    tally.noteFreed(thread.id, scope);
+    const hostId = await hostIdForEnvironment(thread.environmentId);
+    tally.noteFreed(thread.id, hostId);
 
-    const candidate = holds.oldestForScopes(scopeKeysFor(scope));
+    const candidate = holds.oldestForScopes(scopeKeysFor(hostId));
     if (candidate === null) return;
     // Forget it before awaiting: `dispatch.released` may not arrive before the
     // next freed thread looks for a hold, and releasing the same hold twice is
@@ -362,89 +291,39 @@ export default async function concurrencyLimitPlugin(
   // --- reconciliation -------------------------------------------------------
 
   async function readSeed(): Promise<SeedCounts> {
-    // `parentThreadId: "none"` keeps children out of the seed when they are
-    // exempt, so the baseline agrees with what the events maintain.
+    // `parentThreadId: "none"` keeps children out of the seed, so the baseline
+    // agrees with what the events maintain.
     //
     // It is not a perfect filter: the count route has no `originPluginId`, so
     // a plugin-spawned *root* thread is exempt from the gate but still lands
     // in the seed. That over-counts, which is the safe direction (it holds
     // rather than over-admits) and it is bounded — the thread's own completion
     // is invisible to the tally, but the next reconcile pass drops it.
-    const parentFilter = limits.includeChildThreads
-      ? {}
-      : { parentThreadId: ROOT_PARENT_SENTINEL };
-
-    const [activeByHost, startingByHost, activeByProvider, startingByProvider] =
-      await Promise.all([
-        bb.sdk.threads.count({ ...parentFilter, status: "active", groupBy: "host" }),
-        bb.sdk.threads.count({ ...parentFilter, status: "starting", groupBy: "host" }),
-        bb.sdk.threads.count({ ...parentFilter, status: "active", groupBy: "provider" }),
-        bb.sdk.threads.count({ ...parentFilter, status: "starting", groupBy: "provider" }),
-      ]);
+    const [active, starting] = await Promise.all([
+      bb.sdk.threads.count({
+        parentThreadId: ROOT_PARENT_SENTINEL,
+        status: "active",
+        groupBy: "host",
+      }),
+      bb.sdk.threads.count({
+        parentThreadId: ROOT_PARENT_SENTINEL,
+        status: "starting",
+        groupBy: "host",
+      }),
+    ]);
 
     const byHost: Record<string, number> = {};
-    const byProvider: Record<string, number> = {};
-    for (const response of [activeByHost, startingByHost]) {
+    for (const response of [active, starting]) {
       for (const group of response.groups ?? []) {
         if (group.key === null) continue;
         byHost[group.key] = (byHost[group.key] ?? 0) + group.count;
       }
     }
-    for (const response of [activeByProvider, startingByProvider]) {
-      for (const group of response.groups ?? []) {
-        if (group.key === null) continue;
-        byProvider[group.key] = (byProvider[group.key] ?? 0) + group.count;
-      }
-    }
 
-    return {
-      global: activeByHost.total + startingByHost.total,
-      byHost,
-      byProvider,
-    };
+    return { global: active.total + starting.total, byHost };
   }
 
-  async function pollHostLoad(signal: AbortSignal): Promise<void> {
-    if (!needsLoadSampling(limits)) {
-      loadCache.clear();
-      return;
-    }
-    const hosts = await bb.sdk.hosts.list();
-    const connected = hosts.filter((host) => host.status === "connected");
-    const connectedIds = new Set(connected.map((host) => host.id));
-    for (const host of hosts) {
-      if (!connectedIds.has(host.id)) loadCache.forget(host.id);
-    }
-    await Promise.all(
-      connected.map(async (host) => {
-        const timeout = AbortSignal.timeout(LOAD_POLL_TIMEOUT_MS);
-        try {
-          const sample = await hostClient.call("sampleLoad", null, {
-            hostId: host.id,
-            signal: AbortSignal.any([signal, timeout]),
-          });
-          loadCache.set(host.id, {
-            // A host that cannot measure CPU must not look idle to a CPU
-            // threshold, and must not look busy either. Reporting 0 with the
-            // threshold effectively disabled is the honest reading.
-            cpuPercent: sample.cpuSupported ? sample.cpuPercent : 0,
-            memoryPercent: sample.memoryPercent,
-            // The host's clock, not ours: staleness is measured against the
-            // server clock, so stamp arrival time here.
-            sampledAt: Date.now(),
-          });
-        } catch (error) {
-          if (signal.aborted) return;
-          loadCache.forget(host.id);
-          bb.log.debug(
-            `could not sample load on host ${host.id}: ${errorMessage(error)}`,
-          );
-        }
-      }),
-    );
-  }
-
-  async function reconcile(signal: AbortSignal): Promise<void> {
+  async function reconcile(): Promise<void> {
     const hosts = await bb.sdk.hosts.list();
     hostNames.clear();
     for (const host of hosts) hostNames.set(host.id, host.name);
@@ -455,21 +334,13 @@ export default async function concurrencyLimitPlugin(
     holds.adopt(
       liveHolds.filter((hold) => hold.holder === holder).map(toHeldRecord),
     );
-
-    await pollHostLoad(signal);
   }
-
-  hostClient.experimental_onWorkerExit(({ hostId }) => {
-    // The next poll starts a fresh worker; until then there is no reading, and
-    // no reading means no load-based hold.
-    loadCache.forget(hostId);
-  });
 
   bb.background.service("reconciler", {
     async start(signal) {
       while (!signal.aborted) {
         try {
-          await reconcile(signal);
+          await reconcile();
         } catch (error) {
           if (signal.aborted) break;
           // Deliberately leave the previous tally in place. Stale counts
