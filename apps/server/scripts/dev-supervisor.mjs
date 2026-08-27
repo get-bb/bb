@@ -12,7 +12,13 @@ void runDevSupervisor({
   childArgs: ["--conditions=source", "--import", "tsx", "src/index.ts"],
   childCommand: process.execPath,
   childCwd: packageRoot,
-  childEnv: { BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD: "1" },
+  // Pass the caller's value through rather than hardcoding it. Hardcoding
+  // silently swallowed the env var, so setting it to 0 to stay under the
+  // system watcher budget had no effect and reported a false result.
+  childEnv: {
+    BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD:
+      process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD ?? "1",
+  },
   unexpectedRestartBackoff: DEFAULT_UNEXPECTED_RESTART_BACKOFF,
   serviceName: "server",
 }).catch((error) => {
