@@ -1901,8 +1901,10 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         // `bb plugin types` keeps it matched to the bb you run. The rest supply
         // the real npm types those declarations reference (hono/better-sqlite3
         // and React) for packages generated source does not import: BB
-        // provides them at runtime and the bundle never inlines them. An
-        // author who imports one directly must promote it above.
+        // provides them at runtime and the bundle never inlines them, plus
+        // the optional peers `@get-bb/plugin-sdk/testing` imports so the
+        // documented test harness runs from a fresh scaffold. An author who
+        // imports one directly must promote it above.
         devDependencies: {
           "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
           "@types/better-sqlite3": "^7.6.12",
@@ -1910,6 +1912,17 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           "@types/react": "^19.0.0",
           "@types/react-dom": "^19.0.0",
           "better-sqlite3": "^12.0.0",
+          // Every package `@get-bb/plugin-sdk/testing` imports. The SDK
+          // declares them as OPTIONAL peers, so npm installs none of them:
+          // whatever the backend harness reaches for has to be declared here
+          // or an author's first `createFakePluginHost` test dies on an
+          // unresolved import.
+          "cron-parser": "^5.5.0",
+          // Every package `@get-bb/plugin-sdk/testing` imports. The SDK
+          // declares them as OPTIONAL peers, so npm installs none of them:
+          // whatever the backend harness reaches for has to be declared here
+          // or an author's first `createFakePluginHost` test dies on an
+          // unresolved import.
           hono: "^4.11.9",
           typescript: "^5.7.0",
           // Every package BB shims to its own runtime (never bundled), at

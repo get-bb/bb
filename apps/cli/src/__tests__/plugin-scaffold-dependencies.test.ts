@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import {
   PLUGIN_SERVER_EXTERNALS,
   RUNTIME_SLOT_BY_SPECIFIER,
@@ -77,6 +77,36 @@ function packageNameOf(specifier: string): string {
     : (segments[0] ?? specifier);
 }
 
+const repoRoot = resolve(import.meta.dirname, "..", "..", "..", "..");
+const pluginSdkRoot = join(repoRoot, "packages", "plugin-sdk");
+
+/**
+ * Packages the BACKEND test harness (`@get-bb/plugin-sdk/testing`) imports.
+ * `testing/app.tsx` is a separate entrypoint with separate peers (React,
+ * Testing Library, jsdom) that the guide tells the author to add themselves,
+ * so only the `.ts` sources of that directory count here.
+ */
+async function backendTestHarnessImports(): Promise<string[]> {
+  const harnessDir = join(pluginSdkRoot, "src", "testing");
+  const packages = new Set<string>();
+  for (const entry of await readdir(harnessDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+    const source = await readFile(join(harnessDir, entry.name), "utf8");
+    for (const specifier of importedSpecifiers(source)) {
+      packages.add(packageNameOf(specifier));
+    }
+  }
+  return [...packages];
+}
+
+/** The packages `@get-bb/plugin-sdk` leaves for its consumer to install. */
+async function sdkOptionalPeers(): Promise<Set<string>> {
+  const manifest: { peerDependencies?: Record<string, string> } = JSON.parse(
+    await readFile(join(pluginSdkRoot, "package.json"), "utf8"),
+  );
+  return new Set(Object.keys(manifest.peerDependencies ?? {}));
+}
+
 async function scaffoldWithDependencies(workDir: string): Promise<{
   targetDir: string;
   dependencies: string[];
@@ -150,6 +180,31 @@ describe("scaffold dependency classification", () => {
     expect(
       SHIMMED_TYPE_PACKAGES.filter((name) => dependencies.includes(name)),
     ).toEqual([]);
+  });
+
+  /**
+   * The authoring skill tells plugin authors to test with
+   * `@get-bb/plugin-sdk/testing`, and every package that harness reaches for is
+   * an OPTIONAL peer of the SDK — npm installs none of them. Whatever it
+   * imports therefore has to come from the scaffold's own manifest. The
+   * scaffold already ships better-sqlite3 and hono for exactly that reason;
+   * cron-parser was missed, so a fresh scaffold's first backend test died on
+   * `Cannot find package 'cron-parser'` with nothing in the guide to explain it.
+   *
+   * Derived from the harness sources and the SDK's own peer list rather than
+   * restated here, so a new import in the harness cannot leave this stale.
+   */
+  it("declares every optional peer the backend test harness imports", async () => {
+    const { dependencies, devDependencies } =
+      await scaffoldWithDependencies(workDir);
+    const declared = new Set([...dependencies, ...devDependencies]);
+    const optionalPeers = await sdkOptionalPeers();
+
+    const missing = (await backendTestHarnessImports()).filter(
+      (name) => optionalPeers.has(name) && !declared.has(name),
+    );
+
+    expect(missing).toEqual([]);
   });
 
   it("keeps host-provided packages out of dependencies", async () => {
