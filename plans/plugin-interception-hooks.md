@@ -396,9 +396,14 @@ each chosen during implementation and worth knowing when reading the code:
   thread on transient infrastructure failures — a different mechanism a
   turn.failed gate cannot express. Only provider-retry was rewritten
   (1427 → 733 lines).
-- **Mobile cancel confirms** via action sheet when the hold has inline input —
-  mobile has no draft to restore into, so the app's no-confirm rule would
-  discard text irrecoverably there.
+- **No native mobile hold surfaces.** The native mobile UI (`apps/mobile/src/screens`)
+  was replaced upstream by a WebView shell around the PWA (#2515), so the
+  dedicated mobile commit — held badge, read-only hold cards, action-sheet
+  cancel confirmation — was dropped when this work rebased onto that change.
+  Mobile is served by the responsive app UI, which already ships every hold
+  surface; the "Mobile (v1)" row above is satisfied by the app rather than by
+  separate native views. The action-sheet cancel confirmation is moot: the app
+  has a draft to restore into, so cancel stays confirmation-free everywhere.
 - **Plugin notes are in-process only** (`bb.experimental_threads.appendNote`),
   no public route.
 - **The plugin-facing `ExperimentalProviderModelPickerValue` deliberately
