@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import {
+  installTestPluginRuntime,
+  renderSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 
 // jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
@@ -17,9 +21,20 @@ if (!window.matchMedia) {
   });
 }
 
-// loadPluginApp installs the fake SDK runtime; nothing SDK-touching may be
-// imported before it runs.
-const app = await loadPluginApp(() => import("../../app"));
+// The rail binds SDK hooks at import time, after the fake runtime is installed.
+installTestPluginRuntime();
+const { PropertiesRail } = await import("./rail");
+const { TasksRefreshProvider } = await import("../../shell/refresh");
+
+// Mount the smallest real lifecycle: the full panel gates this rail on an
+// unrelated project query and renders an editor this behavior never touches.
+function RailHarness(props: ComponentProps<typeof PropertiesRail>) {
+  return (
+    <TasksRefreshProvider>
+      <PropertiesRail {...props} />
+    </TasksRefreshProvider>
+  );
+}
 
 afterEach(cleanup);
 
@@ -56,56 +71,37 @@ const task = {
   labelIds: [],
 };
 
-function detailRpc(
-  linkedBbProjectId: string | null,
-  overrides: Record<string, unknown> = {},
-) {
+function railProps(linkedBbProjectId: string | null) {
   return {
-    listProjects: () => ({ projects: [projectRow(linkedBbProjectId)] }),
-    listFolders: () => ({ folders: [] }),
-    listPresets: () => ({ presets: [] }),
-    sidebarSummary: () => ({ projects: [] }),
-    listTasks: (input: { parentTaskId?: string } | null) =>
-      input?.parentTaskId ? { tasks: [] } : { tasks: [task] },
-    getTaskByKey: () => ({ task }),
-    listLabels: () => ({ labels: [] }),
-    listAttachments: () => ({ attachments: [] }),
-    listTaskThreads: () => ({ taskThreads: [] }),
-    listTaskPullRequests: () => ({
-      pullRequests: [],
-      unavailableThreadIds: [],
-    }),
-    listComments: () => ({ comments: [] }),
-    listBbProjects: () => ({ bbProjects: [] }),
-    ...overrides,
+    task,
+    project: projectRow(linkedBbProjectId),
+    labels: [],
+    threads: [],
+    presets: [],
+    onUpdate: () => {},
+    onError: () => {},
   };
 }
 
 describe("dispatch target rail control", () => {
   it("links a discovered bb project", async () => {
     const updateCalls: Array<Record<string, unknown>> = [];
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "task/TSK-5" },
-      {
-        rpc: detailRpc(null, {
-          listBbProjects: () => ({
-            bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
-          }),
-          updateProject: (input: Record<string, unknown>) => {
-            updateCalls.push(input);
-            return {
-              project: {
-                ...projectRow(input.linkedBbProjectId as string | null),
-              },
-            };
-          },
+    const slot = renderSlot({ component: RailHarness }, railProps(null), {
+      rpc: {
+        listBbProjects: () => ({
+          bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
         }),
+        updateProject: (input: Record<string, unknown>) => {
+          updateCalls.push(input);
+          return {
+            project: {
+              ...projectRow(input.linkedBbProjectId as string | null),
+            },
+          };
+        },
       },
-    );
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Edit dispatch target" }),
-    );
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Edit dispatch target" }));
     fireEvent.click(await slot.findByLabelText("Linked bb project"));
     fireEvent.click(await slot.findByRole("option", { name: "bb monorepo" }));
     fireEvent.click(slot.getByRole("button", { name: "Save" }));
@@ -119,10 +115,10 @@ describe("dispatch target rail control", () => {
   it("shows the linked bb project's name and unlinks it", async () => {
     const updateCalls: Array<Record<string, unknown>> = [];
     const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "task/TSK-5" },
+      { component: RailHarness },
+      railProps(BB_PROJECT_ID),
       {
-        rpc: detailRpc(BB_PROJECT_ID, {
+        rpc: {
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
@@ -134,10 +130,10 @@ describe("dispatch target rail control", () => {
               },
             };
           },
-        }),
+        },
       },
     );
-    const trigger = await slot.findByRole("button", {
+    const trigger = slot.getByRole("button", {
       name: "Edit dispatch target",
     });
     await slot.findByText("bb monorepo");
