@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSplitResizeSnapSession } from "./split-resize-snap";
 
 const SNAP_CAPTURE_PX = 12;
-const SNAP_RELEASE_PX = 48;
+const SNAP_RELEASE_PX = 30;
 
 function rect({
   height = 600,

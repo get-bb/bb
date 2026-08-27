@@ -3,7 +3,7 @@ import { clampSplitPairFraction } from "@/lib/split-layout";
 export type SplitResizeAxis = "x" | "y";
 
 export const SPLIT_RESIZE_SNAP_CAPTURE_PX = 12;
-export const SPLIT_RESIZE_SNAP_RELEASE_PX = 48;
+export const SPLIT_RESIZE_SNAP_RELEASE_PX = 30;
 
 interface ResolveSplitResizePositionArgs {
   end: number;
