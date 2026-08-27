@@ -491,7 +491,6 @@ export function SidebarSplitContainer({
     <div
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       data-sidebar-split-container=""
-      data-split-resize-grid-root=""
       data-sidebar-split-root-direction={
         presentedLayout.root.type === "split"
           ? presentedLayout.root.dir
@@ -559,6 +558,7 @@ function SidebarSplitTrackTree(props: SidebarSplitTrackTreeProps) {
   const node = props.node;
   return (
     <div
+      data-split-resize-grid-root=""
       className={cn(
         "pointer-events-none flex min-h-0 min-w-0 flex-1",
         node.dir === "row" ? "flex-row" : "flex-col",
@@ -568,6 +568,8 @@ function SidebarSplitTrackTree(props: SidebarSplitTrackTreeProps) {
         <Fragment key={sidebarSplitSubtreeKey(child)}>
           {index > 0 ? (
             <SidebarSplitDivider
+              boundaryIndex={index}
+              childCount={node.children.length}
               dir={node.dir}
               hidden={props.maximizedPaneId !== null}
               onResize={(fraction) =>
@@ -713,12 +715,16 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
 }
 
 function SidebarSplitDivider({
+  boundaryIndex,
+  childCount,
   dir,
   hidden,
   onResize,
   onResizeDragChange,
   onPreviewResize,
 }: {
+  boundaryIndex: number;
+  childCount: number;
   dir: "row" | "col";
   hidden: boolean;
   onResize: (fraction: number) => void;
@@ -762,6 +768,7 @@ function SidebarSplitDivider({
       const snapSession = createSplitResizeSnapSession(
         divider,
         horizontal ? "x" : "y",
+        { boundaryIndex, childCount },
       );
       snapSession.resolve({ end, pointer: pointerDownPosition, start });
       let pendingFraction: number | null = null;
@@ -835,11 +842,20 @@ function SidebarSplitDivider({
       finishResizeRef.current = () => finish(false);
       onResizeDragChange(horizontal ? "col-resize" : "row-resize");
     },
-    [horizontal, onPreviewResize, onResize, onResizeDragChange],
+    [
+      boundaryIndex,
+      childCount,
+      horizontal,
+      onPreviewResize,
+      onResize,
+      onResizeDragChange,
+    ],
   );
   return (
     <div
       role="separator"
+      data-split-resize-grid-boundary={boundaryIndex}
+      data-split-resize-grid-count={childCount}
       aria-hidden={hidden || undefined}
       aria-label={
         horizontal

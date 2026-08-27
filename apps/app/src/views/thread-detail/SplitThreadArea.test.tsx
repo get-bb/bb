@@ -1175,7 +1175,7 @@ describe("SplitThreadArea", () => {
     expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
   });
 
-  it("snaps a workspace divider to the shared surface midpoint and clears its guide", () => {
+  it("snaps a workspace divider to its equal two-pane boundary and clears its guide", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -1195,7 +1195,8 @@ describe("SplitThreadArea", () => {
     }
     const grid = separator.parentElement;
     if (grid === null) throw new Error("Expected a workspace split grid");
-    grid.dataset.splitResizeGridRoot = "";
+    expect(separator.dataset.splitResizeGridBoundary).toBe("1");
+    expect(separator.dataset.splitResizeGridCount).toBe("2");
     Object.defineProperties(hitTarget, {
       releasePointerCapture: { configurable: true, value: vi.fn() },
       setPointerCapture: { configurable: true, value: vi.fn() },

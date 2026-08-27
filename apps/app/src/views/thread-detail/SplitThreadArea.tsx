@@ -699,7 +699,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       <div
         ref={preservedScrollWorkspaceRef}
         className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
-        data-split-resize-grid-root=""
       >
         <SplitWorkspaceSecondaryPanelHost
           focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
@@ -890,6 +889,7 @@ function SplitTree(props: SplitTreeProps) {
 
   return (
     <div
+      data-split-resize-grid-root=""
       className={cn(
         "flex min-h-0 min-w-0 flex-1",
         node.dir === "col" ? "flex-col" : "flex-row",
@@ -899,6 +899,8 @@ function SplitTree(props: SplitTreeProps) {
         <Fragment key={paneKey(child)}>
           {index > 0 ? (
             <SplitDivider
+              boundaryIndex={index}
+              childCount={node.children.length}
               dir={node.dir}
               hidden={props.maximizedPaneId !== null}
               onResize={(fraction) => props.onResize(path, index - 1, fraction)}
@@ -1314,6 +1316,8 @@ function NonThreadPaneContent({
 }
 
 interface SplitDividerProps {
+  boundaryIndex: number;
+  childCount: number;
   dir: "row" | "col";
   hidden: boolean;
   onResize: (fraction: number) => void;
@@ -1394,7 +1398,13 @@ function freezeOffscreenTimelineRows(
   };
 }
 
-function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
+function SplitDivider({
+  boundaryIndex,
+  childCount,
+  dir,
+  hidden,
+  onResize,
+}: SplitDividerProps) {
   const horizontal = dir === "row";
   const finishResizeRef = useRef<(() => void) | null>(null);
   useEffect(
@@ -1438,6 +1448,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       const snapSession = createSplitResizeSnapSession(
         divider,
         horizontal ? "x" : "y",
+        { boundaryIndex, childCount },
       );
       const pointerDownPosition = horizontal ? event.clientX : event.clientY;
       snapSession.resolve({ end, pointer: pointerDownPosition, start });
@@ -1517,12 +1528,14 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       hitTarget.addEventListener("lostpointercapture", onLostCapture);
       finishResizeRef.current = () => finish(false);
     },
-    [horizontal, onResize],
+    [boundaryIndex, childCount, horizontal, onResize],
   );
 
   return (
     <div
       role="separator"
+      data-split-resize-grid-boundary={boundaryIndex}
+      data-split-resize-grid-count={childCount}
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         // A one-pixel seam between flush tiles — squared ends, no rounding,

@@ -24,6 +24,11 @@ export interface SplitResizeSnapSession {
   ) => ResolvedSplitResizePosition;
 }
 
+export interface SplitResizeGridTarget {
+  boundaryIndex: number;
+  childCount: number;
+}
+
 function createGuide(
   document: Document,
   axis: SplitResizeAxis,
@@ -50,34 +55,58 @@ function createGuide(
   return guide;
 }
 
-function axisCoordinate(rect: DOMRect, axis: SplitResizeAxis): number {
-  return axis === "x"
-    ? rect.left + rect.width / 2
-    : rect.top + rect.height / 2;
-}
-
 function axisExtent(rect: DOMRect, axis: SplitResizeAxis): number {
   return axis === "x" ? rect.width : rect.height;
 }
 
+function equalGridCoordinate(
+  gridRect: DOMRect,
+  axis: SplitResizeAxis,
+  dividerExtent: number,
+  target: SplitResizeGridTarget,
+): number | null {
+  const { boundaryIndex, childCount } = target;
+  if (
+    !Number.isInteger(boundaryIndex) ||
+    !Number.isInteger(childCount) ||
+    childCount < 2 ||
+    boundaryIndex < 1 ||
+    boundaryIndex >= childCount
+  ) {
+    return null;
+  }
+  const span = axisExtent(gridRect, axis);
+  const contentSpan = span - dividerExtent * (childCount - 1);
+  if (contentSpan <= 0) return null;
+  const start = axis === "x" ? gridRect.left : gridRect.top;
+  return (
+    start +
+    (contentSpan * boundaryIndex) / childCount +
+    dividerExtent * (boundaryIndex - 0.5)
+  );
+}
+
 /**
- * Starts one divider drag's snap lifecycle. Every divider within a split
- * surface shares that surface's 50% grid line on its active axis, so dividers
- * in separate branches can align exactly. Capture and release use different
- * thresholds to create magnetic resistance, and geometry is read only once.
+ * Starts one divider drag's snap lifecycle. Every split node owns an equal
+ * sibling grid: two children snap to halves, three to thirds, and so on.
+ * Capture and release use different thresholds to create magnetic resistance,
+ * and geometry is read only once.
  */
 export function createSplitResizeSnapSession(
   divider: HTMLElement,
   axis: SplitResizeAxis,
+  target: SplitResizeGridTarget,
 ): SplitResizeSnapSession {
   let guide: HTMLElement | null = null;
   let lastPointer: number | null = null;
   let snapped = false;
   const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
   const gridRect = grid?.getBoundingClientRect() ?? null;
-  const gridCoordinate =
-    gridRect === null ? null : axisCoordinate(gridRect, axis);
   const extent = axisExtent(divider.getBoundingClientRect(), axis);
+  const gridCoordinate =
+    gridRect === null
+      ? null
+      : equalGridCoordinate(gridRect, axis, extent, target);
 
   const clear = () => {
     guide?.remove();

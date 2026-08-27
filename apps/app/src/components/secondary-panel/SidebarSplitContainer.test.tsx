@@ -783,7 +783,7 @@ describe("SidebarSplitContainer", () => {
     });
   });
 
-  it("snaps a right-panel divider to the shared surface midpoint and persists it", () => {
+  it("snaps a right-panel divider to its equal two-pane boundary and persists it", () => {
     persistState(createTwoPaneState());
     renderContainer({
       renderPane: ({ paneId }) => <div>{paneId}</div>,
@@ -799,11 +799,10 @@ describe("SidebarSplitContainer", () => {
     ) {
       throw new Error("Expected adjacent right-panel split items");
     }
-    const grid = document.querySelector<HTMLElement>(
-      "[data-sidebar-split-container]",
-    );
+    const grid = separator.parentElement;
     if (grid === null) throw new Error("Expected a right-panel split grid");
-    grid.dataset.splitResizeGridRoot = "";
+    expect(separator.dataset.splitResizeGridBoundary).toBe("1");
+    expect(separator.dataset.splitResizeGridCount).toBe("2");
     Object.defineProperties(hitTarget, {
       releasePointerCapture: { configurable: true, value: vi.fn() },
       setPointerCapture: { configurable: true, value: vi.fn() },

@@ -48,29 +48,32 @@ afterEach(() => {
 });
 
 describe("split resize snapping", () => {
-  it("snaps a vertical divider to the split surface's horizontal grid line", () => {
+  it("snaps the first vertical divider to the one-third boundary", () => {
     const source = divider(
       rect({ left: 650 }),
       rect({ height: 600, left: 100, top: 50, width: 800 }),
     );
-    const session = createSplitResizeSnapSession(source, "x");
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 3,
+    });
 
     const result = session.resolve({
       end: 900,
-      pointer: 500 + SNAP_CAPTURE_PX,
-      start: 300,
+      pointer: 366.5 + SNAP_CAPTURE_PX,
+      start: 250,
     });
 
     expect(result).toEqual({
-      coordinate: 500,
-      fraction: 199.5 / 599,
+      coordinate: 366.5,
+      fraction: 116 / 649,
       snapped: true,
     });
     const guide = document.querySelector<HTMLElement>(
       "[data-split-resize-snap-guide]",
     );
     expect(guide?.dataset.splitResizeSnapGuide).toBe("x");
-    expect(guide?.style.left).toBe("500px");
+    expect(guide?.style.left).toBe("366.5px");
     expect(guide?.style.top).toBe("50px");
     expect(guide?.style.height).toBe("600px");
 
@@ -78,22 +81,25 @@ describe("split resize snapping", () => {
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
-  it("snaps a horizontal divider to the split surface's vertical grid line", () => {
+  it("snaps the third horizontal divider to the three-quarter boundary", () => {
     const source = divider(
       rect({ height: 1, left: 0, top: 600, width: 900 }),
       rect({ height: 800, left: 40, top: 100, width: 900 }),
     );
-    const session = createSplitResizeSnapSession(source, "y");
+    const session = createSplitResizeSnapSession(source, "y", {
+      boundaryIndex: 3,
+      childCount: 4,
+    });
 
     const result = session.resolve({
       end: 900,
-      pointer: 500 - SNAP_CAPTURE_PX,
-      start: 300,
+      pointer: 700.25 - SNAP_CAPTURE_PX,
+      start: 500,
     });
 
     expect(result).toEqual({
-      coordinate: 500,
-      fraction: 199.5 / 599,
+      coordinate: 700.25,
+      fraction: 199.75 / 399,
       snapped: true,
     });
     const guide = document.querySelector<HTMLElement>(
@@ -101,7 +107,7 @@ describe("split resize snapping", () => {
     );
     expect(guide?.dataset.splitResizeSnapGuide).toBe("y");
     expect(guide?.style.left).toBe("40px");
-    expect(guide?.style.top).toBe("500px");
+    expect(guide?.style.top).toBe("700.25px");
     expect(guide?.style.width).toBe("900px");
   });
 
@@ -110,7 +116,10 @@ describe("split resize snapping", () => {
       rect({ left: 500 }),
       rect({ left: 100, width: 800 }),
     );
-    const session = createSplitResizeSnapSession(source, "x");
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
 
     expect(
       session.resolve({ end: 900, pointer: 470, start: 100 }).snapped,
@@ -145,7 +154,10 @@ describe("split resize snapping", () => {
     if (grid === null) throw new Error("Expected a split resize grid root");
     const sourceRect = vi.spyOn(source, "getBoundingClientRect");
     const gridRect = vi.spyOn(grid, "getBoundingClientRect");
-    const session = createSplitResizeSnapSession(source, "x");
+    const session = createSplitResizeSnapSession(source, "x", {
+      boundaryIndex: 1,
+      childCount: 2,
+    });
 
     for (let pointer = 495; pointer <= 505; pointer += 1) {
       session.resolve({ end: 900, pointer, start: 100 });
