@@ -30,9 +30,7 @@ import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import {
-  getEnvironmentWorkspaceSummaryDisplay,
-} from "@/lib/environment-workspace-display";
+import { getEnvironmentWorkspaceSummaryDisplay } from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
@@ -845,6 +843,14 @@ function StackedCardsWithPillsRow() {
       queuedMessages={queuedMessages}
       contextWindowUsage={usage}
     />
+  );
+}
+
+export function ControlEmphasis() {
+  return (
+    <div className="mx-auto flex min-h-[28rem] w-full max-w-3xl items-end p-4">
+      <Row submitMode={{ kind: "ready" }} />
+    </div>
   );
 }
 

@@ -68,6 +68,7 @@ import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   getMediaQuerySnapshot,
@@ -3030,7 +3031,7 @@ export function PromptBoxInternal({
                       onClick={collapsePromptBox}
                       aria-label="Collapse prompt box"
                       className={cn(
-                        "text-subtle-foreground hover:text-muted-foreground",
+                        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
                         COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
                       )}
                     >

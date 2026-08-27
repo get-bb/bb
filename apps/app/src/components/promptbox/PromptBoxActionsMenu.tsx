@@ -17,6 +17,7 @@ import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-s
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import type { ProviderPromptActionCommand } from "@bb/client-core";
 
@@ -181,6 +182,7 @@ export function PromptBoxActionsMenu({
           aria-label="Prompt actions"
           className={cn(
             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+            CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
             "-ml-1.5",
           )}
         >

@@ -1648,9 +1648,11 @@ describe("PromptBoxInternal size controls", () => {
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse prompt box" }),
-    );
+    const collapseButton = screen.getByRole("button", {
+      name: "Collapse prompt box",
+    });
+    expect(collapseButton.classList).toContain("text-subtle-foreground/75");
+    fireEvent.click(collapseButton);
 
     expect(onCollapse).toHaveBeenCalledOnce();
     expect(document.activeElement).not.toBe(getPromptEditorElement());

@@ -855,7 +855,10 @@ export function ModelReasoningPicker({
       {disabled ? null : (
         <Icon
           name="ChevronDown"
-          className="size-3.5 shrink-0 text-muted-foreground"
+          className={cn(
+            "size-3.5 shrink-0",
+            muted ? "text-subtle-foreground/75" : "text-muted-foreground",
+          )}
         />
       )}
       <AppCommandShortcutHint
