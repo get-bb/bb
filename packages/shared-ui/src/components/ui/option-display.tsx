@@ -9,7 +9,7 @@ export const OPTION_CONTENT_CLASS_NAME = "flex min-w-0 items-center gap-1.5";
 export const OPTION_TRIGGER_CONTENT_CLASS_NAME = "contents";
 export const OPTION_MENU_CONTENT_CLASS_NAME = "w-max min-w-0 max-w-96";
 export const OPTION_MUTED_CLASS_NAME =
-  "text-muted-foreground hover:text-foreground";
+  "text-muted-foreground hover:text-muted-foreground";
 
 export interface OptionDisplayProps {
   label: string;
