@@ -181,7 +181,10 @@ export interface CollapsedChildActivity {
   goal: boolean;
   /** At least one successfully finished child is unread. */
   unread: boolean;
-  /** At least one unread child has reached the terminal error state. */
+  /**
+   * At least one hidden child needs failure treatment: an unread root thread,
+   * or a hierarchy child whose own terminal status is error.
+   */
   unreadError: boolean;
 }
 
@@ -226,7 +229,14 @@ export function getCollapsedChildActivity(
       hasUnsubmittedDraft = true;
     }
     const childUnreadDone = isUnreadDoneThread(thread);
-    if (childUnreadDone && thread.status === "error") {
+    // Hierarchy children deliberately do not become "unread" when they finish:
+    // their parent owns that attention. Preserve that policy for successful
+    // children, but carry a terminal child failure into a collapsed ancestor so
+    // the existing error indicator can represent the hidden row.
+    const childNeedsErrorTreatment =
+      thread.status === "error" &&
+      (thread.parentThreadId !== null || childUnreadDone);
+    if (childNeedsErrorTreatment) {
       unreadError = true;
     } else if (childUnreadDone) {
       unread = true;

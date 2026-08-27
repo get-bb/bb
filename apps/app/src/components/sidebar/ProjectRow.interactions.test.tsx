@@ -135,6 +135,7 @@ function renderProjectRow(
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
   isCollapsed = false,
+  collapsedThreadIds: Set<string> = new Set(),
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -146,7 +147,7 @@ function renderProjectRow(
           isActive={isActive}
           isCollapsed={isCollapsed}
           compareThreads={() => 0}
-          collapsedThreadIds={new Set()}
+          collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           isLocalPathInvalid={false}
           onToggleProjectCollapsed={onToggleProjectCollapsed}
@@ -205,6 +206,58 @@ describe("ProjectRow interactions", () => {
       "proj_test",
     );
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
+  });
+
+  it("surfaces a collapsed direct child's error on its parent row", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({ id: "thr_parent", title: "Parent thread" }),
+          makeThread({
+            id: "thr_errored_child",
+            title: "Errored child",
+            parentThreadId: "thr_parent",
+            status: "error",
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      false,
+      new Set(["thr_parent"]),
+    );
+
+    expect(screen.queryByText("Errored child")).toBeNull();
+    expect(
+      screen.getByLabelText("Unread thread failed").getAttribute("data-icon"),
+    ).toBe("CircleX");
+  });
+
+  it("leaves a collapsed parent with a healthy direct child unmarked", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({ id: "thr_parent", title: "Parent thread" }),
+          makeThread({
+            id: "thr_healthy_child",
+            title: "Healthy child",
+            parentThreadId: "thr_parent",
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      false,
+      new Set(["thr_parent"]),
+    );
+
+    expect(screen.queryByText("Healthy child")).toBeNull();
+    expect(screen.queryByLabelText("Unread thread failed")).toBeNull();
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
   });
 
   it("shows generic runtime activity before a named workflow rollup", () => {

@@ -3,6 +3,7 @@ import {
   getCollapsedChildActivity,
   hasThreadListWorkingActivity,
   isUnreadDoneThread,
+  NO_COLLAPSED_CHILD_ACTIVITY,
   resolveThreadListIndicator,
   type ThreadListIndicatorState,
 } from "../src/thread/thread-activity.js";
@@ -282,6 +283,28 @@ describe("thread-activity", () => {
         goal: false,
         unread: false,
         unreadError: false,
+      });
+    });
+
+    it("surfaces an errored direct child without flagging a healthy direct child", () => {
+      const healthyDirectChild = makeChild({
+        id: "healthy-direct-child",
+        parentThreadId: "parent",
+      });
+      const erroredDirectChild = makeChild({
+        id: "errored-direct-child",
+        parentThreadId: "parent",
+        status: "error",
+      });
+
+      expect(getCollapsedChildActivity([healthyDirectChild])).toEqual(
+        NO_COLLAPSED_CHILD_ACTIVITY,
+      );
+      expect(
+        getCollapsedChildActivity([healthyDirectChild, erroredDirectChild]),
+      ).toEqual({
+        ...NO_COLLAPSED_CHILD_ACTIVITY,
+        unreadError: true,
       });
     });
 
@@ -587,7 +610,7 @@ describe("thread-activity", () => {
       });
     });
 
-    it("never flags 'unread' for parented children", () => {
+    it("never flags a successful parented child as unread", () => {
       const unreadButParented = makeChild({
         latestAttentionAt: 20,
         lastReadAt: 10,
