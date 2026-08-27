@@ -656,6 +656,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Ship a Node entry point bb starts on demand on the machine it calls",
           "Call that worker from its server code over typed RPC",
           "Do work that has to happen on the machine itself, such as watching files or holding a wake lock",
+          "Declare desired loopback ports once and let bb deliver retained declarations when an enrolled machine reconnects",
         ],
         apiSymbols: ["PluginHosts"],
         firstParty: ["Keep Awake", "Remote access"],

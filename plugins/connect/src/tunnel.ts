@@ -337,8 +337,9 @@ export class ConnectTunnel {
   }
 
   /**
-   * A disconnected enrolled host must not block this server's own tunnel.
-   * Keep retrying persisted machine-share hydration/declaration separately.
+   * Persisted declarations stay dormant while enrolled hosts are offline.
+   * Keep hydration separate so other transient declaration failures can retry
+   * without blocking this server's own tunnel.
    */
   private startShareActivation(): void {
     const epoch = ++this.shareActivationEpoch;

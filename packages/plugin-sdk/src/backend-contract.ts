@@ -1160,8 +1160,11 @@ export interface PluginHosts {
   /**
    * Replace this plugin's desired shared-loopback ports for one host. The
    * server aggregates declarations, owns generations, and delivers the
-   * resulting set to that host's daemon. Tunnel identity is deliberately not
-   * accepted here: it is owned by the daemon's trusted enrollment.
+   * resulting set to that host's daemon. When an enrolled host is offline,
+   * the server retains the declaration and delivers it on the next
+   * credentialed daemon session. A connected daemon that reports no machine
+   * credential is rejected. Tunnel identity is deliberately not accepted
+   * here: it is owned by the daemon's trusted enrollment.
    */
   declareSharedPorts(hostId: string, ports: readonly number[]): void;
 }

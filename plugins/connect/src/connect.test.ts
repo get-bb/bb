@@ -1852,12 +1852,10 @@ describe("connect plugin", () => {
     ]);
   });
 
-  it("unexposes a persisted machine share when its declaration push fails offline", async () => {
+  it("unexposes a persisted machine share when its declaration update fails", async () => {
     host = createConnectFakeHost();
     const declarations = vi.fn((_hostId: string, _ports: readonly number[]) => {
-      throw Object.assign(new Error("host is offline"), {
-        body: { code: "connect_host_offline" },
-      });
+      throw new Error("temporary declaration failure");
     });
     Object.defineProperty(host.bb.hosts, "declareSharedPorts", {
       value: declarations,

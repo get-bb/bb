@@ -335,9 +335,14 @@
 // capacity implied by each model id. The usage event meaning changed across
 // the daemon boundary, so enrolled daemons must update with the server.
 //
+// Version 172 lets the server retain shared-port declarations while an
+// enrolled host is offline, then sends that desired set in the next daemon
+// session. The session-open connectShares semantics changed across the daemon
+// boundary, so enrolled daemons must update with the server.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 172 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

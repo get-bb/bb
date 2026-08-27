@@ -21,6 +21,11 @@ interface HostConnectCapability {
   sessionId: string;
 }
 
+interface HostConnectCapabilityState {
+  capability: HostConnectCapability;
+  leaseExpiresAt: number;
+}
+
 function normalizePorts(ports: readonly number[]): number[] {
   const normalized = new Set<number>();
   for (const port of ports) {
@@ -93,7 +98,17 @@ export class HostSharedPortCoordinator {
       throw new Error("shared-port declaration hostId must be non-empty");
     }
     const normalized = normalizePorts(ports);
-    if (normalized.length > 0) this.requireEnrolledHost(hostId);
+    if (normalized.length > 0) {
+      const host = this.requireDurablyEnrolledHost(hostId);
+      const state = this.connectCapabilityState(hostId);
+      if (
+        state !== null &&
+        state.leaseExpiresAt > Date.now() &&
+        !state.capability.hasMachineCredential
+      ) {
+        this.throwMissingMachineCredential(host);
+      }
+    }
     return normalized;
   }
 
@@ -101,20 +116,20 @@ export class HostSharedPortCoordinator {
     ownerId: string;
     hostId: string;
     ports: readonly number[];
-  }): HostDaemonConnectShares {
+  }): void {
     if (args.ownerId.trim().length === 0) {
       throw new Error("shared-port declaration ownerId must be non-empty");
     }
     const ports = this.validateSharedPortDeclaration(args.hostId, args.ports);
     // Clearing server-owned desired state is always safe. In particular, it
     // must remain possible after a host goes offline, loses enrollment, or is
-    // removed. Only an active request to share ports requires a live enrolled
-    // daemon with its own machine credential.
+    // removed. Non-empty declarations require durable enrollment, but remain
+    // dormant until a daemon with its machine credential reconnects.
     const current = this.declarationsByHost.get(args.hostId);
     const candidate = new Map(current ?? []);
     candidate.set(args.ownerId, { ports });
     this.declarationsByHost.set(args.hostId, candidate);
-    return this.publishIfChanged(args.hostId);
+    this.publishIfChanged(args.hostId);
   }
 
   replaceDeclarationsForOwner(
@@ -142,10 +157,7 @@ export class HostSharedPortCoordinator {
       if (current.has(ownerId)) affectedHostIds.add(hostId);
     }
 
-    const replacements = new Map<
-      string,
-      Map<string, SharedPortDeclaration>
-    >();
+    const replacements = new Map<string, Map<string, SharedPortDeclaration>>();
     for (const hostId of affectedHostIds) {
       const replacement = new Map(this.declarationsByHost.get(hostId) ?? []);
       const ports = normalizedByHost.get(hostId);
@@ -179,14 +191,14 @@ export class HostSharedPortCoordinator {
     hostId: string,
     identity: HostDaemonConnectTunnelIdentity,
   ): HostDaemonConnectTunnelIdentity {
-    this.requireEnrolledHost(hostId);
+    this.requireConnectedEnrolledHost(hostId);
     const parsed = hostDaemonConnectTunnelIdentitySchema.parse(identity);
     this.tunnelIdentityByHost.set(hostId, parsed);
     return parsed;
   }
 
   getTunnelIdentity(hostId: string): HostDaemonConnectTunnelIdentity | null {
-    this.requireEnrolledHost(hostId);
+    this.requireConnectedEnrolledHost(hostId);
     return this.tunnelIdentityByHost.get(hostId) ?? null;
   }
 
@@ -215,9 +227,13 @@ export class HostSharedPortCoordinator {
   }
 
   reconcileSharedPortsForHost(hostId: string): HostDaemonConnectShares {
+    const generation = this.generationByHost.get(hostId) ?? 0;
+    if (!this.canReceiveSharedPorts(hostId)) {
+      return { generation, ports: [] };
+    }
     return this.resolveDeclarations(
       this.declarationsByHost.get(hostId) ?? new Map(),
-      this.generationByHost.get(hostId) ?? 0,
+      generation,
     );
   }
 
@@ -242,34 +258,9 @@ export class HostSharedPortCoordinator {
     return host;
   }
 
-  private requireEnrolledHost(hostId: string) {
+  private requireDurablyEnrolledHost(hostId: string) {
     const host = this.requireShareCapableHost(hostId);
     if (host.connectMachineId === null) {
-      throw new ApiError(
-        409,
-        "connect_host_unenrolled",
-        `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; enroll it via Connect in Settings > Machines`,
-        false,
-      );
-    }
-    const capability = this.connectCapabilityByHost.get(hostId);
-    const session = capability
-      ? getSessionById(this.deps.db, { sessionId: capability.sessionId })
-      : null;
-    if (
-      capability === undefined ||
-      session?.hostId !== host.id ||
-      session.status !== "active" ||
-      session.leaseExpiresAt <= Date.now()
-    ) {
-      throw new ApiError(
-        503,
-        "connect_host_offline",
-        `cannot share ports from host "${host.name}" (${host.id}) because it is not connected right now; bring the host online and try again`,
-        true,
-      );
-    }
-    if (!capability.hasMachineCredential) {
       throw new ApiError(
         409,
         "connect_host_unenrolled",
@@ -280,7 +271,62 @@ export class HostSharedPortCoordinator {
     return host;
   }
 
-  private publishIfChanged(hostId: string): HostDaemonConnectShares {
+  private connectCapabilityState(
+    hostId: string,
+  ): HostConnectCapabilityState | null {
+    const capability = this.connectCapabilityByHost.get(hostId);
+    const session = capability
+      ? getSessionById(this.deps.db, { sessionId: capability.sessionId })
+      : null;
+    if (
+      capability === undefined ||
+      session?.hostId !== hostId ||
+      session.status !== "active"
+    ) {
+      return null;
+    }
+    return { capability, leaseExpiresAt: session.leaseExpiresAt };
+  }
+
+  private canReceiveSharedPorts(hostId: string): boolean {
+    const host = getNonDestroyedHost(this.deps.db, hostId);
+    if (!host || host.connectMachineId === null) return false;
+    return (
+      this.connectCapabilityState(hostId)?.capability.hasMachineCredential ===
+      true
+    );
+  }
+
+  private requireConnectedEnrolledHost(hostId: string) {
+    const host = this.requireDurablyEnrolledHost(hostId);
+    const state = this.connectCapabilityState(hostId);
+    if (state === null || state.leaseExpiresAt <= Date.now()) {
+      throw new ApiError(
+        503,
+        "connect_host_offline",
+        `cannot share ports from host "${host.name}" (${host.id}) because it is not connected right now; bring the host online and try again`,
+        true,
+      );
+    }
+    if (!state.capability.hasMachineCredential) {
+      this.throwMissingMachineCredential(host);
+    }
+    return host;
+  }
+
+  private throwMissingMachineCredential(host: {
+    id: string;
+    name: string;
+  }): never {
+    throw new ApiError(
+      409,
+      "connect_host_unenrolled",
+      `cannot share ports from host "${host.name}" (${host.id}) because it has no bb connect machine credential; enroll it via Connect in Settings > Machines`,
+      false,
+    );
+  }
+
+  private publishIfChanged(hostId: string): void {
     const currentGeneration = this.generationByHost.get(hostId) ?? 0;
     const nextGeneration = currentGeneration + 1;
     const shares = this.resolveDeclarations(
@@ -292,16 +338,17 @@ export class HostSharedPortCoordinator {
       this.fingerprintByHost.get(hostId) ??
       fingerprint({ generation: currentGeneration, ports: [] });
     if (nextFingerprint === previousFingerprint) {
-      return { ...shares, generation: currentGeneration };
+      return;
     }
 
     this.fingerprintByHost.set(hostId, nextFingerprint);
     this.generationByHost.set(hostId, nextGeneration);
-    this.deps.hub.sendDaemonMessage(hostId, {
-      type: "connect-shares.replace",
-      ...shares,
-    });
-    return shares;
+    if (this.canReceiveSharedPorts(hostId)) {
+      this.deps.hub.sendDaemonMessage(hostId, {
+        type: "connect-shares.replace",
+        ...shares,
+      });
+    }
   }
 
   private resolveDeclarations(
