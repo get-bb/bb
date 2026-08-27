@@ -68,7 +68,7 @@
  */
 
 import { createInterface } from "node:readline";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -144,7 +144,12 @@ for (let i = fakeModels.length; i < modelCount; i += 1) {
 
 process.on("SIGTERM", () => {
   if (process.env.FAKE_ACP_SIGNAL_FILE) {
-    writeFileSync(process.env.FAKE_ACP_SIGNAL_FILE, "SIGTERM\n");
+    const signalFile = process.env.FAKE_ACP_SIGNAL_FILE;
+    const stagedSignalFile = `${signalFile}.${process.pid}.tmp`;
+    // The final path is the test's completion boundary: publish it only after
+    // the marker bytes are complete.
+    writeFileSync(stagedSignalFile, "SIGTERM\n");
+    renameSync(stagedSignalFile, signalFile);
   }
   process.exit(0);
 });
