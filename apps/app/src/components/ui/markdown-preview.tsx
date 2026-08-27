@@ -53,6 +53,7 @@ import {
 } from "./markdown-code-block.js";
 import { highlightMarkdownCode } from "./markdown-code-highlight.js";
 import "./markdown-code-highlight.css";
+import { isExternalBrowserModifierClick } from "./markdown-link.js";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -669,6 +670,12 @@ function MarkdownAnchor({
     // Internal BB destinations belong to RouteAnchor so they participate in
     // SPA history. URL preference routing only sees non-route destinations.
     if (isAppRouteHref) {
+      return;
+    }
+
+    // Cmd/Ctrl+click keeps the anchor's `target="_blank"` default, which the
+    // desktop shell sends to the OS browser and the web build to a new tab.
+    if (isExternalBrowserModifierClick(event)) {
       return;
     }
 

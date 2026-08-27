@@ -21,7 +21,10 @@ import type {
 } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
+import {
+  isExternalBrowserModifierClick,
+  type MarkdownPreviewLinkHandler,
+} from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
@@ -519,7 +522,7 @@ function openTerminalWebLink({
   onOpenLink,
   uri,
 }: OpenTerminalWebLinkArgs): void {
-  if (onOpenLink({ href: uri })) {
+  if (!isExternalBrowserModifierClick(event) && onOpenLink({ href: uri })) {
     event.preventDefault();
     return;
   }
