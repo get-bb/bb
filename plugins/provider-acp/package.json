@@ -14,7 +14,6 @@
       "icon": "./icons/acp.svg",
       "experimental_icons": {
         "cursor": "./icons/cursor.svg",
-        "antigravity": "./icons/antigravity.svg",
         "opencode": "./icons/opencode.svg",
         "omp": "./icons/omp.svg",
         "grok": "./icons/grok.svg",

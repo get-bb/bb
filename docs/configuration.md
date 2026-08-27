@@ -348,8 +348,7 @@ A replacing entry keeps the shipped agent's `nativeSkillRoots` unless it sets
 its own, and bb still lists the roots that agent's host config names (its
 config directory, compat trees, configured paths, plugins) either way.
 Optional fields: `icon` (a host glyph such as `Sparkles`, or one of this
-plugin's declared marks such as `provider-acp/antigravity`), `args`, `env`,
-`cwd`, `modelCli` (CLI model listing and
+plugin's declared marks), `args`, `env`, `cwd`, `modelCli` (CLI model listing and
 selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 (ACP `session/set_config_option` reasoning), `nativeSkillRoots` (native skills
 in the composer, as `{"user": [...], "project": [...]}` relative paths; an

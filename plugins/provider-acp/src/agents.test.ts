@@ -153,19 +153,17 @@ describe("customAcpAgentDefinition", () => {
     const [agent] = parseCustomAcpAgents({
       entries: [
         {
-          id: "antigravity",
-          displayName: "Antigravity",
-          icon: "provider-acp/antigravity",
-          command: "agy-acp",
+          id: "custom-agent",
+          displayName: "Custom Agent",
+          icon: "Sparkles",
+          command: "custom-agent-acp",
         },
       ],
       reservedProviderIds: reserved,
     }).agents;
     if (agent === undefined) throw new Error("expected the agent to parse");
 
-    expect(customAcpAgentDefinition(agent).icon).toBe(
-      "provider-acp/antigravity",
-    );
+    expect(customAcpAgentDefinition(agent).icon).toBe("Sparkles");
   });
 
   it("carries the launch spec and drops a model CLI with nothing to list", () => {
