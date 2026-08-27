@@ -6,7 +6,7 @@ import {
   type SplitResizeGridTarget,
 } from "@/lib/split-resize-snap";
 
-const OUTER_PANEL_SNAP_RELEASE_PX = SPLIT_RESIZE_SNAP_RELEASE_PX * 1.25;
+const OUTER_PANEL_SNAP_RELEASE_PX = SPLIT_RESIZE_SNAP_RELEASE_PX * 1.125;
 
 interface UsePanelResizeSnapArgs {
   axis: SplitResizeAxis;

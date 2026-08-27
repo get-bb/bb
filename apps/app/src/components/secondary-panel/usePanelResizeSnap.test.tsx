@@ -199,7 +199,7 @@ describe("usePanelResizeSnap", () => {
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
-  it("holds the outer divider for 25% farther than direct split dividers", () => {
+  it("holds the outer divider for 12.5% farther than direct split dividers", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
     const grid = screen.getByTestId("grid");
@@ -220,7 +220,7 @@ describe("usePanelResizeSnap", () => {
     });
     fireEvent.pointerMove(document.body, {
       buttons: 1,
-      clientX: 536,
+      clientX: 533,
       pointerId: 45,
     });
 
@@ -228,11 +228,11 @@ describe("usePanelResizeSnap", () => {
 
     fireEvent.pointerMove(document.body, {
       buttons: 1,
-      clientX: 539,
+      clientX: 534,
       pointerId: 45,
     });
-    expect(onResize).toHaveBeenLastCalledWith(0.54875);
+    expect(onResize).toHaveBeenLastCalledWith(0.5425);
 
-    fireEvent.pointerUp(window, { clientX: 539, pointerId: 45 });
+    fireEvent.pointerUp(window, { clientX: 534, pointerId: 45 });
   });
 });
