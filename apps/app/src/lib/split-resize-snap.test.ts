@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSplitResizeSnapSession } from "./split-resize-snap";
 
 const SNAP_CAPTURE_PX = 12;
-const SNAP_RELEASE_PX = 24;
+const SNAP_RELEASE_PX = 48;
 
 function rect({
   height = 600,
@@ -141,7 +141,10 @@ describe("split resize snapping", () => {
     });
 
     expect(result.snapped).toBe(false);
-    expect(result.fraction).toBeCloseTo(0.53125, 6);
+    expect(result.fraction).toBeCloseTo(
+      (500 + SNAP_RELEASE_PX + 1 - 100) / 800,
+      6,
+    );
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 
@@ -165,10 +168,18 @@ describe("split resize snapping", () => {
       session.resolve({ end: 900, pointer: 560, start: 100 }).snapped,
     ).toBe(true);
     expect(
-      session.resolve({ end: 900, pointer: 584, start: 100 }).snapped,
+      session.resolve({
+        end: 900,
+        pointer: 560 + SNAP_RELEASE_PX,
+        start: 100,
+      }).snapped,
     ).toBe(true);
     expect(
-      session.resolve({ end: 900, pointer: 585, start: 100 }).snapped,
+      session.resolve({
+        end: 900,
+        pointer: 560 + SNAP_RELEASE_PX + 1,
+        start: 100,
+      }).snapped,
     ).toBe(false);
   });
 
