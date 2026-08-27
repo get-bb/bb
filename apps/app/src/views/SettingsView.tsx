@@ -64,6 +64,7 @@ import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsS
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CliCommandSettingsSection } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
@@ -1323,6 +1324,7 @@ export function SettingsView() {
             })
           }
         />
+        <CliCommandSettingsSection />
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection
