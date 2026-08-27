@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BbDesktopCliCommandStatus } from "@bb/desktop-contract";
+import type {
+  BbDesktopCliCommandInstallResult,
+  BbDesktopCliCommandStatus,
+} from "@bb/desktop-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
   SettingsSection,
@@ -42,6 +45,34 @@ function description(status: BbDesktopCliCommandStatus | null): string {
   return `\`${status.commandName}\` resolves to this app, from ${status.binDir}.`;
 }
 
+/**
+ * Toast the settings row shows after an install attempt, branched on what the
+ * main process actually did rather than assumed from a re-fetched status: a
+ * refused write (a foreign file in the way) or an outright failure must not
+ * read as success.
+ */
+function toastForInstallResult(result: BbDesktopCliCommandInstallResult): void {
+  switch (result.outcome) {
+    case "written":
+    case "unchanged":
+      appToast.success(
+        `Installed ${result.status.commandName} in ${result.status.binDir}`,
+      );
+      return;
+    case "foreign-file":
+      appToast.error(
+        `A file at ${result.detail ?? result.status.binDir} wasn't written by bb, so it was left alone. Remove it to let bb manage this command.`,
+      );
+      return;
+    case "failed":
+      appToast.error(result.detail ?? "Could not install the command");
+      return;
+    case "unsupported":
+      appToast.error("Nothing to install for this build.");
+      return;
+  }
+}
+
 export function CliCommandSettingsSection() {
   const api = getBbDesktopInfo()?.cliCommand;
   const [status, setStatus] = useState<BbDesktopCliCommandStatus | null>(null);
@@ -50,7 +81,7 @@ export function CliCommandSettingsSection() {
 
   useEffect(() => {
     if (api === undefined) return;
-    void api.getStatus().then(setStatus);
+    void api.getStatus().then(setStatus).catch(() => undefined);
   }, [api]);
 
   const install = useCallback(() => {
@@ -58,9 +89,9 @@ export function CliCommandSettingsSection() {
     setPending(true);
     api
       .install()
-      .then((next) => {
-        setStatus(next);
-        appToast.success(`Installed ${next.commandName} in ${next.binDir}`);
+      .then((result) => {
+        setStatus(result.status);
+        toastForInstallResult(result);
       })
       .catch((error: unknown) => {
         appToast.error(

@@ -32,6 +32,24 @@ export interface RefreshHomeCliWrapperArgs {
   target: BbCliWrapperTarget;
 }
 
+export interface RefreshCliCommandLinkArgs {
+  env: NodeJS.ProcessEnv;
+  homeDir: string;
+  /**
+   * Explicit rather than read from `app.isPackaged` internally: a dev run
+   * (`pnpm dev` / `scripts/bb-dev-app`) has no stable resourcesPath or app
+   * bundle, and the settings-row install handler must never be able to
+   * overwrite a developer's real ~/.bb/bin/bb with a wrapper pointing at a
+   * path that will never exist. Passing it in also makes the gate directly
+   * unit-testable, matching desktop-shell-path.ts's `isPackaged` parameter.
+   */
+  isPackaged: boolean;
+  logger: { warn(message: string): void };
+  platform: NodeJS.Platform;
+  productName: DesktopReleaseInfo["applicationName"];
+  resourcesPath: string;
+}
+
 interface ResolveCliCommandNameArgs {
   /**
    * electron-builder's productName. Typed as the exhaustive channel union
@@ -215,4 +233,42 @@ export async function refreshHomeCliWrapper(
     args.logger.warn(`Could not refresh ${wrapperPath}: ${message}`);
     return { kind: "failed", message };
   }
+}
+
+/**
+ * Keep ~/.bb/bin/<name> pointed at this app. Called on every launch, and from
+ * the settings row's install handler, so a moved, renamed, or auto-updated
+ * app repairs the user's command without them doing anything.
+ *
+ * Gated on `isPackaged`: see the argument's docstring. Returns null both when
+ * not packaged and when `resolveCliWrapperTarget` finds nothing stable to
+ * record (e.g. a non-AppImage Linux build) -- callers that need to
+ * distinguish those two "nothing happened" cases already know `isPackaged`
+ * themselves.
+ */
+export async function refreshCliCommandLink(
+  args: RefreshCliCommandLinkArgs,
+): Promise<BbCliLinkStatus | null> {
+  if (!args.isPackaged) {
+    return null;
+  }
+
+  const commandName = resolveCliCommandName({ productName: args.productName });
+  const target = resolveCliWrapperTarget({
+    commandName,
+    env: args.env,
+    homeDir: args.homeDir,
+    platform: args.platform,
+    resourcesPath: args.resourcesPath,
+  });
+  if (target === null) {
+    return null;
+  }
+
+  return refreshHomeCliWrapper({
+    commandName,
+    homeDir: args.homeDir,
+    logger: args.logger,
+    target,
+  });
 }

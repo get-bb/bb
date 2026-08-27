@@ -27,7 +27,6 @@ import type { ConnectCredential } from "@bb/connect-client";
 import type { AppKeybindings } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
-  type BbDesktopCliCommandStatus,
   type BbDesktopInfo,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
@@ -137,8 +136,6 @@ import {
 import { mergeDesktopUpdateInfo } from "./desktop-update-info.js";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
-  BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL,
-  BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
@@ -162,12 +159,8 @@ import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js"
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
-import {
-  refreshHomeCliWrapper,
-  resolveCliCommandName,
-  resolveCliWrapperTarget,
-} from "./cli-link.js";
-import { resolveCliCommandStatus } from "./cli-command-status.js";
+import { refreshCliCommandLink } from "./cli-link.js";
+import { registerCliCommandIpc } from "./cli-command-ipc.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -1644,45 +1637,6 @@ async function finishQuit(): Promise<void> {
   await stopOwnedRuntime();
 }
 
-/**
- * Keep ~/.bb/bin/<name> pointed at this app. Runs on every launch so a moved,
- * renamed, or auto-updated app repairs the user's command without them doing
- * anything. Failures are logged and ignored: a broken shell convenience must
- * never stop the app from starting.
- */
-async function refreshCliCommandLink(): Promise<void> {
-  const commandName = resolveCliCommandName({
-    productName: DESKTOP_RELEASE_INFO.applicationName,
-  });
-  const target = resolveCliWrapperTarget({
-    commandName,
-    env: process.env,
-    homeDir: homedir(),
-    platform: process.platform,
-    resourcesPath: process.resourcesPath,
-  });
-  if (target === null) {
-    return;
-  }
-  await refreshHomeCliWrapper({
-    commandName,
-    homeDir: homedir(),
-    logger: createDesktopLogger(),
-    target,
-  });
-}
-
-/** What the settings row's IPC handlers report, for the app currently running. */
-function getCliCommandStatusForRunningApp(): BbDesktopCliCommandStatus {
-  return resolveCliCommandStatus({
-    commandName: resolveCliCommandName({
-      productName: DESKTOP_RELEASE_INFO.applicationName,
-    }),
-    homeDir: homedir(),
-    path: process.env.PATH ?? "",
-  });
-}
-
 function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
@@ -1690,12 +1644,9 @@ function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_WINDOW_STATE_CHANNEL, (event) => {
     return getSenderDesktopWindowState(event);
   });
-  ipcMain.handle(BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL, () => {
-    return getCliCommandStatusForRunningApp();
-  });
-  ipcMain.handle(BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL, async () => {
-    await refreshCliCommandLink();
-    return getCliCommandStatusForRunningApp();
+  registerCliCommandIpc({
+    applicationName: DESKTOP_RELEASE_INFO.applicationName,
+    logger: createDesktopLogger(),
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
     await Promise.all([
@@ -2187,7 +2138,15 @@ async function runDesktopApp(): Promise<void> {
   await app.whenReady();
   if (app.isPackaged) {
     await session.defaultSession.clearCache();
-    void refreshCliCommandLink();
+    void refreshCliCommandLink({
+      env: process.env,
+      homeDir: homedir(),
+      isPackaged: app.isPackaged,
+      logger: createDesktopLogger(),
+      platform: process.platform,
+      productName: DESKTOP_RELEASE_INFO.applicationName,
+      resourcesPath: process.resourcesPath,
+    });
   }
 
   const paths = createDesktopPathContext();
