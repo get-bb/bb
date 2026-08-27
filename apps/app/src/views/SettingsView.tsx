@@ -54,6 +54,7 @@ import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSec
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CliCommandSettingsSection } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
@@ -1097,6 +1098,7 @@ export function SettingsView() {
             })
           }
         />
+        <CliCommandSettingsSection />
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection

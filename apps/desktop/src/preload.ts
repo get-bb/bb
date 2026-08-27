@@ -7,6 +7,7 @@ import {
   bbDesktopBrowserTabRefSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
+  bbDesktopCliCommandStatusSchema,
   bbDesktopInfoSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
@@ -31,6 +32,8 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
+  BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL,
+  BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
@@ -301,6 +304,18 @@ const bbDesktopApi: BbDesktopApi = {
   version: currentInfo.version,
   checkForUpdates() {
     return invokeDesktopInfo(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL);
+  },
+  cliCommand: {
+    async getStatus() {
+      return bbDesktopCliCommandStatusSchema.parse(
+        await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL),
+      );
+    },
+    async install() {
+      return bbDesktopCliCommandStatusSchema.parse(
+        await ipcRenderer.invoke(BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL),
+      );
+    },
   },
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);

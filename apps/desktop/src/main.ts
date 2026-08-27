@@ -27,6 +27,7 @@ import type { ConnectCredential } from "@bb/connect-client";
 import type { AppKeybindings } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
+  type BbDesktopCliCommandStatus,
   type BbDesktopInfo,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
@@ -136,6 +137,8 @@ import {
 import { mergeDesktopUpdateInfo } from "./desktop-update-info.js";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
+  BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL,
+  BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
@@ -164,6 +167,7 @@ import {
   resolveCliCommandName,
   resolveCliWrapperTarget,
 } from "./cli-link.js";
+import { resolveCliCommandStatus } from "./cli-command-status.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -1668,12 +1672,30 @@ async function refreshCliCommandLink(): Promise<void> {
   });
 }
 
+/** What the settings row's IPC handlers report, for the app currently running. */
+function getCliCommandStatusForRunningApp(): BbDesktopCliCommandStatus {
+  return resolveCliCommandStatus({
+    commandName: resolveCliCommandName({
+      productName: DESKTOP_RELEASE_INFO.applicationName,
+    }),
+    homeDir: homedir(),
+    path: process.env.PATH ?? "",
+  });
+}
+
 function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
   });
   ipcMain.handle(BB_DESKTOP_GET_WINDOW_STATE_CHANNEL, (event) => {
     return getSenderDesktopWindowState(event);
+  });
+  ipcMain.handle(BB_DESKTOP_CLI_COMMAND_STATUS_CHANNEL, () => {
+    return getCliCommandStatusForRunningApp();
+  });
+  ipcMain.handle(BB_DESKTOP_CLI_COMMAND_INSTALL_CHANNEL, async () => {
+    await refreshCliCommandLink();
+    return getCliCommandStatusForRunningApp();
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
     await Promise.all([
