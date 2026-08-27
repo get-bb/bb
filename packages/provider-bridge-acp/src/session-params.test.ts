@@ -4,6 +4,7 @@ import {
   buildAgentModelCatalog,
   parseAgentModelLines,
 } from "./bridge/model-catalog.js";
+import { SAMPLE_LIST } from "./bridge/model-catalog.fixture.js";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "./launch-spec.js";
 import {
   buildAcpModelListParams,
@@ -312,9 +313,10 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
     });
   });
 
-  it("translates every persisted Cursor family to an accepted parameterized id", () => {
-    const persistedCatalog = buildAgentModelCatalog(
-      parseAgentModelLines(
+  it("translates the union of checked-in persisted Cursor families", () => {
+    const persistedFamilyIds = new Set(
+      [
+        SAMPLE_LIST,
         readFileSync(
           new URL(
             "./bridge/issue-1688-cursor-list-models.txt",
@@ -322,35 +324,43 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
           ),
           "utf8",
         ),
+      ].flatMap(
+        (source) =>
+          buildAgentModelCatalog(parseAgentModelLines(source))?.models.map(
+            ({ id }) => id,
+          ) ?? [],
       ),
     );
-    const translations = persistedCatalog?.models.map(({ id }) => {
-      const selection = cursorSessionParams({ model: id }).modelSelection;
-      return [
-        id,
-        selection && "modelId" in selection ? selection.modelId : undefined,
-      ];
-    });
-    expect(translations).toHaveLength(34);
+    expect(persistedFamilyIds.size).toBe(35);
     expect(
-      translations?.filter(
-        ([, id]) => id === undefined || !cursorParameterizedModelIds.has(id),
-      ),
+      [...persistedFamilyIds].filter((id) => {
+        const selection = cursorSessionParams({ model: id }).modelSelection;
+        return (
+          !selection ||
+          !("modelId" in selection) ||
+          !cursorParameterizedModelIds.has(selection.modelId)
+        );
+      }),
     ).toEqual([]);
   });
 
   it.each([
-    ["claude-4.6-sonnet-medium-thinking", "claude-sonnet-4-6"],
-    ["claude-4.6-opus-high-thinking", "claude-opus-4-6"],
-    ["claude-4.5-opus-high-thinking", "claude-opus-4-5"],
-    ["gemini-3.6-flash-minimal", "gemini-3.6-flash"],
-    ["claude-4.5-sonnet-thinking", "claude-sonnet-4-5"],
-    ["claude-4-sonnet-thinking", "claude-sonnet-4"],
-  ] as const)("maps persisted Cursor family %s to %s", (model, modelId) => {
-    expect(cursorSessionParams({ model }).modelSelection).toMatchObject({
-      modelId,
-    });
-  });
+    ["claude-4.6-sonnet-medium-thinking", "high", "claude-sonnet-4-6", "high"],
+    ["claude-4.6-opus-high-thinking", "high", "claude-opus-4-6", "high"],
+    ["claude-4.5-opus-high-thinking", "high", "claude-opus-4-5", "high"],
+    ["gemini-3.6-flash", "medium", "gemini-3.6-flash", "medium"],
+    ["gemini-3.6-flash-minimal", "medium", "gemini-3.6-flash", "low"],
+    ["claude-4.5-sonnet-thinking", "high", "claude-sonnet-4-5", "high"],
+    ["claude-4-sonnet-thinking", "high", "claude-sonnet-4", "high"],
+    ["gpt-5.1-codex-max-medium", "medium", "gpt-5.1", "medium"],
+  ] as const)(
+    "maps Cursor selection %s to its accepted tuple",
+    (model, reasoningLevel, modelId, expectedReasoningLevel) => {
+      expect(
+        cursorSessionParams({ model, reasoningLevel }).modelSelection,
+      ).toEqual({ modelId, reasoningLevel: expectedReasoningLevel });
+    },
+  );
 
   it.each(["default", "fast"] as const)(
     "forwards the %s service tier explicitly",
