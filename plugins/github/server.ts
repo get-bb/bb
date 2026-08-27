@@ -345,6 +345,25 @@ function isRepoName(value: unknown): value is string {
   return typeof value === "string" && /^[\w.-]+\/[\w.-]+$/.test(value);
 }
 
+/**
+ * Split the extraRepos setting into repository names this plugin can track and
+ * entries it cannot. The setting is an explicit list, so a wildcard such as
+ * "owner/*" is invalid rather than an owner-wide match.
+ */
+export function parseExtraRepos(raw: string): {
+  valid: string[];
+  invalid: string[];
+} {
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const entry of raw.split(/[\s,]+/)) {
+    if (entry.length === 0) continue;
+    if (isRepoName(entry)) valid.push(entry);
+    else invalid.push(entry);
+  }
+  return { valid, invalid };
+}
+
 function run(
   file: string,
   args: string[],
@@ -609,10 +628,17 @@ export default async function plugin(bb: BbPluginApi) {
       );
     }
     const { extraRepos } = await settings.get();
-    for (const raw of extraRepos.split(/[\s,]+/)) {
-      if (isRepoName(raw) && !byRepo.has(raw)) {
-        byRepo.set(raw, { repo: raw, projectId: null });
-      }
+    const extra = parseExtraRepos(extraRepos);
+    for (const raw of extra.valid) {
+      if (!byRepo.has(raw)) byRepo.set(raw, { repo: raw, projectId: null });
+    }
+    // An unusable entry used to be dropped in silence, so a typo or a glob
+    // looked identical to a setting that worked.
+    for (const bad of extra.invalid) {
+      bb.log.warn(
+        `extraRepos entry "${bad}" is not an owner/repo name and tracks nothing. ` +
+          "List each repository explicitly, for example \"owner/repo\".",
+      );
     }
     const repos = [...byRepo.values()];
     repoCache = { repos, fetchedAt: Date.now() };

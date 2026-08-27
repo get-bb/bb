@@ -348,4 +348,21 @@ describe("github plugin RPC behavior", () => {
       },
     });
   });
+  it("warns about an extraRepos entry that cannot track anything", async () => {
+    const host = createFakePluginHost({
+      pluginId: "github",
+      settings: { extraRepos: "acme/widgets, ACME/*" },
+    });
+    await plugin(host.bb);
+
+    // The valid sibling still syncs; the glob contributes no repo.
+    await expect(host.harness.callRpc("refresh")).resolves.toMatchObject({
+      repos: 1,
+    });
+    expect(
+      host.harness.logEntries.filter(
+        (entry) => entry.level === "warn" && entry.message.includes("ACME/*"),
+      ),
+    ).not.toHaveLength(0);
+  });
 });
