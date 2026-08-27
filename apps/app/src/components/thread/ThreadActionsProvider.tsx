@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSetAtom } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast";
 import {
   closePanesForThreadsAtom,
@@ -41,12 +42,17 @@ import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
+import {
+  ThreadArchiveDialog,
+  type ThreadArchiveDialogTarget,
+} from "@/components/dialogs/ThreadArchiveDialog";
 import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
+import { getCachedWorkingArchiveThreadCount } from "@/hooks/cache-owners/thread-archive-cache";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
@@ -99,6 +105,7 @@ export function ThreadActionsProvider({
   // Stable across navigations: the context value below must not change per
   // pathname, or every mounted sidebar ThreadRow re-renders on each route change.
   const navigate = useRouteNavigate();
+  const queryClient = useQueryClient();
   const { threadId: viewedThreadId } = useRouteState();
   // Read the currently-viewed thread live inside async mutation callbacks: a
   // pane's stale-prune (deleted/archived thread) can move the URL between a
@@ -138,9 +145,12 @@ export function ThreadActionsProvider({
 
   const renameDialog = useDialogState<ThreadRenameDialogTarget>();
   const deleteDialog = useDialogState<ThreadDeleteDialogTarget>();
+  const archiveDialog = useDialogState<ThreadArchiveDialogTarget>();
 
   const { onClose: closeRenameDialog, onOpen: openRenameDialog } = renameDialog;
   const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
+  const { onClose: closeArchiveDialog, onOpen: openArchiveDialog } =
+    archiveDialog;
 
   useEffect(() => {
     return () => {
@@ -330,7 +340,7 @@ export function ThreadActionsProvider({
     [unarchiveMutate],
   );
 
-  const archiveThreadAndChildrenAction = useCallback(
+  const performArchiveThreadAndChildren = useCallback(
     (thread: Thread) => {
       archiveThreadAndChildrenMutateAsync({ id: thread.id }).then(
         (response) => {
@@ -394,6 +404,29 @@ export function ThreadActionsProvider({
       syncNavigationAfterClose,
       unarchiveMutate,
     ],
+  );
+
+  const archiveThreadAndChildrenAction = useCallback(
+    (thread: Thread) => {
+      const workingThreadCount = getCachedWorkingArchiveThreadCount({
+        queryClient,
+        threadId: thread.id,
+      });
+      if (workingThreadCount > 0) {
+        openArchiveDialog({ thread, workingThreadCount });
+        return;
+      }
+      performArchiveThreadAndChildren(thread);
+    },
+    [openArchiveDialog, performArchiveThreadAndChildren, queryClient],
+  );
+
+  const confirmArchive = useCallback(
+    (target: ThreadArchiveDialogTarget) => {
+      closeArchiveDialog();
+      performArchiveThreadAndChildren(target.thread);
+    },
+    [closeArchiveDialog, performArchiveThreadAndChildren],
   );
 
   const toggleRead = useCallback(
@@ -465,6 +498,12 @@ export function ThreadActionsProvider({
         pending={updateThread.isPending}
         onOpenChange={renameDialog.onOpenChange}
         onRename={submitRename}
+      />
+      <ThreadArchiveDialog
+        target={archiveDialog.target}
+        pending={archiveThreadAndChildrenMutation.isPending}
+        onOpenChange={archiveDialog.onOpenChange}
+        onArchive={confirmArchive}
       />
       <ThreadDeleteDialog
         target={deleteDialog.target}
