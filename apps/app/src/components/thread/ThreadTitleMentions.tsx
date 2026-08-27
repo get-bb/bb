@@ -486,20 +486,30 @@ function threadMentionResource(
   };
 }
 
+const UNRESOLVED_THREAD_MENTION_LABEL = "Thread";
+
+function unresolvedThreadMentionResource(
+  threadId: string,
+): PromptMentionResource {
+  return {
+    kind: "thread",
+    threadId,
+    label: UNRESOLVED_THREAD_MENTION_LABEL,
+  };
+}
+
 function resolveTitleMentionResource(
   token: string,
   resources: ThreadTitleMentionResources,
-): PromptMentionResource {
+): PromptMentionResource | null {
   const serializedValue = token.slice(1);
   if (serializedValue.startsWith("thread:")) {
     const threadId = serializedValue.slice("thread:".length);
-    return (
-      threadMentionResource(threadId, resources) ?? {
-        kind: "thread",
-        threadId,
-        label: threadId,
-      }
-    );
+    const resource = threadMentionResource(threadId, resources);
+    if (resource !== null || isRawThreadId(threadId)) {
+      return resource;
+    }
+    return { kind: "thread", threadId, label: threadId };
   }
 
   if (serializedValue.startsWith("project:")) {
@@ -533,10 +543,15 @@ function resolveTitleMentionResource(
 }
 
 interface ThreadTitleTextSegment {
-  rawThreadId: string | null;
+  unresolvedThreadId: string | null;
   resource: PromptMentionResource | null;
   serializedText: string | null;
   text: string;
+}
+
+function serializedThreadMentionId(token: string): string | null {
+  const prefix = "@thread:";
+  return token.startsWith(prefix) ? token.slice(prefix.length) : null;
 }
 
 function threadTitleTextSegments(
@@ -567,21 +582,28 @@ function threadTitleTextSegments(
     }
     if (match.index > cursor) {
       segments.push({
-        rawThreadId: null,
+        unresolvedThreadId: null,
         resource: null,
         serializedText: null,
         text: title.slice(cursor, match.index),
       });
     }
+    const serializedThreadId =
+      rawThreadId === null ? serializedThreadMentionId(token) : null;
     const resource =
       rawThreadId === null
         ? resolveTitleMentionResource(token, resources)
         : threadMentionResource(rawThreadId, resources);
+    const unresolvedThreadId =
+      resource === null ? (rawThreadId ?? serializedThreadId) : null;
     segments.push({
-      rawThreadId: resource === null ? rawThreadId : null,
+      unresolvedThreadId,
       resource,
-      serializedText: resource === null ? null : token,
-      text: resource?.label ?? token,
+      serializedText:
+        resource === null && unresolvedThreadId === null ? null : token,
+      text:
+        resource?.label ??
+        (serializedThreadId === null ? token : UNRESOLVED_THREAD_MENTION_LABEL),
     });
     cursor = matchEnd;
   }
@@ -589,7 +611,7 @@ function threadTitleTextSegments(
   if (segments.length === 0) {
     return [
       {
-        rawThreadId: null,
+        unresolvedThreadId: null,
         resource: null,
         serializedText: null,
         text: title,
@@ -598,7 +620,7 @@ function threadTitleTextSegments(
   }
   if (cursor < title.length) {
     segments.push({
-      rawThreadId: null,
+      unresolvedThreadId: null,
       resource: null,
       serializedText: null,
       text: title.slice(cursor),
@@ -620,9 +642,31 @@ export function resolveThreadTitleDisplayText(
 /** Resolves serialized mentions in a thread title to one plain display label. */
 export function useThreadTitleDisplayText(title: string): string {
   const resources = useContext(ThreadTitleMentionResourcesContext);
-  return useMemo(
-    () => resolveThreadTitleDisplayText(title, resources),
+  const segments = useMemo(
+    () => threadTitleTextSegments(title, resources),
     [resources, title],
+  );
+  const unresolvedThreadIds = useMemo(() => {
+    const threadIds = new Set<string>();
+    for (const segment of segments) {
+      if (segment.unresolvedThreadId !== null) {
+        threadIds.add(segment.unresolvedThreadId);
+      }
+    }
+    return [...threadIds];
+  }, [segments]);
+  const resolvedThreadsById = useRawThreadMentionResources(unresolvedThreadIds);
+  return useMemo(
+    () =>
+      segments
+        .map((segment) =>
+          segment.unresolvedThreadId === null
+            ? segment.text
+            : (resolvedThreadsById.get(segment.unresolvedThreadId)?.label ??
+              segment.text),
+        )
+        .join(""),
+    [resolvedThreadsById, segments],
   );
 }
 
@@ -711,17 +755,26 @@ export function useRawThreadMentionResources(
   const resources = useContext(ThreadTitleMentionResourcesContext);
   const queryClient = useContext(QueryClientContext);
   const batch = useContext(RawThreadMentionBatchContext);
+  const resolver = useContext(RawThreadMentionResolverContext);
+  const resolutionContext =
+    batch === EMPTY_RAW_THREAD_MENTION_BATCH ? resolver : batch;
   useEffect(() => {
+    let registeredCount = 0;
     for (const threadId of threadIds) {
       const sidebarResource = threadMentionResource(threadId, resources);
       const cachedThread = queryClient?.getQueryData<ThreadResponse>(
         threadQueryKey(threadId),
       );
-      if (sidebarResource === null && cachedThread === undefined) {
-        batch.register(threadId);
+      if (
+        sidebarResource === null &&
+        cachedThread === undefined &&
+        registeredCount < THREAD_MENTION_RESOLVE_MAX_IDS
+      ) {
+        resolutionContext.register(threadId);
+        registeredCount += 1;
       }
     }
-  }, [batch, queryClient, resources, threadIds]);
+  }, [queryClient, resolutionContext, resources, threadIds]);
 
   return useMemo(() => {
     const resourceById = new Map<string, PromptMentionResource>();
@@ -743,25 +796,43 @@ export function useRawThreadMentionResources(
         });
         continue;
       }
-      const batchResource = batch.resourceById.get(threadId);
+      const batchResource = resolutionContext.resourceById.get(threadId);
       if (batchResource !== undefined) {
         resourceById.set(threadId, batchResource);
       }
     }
     return resourceById;
-  }, [batch.resourceById, queryClient, resources, threadIds]);
+  }, [queryClient, resolutionContext.resourceById, resources, threadIds]);
 }
 
-function RawThreadTitleMention({ threadId }: { threadId: string }) {
+interface ResolvingThreadTitleMentionProps {
+  renderFallbackPill: boolean;
+  serializedText: string;
+  threadId: string;
+}
+
+function ResolvingThreadTitleMention({
+  renderFallbackPill,
+  serializedText,
+  threadId,
+}: ResolvingThreadTitleMentionProps) {
   const resource = useRawThreadMentionResource(threadId);
   if (resource === null) {
-    return threadId;
+    return renderFallbackPill ? (
+      <PromptMentionPill
+        interactive={false}
+        resource={unresolvedThreadMentionResource(threadId)}
+        serializedText={serializedText}
+      />
+    ) : (
+      threadId
+    );
   }
   return (
     <PromptMentionPill
       interactive={false}
       resource={resource}
-      serializedText={threadId}
+      serializedText={serializedText}
     />
   );
 }
@@ -769,10 +840,12 @@ function RawThreadTitleMention({ threadId }: { threadId: string }) {
 function ThreadTitleMentionsContent({ title }: { title: string }) {
   const resources = useContext(ThreadTitleMentionResourcesContext);
   return threadTitleTextSegments(title, resources).map((segment, index) =>
-    segment.rawThreadId !== null ? (
-      <RawThreadTitleMention
-        key={`${index}:${segment.rawThreadId}`}
-        threadId={segment.rawThreadId}
+    segment.unresolvedThreadId !== null && segment.serializedText !== null ? (
+      <ResolvingThreadTitleMention
+        key={`${index}:${segment.unresolvedThreadId}`}
+        renderFallbackPill={segment.serializedText.startsWith("@thread:")}
+        serializedText={segment.serializedText}
+        threadId={segment.unresolvedThreadId}
       />
     ) : segment.resource === null || segment.serializedText === null ? (
       segment.text

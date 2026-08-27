@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -45,6 +46,7 @@ import {
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
+import { sdk } from "@/lib/sdk";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -651,6 +653,44 @@ describe("ThreadRow", () => {
       screen.getByRole("link", { name: `Open ${resolvedTitle}` }),
     ).not.toBeNull();
     expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
+  });
+
+  it("resolves a serialized thread title mention outside the sidebar cache", async () => {
+    const resolveMentions = vi
+      .spyOn(sdk.threads, "resolveMentions")
+      .mockResolvedValue([
+        {
+          threadId: "thr_dcwivn5n8w",
+          projectId: "proj_mentioned",
+          label: "Mention target",
+        },
+      ]);
+
+    render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map()}
+        threadById={new Map()}
+      >
+        <ThreadRowTestHarness
+          thread={createThread({
+            title: "Continue from @thread:thr_dcwivn5n8w",
+            titleFallback: "Continue from @thread:thr_dcwivn5n8w",
+          })}
+        />
+      </ThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open Continue from Thread" }),
+    ).not.toBeNull();
+    await waitFor(() => expect(resolveMentions).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Mention target")).not.toBeNull();
+    expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open Continue from Mention target" }),
+    ).not.toBeNull();
   });
 
   it("marks a child from another project with the project name", () => {
