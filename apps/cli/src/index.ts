@@ -4,6 +4,7 @@ import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerFileCommands } from "./commands/file.js";
 import { registerGuideCommand } from "./commands/guide.js";
+import { registerInstallCliCommand } from "./commands/install-cli.js";
 import { registerManagerCommands } from "./commands/manager.js";
 import { registerMarketplaceCommands } from "./commands/marketplace.js";
 import { registerMachineCommands } from "./commands/machine.js";
@@ -100,6 +101,7 @@ registerPluginCommands(program, getUrl);
 registerMarketplaceCommands(program, getUrl);
 registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
+registerInstallCliCommand(program);
 registerVoiceCommands(program, getUrl);
 
 /**
