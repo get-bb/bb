@@ -98,14 +98,25 @@ export function buildParentSelectorOptions({
     parentThreadId ?? undefined,
     parentThreadDisplayName ?? "Parent thread",
   );
-  for (const parentThread of parentThreads) {
-    if (isHiddenThread(parentThread)) {
-      continue;
+  const threadIdsWithChildren = new Set<string>();
+  for (const thread of parentThreads) {
+    if (thread.parentThreadId !== null) {
+      threadIdsWithChildren.add(thread.parentThreadId);
     }
-    addOption(
-      parentThread.id,
-      parentThread.title?.trim() ? parentThread.title : "Parent thread",
-    );
+  }
+  for (const hasChildren of [true, false]) {
+    for (const parentThread of parentThreads) {
+      if (
+        isHiddenThread(parentThread) ||
+        threadIdsWithChildren.has(parentThread.id) !== hasChildren
+      ) {
+        continue;
+      }
+      addOption(
+        parentThread.id,
+        parentThread.title?.trim() ? parentThread.title : "Parent thread",
+      );
+    }
   }
 
   return options;

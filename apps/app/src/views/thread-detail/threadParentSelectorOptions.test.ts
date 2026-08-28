@@ -72,6 +72,40 @@ describe("thread parent selector options", () => {
     ]);
   });
 
+  it("prioritizes threads with children while preserving group order", () => {
+    const options = buildParentSelectorOptions({
+      currentThreadId: "thr_current",
+      parentThreadDisplayName: null,
+      parentThreadId: null,
+      parentThreads: [
+        makeThread({ id: "thr_leaf_new", title: "New leaf" }),
+        makeThread({
+          id: "thr_child_two",
+          parentThreadId: "thr_parent_two",
+          title: "Child two",
+        }),
+        makeThread({ id: "thr_parent_two", title: "Parent two" }),
+        makeThread({ id: "thr_parent_one", title: "Parent one" }),
+        makeThread({
+          id: "thr_child_one",
+          parentThreadId: "thr_parent_one",
+          title: "Child one",
+        }),
+        makeThread({ id: "thr_leaf_old", title: "Old leaf" }),
+      ],
+    });
+
+    expect(options).toEqual([
+      { value: "none", label: "None" },
+      { value: "thr_parent_two", label: "Parent two" },
+      { value: "thr_parent_one", label: "Parent one" },
+      { value: "thr_leaf_new", label: "New leaf" },
+      { value: "thr_child_two", label: "Child two" },
+      { value: "thr_child_one", label: "Child one" },
+      { value: "thr_leaf_old", label: "Old leaf" },
+    ]);
+  });
+
   it("excludes the current thread and descendants from parent candidates", () => {
     const options = buildParentSelectorOptions({
       currentThreadId: "thr_parent",
