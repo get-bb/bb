@@ -34,7 +34,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     ).toEqual({
       label: "Provisioning",
       compactLabel: "Provisioning",
-      icon: "Loading",
+      icon: "Spinner",
       typeLabel: undefined,
     });
   });
