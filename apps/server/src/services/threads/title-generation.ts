@@ -122,7 +122,7 @@ export async function generateThreadMetadataWithOutcome(
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
-  const taskPrompt = cleanPromptText(args.input);
+  const userPrompt = cleanPromptText(args.input);
   const complete = (
     metadata: GeneratedThreadMetadata | null,
     reason?: ThreadMetadataGenerationOutcomeReason,
@@ -132,12 +132,12 @@ export async function generateThreadMetadataWithOutcome(
     ...(reason ? { reason } : {}),
   });
 
-  if (!taskPrompt) {
+  if (!userPrompt) {
     return complete(null, "empty-input");
   }
 
   const prompt = renderTemplate("generateThreadTitle", {
-    taskPrompt,
+    userPrompt,
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
