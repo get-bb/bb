@@ -290,7 +290,11 @@ function PluginComposerPlusMenuEntryContent({
   const view = useComposerView();
   const pluginDisplayName = usePluginDisplayName(pluginId);
   const disabled =
-    typeof item.disabled === "function" ? item.disabled(view) : item.disabled;
+    item.disabled === undefined || item.disabled === false
+      ? false
+      : item.disabled === true
+        ? true
+        : item.disabled(view);
 
   const run = async () => {
     try {

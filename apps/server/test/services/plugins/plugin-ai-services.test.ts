@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import type { Logger } from "@bb/logger";
-import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
+import {
+  experimental_aiServicesHostContract,
+  type ExperimentalAiInferenceCompleteOutput,
+} from "@get-bb/plugin-sdk/ai-services";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import {
@@ -15,8 +17,9 @@ import {
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 import { testLogger, withTestHarness } from "../../helpers/test-app.js";
+import type { ServerLogger } from "../../../src/types.js";
 
-const logger = testLogger as unknown as Logger;
+const logger: ServerLogger = testLogger;
 
 const HOST_SOURCE = `
   export default {
@@ -78,19 +81,25 @@ async function writePlugin(
   const withHost = options.withHost ?? true;
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
+  const packageJson = {
+    name: options.name,
+    version: "0.1.0",
+    bb: {
+      name: "AI service fixture",
+      description: "AI service registration fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
+  };
+  const packageJsonWithHost = withHost
+    ? {
+        ...packageJson,
+        bb: { ...packageJson.bb, host: "./host.ts" },
+      }
+    : packageJson;
   await writeFile(
     join(rootDir, "package.json"),
-    JSON.stringify({
-      name: options.name,
-      version: "0.1.0",
-      bb: {
-        name: "AI service fixture",
-        description: "AI service registration fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(withHost ? { host: "./host.ts" } : {}),
-      },
-    }),
+    JSON.stringify(packageJsonWithHost),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
   if (withHost) {
@@ -272,7 +281,7 @@ describe("the AI service host binding", () => {
   const callPluginHost = vi.fn(
     async (
       _args: Parameters<NonNullable<PluginServiceDeps["callPluginHost"]>>[0],
-    ): Promise<unknown> => ({
+    ): Promise<ExperimentalAiInferenceCompleteOutput> => ({
       ok: true,
       model: "acme-1",
       value: { title: "Hello" },
@@ -350,7 +359,11 @@ describe("the AI service host binding", () => {
       }),
     );
 
-    callPluginHost.mockResolvedValueOnce({ ok: true, text: "no model field" });
+    callPluginHost.mockResolvedValueOnce({
+      ok: true,
+      model: "acme-ears",
+      value: {},
+    });
     await expect(
       registration.transcribeVoice(
         {

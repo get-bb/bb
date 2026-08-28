@@ -208,17 +208,20 @@ export async function createTestAppHarness(
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
-  const terminalSessions = new TerminalSessionLifecycle({
+  const terminalSessionOptions: ConstructorParameters<
+    typeof TerminalSessionLifecycle
+  >[0] = {
     attachTimeoutMs: 50,
-    ...(terminalCloseTimeoutMs === undefined
-      ? {}
-      : { closeTimeoutMs: terminalCloseTimeoutMs }),
     config,
     db,
     hub,
     logger: testLogger,
     openTimeoutMs: 50,
-  });
+  };
+  if (terminalCloseTimeoutMs !== undefined) {
+    terminalSessionOptions.closeTimeoutMs = terminalCloseTimeoutMs;
+  }
+  const terminalSessions = new TerminalSessionLifecycle(terminalSessionOptions);
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
     hub,
@@ -300,8 +303,8 @@ export async function withTestHarness<T>(
   maybeRun?: (harness: TestAppHarness) => Promise<T>,
 ): Promise<T> {
   const overrides: TestAppHarnessConfigOverrides =
-    typeof overridesOrRun === "function" ? {} : overridesOrRun;
-  const run = typeof overridesOrRun === "function" ? overridesOrRun : maybeRun;
+    overridesOrRun instanceof Function ? {} : overridesOrRun;
+  const run = overridesOrRun instanceof Function ? overridesOrRun : maybeRun;
   if (!run) {
     throw new Error("withTestHarness requires a run callback");
   }

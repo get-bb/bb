@@ -7,6 +7,9 @@ import type {
   EnvironmentDiffArgs,
   EnvironmentDiffFileArgs,
   EnvironmentDiffPatchArgs,
+  EnvironmentDiffBranchesArgs,
+  EnvironmentPathsArgs,
+  EnvironmentStatusArgs,
   EnvironmentUpdateArgs,
 } from "@bb/sdk";
 import { action } from "../action.js";
@@ -348,12 +351,12 @@ export function registerEnvironmentCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentStatusCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.status({
-          environmentId: id,
-          ...(opts.mergeBaseBranch !== undefined
-            ? { mergeBaseBranch: opts.mergeBaseBranch }
-            : {}),
-        });
+        const statusArgs: EnvironmentStatusArgs = { environmentId: id };
+        if (opts.mergeBaseBranch !== undefined) {
+          statusArgs.mergeBaseBranch = opts.mergeBaseBranch;
+        }
+        const result =
+          await createCliBbSdk(getUrl()).environments.status(statusArgs);
         if (outputJson(opts, result)) return;
         if (result.outcome === "not_applicable") {
           console.log(`Status unavailable: ${result.message}`);
@@ -391,13 +394,13 @@ export function registerEnvironmentCommands(
     .action(
       action(async (id: string, opts: EnvironmentBranchesCommandOptions) => {
         validateLimit(opts.limit);
-        const result = await createCliBbSdk(getUrl()).environments.diffBranches(
-          {
-            environmentId: id,
-            ...(opts.query !== undefined ? { query: opts.query } : {}),
-            ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-          },
-        );
+        const branchesArgs: EnvironmentDiffBranchesArgs = { environmentId: id };
+        if (opts.query !== undefined) branchesArgs.query = opts.query;
+        if (opts.limit !== undefined) branchesArgs.limit = opts.limit;
+        const result =
+          await createCliBbSdk(getUrl()).environments.diffBranches(
+            branchesArgs,
+          );
         if (outputJson(opts, result)) return;
         console.log("Local branches:");
         for (const branch of result.branches) console.log(`  ${branch}`);
@@ -424,13 +427,15 @@ export function registerEnvironmentCommands(
         const includeFiles = opts.files === true || opts.directories !== true;
         const includeDirectories =
           opts.directories === true || opts.files !== true;
-        const result = await createCliBbSdk(getUrl()).environments.paths({
+        const pathsArgs: EnvironmentPathsArgs = {
           environmentId: id,
           includeFiles: booleanQueryValue(includeFiles),
           includeDirectories: booleanQueryValue(includeDirectories),
-          ...(opts.query !== undefined ? { query: opts.query } : {}),
-          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-        });
+        };
+        if (opts.query !== undefined) pathsArgs.query = opts.query;
+        if (opts.limit !== undefined) pathsArgs.limit = opts.limit;
+        const result =
+          await createCliBbSdk(getUrl()).environments.paths(pathsArgs);
         if (outputJson(opts, result)) return;
         for (const entry of result.paths) {
           console.log(`${entry.kind}\t${entry.path}`);

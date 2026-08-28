@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import readline from "node:readline/promises";
 import type { ChildProcessByStdio } from "node:child_process";
 import { resolveCodexHome } from "@bb/config/codex-home";
+import { jsonValueSchema } from "@bb/domain";
 import { bold, cyan, dim, green, yellow, log } from "../lib/script-helpers.js";
 
 const DEFAULT_TMP_BB_PATTERNS: readonly string[] = [
@@ -449,12 +450,20 @@ async function backupCodexStateDb(dbPath: string): Promise<string> {
 }
 
 function isJsonObject(value: JsonValue): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return (
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
+function isStringJsonValue(value: JsonValue): value is string {
+  return String(value) === value;
 }
 
 function parseAppServerError(value: JsonObject): AppServerError {
   const message = value.message;
-  if (typeof message === "string") {
+  if (isStringJsonValue(message)) {
     return { message };
   }
 
@@ -462,13 +471,13 @@ function parseAppServerError(value: JsonObject): AppServerError {
 }
 
 function parseAppServerResponse(line: string): AppServerResponse | null {
-  const parsedValue: JsonValue = JSON.parse(line);
+  const parsedValue = jsonValueSchema.parse(JSON.parse(line));
   if (!isJsonObject(parsedValue)) {
     return null;
   }
 
   const id = parsedValue.id;
-  if (typeof id !== "string") {
+  if (!isStringJsonValue(id)) {
     return null;
   }
 

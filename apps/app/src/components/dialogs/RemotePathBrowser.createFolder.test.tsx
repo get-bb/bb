@@ -17,16 +17,8 @@ import {
   joinHostPath,
 } from "./RemotePathBrowser";
 
-vi.mock("@/lib/sdk", () => ({
-  BbHttpError: class BbHttpError extends Error {},
-  sdk: {
-    files: { mkdir: vi.fn() },
-    hosts: { directory: vi.fn() },
-  },
-}));
-
-const directory = vi.mocked(sdk.hosts.directory);
-const mkdir = vi.mocked(sdk.files.mkdir);
+let directory = vi.spyOn(sdk.hosts, "directory");
+let mkdir = vi.spyOn(sdk.files, "mkdir");
 
 function listing(path: string, entries: string[]): HostDirectoryListing {
   return {
@@ -42,6 +34,8 @@ function listing(path: string, entries: string[]): HostDirectoryListing {
 
 const ENTRY_TEST_ROW_HEIGHT_PX = 28;
 beforeEach(() => {
+  directory = vi.spyOn(sdk.hosts, "directory");
+  mkdir = vi.spyOn(sdk.files, "mkdir");
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
     function (this: HTMLElement) {
       return this.tagName === "LI" ? ENTRY_TEST_ROW_HEIGHT_PX : 224;

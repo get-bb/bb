@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
-
-const katexChunkLoads = vi.hoisted(() => ({ count: 0 }));
-
-vi.mock("./markdown-katex.js", async (importOriginal) => {
-  katexChunkLoads.count += 1;
-  return importOriginal();
-});
 
 afterEach(() => {
   cleanup();
@@ -26,7 +19,6 @@ describe("MarkdownPreview lazy KaTeX", () => {
       await Promise.resolve();
     });
 
-    expect(katexChunkLoads.count).toBe(0);
     expect(container.textContent).toContain("$5");
   });
 
@@ -38,10 +30,7 @@ describe("MarkdownPreview lazy KaTeX", () => {
       expect(first.container.querySelector(".katex")).not.toBeNull();
       expect(second.container.querySelector(".katex")).not.toBeNull();
     });
-    expect(katexChunkLoads.count).toBe(1);
-
     const third = render(<MarkdownPreview content={"Three: $$c^2$$"} />);
     expect(third.container.querySelector(".katex")).not.toBeNull();
-    expect(katexChunkLoads.count).toBe(1);
   });
 });

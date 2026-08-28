@@ -210,7 +210,7 @@ describe("grammar v3 item variants", () => {
 describe("CORE_ITEM_KINDS (guardrail G4)", () => {
   it("enumerates every persisted item kind except extension, exactly once", () => {
     const schemaKinds = threadEventItemSchema.options
-      .map((option) => option.shape.type.value)
+      .map((option) => option["shape"].type.value)
       .filter((kind): kind is ThreadEventItemType => kind !== "extension");
     expect([...CORE_ITEM_KINDS].sort()).toEqual([...schemaKinds].sort());
     expect(new Set(CORE_ITEM_KINDS).size).toBe(CORE_ITEM_KINDS.length);

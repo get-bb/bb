@@ -41,6 +41,111 @@ interface SlackTarget {
   threadTs: string;
 }
 
+type SlackJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | SlackJsonValue[]
+  | { [key: string]: SlackJsonValue };
+type SlackJsonObject = { [key: string]: SlackJsonValue };
+
+interface SlackEvent {
+  type: string;
+  channel?: string;
+  text?: string;
+  ts?: string;
+  thread_ts?: string;
+}
+
+interface SlackRequest {
+  type: string;
+  challenge?: string;
+  event?: SlackEvent;
+}
+
+interface SlackApiResult {
+  ok: boolean;
+  error?: string;
+}
+
+interface SlackMentionEvent {
+  channel: string;
+  text: string;
+  ts: string;
+  thread_ts?: string;
+}
+
+function isSlackJsonObject(value: SlackJsonValue): value is SlackJsonObject {
+  return (
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
+function readSlackString(
+  object: SlackJsonObject,
+  key: string,
+): string | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  const stringValue = String(value);
+  return stringValue === value ? stringValue : undefined;
+}
+
+function parseSlackRequest(rawBody: string): SlackRequest {
+  // SAFETY: JSON.parse returns a value from the JSON grammar modeled by SlackJsonValue.
+  const parsed = JSON.parse(rawBody) as SlackJsonValue;
+  if (!isSlackJsonObject(parsed)) throw new Error("body must be an object");
+  const type = readSlackString(parsed, "type");
+  if (type === undefined) throw new Error("body type must be a string");
+  if (type !== "event_callback") {
+    const challenge = readSlackString(parsed, "challenge");
+    return challenge === undefined ? { type } : { type, challenge };
+  }
+  const eventValue = parsed.event;
+  if (!isSlackJsonObject(eventValue)) {
+    throw new Error("event must be an object");
+  }
+  const eventType = readSlackString(eventValue, "type");
+  if (eventType === undefined) throw new Error("event type must be a string");
+  return {
+    type,
+    event: {
+      type: eventType,
+      channel: readSlackString(eventValue, "channel"),
+      text: readSlackString(eventValue, "text"),
+      ts: readSlackString(eventValue, "ts"),
+      thread_ts: readSlackString(eventValue, "thread_ts"),
+    },
+  };
+}
+
+function parseSlackMentionEvent(event: SlackEvent): SlackMentionEvent {
+  if (event.channel === undefined) throw new Error("event channel is required");
+  if (event.text === undefined) throw new Error("event text is required");
+  if (event.ts === undefined) throw new Error("event timestamp is required");
+  const mention: SlackMentionEvent = {
+    channel: event.channel,
+    text: event.text,
+    ts: event.ts,
+  };
+  if (event.thread_ts !== undefined) mention.thread_ts = event.thread_ts;
+  return mention;
+}
+
+function parseSlackApiResult(rawBody: string): SlackApiResult {
+  // SAFETY: JSON.parse returns a value from the JSON grammar modeled by SlackJsonValue.
+  const parsed = JSON.parse(rawBody) as SlackJsonValue;
+  if (!isSlackJsonObject(parsed))
+    throw new Error("Slack response must be an object");
+  const ok = parsed.ok === true ? true : parsed.ok === false ? false : null;
+  if (ok === null) throw new Error("Slack response status must be a boolean");
+  const error = readSlackString(parsed, "error");
+  return error === undefined ? { ok } : { ok, error };
+}
+
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     botToken: {
@@ -101,9 +206,9 @@ export default async function plugin(bb: BbPluginApi) {
         );
       }
 
-      let body: any;
+      let body: SlackRequest;
       try {
-        body = JSON.parse(rawBody);
+        body = parseSlackRequest(rawBody);
       } catch {
         return context.json({ ok: false, error: "body must be JSON" }, 400);
       }
@@ -116,12 +221,7 @@ export default async function plugin(bb: BbPluginApi) {
         body?.type === "event_callback" &&
         body.event?.type === "app_mention"
       ) {
-        const event = body.event as {
-          channel: string;
-          text: string;
-          ts: string;
-          thread_ts?: string;
-        };
+        const event = parseSlackMentionEvent(body.event);
         if (!current.project) {
           bb.log.warn(
             `mention ignored — no project configured. ${CONFIGURE_HINT}`,
@@ -136,7 +236,7 @@ export default async function plugin(bb: BbPluginApi) {
           await bb.sdk.threads.send({
             threadId: existing,
             mode: "auto",
-            input: [{ type: "text", text: prompt }],
+            input: [{ type: "text", text: prompt, mentions: [] }],
           });
           return context.json({ ok: true });
         }
@@ -181,7 +281,7 @@ export default async function plugin(bb: BbPluginApi) {
         text: lastAssistantText,
       }),
     });
-    const result = (await response.json()) as { ok: boolean; error?: string };
+    const result = parseSlackApiResult(await response.text());
     if (!result.ok) {
       bb.log.warn(
         `chat.postMessage failed: ${result.error ?? "unknown error"}`,

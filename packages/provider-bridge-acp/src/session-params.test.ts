@@ -95,19 +95,17 @@ describe("buildAcpModelListParams", () => {
   ])(
     "falls back to ACP-native discovery over the agent command with %s",
     (_name, modelCli) => {
-      const params = buildAcpModelListParams(
-        launchSpecFor({
-          displayName: "Custom ACP",
-          command: "custom-agent",
-          args: ["serve"],
-          env: {},
-          ...(modelCli !== undefined ? { modelCli } : {}),
-        }),
-        {
-          parameterizedModelPicker: false,
-          reasoningProbePriorityModelIds: [],
-        },
-      );
+      const launchSpec: AcpLaunchSpec = {
+        displayName: "Custom ACP",
+        command: "custom-agent",
+        args: ["serve"],
+        env: {},
+      };
+      if (modelCli !== undefined) launchSpec.modelCli = modelCli;
+      const params = buildAcpModelListParams(launchSpecFor(launchSpec), {
+        parameterizedModelPicker: false,
+        reasoningProbePriorityModelIds: [],
+      });
 
       expect(params).toEqual({
         agent: { command: "custom-agent", args: ["serve"] },
@@ -291,8 +289,10 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
   });
 
   it("omits the reasoning level when the session has none", () => {
-    const selection = cursorSessionParams({ model: "grok-4.6" })
-      .modelSelection as Record<string, unknown>;
+    const selection = cursorSessionParams({ model: "grok-4.6" }).modelSelection;
+    if (selection === undefined || !("modelId" in selection)) {
+      throw new Error("expected a Cursor model selection");
+    }
     expect(selection).toMatchObject({ modelId: "grok-4.6" });
     expect("reasoningLevel" in selection).toBe(false);
   });

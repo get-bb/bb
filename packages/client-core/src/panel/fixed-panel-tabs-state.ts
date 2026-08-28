@@ -162,16 +162,14 @@ const secondaryFixedPanelTabSchema = z.union([
   newTabFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
 ]);
+const sideChatFixedPanelTabSchema = z
+  .object({ kind: z.literal("side-chat") })
+  .passthrough();
 const secondaryFixedPanelTabsSchema = z.preprocess(
   (value) =>
     Array.isArray(value)
       ? value.filter(
-          (tab) =>
-            !(
-              typeof tab === "object" &&
-              tab !== null &&
-              (tab as { kind?: unknown }).kind === "side-chat"
-            ),
+          (tab) => !sideChatFixedPanelTabSchema.safeParse(tab).success,
         )
       : value,
   z.array(secondaryFixedPanelTabSchema),
@@ -658,7 +656,7 @@ export function createTerminalFixedPanelTab({
   terminalId,
   target,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
-  return {
+  const tab: TerminalFixedPanelTab = {
     id: buildFixedPanelTabId({
       environmentId: null,
       kind: "terminal",
@@ -666,8 +664,9 @@ export function createTerminalFixedPanelTab({
     }),
     kind: "terminal",
     terminalId,
-    ...(target !== undefined ? { target } : {}),
   };
+  if (target !== undefined) tab.target = target;
+  return tab;
 }
 
 function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
@@ -982,16 +981,17 @@ export function shouldPruneStoredFixedPanelTabsState(
   } catch {
     return true;
   }
-  if (typeof parsedValue !== "object" || parsedValue === null) {
+  const parsedRecord = z.record(z.string(), z.unknown()).safeParse(parsedValue);
+  if (!parsedRecord.success) {
     return true;
   }
-  const lastUsedAt = Reflect.get(parsedValue, "lastUsedAt");
-  if (
-    typeof lastUsedAt === "number" &&
-    Number.isInteger(lastUsedAt) &&
-    lastUsedAt >= 0
-  ) {
-    if (now - lastUsedAt > FIXED_PANEL_TABS_IDLE_EXPIRY_MS) {
+  const lastUsedAt = z
+    .number()
+    .int()
+    .nonnegative()
+    .safeParse(parsedRecord.data.lastUsedAt);
+  if (lastUsedAt.success) {
+    if (now - lastUsedAt.data > FIXED_PANEL_TABS_IDLE_EXPIRY_MS) {
       return true;
     }
     return !fixedPanelTabsStateSchema.safeParse(parsedValue).success;

@@ -226,12 +226,10 @@ export function ThreadActionsProvider({
     base: T,
     context: ThreadActionContext,
   ): T & { childThreadCount?: number } {
-    return {
-      ...base,
-      ...(context.childThreadCount > 0
-        ? { childThreadCount: context.childThreadCount }
-        : {}),
-    };
+    if (context.childThreadCount > 0) {
+      return { ...base, childThreadCount: context.childThreadCount };
+    }
+    return { ...base };
   }
 
   const performDelete = useCallback(
@@ -342,10 +340,10 @@ export function ThreadActionsProvider({
             id: toastId,
           });
         },
-        (error: unknown) => {
+        (cause) => {
           appToast.error(
             getMutationErrorMessage({
-              error,
+              error: cause,
               fallbackMessage: "Failed to archive thread and children",
               lifecycleOperation: "archive_thread",
             }),

@@ -12,9 +12,12 @@ const DAEMON_LOCK_RETRY_INTERVAL_MS = 1_000;
 const DAEMON_LOCK_ACQUIRE_RETRIES = 13;
 const DAEMON_LOCK_REACQUIRE_MAX_CYCLES = 20;
 
+type DaemonLockLogField = Error | number;
+type DaemonLockLogFields = Readonly<Record<string, DaemonLockLogField>>;
+
 interface DaemonLockLogger {
-  warn(fields: Record<string, unknown>, message: string): void;
-  error(fields: Record<string, unknown>, message: string): void;
+  warn(fields: DaemonLockLogFields, message: string): void;
+  error(fields: DaemonLockLogFields, message: string): void;
 }
 
 interface AcquireDaemonLockOptions {
@@ -22,7 +25,7 @@ interface AcquireDaemonLockOptions {
   retries?: number;
   retryIntervalMs?: number;
   logger?: DaemonLockLogger;
-  onLockLost?: (error: unknown) => void;
+  onLockLost?: (error: Error) => void;
 }
 
 const consoleLockLogger: DaemonLockLogger = {
@@ -76,27 +79,31 @@ export async function acquireDaemonLock(
             logger.warn({}, "Daemon lock re-acquired after compromise");
             return;
           } catch (acquireError) {
+            const lockError =
+              acquireError instanceof Error
+                ? acquireError
+                : new Error(String(acquireError));
             if (released) {
               return;
             }
             if (isFsErrorWithCode(acquireError, "ELOCKED")) {
               logger.error(
-                { err: acquireError },
+                { err: lockError },
                 "Daemon lock is held by another live daemon; yielding the data dir",
               );
-              onLockLost(acquireError);
+              onLockLost(lockError);
               return;
             }
             if (cycle >= DAEMON_LOCK_REACQUIRE_MAX_CYCLES) {
               logger.error(
-                { err: acquireError, cycle },
+                { err: lockError, cycle },
                 "Daemon lock could not be re-acquired after repeated attempts; yielding the data dir",
               );
-              onLockLost(acquireError);
+              onLockLost(lockError);
               return;
             }
             logger.error(
-              { err: acquireError, cycle },
+              { err: lockError, cycle },
               "Re-acquiring the compromised daemon lock failed; retrying",
             );
             await sleep(retryIntervalMs, undefined, { ref: false });

@@ -65,7 +65,7 @@ export function buildForkThreadRequest({
     return null;
   }
 
-  return {
+  const request: AppCreateThreadRequest = {
     environment: { type: "reuse", environmentId },
     input,
     model,
@@ -74,9 +74,10 @@ export function buildForkThreadRequest({
     projectId,
     providerId,
     reasoningLevel,
-    ...(serviceTier ? { serviceTier } : {}),
-    ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
     sourceThreadId,
     startedOnBehalfOf: null,
   };
+  if (serviceTier !== undefined) request.serviceTier = serviceTier;
+  if (sourceSeqEnd !== undefined) request.sourceSeqEnd = sourceSeqEnd;
+  return request;
 }

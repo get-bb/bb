@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState } from "react";
+import type { JsonValue } from "@bb/domain";
 import type { TimelineToolArgs } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -14,18 +15,13 @@ interface ToolCallDetailBlockProps {
   streaming?: boolean;
 }
 
-function formatArgValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value === null) return "null";
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value, null, 2);
+function formatArgValue(value: JsonValue): string {
+  return JSON.stringify(value, null, 2) ?? "null";
 }
 
 interface CollapsibleHeaderProps {
   toolName: string;
-  argEntries: [string, unknown][];
+  argEntries: [string, JsonValue][];
 }
 
 function CollapsibleHeader({ toolName, argEntries }: CollapsibleHeaderProps) {

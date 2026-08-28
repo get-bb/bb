@@ -1,35 +1,28 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from "vitest";
 import {
   isSelectionWithinNode,
   selectionAnchorFromPointerRelease,
 } from "./SelectableMessageProse.js";
 
-class FakeNode {
-  descendants = new Set<FakeNode>();
-  contains(other: unknown): boolean {
-    if (other === this) return true;
-    return this.descendants.has(other as FakeNode);
-  }
-}
-
 function makeProse() {
-  const node = new FakeNode();
-  const inside = new FakeNode();
-  const alsoInside = new FakeNode();
-  node.descendants.add(inside);
-  node.descendants.add(alsoInside);
-  return { node, inside, alsoInside, outside: new FakeNode() };
+  const node = document.createElement("div");
+  const inside = document.createElement("span");
+  const alsoInside = document.createElement("span");
+  node.append(inside, alsoInside);
+  return { node, inside, alsoInside, outside: document.createElement("span") };
 }
 
 describe("isSelectionWithinNode", () => {
   it("rejects a collapsed selection", () => {
     const { node, inside } = makeProse();
     expect(
-      isSelectionWithinNode(node as unknown as Node, {
+      isSelectionWithinNode(node, {
         isCollapsed: true,
-        anchorNode: inside as unknown as Node,
-        focusNode: inside as unknown as Node,
-        commonAncestorContainer: inside as unknown as Node,
+        anchorNode: inside,
+        focusNode: inside,
+        commonAncestorContainer: inside,
       }),
     ).toBe(false);
   });
@@ -37,11 +30,11 @@ describe("isSelectionWithinNode", () => {
   it("rejects a selection with an endpoint outside the node", () => {
     const { node, inside, outside } = makeProse();
     expect(
-      isSelectionWithinNode(node as unknown as Node, {
+      isSelectionWithinNode(node, {
         isCollapsed: false,
-        anchorNode: inside as unknown as Node,
-        focusNode: outside as unknown as Node,
-        commonAncestorContainer: outside as unknown as Node,
+        anchorNode: inside,
+        focusNode: outside,
+        commonAncestorContainer: outside,
       }),
     ).toBe(false);
   });
@@ -49,11 +42,11 @@ describe("isSelectionWithinNode", () => {
   it("accepts an in-bounds non-empty selection", () => {
     const { node, inside, alsoInside } = makeProse();
     expect(
-      isSelectionWithinNode(node as unknown as Node, {
+      isSelectionWithinNode(node, {
         isCollapsed: false,
-        anchorNode: inside as unknown as Node,
-        focusNode: alsoInside as unknown as Node,
-        commonAncestorContainer: node as unknown as Node,
+        anchorNode: inside,
+        focusNode: alsoInside,
+        commonAncestorContainer: node,
       }),
     ).toBe(true);
   });

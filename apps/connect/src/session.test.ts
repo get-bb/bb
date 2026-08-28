@@ -539,16 +539,17 @@ describe("account session refresh", () => {
   });
 });
 
-function countingDb(target: typeof db): {
-  db: typeof db;
-  counts: { select: number };
-} {
+function countingDb(target: typeof db) {
   const counts = { select: 0 };
   const proxied = new Proxy(target, {
     get(t, prop) {
-      if (prop === "select") counts.select += 1;
-      const value = Reflect.get(t, prop);
-      return typeof value === "function" ? value.bind(t) : value;
+      if (prop === "select") {
+        counts.select += 1;
+        return t.select.bind(t);
+      }
+      // SAFETY: Proxy properties from Drizzle are existing members of the target database.
+      const key = prop as keyof typeof t;
+      return t[key];
     },
   });
   return { db: proxied, counts };
@@ -590,8 +591,10 @@ describe("single-flight gate caches", () => {
           failNext = false;
           throw new Error("d1 hiccup");
         }
-        const value = Reflect.get(t, prop);
-        return typeof value === "function" ? value.bind(t) : value;
+        if (prop === "select") return t.select.bind(t);
+        // SAFETY: Proxy properties from Drizzle are existing members of the target database.
+        const key = prop as keyof typeof t;
+        return t[key];
       },
     });
 

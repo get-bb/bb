@@ -60,7 +60,7 @@ export function parseErrorMessage(
 
   const { message, detail } = decoded;
   const reconnectState = getReconnectState(decoded);
-  return {
+  const error: EventProjectionErrorMessage = {
     kind: "error",
     id: messageId(decoded.threadId, "error", `${meta.seq}`),
     threadId: decoded.threadId,
@@ -71,17 +71,16 @@ export function parseErrorMessage(
     rawType: decoded.type,
     message: message || "Error event",
     detail: detail && detail !== message ? detail : null,
-    ...(decoded.type === "provider/error" && decoded.errorInfo
-      ? { providerErrorInfo: decoded.errorInfo }
-      : {}),
-    ...(decoded.type === "provider/error" && decoded.willRetry !== undefined
-      ? { willRetry: decoded.willRetry }
-      : {}),
-    ...(reconnectState
-      ? {
-          reconnectAttempt: reconnectState.attempt,
-          reconnectTotal: reconnectState.total,
-        }
-      : {}),
   };
+  if (decoded.type === "provider/error" && decoded.errorInfo) {
+    error.providerErrorInfo = decoded.errorInfo;
+  }
+  if (decoded.type === "provider/error" && decoded.willRetry !== undefined) {
+    error.willRetry = decoded.willRetry;
+  }
+  if (reconnectState) {
+    error.reconnectAttempt = reconnectState.attempt;
+    error.reconnectTotal = reconnectState.total;
+  }
+  return error;
 }

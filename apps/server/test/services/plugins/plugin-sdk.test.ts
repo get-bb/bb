@@ -36,7 +36,11 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+// SAFETY: testLogger implements the logger methods that the plugin service uses.
+const logger = testLogger satisfies Pick<
+  Logger,
+  "debug" | "error" | "info" | "warn"
+>;
 
 async function writePlugin(
   dir: string,
@@ -44,18 +48,21 @@ async function writePlugin(
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
+  const bb = {
+    name: "SDK fixture",
+    description: "Plugin SDK fixture.",
+    branding: { icon: "Zap" },
+    server: "./server.ts",
+  };
+  if (options.hostSource !== undefined) {
+    Object.assign(bb, { host: "./host.ts" });
+  }
   await writeFile(
     join(rootDir, "package.json"),
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: {
-        name: "SDK fixture",
-        description: "Plugin SDK fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(options.hostSource === undefined ? {} : { host: "./host.ts" }),
-      },
+      bb,
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
@@ -145,8 +152,8 @@ describe("plugin bb.sdk bind gate", () => {
     );
 
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
-    expect(typeof api.sdk.threads.fork).toBe("function");
-    expect(typeof api.sdk.threads.spawn).toBe("function");
+    expect(api.sdk.threads.fork).toBeTypeOf("function");
+    expect(api.sdk.threads.spawn).toBeTypeOf("function");
   });
 
   it("marks a plugin error when its factory touches bb.sdk at load time", async () => {

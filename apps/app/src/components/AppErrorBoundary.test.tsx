@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createRoot } from "react-dom/client";
 import { act } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 
@@ -8,11 +9,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mountRoot(): {
-  container: HTMLDivElement;
-  render: (node: React.ReactNode) => void;
-  dispose: () => void;
-} {
+function mountRoot() {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container, {
@@ -22,7 +19,7 @@ function mountRoot(): {
   });
   return {
     container,
-    render: (node) => act(() => root.render(node)),
+    render: (node: ReactNode) => act(() => root.render(node)),
     dispose: () => {
       act(() => root.unmount());
       container.remove();

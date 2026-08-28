@@ -447,9 +447,10 @@ function OrganizationSidebar({
     let localStorage: Storage | null = null;
     let persistedMode: string | null = null;
 
-    if (typeof window !== "undefined") {
+    const browserWindow = globalThis.window;
+    if (browserWindow !== undefined) {
       try {
-        localStorage = window.localStorage;
+        localStorage = browserWindow.localStorage;
         persistedMode = localStorage.getItem(
           SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
         );

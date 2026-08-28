@@ -3,7 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { clientTurnRequestIdSchema, threadScope, turnScope } from "@bb/domain";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   getBuiltinModels,
@@ -32,10 +32,28 @@ const TURN_ID_PATTERN = /^pi-test-t\d+$/;
 const ITEM_ID_PATTERN = /^pi-test-i\d+$/;
 
 function loadFixture(name: string): AgentSessionEvent {
+  // SAFETY: The checked fixture files contain Pi SDK session events.
   return JSON.parse(
     readFileSync(resolve(FIXTURES, name), "utf8"),
   ) as AgentSessionEvent;
 }
+
+type PiTestJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | PiTestJsonValue[]
+  | { [key: string]: PiTestJsonValue };
+type PiSdkMessageTestEnvelope = {
+  jsonrpc: "2.0";
+  method: "sdk/message";
+  params: { threadId: string; message: PiTestInput };
+};
+type PiTestInput =
+  | AgentSessionEvent
+  | PiTestJsonValue
+  | PiSdkMessageTestEnvelope;
 
 interface PiTestContext {
   cwd?: string;
@@ -45,7 +63,7 @@ interface PiTestContext {
 
 interface PiEquivalenceHarness {
   assembler: DeltaAssembler;
-  translate(event: unknown, context?: PiTestContext): ThreadEvent[];
+  translate(event: PiTestInput, context?: PiTestContext): ThreadEvent[];
   openTurnId(): string;
 }
 
@@ -75,7 +93,7 @@ function createHarness(options?: {
   };
 }
 
-function sdkMessage(message: unknown) {
+function sdkMessage(message: PiTestInput): PiSdkMessageTestEnvelope {
   return {
     jsonrpc: "2.0" as const,
     method: "sdk/message",
@@ -84,7 +102,7 @@ function sdkMessage(message: unknown) {
 }
 
 function createPiCustomMessage(args: {
-  content: string | Array<Record<string, unknown>>;
+  content: string | Array<{ [key: string]: PiTestJsonValue }>;
   display?: boolean;
 }) {
   return {
@@ -187,7 +205,7 @@ describe("pi delta translation equivalence", () => {
 
     const events = harness.translate({
       type: "turn_start",
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toEqual([]);
   });
@@ -766,7 +784,7 @@ describe("pi delta translation equivalence", () => {
         contentIndex: 0,
         delta: "Thinking through the edit.",
       },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
     const reasoningDelta = deltaEvents.find(
       (
         event,
@@ -781,7 +799,7 @@ describe("pi delta translation equivalence", () => {
         contentIndex: 0,
         content: "Thinking through the edit.",
       },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(reasoningDelta?.itemId).toMatch(ITEM_ID_PATTERN);
     expect(completedEvents).toContainEqual(
@@ -807,7 +825,7 @@ describe("pi delta translation equivalence", () => {
         type: "thinking_delta",
         delta: "Thinking without a scope.",
       },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toEqual([
       expect.objectContaining({
@@ -952,7 +970,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "agent-parent-1",
       toolName: "spawn_agent",
       args: {},
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
     expect(parentEvents).toContainEqual(
       expect.objectContaining({
         type: "item/started",
@@ -972,7 +990,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-bash-1",
       toolName: "bash",
       args: { command: 42 },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1085,7 +1103,7 @@ describe("pi delta translation equivalence", () => {
         oldText: "const enabled = false;\n",
         newText: "const enabled = true;\n",
       },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1113,7 +1131,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-write-1",
       toolName: "write",
       args: { path: "src/app.ts", content: "console.log('updated');\n" },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     const started = events.find(
       (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
@@ -1137,7 +1155,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-read-1",
       toolName: "read",
       args: { path: "src/app.ts", offset: 1, limit: 20 },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1190,7 +1208,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-bash-1",
       toolName: "bash",
       args: { command: "npm test", cwd: "/repo" },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     const events = harness.translate({
       type: "tool_execution_end",
@@ -1198,7 +1216,7 @@ describe("pi delta translation equivalence", () => {
       toolName: "bash",
       isError: true,
       result: "tests failed",
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1224,7 +1242,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-read-1",
       toolName: "read",
       args: { path: "src/app.ts", offset: 1, limit: 20 },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     const events = harness.translate({
       type: "tool_execution_end",
@@ -1232,7 +1250,7 @@ describe("pi delta translation equivalence", () => {
       toolName: "read",
       isError: false,
       result: "file contents",
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1260,7 +1278,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-bash-1",
       toolName: "bash",
       args: { command: "printf 'FIRST\\nSECOND\\n'", cwd: "/repo" },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
     const startedId =
       started[0]?.type === "item/started" ? started[0].item.id : "";
 
@@ -1467,7 +1485,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-bash-1",
       toolName: "bash",
       args: { command: "true", cwd: "/repo" },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     const events = harness.translate({
       type: "tool_execution_end",
@@ -1475,7 +1493,7 @@ describe("pi delta translation equivalence", () => {
       toolName: "bash",
       isError: false,
       result: { content: [{ type: "text", text: "(no output)" }] },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     const completedEvent = events.find(
       (event): event is Extract<ThreadEvent, { type: "item/completed" }> =>
@@ -1635,7 +1653,7 @@ describe("pi delta translation equivalence", () => {
       toolCallId: "tool-bash-1",
       toolName: "bash",
       args: { command: "npm test", cwd: "/repo" },
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
     harness.translate(loadFixture("agent-end-with-message.json"));
 
     harness.translate(loadFixture("agent-start.json"));
@@ -1645,7 +1663,7 @@ describe("pi delta translation equivalence", () => {
       toolName: "bash",
       isError: false,
       result: "late output",
-    } as AgentSessionEvent);
+    } satisfies PiTestInput);
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -1674,7 +1692,7 @@ describe("pi delta translation equivalence", () => {
       deltas: [
         {
           kind: "input.accepted",
-          clientRequestId: "creq_abcdefghjk" as never,
+          clientRequestId: clientTurnRequestIdSchema.parse("creq_abcdefghjk"),
         },
       ],
     });

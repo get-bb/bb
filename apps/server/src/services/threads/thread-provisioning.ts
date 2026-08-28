@@ -18,6 +18,7 @@ import {
   createClientTurnRequestId,
 } from "./thread-events.js";
 import { requestThreadStart } from "./thread-lifecycle.js";
+import type { ThreadStartCommandArgs } from "./thread-commands.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createMetadataPendingContext,
@@ -174,7 +175,7 @@ async function startThreadIfEnvironmentReady(
     return;
   }
 
-  await requestThreadStart(deps, {
+  const threadStartArgs: ThreadStartCommandArgs = {
     thread: args.thread,
     environment: {
       id: args.environment.id,
@@ -185,9 +186,6 @@ async function startThreadIfEnvironmentReady(
     },
     fork: args.context.request.fork,
     input: args.context.request.input,
-    ...(args.context.request.inputGroups !== undefined
-      ? { inputGroups: args.context.request.inputGroups }
-      : {}),
     requestId: args.context.request.clientRequestId,
     execution: args.context.request.execution,
     permissionEscalation: resolvePermissionEscalation({
@@ -196,7 +194,11 @@ async function startThreadIfEnvironmentReady(
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
     syncGeneratedTitle: !args.context.request.titleProvided,
-  });
+  };
+  if (args.context.request.inputGroups !== undefined) {
+    threadStartArgs.inputGroups = args.context.request.inputGroups;
+  }
+  await requestThreadStart(deps, threadStartArgs);
 }
 
 export function requestThreadProvision(
@@ -256,27 +258,30 @@ export function requestThreadReprovision(
   const request = deps.db.transaction(
     (tx) => {
       args.beforeRequestAppendInTransaction?.({ tx });
+      const requestEventArgs: Parameters<
+        typeof appendPreparedClientTurnRequestedEventWithNotificationInTransaction
+      >[1] = {
+        threadId: args.thread.id,
+        environmentId: args.environment.id,
+        type: "client/turn/requested",
+        input: args.input,
+        execution: args.execution,
+        initiator: args.initiator,
+        senderThreadId: args.senderThreadId,
+        systemMessageKind: args.systemMessageKind,
+        systemMessageSubject: args.systemMessageSubject,
+        requestMethod: "turn/start",
+        source: "tell",
+        target: { kind: "new-turn" },
+        requestId,
+      };
+      if (args.inputGroups !== undefined) {
+        requestEventArgs.inputGroups = args.inputGroups;
+      }
       const request =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
-          {
-            threadId: args.thread.id,
-            environmentId: args.environment.id,
-            type: "client/turn/requested",
-            input: args.input,
-            ...(args.inputGroups !== undefined
-              ? { inputGroups: args.inputGroups }
-              : {}),
-            execution: args.execution,
-            initiator: args.initiator,
-            senderThreadId: args.senderThreadId,
-            systemMessageKind: args.systemMessageKind,
-            systemMessageSubject: args.systemMessageSubject,
-            requestMethod: "turn/start",
-            source: "tell",
-            target: { kind: "new-turn" },
-            requestId,
-          },
+          requestEventArgs,
         );
       recordAcceptedPromptHistoryEntry(
         { db: tx },
@@ -298,17 +303,19 @@ export function requestThreadReprovision(
     request.notificationMetadata,
   );
 
-  const context = createReprovisioningContext({
-    clientRequestId: request.requestId,
-    provisionEventSequence: args.provisionEventSequence,
-    execution: args.execution,
-    environmentId: args.environment.id,
-    input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
-    provisioningId: args.provisioningId,
-  });
+  const reprovisioningArgs: Parameters<typeof createReprovisioningContext>[0] =
+    {
+      clientRequestId: request.requestId,
+      provisionEventSequence: args.provisionEventSequence,
+      execution: args.execution,
+      environmentId: args.environment.id,
+      input: args.input,
+      provisioningId: args.provisioningId,
+    };
+  if (args.inputGroups !== undefined) {
+    reprovisioningArgs.inputGroups = args.inputGroups;
+  }
+  const context = createReprovisioningContext(reprovisioningArgs);
   rememberActiveThreadProvisionContext({
     threadId: args.thread.id,
     context,

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   FULL_PERMISSION_OPTIONS,
   type FakePiBridgeHarness,
@@ -14,6 +15,15 @@ const OPTIONS = {
 };
 
 const SETTINGS_PROCESS_TEST_TIMEOUT_MS = 60_000;
+
+const threadDeltaParamsSchema = z.object({
+  deltas: z.array(
+    z.object({
+      kind: z.string(),
+      size: z.number().optional(),
+    }),
+  ),
+});
 
 let harness: FakePiBridgeHarness;
 let commandLogPath: string;
@@ -98,10 +108,7 @@ it(
     ).toEqual([]);
     const contextWindows = harness.messages
       .filter((m) => m.method === "thread/delta")
-      .flatMap(
-        (m) =>
-          (m.params as { deltas: { kind: string; size?: number }[] }).deltas,
-      )
+      .flatMap((m) => threadDeltaParamsSchema.parse(m.params).deltas)
       .filter((d) => d.kind === "contextWindow")
       .map((d) => d.size);
     expect(contextWindows[0]).toBe(32_000);

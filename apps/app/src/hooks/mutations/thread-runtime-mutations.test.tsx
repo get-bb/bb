@@ -25,31 +25,16 @@ import {
   useSendThreadMessage,
 } from "./thread-runtime-mutations";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...actual,
-    sdk: {
-      threads: {
-        cancelPlan: vi.fn(),
-        clearGoal: vi.fn(),
-        editMessage: vi.fn(),
-        queuedMessages: {
-          create: vi.fn(),
-          delete: vi.fn(),
-          setGroupBoundary: vi.fn(),
-        },
-        send: vi.fn(),
-      },
-    },
-  };
-});
-
-vi.mock("@/lib/ws", () => ({
-  wsManager: {
-    getConnectionState: vi.fn(() => "connected"),
-  },
-}));
+const sdkMocks = {
+  cancelPlan: vi.spyOn(sdk.threads, "cancelPlan"),
+  clearGoal: vi.spyOn(sdk.threads, "clearGoal"),
+  editMessage: vi.spyOn(sdk.threads, "editMessage"),
+  queuedMessagesCreate: vi.spyOn(sdk.threads.queuedMessages, "create"),
+  queuedMessagesDelete: vi.spyOn(sdk.threads.queuedMessages, "delete"),
+  setGroupBoundary: vi.spyOn(sdk.threads.queuedMessages, "setGroupBoundary"),
+  send: vi.spyOn(sdk.threads, "send"),
+  connectionState: vi.spyOn(wsManager, "getConnectionState"),
+};
 
 function makeQueuedMessage(
   message: Partial<ThreadQueuedMessage> = {},
@@ -109,23 +94,21 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
-  vi.mocked(wsManager.getConnectionState).mockReturnValue("connected");
-  vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
-  vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
-  vi.mocked(sdk.threads.editMessage).mockResolvedValue({
+  sdkMocks.connectionState.mockReturnValue("connected");
+  sdkMocks.cancelPlan.mockResolvedValue({ ok: true });
+  sdkMocks.clearGoal.mockResolvedValue({ ok: true });
+  sdkMocks.editMessage.mockResolvedValue({
     ok: true,
     operationId: "edit-op-1",
     requestSequence: 42,
   });
-  vi.mocked(sdk.threads.send).mockResolvedValue({
+  sdkMocks.send.mockResolvedValue({
     ok: true,
     delivery: "sent",
   });
-  vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
-    makeQueuedMessage(),
-  );
-  vi.mocked(sdk.threads.queuedMessages.delete).mockResolvedValue({ ok: true });
-  vi.mocked(sdk.threads.queuedMessages.setGroupBoundary).mockResolvedValue([]);
+  sdkMocks.queuedMessagesCreate.mockResolvedValue(makeQueuedMessage());
+  sdkMocks.queuedMessagesDelete.mockResolvedValue({ ok: true });
+  sdkMocks.setGroupBoundary.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -142,7 +125,7 @@ describe("thread runtime mutations", () => {
       operationId: string;
       requestSequence: number;
     }>();
-    vi.mocked(sdk.threads.editMessage).mockReturnValueOnce(edit.promise);
+    sdkMocks.editMessage.mockReturnValueOnce(edit.promise);
     const timeline = makeBannerTimeline();
     queryClient.setQueryData(threadTimelineQueryKey("thread-1"), timeline);
     const { result } = renderHook(() => useEditThreadMessage(), {
@@ -176,7 +159,7 @@ describe("thread runtime mutations", () => {
   });
 
   it("invalidates rewritten history after edit success when realtime is disconnected", async () => {
-    vi.mocked(wsManager.getConnectionState).mockReturnValue("reconnecting");
+    sdkMocks.connectionState.mockReturnValue("reconnecting");
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useEditThreadMessage(), { wrapper });
@@ -196,15 +179,15 @@ describe("thread runtime mutations", () => {
   });
 
   it.each([
-    ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
-    ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],
+    ["Plan", useCancelThreadPlan, sdkMocks.cancelPlan],
+    ["Goal", useClearThreadGoal, sdkMocks.clearGoal],
   ] as const)(
     "invalidates persisted banner state only after successful %s cancellation",
     async (_label, useMutationHook, getSdkMethod) => {
       const { queryClient, wrapper } = createQueryClientTestHarness();
       const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
       const cancellation = createDeferredPromise<{ ok: true }>();
-      vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
+      getSdkMethod.mockReturnValueOnce(cancellation.promise);
       queryClient.setQueryData(
         threadTimelineQueryKey("thread-1"),
         makeBannerTimeline(),
@@ -215,7 +198,7 @@ describe("thread runtime mutations", () => {
       act(() => {
         cancellationPromise = result.current.mutateAsync("thread-1");
       });
-      await waitFor(() => expect(getSdkMethod()).toHaveBeenCalledOnce());
+      await waitFor(() => expect(getSdkMethod).toHaveBeenCalledOnce());
       expect(
         queryClient.getQueryData<ThreadTimelineResponse>(
           threadTimelineQueryKey("thread-1"),
@@ -229,7 +212,7 @@ describe("thread runtime mutations", () => {
       await act(async () => {
         await cancellationPromise;
       });
-      expect(getSdkMethod()).toHaveBeenCalledWith({ threadId: "thread-1" });
+      expect(getSdkMethod).toHaveBeenCalledWith({ threadId: "thread-1" });
       expect(invalidateQueries).toHaveBeenCalled();
       const timelineAfterSuccess =
         queryClient.getQueryData<ThreadTimelineResponse>(
@@ -250,7 +233,7 @@ describe("thread runtime mutations", () => {
         threadTimelineQueryKey("thread-1"),
         makeBannerTimeline(),
       );
-      vi.mocked(getSdkMethod()).mockRejectedValueOnce(
+      getSdkMethod.mockRejectedValueOnce(
         new Error("provider rejected cancellation"),
       );
       await act(async () => {
@@ -292,7 +275,7 @@ describe("thread runtime mutations", () => {
   });
 
   it("returns the server's delivery so a held message is not treated as a started turn", async () => {
-    vi.mocked(sdk.threads.send).mockResolvedValue({
+    sdkMocks.send.mockResolvedValue({
       ok: true,
       delivery: "deferred",
     });
@@ -344,7 +327,7 @@ describe("thread runtime mutations", () => {
       makeQueuedMessage({ id: "qmsg-1" }),
       makeQueuedMessage({ id: "qmsg-2" }),
     ]);
-    vi.mocked(sdk.threads.queuedMessages.delete).mockRejectedValue(
+    sdkMocks.queuedMessagesDelete.mockRejectedValue(
       new BbHttpError({
         status: 404,
         code: "invalid_request",

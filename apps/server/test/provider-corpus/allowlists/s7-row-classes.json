@@ -70,10 +70,7 @@
       "changed": {
         "kind": "work",
         "workKind": "delegation",
-        "fields": [
-          "background",
-          "childRef"
-        ]
+        "fields": ["background", "childRef"]
       }
     }
   },
@@ -105,9 +102,7 @@
       "changed": {
         "kind": "work",
         "workKind": "tool",
-        "fields": [
-          "activityIntents"
-        ]
+        "fields": ["activityIntents"]
       }
     }
   },

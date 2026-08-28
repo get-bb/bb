@@ -1,15 +1,15 @@
 import type { ProviderUnhandledEvent } from "@bb/domain";
 
-const HUMANIZED_EVENT_TOKEN_MAP: Record<string, string> = {
-  api: "API",
-  chatgpt: "ChatGPT",
-  id: "ID",
-  mcp: "MCP",
-  oauth: "OAuth",
-  sdk: "SDK",
-  ui: "UI",
-  url: "URL",
-};
+const HUMANIZED_EVENT_TOKEN_MAP = new Map([
+  ["api", "API"],
+  ["chatgpt", "ChatGPT"],
+  ["id", "ID"],
+  ["mcp", "MCP"],
+  ["oauth", "OAuth"],
+  ["sdk", "SDK"],
+  ["ui", "UI"],
+  ["url", "URL"],
+]);
 
 function splitCamelCaseToken(token: string): string[] {
   return token
@@ -20,7 +20,7 @@ function splitCamelCaseToken(token: string): string[] {
 
 function humanizeEventToken(token: string): string {
   const normalized = token.toLowerCase();
-  const mapped = HUMANIZED_EVENT_TOKEN_MAP[normalized];
+  const mapped = HUMANIZED_EVENT_TOKEN_MAP.get(normalized);
   if (mapped) {
     return mapped;
   }

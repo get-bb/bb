@@ -36,8 +36,9 @@ export function useStickyFooterAvailableHeight(
       setAvailableHeight((current) => (current === next ? current : next));
     };
     measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
+    const ResizeObserverConstructor = globalThis.ResizeObserver;
+    if (ResizeObserverConstructor === undefined) return;
+    const observer = new ResizeObserverConstructor(measure);
     observer.observe(scrollElement);
     observer.observe(footer);
     return () => {

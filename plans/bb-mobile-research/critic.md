@@ -1,7 +1,9 @@
 ## Spot-checks (opened cited files)
+
 Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-level `bb`), `packages/sdk/package.json:5-38` ("." has a `browser` condition → dist/browser.js and `source` → src/node.ts, so `import "@bb/sdk"` under Metro with `source` first resolves the NODE entry — always import `@bb/sdk/browser`), `apps/server/src/browser-request-guard.ts:147-175` (Origin checked only if present), `apps/connect/src/worker.ts:393-425` (machine header only on /internal*, /api/v1*), `apps/connect/src/servers.ts:18` (1h desktop-session TTL), `apps/web/src/server/auth.ts:53-55` (crossSubDomainCookies), `apps/app/src/lib/ws.ts:58-150` (partysocket + thread-open/pane-action/plugin-signal parsing), `packages/sdk/src/realtime-client.ts:558-570` (SDK drops non-"changed"), `packages/thread-view/package.json` (deps domain/server-contract/zod, no `main`), `apps/app/src/lib/api.ts:75-77` (HTML 401/403 → "Authentication failed"), `apps/app/src/main.tsx:62-70`, `apps/app/src/lib/query-client.ts:145-155` (staleTime 2000, refetchOnWindowFocus, mutation error toasts), `apps/app/src/hooks/useThreadReadTracking.ts:41-55`, `apps/server/src/services/system/app-keybindings.ts:148-160`, `apps/app/src/components/ui/theme.css:408-409`, `packages/plugin-sdk/src/app-contract.ts:672`, `apps/app/index.html:5-8`, `.nvmrc`=22.12.0 vs engines >=22.19.0, ThreadTimelineRows 2221 lines / PromptBoxInternal 3445 / sidebar 2282, react-virtual only in DiffFilesPanel, `/system/attention` unused by app, no first-party plugin uses homepageSection/threadList/threadHeaderAction/newThreadPanelAction/contentScripts.
 
 ## (2) Wrong / imprecise claims
+
 - contract-and-sdk §4 and secondary-panel report state env actions = "commit/squash_merge". INCOMPLETE: `packages/server-contract/src/api/environments.ts:189-216` defines five actions: `commit`, `squash_merge{mergeBaseBranch}`, `pull_request_ready`, `pull_request_draft`, `pull_request_merge{method: merge|squash|rebase}`; the web app calls all of them (`apps/app/src/views/thread-detail/ThreadDetailView.tsx:1795-1850`). There is no push/create-PR route; PR creation is agent/gh work.
 - mobile-pwa-today table row "Auth → send `x-bb-connect-machine` on fetch + WebSocket": WRONG for WS. The gate honors that header only on `/api/v1*` (`worker.ts:393-425`); `/ws` and `/ws/terminals/*` require a session cookie (`worker.ts:430-463`). auth-connect report is right.
 - testing report: "RN WebSocket sends an Origin derived from the URL — passes". Unverifiable from repo. What IS verifiable: `Origin: null` (opaque WebView origins) is rejected because `new URL("null")` throws → 403 (`browser-request-guard.ts:105-110`); only absent Origin, exact allowlisted origin, request-target origin, or same-hostname+known-BB-port pass (:118-131). This also answers the secondary-panel report's open question about WebView terminals.
@@ -9,6 +11,7 @@ Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-
 - Minor line drift: AppToaster is main.tsx:64, AppErrorBoundary :62.
 
 ## (1) Uncovered subsystems, filled in
+
 **Attachments/images**: upload `POST /projects/:id/attachments` multipart with exactly one field named `file` (`apps/server/src/routes/projects.ts:859-877`); image ≤10 MiB, other ≤25 MiB (`services/projects/attachments.ts:21-22,145-152`); response `{type:"localImage"|"localFile", path(stored name), name, mimeType?, sizeBytes}` (`server-contract/src/api/projects.ts:548-556`); the client then sends `PromptInput` `{type:"localImage", path}` / `{type:"localFile", path,name,sizeBytes,mimeType}` / `{type:"image", url}` (`packages/domain/src/shared-types.ts:299-337`). Timeline user rows carry `attachments{webImages,localImages,localFiles,imageUrls,localImagePaths,localFilePaths}` (`server-contract/src/thread-timeline.ts:74-81`); the app renders `<img src="/api/v1/projects/:id/attachments/content?path=...">` (`ConversationAttachments.tsx:62-70`, `lib/file-content-urls.ts:12`). Assistant `image-view` work rows carry only `path` (`thread-timeline.ts:329-333`). `copyAttachments` moves attachments across projects (fork/handoff).
 **Voice**: multipart `file` (+`prompt`) to `/system/voice-transcription` (`routes/system.ts:360-369`); server does NOT check container/MIME, only size ≤25 MB (`services/ai/voice-transcription.ts:27,250-255`); default `BB_TRANSCRIPTION=codex/gpt-transcribe` routed through the primary host daemon (`packages/config/src/defaults.ts:14`, `voice-transcription.ts:118-146`), else OpenAI with OPENAI_API_KEY; availability flag `voiceTranscriptionEnabled` in `/system/config` (`api/system.ts:229`).
 **Telemetry**: server-side PostHog only (`apps/server/src/services/system/telemetry.ts:26-104`): events app_started, onboarding_*, thread_created, user_message_sent, plugin_installed with `app_surface` from `x-bb-app-surface` (`request-context.ts:56-64`; values only desktop|web, `packages/config/src/app-surface.ts:4`); production+release only; `BB_TELEMETRY=false`. No client analytics, no Sentry/crash reporting anywhere.
@@ -30,6 +33,7 @@ Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-
 **Process constraints (AGENTS.md)**: any new server route for mobile (push tokens, bearer auth, mobile app-surface) must ship SDK + `bb` CLI surfaces and docs; daemon changes bump HOST_DAEMON_PROTOCOL_VERSION; new plugin API members need `experimental_` + docs/api_to_audit.md.
 
 ## Key files
+
 - packages/server-contract/src/api/environments.ts
 - packages/server-contract/src/api/threads.ts
 - packages/server-contract/src/api/shared.ts
@@ -86,6 +90,7 @@ Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-
 - AGENTS.md
 
 ## Reuse verdicts
+
 - @bb/sdk (root '.' export): **not-reusable** — package.json '.' maps source→src/node.ts (node:os via @bb/config/cli, ws, Buffer) and import/default→dist/node.js; Metro with a `source` condition would pick node.ts. Import `@bb/sdk/browser` only.
 - @bb/sdk/browser: **reusable-with-small-changes** — Needs Metro `source` condition or built dist; global fetch/WebSocket/URL; upload+voice paths use Blob/File FormData semantics that RN's FormData handles differently; header/cookie injection must go through injected fetch and a custom websocket factory.
 - @bb/domain, @bb/server-contract, @bb/thread-view, @bb/core-ui, @bb/host-daemon-contract: **reusable-as-is** — Pure zod/TS; grep for node:/Buffer/process found nothing (only `arrayBuffer` false positives). Only packaging: exports point at src/*.ts with NodeNext `.js` specifiers → Metro needs `unstable_enablePackageExports` + `.js`→`.ts` resolver.
@@ -94,6 +99,7 @@ Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-
 - apps/app/src/lib/api.ts (transcribeVoiceInput, postMultipart): **headless-logic-only** — Uses browser File; RN must build FormData with {uri,name,type}. Server accepts any container/MIME ≤25 MB.
 
 ## Risks
+
 - Two reports under-report git actions (only commit/squash_merge); a mobile plan based on them would omit PR ready/draft/merge, which the web thread header exposes (environments.ts:189-216).
 - mobile-pwa-today's auth replacement (machine header on WebSocket) is wrong: connect gate rejects /ws without a session cookie; realtime would silently 401 through connect.
 - Opaque `Origin: null` from a WebView is hard-rejected by browserRequestProblem (new URL('null') throws) — any WebView-hosted terminal/diff/plugin shell must load from the bb server origin or have RN own the socket.
@@ -106,6 +112,7 @@ Verified TRUE: `packages/sdk/src/browser.ts:31-40` (createBrowserBbSdk + module-
 - No client-side crash reporting exists anywhere; mobile will need its own (server has PostHog product events only).
 
 ## Open questions
+
 - Should mobile use `environment: {type:'project-default'}` for thread creation to avoid re-implementing host/worktree/branch picker policy, given no environments-list route exists and reuse options are derived from thread list entries?
 - Will the connect gate accept a bearer/header credential on /ws for mobile, or must mobile mint the 1h desktop-session cookie and attach it to fetch, WebSocket, and Image requests (attachment images are plain GET URLs)?
 - Should a `mobile` AppSurface be added (server + telemetry + request-context) before mobile ships, per the SDK/CLI parity rule in AGENTS.md?

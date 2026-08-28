@@ -4,14 +4,18 @@ const REMOVE_PATH_RETRY_LIMIT = 10;
 const REMOVE_PATH_RETRY_DELAY_MS = 50;
 const RETRYABLE_REMOVE_ERROR_CODES = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
 
-export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+type NodeError = NodeJS.ErrnoException;
+
+export function isNodeError<TError>(
+  error: TError,
+): error is TError & NodeError {
   return error instanceof Error;
 }
 
-function isRetryableRemoveError(error: unknown): boolean {
+function isRetryableRemoveError<TError>(error: TError): boolean {
   return (
     isNodeError(error) &&
-    typeof error.code === "string" &&
+    error.code !== undefined &&
     RETRYABLE_REMOVE_ERROR_CODES.has(error.code)
   );
 }

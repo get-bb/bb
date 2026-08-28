@@ -14,15 +14,17 @@ interface MonacoModule {
 async function boot(baseUrl: string): Promise<typeof MonacoNs> {
   await injectStylesheet(`${baseUrl}/editor.css`);
 
-  (globalThis as { MonacoEnvironment?: unknown }).MonacoEnvironment = {
-    getWorker: () =>
-      new Worker(
-        new URL(`${baseUrl}/editor.worker.js`, window.location.origin),
-        {
-          type: "module",
-        },
-      ),
-  };
+  Object.assign(globalThis, {
+    MonacoEnvironment: {
+      getWorker: () =>
+        new Worker(
+          new URL(`${baseUrl}/editor.worker.js`, window.location.origin),
+          {
+            type: "module",
+          },
+        ),
+    },
+  });
 
   const loaded: MonacoModule = await import(
     /* @vite-ignore */ `${baseUrl}/editor.js`

@@ -48,7 +48,10 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
   const base = {
     isConversationCollapsed: true,
     renderAsDrawer: false,
-    isSidebarShowing: false as boolean | null,
+    isSidebarShowing:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ false as
+        | boolean
+        | null,
     reserveMacosTrafficLights: true,
   };
 

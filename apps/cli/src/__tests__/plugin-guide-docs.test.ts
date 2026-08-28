@@ -41,9 +41,9 @@ describe("plugins guide chapter", () => {
     for (const command of plugin.commands) {
       for (const option of command.options) {
         optionCount += 1;
-        const forms = [option.long, option.short].filter(
-          (form): form is string => typeof form === "string",
-        );
+        const forms: string[] = [];
+        if (option.long !== undefined) forms.push(option.long);
+        if (option.short !== undefined) forms.push(option.short);
         expect(forms.length).toBeGreaterThan(0);
         expect(
           forms.some((form) => guide.includes(form)),

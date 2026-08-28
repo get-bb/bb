@@ -4,9 +4,12 @@ interface SqliteUniqueConstraintColumnsArgs {
   tableName: string;
 }
 
-function getSqliteErrorCode(error: Error): string | null {
-  const code = "code" in error ? error.code : null;
-  return typeof code === "string" ? code : null;
+interface SqliteError extends Error {
+  code?: string;
+}
+
+function getSqliteErrorCode(error: SqliteError): string | null {
+  return error.code ?? null;
 }
 
 function isSqliteUniqueConstraintError(error: Error): boolean {

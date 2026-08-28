@@ -27,25 +27,24 @@ function formatThrownValue(err) {
 
 function formatChildProcessFailure(err) {
   const details = [formatThrownValue(err).split("\n")[0]];
-  if (err && typeof err === "object") {
-    if ("status" in err && err.status !== null && err.status !== undefined) {
-      details.push(`exit status: ${String(err.status)}`);
-    }
-    if ("signal" in err && err.signal !== null && err.signal !== undefined) {
-      details.push(`signal: ${String(err.signal)}`);
-    }
+  const errorObject = Object(err);
+  if (errorObject.status !== null && errorObject.status !== undefined) {
+    details.push(`exit status: ${String(errorObject.status)}`);
+  }
+  if (errorObject.signal !== null && errorObject.signal !== undefined) {
+    details.push(`signal: ${String(errorObject.signal)}`);
+  }
 
-    for (const streamName of ["stdout", "stderr"]) {
-      const output = err[streamName];
-      if (output === undefined || output === null) continue;
+  for (const streamName of ["stdout", "stderr"]) {
+    const output = errorObject[streamName];
+    if (output === undefined || output === null) continue;
 
-      const text = Buffer.isBuffer(output)
-        ? output.toString("utf8")
-        : String(output);
-      const trimmed = text.trim();
-      if (trimmed.length > 0) {
-        details.push(`${streamName}: ${trimmed}`);
-      }
+    const text = Buffer.isBuffer(output)
+      ? output.toString("utf8")
+      : String(output);
+    const trimmed = text.trim();
+    if (trimmed.length > 0) {
+      details.push(`${streamName}: ${trimmed}`);
     }
   }
 
@@ -70,8 +69,6 @@ function shouldRebuildNativeModule(errorMessage) {
 
 function getRepairedNativeModuleError(name, pkgJsonPath) {
   try {
-    // A failed dlopen remains cached for the life of the process. Verify a
-    // replacement binary in a fresh process so the old handle cannot poison it.
     execFileSync(
       process.execPath,
       [
@@ -98,7 +95,7 @@ function detachHardlinkedBinary(binaryPath) {
   try {
     binaryStat = lstatSync(binaryPath);
   } catch (err) {
-    if (err && typeof err === "object" && err.code === "ENOENT") {
+    if (Object(err).code === "ENOENT") {
       return false;
     }
     throw err;
@@ -108,9 +105,6 @@ function detachHardlinkedBinary(binaryPath) {
     return false;
   }
 
-  // pnpm can hardlink this file across worktrees. An installer writes the new
-  // ABI into the existing inode, so every linked checkout changes with it.
-  // Replace this checkout's link with a private copy before the repair starts.
   const tempDir = mkdtempSync(join(dirname(binaryPath), ".bb-native-detach-"));
   const detachedPath = join(tempDir, basename(binaryPath));
   let originalWasUnlinked = false;

@@ -69,7 +69,7 @@ const resultInputSchema = z
   })
   .strict();
 
-function jsonResult(value: unknown): PluginAgentToolResult {
+function jsonResult(value: JsonValue): PluginAgentToolResult {
   return JSON.stringify(value, null, 2);
 }
 
@@ -198,7 +198,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.configure((context) => {
     const worker = service.agentConfiguration(context.thread.id);
     if (worker !== null) {
-      return {
+      const configuration = {
         tools:
           worker.terminal || worker.resultParameters === null
             ? []
@@ -209,10 +209,11 @@ export default async function plugin(bb: BbPluginApi) {
                 },
               ],
         skills: [],
-        ...(worker.instructions === null
-          ? {}
-          : { instructions: worker.instructions }),
       };
+      if (worker.instructions !== null) {
+        return { ...configuration, instructions: worker.instructions };
+      }
+      return configuration;
     }
     if (context.origin.pluginId === bb.pluginId) {
       return {

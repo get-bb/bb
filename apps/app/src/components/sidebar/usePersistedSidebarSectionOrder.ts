@@ -34,23 +34,24 @@ export function usePersistedSidebarSectionOrder({
   setStoredOrder,
   storedOrder,
 }: UsePersistedSidebarSectionOrderArgs): SidebarSectionId[] {
-  const order = useMemo(
-    () =>
-      normalizeSidebarSectionOrder({
-        storedOrder,
-        entitySectionIds,
-        legacyEntityAnchor,
-        hasPinnedSection,
-        ...(hasThreadsSection === undefined ? {} : { hasThreadsSection }),
-      }),
-    [
-      entitySectionIds,
-      hasPinnedSection,
-      hasThreadsSection,
-      legacyEntityAnchor,
+  const order = useMemo(() => {
+    const normalizeArgs: Parameters<typeof normalizeSidebarSectionOrder>[0] = {
       storedOrder,
-    ],
-  );
+      entitySectionIds,
+      legacyEntityAnchor,
+      hasPinnedSection,
+    };
+    if (hasThreadsSection !== undefined) {
+      normalizeArgs.hasThreadsSection = hasThreadsSection;
+    }
+    return normalizeSidebarSectionOrder(normalizeArgs);
+  }, [
+    entitySectionIds,
+    hasPinnedSection,
+    hasThreadsSection,
+    legacyEntityAnchor,
+    storedOrder,
+  ]);
 
   useEffect(() => {
     if (!isReady || haveSameOrder(storedOrder, order)) return;

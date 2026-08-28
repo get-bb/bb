@@ -93,7 +93,8 @@ const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
 ];
 
 const basePermission = {
-  value: "auto" as PermissionMode,
+  value:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ "auto" as PermissionMode,
   options: permissionModeOptions,
   onChange: noop,
   supported: true,

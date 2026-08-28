@@ -13,27 +13,17 @@ import type { InstalledPlugin } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
 import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { AddMachineDialog } from "./AddMachineDialog";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...original,
-    sdk: {
-      hosts: {
-        createJoinCode: vi.fn(),
-        list: vi.fn(),
-      },
-      plugins: { callRpc: vi.fn(), list: vi.fn() },
-    },
-  };
-});
-
-vi.mock("@/lib/ws", () => ({
-  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
+const createJoinCodeMock = vi.spyOn(sdk.hosts, "createJoinCode");
+const hostsListMock = vi.spyOn(sdk.hosts, "list");
+const callRpcMock = vi.spyOn(sdk.plugins, "callRpc");
+const pluginsListMock = vi.spyOn(sdk.plugins, "list");
+vi.spyOn(wsManager, "subscribe").mockImplementation(() => undefined);
+vi.spyOn(wsManager, "unsubscribe").mockImplementation(() => undefined);
 
 function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
   return {
@@ -105,17 +95,17 @@ afterEach(() => {
 
 describe("AddMachineDialog", () => {
   it("mints a join code, shows the pairing command, and detects the new machine connecting", async () => {
-    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+    createJoinCodeMock.mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockResolvedValue({
+    callRpcMock.mockResolvedValue({
       code: "mc_test456",
       expiresAt: Date.now() + 10 * 60 * 1000,
       serverUrl: "https://example.getbb.app",
     });
-    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+    hostsListMock.mockResolvedValue([existingHost]);
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
     render(
@@ -130,7 +120,7 @@ describe("AddMachineDialog", () => {
     );
 
     const command = await screen.findByText(/--join-code jc_test123/);
-    expect(sdk.plugins.callRpc).toHaveBeenCalledWith(
+    expect(callRpcMock).toHaveBeenCalledWith(
       expect.objectContaining({
         pluginId: "connect",
         method: "createMachineCode",
@@ -182,12 +172,12 @@ describe("AddMachineDialog", () => {
   });
 
   it("falls back to direct pairing when connect is unpaired and ignores known hosts", async () => {
-    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+    createJoinCodeMock.mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
+    callRpcMock.mockRejectedValue(
       new BbHttpError({
         body: {
           ok: false,
@@ -198,7 +188,7 @@ describe("AddMachineDialog", () => {
         status: 500,
       }),
     );
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
+    hostsListMock.mockResolvedValue([
       existingHost,
       host({ id: "host_offline", name: "dev-vm", status: "disconnected" }),
     ]);
@@ -242,12 +232,12 @@ describe("AddMachineDialog", () => {
   });
 
   it("explains that a loopback server is unreachable when connect is unpaired", async () => {
-    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+    createJoinCodeMock.mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
+    callRpcMock.mockRejectedValue(
       new BbHttpError({
         body: {
           ok: false,
@@ -258,7 +248,7 @@ describe("AddMachineDialog", () => {
         status: 500,
       }),
     );
-    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+    hostsListMock.mockResolvedValue([existingHost]);
 
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -286,18 +276,16 @@ describe("AddMachineDialog", () => {
   });
 
   it("offers a retry when connect is temporarily unavailable on a loopback server", async () => {
-    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+    createJoinCodeMock.mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
-      notRunningRpcError("degraded"),
-    );
-    vi.mocked(sdk.plugins.list).mockResolvedValue({
+    callRpcMock.mockRejectedValue(notRunningRpcError("degraded"));
+    pluginsListMock.mockResolvedValue({
       plugins: [connectPlugin({ enabled: true, status: "degraded" })],
     });
-    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+    hostsListMock.mockResolvedValue([existingHost]);
 
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -320,18 +308,16 @@ describe("AddMachineDialog", () => {
   });
 
   it("links to the Connect plugin when it is disabled on a loopback server", async () => {
-    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+    createJoinCodeMock.mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
-      notRunningRpcError("disabled"),
-    );
-    vi.mocked(sdk.plugins.list).mockResolvedValue({
+    callRpcMock.mockRejectedValue(notRunningRpcError("disabled"));
+    pluginsListMock.mockResolvedValue({
       plugins: [connectPlugin({ enabled: false, status: "disabled" })],
     });
-    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+    hostsListMock.mockResolvedValue([existingHost]);
 
     const { wrapper } = createQueryClientTestHarness();
     render(

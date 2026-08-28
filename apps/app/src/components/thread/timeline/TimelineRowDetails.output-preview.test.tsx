@@ -9,12 +9,9 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { timelineTurnSummaryDetails: vi.fn() } },
-}));
-
-const timelineTurnSummaryDetails = vi.mocked(
-  sdk.threads.timelineTurnSummaryDetails,
+const timelineTurnSummaryDetails = vi.spyOn(
+  sdk.threads,
+  "timelineTurnSummaryDetails",
 );
 
 const FULL_OUTPUT = `FULL-HEAD ${"x".repeat(5_000)} FULL-TAIL`;

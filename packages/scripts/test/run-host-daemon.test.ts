@@ -26,6 +26,12 @@ interface RecordedFetchRequest {
   url: string;
 }
 
+function readStringBody(body: RequestInit["body"]): string | null {
+  return Object.prototype.toString.call(body) === "[object String]"
+    ? (body?.toString() ?? null)
+    : null;
+}
+
 interface TestRuntimeEnvArgs {
   dataDir: string;
   serverUrl?: string;
@@ -209,7 +215,7 @@ describe("run-host-daemon auto join", () => {
               ? input.toString()
               : input;
         requests.push({
-          body: typeof init?.body === "string" ? init.body : null,
+          body: readStringBody(init?.body),
           url,
         });
 
@@ -266,7 +272,7 @@ describe("run-host-daemon auto join", () => {
               ? input.toString()
               : input;
         requests.push({
-          body: typeof init?.body === "string" ? init.body : null,
+          body: readStringBody(init?.body),
           url,
         });
 

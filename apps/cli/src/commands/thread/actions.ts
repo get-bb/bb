@@ -395,15 +395,20 @@ export function registerActionsCommands(
             );
           }
           const senderThreadId = resolveSenderThreadId(threadId);
-          const result = await sdk.threads.editMessage({
+          const editMessageInput: Parameters<
+            typeof sdk.threads.editMessage
+          >[0] = {
             threadId,
             operationId: randomUUID(),
-            ...(expectedRequestSequence !== undefined
-              ? { expectedRequestSequence }
-              : {}),
             input: buildPromptInputs({ message: opts.message }),
-            ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-          });
+          };
+          if (expectedRequestSequence !== undefined) {
+            editMessageInput.expectedRequestSequence = expectedRequestSequence;
+          }
+          if (senderThreadId !== undefined) {
+            editMessageInput.senderThreadId = senderThreadId;
+          }
+          const result = await sdk.threads.editMessage(editMessageInput);
           if (outputJson(opts, { threadId, ...result })) {
             return;
           }
@@ -527,7 +532,7 @@ async function postThreadMessage(
   args: PostThreadMessageArgs,
 ): Promise<PostThreadMessageResult> {
   const sdk = createCliBbSdk(args.getUrl());
-  const response = await sdk.threads.send({
+  const sendInput: Parameters<typeof sdk.threads.send>[0] = {
     threadId: args.threadId,
     input: buildPromptInputs({
       message: args.message,
@@ -541,12 +546,13 @@ async function postThreadMessage(
         : args.mode === "auto"
           ? "auto"
           : "queue-if-active",
-    ...(args.model ? { model: args.model } : {}),
-    ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
-    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
-    ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
-    ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
-  });
+  };
+  if (args.model) sendInput.model = args.model;
+  if (args.permissionMode) sendInput.permissionMode = args.permissionMode;
+  if (args.reasoningLevel) sendInput.reasoningLevel = args.reasoningLevel;
+  if (args.serviceTier) sendInput.serviceTier = args.serviceTier;
+  if (args.senderThreadId) sendInput.senderThreadId = args.senderThreadId;
+  const response = await sdk.threads.send(sendInput);
   return {
     ...response,
     mode: args.mode,

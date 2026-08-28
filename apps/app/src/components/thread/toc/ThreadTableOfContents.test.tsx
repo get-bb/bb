@@ -17,17 +17,11 @@ import type {
   SidebarBootstrapResponse,
   TimelineRow,
 } from "@bb/server-contract";
-
-vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
-  useBottomAnchoredScroll: vi.fn(),
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreadConversationOutline: vi.fn(),
-}));
-
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
-import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
+import {
+  BottomAnchorContext,
+  type BottomAnchorContextValue,
+} from "@/components/ui/bottom-anchored-scroll-body.js";
+import * as threadQueries from "@/hooks/queries/thread-queries";
 import {
   sidebarNavigationQueryKey,
   threadListQueryKey,
@@ -40,28 +34,34 @@ import {
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
-class ResizeObserverMock implements ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
+const useThreadConversationOutlineMock = vi.spyOn(
+  threadQueries,
+  "useThreadConversationOutline",
+);
 
-  observe: ResizeObserver["observe"] = (target) => {
-    const element = target as HTMLElement;
+class ResizeObserverMock {
+  constructor(
+    private readonly callback: (entries: ResizeObserverEntry[]) => void,
+  ) {}
+
+  observe(target: HTMLElement): void {
+    const element = target;
     const paddingX =
       (Number.parseFloat(element.style.paddingLeft) || 0) +
       (Number.parseFloat(element.style.paddingRight) || 0);
     const inlineSize = Math.max(0, element.clientWidth - paddingX);
-    this.callback(
-      [
-        {
-          target,
-          contentBoxSize: [{ inlineSize, blockSize: 0 }],
-          contentRect: { width: inlineSize } as DOMRectReadOnly,
-        } as unknown as ResizeObserverEntry,
-      ],
-      this,
-    );
-  };
-  unobserve: ResizeObserver["unobserve"] = vi.fn();
-  disconnect: ResizeObserver["disconnect"] = vi.fn();
+    this.callback([
+      {
+        target,
+        contentBoxSize: [{ inlineSize, blockSize: 0 }],
+        borderBoxSize: [{ inlineSize, blockSize: 0 }],
+        devicePixelContentBoxSize: [{ inlineSize, blockSize: 0 }],
+        contentRect: new DOMRectReadOnly(0, 0, inlineSize, 0),
+      },
+    ]);
+  }
+  unobserve(): void {}
+  disconnect(): void {}
 }
 
 function userConversationRow(index = 1): TimelineRow {
@@ -122,13 +122,24 @@ function TocHost({
         paddingRight: `${hostPaddingX}px`,
       }}
     >
-      <ThreadTableOfContents
-        threadId={threadId}
-        timelineRows={timelineRows}
-        hasOlderTimelineRows={hasOlderTimelineRows}
-        loadOlderTimelineRows={loadOlderTimelineRows}
-        onNavigateToRow={onNavigateToRow}
-      />
+      <BottomAnchorContext.Provider
+        value={{
+          getScrollElement: () => scrollElement,
+          isAtBottom: false,
+          scrollToBottom: vi.fn(),
+          scrollElementIntoView,
+          scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+          captureScrollAnchor: vi.fn(),
+        }}
+      >
+        <ThreadTableOfContents
+          threadId={threadId}
+          timelineRows={timelineRows}
+          hasOlderTimelineRows={hasOlderTimelineRows}
+          loadOlderTimelineRows={loadOlderTimelineRows}
+          onNavigateToRow={onNavigateToRow}
+        />
+      </BottomAnchorContext.Provider>
     </div>
   );
 }
@@ -193,9 +204,11 @@ function outlineResponse(
 }
 
 function setOutline(items: ThreadConversationOutlineItem[] | undefined): void {
-  vi.mocked(useThreadConversationOutline).mockReturnValue({
-    data: items === undefined ? undefined : outlineResponse(items),
-  } as ReturnType<typeof useThreadConversationOutline>);
+  useThreadConversationOutlineMock.mockReturnValue(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+      data: items === undefined ? undefined : outlineResponse(items),
+    } as ReturnType<typeof threadQueries.useThreadConversationOutline>,
+  );
 }
 
 function timelineRowElement(id: string): HTMLElement {
@@ -309,7 +322,7 @@ function manyUserItems(count: number): TocItem[] {
 }
 
 let scrollElement: HTMLElement;
-let scrollElementIntoView: ReturnType<typeof vi.fn>;
+let scrollElementIntoView: BottomAnchorContextValue["scrollElementIntoView"];
 
 function openTocPanel(): void {
   const toc = document.querySelector<HTMLElement>("[data-thread-toc]");
@@ -329,16 +342,8 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
   scrollElement = document.createElement("div");
-  scrollElementIntoView = vi.fn();
-  vi.mocked(useBottomAnchoredScroll).mockReturnValue({
-    getScrollElement: () => scrollElement,
-    isAtBottom: false,
-    scrollToBottom: vi.fn(),
-    scrollElementIntoView,
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-    captureScrollAnchor: vi.fn(),
-  } as unknown as ReturnType<typeof useBottomAnchoredScroll>);
-
+  scrollElementIntoView =
+    vi.fn<BottomAnchorContextValue["scrollElementIntoView"]>();
   setOutline(undefined);
 });
 
@@ -380,14 +385,14 @@ describe("ThreadTableOfContents", () => {
   it("defers the full outline request until the latest timeline is available", () => {
     const view = render(<TocHost timelineRows={[]} />);
 
-    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+    expect(useThreadConversationOutlineMock).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: false },
     );
 
     view.rerender(<TocHost timelineRows={[userConversationRow(1)]} />);
 
-    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+    expect(useThreadConversationOutlineMock).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: true },
     );
@@ -396,7 +401,7 @@ describe("ThreadTableOfContents", () => {
   it("does not request the hidden outline in a compact thread pane", () => {
     render(<TocHost hostWidth={400} timelineRows={[userConversationRow(1)]} />);
 
-    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+    expect(useThreadConversationOutlineMock).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: false },
     );
@@ -411,7 +416,7 @@ describe("ThreadTableOfContents", () => {
       />,
     );
 
-    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+    expect(useThreadConversationOutlineMock).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: false },
     );
@@ -426,7 +431,7 @@ describe("ThreadTableOfContents", () => {
       />,
     );
 
-    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+    expect(useThreadConversationOutlineMock).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: true },
     );

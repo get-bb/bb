@@ -315,12 +315,22 @@ function RowStateControl({
   onClick?: () => void;
 }) {
   const presentation = UPDATE_STATE_PRESENTATION[state];
-  const icon = actionIcon ?? (presentation.icon as IconName | null);
-  const buttonIcon =
-    state === "failed" ? (RETRY_ACTION_ICON as IconName) : null;
-  const spin = loading || presentation.inFlight === true;
+  const stateIcons = {
+    "up-to-date": "CircleCheck",
+    "in-progress": "Loading",
+    "update-available": "Download",
+    "restart-required": "ArrowReloadHorizontal",
+    "not-installed": "Download",
+    "update-manually": "Terminal",
+    failed: "CircleX",
+    offline: "CircleX",
+  } satisfies Record<UpdateState, IconName>;
+  const icon = actionIcon ?? stateIcons[state];
+  const buttonIcon = state === "failed" ? RETRY_ACTION_ICON : null;
+  const inFlight = "inFlight" in presentation && presentation.inFlight === true;
+  const spin = loading || inFlight;
   const srLabel = presentation.label;
-  const explainOnHover = presentation.inFlight !== true;
+  const explainOnHover = !inFlight;
 
   if (onClick !== undefined && buttonLabel !== undefined) {
     return (
@@ -547,7 +557,9 @@ export function ChangelogPreviewCard() {
   ) {
     return null;
   }
-  const releaseMeta = CHANGELOG_RELEASE_META[entry.version];
+  const releaseMeta = Object.entries(CHANGELOG_RELEASE_META).find(
+    ([version]) => version === entry.version,
+  )?.[1];
   const dismissalPhase =
     dismissal?.version === entry.version ? dismissal.phase : "visible";
   const releaseVisible = dismissalPhase === "visible";

@@ -22,6 +22,7 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
+import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import {
@@ -37,12 +38,24 @@ import {
 
 type PluginsCollectionMode = "installed" | "browse";
 
+export interface PluginsOverviewDependencies {
+  PluginNewThreadComposer: typeof PluginNewThreadComposer;
+}
+
+const defaultPluginsOverviewDependencies: PluginsOverviewDependencies = {
+  PluginNewThreadComposer,
+};
+
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "installed") return value;
   return "browse";
 }
 
-export function PluginsOverview() {
+export function PluginsOverview({
+  dependencies = defaultPluginsOverviewDependencies,
+}: {
+  dependencies?: PluginsOverviewDependencies;
+}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
@@ -164,6 +177,7 @@ export function PluginsOverview() {
   if (activeMode === "browse") {
     content = (
       <BrowsePluginsTab
+        dependencies={dependencies}
         onInstall={(initial) => setAddDialog({ open: true, initial })}
         onOpenPlugin={(pluginId) =>
           navigate(getPluginDetailRoutePath({ pluginId }))

@@ -343,7 +343,8 @@ function seedThreadRecentItems({
   currentThreadId,
   recentItems,
 }: SeedThreadRecentItemsArgs): void {
-  if (typeof window === "undefined" || currentThreadId.length === 0) {
+  const storage = globalThis.localStorage;
+  if (storage === undefined || currentThreadId.length === 0) {
     return;
   }
 
@@ -351,11 +352,11 @@ function seedThreadRecentItems({
     threadId: currentThreadId,
   });
   if (recentItems.length === 0) {
-    window.localStorage.removeItem(storageKey);
+    storage.removeItem(storageKey);
     return;
   }
 
-  window.localStorage.setItem(storageKey, JSON.stringify(recentItems));
+  storage.setItem(storageKey, JSON.stringify(recentItems));
 }
 
 function useStoryQueryClient({

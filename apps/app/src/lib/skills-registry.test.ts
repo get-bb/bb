@@ -1,3 +1,4 @@
+import type { JsonValue } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +48,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function stubJsonResponse(body: unknown, status = 200) {
+function stubJsonResponse(body: JsonValue, status = 200) {
   const fetchMock = vi.fn(
     async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify(body), {
@@ -80,8 +81,15 @@ describe("registry skill contracts", () => {
     );
 
     const entryFetch = stubJsonResponse({
-      ...registrySkill,
-      stars: undefined,
+      id: registrySkill.id,
+      source: registrySkill.source,
+      skillId: registrySkill.skillId,
+      name: registrySkill.name,
+      installs: registrySkill.installs,
+      installUrl: registrySkill.installUrl,
+      url: registrySkill.url,
+      topic: registrySkill.topic,
+      summary: registrySkill.summary,
     });
     await expect(fetchRegistrySkillEntry(registrySkill.id)).rejects.toThrow(
       "stars",

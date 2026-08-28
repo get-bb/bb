@@ -37,7 +37,7 @@ import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+const logger: Pick<Logger, "debug" | "error" | "info" | "warn"> = testLogger;
 const testDir = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = resolve(
   testDir,
@@ -47,14 +47,20 @@ const fixtureRoot = resolve(
   "plugins",
   "bb-plugin-builtin-fixture",
 );
-const globals = globalThis as Record<string, unknown>;
+declare global {
+  var __builtinFixtureLoads: number | undefined;
+  var __hotBuiltinServerVersion: string | undefined;
+  var __packagedBuiltinLoads: number | undefined;
+}
+
+const globals = globalThis;
 
 function loadCount(): number {
-  return (globals.__builtinFixtureLoads as number | undefined) ?? 0;
+  return globals.__builtinFixtureLoads ?? 0;
 }
 
 function packagedLoadCount(): number {
-  return (globals.__packagedBuiltinLoads as number | undefined) ?? 0;
+  return globals.__packagedBuiltinLoads ?? 0;
 }
 
 async function writePackagedBuiltinSource(workDir: string): Promise<{
@@ -68,6 +74,12 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
     await mkdir(join(sourceRoot, "dist"), { recursive: true });
     await mkdir(join(sourceRoot, "skills", name), { recursive: true });
     await mkdir(join(sourceRoot, "src"), { recursive: true });
+    const branding = usesDeclaredIcons
+      ? {
+          icon: usesPluginOwnedIcon ? "./assets/icon.svg" : "Zap",
+          experimental_icons: { cursor: "./icons/cursor.svg" },
+        }
+      : { icon: usesPluginOwnedIcon ? "./assets/icon.svg" : "Zap" };
     await writeFile(
       join(sourceRoot, "package.json"),
       JSON.stringify(
@@ -78,14 +90,7 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           bb: {
             name,
             description: `${name} builtin plugin fixture.`,
-            branding: {
-              ...(usesPluginOwnedIcon
-                ? { icon: "./assets/icon.svg" }
-                : { icon: "Zap" }),
-              ...(usesDeclaredIcons
-                ? { experimental_icons: { cursor: "./icons/cursor.svg" } }
-                : {}),
-            },
+            branding,
             server: "./src/server.ts",
             app: "./app.tsx",
             skills: ["skills"],

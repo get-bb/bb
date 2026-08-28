@@ -2,6 +2,7 @@ import type {
   PendingInteractionPayload,
   PendingInteractionResolution,
 } from "@bb/domain";
+import type { JsonRpcValue } from "./runtime-json-rpc.js";
 
 export interface ProviderRequestCommandPlan {
   kind: "request";
@@ -23,7 +24,7 @@ export type ProviderCommandPlan =
 export interface ProviderPostInitializeRequest {
   plan: ProviderRequestCommandPlan;
   required: boolean;
-  onResult(result: unknown): void;
+  onResult(result: JsonRpcValue): void;
 }
 
 export type ProviderInteractiveResponse =

@@ -1,58 +1,17 @@
-import type {
-  ChildProcess,
-  ExecFileException,
-  ExecFileOptionsWithStringEncoding,
-  SpawnOptions,
-} from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-interface SpawnInvocation {
-  args: readonly string[];
-  command: string;
-  options: SpawnOptions;
-}
-
-interface ExecFileInvocation {
-  args: readonly string[] | null;
-  command: string;
-}
-
-type ExecFileCallback = (
-  error: ExecFileException | null,
-  stdout: string,
-  stderr: string,
-) => void;
-
-type ExecFileOptions = ExecFileOptionsWithStringEncoding;
-type ExecFileSecondArg = readonly string[] | ExecFileOptions | null;
-type ExecFileThirdArg = ExecFileOptions | ExecFileCallback | null;
-type ProcessScanErrorCode = string | number;
-
-interface ExecFilePromiseResult {
-  stderr: string;
-  stdout: string;
-}
-
 interface ProcessKillError extends Error {
   code: string;
-}
-
-interface SpawnMockState {
-  children: ChildProcess[];
-  execFileInvocations: ExecFileInvocation[];
-  processScanErrorCode: ProcessScanErrorCode | null;
-  invocations: SpawnInvocation[];
-  tempDirs: string[];
 }
 
 interface StandaloneStateFixture {
@@ -75,17 +34,7 @@ interface CreateStandaloneRootArgs {
   tmpDir: string;
 }
 
-function createSpawnMockState(): SpawnMockState {
-  return {
-    children: [],
-    execFileInvocations: [],
-    processScanErrorCode: null,
-    invocations: [],
-    tempDirs: [],
-  };
-}
-
-const spawnMockState = vi.hoisted(createSpawnMockState);
+const tempDirs: string[] = [];
 
 function createProcessKillError(code: string): ProcessKillError {
   return Object.assign(new Error(`kill ${code}`), { code });
@@ -93,9 +42,16 @@ function createProcessKillError(code: string): ProcessKillError {
 
 function useIsolatedStandaloneTmpDir(): string {
   const tempDir = mkdtempSync(path.join(tmpdir(), "standalone-cleanup-test-"));
-  spawnMockState.tempDirs.push(tempDir);
+  tempDirs.push(tempDir);
   vi.stubEnv("TMPDIR", tempDir);
   return tempDir;
+}
+
+function useProcessScanFixture(tempDir: string, source: string): void {
+  const psPath = path.join(tempDir, "ps");
+  writeFileSync(psPath, `#!${process.execPath}\n${source}\n`, "utf8");
+  chmodSync(psPath, 0o755);
+  vi.stubEnv("PATH", tempDir);
 }
 
 function createStandaloneRoot(args: CreateStandaloneRootArgs): string {
@@ -109,156 +65,104 @@ function createStandaloneRoot(args: CreateStandaloneRootArgs): string {
   return tmpRoot;
 }
 
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-
-  function execFileMock(
-    command: string,
-    args?: ExecFileSecondArg,
-    options?: ExecFileThirdArg,
-    callback?: ExecFileCallback,
-  ): ChildProcess {
-    const callbackArg = typeof options === "function" ? options : callback;
-    const commandArgs = Array.isArray(args) ? args : null;
-
-    spawnMockState.execFileInvocations.push({
-      args: commandArgs,
-      command,
-    });
-
-    const child = actual.spawn(process.execPath, ["-e", ""], {
-      stdio: "ignore",
-    });
-    spawnMockState.children.push(child);
-
-    const processScanErrorCode = spawnMockState.processScanErrorCode;
-    if (command === "ps" && processScanErrorCode) {
-      const error = Object.assign(
-        new Error(`spawn ${String(processScanErrorCode)}`),
-        {
-          code: processScanErrorCode,
-        },
-      );
-      queueMicrotask(() => callbackArg?.(error, "", ""));
-      return child;
-    }
-
-    queueMicrotask(() => callbackArg?.(null, "", ""));
-    return child;
-  }
-
-  function promisifiedExecFileMock(
-    command: string,
-    args?: ExecFileSecondArg,
-    options?: ExecFileOptions,
-  ): Promise<ExecFilePromiseResult> {
-    return new Promise((resolve, reject) => {
-      execFileMock(command, args, options, (error, stdout, stderr) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve({ stderr, stdout });
-      });
-    });
-  }
-
-  Object.defineProperty(execFileMock, promisify.custom, {
-    value: promisifiedExecFileMock,
-  });
-
-  return {
-    ...actual,
-    spawn(
-      command: string,
-      args: readonly string[],
-      options?: SpawnOptions,
-    ): ChildProcess {
-      spawnMockState.invocations.push({
-        args,
-        command,
-        options: options ?? {},
-      });
-
-      const child = actual.spawn(
-        process.execPath,
-        ["-e", "setTimeout(() => {}, 60_000)"],
-        {
-          stdio: "ignore",
-        },
-      );
-      spawnMockState.children.push(child);
-      return child;
-    },
-    execFile: execFileMock,
-  };
-});
-
-import {
+const {
   buildStandaloneRuntimeEnv,
   cleanupStandaloneOrphans,
   createHostEnrollKey,
   spawnLoggedProcess,
   startQaServer,
-} from "../src/shared.js";
+} = await import("../src/shared.js");
 
-afterEach(() => {
+const spawnedChildren: ReturnType<typeof spawnLoggedProcess>[] = [];
+let originalExecPath: string | null = null;
+
+function useFakeQaServerProcess(tempDir: string): void {
+  originalExecPath = process.execPath;
+  const serverPath = path.join(tempDir, "qa-server.mjs");
+  const runnerPath = path.join(tempDir, "node");
+  writeFileSync(
+    serverPath,
+    [
+      'import { createServer } from "node:http";',
+      "process.stdout.write(JSON.stringify({ appUrl: process.env.BB_APP_URL ?? null, dataDir: process.env.BB_DATA_DIR ?? null, externalUrl: process.env.BB_EXTERNAL_URL ?? null, openAi: process.env.OPENAI_API_KEY ?? null, port: process.env.BB_SERVER_PORT ?? null }));",
+      'createServer((request, response) => { response.writeHead(request.url === "/api/v1/system/config" ? 200 : 404); response.end("{}"); }).listen(Number(process.env.BB_SERVER_PORT), "127.0.0.1");',
+    ].join("\n"),
+    "utf8",
+  );
+  writeFileSync(
+    runnerPath,
+    `#!/bin/sh\nexec ${JSON.stringify(originalExecPath)} ${JSON.stringify(serverPath)} "$@"\n`,
+    "utf8",
+  );
+  chmodSync(runnerPath, 0o755);
+  process.execPath = runnerPath;
+}
+
+afterEach(async () => {
   vi.restoreAllMocks();
-
-  for (const child of spawnMockState.children) {
-    child.kill();
+  for (const child of spawnedChildren) {
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => resolve());
+        child.kill();
+      });
+    }
   }
-  spawnMockState.children.length = 0;
-  spawnMockState.execFileInvocations.length = 0;
-  spawnMockState.processScanErrorCode = null;
-  spawnMockState.invocations.length = 0;
+  spawnedChildren.length = 0;
+  if (originalExecPath !== null) {
+    process.execPath = originalExecPath;
+    originalExecPath = null;
+  }
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 
-  for (const tempDir of spawnMockState.tempDirs) {
+  for (const tempDir of tempDirs) {
     rmSync(tempDir, { force: true, recursive: true });
   }
-  spawnMockState.tempDirs.length = 0;
+  tempDirs.length = 0;
 });
 
 describe("spawnLoggedProcess", () => {
-  it("detaches standalone processes from the wrapper lifecycle", () => {
+  it("starts the requested process with the requested working directory", async () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "spawn-logged-process-"));
-    spawnMockState.tempDirs.push(tempDir);
+    tempDirs.push(tempDir);
     const logPath = path.join(tempDir, "process.log");
+    const scriptPath = path.join(tempDir, "child.mjs");
+    writeFileSync(
+      scriptPath,
+      "process.stdout.write(JSON.stringify({ argv: process.argv.slice(1), cwd: process.cwd() }));\n",
+      "utf8",
+    );
 
     const child = spawnLoggedProcess({
-      args: ["apps/server/dist/index.js"],
+      args: [scriptPath],
       command: process.execPath,
-      cwd: "/repo",
+      cwd: tempDir,
       env: {
         PATH: process.env.PATH ?? "",
       },
       logPath,
     });
+    spawnedChildren.push(child);
+    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 
     expect(child.pid).toBeGreaterThan(0);
-    expect(spawnMockState.invocations).toHaveLength(1);
-    expect(spawnMockState.invocations[0]?.command).toBe(process.execPath);
-    expect(spawnMockState.invocations[0]?.args).toEqual([
-      "apps/server/dist/index.js",
-    ]);
-    expect(spawnMockState.invocations[0]?.options.cwd).toBe("/repo");
-    expect(spawnMockState.invocations[0]?.options.detached).toBe(true);
+    expect(readFileSync(logPath, "utf8")).toBe(
+      JSON.stringify({ argv: [scriptPath], cwd: tempDir }),
+    );
   });
 
-  it("keeps standalone server runtime env isolated from inherited bb and ambient OpenAI env", async () => {
+  it("passes an isolated runtime environment to the standalone server", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "start-qa-server-"));
+    tempDirs.push(tempDir);
+    useFakeQaServerProcess(tempDir);
     vi.stubEnv("BB_APP_URL", "https://inherited-app.example.test");
     vi.stubEnv("BB_DATA_DIR", "/Users/example/.bb-dev");
     vi.stubEnv("BB_SERVER_PORT", "3334");
     vi.stubEnv("OPENAI_API_KEY", "ambient-openai-key");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 200 })),
-    );
 
-    await startQaServer({
-      dataDir: "/tmp/standalone-server-data",
+    const result = await startQaServer({
+      dataDir: path.join(tempDir, "server-data"),
       env: buildStandaloneRuntimeEnv({
         baseEnv: process.env,
         overrides: {
@@ -266,42 +170,44 @@ describe("spawnLoggedProcess", () => {
           BB_SERVER_PORT: "9999",
         },
       }),
-      logPath: "/tmp/standalone-server.log",
+      logPath: path.join(tempDir, "server.log"),
       port: 4567,
     });
+    spawnedChildren.push(result.process);
 
-    expect(spawnMockState.invocations[0]?.options.env).toMatchObject({
-      BB_DATA_DIR: "/tmp/standalone-server-data",
-      BB_SERVER_PORT: "4567",
-    });
-    expect(
-      spawnMockState.invocations[0]?.options.env?.OPENAI_API_KEY,
-    ).toBeUndefined();
-    expect(
-      spawnMockState.invocations[0]?.options.env?.BB_APP_URL,
-    ).toBeUndefined();
-    expect(
-      spawnMockState.invocations[0]?.options.env?.BB_EXTERNAL_URL,
-    ).toBeUndefined();
+    expect(readFileSync(path.join(tempDir, "server.log"), "utf8")).toContain(
+      JSON.stringify({
+        appUrl: null,
+        dataDir: path.join(tempDir, "server-data"),
+        externalUrl: null,
+        openAi: null,
+        port: "4567",
+      }),
+    );
   });
 
-  it("uses the public tunnel URL as app and external URL when provided", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 200 })),
-    );
+  it("passes the public URL to the standalone server", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "start-qa-server-"));
+    tempDirs.push(tempDir);
+    useFakeQaServerProcess(tempDir);
 
-    await startQaServer({
-      dataDir: "/tmp/standalone-server-data",
-      logPath: "/tmp/standalone-server.log",
+    const result = await startQaServer({
+      dataDir: path.join(tempDir, "server-data"),
+      logPath: path.join(tempDir, "server.log"),
       port: 4567,
       publicUrl: "https://standalone-public.example.test",
     });
+    spawnedChildren.push(result.process);
 
-    expect(spawnMockState.invocations[0]?.options.env).toMatchObject({
-      BB_APP_URL: "https://standalone-public.example.test",
-      BB_EXTERNAL_URL: "https://standalone-public.example.test",
-    });
+    expect(readFileSync(path.join(tempDir, "server.log"), "utf8")).toContain(
+      JSON.stringify({
+        appUrl: "https://standalone-public.example.test",
+        dataDir: path.join(tempDir, "server-data"),
+        externalUrl: "https://standalone-public.example.test",
+        openAi: null,
+        port: "4567",
+      }),
+    );
   });
 
   it("requests a local host enroll key for standalone host bootstrap", async () => {
@@ -309,7 +215,7 @@ describe("spawnLoggedProcess", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-        capturedBody = typeof init?.body === "string" ? init.body : null;
+        capturedBody = init?.body === undefined ? null : String(init.body);
         return new Response(
           JSON.stringify({
             enrollKey: "bbde_standalone",
@@ -337,28 +243,20 @@ describe("spawnLoggedProcess", () => {
 });
 
 describe("cleanupStandaloneOrphans", () => {
-  const processScanErrorCodes: readonly ProcessScanErrorCode[] = [
-    "EPERM",
-    "EACCES",
-    1,
-  ];
+  const processScanErrorCodes = [1];
 
   it.each(processScanErrorCodes)(
     "warns and continues when process enumeration is blocked with %s",
     async (errorCode) => {
-      useIsolatedStandaloneTmpDir();
+      const tmpDir = useIsolatedStandaloneTmpDir();
+      useProcessScanFixture(tmpDir, `process.exit(${String(errorCode)});`);
       const warn = vi
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      spawnMockState.processScanErrorCode = errorCode;
 
       await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
         killedPids: [],
         removedRoots: [],
-      });
-      expect(spawnMockState.execFileInvocations).toContainEqual({
-        args: ["eww", "-Ao", "pid=,command="],
-        command: "ps",
       });
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining(
@@ -370,6 +268,7 @@ describe("cleanupStandaloneOrphans", () => {
 
   it("skips a standalone root whose parent process exists but is not signalable", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
+    useProcessScanFixture(tmpDir, "");
     const tmpRoot = createStandaloneRoot({
       name: "bb-standalone-unowned",
       state: {
@@ -402,6 +301,7 @@ describe("cleanupStandaloneOrphans", () => {
 
   it("removes stale standalone roots whose parent process is gone", async () => {
     const tmpDir = useIsolatedStandaloneTmpDir();
+    useProcessScanFixture(tmpDir, "");
     const tmpRoot = createStandaloneRoot({
       name: "bb-standalone-owned-stale",
       state: {

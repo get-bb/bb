@@ -5,6 +5,7 @@ import {
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
 } from "@bb/db";
+import type { HostDaemonRetryableOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
@@ -259,6 +260,7 @@ async function serveThreadStorageRawFile(
     });
     return createRawFilePreviewResponse(result, filePath.relativePath);
   } catch (error) {
+    if (!(error instanceof Error)) throw error;
     return remapDaemonFileRouteError(error);
   }
 }
@@ -287,6 +289,7 @@ async function serveThreadWorktreeRawFile(
     });
     return createRawFilePreviewResponse(result, filePath.relativePath);
   } catch (error) {
+    if (!(error instanceof Error)) throw error;
     return remapDaemonFileRouteError(error);
   }
 }
@@ -558,15 +561,19 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const limit = parseFileListLimit(query.limit);
 
     try {
+      const command: Extract<
+        HostDaemonRetryableOnlineRpcCommand,
+        { type: "host.list_files" }
+      > = {
+        type: "host.list_files",
+        path: target.storagePath,
+        limit,
+      };
+      if (query.query) command.query = query.query;
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_files",
-          path: target.storagePath,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-        },
+        command,
       });
       return context.json({
         files: result.files,
@@ -614,17 +621,21 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     });
 
     try {
+      const command: Extract<
+        HostDaemonRetryableOnlineRpcCommand,
+        { type: "host.list_paths" }
+      > = {
+        type: "host.list_paths",
+        path: target.storagePath,
+        limit,
+        includeFiles: inclusion.includeFiles,
+        includeDirectories: inclusion.includeDirectories,
+      };
+      if (query.query) command.query = query.query;
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: target.storagePath,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeFiles: inclusion.includeFiles,
-          includeDirectories: inclusion.includeDirectories,
-        },
+        command,
       });
       return context.json({
         paths: result.paths,
@@ -663,6 +674,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {
+      if (!(error instanceof Error)) throw error;
       return remapDaemonFileRouteError(error);
     }
   });
@@ -689,6 +701,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {
+      if (!(error instanceof Error)) throw error;
       return remapDaemonFileRouteError(error);
     }
   });

@@ -13,6 +13,19 @@ import {
   TOO_FEW_OPTIONS_MESSAGE,
 } from "./tool-definition.js";
 
+interface InteractionPayloadOption {
+  value: string;
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+interface ToolResultOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
 export function validateToolInput(input: ToolInput): string | null {
   if (input.questions.some((question) => question.options.length < 2)) {
     return TOO_FEW_OPTIONS_MESSAGE;
@@ -63,12 +76,13 @@ export function buildInteractionPayload(input: ToolInput): InteractionPayload {
         const preview = question.multiSelect
           ? undefined
           : normalizePreview(option.preview);
-        return {
+        const translatedOption: InteractionPayloadOption = {
           value: optionValue(index, optionIndex),
           label: option.label,
           description: option.description,
-          ...(preview === undefined ? {} : { preview }),
         };
+        if (preview !== undefined) translatedOption.preview = preview;
+        return translatedOption;
       }),
       allowFreeText: true,
     })),
@@ -132,10 +146,10 @@ function buildAnnotation(
   );
   const preview = previews.length > 0 ? previews.join("\n\n") : undefined;
   if (notes === undefined && preview === undefined) return null;
-  return {
-    ...(preview === undefined ? {} : { preview }),
-    ...(notes === undefined ? {} : { notes }),
-  };
+  const annotation: ToolResultAnnotation = {};
+  if (preview !== undefined) annotation.preview = preview;
+  if (notes !== undefined) annotation.notes = notes;
+  return annotation;
 }
 
 export function buildToolResult(
@@ -161,19 +175,25 @@ export function buildToolResult(
     const annotation = buildAnnotation(question, answer);
     if (annotation !== null) annotations[question.prompt] = annotation;
   }
-  return {
+  const result: ToolResult = {
     questions: payload.questions.map((question) => ({
       question: question.prompt,
       header: question.shortLabel,
-      options: question.options.map((option) => ({
-        label: option.label,
-        description: option.description ?? option.label,
-        ...(option.preview === undefined ? {} : { preview: option.preview }),
-      })),
+      options: question.options.map((option) => {
+        const translatedOption: ToolResultOption = {
+          label: option.label,
+          description: option.description ?? option.label,
+        };
+        if (option.preview !== undefined) {
+          translatedOption.preview = option.preview;
+        }
+        return translatedOption;
+      }),
       multiSelect: question.multiSelect,
     })),
     answers,
-    ...(freeformResponse === undefined ? {} : { response: freeformResponse }),
-    ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
   };
+  if (freeformResponse !== undefined) result.response = freeformResponse;
+  if (Object.keys(annotations).length > 0) result.annotations = annotations;
+  return result;
 }

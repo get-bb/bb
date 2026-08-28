@@ -13,6 +13,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { linkPluginFixtureDependency } from "../../helpers/plugin-fixture-dependencies.js";
 
 const BASE = "http://127.0.0.1:3334";
 
@@ -60,6 +61,19 @@ const COMPRESSIBLE_APP_SOURCE = `const payload = ${JSON.stringify(
   "compressible plugin bundle payload ".repeat(200),
 )};\nexport default function App() {\n  return <div className="line-clamp-2" data-payload={payload}>hi</div>;\n}\n`;
 
+interface AppPluginFixtureManifest {
+  name: string;
+  version: string;
+  dependencies?: { zod: string };
+  bb: {
+    name: string;
+    description: string;
+    branding: { icon: string };
+    server: string;
+    app?: string;
+  };
+}
+
 async function writeAppPluginFixture(
   rootDir: string,
   options: {
@@ -70,26 +84,33 @@ async function writeAppPluginFixture(
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
-  await writeFile(
-    join(rootDir, "package.json"),
-    JSON.stringify({
-      name: options.name,
-      version: "0.1.0",
-      bb: {
-        name: "App bundle fixture",
-        description: "Plugin app bundle fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(options.app === false ? {} : { app: "./app.tsx" }),
-      },
-    }),
-  );
+  const manifest: AppPluginFixtureManifest = {
+    name: options.name,
+    version: "0.1.0",
+    bb: {
+      name: "App bundle fixture",
+      description: "Plugin app bundle fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
+  };
+  const usesZod = options.serverSource?.includes('from "zod"') === true;
+  if (usesZod) {
+    manifest.dependencies = { zod: "4.3.6" };
+  }
+  if (options.app !== false) {
+    manifest.bb.app = "./app.tsx";
+  }
+  await writeFile(join(rootDir, "package.json"), JSON.stringify(manifest));
   await writeFile(
     join(rootDir, "server.ts"),
     options.serverSource ?? SERVER_SOURCE,
   );
   if (options.app !== false) {
     await writeFile(join(rootDir, "app.tsx"), options.appSource ?? APP_SOURCE);
+  }
+  if (usesZod) {
+    await linkPluginFixtureDependency(rootDir, "zod");
   }
 }
 
@@ -655,6 +676,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
                 return;
               }
               if (url === `/${name}`) {
+                // SAFETY: The test server listens on a TCP address before this request runs.
                 const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
                 response.writeHead(200, {
                   "content-type": "application/json",
@@ -688,6 +710,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           });
           server.listen(0, "127.0.0.1", () => resolvePromise(server));
         });
+        // SAFETY: The test registry listens on a TCP address before this port read.
         const port = (registry.address() as AddressInfo).port;
         const previousRegistry = process.env.npm_config_registry;
         const previousCache = process.env.npm_config_cache;

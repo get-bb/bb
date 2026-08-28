@@ -4,33 +4,73 @@ import {
   ProductMap,
 } from "@bb/plugin-api-map";
 import { useCallback, useEffect, useState } from "react";
-import { definePluginApp, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  useBbNavigate,
+  type JsonValue,
+} from "@get-bb/plugin-sdk/app";
+
+type JsonObject = { [key: string]: JsonValue };
+
+interface PluginIdRow {
+  id?: string;
+  pluginId?: string;
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && Object(value) === value && !Array.isArray(value);
+}
+
+function isStringValue(value: JsonValue | undefined): value is string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function pluginIdRow(value: JsonValue): PluginIdRow | null {
+  if (!isJsonObject(value)) return null;
+  const id = isStringValue(value.id) ? value.id : undefined;
+  const pluginId = isStringValue(value.pluginId) ? value.pluginId : undefined;
+  return id === undefined && pluginId === undefined ? null : { id, pluginId };
+}
+
+function pluginIdRows(value: JsonValue): PluginIdRow[] {
+  if (Array.isArray(value))
+    return value.flatMap((row) => {
+      const parsed = pluginIdRow(row);
+      return parsed === null ? [] : [parsed];
+    });
+  if (!isJsonObject(value)) return [];
+  const rows = Array.isArray(value.plugins)
+    ? value.plugins
+    : Array.isArray(value.results)
+      ? value.results
+      : [];
+  return rows.flatMap((row) => {
+    const parsed = pluginIdRow(row);
+    return parsed === null ? [] : [parsed];
+  });
+}
+type PluginIdField = "id" | "pluginId";
 
 function useResolvablePluginIds(): ReadonlySet<string> | null {
   const [ids, setIds] = useState<ReadonlySet<string> | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    const read = async (url: string, pick: (row: never) => string) => {
+    const read = async (
+      url: string,
+      field: PluginIdField,
+    ): Promise<string[]> => {
       try {
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) return [];
-        const body = (await response.json()) as unknown;
-        const rows = Array.isArray(body)
-          ? body
-          : ((body as { plugins?: unknown[]; results?: unknown[] }).plugins ??
-            (body as { results?: unknown[] }).results ??
-            []);
-        return rows.map((row) => pick(row as never)).filter(Boolean);
+        const rows = pluginIdRows(await response.json());
+        return rows.flatMap((row) => (row[field] ? [row[field]] : []));
       } catch {
         return [];
       }
     };
     void Promise.all([
-      read("/api/v1/plugins", (row: { id?: string }) => row.id ?? ""),
-      read(
-        "/api/v1/plugin-catalog/search?q=",
-        (row: { pluginId?: string }) => row.pluginId ?? "",
-      ),
+      read("/api/v1/plugins", "id"),
+      read("/api/v1/plugin-catalog/search?q=", "pluginId"),
     ]).then(([installed, catalog]) => {
       if (!controller.signal.aborted) {
         setIds(new Set([...installed, ...catalog]));

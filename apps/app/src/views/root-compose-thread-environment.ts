@@ -78,21 +78,25 @@ export function resolveRootComposeThreadEnvironment(
       };
     }
 
+    if (args.selectedBranch) {
+      return {
+        type: "host",
+        hostId: parsed.hostId,
+        workspace: {
+          type: "unmanaged",
+          path: null,
+          branch: {
+            kind: "existing",
+            name: args.selectedBranch.name,
+          },
+        },
+      };
+    }
+
     return {
       type: "host",
       hostId: parsed.hostId,
-      workspace: {
-        type: "unmanaged",
-        path: null,
-        ...(args.selectedBranch
-          ? {
-              branch: {
-                kind: "existing",
-                name: args.selectedBranch.name,
-              },
-            }
-          : {}),
-      },
+      workspace: { type: "unmanaged", path: null },
     };
   }
 

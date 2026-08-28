@@ -4,7 +4,11 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { textBlockSchema } from "./tool-arg-schemas.js";
-import { getStringProperty, isRecord } from "./provider-visibility-helpers.js";
+import {
+  getStringProperty,
+  isRecord,
+  type StringRecord,
+} from "./provider-visibility-helpers.js";
 
 const contentWrapperSchema = z
   .object({
@@ -207,13 +211,12 @@ export function buildEditDiff(
   return undefined;
 }
 
-export function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+export function toOptionalString<T>(value: T): string | undefined {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
-export function toOptionalRecord(
-  value: unknown,
-): Record<string, unknown> | undefined {
+export function toOptionalRecord<T>(value: T): StringRecord | undefined {
   return isRecord(value) ? value : undefined;
 }
 
@@ -230,23 +233,20 @@ export function withParentToolCallId<TItem extends ThreadEventItem>(
   };
 }
 
-export function buildShellEnvOverrides(
-  envVars?: Record<string, string>,
-): Record<string, string> {
-  const overrides: Record<string, string> = {};
+export function buildShellEnvOverrides(envVars?: Record<string, string>) {
+  const overrides = new Map<string, string>();
   for (const [key, value] of Object.entries(envVars ?? {})) {
     if (!shellEnvironmentVariableKeySchema.safeParse(key).success) {
       continue;
     }
-    overrides[key] = value;
+    overrides.set(key, value);
   }
-  return overrides;
+  return Object.fromEntries(overrides);
 }
 
-export function toNonNegativeNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : 0;
+export function toNonNegativeNumber<T>(value: T): number {
+  const parsed = z.number().finite().nonnegative().safeParse(value);
+  return parsed.success ? parsed.data : 0;
 }
 
 export function normalizeProviderCommandOutput(args: {
@@ -262,30 +262,33 @@ export function normalizeProviderCommandOutput(args: {
   return args.text.length > 0 ? args.text : undefined;
 }
 
-export function extractResultText(content: unknown): string {
+export function extractResultText<T>(content: T): string {
   if (content === null || content === undefined) return "";
-  if (typeof content === "string") return content;
-  if (typeof content === "number" || typeof content === "boolean") {
-    return JSON.stringify(content);
+  const stringContent = z.string().safeParse(content);
+  if (stringContent.success) return stringContent.data;
+  const primitiveContent = z
+    .union([z.number(), z.boolean()])
+    .safeParse(content);
+  if (primitiveContent.success) return JSON.stringify(primitiveContent.data);
+
+  const wrapper = contentWrapperSchema.safeParse(content);
+  if (wrapper.success) {
+    return extractResultText(wrapper.data.content);
   }
 
-  if (content && typeof content === "object" && !Array.isArray(content)) {
-    const wrapper = contentWrapperSchema.safeParse(content);
-    if (wrapper.success) {
-      return extractResultText(wrapper.data.content);
-    }
-    return JSON.stringify(content);
+  const blocks = z.array(z.unknown()).safeParse(content);
+  if (!blocks.success) {
+    const objectContent = z.record(z.string(), z.unknown()).safeParse(content);
+    return objectContent.success ? JSON.stringify(objectContent.data) : "";
   }
 
-  if (!Array.isArray(content)) return "";
-
-  const toolReferenceSummary = describeToolReferenceBlocks(content);
+  const toolReferenceSummary = describeToolReferenceBlocks(blocks.data);
   if (toolReferenceSummary) {
     return toolReferenceSummary;
   }
 
   const chunks: string[] = [];
-  for (const block of content) {
+  for (const block of blocks.data) {
     const parsed = textBlockSchema.safeParse(block);
     if (parsed.success) {
       chunks.push(parsed.data.text);
@@ -299,7 +302,7 @@ export function extractResultText(content: unknown): string {
   return chunks.join("\n");
 }
 
-function describeToolReferenceBlocks(blocks: unknown[]): string | null {
+function describeToolReferenceBlocks<T>(blocks: T[]): string | null {
   const toolNames: string[] = [];
   for (const block of blocks) {
     if (
@@ -319,7 +322,7 @@ function describeToolReferenceBlocks(blocks: unknown[]): string | null {
   return toolNames.length > 0 ? `Matched tools: ${toolNames.join(", ")}` : null;
 }
 
-function describeResultContentBlock(block: unknown): string | null {
+function describeResultContentBlock<T>(block: T): string | null {
   if (!isRecord(block)) {
     return null;
   }

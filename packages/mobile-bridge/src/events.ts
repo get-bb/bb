@@ -23,7 +23,9 @@ export const shellToPageEventSchema = z.discriminatedUnion("type", [
 export type ShellToPageEvent = z.infer<typeof shellToPageEventSchema>;
 export type BridgeResponse = z.infer<typeof bridgeResponseSchema>;
 
-export function parseShellToPageEvent(value: unknown): ShellToPageEvent | null {
+export function parseShellToPageEvent(
+  value: z.input<typeof shellToPageEventSchema>,
+): ShellToPageEvent | null {
   const parsed = shellToPageEventSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }

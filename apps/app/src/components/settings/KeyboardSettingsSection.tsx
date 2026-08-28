@@ -61,7 +61,7 @@ const SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS =
   "rounded-none border-l border-border bg-transparent px-1.5 py-0.5 text-foreground opacity-100";
 
 function browserPlatform(): string {
-  return typeof navigator === "undefined" ? "" : navigator.platform;
+  return globalThis.navigator?.platform ?? "";
 }
 
 function presentShortcut(

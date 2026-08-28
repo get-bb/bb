@@ -2,26 +2,48 @@
 
 import "@bb/shared-ui/icon-extended";
 
-if (typeof globalThis.navigator === "undefined") {
+type RuntimeWindow = Omit<
+  Window,
+  "IntersectionObserver" | "ResizeObserver" | "matchMedia"
+> & {
+  IntersectionObserver?: typeof IntersectionObserver;
+  ResizeObserver?: typeof ResizeObserver;
+  matchMedia?: Window["matchMedia"];
+};
+
+function readGlobalProperty<T>(name: string): T | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  return descriptor?.get?.call(globalThis) ?? descriptor?.value;
+}
+
+const runtimeNavigator = readGlobalProperty<Navigator>("navigator");
+const runtimeWindow = readGlobalProperty<RuntimeWindow>("window");
+const runtimeElement = readGlobalProperty<typeof Element>("Element");
+const runtimeText = readGlobalProperty<typeof Text>("Text");
+const runtimeRange = readGlobalProperty<typeof Range>("Range");
+const runtimeDocument = readGlobalProperty<Document>("document");
+const runtimeJsdom = readGlobalProperty<{ window: Window }>("jsdom");
+
+if (runtimeNavigator === undefined) {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: { userAgent: "node" },
   });
 }
 
-if (typeof window !== "undefined" && typeof jsdom !== "undefined") {
-  Object.defineProperty(window, "localStorage", {
+if (runtimeWindow !== undefined && runtimeJsdom !== undefined) {
+  Object.defineProperty(runtimeWindow, "localStorage", {
     configurable: true,
-    value: jsdom.window.localStorage,
+    value: runtimeJsdom.window.localStorage,
   });
-  Object.defineProperty(window, "sessionStorage", {
+  Object.defineProperty(runtimeWindow, "sessionStorage", {
     configurable: true,
-    value: jsdom.window.sessionStorage,
+    value: runtimeJsdom.window.sessionStorage,
   });
 }
 
-if (typeof window !== "undefined" && !window.matchMedia) {
-  window.matchMedia = (query: string) => ({
+if (runtimeWindow !== undefined && runtimeWindow.matchMedia === undefined) {
+  runtimeWindow.matchMedia = (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -33,8 +55,8 @@ if (typeof window !== "undefined" && !window.matchMedia) {
   });
 }
 
-if (typeof window !== "undefined" && !window.ResizeObserver) {
-  window.ResizeObserver = class ResizeObserverPolyfill {
+if (runtimeWindow !== undefined && !("ResizeObserver" in runtimeWindow)) {
+  runtimeWindow.ResizeObserver = class ResizeObserverPolyfill {
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -42,82 +64,109 @@ if (typeof window !== "undefined" && !window.ResizeObserver) {
 }
 
 if (
-  typeof Element !== "undefined" &&
-  typeof Element.prototype.scrollIntoView !== "function"
+  runtimeElement !== undefined &&
+  Object.getOwnPropertyDescriptor(
+    runtimeElement.prototype,
+    "scrollIntoView",
+  ) === undefined
 ) {
-  Element.prototype.scrollIntoView = function scrollIntoViewPolyfill() {};
+  runtimeElement.prototype.scrollIntoView =
+    function scrollIntoViewPolyfill() {};
 }
 
 if (
-  typeof Element !== "undefined" &&
-  typeof Element.prototype.getClientRects !== "function"
+  runtimeElement !== undefined &&
+  Object.getOwnPropertyDescriptor(
+    runtimeElement.prototype,
+    "getClientRects",
+  ) === undefined
 ) {
-  Object.defineProperty(Element.prototype, "getClientRects", {
+  Object.defineProperty(runtimeElement.prototype, "getClientRects", {
     configurable: true,
     value: () => [],
   });
 }
 
 if (
-  typeof Element !== "undefined" &&
-  typeof Element.prototype.getBoundingClientRect !== "function"
+  runtimeElement !== undefined &&
+  Object.getOwnPropertyDescriptor(
+    runtimeElement.prototype,
+    "getBoundingClientRect",
+  ) === undefined
 ) {
-  Object.defineProperty(Element.prototype, "getBoundingClientRect", {
+  Object.defineProperty(runtimeElement.prototype, "getBoundingClientRect", {
     configurable: true,
     value: () => new DOMRect(0, 0, 0, 0),
   });
 }
 
-if (typeof Text !== "undefined" && !("getClientRects" in Text.prototype)) {
-  Object.defineProperty(Text.prototype, "getClientRects", {
+if (
+  runtimeText !== undefined &&
+  Object.getOwnPropertyDescriptor(runtimeText.prototype, "getClientRects") ===
+    undefined
+) {
+  Object.defineProperty(runtimeText.prototype, "getClientRects", {
     configurable: true,
     value: () => [],
   });
 }
 
 if (
-  typeof Text !== "undefined" &&
-  !("getBoundingClientRect" in Text.prototype)
+  runtimeText !== undefined &&
+  Object.getOwnPropertyDescriptor(
+    runtimeText.prototype,
+    "getBoundingClientRect",
+  ) === undefined
 ) {
-  Object.defineProperty(Text.prototype, "getBoundingClientRect", {
+  Object.defineProperty(runtimeText.prototype, "getBoundingClientRect", {
     configurable: true,
     value: () => new DOMRect(0, 0, 0, 0),
   });
 }
 
 if (
-  typeof Range !== "undefined" &&
-  typeof Range.prototype.getClientRects !== "function"
+  runtimeRange !== undefined &&
+  Object.getOwnPropertyDescriptor(runtimeRange.prototype, "getClientRects") ===
+    undefined
 ) {
-  Object.defineProperty(Range.prototype, "getClientRects", {
+  Object.defineProperty(runtimeRange.prototype, "getClientRects", {
     configurable: true,
     value: () => [],
   });
 }
 
 if (
-  typeof Range !== "undefined" &&
-  typeof Range.prototype.getBoundingClientRect !== "function"
+  runtimeRange !== undefined &&
+  Object.getOwnPropertyDescriptor(
+    runtimeRange.prototype,
+    "getBoundingClientRect",
+  ) === undefined
 ) {
-  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+  Object.defineProperty(runtimeRange.prototype, "getBoundingClientRect", {
     configurable: true,
     value: () => new DOMRect(0, 0, 0, 0),
   });
 }
 
 if (
-  typeof document !== "undefined" &&
-  typeof document.elementFromPoint !== "function"
+  runtimeDocument !== undefined &&
+  Object.getOwnPropertyDescriptor(runtimeDocument, "elementFromPoint") ===
+    undefined
 ) {
-  document.elementFromPoint = function elementFromPointPolyfill() {
-    return document.body;
+  runtimeDocument.elementFromPoint = function elementFromPointPolyfill() {
+    return runtimeDocument.body;
   };
 }
 
-if (typeof window !== "undefined" && !window.IntersectionObserver) {
+if (runtimeWindow !== undefined && !("IntersectionObserver" in runtimeWindow)) {
   class IntersectionObserverPolyfill {
+    constructor(
+      _callback: IntersectionObserverCallback,
+      _options?: IntersectionObserverInit,
+    ) {}
     readonly root: Element | Document | null = null;
     readonly rootMargin: string = "";
+    readonly scrollMargin: string = "";
     readonly thresholds: readonly number[] = [];
     observe() {}
     unobserve() {}
@@ -126,6 +175,5 @@ if (typeof window !== "undefined" && !window.IntersectionObserver) {
       return [];
     }
   }
-  window.IntersectionObserver =
-    IntersectionObserverPolyfill as unknown as typeof IntersectionObserver;
+  runtimeWindow.IntersectionObserver = IntersectionObserverPolyfill;
 }

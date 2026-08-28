@@ -1,4 +1,5 @@
 import {
+  type ComponentType,
   type CSSProperties,
   useEffect,
   useMemo,
@@ -9,6 +10,7 @@ import type { UrlTransform } from "react-markdown";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import { SourceCodeHost } from "@/components/code/SourceCodeHost";
+import type { BbSourceCodeProps } from "@/components/code/code-rendering";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
@@ -76,7 +78,7 @@ type FilePreviewState =
       markdownUrlTransform?: UrlTransform;
     };
 
-interface FilePreviewProps {
+export interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -87,6 +89,7 @@ interface FilePreviewProps {
   isRefreshing?: boolean;
   markdownLinkRouting?: MarkdownLinkRouting;
   statusLabel?: WorkspaceFilePreviewStatusLabel | null;
+  sourceCodeRenderer?: ComponentType<BbSourceCodeProps>;
 }
 
 interface FilePreviewBodyProps {
@@ -96,6 +99,7 @@ interface FilePreviewBodyProps {
   viewMode: FilePreviewViewMode;
   markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
+  sourceCodeRenderer?: ComponentType<BbSourceCodeProps>;
 }
 
 interface HtmlFilePreviewBodyProps {
@@ -103,6 +107,7 @@ interface HtmlFilePreviewBodyProps {
   onSelectionAddToChat?: (text: string) => void;
   state: Extract<FilePreviewState, { kind: "html" }>;
   viewMode: FilePreviewViewMode;
+  sourceCodeRenderer?: ComponentType<BbSourceCodeProps>;
 }
 
 interface FilePreviewHeaderProps {
@@ -166,6 +171,7 @@ interface FilePreviewCodeProps {
   lineRange: FilePreviewLineRange | null;
   onSelectionAddToChat?: (text: string) => void;
   path: string;
+  sourceCodeRenderer?: ComponentType<BbSourceCodeProps>;
 }
 
 interface GetInitialFilePreviewViewModeArgs {
@@ -191,15 +197,19 @@ const CSV_PREVIEW_MAX_ROWS = 500;
 const CSV_PREVIEW_ROW_HEIGHT_PX = 29;
 const CSV_PREVIEW_OVERSCAN_ROWS = 8;
 
-const FILE_PREVIEW_WRAPPER_STYLE = {
+interface FilePreviewWrapperStyle extends CSSProperties {
+  "--md-content-w": string;
+}
+
+const FILE_PREVIEW_WRAPPER_STYLE: FilePreviewWrapperStyle = {
   "--md-content-w": "100cqi",
-} as CSSProperties;
+};
 
 const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   width: "100%",
   height: "100%",
   border: 0,
-} as CSSProperties;
+} satisfies CSSProperties;
 const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
 const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
   "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
@@ -217,10 +227,11 @@ function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
 }
 
 function toAbsolutePreviewUrl(url: string): string {
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return url;
   }
-  return new URL(url, window.location.href).toString();
+  return new URL(url, browserWindow.location.href).toString();
 }
 
 function getFilePreviewToggleKind(
@@ -430,6 +441,7 @@ export function FilePreview({
   isRefreshing = false,
   markdownLinkRouting,
   statusLabel = null,
+  sourceCodeRenderer,
 }: FilePreviewProps) {
   const toggleKind = getFilePreviewToggleKind(state);
   const filePreviewLineRange = getFilePreviewLineRange(state);
@@ -508,6 +520,7 @@ export function FilePreview({
         viewMode={bodyViewMode}
         markdownLinkRouting={markdownLinkRouting}
         onSelectionAddToChat={onSelectionAddToChat}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     </div>
   );
@@ -520,6 +533,7 @@ function FilePreviewBody({
   viewMode,
   markdownLinkRouting,
   onSelectionAddToChat,
+  sourceCodeRenderer,
 }: FilePreviewBodyProps) {
   if (state.kind === "loading") {
     return <FilePreviewLoading />;
@@ -560,6 +574,7 @@ function FilePreviewBody({
         onSelectionAddToChat={onSelectionAddToChat}
         state={state}
         viewMode={viewMode}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     );
   }
@@ -587,6 +602,7 @@ function FilePreviewBody({
       lineOverflowMode={lineOverflowMode}
       lineRange={state.lineRange ?? null}
       onSelectionAddToChat={onSelectionAddToChat}
+      sourceCodeRenderer={sourceCodeRenderer}
       path={path}
     />
   );
@@ -855,6 +871,7 @@ function HtmlFilePreviewBody({
   onSelectionAddToChat,
   state,
   viewMode,
+  sourceCodeRenderer,
 }: HtmlFilePreviewBodyProps) {
   const isPreviewVisible = viewMode === "preview";
   return (
@@ -879,6 +896,7 @@ function HtmlFilePreviewBody({
           lineOverflowMode={lineOverflowMode}
           lineRange={state.lineRange}
           onSelectionAddToChat={onSelectionAddToChat}
+          sourceCodeRenderer={sourceCodeRenderer}
           path={state.file.name}
         />
       </div>
@@ -1142,6 +1160,7 @@ function FilePreviewCode({
   lineRange,
   onSelectionAddToChat,
   path,
+  sourceCodeRenderer,
 }: FilePreviewCodeProps) {
   const highlightedLines = useMemo(
     () =>
@@ -1160,6 +1179,7 @@ function FilePreviewCode({
       scrollToHighlightedLines
       fallback={<FilePreviewLoading />}
       onSelectionAddToChat={onSelectionAddToChat}
+      renderer={sourceCodeRenderer}
     />
   );
 }

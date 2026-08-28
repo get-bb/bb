@@ -16,25 +16,27 @@ function machineCodeResponse(): Response {
 
 describe("enrollDesktopMachine", () => {
   it("mints a code on the local server and redeems it at the connect apex", async () => {
-    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.endsWith("/rpc/createMachineCode")) {
-        return machineCodeResponse();
-      }
-      expect(url).toBe("https://getbb.app/api/connect/redeem-machine");
-      return new Response(
-        JSON.stringify({
-          credential: "bbcm_desktop",
-          machineId: "machine-1",
-          handle: "laptop",
-          serverUrl: "https://laptop.getbb.app",
-        }),
-      );
-    });
+    const fetchImpl: typeof fetch = vi.fn(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("/rpc/createMachineCode")) {
+          return machineCodeResponse();
+        }
+        expect(url).toBe("https://getbb.app/api/connect/redeem-machine");
+        return new Response(
+          JSON.stringify({
+            credential: "bbcm_desktop",
+            machineId: "machine-1",
+            handle: "laptop",
+            serverUrl: "https://laptop.getbb.app",
+          }),
+        );
+      },
+    );
 
     await expect(
       enrollDesktopMachine({
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        fetchImpl,
         localServerUrl: "http://127.0.0.1:38886",
       }),
     ).resolves.toEqual({
@@ -53,7 +55,7 @@ describe("enrollDesktopMachine", () => {
   });
 
   it("takes the label from the server URL, not the account handle", async () => {
-    const fetchImpl = async (input: string | URL | Request) =>
+    const fetchImpl: typeof fetch = async (input: string | URL | Request) =>
       String(input).endsWith("/rpc/createMachineCode")
         ? machineCodeResponse()
         : new Response(
@@ -67,7 +69,7 @@ describe("enrollDesktopMachine", () => {
 
     await expect(
       enrollDesktopMachine({
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        fetchImpl,
         localServerUrl: "http://127.0.0.1:38886",
       }),
     ).resolves.toMatchObject({ credential: { handle: "laptop" }, ok: true });
@@ -87,7 +89,7 @@ describe("enrollDesktopMachine", () => {
 
     await expect(
       enrollDesktopMachine({
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        fetchImpl,
         localServerUrl: "http://127.0.0.1:38886",
       }),
     ).resolves.toEqual({
@@ -99,7 +101,7 @@ describe("enrollDesktopMachine", () => {
   });
 
   it("reports the account machine limit from the gate", async () => {
-    const fetchImpl = async (input: string | URL | Request) =>
+    const fetchImpl: typeof fetch = async (input: string | URL | Request) =>
       String(input).endsWith("/rpc/createMachineCode")
         ? machineCodeResponse()
         : new Response(JSON.stringify({ error: "machine-limit" }), {
@@ -108,7 +110,7 @@ describe("enrollDesktopMachine", () => {
 
     await expect(
       enrollDesktopMachine({
-        fetchImpl: fetchImpl as unknown as typeof fetch,
+        fetchImpl,
         localServerUrl: "http://127.0.0.1:38886",
       }),
     ).resolves.toMatchObject({ code: "machine_limit", ok: false });

@@ -7,11 +7,10 @@ import {
   negotiateGrammarVersion,
   providerRecoveryNotificationSchema,
 } from "./index.js";
-import {
-  deltaItemShapeSchema,
-  deltaPresentationSchema,
-  threadDeltaSchema,
-} from "./thread-delta.js";
+import { deltaPresentationSchema, threadDeltaSchema } from "./thread-delta.js";
+import * as threadDeltaSchemas from "./thread-delta.js";
+
+const deltaItemSchema = threadDeltaSchemas["deltaItemShapeSchema"];
 
 const presentation = {
   label: { pending: "Reading file", completed: "Read file" },
@@ -21,7 +20,7 @@ const presentation = {
 
 describe("thread delta grammar v3", () => {
   it("parses every new item shape on item.open and item.close", () => {
-    const shapes = [
+    const items = [
       { type: "fileRead", path: "src/index.ts" },
       { type: "fileRead", path: "src/index.ts", cmd: "cat src/index.ts" },
       { type: "search", mode: "content", query: "TODO", path: "src" },
@@ -46,7 +45,7 @@ describe("thread delta grammar v3", () => {
         explanation: "Two steps",
       },
     ];
-    for (const item of shapes) {
+    for (const item of items) {
       expect(
         threadDeltaSchema.safeParse({
           kind: "item.open",
@@ -93,9 +92,9 @@ describe("thread delta grammar v3", () => {
         `expected ${delta.kind} with presentation to parse`,
       ).toBe(true);
     }
-    expect(
-      deltaItemShapeSchema.parse({ ...item, presentation }),
-    ).not.toHaveProperty("presentation");
+    expect(deltaItemSchema.parse({ ...item, presentation })).not.toHaveProperty(
+      "presentation",
+    );
   });
 
   it("keeps v2 deltas valid: presentation is optional on open and close", () => {
@@ -126,14 +125,14 @@ describe("thread delta grammar v3", () => {
 
   it("rejects malformed v3 shapes", () => {
     expect(
-      deltaItemShapeSchema.safeParse({
+      deltaItemSchema.safeParse({
         type: "search",
         mode: "fuzzy",
         query: "x",
       }).success,
     ).toBe(false);
     expect(
-      deltaItemShapeSchema.safeParse({
+      deltaItemSchema.safeParse({
         type: "delegation",
         childRef: "",
         label: "x",
@@ -142,7 +141,7 @@ describe("thread delta grammar v3", () => {
     ).toBe(false);
     for (const kind of ["goal", "Codex/goal", "codex/goal/x", "codex/"]) {
       expect(
-        deltaItemShapeSchema.safeParse({
+        deltaItemSchema.safeParse({
           type: "extension",
           kind,
           payload: {},
@@ -151,7 +150,7 @@ describe("thread delta grammar v3", () => {
       ).toBe(false);
     }
     expect(
-      deltaItemShapeSchema.safeParse({
+      deltaItemSchema.safeParse({
         type: "extension",
         kind: "codex/goal",
         payload: { when: new Date() },

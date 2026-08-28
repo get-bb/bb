@@ -15,7 +15,7 @@ export function toHostDaemonProcessEnv(
     if (value === undefined) {
       continue;
     }
-    env[key] = typeof value === "boolean" ? (value ? "1" : "0") : value;
+    env[key] = value === true ? "1" : value === false ? "0" : value;
   }
   return env;
 }

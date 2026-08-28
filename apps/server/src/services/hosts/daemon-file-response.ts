@@ -1,9 +1,11 @@
 import { Buffer } from "node:buffer";
 import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
-import { ApiError } from "../../errors.js";
+import { ApiError, errorToResponse } from "../../errors.js";
 
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
+
+type DaemonFileRouteErrorInput = Parameters<typeof errorToResponse>[0];
 
 export type DaemonFileReadResult =
   | HostDaemonOnlineRpcResultByType["host.read_file"]
@@ -80,7 +82,9 @@ export function createDaemonFileContentResponse(
   });
 }
 
-export function remapDaemonFileRouteError(error: unknown): never {
+export function remapDaemonFileRouteError(
+  error: DaemonFileRouteErrorInput,
+): never {
   if (!(error instanceof ApiError)) {
     throw error;
   }

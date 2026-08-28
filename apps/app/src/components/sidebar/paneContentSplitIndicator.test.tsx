@@ -1,20 +1,13 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
-
-const { compactState } = vi.hoisted(() => ({
-  compactState: { value: false },
-}));
-
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => compactState.value,
-}));
 
 function content(threadId: string): PaneContent {
   return { kind: "thread", projectId: "p1", threadId };
@@ -36,11 +29,15 @@ function twoPanes(focused: string): SplitLayout {
   };
 }
 
-function renderIndicator(threadId: string) {
+function renderIndicator(threadId: string, isCompactViewport = false) {
   const store = createStore();
   store.set(splitLayoutAtom, twoPanes("pane-1"));
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <Provider store={store}>{children}</Provider>
+    <Provider store={store}>
+      <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+        {children}
+      </CompactViewportOverrideProvider>
+    </Provider>
   );
   let renders = 0;
   const target = content(threadId);
@@ -54,14 +51,9 @@ function renderIndicator(threadId: string) {
   return { store, result, renderCount: () => renders };
 }
 
-beforeEach(() => {
-  compactState.value = false;
-});
-
 describe("usePaneContentSplitIndicator", () => {
   it("does not subscribe to the split layout on compact viewports", () => {
-    compactState.value = true;
-    const { store, result, renderCount } = renderIndicator("t1");
+    const { store, result, renderCount } = renderIndicator("t1", true);
     expect(result.current.isOpenInSplit).toBe(false);
     const settled = renderCount();
 

@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLatestThreadSequence, getThread } from "@bb/db";
 import { turnScope } from "@bb/domain";
@@ -32,10 +33,19 @@ const EXAMPLES_DIR = fileURLToPath(
 
 const APP_VERSION = "1.0.0";
 
-function slackHeaders(
-  signingSecret: string,
-  rawBody: string,
-): Record<string, string> {
+const pluginCliResponseSchema = z.object({
+  exitCode: z.number(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+
+const slackApiCallBodySchema = z.object({
+  channel: z.string(),
+  thread_ts: z.string(),
+  text: z.string(),
+});
+
+function slackHeaders(signingSecret: string, rawBody: string) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature =
     "v0=" +
@@ -80,11 +90,7 @@ describe("hero plugin: agent-enrichment", () => {
       },
     );
     expect(response.status).toBe(200);
-    return (await response.json()) as {
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    };
+    return pluginCliResponseSchema.parse(await response.json());
   }
 
   it("bb docs search returns excerpts from the bundled docs via the CLI endpoint", async () => {
@@ -156,8 +162,10 @@ describe("hero plugin: slack-bot", () => {
   it("webhook → spawn → thread.idle → chat.postMessage, end to end", async () => {
     const server = await startTestServer({ appVersion: APP_VERSION });
     const realFetch = globalThis.fetch;
-    const slackCalls: Array<{ url: string; body: Record<string, unknown> }> =
-      [];
+    const slackCalls: Array<{
+      url: string;
+      body: z.infer<typeof slackApiCallBodySchema>;
+    }> = [];
     try {
       const { host } = seedHostSession(server.deps);
       seedPrimaryHost(server.deps, host.id);
@@ -166,27 +174,28 @@ describe("hero plugin: slack-bot", () => {
         path: "/tmp/slack-bot-hero-source",
       });
 
-      globalThis.fetch = (async (
+      const mockFetch: typeof fetch = async (
         input: Parameters<typeof fetch>[0],
         init?: Parameters<typeof fetch>[1],
       ) => {
         const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
+          input instanceof URL
+            ? input.href
+            : input instanceof Request
+              ? input.url
+              : String(input);
         if (url.startsWith("https://slack.com/")) {
           slackCalls.push({
             url,
-            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            body: slackApiCallBodySchema.parse(JSON.parse(String(init?.body))),
           });
           return new Response(JSON.stringify({ ok: true }), {
             headers: { "content-type": "application/json" },
           });
         }
         return realFetch(input, init);
-      }) as typeof fetch;
+      };
+      globalThis.fetch = mockFetch;
 
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });
       const entry = await server.pluginService.installPath(
@@ -258,7 +267,10 @@ describe("hero plugin: slack-bot", () => {
         "slack:1720000000.000100",
       );
       expect(threadId).toBeDefined();
-      const threadRow = getThread(server.db, threadId as string);
+      if (threadId === undefined) {
+        throw new Error("Expected the Slack event to create a thread.");
+      }
+      const threadRow = getThread(server.db, threadId);
       expect(threadRow?.originPluginId).toBe("slack-bot");
       expect(threadRow?.title).toBe("Slack: summarize the release notes");
 
@@ -269,17 +281,17 @@ describe("hero plugin: slack-bot", () => {
         providerRegistry: server.deps.providerRegistry,
       };
       applyLoggedThreadLifecycleEvent(lifecycleDeps, {
-        threadId: threadId as string,
+        threadId,
         event: { type: "run.started" },
       });
       seedEvent(server.deps, {
-        threadId: threadId as string,
+        threadId,
         environmentId: threadRow?.environmentId ?? null,
         providerThreadId: "provider-slack-1",
         scope: turnScope("turn-1"),
         sequence:
           getLatestThreadSequence(server.db, {
-            threadId: threadId as string,
+            threadId,
           }) + 1,
         type: "item/completed",
         data: {
@@ -291,7 +303,7 @@ describe("hero plugin: slack-bot", () => {
         },
       });
       const outcome = applyLoggedThreadLifecycleEvent(lifecycleDeps, {
-        threadId: threadId as string,
+        threadId,
         event: { type: "run.succeeded" },
       });
       expect(outcome.applied).toBe(true);

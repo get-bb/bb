@@ -148,12 +148,6 @@ async function deliverDeferredThreadMessage(
   }
 }
 
-function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
-  return (
-    error instanceof ApiError && (error.status === 400 || error.status === 404)
-  );
-}
-
 function undeliverableDeferredThreadMessageReason(
   deps: Pick<AppDeps, "db">,
   thread: Thread,
@@ -235,7 +229,10 @@ async function flushDeferredThreadMessagesNow(
         ...runtimeErrorLogFields(deps.config, error),
         threadId,
       };
-      if (isDeferredThreadMessageRequestInvalid(error)) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 400 || error.status === 404)
+      ) {
         deleteDeferredThreadMessage(deps.db, { id: row.id, threadId });
         deps.logger.warn(
           fields,

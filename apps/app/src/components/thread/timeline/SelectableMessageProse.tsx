@@ -77,9 +77,6 @@ function isSelectionBoundarySpillWithinNode(
   range: Range,
   selectionText: string,
 ): boolean {
-  if (typeof range.intersectsNode !== "function") {
-    return false;
-  }
   if (!range.intersectsNode(node)) {
     return false;
   }
@@ -155,7 +152,7 @@ function readSelectionWithinNode(
   node: HTMLElement | null,
   anchor: SelectionAnchor | null,
 ): MessageProseSelection | null {
-  if (node === null || typeof window === "undefined") return null;
+  if (node === null || globalThis.window === undefined) return null;
 
   const selection = window.getSelection();
   if (selection === null || selection.rangeCount === 0) return null;
@@ -186,10 +183,7 @@ function clippedRangeForWhitespaceBoundarySpill(
   node: HTMLElement,
   range: Range,
 ): Range | null {
-  if (
-    typeof range.intersectsNode !== "function" ||
-    !range.intersectsNode(node)
-  ) {
+  if (!range.intersectsNode(node)) {
     return null;
   }
 
@@ -296,9 +290,9 @@ function findInstanceContaining(
   target: EventTarget | null,
 ): SelectableProseInstance | null {
   if (!(target instanceof Node)) return null;
-  let element = target instanceof Element ? target : target.parentElement;
+  let element = target instanceof HTMLElement ? target : target.parentElement;
   while (element !== null) {
-    const instance = instanceByNode.get(element as HTMLElement);
+    const instance = instanceByNode.get(element);
     if (instance !== undefined) return instance;
     element = element.parentElement;
   }
@@ -328,8 +322,7 @@ function reportAllInstances(): void {
     selection !== null && selection.rangeCount > 0
       ? selection.getRangeAt(0)
       : null;
-  const canPreFilter =
-    range !== null && typeof range.intersectsNode === "function";
+  const canPreFilter = range !== null;
   for (const instance of proseInstances) {
     if (instance.multiClickTimer !== null) continue;
     if (
@@ -460,7 +453,6 @@ function handleSharedCopy(): void {
   const range = selection.getRangeAt(0);
   for (const instance of proseInstances) {
     if (
-      typeof range.intersectsNode === "function" &&
       range.intersectsNode(instance.node) &&
       clipWhitespaceOnlyBoundarySpillForCopy(instance.node)
     ) {
@@ -533,7 +525,7 @@ export function SelectableMessageProse({
   onSelectRef.current = onSelect;
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (globalThis.window === undefined) return;
     const node = nodeRef.current;
     if (node === null) return;
 

@@ -10,7 +10,7 @@ function fakeRect(
   width: number,
   height: number,
 ): DOMRect {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     left,
     top,
     width,
@@ -52,14 +52,16 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     });
     document.body.append(paneEl);
     originalElementsFromPoint = document.elementsFromPoint;
-    document.elementsFromPoint = vi.fn((x: number, y: number) =>
-      x >= PANE_RECT.left &&
-      x <= PANE_RECT.right &&
-      y >= PANE_RECT.top &&
-      y <= PANE_RECT.bottom
-        ? [paneEl]
-        : [],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        (x: number, y: number) =>
+          x >= PANE_RECT.left &&
+          x <= PANE_RECT.right &&
+          y >= PANE_RECT.top &&
+          y <= PANE_RECT.bottom
+            ? [paneEl]
+            : [],
+      ) as typeof document.elementsFromPoint;
 
     escapeKeydowns = 0;
     escapeListener = (event: KeyboardEvent) => {
@@ -165,9 +167,10 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
   });
 
   it("falls back to the container when no marked pane is under the pointer", () => {
-    document.elementsFromPoint = vi.fn(
-      () => [],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        () => [],
+      ) as typeof document.elementsFromPoint;
     const container = document.createElement("main");
     Object.defineProperty(container, "getBoundingClientRect", {
       value: () => PANE_RECT,
@@ -221,9 +224,10 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
   });
 
   it("preserves fallback targeting when its container is inside the boundary", () => {
-    document.elementsFromPoint = vi.fn(
-      () => [],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        () => [],
+      ) as typeof document.elementsFromPoint;
     const boundary = document.createElement("aside");
     const container = document.createElement("main");
     Object.defineProperty(container, "getBoundingClientRect", {
@@ -250,9 +254,10 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
   });
 
   it("rejects a fallback target outside a supplied target boundary", () => {
-    document.elementsFromPoint = vi.fn(
-      () => [],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        () => [],
+      ) as typeof document.elementsFromPoint;
     const boundary = document.createElement("aside");
     const container = document.createElement("main");
     Object.defineProperty(container, "getBoundingClientRect", {

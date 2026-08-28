@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const workerEntryPath = fileURLToPath(
   new URL("./plugin-host-worker.ts", import.meta.url),
 );
+const workerMessageSchema = z.object({ type: z.string() });
 
 describe("plugin host worker lifecycle", () => {
   const children = new Set<ChildProcess>();
@@ -83,12 +85,9 @@ describe("plugin host worker lifecycle", () => {
         () => reject(new Error(`host worker did not send ${type}`)),
         2_000,
       );
-      child.on("message", (message: unknown) => {
-        if (
-          typeof message === "object" &&
-          message !== null &&
-          Reflect.get(message, "type") === type
-        ) {
+      child.on("message", (message) => {
+        const parsed = workerMessageSchema.safeParse(message);
+        if (parsed.success && parsed.data.type === type) {
           clearTimeout(timer);
           resolve();
         }
@@ -129,6 +128,30 @@ describe("plugin host worker lifecycle", () => {
 
     await expect(closed).resolves.toEqual({
       code: 1,
+      signal: null,
+    });
+  });
+
+  it("accepts accessor-backed standard schemas from host artifacts", async () => {
+    const child = await startWorker(`
+      const schema = {
+        get "~standard"() {
+          return { validate(value) { return { value }; } };
+        },
+      };
+      export default {
+        experimental_apiVersion: 1,
+        contract: { ping: { input: schema, output: schema } },
+        handlers: { ping(input) { return input; } },
+      };
+    `);
+    await waitForReady(child);
+
+    const closed = waitForClose(child);
+    child.send({ type: "dispose" });
+
+    await expect(closed).resolves.toEqual({
+      code: 0,
       signal: null,
     });
   });

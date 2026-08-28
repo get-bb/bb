@@ -9,7 +9,17 @@ import { resolveAcpNativeRoots } from "./native-roots/index.js";
 
 const reserved = RESERVED_ACP_PROVIDER_IDS;
 
-function amp(displayName: string, command: string): unknown {
+interface TestAgentEntry {
+  id: string;
+  displayName: string;
+  command: string;
+  nativeSkillRoots?: {
+    user?: string[];
+    project?: string[];
+  };
+}
+
+function amp(displayName: string, command: string): TestAgentEntry {
   return { id: "amp", displayName, command };
 }
 
@@ -162,7 +172,7 @@ describe("a configured entry that replaces a shipped agent", () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  function replacing(entry: unknown) {
+  function replacing(entry: TestAgentEntry) {
     return resolveConfiguredAcpAgents({
       settingValue: JSON.stringify([entry]),
       legacyEntries: [],

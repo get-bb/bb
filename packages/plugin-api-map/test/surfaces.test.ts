@@ -6,6 +6,7 @@ import {
   SURFACE_GROUPS,
   SURFACE_NUMBERS,
   SURFACES_BY_ID,
+  type SurfaceGroup,
 } from "../src/index";
 import {
   ANATOMY_RENDERER_KEYS,
@@ -19,10 +20,8 @@ import {
 
 const groupById = new Map(SURFACE_GROUPS.map((group) => [group.id, group]));
 
-function surfaceIds(groupId: string): string[] {
-  return (groupById.get(groupId as never)?.surfaces ?? []).map(
-    (surface) => surface.id,
-  );
+function surfaceIds(groupId: SurfaceGroup["id"]): string[] {
+  return (groupById.get(groupId)?.surfaces ?? []).map((surface) => surface.id);
 }
 
 describe("product-map surfaces", () => {
@@ -121,7 +120,9 @@ describe("product-map surfaces", () => {
     for (const [surfaceId, contract] of Object.entries(
       anatomy.surfaceFixtures,
     )) {
-      const group = groupById.get(contract.groupId as never);
+      const group = SURFACE_GROUPS.find(
+        (candidate) => candidate.id === contract.groupId,
+      );
       expect(
         group,
         `${surfaceId}: unknown group ${contract.groupId}`,
@@ -137,7 +138,7 @@ describe("product-map surfaces", () => {
   });
 
   it("clusters every headless surface into exactly one named section", () => {
-    const headless = groupById.get("headless" as never);
+    const headless = groupById.get("headless");
     const sectioned = (headless?.sections ?? []).flatMap(
       (section) => section.surfaceIds,
     );

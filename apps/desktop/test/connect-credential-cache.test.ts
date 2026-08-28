@@ -98,16 +98,16 @@ describe("createConnectCredentialCache", () => {
     ).resolves.toBeNull();
     expect(undecryptable.file).toBeNull();
 
-    const wrongShape = createFs(
+    const malformedCredential = createFs(
       Buffer.from(`sealed:${JSON.stringify({ handle: "laptop" })}`),
     );
     await expect(
       createConnectCredentialCache({
         encryption: createEncryption(),
-        fs: wrongShape,
+        fs: malformedCredential,
         userDataPath: "/data",
       }).read(),
     ).resolves.toBeNull();
-    expect(wrongShape.file).toBeNull();
+    expect(malformedCredential.file).toBeNull();
   });
 });

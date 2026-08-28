@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
@@ -8,37 +8,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { SplitThreadArea } from "./SplitThreadArea";
+import * as threadDetailView from "./ThreadDetailView";
 
-vi.mock("./ThreadDetailView", () => ({
-  ThreadDetailView: (props: { threadId?: string }) => (
-    <div data-testid="thread-view" data-thread={props.threadId ?? "page"} />
-  ),
-}));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandContext: () => undefined,
-  useAppCommandHandler: () => undefined,
-  useAppCommandShortcut: () => null,
-  useIndexedAppCommandHandlers: () => undefined,
-  useIsAppCommandModifierHeld: () => false,
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThread: () => ({
-    data: undefined,
-    isSuccess: false,
-    isError: false,
-    error: null,
-  }),
-}));
-
-vi.mock("@/hooks/useRouteState", () => ({
-  useRouteState: () => ({ projectId: "p1", threadId: "t1" }),
-}));
-
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => false,
-}));
+beforeEach(() => {
+  vi.spyOn(threadDetailView, "ThreadDetailView").mockImplementation((props) => (
+    <div
+      data-testid="thread-view"
+      data-thread={props.surface === "pane" ? props.threadId : "page"}
+    />
+  ));
+});
 
 function content(threadId: string): PaneContent {
   return { kind: "thread", projectId: "p1", threadId };
@@ -70,6 +49,7 @@ function renderArea(layout: SplitLayout) {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("SplitThreadArea single-pane parity", () => {

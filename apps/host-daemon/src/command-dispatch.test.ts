@@ -148,8 +148,10 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
 }
 
 interface FakeDispatchRuntime extends AgentRuntime {
+  resumeThread: Mock<AgentRuntime["resumeThread"]>;
   setActiveTurn: (threadId: string, turnId: string) => void;
   setIdle: (threadId: string) => void;
+  stopThread: Mock<AgentRuntime["stopThread"]>;
 }
 
 function createRuntime(): FakeDispatchRuntime {
@@ -901,10 +903,8 @@ describe("dispatchCommand", () => {
         threadId: "thread-1",
       }),
     );
-    expect(
-      (oldRuntime.stopThread as unknown as Mock).mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      (newRuntime.resumeThread as unknown as Mock).mock.invocationCallOrder[0],
+    expect(oldRuntime.stopThread.mock.invocationCallOrder[0]).toBeLessThan(
+      newRuntime.resumeThread.mock.invocationCallOrder[0],
     );
   });
 
@@ -919,7 +919,7 @@ describe("dispatchCommand", () => {
       workspacePath: "/tmp/bb-stop-old",
     });
     oldRuntime.setActiveTurn("thread-1", "turn-old");
-    (oldRuntime.stopThread as Mock).mockResolvedValueOnce({
+    oldRuntime.stopThread.mockResolvedValueOnce({
       providerCheckpointId: "pi-entry-at-stop",
     });
 

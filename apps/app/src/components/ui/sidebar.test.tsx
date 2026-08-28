@@ -17,6 +17,7 @@ import {
   Sidebar,
   SidebarInset,
   SidebarProvider,
+  type SidebarProviderDependencies,
   SidebarTrigger,
   useIsSidebarShowing,
   useOptionalIsSidebarShowing,
@@ -29,27 +30,20 @@ type RecordedMotionAnimation = {
   value: MotionValue<number>;
 };
 
-const motionAnimationState = vi.hoisted(() => ({
-  calls: [] as RecordedMotionAnimation[],
-}));
+type MotionAnimationState = {
+  calls: RecordedMotionAnimation[];
+};
 
-vi.mock("motion", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion")>()),
-  animate: vi.fn(
-    (
-      value: MotionValue<number>,
-      target: number,
-      options: ValueAnimationTransition<number>,
-    ) => {
-      motionAnimationState.calls.push({
-        options,
-        target,
-        value,
-      });
-      return { stop: vi.fn() };
-    },
-  ),
-}));
+const motionAnimationState: MotionAnimationState = {
+  calls: [],
+};
+
+const testSidebarProviderDependencies: SidebarProviderDependencies = {
+  animate: (value, target, options) => {
+    motionAnimationState.calls.push({ options, target, value });
+    return { stop: vi.fn() };
+  },
+};
 
 afterEach(() => {
   cleanup();
@@ -67,7 +61,11 @@ function settleMobileToggle() {
 }
 
 function createTouch(clientX: number, clientY: number): Touch {
-  return { identifier: 1, clientX, clientY } as Touch;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    identifier: 1,
+    clientX,
+    clientY,
+  } as Touch;
 }
 
 function createTouchList(...touches: Touch[]): TouchList {
@@ -78,7 +76,7 @@ function createTouchList(...touches: Touch[]): TouchList {
   touches.forEach((touch, index) => {
     Object.defineProperty(touchList, index, { value: touch });
   });
-  return touchList as unknown as TouchList;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ touchList as TouchList;
 }
 
 function fireTouch(
@@ -450,7 +448,7 @@ describe("mobile sidebar deferred realization", () => {
   it("uses the shared duration spring and reverses from its current width", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarProvider>
+        <SidebarProvider dependencies={testSidebarProviderDependencies}>
           <Sidebar>Sidebar content</Sidebar>
           <SidebarTrigger />
         </SidebarProvider>
@@ -805,15 +803,17 @@ describe("mobile sidebar text-selection arbitration", () => {
   it("cancels a pending prose swipe when native text selection begins", () => {
     let hasSelection = false;
     let selectionNode: Node | null = null;
-    vi.spyOn(document, "getSelection").mockImplementation(() =>
-      hasSelection
-        ? ({
-            anchorNode: selectionNode,
-            focusNode: selectionNode,
-            isCollapsed: false,
-          } as Selection)
-        : null,
-    );
+    const nativeGetSelection = document.getSelection.bind(document);
+    vi.spyOn(document, "getSelection").mockImplementation(() => {
+      if (!hasSelection) return null;
+      const selection = nativeGetSelection();
+      if (selection === null || selectionNode === null) return selection;
+      const range = document.createRange();
+      range.selectNode(selectionNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return selection;
+    });
     renderSelectableSwipeHarness();
     const prose = screen.getByText("Selectable message prose");
     selectionNode = prose.firstChild;

@@ -23,7 +23,7 @@ interface PanelHeightSync {
   heightPx: number;
 }
 const useBrowserLayoutEffect =
-  typeof window === "undefined" ? useEffect : useLayoutEffect;
+  globalThis.window === undefined ? useEffect : useLayoutEffect;
 
 interface ChevronProps {
   className?: string;
@@ -185,7 +185,7 @@ function AnimatedExpandablePanelContent({
 
     writeHeightSync(readHeightSync(undefined));
 
-    if (typeof ResizeObserver === "undefined") {
+    if (globalThis.ResizeObserver === undefined) {
       return;
     }
 

@@ -1,28 +1,27 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByThread, listPanes } from "@/lib/split-layout";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
-const { navigateSpy, compactState } = vi.hoisted(() => ({
-  navigateSpy: vi.fn(),
-  compactState: { value: false },
-}));
+const compactState = { value: false };
+let currentPathname = "";
 
-vi.mock("react-router-dom", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-router-dom")>()),
-  useNavigate: () => navigateSpy,
-}));
-
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => compactState.value,
-}));
+function LocationProbe() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    currentPathname = pathname;
+  }, [pathname]);
+  return null;
+}
 
 function content(threadId: string): PaneContent {
   return { kind: "thread", projectId: "p1", threadId };
@@ -66,9 +65,16 @@ function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <Provider store={store}>
-      <RouteNavigationProvider>{children}</RouteNavigationProvider>
-    </Provider>
+    <MemoryRouter>
+      <CompactViewportOverrideProvider isCompactViewport={compactState.value}>
+        <Provider store={store}>
+          <RouteNavigationProvider>
+            <LocationProbe />
+            {children}
+          </RouteNavigationProvider>
+        </Provider>
+      </CompactViewportOverrideProvider>
+    </MemoryRouter>
   );
   const { result } = renderHook(
     () => useThreadRowSplitDrag({ projectId: "p1", threadId, title: "Thread" }),
@@ -83,7 +89,7 @@ function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
 
 describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)", () => {
   beforeEach(() => {
-    navigateSpy.mockClear();
+    currentPathname = "";
     compactState.value = false;
   });
 
@@ -97,7 +103,7 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     expect(opened).not.toBeNull();
     expect(listPanes(layout!.root).at(-1)?.paneId).toBe(opened?.paneId);
     expect(layout!.focusedPaneId).toBe(opened?.paneId);
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
+    expect(currentPathname).toBe("/projects/p1/threads/t9");
   });
 
   it("focuses the existing pane instead of duplicating an already-open thread", () => {
@@ -106,9 +112,7 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     const layout = store.get(splitLayoutAtom);
     expect(countPanes(layout!.root)).toBe(2);
     expect(layout!.focusedPaneId).toBe("pane-2");
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t2", {
-      replace: true,
-    });
+    expect(currentPathname).toBe("/projects/p1/threads/t2");
   });
 
   it("coerces to a replace of the focused pane at the eight-pane cap", () => {
@@ -119,7 +123,7 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     const opened = findPaneByThread(layout!.root, "p1", "t9");
     expect(opened?.paneId).toBe("pane-1");
     expect(findPaneByThread(layout!.root, "p1", "t1")).toBeNull();
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
+    expect(currentPathname).toBe("/projects/p1/threads/t9");
   });
 
   it("plain-navigates without touching the layout on compact viewports", () => {
@@ -128,13 +132,13 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     const { store, openInSplit } = renderOpenInSplit("t9", seeded);
     openInSplit();
     expect(store.get(splitLayoutAtom)).toBe(seeded);
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
+    expect(currentPathname).toBe("/projects/p1/threads/t9");
   });
 
   it("plain-navigates when there is no layout yet", () => {
     const { store, openInSplit } = renderOpenInSplit("t9", null);
     openInSplit();
     expect(store.get(splitLayoutAtom)).toBeNull();
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
+    expect(currentPathname).toBe("/projects/p1/threads/t9");
   });
 });

@@ -12,18 +12,16 @@ interface RefreshAudioInputDevicesOptions {
 const DEFAULT_AUDIO_INPUT_DEVICE_ID = "default";
 
 function getMediaDevices(): MediaDevices | null {
-  if (
-    typeof navigator === "undefined" ||
-    !navigator.mediaDevices?.enumerateDevices
-  ) {
+  const mediaDevices = globalThis.navigator?.mediaDevices;
+  if (mediaDevices?.enumerateDevices === undefined) {
     return null;
   }
-  return navigator.mediaDevices;
+  return mediaDevices;
 }
 
-function resolveAudioInputDeviceErrorMessage(error: unknown): string {
-  if (error instanceof DOMException) {
-    switch (error.name) {
+function resolveAudioInputDeviceErrorMessage(cause: unknown): string {
+  if (cause instanceof DOMException) {
+    switch (cause.name) {
       case "NotAllowedError":
       case "SecurityError":
         return "Microphone permission denied";
@@ -34,8 +32,8 @@ function resolveAudioInputDeviceErrorMessage(error: unknown): string {
         return "Microphone devices unavailable";
     }
   }
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message.trim();
+  if (cause instanceof Error && cause.message.trim().length > 0) {
+    return cause.message.trim();
   }
   return "Microphone devices unavailable";
 }

@@ -48,7 +48,6 @@ describe("scheduled removals on @get-bb/plugin-sdk/provider-bridge", () => {
 
     const typeExports = exportedNames(declarations, "type");
     const valueExports = exportedNames(declarations, "value");
-    const facade: Record<string, unknown> = providerBridgeSdk;
     for (const name of scheduled) {
       const isType = typeExports.has(name);
       expect(
@@ -56,7 +55,10 @@ describe("scheduled removals on @get-bb/plugin-sdk/provider-bridge", () => {
         `${name} is declared by the published bundle`,
       ).toBe(true);
       if (!isType) {
-        expect(facade[name], `${name} is a runtime export`).toBeDefined();
+        const runtimeExport = Object.entries(providerBridgeSdk).find(
+          ([exportName]) => exportName === name,
+        )?.[1];
+        expect(runtimeExport, `${name} is a runtime export`).toBeDefined();
       }
     }
   });

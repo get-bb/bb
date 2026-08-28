@@ -1,8 +1,30 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { jsonObjectSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import { isRecord } from "./plugin-manifest.js";
 
 export const PLUGIN_SDK_PACKAGE_NAME = "@get-bb/plugin-sdk";
+
+type PluginExportTarget = string | JsonObject;
+
+function isPluginExportObject(value: PluginExportTarget): value is JsonObject {
+  return isRecord(value);
+}
+
+function parsePluginExportTarget(
+  value: JsonValue | undefined,
+): PluginExportTarget | null {
+  if (value === undefined || value === null || Array.isArray(value)) {
+    return null;
+  }
+  if (isRecord(value)) {
+    const parsedObject = jsonObjectSchema.safeParse(value);
+    if (!parsedObject.success) return null;
+    return parsedObject.data;
+  }
+  const text = String(value);
+  return text === value ? text : null;
+}
 
 export async function pathExists(path: string): Promise<boolean> {
   try {
@@ -37,9 +59,15 @@ export async function installedPluginSdkExportTarget(
     return null;
   }
   if (!isRecord(json) || !isRecord(json.exports)) return null;
-  let target: unknown = json.exports[subpath];
-  while (isRecord(target)) {
-    target = target.import ?? target.node ?? target.default ?? target.require;
+  const parsedExports = jsonObjectSchema.safeParse(json.exports);
+  if (!parsedExports.success) return null;
+  let target = parsePluginExportTarget(parsedExports.data[subpath]);
+  if (target === null) return null;
+  while (isPluginExportObject(target)) {
+    target = parsePluginExportTarget(
+      target.import ?? target.node ?? target.default ?? target.require,
+    );
+    if (target === null) return null;
   }
-  return typeof target === "string" ? target : null;
+  return target;
 }

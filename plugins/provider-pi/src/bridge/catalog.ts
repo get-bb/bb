@@ -1,4 +1,10 @@
-import type { AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
+import type {
+  AvailableModel,
+  JsonObject,
+  JsonValue,
+} from "@get-bb/plugin-sdk/provider-bridge";
+import { jsonValueSchema } from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
 import { resolve } from "node:path";
 import {
   createPiModelContextWindowResolverFrom,
@@ -21,15 +27,35 @@ const EXTENDED_THINKING_LEVELS = [
   "max",
 ] as const;
 
-interface PiRpcModel {
-  id: string;
-  name?: string;
-  provider: string;
-  input?: unknown;
-  reasoning?: boolean;
-  contextWindow?: number;
-  thinkingLevelMap?: Record<string, string | null | undefined>;
-}
+const piRpcModelSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    provider: z.string(),
+    input: z.array(z.json()).optional(),
+    reasoning: z.boolean().optional(),
+    contextWindow: z.number().optional(),
+    thinkingLevelMap: z.record(z.string(), z.string().nullable()).optional(),
+  })
+  .transform(({ input, ...model }) => ({
+    ...model,
+    input: input?.flatMap((entry) => {
+      const parsed = z.string().safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  }));
+
+type PiRpcModel = z.infer<typeof piRpcModelSchema>;
+
+const piRpcModelsResponseSchema = z.object({
+  models: z.array(z.json()).optional(),
+});
+
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+const piModelScopeSchema = z.object({
+  scopedModelIds: z.array(z.string()).default([]),
+  defaultModelId: z.string().optional(),
+});
 
 export function getSupportedThinkingLevels(
   model: Pick<PiRpcModel, "reasoning" | "thinkingLevelMap">,
@@ -50,22 +76,13 @@ export function getSupportedThinkingLevels(
 }
 
 function toCatalogModel(model: PiRpcModel): PiCatalogModel | undefined {
-  if (
-    typeof model.id !== "string" ||
-    model.id.length === 0 ||
-    typeof model.provider !== "string" ||
-    model.provider.length === 0
-  ) {
+  if (model.id.length === 0 || model.provider.length === 0) {
     return undefined;
   }
   return {
     id: model.id,
-    input: Array.isArray(model.input)
-      ? model.input.filter(
-          (entry): entry is string => typeof entry === "string",
-        )
-      : [],
-    name: typeof model.name === "string" ? model.name : model.id,
+    input: model.input ?? [],
+    name: model.name ?? model.id,
     provider: model.provider,
     reasoning: model.reasoning === true,
     supportedThinkingLevels: getSupportedThinkingLevels(model),
@@ -78,7 +95,7 @@ export interface PiCatalog {
     selectedOnlyModels: AvailableModel[];
   }>;
   rawModels(): Promise<PiRpcModel[]>;
-  probe(): Promise<Record<string, unknown>>;
+  probe(): Promise<JsonObject>;
   close(): Promise<void>;
 }
 
@@ -91,7 +108,7 @@ async function spawnCatalog(
 ): Promise<PiCatalog> {
   interface CatalogChildGeneration {
     child: PiRpcChild;
-    ready: Promise<Record<string, unknown>>;
+    ready: Promise<JsonObject>;
     getModelScope():
       | { scopedModelIds: string[]; defaultModelId?: string }
       | undefined;
@@ -103,19 +120,9 @@ async function spawnCatalog(
       | { scopedModelIds: string[]; defaultModelId?: string }
       | undefined;
     let settleModelScopeRequest: (() => void) | undefined;
-    const acceptModelScope = (value: Record<string, unknown>): void => {
-      const scopedModelIds = Array.isArray(value.scopedModelIds)
-        ? value.scopedModelIds.filter(
-            (id): id is string => typeof id === "string",
-          )
-        : [];
-      modelScope = {
-        scopedModelIds,
-        defaultModelId:
-          typeof value.defaultModelId === "string"
-            ? value.defaultModelId
-            : undefined,
-      };
+    const acceptModelScope = (value: JsonValue): void => {
+      const parsed = piModelScopeSchema.safeParse(value);
+      modelScope = parsed.success ? parsed.data : { scopedModelIds: [] };
     };
     const child = new PiRpcChild({
       cwd,
@@ -127,21 +134,19 @@ async function spawnCatalog(
           acceptModelScope(message);
           return;
         }
-        if (
-          message.kind === "reply" &&
-          message.id === "catalog-model-scope" &&
-          typeof message.result === "object" &&
-          message.result !== null
-        ) {
-          acceptModelScope(message.result as Record<string, unknown>);
-          settleModelScopeRequest?.();
-          settleModelScopeRequest = undefined;
+        if (message.kind === "reply" && message.id === "catalog-model-scope") {
+          const parsedResult = jsonObjectSchema.safeParse(message.result);
+          if (parsedResult.success) {
+            acceptModelScope(parsedResult.data);
+            settleModelScopeRequest?.();
+            settleModelScopeRequest = undefined;
+          }
         }
       },
       onExit: () => {},
       recordThreadId: null,
     });
-    const ready = (async (): Promise<Record<string, unknown>> => {
+    const ready = (async (): Promise<JsonObject> => {
       const data = await child.requestOk({ type: "get_state" });
       await new Promise<void>((resolveScope) => {
         const timeout = setTimeout(resolveScope, 2_000);
@@ -156,9 +161,8 @@ async function spawnCatalog(
           method: "model-scope",
         });
       });
-      return typeof data === "object" && data !== null
-        ? (data as Record<string, unknown>)
-        : {};
+      const parsedState = jsonObjectSchema.safeParse(data);
+      return parsedState.success ? parsedState.data : {};
     })();
     return { child, ready, getModelScope: () => modelScope };
   };
@@ -172,13 +176,19 @@ async function spawnCatalog(
     active: CatalogChildGeneration,
   ): Promise<PiRpcModel[]> => {
     await active.ready;
-    const data = (await active.child.requestOk({
+    const data = await active.child.requestOk({
       type: "get_available_models",
-    })) as { models?: unknown[] } | undefined;
+    });
     touch();
-    return (data?.models ?? []).filter(
-      (entry): entry is PiRpcModel =>
-        typeof entry === "object" && entry !== null,
+    const parsedResponse = piRpcModelsResponseSchema.safeParse(data);
+    if (!parsedResponse.success) {
+      return [];
+    }
+    return (
+      parsedResponse.data.models?.flatMap((entry) => {
+        const parsedModel = piRpcModelSchema.safeParse(entry);
+        return parsedModel.success ? [parsedModel.data] : [];
+      }) ?? []
     );
   };
   const fetchGeneration = async (): Promise<{
@@ -198,8 +208,11 @@ async function spawnCatalog(
   };
   const fetchRaw = async (): Promise<PiRpcModel[]> =>
     (await fetchGeneration()).raw;
-  const probe = async (): Promise<Record<string, unknown>> =>
-    activeGeneration().ready;
+  const probe = async (): Promise<JsonObject> => {
+    const data = await activeGeneration().ready;
+    const parsedState = z.record(z.string(), z.json()).safeParse(data);
+    return parsedState.success ? parsedState.data : {};
+  };
   await probe();
   return {
     async listModels() {
@@ -271,7 +284,7 @@ export function getPiCatalog(
   }
   const created = spawnCatalog(key, extensionPath, () =>
     touchCatalog(key),
-  ).catch((error: unknown) => {
+  ).catch((error) => {
     catalogsByCwd.delete(key);
     throw error;
   });
@@ -293,10 +306,12 @@ export async function closeAllPiCatalogs(): Promise<void> {
   );
 }
 
-export function createLiveContextWindowResolver(): {
+interface LiveContextWindowResolver {
   resolve: PiModelContextWindowResolver;
   learn(models: readonly PiRpcModel[]): void;
-} {
+}
+
+export function createLiveContextWindowResolver(): LiveContextWindowResolver {
   const known = new Map<string, PiRpcModel>();
   let resolver = createPiModelContextWindowResolverFrom([]);
   return {
@@ -304,7 +319,7 @@ export function createLiveContextWindowResolver(): {
     learn(models) {
       let changed = false;
       for (const model of models) {
-        if (typeof model.contextWindow !== "number") {
+        if (model.contextWindow === undefined) {
           continue;
         }
         const key = `${model.provider}\0${model.id}`;

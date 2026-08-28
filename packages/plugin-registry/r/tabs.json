@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "tabs",
   "description": "BB ui \"tabs\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-tabs"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/tabs.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/tabs.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-tabs"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

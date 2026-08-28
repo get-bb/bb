@@ -5,6 +5,7 @@ import {
   turnScope,
 } from "@bb/domain";
 import type { Thread } from "@bb/domain";
+import type { JsonObject } from "@bb/domain";
 import {
   createConnection,
   createProject,
@@ -22,7 +23,7 @@ const providerThreadId = "pi-thread-1";
 const PROCESS_EVENT =
   '<process_event kind="success" process_id="proc_551c">Process completed successfully</process_event>';
 
-function setup(): { db: DbConnection; thread: Thread } {
+function setup() {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
@@ -53,7 +54,7 @@ function seedExtensionTriggeredTurn(db: DbConnection, thread: Thread): void {
   const providerEvent = (
     type: EventInput["type"],
     turnId: string,
-    data: Record<string, unknown>,
+    data: JsonObject,
     item?: { itemId: string; itemKind: EventInput["itemKind"] },
   ): void => {
     push({

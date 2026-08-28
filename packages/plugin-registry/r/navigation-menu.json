@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "navigation-menu",
   "description": "BB ui \"navigation-menu\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-navigation-menu",
-    "class-variance-authority",
-    "lucide-react"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/navigation-menu.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/navigation-menu.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-navigation-menu",
+    "class-variance-authority",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

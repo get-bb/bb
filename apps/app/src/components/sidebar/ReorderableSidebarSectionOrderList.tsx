@@ -1,5 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import type { DragEndEvent } from "@dnd-kit/core";
+import { z } from "zod";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
@@ -24,16 +25,15 @@ export function ReorderableSidebarSectionOrderList({
 }: ReorderableSidebarSectionOrderListProps) {
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (
-        !event.over ||
-        typeof event.active.id !== "string" ||
-        typeof event.over.id !== "string"
-      ) {
+      if (!event.over) {
         return;
       }
+      const activeId = z.string().safeParse(event.active.id);
+      const overId = z.string().safeParse(event.over.id);
+      if (!activeId.success || !overId.success) return;
       const nextOrder = reorderSidebarSectionOrder({
-        activeId: event.active.id,
-        overId: event.over.id,
+        activeId: activeId.data,
+        overId: overId.data,
         order: reorderOrder,
       });
       if (nextOrder) onOrderChange(nextOrder);

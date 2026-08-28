@@ -106,11 +106,12 @@ function getLegacyProviderSelection(
   providerId: string,
   storageKey: string,
 ): string | null {
-  if (typeof window === "undefined") return null;
-  if (window.localStorage.getItem(PROVIDER_STORAGE_KEY) !== providerId) {
+  const storage = globalThis.window?.localStorage;
+  if (storage === undefined) return null;
+  if (storage.getItem(PROVIDER_STORAGE_KEY) !== providerId) {
     return null;
   }
-  return window.localStorage.getItem(storageKey);
+  return storage.getItem(storageKey);
 }
 
 function createProviderModelStorage(providerId: string) {
@@ -197,9 +198,9 @@ export function usePromptBoxProviderPreference(): PersistedStringSelectionField 
   const [value, setAtomValue] = useAtom(providerIdAtom);
   const setValue = useCallback(
     (nextValue: string) => {
-      if (nextValue !== value && typeof window !== "undefined") {
-        window.localStorage.removeItem(MODEL_STORAGE_KEY);
-        window.localStorage.removeItem(REASONING_STORAGE_KEY);
+      if (nextValue !== value) {
+        globalThis.window?.localStorage.removeItem(MODEL_STORAGE_KEY);
+        globalThis.window?.localStorage.removeItem(REASONING_STORAGE_KEY);
       }
       setAtomValue(nextValue);
     },

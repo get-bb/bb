@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 
 const commandFixture = vi.hoisted(() => ({
@@ -38,17 +41,6 @@ const commandFixture = vi.hoisted(() => ({
   ],
 }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: {
-        showKeyboardHints: false,
-      },
-      keybindings: commandFixture.keybindings,
-    },
-  }),
-}));
-
 const desktopInfo = {
   lastCheckedAt: null,
   latestVersion: null,
@@ -77,6 +69,13 @@ afterEach(() => {
 
 describe("RootComposePanelCommandHandlers", () => {
   it("routes panel shortcuts and desktop close requests only to the focused New Thread pane", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(
+      systemConfigQueryKey(),
+      makeSystemConfig({ keybindings: commandFixture.keybindings }),
+    );
     const firstToggle = vi.fn();
     const firstClose = vi.fn(() => true);
     const secondToggle = vi.fn();
@@ -91,18 +90,20 @@ describe("RootComposePanelCommandHandlers", () => {
     };
 
     const view = render(
-      <AppCommandProvider>
-        <RootComposePanelCommandHandlers
-          isFocused
-          onClose={firstClose}
-          onToggle={firstToggle}
-        />
-        <RootComposePanelCommandHandlers
-          isFocused={false}
-          onClose={secondClose}
-          onToggle={secondToggle}
-        />
-      </AppCommandProvider>,
+      <QueryClientProvider client={queryClient}>
+        <AppCommandProvider>
+          <RootComposePanelCommandHandlers
+            isFocused
+            onClose={firstClose}
+            onToggle={firstToggle}
+          />
+          <RootComposePanelCommandHandlers
+            isFocused={false}
+            onClose={secondClose}
+            onToggle={secondToggle}
+          />
+        </AppCommandProvider>
+      </QueryClientProvider>,
     );
 
     await act(async () => undefined);
@@ -119,18 +120,20 @@ describe("RootComposePanelCommandHandlers", () => {
     expect(firstClose).toHaveBeenCalledTimes(2);
 
     view.rerender(
-      <AppCommandProvider>
-        <RootComposePanelCommandHandlers
-          isFocused={false}
-          onClose={firstClose}
-          onToggle={firstToggle}
-        />
-        <RootComposePanelCommandHandlers
-          isFocused
-          onClose={secondClose}
-          onToggle={secondToggle}
-        />
-      </AppCommandProvider>,
+      <QueryClientProvider client={queryClient}>
+        <AppCommandProvider>
+          <RootComposePanelCommandHandlers
+            isFocused={false}
+            onClose={firstClose}
+            onToggle={firstToggle}
+          />
+          <RootComposePanelCommandHandlers
+            isFocused
+            onClose={secondClose}
+            onToggle={secondToggle}
+          />
+        </AppCommandProvider>
+      </QueryClientProvider>,
     );
     await act(async () => undefined);
 

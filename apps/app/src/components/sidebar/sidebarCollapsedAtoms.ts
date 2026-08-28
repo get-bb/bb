@@ -1,4 +1,5 @@
 import { atomWithStorage } from "jotai/utils";
+import { z } from "zod";
 import type { CollapsibleSidebarSectionId } from "@bb/client-core";
 import {
   createJsonLocalStorage,
@@ -23,6 +24,7 @@ const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
   "bb.sidebar.collapsedThreadSections";
 const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
+const legacyStringArraySchema = z.array(z.string());
 
 export type {
   CollapsibleSidebarSectionId,
@@ -47,13 +49,13 @@ function createLegacyMigratingStringArrayStorage(
   return {
     getItem(key, initialValue) {
       if (
-        typeof window === "undefined" ||
-        window.localStorage.getItem(key) !== null
+        globalThis.window === undefined ||
+        globalThis.window.localStorage.getItem(key) !== null
       ) {
         return storage.getItem(key, initialValue);
       }
 
-      const legacyJson = window.localStorage.getItem(legacyKey);
+      const legacyJson = globalThis.window.localStorage.getItem(legacyKey);
       if (legacyJson === null) {
         return initialValue;
       }
@@ -64,13 +66,13 @@ function createLegacyMigratingStringArrayStorage(
         storage.removeItem(legacyKey);
         return initialValue;
       }
-      if (!Array.isArray(parsedLegacyValue)) {
+      const parsedLegacyArray =
+        legacyStringArraySchema.safeParse(parsedLegacyValue);
+      if (!parsedLegacyArray.success) {
         storage.removeItem(legacyKey);
         return initialValue;
       }
-      const migratedValue = parsedLegacyValue
-        .filter((item): item is string => typeof item === "string")
-        .map(migrateItem);
+      const migratedValue = parsedLegacyArray.data.map(migrateItem);
       storage.setItem(key, migratedValue);
       storage.removeItem(legacyKey);
       return migratedValue;

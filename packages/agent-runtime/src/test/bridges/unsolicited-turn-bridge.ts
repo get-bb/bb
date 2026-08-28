@@ -19,7 +19,24 @@ const requestSchema = z
 
 let turnTimer: NodeJS.Timeout | null = null;
 
-function write(message: Record<string, unknown>): void {
+interface BridgeInitializeResult {
+  protocolVersion: typeof PROVIDER_BRIDGE_PROTOCOL_VERSION;
+  capabilities: {
+    grammarVersions: readonly (typeof THREAD_DELTA_GRAMMAR_V3)[];
+  };
+}
+
+type BridgeOutputMessage =
+  | {
+      method: typeof THREAD_DELTA_NOTIFICATION_METHOD;
+      params: { threadId: string; deltas: ThreadDelta[] };
+    }
+  | {
+      id: string | number;
+      result: BridgeInitializeResult | Record<never, never>;
+    };
+
+function write(message: BridgeOutputMessage): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 }
 

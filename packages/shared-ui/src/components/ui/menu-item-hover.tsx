@@ -52,17 +52,16 @@ interface MenuItemHoverHandlers {
   onKeyDown?: React.KeyboardEventHandler;
 }
 
-export function useMenuItemHover(handlers?: MenuItemHoverHandlers): {
-  isLastHovered: boolean;
-  hoverProps: MenuItemHoverProps;
-} {
+export function useMenuItemHover(handlers?: MenuItemHoverHandlers) {
   const id = React.useId();
   const { lastHoveredId, setLastHovered, clearLastHovered } =
     React.useContext(MenuHoverContext);
   const isLastHovered = lastHoveredId === id;
 
   const handlersRef = React.useRef(handlers);
-  handlersRef.current = handlers;
+  React.useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   const onPointerEnter = React.useCallback(
     (event: React.PointerEvent) => {

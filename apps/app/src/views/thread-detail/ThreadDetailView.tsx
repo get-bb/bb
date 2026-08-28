@@ -1082,24 +1082,23 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       }
       const session = activeSentMessageEditSession;
       const execution = target.execution;
+      const editRequest: Parameters<typeof editMessage.mutateAsync>[0] = {
+        id: session.threadId,
+        operationId: session.operationId,
+        expectedRequestSequence: session.target.expectedRequestSequence,
+        input: target.input,
+      };
+      if (execution) {
+        editRequest.model = execution.model;
+        editRequest.permissionMode = execution.permissionMode;
+        editRequest.reasoningLevel = execution.reasoningLevel;
+        editRequest.executionInputSources = execution.executionInputSources;
+        if (execution.supportsServiceTier && execution.serviceTier) {
+          editRequest.serviceTier = execution.serviceTier;
+        }
+      }
       void editMessage
-        .mutateAsync({
-          id: session.threadId,
-          operationId: session.operationId,
-          expectedRequestSequence: session.target.expectedRequestSequence,
-          input: target.input,
-          ...(execution
-            ? {
-                model: execution.model,
-                permissionMode: execution.permissionMode,
-                reasoningLevel: execution.reasoningLevel,
-                executionInputSources: execution.executionInputSources,
-                ...(execution.supportsServiceTier && execution.serviceTier
-                  ? { serviceTier: execution.serviceTier }
-                  : {}),
-              }
-            : {}),
-        })
+        .mutateAsync(editRequest)
         .then(() => {
           closeSentMessageEdit(session.operationId);
         })
@@ -1854,6 +1853,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     serverOrigin: window.location.origin,
     threadEnvironmentIsLocal,
   });
+  const localOpenTargetsArgs: Parameters<typeof useLocalOpenTargets>[0] = {
+    enabled: threadOpenContext !== null,
+  };
+  if (threadOpenContext) {
+    localOpenTargetsArgs.openContext = threadOpenContext;
+  }
   const {
     canOpenPreferredDirectoryTarget,
     canOpenPreferredFileTarget,
@@ -1864,10 +1869,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     openPathInPreferredDirectoryTarget,
     openPathInPreferredFileTarget,
     preferredDirectoryTarget,
-  } = useLocalOpenTargets({
-    enabled: threadOpenContext !== null,
-    ...(threadOpenContext ? { openContext: threadOpenContext } : {}),
-  });
+  } = useLocalOpenTargets(localOpenTargetsArgs);
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
       const relatedThreadId =

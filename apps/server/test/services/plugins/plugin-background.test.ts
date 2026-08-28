@@ -12,8 +12,8 @@ import {
   pluginSchedules,
   type DbConnection,
 } from "@bb/db";
-import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
+import type { ServerLogger } from "../../../src/types.js";
 import {
   createPluginService,
   type PluginService,
@@ -21,7 +21,7 @@ import {
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+const logger = testLogger satisfies ServerLogger;
 
 async function writePlugin(
   dir: string,
@@ -63,7 +63,21 @@ function setNextRunAt(
     .run();
 }
 
-const globals = globalThis as Record<string, unknown>;
+declare global {
+  var __connStarts: number;
+  var __connAborts: number;
+  var __disposeRequestErrors: string[];
+  var __slowActive: number;
+  var __slowMaxActive: number;
+  var __slowStarts: number;
+  var __crashyStarts: number;
+  var __emitterStarts: number;
+  var __emitterAborts: number;
+  var __needyStarts: number;
+  var __tickRuns: number;
+}
+
+const globals = globalThis;
 
 describe("plugin background services", () => {
   let db: DbConnection;

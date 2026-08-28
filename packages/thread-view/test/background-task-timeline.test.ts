@@ -73,7 +73,7 @@ function taskItem(args: {
   id?: string;
   workflowName?: string;
 }): ThreadEventBackgroundTaskItem {
-  return {
+  const item: ThreadEventBackgroundTaskItem = {
     type: "backgroundTask",
     id: args.id ?? "task:wf-1",
     taskType: "local_workflow",
@@ -82,10 +82,11 @@ function taskItem(args: {
     taskStatus: args.taskStatus,
     skipTranscript: args.skipTranscript ?? false,
     workflowName: args.workflowName ?? "fixture-mini",
-    ...(args.workflow ? { workflow: args.workflow } : {}),
-    ...(args.summary ? { summary: args.summary } : {}),
     usage: { totalTokens: 26674, toolUses: 0, durationMs: 3277 },
   };
+  if (args.workflow) item.workflow = args.workflow;
+  if (args.summary) item.summary = args.summary;
+  return item;
 }
 
 function bashTaskItem(args: {
@@ -96,7 +97,7 @@ function bashTaskItem(args: {
   description?: string;
   parentToolCallId?: string;
 }): ThreadEventBackgroundTaskItem {
-  return {
+  const item: ThreadEventBackgroundTaskItem = {
     type: "backgroundTask",
     id: args.id ?? "task:bmn5wv33k",
     taskType: "local_bash",
@@ -105,11 +106,10 @@ function bashTaskItem(args: {
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
-    ...(args.summary ? { summary: args.summary } : {}),
-    ...(args.parentToolCallId
-      ? { parentToolCallId: args.parentToolCallId }
-      : {}),
   };
+  if (args.summary) item.summary = args.summary;
+  if (args.parentToolCallId) item.parentToolCallId = args.parentToolCallId;
+  return item;
 }
 
 function agentTaskItem(args: {
@@ -120,19 +120,18 @@ function agentTaskItem(args: {
   description?: string;
   parentToolCallId?: string;
 }): ThreadEventBackgroundTaskItem {
-  return {
+  const item: ThreadEventBackgroundTaskItem = {
     type: "backgroundTask",
     id: args.id ?? "task:agent-1",
-    ...(args.familyId ? { familyId: args.familyId } : {}),
     taskType: "local_agent",
     description: args.description ?? "Map test coverage",
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: false,
-    ...(args.parentToolCallId
-      ? { parentToolCallId: args.parentToolCallId }
-      : {}),
   };
+  if (args.familyId) item.familyId = args.familyId;
+  if (args.parentToolCallId) item.parentToolCallId = args.parentToolCallId;
+  return item;
 }
 
 function modelAgentToolCallStarted(seq: number): ThreadEventWithMeta {

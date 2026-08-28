@@ -8,8 +8,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useContext, useLayoutEffect } from "react";
+import * as BottomAnchoredScrollBodyModule from "@/components/ui/bottom-anchored-scroll-body";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import type { BottomAnchorContextValue } from "@/components/ui/bottom-anchored-scroll-body";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
   QueuedMessagesList,
@@ -25,18 +27,30 @@ import {
   type QueuedEditorTypeaheadLayout,
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
-const bottomAnchorMocks = vi.hoisted(() => ({
-  scrollElement: null as HTMLElement | null,
-}));
+const bottomAnchorMocks = {
+  scrollElement:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ null as HTMLElement | null,
+};
 
-vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
-  useBottomAnchoredScroll: () =>
+function installBottomAnchorSpy(): void {
+  vi.spyOn(
+    BottomAnchoredScrollBodyModule,
+    "useBottomAnchoredScroll",
+  ).mockImplementation(() =>
     bottomAnchorMocks.scrollElement === null
       ? null
-      : {
+      : ({
           getScrollElement: () => bottomAnchorMocks.scrollElement,
-        },
-}));
+          isAtBottom: false,
+          scrollToBottom: () => undefined,
+          scrollElementIntoView: () => undefined,
+          scrollElementIntoViewClampedToMaxScroll: () => undefined,
+          captureScrollAnchor: () => undefined,
+        } satisfies BottomAnchorContextValue),
+  );
+}
+
+installBottomAnchorSpy();
 
 const noop = () => {};
 
@@ -137,6 +151,7 @@ afterEach(() => {
   bottomAnchorMocks.scrollElement = null;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  installBottomAnchorSpy();
 });
 
 describe("QueuedMessagesList", () => {
@@ -590,9 +605,11 @@ describe("QueuedMessagesList", () => {
     const composer = container.querySelector("[data-test-bottom-composer]");
 
     await waitFor(() => expect(surface?.style.height).toBe("140px"));
-    expect(surface?.compareDocumentPosition(composer as Node) ?? 0).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    expect(
+      surface?.compareDocumentPosition(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ composer as Node,
+      ) ?? 0,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     rerender(renderSurface(false));
 
@@ -680,7 +697,11 @@ describe("QueuedMessagesList", () => {
     let notifyResize = noop;
     class ResizeObserverMock {
       constructor(callback: ResizeObserverCallback) {
-        notifyResize = () => callback([], this as unknown as ResizeObserver);
+        notifyResize = () =>
+          callback(
+            [],
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ this as ResizeObserver,
+          );
       }
 
       observe() {}
@@ -1468,7 +1489,10 @@ describe("QueuedMessagesList", () => {
       }
 
       trigger(entries: readonly Partial<IntersectionObserverEntry>[]) {
-        this.callback(entries as IntersectionObserverEntry[], this);
+        this.callback(
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ entries as IntersectionObserverEntry[],
+          this,
+        );
       }
 
       unobserve() {}

@@ -10,11 +10,15 @@ import {
   type PluginThreadPanelActionContext,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
+  type JsonValue,
 } from "@get-bb/plugin-sdk/app";
+import { z } from "zod";
 import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";
 const PANEL_ACTION_ID = "side-chat";
+
+type JsonObject = { [key: string]: JsonValue };
 
 const PANEL_TAB_TITLE = "Side chat";
 
@@ -25,35 +29,38 @@ type SideChatPanelParams = {
   sourceSeqEnd: number | null;
 };
 
-export function parsePanelParams(value: unknown): SideChatPanelParams | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.threadId !== "string" ||
-    record.threadId.length === 0 ||
-    typeof record.sourceThreadId !== "string" ||
-    record.sourceThreadId.length === 0
-  ) {
-    return null;
-  }
-  return {
-    threadId: record.threadId,
-    sourceThreadId: record.sourceThreadId,
-    sourceMessageText:
-      typeof record.sourceMessageText === "string"
-        ? record.sourceMessageText
-        : "",
-    sourceSeqEnd:
-      typeof record.sourceSeqEnd === "number" ? record.sourceSeqEnd : null,
-  };
+const sideChatPanelParamsSchema: z.ZodType<SideChatPanelParams> = z
+  .object({
+    threadId: z.string().min(1),
+    sourceThreadId: z.string().min(1),
+    sourceMessageText: z.string().catch(""),
+    sourceSeqEnd: z.number().nullable().catch(null),
+  })
+  .strict();
+
+export function parsePanelParams(
+  value: JsonValue | null,
+): SideChatPanelParams | null {
+  const parsed = sideChatPanelParamsSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
+
+const rpcErrorSchema = z.object({ message: z.string() }).passthrough();
+const rpcResponseSchema = z.union([
+  z.object({ ok: z.literal(true), result: z.json() }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      error: z.union([z.string(), rpcErrorSchema]),
+    })
+    .strict(),
+]);
+type SideChatRpcResult = z.infer<typeof rpcResponseSchema>;
 
 async function callBackendRpc(
   method: string,
-  input: unknown,
-): Promise<unknown> {
+  input: JsonValue | null,
+): Promise<JsonValue | undefined> {
   const response = await fetch(
     `/api/v1/plugins/${PLUGIN_ID}/rpc/${encodeURIComponent(method)}`,
     {
@@ -62,17 +69,18 @@ async function callBackendRpc(
       body: JSON.stringify(input ?? null),
     },
   );
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    result?: unknown;
-    error?: unknown;
-  } | null;
-  if (!response.ok || body?.ok !== true) {
-    const structuredMessage =
-      typeof body?.error === "object" &&
-      body.error !== null &&
-      typeof (body.error as { message?: unknown }).message === "string"
-        ? String((body.error as { message: string }).message)
+  const parsed = rpcResponseSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success) {
+    throw new Error(`rpc "${method}" failed (HTTP ${response.status})`);
+  }
+  const body: SideChatRpcResult = parsed.data;
+  if (!response.ok || !body.ok) {
+    const structuredMessage = body.ok
+      ? null
+      : rpcErrorSchema.safeParse(body.error).success
+        ? rpcErrorSchema.parse(body.error).message
         : null;
     throw new Error(
       structuredMessage ?? `rpc "${method}" failed (HTTP ${response.status})`,
@@ -81,13 +89,12 @@ async function callBackendRpc(
   return body.result;
 }
 
-function createdThreadId(result: unknown): string {
-  if (
-    typeof result === "object" &&
-    result !== null &&
-    typeof (result as { threadId?: unknown }).threadId === "string"
-  ) {
-    return (result as { threadId: string }).threadId;
+const createdThreadResponseSchema = z.object({ threadId: z.string() }).strict();
+
+function createdThreadId(result: JsonValue | undefined): string {
+  const parsed = createdThreadResponseSchema.safeParse(result);
+  if (parsed.success) {
+    return parsed.data.threadId;
   }
   throw new Error("Plugin returned an unexpected createSideChat response.");
 }
@@ -135,13 +142,12 @@ async function createAndOpenSideChat({
 }: OpenSideChatArgs): Promise<void> {
   let threadId: string;
   try {
-    threadId = createdThreadId(
-      await callBackendRpc("createSideChat", {
-        sourceThreadId,
-        ...(sourceSeqEnd !== null ? { sourceSeqEnd } : {}),
-        anchorText,
-      }),
-    );
+    const request: JsonObject = {
+      sourceThreadId,
+      anchorText,
+    };
+    if (sourceSeqEnd !== null) request.sourceSeqEnd = sourceSeqEnd;
+    threadId = createdThreadId(await callBackendRpc("createSideChat", request));
   } catch (error) {
     toast.error(
       `Failed to start side chat: ${

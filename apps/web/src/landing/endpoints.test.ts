@@ -74,8 +74,8 @@ describe("marketing download redirect", () => {
 
     expect(waitUntil).toHaveBeenCalledTimes(1);
     await waitUntil.mock.calls[0]?.[0];
-    const captureCall = fetchMock.mock.calls.find(
-      ([url]) => typeof url === "string" && url.includes("posthog"),
+    const captureCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("posthog"),
     );
     expect(captureCall).toBeTruthy();
   });
@@ -87,7 +87,7 @@ describe("marketing subscribe endpoint", () => {
     vi.restoreAllMocks();
   });
 
-  function subscribeRequest(email: unknown): Request {
+  function subscribeRequest(email: string): Request {
     return new Request("https://getbb.app/api/subscribe", {
       method: "POST",
       headers: { "content-type": "application/json" },

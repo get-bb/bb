@@ -344,7 +344,7 @@ export interface EventProjectionProvisioningTranscriptEntry {
   text: string;
   startedAt?: number;
   status?: "started" | "completed" | "failed";
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 export interface EventProjectionProvisioningMetadata {

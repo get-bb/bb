@@ -3,6 +3,7 @@ import { getPluginSkillRootContributions } from "../plugins/plugin-agent-contrib
 import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
 import {
   resolveSkillCatalogEntries,
+  type ResolveInjectedSkillSourcesArgs,
   type ProjectInjectedSkillSource,
   type ResolvedSkillCatalogEntry,
   type SharedInjectedSkillSource,
@@ -18,7 +19,7 @@ export function resolveSkillCatalog(
   deps: Pick<LoggedWorkSessionDeps, "config" | "logger" | "skillTreeRegistry">,
   args: ResolveSkillCatalogSourcesArgs = {},
 ): ResolvedSkillCatalogEntry[] {
-  return resolveSkillCatalogEntries(deps.logger, {
+  const catalogArgs: ResolveInjectedSkillSourcesArgs = {
     additionalSkillsRootPaths: [
       ...deps.config.inheritedSkillsRootPaths,
       generatedSkillsRootPath(deps.config.dataDir),
@@ -26,15 +27,16 @@ export function resolveSkillCatalog(
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     pluginSkillRoots: getPluginSkillRootContributions(),
-    ...(args.pluginSkillSelections !== undefined
-      ? { pluginSkillSelections: args.pluginSkillSelections }
-      : {}),
-    ...(args.projectSkillSources !== undefined
-      ? { projectSkillSources: args.projectSkillSources }
-      : {}),
-    ...(args.sharedSkillSources !== undefined
-      ? { sharedSkillSources: args.sharedSkillSources }
-      : {}),
     skillTreeRegistry: deps.skillTreeRegistry,
-  });
+  };
+  if (args.pluginSkillSelections !== undefined) {
+    catalogArgs.pluginSkillSelections = args.pluginSkillSelections;
+  }
+  if (args.projectSkillSources !== undefined) {
+    catalogArgs.projectSkillSources = args.projectSkillSources;
+  }
+  if (args.sharedSkillSources !== undefined) {
+    catalogArgs.sharedSkillSources = args.sharedSkillSources;
+  }
+  return resolveSkillCatalogEntries(deps.logger, catalogArgs);
 }

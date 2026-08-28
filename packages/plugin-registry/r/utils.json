@@ -4,10 +4,6 @@
   "type": "registry:lib",
   "title": "utils",
   "description": "BB lib \"utils\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "clsx",
-    "tailwind-merge"
-  ],
   "files": [
     {
       "path": "registry/lib/utils.ts",
@@ -15,5 +11,9 @@
       "type": "registry:lib",
       "target": "lib/utils.ts"
     }
+  ],
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
   ]
 }

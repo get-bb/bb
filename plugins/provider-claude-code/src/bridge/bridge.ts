@@ -4,7 +4,9 @@ import {
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
   type PermissionEscalation,
+  type JsonObject,
   type ReasoningLevel,
+  type RuntimePermissionPolicy,
   type ThreadDelta,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -20,6 +22,7 @@ import {
   createBridgeLineHandler,
   createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
+  jsonValueSchema,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
   withoutBridgeRuntimeEnv,
@@ -30,7 +33,6 @@ import { randomUUID } from "node:crypto";
 import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
-  forkSession,
   type CanUseTool,
   type HookCallback,
   type PermissionResult,
@@ -54,6 +56,7 @@ import {
 } from "../session-params.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
+import { getClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 import {
   claudeThreadForkParamsSchema,
   claudeThreadResumeParamsSchema,
@@ -133,6 +136,10 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const dangerouslyDisableSandboxInputSchema = z.object({
+  dangerouslyDisableSandbox: z.boolean().optional(),
+});
+
 const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
 
@@ -142,11 +149,52 @@ interface SdkMessageNotification {
   params: { threadId: string; message: SDKMessage };
 }
 
-interface BridgeEventNotification {
-  jsonrpc: "2.0";
-  method: string;
-  params: Record<string, unknown>;
-}
+type BridgeEventNotification =
+  | {
+      jsonrpc: "2.0";
+      method: typeof THREAD_DELTA_NOTIFICATION_METHOD;
+      params: { threadId: string; deltas: ThreadDelta[] };
+    }
+  | {
+      jsonrpc: "2.0";
+      method: typeof BRIDGE_NOTIFICATION_METHODS.providerRecovery;
+      params: {
+        threadId: string;
+        kind: "authRequired" | "rateLimited";
+        message: string;
+        retryable: false;
+      };
+    }
+  | {
+      jsonrpc: "2.0";
+      method: typeof BRIDGE_NOTIFICATION_METHODS.error;
+      params: { threadId: string; providerThreadId: string; message: string };
+    }
+  | {
+      jsonrpc: "2.0";
+      method: typeof BRIDGE_NOTIFICATION_METHODS.sessionReplaced;
+      params: {
+        threadId: string;
+        providerThreadId: string | null;
+        reason: string;
+        contextLost: boolean;
+      };
+    }
+  | {
+      jsonrpc: "2.0";
+      method: "thread/identity";
+      params: {
+        threadId: string;
+        providerThreadId: string;
+        sessionRestorable: true;
+      };
+    }
+  | {
+      jsonrpc: "2.0";
+      id: string | number;
+      method: typeof BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest;
+      params: BridgeInteractionRequestParams;
+    };
 
 interface ThreadIdRef {
   current: string;
@@ -170,7 +218,7 @@ interface PendingInteractiveRequestBase {
 
 interface PendingPermissionRequest extends PendingInteractiveRequestBase {
   kind: "permission_request";
-  originalInput: Record<string, unknown>;
+  originalInput: Parameters<CanUseTool>[1];
   permissions: PendingInteractionGrantedPermissionProfile;
   toolName: string;
 }
@@ -242,6 +290,29 @@ interface CreateThreadSessionArgs {
 type CanonicalTurnStartParams = z.infer<typeof canonicalTurnStartParamsSchema>;
 type CanonicalTurnSteerParams = z.infer<typeof canonicalTurnSteerParamsSchema>;
 
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+
+type ClaudeCanonicalOptions = RuntimePermissionPolicy & {
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  instructions?: string;
+  envVars?: Record<string, string>;
+  providerOptions?: JsonObject;
+};
+
+function toClaudeCanonicalOptions(
+  options: CanonicalTurnStartParams["options"],
+): ClaudeCanonicalOptions {
+  const providerOptions =
+    options.providerOptions === undefined
+      ? undefined
+      : jsonObjectSchema.parse(options.providerOptions);
+  return {
+    ...options,
+    providerOptions,
+  };
+}
+
 interface CanonicalTurnAcceptance {
   clientRequestId: CanonicalTurnStartParams["clientRequestId"];
   providerThreadId: string;
@@ -291,6 +362,28 @@ interface ClaudeCodeThreadStopResult {
   ok: true;
 }
 
+interface ClaudeForkSessionOptions {
+  dir: string;
+  upToMessageId?: string;
+}
+
+type ClaudeForkRequestParams = ReturnType<typeof buildClaudeSessionParams> & {
+  sourceProviderThreadId: string;
+  sourceProviderCheckpointId?: string;
+};
+
+interface ClaudeSessionConfigInput {
+  envVars?: Record<string, string>;
+}
+
+interface BridgeInteractionRequestParams {
+  threadId: string;
+  providerThreadId: string;
+  turnId: null;
+  providerNativeIds: true;
+  payload: PendingInteractionPayload;
+}
+
 interface ClaudeCanUseToolDecisionContext {
   blockedPath: string | undefined;
   decisionReason: string | undefined;
@@ -303,7 +396,7 @@ interface BuildInteractiveRequestParamsArgs {
   threadId: string;
   toolName: string;
   toolUseId: string;
-  input: Record<string, unknown>;
+  input: Parameters<CanUseTool>[1];
   decisionReason: string | undefined;
   promptText: string | undefined;
   blockedPath: string | undefined;
@@ -617,12 +710,16 @@ function emitForSession(
   threadSession: ThreadSession,
   threadId: string,
   method: string,
-  params: Record<string, unknown>,
+  params:
+    | SdkMessageNotification["params"]
+    | { threadId: string; message: string },
 ): void {
-  const deltas = threadSession.translator.translate(
-    { jsonrpc: "2.0", method, params },
-    { threadId },
-  );
+  const event: Parameters<ClaudeDeltaTranslator["translate"]>[0] = {
+    jsonrpc: "2.0",
+    method,
+    params: jsonValueSchema.parse(params),
+  };
+  const deltas = threadSession.translator.translate(event, { threadId });
   sendThreadDeltas(threadId, deltas);
   for (const delta of deltas) {
     if (delta.kind === "provider.error" && delta.willRetry !== true) {
@@ -793,15 +890,16 @@ function toSessionConstructionConfig(
 function toInitialLiveSessionSettings(
   params: SessionConstructionParams,
 ): ClaudeLiveSessionSettings {
-  return {
+  const settings: ClaudeLiveSessionSettings = {
     memoryEnabled: params.memoryEnabled ?? true,
-    ...(params.model !== undefined ? { model: params.model } : {}),
     providerSubagentsEnabled: params.providerSubagentsEnabled ?? true,
-    ...(params.reasoningLevel !== undefined
-      ? { reasoningLevel: params.reasoningLevel }
-      : {}),
     workflowsEnabled: params.workflowsEnabled,
   };
+  if (params.model !== undefined) settings.model = params.model;
+  if (params.reasoningLevel !== undefined) {
+    settings.reasoningLevel = params.reasoningLevel;
+  }
+  return settings;
 }
 
 function withTurnLiveSessionSettings(
@@ -810,14 +908,15 @@ function withTurnLiveSessionSettings(
 ): ClaudeLiveSessionSettings {
   const model = params.model ?? current.model;
   const reasoningLevel = params.reasoningLevel ?? current.reasoningLevel;
-  return {
+  const settings: ClaudeLiveSessionSettings = {
     memoryEnabled: params.memoryEnabled ?? current.memoryEnabled,
-    ...(model !== undefined ? { model } : {}),
     providerSubagentsEnabled:
       params.providerSubagentsEnabled ?? current.providerSubagentsEnabled,
-    ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
     workflowsEnabled: params.workflowsEnabled ?? current.workflowsEnabled,
   };
+  if (model !== undefined) settings.model = model;
+  if (reasoningLevel !== undefined) settings.reasoningLevel = reasoningLevel;
+  return settings;
 }
 
 function withTrackedPermissionEscalation(
@@ -865,12 +964,11 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     cwd: args.sessionConstructionConfig.sessionOptions.cwd,
   });
   translator.configureInjectedTools(
-    (args.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
+    (args.sessionConstructionConfig.dynamicTools ?? []).map((tool) =>
+      tool.presentation === undefined
+        ? { name: tool.name }
+        : { name: tool.name, presentation: tool.presentation },
+    ),
   );
   const threadSession: ThreadSession = {
     session,
@@ -891,12 +989,12 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
     approvedPlanPermissionMode: args.approvedPlanPermissionMode,
-    ...(args.providerThreadId
-      ? { providerThreadId: args.providerThreadId }
-      : {}),
     sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
     threadIdRef: args.threadIdRef,
   };
+  if (args.providerThreadId) {
+    threadSession.providerThreadId = args.providerThreadId;
+  }
   seedModelContextWindowHint(
     threadSession,
     args.threadIdRef.current,
@@ -991,14 +1089,12 @@ function buildPermissionEscalationTrackingHooks(
     }
     const threadSession = sessions.get(threadIdRef.current);
     if (threadSession) {
+      const workContext: PermissionEscalationWorkContext = {};
+      if (input.agent_id !== undefined) workContext.agentId = input.agent_id;
+      if (input.prompt_id !== undefined) workContext.promptId = input.prompt_id;
       threadSession.permissionEscalationByToolUseId.set(
         toolUseId,
-        resolvePermissionEscalationForWork(threadSession, {
-          ...(input.agent_id !== undefined ? { agentId: input.agent_id } : {}),
-          ...(input.prompt_id !== undefined
-            ? { promptId: input.prompt_id }
-            : {}),
-        }),
+        resolvePermissionEscalationForWork(threadSession, workContext),
       );
     }
     return { continue: true };
@@ -1010,14 +1106,12 @@ function buildPermissionEscalationTrackingHooks(
     }
     const threadSession = sessions.get(threadIdRef.current);
     if (threadSession) {
+      const workContext: PermissionEscalationWorkContext = {};
+      if (input.agent_id !== undefined) workContext.agentId = input.agent_id;
+      if (input.prompt_id !== undefined) workContext.promptId = input.prompt_id;
       const permissionEscalation = resolvePermissionEscalationForWork(
         threadSession,
-        {
-          ...(input.agent_id !== undefined ? { agentId: input.agent_id } : {}),
-          ...(input.prompt_id !== undefined
-            ? { promptId: input.prompt_id }
-            : {}),
-        },
+        workContext,
       );
       threadSession.permissionEscalationByToolUseId.set(
         input.tool_use_id,
@@ -1067,13 +1161,11 @@ function buildPermissionEscalationTrackingHooks(
     }
     const threadSession = sessions.get(threadIdRef.current);
     if (threadSession) {
+      const workContext: PermissionEscalationWorkContext = {};
+      if (input.prompt_id !== undefined) workContext.promptId = input.prompt_id;
       threadSession.permissionEscalationByAgentId.set(
         input.agent_id,
-        resolvePermissionEscalationForWork(threadSession, {
-          ...(input.prompt_id !== undefined
-            ? { promptId: input.prompt_id }
-            : {}),
-        }),
+        resolvePermissionEscalationForWork(threadSession, workContext),
       );
     }
     return { continue: true };
@@ -1310,8 +1402,8 @@ function createOnSdkMessage(
 
 function createOnSdkDone(
   args: CreateSdkCallbackArgs,
-): (error?: unknown) => void {
-  return (error?: unknown) => {
+): ConstructorParameters<typeof SdkSession>[2] {
+  return (error) => {
     const threadSession = getCurrentThreadSession({
       sessionSerial: args.sessionSerial,
       threadId: args.threadIdRef.current,
@@ -1383,18 +1475,23 @@ function buildSessionEnv(
 }
 
 const sessionConfigEnvVarsSchema = z.record(z.string(), z.string());
+const sessionConfigSchema = z.object({
+  envVars: sessionConfigEnvVarsSchema.optional(),
+});
 
 function readConfigEnvOverrides(
-  config: Record<string, unknown> | undefined,
+  config: ClaudeSessionConfigInput | undefined,
 ): Record<string, string> {
-  const parsed = sessionConfigEnvVarsSchema.safeParse(config?.["envVars"]);
-  return parsed.success ? parsed.data : {};
+  const parsed = sessionConfigSchema.safeParse(config);
+  return parsed.success && parsed.data.envVars !== undefined
+    ? parsed.data.envVars
+    : {};
 }
 
 function parseClaudeSuggestedPermissionUpdates(
-  value: unknown,
+  value: Parameters<CanUseTool>[2]["suggestions"],
 ): ClaudeSuggestedPermissionUpdate[] | undefined {
-  if (!Array.isArray(value)) {
+  if (value === undefined) {
     return undefined;
   }
 
@@ -1439,7 +1536,7 @@ function buildUserQuestionRequestParams(
 
 function decodePendingInteractiveResponse(
   pending: PendingInteractiveRequest,
-  result: unknown,
+  result: Parameters<typeof claudeInteractionOutcomeSchema.safeParse>[0],
 ): ClaudeInteractiveResponse | null {
   const outcome = claudeInteractionOutcomeSchema.safeParse({
     payload: pending.payload,
@@ -1469,29 +1566,31 @@ function buildInteractivePermissionResult(
         };
       }
       if (response.behavior === "deny") {
-        return {
+        const result: Extract<PermissionResult, { behavior: "deny" }> = {
           behavior: "deny",
           message: response.message,
-          ...(response.interrupt === undefined
-            ? {}
-            : { interrupt: response.interrupt }),
-          ...(response.decisionClassification === undefined
-            ? {}
-            : { decisionClassification: response.decisionClassification }),
           toolUseID: pending.itemId,
         };
+        if (response.interrupt !== undefined) {
+          result.interrupt = response.interrupt;
+        }
+        if (response.decisionClassification !== undefined) {
+          result.decisionClassification = response.decisionClassification;
+        }
+        return result;
       }
-      return {
+      const result: Extract<PermissionResult, { behavior: "allow" }> = {
         behavior: "allow",
         updatedInput: pending.originalInput,
-        ...(response.updatedPermissions === undefined
-          ? {}
-          : { updatedPermissions: response.updatedPermissions }),
-        ...(response.decisionClassification === undefined
-          ? {}
-          : { decisionClassification: response.decisionClassification }),
         toolUseID: pending.itemId,
       };
+      if (response.updatedPermissions !== undefined) {
+        result.updatedPermissions = response.updatedPermissions;
+      }
+      if (response.decisionClassification !== undefined) {
+        result.decisionClassification = response.decisionClassification;
+      }
+      return result;
     case "user_question":
       if (response.kind !== "user_question") {
         return {
@@ -1663,7 +1762,7 @@ function restoreApprovedPlanPermissionMode(threadSession: ThreadSession): void {
   threadSession.permissionMode = threadSession.approvedPlanPermissionMode;
   void threadSession.session
     .setPermissionMode(threadSession.approvedPlanPermissionMode)
-    .catch((error: unknown) => {
+    .catch((error) => {
       logBridgeError(
         `Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1728,11 +1827,15 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       });
     }
 
+    const workContext: PermissionEscalationWorkContext = {
+      toolUseId: options.toolUseID,
+    };
+    if (options.agentID !== undefined) workContext.agentId = options.agentID;
     const interactiveRequestPolicy = {
-      permissionEscalation: resolvePermissionEscalationForWork(threadSession, {
-        ...(options.agentID !== undefined ? { agentId: options.agentID } : {}),
-        toolUseId: options.toolUseID,
-      }),
+      permissionEscalation: resolvePermissionEscalationForWork(
+        threadSession,
+        workContext,
+      ),
     };
     const suggestions = parseClaudeSuggestedPermissionUpdates(
       options.suggestions,
@@ -1746,13 +1849,13 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
     };
     const requestedPermissions =
       toPendingInteractionPermissionProfile(requestContext);
+    const dangerousSandboxInput =
+      dangerouslyDisableSandboxInputSchema.safeParse(input);
     if (
       toolName === "Bash" &&
       shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) &&
-      typeof input === "object" &&
-      input !== null &&
-      (input as { dangerouslyDisableSandbox?: unknown })
-        .dangerouslyDisableSandbox === true
+      dangerousSandboxInput.success &&
+      dangerousSandboxInput.data.dangerouslyDisableSandbox === true
     ) {
       return {
         behavior: "deny",
@@ -1896,18 +1999,17 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       );
       break;
     case "thread/fork":
+      const forkParams: ClaudeForkRequestParams = {
+        ...toClaudeSessionParams(request.params),
+        sourceProviderThreadId: request.params.sourceProviderThreadId,
+      };
+      if (request.params.sourceProviderCheckpointId !== undefined) {
+        forkParams.sourceProviderCheckpointId =
+          request.params.sourceProviderCheckpointId;
+      }
       await handleThreadFork(
         request.id,
-        claudeThreadForkParamsSchema.parse({
-          ...toClaudeSessionParams(request.params),
-          sourceProviderThreadId: request.params.sourceProviderThreadId,
-          ...(request.params.sourceProviderCheckpointId !== undefined
-            ? {
-                sourceProviderCheckpointId:
-                  request.params.sourceProviderCheckpointId,
-              }
-            : {}),
-        }),
+        claudeThreadForkParamsSchema.parse(forkParams),
       );
       break;
     case "turn/start":
@@ -2040,19 +2142,20 @@ async function handleThreadResume(
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
-  const threadSession = createThreadSession({
+  const threadSessionArgs: CreateThreadSessionArgs = {
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
-    ...(requestedProviderThreadId
-      ? { providerThreadId: requestedProviderThreadId }
-      : {}),
     sessionConstructionConfig,
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
-  });
+  };
+  if (requestedProviderThreadId) {
+    threadSessionArgs.providerThreadId = requestedProviderThreadId;
+  }
+  const threadSession = createThreadSession(threadSessionArgs);
   sessions.set(threadId, threadSession);
   threadSession.session.start(requestedProviderThreadId);
 
@@ -2089,12 +2192,16 @@ async function handleThreadFork(
 
   let forkedProviderThreadId: string;
   try {
-    const forkResult = await forkSession(params.sourceProviderThreadId, {
+    const forkOptions: ClaudeForkSessionOptions = {
       dir: params.cwd,
-      ...(params.sourceProviderCheckpointId !== undefined
-        ? { upToMessageId: params.sourceProviderCheckpointId }
-        : {}),
-    });
+    };
+    if (params.sourceProviderCheckpointId !== undefined) {
+      forkOptions.upToMessageId = params.sourceProviderCheckpointId;
+    }
+    const forkResult = await getClaudeSdkDependencies().forkSession(
+      params.sourceProviderThreadId,
+      forkOptions,
+    );
     forkedProviderThreadId = forkResult.sessionId;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2138,11 +2245,11 @@ async function handleThreadFork(
 
 function toClaudeSessionParams(
   params: z.infer<typeof canonicalThreadStartParamsSchema>,
-): Record<string, unknown> {
+): ReturnType<typeof buildClaudeSessionParams> {
   return buildClaudeSessionParams({
     threadId: params.threadId,
     cwd: params.cwd,
-    options: params.options,
+    options: toClaudeCanonicalOptions(params.options),
     instructionMode: params.instructionMode,
     dynamicTools: params.dynamicTools,
     disallowedTools: params.disallowedTools,
@@ -2210,7 +2317,7 @@ async function handleTurnStart(
         threadId: params.threadId,
         providerThreadId: params.providerThreadId,
         input: params.input,
-        options: params.options,
+        options: toClaudeCanonicalOptions(params.options),
       }),
     ),
     {
@@ -2281,7 +2388,7 @@ async function handleTurnSteer(
         providerThreadId: params.providerThreadId,
         expectedTurnId: params.expectedTurnId,
         input: params.input,
-        options: params.options,
+        options: toClaudeCanonicalOptions(params.options),
       }),
     ),
     {
@@ -2335,9 +2442,12 @@ function localAttachmentMarker(args: {
   return `[Attached ${args.kind}${namePart}${suffix}. It is on disk at ${args.path} — use the Read tool to view it.]`;
 }
 
-function buildPromptText(input: unknown): string | undefined {
-  if (typeof input === "string") {
-    return input.length > 0 ? input : undefined;
+function buildPromptText(
+  input: TurnStartParams["input"] | string,
+): string | undefined {
+  const parsedText = z.string().safeParse(input);
+  if (parsedText.success) {
+    return parsedText.data.length > 0 ? parsedText.data : undefined;
   }
   if (!Array.isArray(input)) return undefined;
 
@@ -2373,7 +2483,9 @@ function buildPromptText(input: unknown): string | undefined {
   return chunks.length > 0 ? chunks.join("\n") : undefined;
 }
 
-function handleParsedMessage(parsed: unknown): void {
+function handleParsedMessage(
+  parsed: Parameters<typeof decodeBridgeJsonRpcResponse>[0],
+): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
   if (response && handleToolCallResponse(response)) {
     return;

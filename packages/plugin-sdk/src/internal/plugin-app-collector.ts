@@ -20,6 +20,7 @@ import type {
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
@@ -66,7 +67,23 @@ const RENAMED_NAV_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
  * so a renamed key fails with its new name and any other stale
  * `experimental_` key fails as unknown.
  */
-function rejectStaleNavPanelKeys(kind: string, registration: object): void {
+function requireRegistrationFunction<T>(
+  kind: string,
+  field: string,
+  value: T,
+  message: string,
+): T {
+  try {
+    return requireComponent<T>(kind, value);
+  } catch {
+    throw new Error(`${kind}: "${field}" ${message}`);
+  }
+}
+
+function rejectStaleNavPanelKeys(
+  kind: string,
+  registration: PluginNavPanelRegistration,
+): void {
   for (const key of Object.keys(registration)) {
     if (NAV_PANEL_REGISTRATION_KEYS.has(key)) continue;
     const renamedTo = RENAMED_NAV_PANEL_KEYS.get(key);
@@ -180,12 +197,13 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
-        collected.settingsSections.push({
+        const section: PluginSettingsSectionRegistration = {
           id,
-          ...(title !== undefined ? { title } : {}),
-          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
-        });
+        };
+        if (title !== undefined) section.title = title;
+        if (description !== undefined) section.description = description;
+        collected.settingsSections.push(section);
       },
       navPanel(registration) {
         const kind = "slots.navPanel";
@@ -199,20 +217,20 @@ export function collectPluginAppRegistrations(
             `${kind}: "path" must match ${String(PLUGIN_SLOT_ID_PATTERN)} (it becomes a URL segment), got ${JSON.stringify(path)}`,
           );
         }
-        if (
-          registration.headerContent !== undefined &&
-          typeof registration.headerContent !== "function"
-        ) {
-          throw new Error(
-            `${kind}: "headerContent" must be a React component function when set`,
+        if (registration.headerContent !== undefined) {
+          requireRegistrationFunction(
+            kind,
+            "headerContent",
+            registration.headerContent,
+            "must be a React component function when set",
           );
         }
-        if (
-          registration.experimental_sidebarAccessory !== undefined &&
-          typeof registration.experimental_sidebarAccessory !== "function"
-        ) {
-          throw new Error(
-            `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
+        if (registration.experimental_sidebarAccessory !== undefined) {
+          requireRegistrationFunction(
+            kind,
+            "experimental_sidebarAccessory",
+            registration.experimental_sidebarAccessory,
+            "must be a React component function when set",
           );
         }
         const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
@@ -223,7 +241,7 @@ export function collectPluginAppRegistrations(
           const seenFixedTabIds = new Set<string>();
           return registration.fixedTabs.map((value, index) => {
             const fixedTabKind = `${kind}.fixedTabs[${index}]`;
-            const fixedTab = value as Record<string, unknown> | null;
+            const fixedTab = value ?? {};
             const id = requireSlotId(fixedTabKind, fixedTab?.id);
             requireUniqueId(fixedTabKind, seenFixedTabIds, id);
             const layout = fixedTab?.layout;
@@ -246,19 +264,25 @@ export function collectPluginAppRegistrations(
                 `${fixedTabKind}: "panelId" must match its containing navPanel id ${JSON.stringify(panelId)}`,
               );
             }
-            const experimentalTarget = fixedTab?.experimental_target;
-            if (
-              experimentalTarget !== undefined &&
-              (typeof experimentalTarget !== "object" ||
-                experimentalTarget === null ||
-                typeof Reflect.get(experimentalTarget, "validate") !==
-                  "function")
-            ) {
-              throw new Error(
-                `${fixedTabKind}: "experimental_target.validate" must be a function when set`,
+            const experimentalTarget = fixedTab.experimental_target;
+            if (experimentalTarget !== undefined) {
+              const parsedExperimentalTarget = z
+                .object({})
+                .passthrough()
+                .safeParse(experimentalTarget);
+              if (!parsedExperimentalTarget.success) {
+                throw new Error(
+                  `${fixedTabKind}: "experimental_target.validate" must be a function when set`,
+                );
+              }
+              requireRegistrationFunction(
+                fixedTabKind,
+                "experimental_target.validate",
+                experimentalTarget.validate,
+                "must be a function when set",
               );
             }
-            return {
+            const fixedTabRegistration = {
               id,
               panelId: fixedTabPanelId,
               title: requireNonEmptyString(
@@ -270,97 +294,104 @@ export function collectPluginAppRegistrations(
               component: requireComponent<
                 PluginNavPanelFixedTabRegistration["component"]
               >(fixedTabKind, fixedTab?.component),
-              ...(layout === undefined ? {} : { layout }),
-              ...(experimentalTarget === undefined
-                ? {}
-                : {
-                    experimental_target:
-                      experimentalTarget as PluginNavPanelFixedTabRegistration["experimental_target"],
-                  }),
             };
+            if (experimentalTarget !== undefined) {
+              if (layout !== undefined) {
+                return {
+                  ...fixedTabRegistration,
+                  layout,
+                  experimental_target: experimentalTarget,
+                };
+              }
+              return {
+                ...fixedTabRegistration,
+                experimental_target: experimentalTarget,
+              };
+            }
+            if (layout !== undefined) {
+              return { ...fixedTabRegistration, layout };
+            }
+            return fixedTabRegistration;
           });
         })();
-        collected.navPanels.push({
+        const navPanel: PluginNavPanelRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
-          ...(fixedTabs.length > 0 ? { fixedTabs } : {}),
-          ...(registration.experimental_sidebarAccessory !== undefined
-            ? {
-                experimental_sidebarAccessory:
-                  registration.experimental_sidebarAccessory,
-              }
-            : {}),
-          ...(registration.headerContent !== undefined
-            ? { headerContent: registration.headerContent }
-            : {}),
-        });
+        };
+        if (fixedTabs.length > 0) navPanel.fixedTabs = fixedTabs;
+        if (registration.experimental_sidebarAccessory !== undefined) {
+          navPanel.experimental_sidebarAccessory =
+            registration.experimental_sidebarAccessory;
+        }
+        if (registration.headerContent !== undefined) {
+          navPanel.headerContent = registration.headerContent;
+        }
+        collected.navPanels.push(navPanel);
       },
       threadPanelAction(registration) {
         const kind = "slots.threadPanelAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadPanelAction, id);
         if (
-          registration.run !== undefined &&
-          typeof registration.run !== "function"
-        ) {
-          throw new Error(`${kind}: "run" must be a function when set`);
-        }
-        if (
           registration.layout !== undefined &&
           registration.layout !== "padded" &&
           registration.layout !== "flush"
         ) {
           throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
         }
-        collected.threadPanelActions.push({
+        const action: PluginThreadPanelActionRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
           component: requireComponent(kind, registration.component),
-          ...(registration.layout !== undefined
-            ? { layout: registration.layout }
-            : {}),
-          ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
+        };
+        if (registration.icon !== undefined) {
+          action.icon = requireNonEmptyString(kind, "icon", registration.icon);
+        }
+        if (registration.layout !== undefined)
+          action.layout = registration.layout;
+        if (registration.run !== undefined) {
+          action.run = requireRegistrationFunction(
+            kind,
+            "run",
+            registration.run,
+            "must be a function when set",
+          );
+        }
+        collected.threadPanelActions.push(action);
       },
       experimental_newThreadPanelAction(registration) {
         const kind = "slots.experimental_newThreadPanelAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.newThreadPanelAction, id);
         if (
-          registration.run !== undefined &&
-          typeof registration.run !== "function"
-        ) {
-          throw new Error(`${kind}: "run" must be a function when set`);
-        }
-        if (
           registration.layout !== undefined &&
           registration.layout !== "padded" &&
           registration.layout !== "flush"
         ) {
           throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
         }
-        collected.newThreadPanelActions.push({
+        const action: PluginNewThreadPanelActionRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
           component: requireComponent(kind, registration.component),
-          ...(registration.layout !== undefined
-            ? { layout: registration.layout }
-            : {}),
-          ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
+        };
+        if (registration.icon !== undefined) {
+          action.icon = requireNonEmptyString(kind, "icon", registration.icon);
+        }
+        if (registration.layout !== undefined)
+          action.layout = registration.layout;
+        if (registration.run !== undefined) {
+          action.run = requireRegistrationFunction(
+            kind,
+            "run",
+            registration.run,
+            "must be a function when set",
+          );
+        }
+        collected.newThreadPanelActions.push(action);
       },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
@@ -375,14 +406,17 @@ export function collectPluginAppRegistrations(
         const kind = "slots.sidebarFooterAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.sidebarFooterAction, id);
-        if (typeof registration.run !== "function") {
-          throw new Error(`${kind}: "run" must be a function`);
-        }
+        const run = requireRegistrationFunction(
+          kind,
+          "run",
+          registration.run,
+          "must be a function",
+        );
         collected.sidebarFooterActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
-          run: registration.run,
+          run,
         });
       },
       experimental_threadList(registration) {
@@ -394,12 +428,13 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
-        collected.threadLists.push({
+        const threadList: PluginThreadListRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
-        });
+        };
+        if (description !== undefined) threadList.description = description;
+        collected.threadLists.push(threadList);
       },
       experimental_threadHeaderAction(registration) {
         const kind = "slots.experimental_threadHeaderAction";
@@ -422,12 +457,16 @@ export function collectPluginAppRegistrations(
           );
         }
         const extensions = rawExtensions.map((extension) => {
-          if (typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension)) {
+          const parsedExtension = z.string().safeParse(extension);
+          if (
+            !parsedExtension.success ||
+            !/^[a-z0-9]+$/.test(parsedExtension.data)
+          ) {
             throw new Error(
               `${kind}: extensions must be lowercase alphanumerics without the dot, got ${JSON.stringify(extension)}`,
             );
           }
-          return extension;
+          return parsedExtension.data;
         });
         collected.fileOpeners.push({
           id,
@@ -445,12 +484,13 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
-        collected.sourceCodeRenderers.push({
+        const renderer: PluginSourceCodeRendererRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
-        });
+        };
+        if (description !== undefined) renderer.description = description;
+        collected.sourceCodeRenderers.push(renderer);
       },
       experimental_diffRenderer(registration) {
         const kind = "slots.experimental_diffRenderer";
@@ -461,12 +501,13 @@ export function collectPluginAppRegistrations(
           "description",
           registration.description,
         );
-        collected.diffRenderers.push({
+        const renderer: PluginDiffRendererRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
-        });
+        };
+        if (description !== undefined) renderer.description = description;
+        collected.diffRenderers.push(renderer);
       },
       messageDirective(registration) {
         const kind = "slots.messageDirective";
@@ -481,41 +522,46 @@ export function collectPluginAppRegistrations(
         const kind = "slots.messageAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageAction, id);
-        if (typeof registration.run !== "function") {
-          throw new Error(`${kind}: "run" must be a function`);
-        }
-        collected.messageActions.push({
+        const run = requireRegistrationFunction(
+          kind,
+          "run",
+          registration.run,
+          "must be a function",
+        );
+        const action: PluginMessageActionRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
-          run: registration.run,
-        });
+          run,
+        };
+        if (registration.icon !== undefined) {
+          action.icon = requireNonEmptyString(kind, "icon", registration.icon);
+        }
+        collected.messageActions.push(action);
       },
       commandPaletteAction(registration) {
         const kind = "slots.commandPaletteAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.commandPaletteAction, id);
-        if (typeof registration.run !== "function") {
-          throw new Error(`${kind}: "run" must be a function`);
-        }
-        if (
-          registration.isAvailable !== undefined &&
-          typeof registration.isAvailable !== "function"
-        ) {
-          throw new Error(`${kind}: "isAvailable" must be a function`);
-        }
-        collected.commandPaletteActions.push({
+        const run = requireRegistrationFunction(
+          kind,
+          "run",
+          registration.run,
+          "must be a function",
+        );
+        const action: PluginCommandPaletteActionRegistration = {
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.isAvailable !== undefined
-            ? { isAvailable: registration.isAvailable }
-            : {}),
-          run: registration.run,
-        });
+          run,
+        };
+        if (registration.isAvailable !== undefined) {
+          action.isAvailable = requireRegistrationFunction(
+            kind,
+            "isAvailable",
+            registration.isAvailable,
+            "must be a function",
+          );
+        }
+        collected.commandPaletteActions.push(action);
       },
       experimental_providerIcon(registration) {
         const kind = "slots.experimental_providerIcon";
@@ -553,10 +599,13 @@ export function collectPluginAppRegistrations(
         const kind = "contentScripts.register";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.contentScript, id);
-        if (typeof registration.mount !== "function") {
-          throw new Error(`${kind}: "mount" must be a function`);
-        }
-        collected.contentScripts.push({ id, mount: registration.mount });
+        const mount = requireRegistrationFunction(
+          kind,
+          "mount",
+          registration.mount,
+          "must be a function",
+        );
+        collected.contentScripts.push({ id, mount });
       },
     },
   });

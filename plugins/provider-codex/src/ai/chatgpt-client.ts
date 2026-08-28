@@ -6,6 +6,7 @@ import type {
   ExperimentalAiVoiceTranscribeOutput,
 } from "@get-bb/plugin-sdk/ai-services";
 import type { JsonValue } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import { fetchChatGpt, isCloudflareChallenge } from "./chatgpt-fetch.js";
 import {
   parseJsonValue,
@@ -31,6 +32,7 @@ const CODEX_TRANSCRIPTION_RESPONSE_MAX_BYTES = 1024 * 1024;
 
 type ReadOverflowBehavior = "throw" | "truncate";
 type CodexRequestOperation = "inference" | "transcription";
+const jsonObjectSchema = z.record(z.string(), z.json());
 
 interface TimeoutFetchArgs {
   deadline: CodexRequestDeadline;
@@ -146,14 +148,13 @@ interface CodexStreamFailure {
 }
 
 function jsonObject(value: JsonValue): JsonObject | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value;
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function optionalString(value: JsonValue | undefined): string | null {
-  return typeof value === "string" ? value : null;
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function optionalJsonArray(value: JsonValue | undefined): JsonValue[] | null {
@@ -372,8 +373,9 @@ function codexStreamFailureErrorCode(
 }
 
 function extractJsonErrorMessage(value: JsonValue): string | null {
-  if (typeof value === "string") {
-    const normalized = value.replace(/\s+/g, " ").trim();
+  const stringValue = optionalString(value);
+  if (stringValue !== null) {
+    const normalized = stringValue.replace(/\s+/g, " ").trim();
     return normalized.length > 0 ? normalized : null;
   }
 
@@ -427,10 +429,10 @@ function isHtmlResponse(response: Response): boolean {
   );
 }
 
-const CODEX_API_KEY_ROUTE_HINT: Record<CodexRequestOperation, string> = {
+const CODEX_API_KEY_ROUTE_HINT = {
   inference: "BB_INFERENCE",
   transcription: "BB_TRANSCRIPTION",
-};
+} satisfies Record<CodexRequestOperation, string>;
 
 async function createCodexHttpError({
   deadline,

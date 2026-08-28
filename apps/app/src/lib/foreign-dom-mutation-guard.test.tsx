@@ -166,7 +166,9 @@ describe("foreign DOM mutation guard", () => {
     );
     const middle = container.querySelector("[data-testid='src/b.ts']");
     expect(middle).toBeInstanceOf(HTMLElement);
-    wrapLikeFileReveal(middle as HTMLElement);
+    wrapLikeFileReveal(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ middle as HTMLElement,
+    );
 
     run(() => root.render(<List items={["src/a.ts", "src/c.ts"]} />));
     run(() => root.unmount());
@@ -205,7 +207,9 @@ describe("foreign DOM mutation guard", () => {
     expect(reactParent).not.toBeNull();
 
     runWithPluginDomIsolation(() => {
-      wrapLikeFileReveal(link as HTMLElement);
+      wrapLikeFileReveal(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ link as HTMLElement,
+      );
     }, "file-reveal");
 
     expect(link!.parentNode).toBe(reactParent);
@@ -315,13 +319,17 @@ describe("foreign DOM mutation guard", () => {
 
     await runWithPluginDomIsolationAsync(async () => {
       await Promise.resolve();
-      wrapLikeFileReveal(link as HTMLElement);
+      wrapLikeFileReveal(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ link as HTMLElement,
+      );
     }, "file-reveal");
     expect(link!.parentNode).toBe(reactParent);
 
     runWithPluginDomIsolation(() => {
       trigger.addEventListener("click", () => {
-        wrapLikeFileReveal(link as HTMLElement);
+        wrapLikeFileReveal(
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ link as HTMLElement,
+        );
       });
     }, "file-reveal");
     trigger.click();

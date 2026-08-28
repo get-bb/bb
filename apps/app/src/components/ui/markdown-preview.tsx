@@ -11,7 +11,6 @@ import {
   type ComponentPropsWithoutRef,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
-  type ReactElement,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -134,6 +133,10 @@ interface MarkdownAnchorProps
 
 interface IsMarkdownAppRouteHrefArgs {
   href: string | undefined;
+}
+
+function isMarkdownTextNode(node: ReactNode): node is string | number {
+  return node === String(node) || Number.isFinite(node);
 }
 
 interface BuildMarkdownComponentsArgs {
@@ -435,13 +438,14 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   });
 
 function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
-  if (!href || typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (!href || browserWindow === undefined) {
     return false;
   }
 
   return (
     resolveRouteHref({
-      currentOrigin: window.location.origin,
+      currentOrigin: browserWindow.location.origin,
       href,
     }) !== null
   );
@@ -580,8 +584,7 @@ function MarkdownAnchor({
   const localFileRouting = linkRouting?.localFile;
   const onOpenLocalFileLink = localFileRouting?.onOpenLink;
   const rewrittenHref = rewriteLocalhostLinkHref({
-    currentHostname:
-      typeof window === "undefined" ? undefined : window.location.hostname,
+    currentHostname: globalThis.window?.location.hostname,
     enabled: rewriteLocalhostLinks ?? false,
     href,
   });
@@ -927,13 +930,13 @@ function renderMarkdownImage({
   setExpandedImageUrl,
   src,
 }: MarkdownImageRendererArgs) {
-  const imageUrl = typeof src === "string" ? src : "";
+  const imageUrl = src ?? "";
   if (!imageUrl) return null;
   return (
     <img
       {...imageAttributes}
       src={imageUrl}
-      alt={typeof alt === "string" ? alt : "Image"}
+      alt={alt ?? "Image"}
       className="my-2 max-h-96 max-w-full cursor-zoom-in object-contain"
       loading="lazy"
       onClick={() => setExpandedImageUrl(imageUrl)}
@@ -982,22 +985,19 @@ function buildMarkdownComponents({
     threadId: string;
   }
 
-  function flattenMarkdownLinkLabel(node: ReactNode): {
-    codeRanges: ReadonlyArray<{ end: number; start: number }>;
-    text: string;
-  } {
+  function flattenMarkdownLinkLabel(node: ReactNode) {
     const codeRanges: Array<{ end: number; start: number }> = [];
     let text = "";
     const append = (child: ReactNode): void => {
-      if (typeof child === "string" || typeof child === "number") {
+      if (isMarkdownTextNode(child)) {
         text += String(child);
         return;
       }
-      if (!isValidElement(child)) {
+      if (!isValidElement<{ children?: ReactNode }>(child)) {
         Children.forEach(child, append);
         return;
       }
-      const element = child as ReactElement<{ children?: ReactNode }>;
+      const element = child;
       const isCode =
         element.type === "code" || element.type === MarkdownCodeRenderer;
       const start = text.length;
@@ -1040,7 +1040,7 @@ function buildMarkdownComponents({
     resourceById: ReadonlyMap<string, PromptTextMention["resource"]>,
     cursor: { value: number },
   ): ReactNode {
-    if (typeof node === "string" || typeof node === "number") {
+    if (isMarkdownTextNode(node)) {
       const text = String(node);
       const start = cursor.value;
       const end = start + text.length;
@@ -1102,7 +1102,7 @@ function buildMarkdownComponents({
       }
       return rendered;
     }
-    if (!isValidElement(node)) {
+    if (!isValidElement<{ children?: ReactNode }>(node)) {
       return Children.map(node, (child) =>
         renderLiftedMarkdownLinkLabel(
           child,
@@ -1125,7 +1125,7 @@ function buildMarkdownComponents({
         </MarkdownAnchor>
       );
     }
-    const element = node as ReactElement<{ children?: ReactNode }>;
+    const element = node;
     return cloneElement(
       element,
       undefined,
@@ -1202,7 +1202,7 @@ function buildMarkdownComponents({
     if (imagePolicy === "alt-text") {
       return (
         <span data-markdown-image-fallback="">
-          [Image: {typeof alt === "string" && alt.length > 0 ? alt : "image"}]
+          [Image: {alt && alt.length > 0 ? alt : "image"}]
         </span>
       );
     }
@@ -1416,7 +1416,7 @@ function useMarkdownTableContentWidthVariable() {
       lastContentWidth: -1,
     };
 
-    if (typeof ResizeObserver === "undefined") {
+    if (globalThis.ResizeObserver === undefined) {
       measureMarkdownTableGeometry([registration]);
       return;
     }
@@ -1504,10 +1504,7 @@ function cssPixels(value: string): number {
 const FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
-function splitMarkdownFrontmatter(markdown: string): {
-  frontmatter: string | null;
-  body: string;
-} {
+function splitMarkdownFrontmatter(markdown: string) {
   const match = FRONTMATTER_PATTERN.exec(markdown);
   if (match === null) {
     return { frontmatter: null, body: markdown };

@@ -1,5 +1,9 @@
 import { jsonObjectSchema, turnScope } from "@bb/domain";
-import type { Thread, ThreadEventPlanStep } from "@bb/domain";
+import type {
+  Thread,
+  ThreadEventPlanStep,
+  ThreadEventPlanStepsItem,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { extractThreadTimelinePendingTodos } from "../src/todo-snapshot-extraction.js";
 import type { ThreadEventWithMeta } from "../src/build-event-projection.js";
@@ -17,19 +21,20 @@ function planStepsEvent({
   type?: "item/started" | "item/completed";
   explanation?: string;
 }): ThreadEventWithMeta {
+  const item: ThreadEventPlanStepsItem = {
+    type: "planSteps",
+    id: `plan-${seq}`,
+    steps,
+    status: type === "item/completed" ? "completed" : "pending",
+  };
+  if (explanation !== undefined) item.explanation = explanation;
   return {
     event: {
       type,
       threadId: "thread-1",
       providerThreadId: "provider-thread-1",
       scope: turnScope("turn-1"),
-      item: {
-        type: "planSteps",
-        id: `plan-${seq}`,
-        steps,
-        ...(explanation === undefined ? {} : { explanation }),
-        status: type === "item/completed" ? "completed" : "pending",
-      },
+      item,
     },
     meta: { id: `event-${seq}`, seq, createdAt: seq },
   };

@@ -52,17 +52,15 @@ interface GitDiffContextEnrichmentInput {
   patchText?: string;
 }
 
-export function enrichGitDiffFileForContext({
-  fileDiff,
-  oldFile,
-  newFile,
-  patchText,
-}: GitDiffContextEnrichmentInput): ParsedGitDiffFile {
+export function enrichGitDiffFileForContext(
+  { fileDiff, oldFile, newFile, patchText }: GitDiffContextEnrichmentInput,
+  processFileFn: typeof processFile = processFile,
+): ParsedGitDiffFile {
   if (!patchText || !doFullFilePathsMatch(fileDiff, oldFile, newFile)) {
     return fileDiff;
   }
 
-  const enrichedFile = processFile(patchText, { oldFile, newFile });
+  const enrichedFile = processFileFn(patchText, { oldFile, newFile });
   if (
     enrichedFile === undefined ||
     enrichedFile.isPartial ||

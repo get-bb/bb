@@ -6,6 +6,7 @@ import {
   PluginContextStaleError,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import { createAutomationService } from "./service.js";
 import {
@@ -14,13 +15,23 @@ import {
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
+  type CreateAutomationInput,
 } from "./rpc-types.js";
+import { z } from "zod";
 
 const PROJECT_ID = "proj_test";
 const MISSING_PROJECT_ID = "proj_missing";
 const DELETED_PROJECT_ID = "proj_deleted";
 const THREAD_ID = "thr_target";
 const SECTION_ID = "sec_reviews";
+const realtimeSignalPayloadSchema = z.object({
+  projectId: z.string(),
+  kind: z.string(),
+});
+type AgentExecutionInput = Extract<
+  CreateAutomationInput["execution"],
+  { mode: "agent" }
+>;
 
 const rpcMethods = [
   "automations_overview",
@@ -51,7 +62,9 @@ async function bootAutomationsPlugin(
     pluginId: "automations",
     sdk: {
       projects: {
-        async get({ projectId }) {
+        async get({
+          projectId,
+        }: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0]) {
           if (projectId === PROJECT_ID) return project(projectId);
           throw new Error("Project not found");
         },
@@ -77,7 +90,9 @@ async function bootAutomationsPlugin(
         },
       },
       providers: {
-        async list(routing) {
+        async list(
+          routing: Parameters<BbPluginApi["sdk"]["providers"]["list"]>[0],
+        ) {
           const permissionModes =
             routing?.environmentId === "env_routed" &&
             routedPermissionModes !== undefined
@@ -89,11 +104,13 @@ async function bootAutomationsPlugin(
               id: "claude",
               capabilities: { permissionModes: ["auto", "full"] },
             },
-          ] as never;
+          ];
         },
       },
       threads: {
-        async get({ threadId }) {
+        async get({
+          threadId,
+        }: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]) {
           return {
             id: threadId,
             archivedAt: null,
@@ -116,20 +133,21 @@ async function bootAutomationsPlugin(
       },
     },
   });
-  await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+  await plugin(host.bb);
   return host;
 }
 
-function agentExecution(targetThreadId?: string) {
-  return {
+function agentExecution(targetThreadId?: string): AgentExecutionInput {
+  const execution: AgentExecutionInput = {
     mode: "agent",
     prompt: "summarize the inbox",
     providerId: "codex",
     model: "gpt-5",
     permissionMode: "accept-edits",
     environment: { type: "project-default" },
-    ...(targetThreadId ? { targetThreadId } : {}),
   };
+  if (targetThreadId) execution.targetThreadId = targetThreadId;
+  return execution;
 }
 
 function oneShotTrigger() {
@@ -161,15 +179,10 @@ async function createAgentAutomation(
 function signalKinds(host: FakePluginHost) {
   return host.harness.realtimeSignals
     .filter((signal) => signal.channel === "automations")
-    .map((signal) => signal.payload)
-    .filter(
-      (payload): payload is { projectId: string; kind: string } =>
-        typeof payload === "object" &&
-        payload !== null &&
-        "projectId" in payload &&
-        "kind" in payload,
-    )
-    .map((payload) => payload.kind);
+    .flatMap((signal) => {
+      const parsed = realtimeSignalPayloadSchema.safeParse(signal.payload);
+      return parsed.success ? [parsed.data.kind] : [];
+    });
 }
 
 describe("automations server plugin harness", () => {
@@ -905,11 +918,12 @@ describe("automations server plugin harness", () => {
     expect(fullResult.exitCode).toBe(1);
 
     const service = createAutomationService({
-      bb: host.bb as never,
+      bb: host.bb,
       db: host.bb.storage.database(),
       pluginDataDir: "/tmp/bb-automations-test",
       serverUrl: "http://127.0.0.1:38886",
     });
+    // SAFETY: This test passes an intentionally incomplete update to verify rejection.
     await expect(
       service.update({
         projectId: PROJECT_ID,
@@ -1141,9 +1155,7 @@ describe("automations server plugin harness", () => {
     );
     expect(started.run.status).toBe("running");
 
-    const reloaded = await harness.reload(
-      plugin as unknown as Parameters<typeof harness.reload>[0],
-    );
+    const reloaded = await harness.reload(plugin);
     const service = reloaded.harness.runService("automation-sweep");
     await vi.waitFor(async () => {
       const runs = automationRunListResponseSchema.parse(

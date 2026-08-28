@@ -305,13 +305,14 @@ function buildSharedThreadExecutionRequestFields(
     return {};
   }
 
-  return {
+  const fields: SharedThreadExecutionRequestFields = {
     model: execution.model,
-    ...(execution.supportsServiceTier && execution.serviceTier
-      ? { serviceTier: execution.serviceTier }
-      : {}),
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
     executionInputSources: execution.executionInputSources,
   };
+  if (execution.supportsServiceTier && execution.serviceTier) {
+    fields.serviceTier = execution.serviceTier;
+  }
+  return fields;
 }

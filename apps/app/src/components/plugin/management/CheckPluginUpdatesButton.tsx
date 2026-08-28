@@ -19,11 +19,7 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 export function summarizeUpdateCheck(
   results: readonly PluginUpdatesEntry[],
   scope: { pluginId?: string } = {},
-): {
-  tone: "success" | "message" | "warning";
-  title: string;
-  description?: string;
-} {
+) {
   const ids = (outcome: PluginUpdatesEntry["outcome"]) =>
     results
       .filter((result) => result.outcome === outcome)
@@ -76,9 +72,13 @@ export function CheckPluginUpdatesButton({
       checkPluginUpdates(fetch, pluginId === undefined ? {} : { id: pluginId }),
     onSuccess: (results) => {
       const summary = summarizeUpdateCheck(results, { pluginId });
-      appToast[summary.tone](summary.title, {
-        description: summary.description,
-      });
+      if (summary.tone === "success") {
+        appToast.success(summary.title, { description: summary.description });
+      } else if (summary.tone === "warning") {
+        appToast.warning(summary.title, { description: summary.description });
+      } else {
+        appToast.message(summary.title, { description: summary.description });
+      }
     },
     onError: (error) => {
       appToast.error("Checking for plugin updates failed", {

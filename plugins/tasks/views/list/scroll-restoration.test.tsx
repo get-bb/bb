@@ -123,11 +123,17 @@ describe("scroll store", () => {
   });
 });
 
+const scrollHeightByElement = new WeakMap<
+  HTMLDivElement,
+  { scrollHeight: number }
+>();
+
 function scriptContainer(el: HTMLDivElement, scrollHeight: number): void {
-  (el as unknown as { __sh: number }).__sh = scrollHeight;
+  const state = { scrollHeight };
+  scrollHeightByElement.set(el, state);
   Object.defineProperty(el, "scrollHeight", {
     configurable: true,
-    get: () => (el as unknown as { __sh: number }).__sh,
+    get: () => state.scrollHeight,
   });
   Object.defineProperty(el, "clientHeight", { configurable: true, value: 500 });
   let top = 0;
@@ -138,6 +144,21 @@ function scriptContainer(el: HTMLDivElement, scrollHeight: number): void {
       top = v;
     },
   });
+}
+
+function updateScriptContainer(el: HTMLDivElement, scrollHeight: number): void {
+  const state = scrollHeightByElement.get(el);
+  if (!state) {
+    throw new Error("Scroll container was not initialized");
+  }
+  state.scrollHeight = scrollHeight;
+}
+
+function requireScrollContainer(el: HTMLDivElement | null): HTMLDivElement {
+  if (!el) {
+    throw new Error("Scroll container was not captured");
+  }
+  return el;
 }
 
 function Harness({
@@ -165,7 +186,7 @@ function Harness({
           scriptContainer(el, scrollHeight);
           onReady(el);
         } else if (el) {
-          (el as unknown as { __sh: number }).__sh = scrollHeight;
+          updateScriptContainer(el, scrollHeight);
         }
       }}
       data-testid="scroll"
@@ -190,7 +211,7 @@ describe("useListScrollRestoration", () => {
         onReady={capture}
       />,
     );
-    const firstEl = el as unknown as HTMLDivElement;
+    const firstEl = requireScrollContainer(el);
     act(() => {
       firstEl.scrollTop = 800;
       firstEl.dispatchEvent(new Event("scroll"));
@@ -207,7 +228,7 @@ describe("useListScrollRestoration", () => {
         onReady={capture}
       />,
     );
-    const secondEl = el as unknown as HTMLDivElement;
+    const secondEl = requireScrollContainer(el);
     expect(secondEl.scrollTop).toBe(500);
   });
 
@@ -227,7 +248,7 @@ describe("useListScrollRestoration", () => {
         onReady={capture}
       />,
     );
-    const node = el as unknown as HTMLDivElement;
+    const node = requireScrollContainer(el);
     expect(node.scrollTop).toBe(521);
 
     view.rerender(
@@ -259,7 +280,7 @@ describe("useListScrollRestoration", () => {
         onReady={capture}
       />,
     );
-    const node = el as unknown as HTMLDivElement;
+    const node = requireScrollContainer(el);
     expect(node.scrollTop).toBe(500);
 
     act(() => {
@@ -292,7 +313,7 @@ describe("useListScrollRestoration", () => {
         }}
       />,
     );
-    const node = el as unknown as HTMLDivElement;
+    const node = requireScrollContainer(el);
     act(() => {
       node.scrollTop = 620;
       node.dispatchEvent(new Event("scroll"));
@@ -315,7 +336,7 @@ describe("useListScrollRestoration", () => {
         }}
       />,
     );
-    const target = el as unknown as HTMLDivElement;
+    const target = requireScrollContainer(el);
     expect(target.scrollTop).toBe(0);
   });
 
@@ -331,7 +352,7 @@ describe("useListScrollRestoration", () => {
         }}
       />,
     );
-    const target = el as unknown as HTMLDivElement;
+    const target = requireScrollContainer(el);
     act(() => {
       target.scrollTop = 300;
       target.dispatchEvent(new Event("scroll"));

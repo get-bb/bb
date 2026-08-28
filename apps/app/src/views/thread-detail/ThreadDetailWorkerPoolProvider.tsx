@@ -15,6 +15,13 @@ import { createRetryingModuleLoader } from "@/lib/plugin-frontend-lazy";
 
 type PierreWorkerPoolModule = typeof import("@/lib/pierre-worker-pool");
 
+export type ThreadDetailWorkerPoolModule = PierreWorkerPoolModule;
+
+interface ThreadDetailWorkerPoolProviderProps {
+  children: ReactNode;
+  loadWorkerPool?: () => Promise<PierreWorkerPoolModule>;
+}
+
 const loadPierreWorkerPool = createRetryingModuleLoader<PierreWorkerPoolModule>(
   () => import("@/lib/pierre-worker-pool"),
 );
@@ -27,10 +34,9 @@ interface LoadedPool {
 
 export function ThreadDetailWorkerPoolProvider({
   children,
-}: {
-  children: ReactNode;
-}) {
-  const canUseWorkers = typeof Worker !== "undefined";
+  loadWorkerPool = loadPierreWorkerPool,
+}: ThreadDetailWorkerPoolProviderProps) {
+  const canUseWorkers = globalThis.Worker !== undefined;
   const theme = useResolvedCodeThemePair();
   const [requested, setRequested] = useState(false);
   const [loaded, setLoaded] = useState<LoadedPool | null>(null);
@@ -42,7 +48,7 @@ export function ThreadDetailWorkerPoolProvider({
   useEffect(() => {
     if (!requested || !canUseWorkers) return;
     let cancelled = false;
-    void loadPierreWorkerPool().then(
+    void loadWorkerPool().then(
       (module) => {
         if (cancelled) return;
         setLoaded((current) => {
@@ -54,10 +60,10 @@ export function ThreadDetailWorkerPoolProvider({
           };
         });
       },
-      (error: unknown) => {
+      (cause: unknown) => {
         if (cancelled) return;
         console.warn(
-          `diff worker pool load failed; diffs highlight on the main thread: ${error instanceof Error ? error.message : String(error)}`,
+          `diff worker pool load failed; diffs highlight on the main thread: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
         setLoadFailed(true);
       },
@@ -65,7 +71,7 @@ export function ThreadDetailWorkerPoolProvider({
     return () => {
       cancelled = true;
     };
-  }, [canUseWorkers, requested, theme]);
+  }, [canUseWorkers, loadWorkerPool, requested, theme]);
 
   useEffect(() => {
     if (loaded === null) return;

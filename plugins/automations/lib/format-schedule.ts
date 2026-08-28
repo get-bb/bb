@@ -41,15 +41,15 @@ type OneShotLifecycle =
   | "failed"
   | "skipped";
 
-const DAY_ABBREVIATION: Record<string, string> = {
-  Sunday: "Sun",
-  Monday: "Mon",
-  Tuesday: "Tue",
-  Wednesday: "Wed",
-  Thursday: "Thu",
-  Friday: "Fri",
-  Saturday: "Sat",
-};
+const DAY_ABBREVIATION = new Map<string, string>([
+  ["Sunday", "Sun"],
+  ["Monday", "Mon"],
+  ["Tuesday", "Tue"],
+  ["Wednesday", "Wed"],
+  ["Thursday", "Thu"],
+  ["Friday", "Fri"],
+  ["Saturday", "Sat"],
+]);
 
 function formatCronCadence(cron: string): string {
   let text: string;
@@ -67,7 +67,7 @@ function formatCronCadence(cron: string): string {
     )
     .replace(
       /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/g,
-      (day) => DAY_ABBREVIATION[day] ?? day,
+      (day) => DAY_ABBREVIATION.get(day) ?? day,
     )
     .replace(/ through /g, "-")
     .replace(/,? only on /g, " ")

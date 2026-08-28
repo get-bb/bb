@@ -34,7 +34,7 @@ export function createAppAssetCompressionCache(
       }
 
       let compression: Promise<Buffer>;
-      compression = args.compress().catch((error: unknown) => {
+      compression = args.compress().catch((error: Error) => {
         if (entry.variants.get(args.encoding) === compression) {
           entry.variants.delete(args.encoding);
         }

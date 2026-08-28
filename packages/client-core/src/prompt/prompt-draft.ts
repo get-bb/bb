@@ -14,6 +14,13 @@ import {
 } from "./automation-prompt.js";
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
+type LocalFilePromptInput = Extract<PromptInput, { type: "localFile" }>;
+
+interface PromptDraftStorageRecord {
+  text: string;
+  attachments: PromptDraftAttachment[];
+  mentions?: PromptTextMention[];
+}
 
 export interface PromptDraftState {
   text: string;
@@ -149,11 +156,12 @@ export function serializePromptDraftStorage(
   if (isPromptDraftEmpty(draft)) {
     return null;
   }
-  return JSON.stringify({
+  const serialized: PromptDraftStorageRecord = {
     text,
-    ...(mentions.length > 0 ? { mentions } : {}),
     attachments,
-  });
+  };
+  if (mentions.length > 0) serialized.mentions = mentions;
+  return JSON.stringify(serialized);
 }
 
 export function arePromptDraftStatesEqual(
@@ -293,13 +301,14 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
       continue;
     }
 
-    input.push({
+    const localFile: LocalFilePromptInput = {
       type: "localFile",
       path: attachment.path,
       name: attachment.name,
-      ...(attachment.sizeBytes > 0 ? { sizeBytes: attachment.sizeBytes } : {}),
-      ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
-    });
+    };
+    if (attachment.sizeBytes > 0) localFile.sizeBytes = attachment.sizeBytes;
+    if (attachment.mimeType) localFile.mimeType = attachment.mimeType;
+    input.push(localFile);
   }
 
   return input;
@@ -349,13 +358,14 @@ export function promptInputToDraft(
     }
 
     if (chunk.type === "localFile") {
-      attachments.push({
+      const localFile: PromptDraftAttachment = {
         type: "localFile",
         path: chunk.path,
         name: chunk.name ?? getFileNameFromPath(chunk.path),
         sizeBytes: chunk.sizeBytes ?? 0,
-        ...(chunk.mimeType ? { mimeType: chunk.mimeType } : {}),
-      });
+      };
+      if (chunk.mimeType) localFile.mimeType = chunk.mimeType;
+      attachments.push(localFile);
     }
   }
 

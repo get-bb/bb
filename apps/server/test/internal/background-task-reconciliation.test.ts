@@ -1,7 +1,12 @@
 import { closeSession, getThread, listEvents } from "@bb/db";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  threadEventBackgroundTaskItemSchema,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import {
@@ -21,11 +26,15 @@ import {
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
+const backgroundTaskEventDataSchema = z.object({
+  item: threadEventBackgroundTaskItemSchema,
+});
+
 function backgroundTaskItemData(args: {
   itemId: string;
   taskStatus: string;
   status: string;
-}): Record<string, unknown> {
+}) {
   return {
     providerThreadId: "claude-session-1",
     item: {
@@ -40,6 +49,10 @@ function backgroundTaskItemData(args: {
       usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
     },
   };
+}
+
+function parseBackgroundTaskItem(data: string) {
+  return backgroundTaskEventDataSchema.parse(JSON.parse(data)).item;
 }
 
 interface SeedOpenBackgroundTaskArgs {
@@ -115,9 +128,7 @@ function listSettledBackgroundTaskItems(
   return listEvents(harness.deps.db, { threadId })
     .filter((row) => row.type === "item/backgroundTask/completed")
     .map((row) => {
-      const { item } = JSON.parse(row.data) as {
-        item: { status: string; taskStatus: string };
-      };
+      const item = parseBackgroundTaskItem(row.data);
       return { status: item.status, taskStatus: item.taskStatus };
     });
 }
@@ -182,12 +193,10 @@ describe("settleDanglingBackgroundTasks", () => {
         (row) => row.type === "item/backgroundTask/completed",
       );
       expect(completed).toHaveLength(1);
-      const data = JSON.parse(completed[0]!.data) as {
-        item: { status: string; taskStatus: string; workflowName: string };
-      };
-      expect(data.item.status).toBe("interrupted");
-      expect(data.item.taskStatus).toBe("stopped");
-      expect(data.item.workflowName).toBe("fixture-mini");
+      const item = parseBackgroundTaskItem(completed[0]!.data);
+      expect(item.status).toBe("interrupted");
+      expect(item.taskStatus).toBe("stopped");
+      expect(item.workflowName).toBe("fixture-mini");
 
       settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
       expect(
@@ -258,10 +267,8 @@ describe("settleDanglingBackgroundTasks", () => {
         threadId: thread.id,
       }).filter((row) => row.type === "item/backgroundTask/completed");
       expect(completed).toHaveLength(1);
-      const data = JSON.parse(completed[0]!.data) as {
-        item: { status: string };
-      };
-      expect(data.item.status).toBe("completed");
+      const item = parseBackgroundTaskItem(completed[0]!.data);
+      expect(item.status).toBe("completed");
     });
   });
 

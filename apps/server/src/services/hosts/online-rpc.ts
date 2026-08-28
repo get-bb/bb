@@ -152,7 +152,7 @@ async function waitForRetryableHostRpcTransport(
   await ensureHostSessionReadyForWork(deps, { hostId });
 }
 
-export function isHostUnavailableApiError(error: unknown): boolean {
+export function isHostUnavailableApiError<T>(error: T): error is T & ApiError {
   return (
     error instanceof ApiError &&
     error.status === 502 &&
@@ -183,7 +183,7 @@ export function hostCommandTimeoutError(): ApiError {
   );
 }
 
-function throwOnlineRpcError(error: unknown): never {
+function throwOnlineRpcError<T>(error: T): never {
   if (error instanceof HostOnlineRpcTimeoutError) {
     throw hostCommandTimeoutError();
   }

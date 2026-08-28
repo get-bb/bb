@@ -4,7 +4,10 @@ import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-po
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import {
+  SecondaryPanelLayout,
+  type SecondaryPanelLayoutDependencies,
+} from "@/components/secondary-panel/SecondaryPanelLayout";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
@@ -44,7 +47,26 @@ interface RootComposeSecondaryContentProps {
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
   secondaryPanel: RootSecondaryPanelProps;
+  dependencies?: RootComposeSecondaryContentDependencies;
 }
+
+interface RootComposeSecondaryContentDependencies {
+  LazyThreadSecondaryPanel: typeof LazyThreadSecondaryPanel;
+  PluginHomepageSections: typeof PluginHomepageSections;
+  secondaryPanelLayout: typeof SecondaryPanelLayout;
+  secondaryPanelLayoutDependencies?: SecondaryPanelLayoutDependencies;
+  getBbDesktopInfo: typeof getBbDesktopInfo;
+  shouldUseMacosDesktopChrome: typeof shouldUseMacosDesktopChrome;
+}
+
+const defaultRootComposeSecondaryContentDependencies: RootComposeSecondaryContentDependencies =
+  {
+    LazyThreadSecondaryPanel,
+    PluginHomepageSections,
+    secondaryPanelLayout: SecondaryPanelLayout,
+    getBbDesktopInfo,
+    shouldUseMacosDesktopChrome,
+  };
 
 function DrawerPanelLoadingSkeleton() {
   return (
@@ -65,12 +87,14 @@ export function RootComposeSecondaryContent({
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
   secondaryPanel,
+  dependencies = defaultRootComposeSecondaryContentDependencies,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const composerHost = usePluginComposerHost();
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const [desktopInfo] = useState(dependencies.getBbDesktopInfo);
+  const usesDesktopChrome =
+    dependencies.shouldUseMacosDesktopChrome(desktopInfo);
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
@@ -110,7 +134,7 @@ export function RootComposeSecondaryContent({
           style={PAGE_SHELL_CONTENT_STYLE}
         >
           {children}
-          <PluginHomepageSections />
+          <dependencies.PluginHomepageSections />
         </div>
       </div>
     </div>
@@ -118,7 +142,7 @@ export function RootComposeSecondaryContent({
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
-      <SecondaryPanelLayout
+      <dependencies.secondaryPanelLayout
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
@@ -136,7 +160,7 @@ export function RootComposeSecondaryContent({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <LazyThreadSecondaryPanel
+          <dependencies.LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
             drawerFallback={<DrawerPanelLoadingSkeleton />}
             renderBrowserDeck={(activeBrowserTabId, pane) =>
@@ -158,6 +182,7 @@ export function RootComposeSecondaryContent({
             resizablePanelId={resizablePanelId}
           />
         )}
+        dependencies={dependencies.secondaryPanelLayoutDependencies}
       />
     </div>
   );

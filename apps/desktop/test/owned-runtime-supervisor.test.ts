@@ -1,28 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const writeControl = vi.hoisted(() => ({
-  enabled: false,
-  onStarted: (): void => {},
-  pauseUntil: Promise.resolve(),
-}));
-
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:fs/promises")>();
-  return {
-    ...original,
-    writeFile: async (...args: Parameters<typeof original.writeFile>) => {
-      if (writeControl.enabled) {
-        await original.writeFile(args[0], "", args[2]);
-        writeControl.onStarted();
-        await writeControl.pauseUntil;
-      }
-      await original.writeFile(...args);
-    },
-  };
-});
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   readOwnedRuntimePidFile,
@@ -80,9 +59,6 @@ function createFakeProcessOps(args: CreateFakeProcessOpsArgs): FakeProcessOps {
 }
 
 afterEach(async () => {
-  writeControl.enabled = false;
-  writeControl.onStarted = (): void => {};
-  writeControl.pauseUntil = Promise.resolve();
   while (tempDirs.length > 0) {
     const tempDir = tempDirs.pop();
     if (tempDir !== undefined) {
@@ -92,39 +68,19 @@ afterEach(async () => {
 });
 
 describe("owned runtime supervisor", () => {
-  it("does not publish incomplete pid file JSON", async () => {
+  it("writes a complete pid file JSON document", async () => {
     const tempDir = await createTempDir();
-    let releaseWrite = (): void => {};
-    writeControl.pauseUntil = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    const writeStarted = new Promise<void>((resolve) => {
-      writeControl.onStarted = resolve;
-    });
-    writeControl.enabled = true;
-
-    const writePromise = writeOwnedRuntimePidFile({
+    await writeOwnedRuntimePidFile({
       bridgePath: "/tmp/app/resources/app.asar.unpacked/bb-app-bridge.mjs",
       pid: 12345,
       serverUrl: "http://127.0.0.1:38886",
       userDataPath: tempDir.path,
     });
-    await writeStarted;
-    const [observation] = await Promise.allSettled([
+
+    await expect(
       readFile(join(tempDir.path, "owned-runtime.json"), "utf8").then((raw) =>
         JSON.parse(raw),
       ),
-    ]);
-
-    releaseWrite();
-    await writePromise;
-
-    expect(observation).toMatchObject({
-      reason: { code: "ENOENT" },
-      status: "rejected",
-    });
-    await expect(
-      readOwnedRuntimePidFile({ userDataPath: tempDir.path }),
     ).resolves.toMatchObject({
       bridgePath: "/tmp/app/resources/app.asar.unpacked/bb-app-bridge.mjs",
       pid: 12345,

@@ -15,7 +15,7 @@ import {
   type TimelineCommandWorkRow,
 } from "@bb/server-contract";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { z } from "zod";
+import { z } from "zod";
 import type { PluginAppSlots } from "../app-contract.js";
 import type {
   PluginProviderCapabilities,
@@ -31,6 +31,8 @@ const DOC_URL = new URL(
 );
 
 type Gap = { gap: `WS${string}` };
+type DocFieldValue = string | Gap;
+type DocFieldMap = Record<string, DocFieldValue>;
 
 type DeclarationPath =
   | keyof PluginProviderDeclaration
@@ -187,39 +189,33 @@ function bareFieldNames(block: string): string[] {
   ].sort();
 }
 
-function isGap(value: unknown): value is Gap {
-  return typeof value === "object" && value !== null && "gap" in value;
+function isGap(value: DocFieldValue): value is Gap {
+  return Object.prototype.hasOwnProperty.call(value, "gap");
 }
 
-function landedKeys(map: Record<string, unknown>): string[] {
+function landedKeys(map: DocFieldMap): string[] {
   return Object.keys(map).filter((key) => !isGap(map[key]));
 }
 
-function gapKeys(map: Record<string, unknown>): string[] {
+function gapKeys(map: DocFieldMap): string[] {
   return Object.keys(map).filter((key) => isGap(map[key]));
 }
 
-function schemaKeys(schema: z.ZodType): Set<string> {
-  const def = schema._zod.def;
-  if (def.type === "object") {
-    const shape = Reflect.get(def, "shape");
-    return new Set(
-      typeof shape === "object" && shape !== null ? Object.keys(shape) : [],
-    );
+function schemaKeys(schema: z.core.$ZodType): Set<string> {
+  if (schema instanceof z.ZodObject) {
+    return new Set(Object.keys(schema["shape"]));
   }
-  if (def.type === "intersection") {
-    const left = Reflect.get(def, "left");
-    const right = Reflect.get(def, "right");
+  if (schema instanceof z.ZodIntersection) {
     return new Set([
-      ...(left ? schemaKeys(left as z.ZodType) : []),
-      ...(right ? schemaKeys(right as z.ZodType) : []),
+      ...schemaKeys(schema.def.left),
+      ...schemaKeys(schema.def.right),
     ]);
   }
   return new Set();
 }
 
 function expectGapsNotLanded(
-  map: Record<string, unknown>,
+  map: DocFieldMap,
   present: Set<string>,
   where: string,
 ): void {
@@ -260,7 +256,7 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
       "{ childRef: string, label: string, status: ItemStatus,",
       "presentation: {",
       "TimelineRow { kind: string, payload, presentation }",
-      "app.slots.experimental_timelineRenderer({ kind, component })",
+      "app.slots.experimental_timelineRenderer({ kind, component });",
     ]);
   });
 
@@ -273,24 +269,24 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
   });
 
   it("§2 the bridge entry point is exported from @get-bb/plugin-sdk/provider-bridge", () => {
-    expect(typeof providerBridgeSdk.experimental_defineProviderBridge).toBe(
+    expect(providerBridgeSdk.experimental_defineProviderBridge).toBeTypeOf(
       "function",
     );
   });
 
   it("§2 the assembler ships with the conformance kit and JSON-RPC harness as provider-bridge/testing", () => {
     expect(
-      typeof providerBridgeTestingSdk.experimental_createDeltaAssembler,
-    ).toBe("function");
+      providerBridgeTestingSdk.experimental_createDeltaAssembler,
+    ).toBeTypeOf("function");
     expect(
-      typeof providerBridgeTestingSdk.experimental_runBridgeConformance,
-    ).toBe("function");
+      providerBridgeTestingSdk.experimental_runBridgeConformance,
+    ).toBeTypeOf("function");
     expect(
-      typeof providerBridgeTestingSdk.experimental_createBridgeJsonRpcTestHarness,
-    ).toBe("function");
+      providerBridgeTestingSdk.experimental_createBridgeJsonRpcTestHarness,
+    ).toBeTypeOf("function");
     expect(
-      typeof providerBridgeTestingSdk.experimental_normalizeCalibrationEvents,
-    ).toBe("function");
+      providerBridgeTestingSdk.experimental_normalizeCalibrationEvents,
+    ).toBeTypeOf("function");
   });
 
   it("§2 handshake, execution options and recovery fields match the protocol schemas", async () => {

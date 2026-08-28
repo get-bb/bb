@@ -111,25 +111,24 @@ describe("plugin app runtime shim", () => {
     const twMergeFn = () => "merged";
     const cvaFn = () => "cva";
     const IconComponent = () => null;
-    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
-      clsx: { default: clsxFn, clsx: clsxFn },
-      tailwindMerge: { twMerge: twMergeFn },
-      classVarianceAuthority: { cva: cvaFn },
-      sharedUiIcon: { Icon: IconComponent, ICON_NAMES: [] },
-    };
+    Object.assign(globalThis, {
+      __bbPluginRuntime: {
+        clsx: { default: clsxFn, clsx: clsxFn },
+        tailwindMerge: { twMerge: twMergeFn },
+        classVarianceAuthority: { cva: cvaFn },
+        sharedUiIcon: { Icon: IconComponent, ICON_NAMES: [] },
+      },
+    });
     try {
       const bundlePath = join(dir, "bundle.mjs");
       await writeFile(bundlePath, js);
-      const loaded = (await import(pathToFileURL(bundlePath).href)) as Record<
-        string,
-        unknown
-      >;
+      const loaded = await import(pathToFileURL(bundlePath).href);
       expect(loaded.clsx).toBe(clsxFn);
       expect(loaded.twMerge).toBe(twMergeFn);
       expect(loaded.cva).toBe(cvaFn);
       expect(loaded.Icon).toBe(IconComponent);
     } finally {
-      delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
+      Reflect.deleteProperty(globalThis, "__bbPluginRuntime");
     }
   });
 
@@ -137,7 +136,7 @@ describe("plugin app runtime shim", () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-icon-rel-"));
     tempDirs.push(dir);
     const sharedUiDir = join(dir, "node_modules", "@bb", "shared-ui");
-    const files: Record<string, string> = {
+    const files = {
       [join(sharedUiDir, "package.json")]: JSON.stringify({
         name: "@bb/shared-ui",
         type: "module",
@@ -156,7 +155,7 @@ describe("plugin app runtime shim", () => {
         `import { Icon } from "./icon";\nexport function Button() { return Icon; }\n`,
       [join(dir, "app.tsx")]:
         `import { EmptyState } from "@bb/shared-ui/empty-state";\nimport { Button } from "./components/ui/button";\nexport { EmptyState, Button };\n`,
-    };
+    } satisfies Record<string, string>;
     for (const [filePath, contents] of Object.entries(files)) {
       await mkdir(dirname(filePath), { recursive: true });
       await writeFile(filePath, contents);

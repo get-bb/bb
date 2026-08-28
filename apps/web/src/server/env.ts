@@ -18,5 +18,6 @@ export interface Env {
 }
 
 export function getEnv(): Env {
-  return workerEnv as unknown as Env;
+  // SAFETY: the Cloudflare worker module supplies the bindings declared by this application.
+  return workerEnv as Env;
 }

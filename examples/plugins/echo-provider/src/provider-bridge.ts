@@ -2,6 +2,8 @@ import {
   type ClientTurnRequestId,
   type DeltaPresentation,
   type DynamicTool,
+  type JsonObject,
+  type JsonValue,
   type PromptInput,
   type ProviderHealthResult,
   type ThreadDelta,
@@ -19,6 +21,7 @@ import {
   decodeToolCallResponsePayload,
   experimental_defineProviderBridge,
   initializeParamsSchema,
+  jsonValueSchema,
   modelListParamsSchema,
   providerMaintenanceParamsSchema,
   runBridgeRequest,
@@ -69,16 +72,35 @@ const sessions = new Map<string, Session>();
 
 type JsonRpcId = string | number;
 
-type OutboundMessage = { jsonrpc: "2.0" } & Record<string, unknown>;
+const jsonObjectSchema = z.record(z.string(), z.json());
+
+interface OutboundMessage {
+  jsonrpc: "2.0";
+  id?: JsonRpcId;
+  method?: string;
+  params?: JsonObject;
+  result?: JsonValue;
+  error?: OutboundError;
+}
+
+interface OutboundError {
+  code: number;
+  message: string;
+  data?: z.ZodIssue[];
+}
 
 const io = createBridgeIo<OutboundMessage>();
 
-function notify(method: string, params: Record<string, unknown>): void {
+function notify(method: string, params: JsonObject): void {
   io.send({ jsonrpc: "2.0", method, params });
 }
 
+function toJsonObject<T>(value: T): JsonObject {
+  return jsonObjectSchema.parse(JSON.parse(JSON.stringify(value)));
+}
+
 function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
-  notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
+  notify(THREAD_DELTA_NOTIFICATION_METHOD, toJsonObject({ threadId, deltas }));
 }
 
 let outboundRequestCounter = 0;
@@ -89,7 +111,7 @@ interface PendingToolCall {
 
 const pendingToolCalls = new Map<string, PendingToolCall>();
 
-function sendRequest(method: string, params: Record<string, unknown>): string {
+function sendRequest(method: string, params: JsonObject): string {
   outboundRequestCounter += 1;
   const id = `echo-req-${outboundRequestCounter}`;
   io.send({ jsonrpc: "2.0", id, method, params });
@@ -106,10 +128,17 @@ function promptText(input: readonly PromptInput[]): string {
     .join("");
 }
 
-function parseProviderOptions(options: unknown): {
+const providerOptionsInputSchema = jsonObjectSchema;
+type ProviderOptionsInput = z.infer<typeof providerOptionsInputSchema>;
+
+interface ParsedProviderOptions {
   source: "server" | "defaults";
   values: EchoProviderOptions;
-} {
+}
+
+function parseProviderOptions(
+  options: ProviderOptionsInput | undefined,
+): ParsedProviderOptions {
   const parsed = echoProviderOptionsSchema.safeParse(options);
   if (parsed.success) {
     return { source: "server", values: parsed.data };
@@ -137,7 +166,7 @@ function itemId(turn: TurnContext, name: string): string {
 function runEchoTurn(args: {
   session: Session;
   input: readonly PromptInput[];
-  options: unknown;
+  options: ProviderOptionsInput | undefined;
   clientRequestId?: ClientTurnRequestId;
 }): void {
   const { session } = args;
@@ -183,7 +212,7 @@ function runEchoTurn(args: {
     const id = itemId(turn, "stamp");
     turn.stamp = { itemId: id, presentation: stampTool.presentation };
     turn.itemCount += 1;
-    deltas.push({
+    const stampOpenDelta = {
       kind: "item.open",
       key: { providerItemId: id },
       item: {
@@ -192,10 +221,12 @@ function runEchoTurn(args: {
         server: "bb",
         args: { text: prompt },
       },
-      ...(stampTool.presentation === undefined
-        ? {}
-        : { presentation: stampTool.presentation }),
-    });
+    } satisfies Extract<ThreadDelta, { kind: "item.open" }>;
+    if (stampTool.presentation === undefined) {
+      deltas.push(stampOpenDelta);
+    } else {
+      deltas.push({ ...stampOpenDelta, presentation: stampTool.presentation });
+    }
     emitDeltas(session.threadId, deltas);
     const requestId = sendRequest(BRIDGE_INBOUND_REQUEST_METHODS.toolCall, {
       providerThreadId: session.providerThreadId,
@@ -408,7 +439,7 @@ function finishEchoTurn(
   const deltas: ThreadDelta[] = [];
 
   if (turn.stamp !== null) {
-    deltas.push({
+    const stampCloseDelta = {
       kind: "item.close",
       key: { providerItemId: turn.stamp.itemId },
       status: stamp === null || stamp.isError ? "failed" : "completed",
@@ -423,10 +454,15 @@ function finishEchoTurn(
             ? { error: stamp.content }
             : { result: stamp.content }),
       },
-      ...(turn.stamp.presentation === undefined
-        ? {}
-        : { presentation: turn.stamp.presentation }),
-    });
+    } satisfies Extract<ThreadDelta, { kind: "item.close" }>;
+    if (turn.stamp.presentation === undefined) {
+      deltas.push(stampCloseDelta);
+    } else {
+      deltas.push({
+        ...stampCloseDelta,
+        presentation: turn.stamp.presentation,
+      });
+    }
   }
 
   const receiptId = itemId(turn, "receipt");
@@ -555,7 +591,7 @@ function openSession(args: {
   return session;
 }
 
-type RequestHandler = (id: JsonRpcId, params: unknown) => void;
+type RequestHandler = (id: JsonRpcId, params: JsonValue | undefined) => void;
 
 const ECHO_HEALTH: ProviderHealthResult = {
   supported: true,
@@ -572,7 +608,11 @@ const ECHO_HEALTH: ProviderHealthResult = {
   },
 };
 
-function invalidParams(id: JsonRpcId, method: string, issues: unknown): void {
+function invalidParams(
+  id: JsonRpcId,
+  method: string,
+  issues: z.ZodIssue[],
+): void {
   io.send({
     jsonrpc: "2.0",
     id,
@@ -584,7 +624,7 @@ function invalidParams(id: JsonRpcId, method: string, issues: unknown): void {
   });
 }
 
-const handlers: Record<string, RequestHandler> = {
+const handlers = {
   [BRIDGE_REQUEST_METHODS.initialize]: (id, params) => {
     const parsed = initializeParamsSchema.safeParse(params);
     if (!parsed.success) {
@@ -651,10 +691,13 @@ const handlers: Record<string, RequestHandler> = {
     });
     io.sendResult(id, { providerThreadId, sessionRestorable: true });
     if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
+      const providerOptions = providerOptionsInputSchema.safeParse(
+        parsed.data.options.providerOptions,
+      );
       runEchoTurn({
         session,
         input: parsed.data.input,
-        options: parsed.data.options.providerOptions,
+        options: providerOptions.success ? providerOptions.data : undefined,
       });
     }
   },
@@ -697,10 +740,13 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     io.sendResult(id, {});
+    const providerOptions = providerOptionsInputSchema.safeParse(
+      parsed.data.options.providerOptions,
+    );
     runEchoTurn({
       session,
       input: parsed.data.input,
-      options: parsed.data.options.providerOptions,
+      options: providerOptions.success ? providerOptions.data : undefined,
       clientRequestId: parsed.data.clientRequestId,
     });
   },
@@ -727,7 +773,7 @@ const handlers: Record<string, RequestHandler> = {
     sessions.delete(parsed.data.threadId);
     io.sendResult(id, {});
   },
-};
+} satisfies Record<string, RequestHandler>;
 
 const jsonRpcResponseSchema = z
   .object({
@@ -737,16 +783,27 @@ const jsonRpcResponseSchema = z
   })
   .passthrough();
 
-function handleResponse(message: unknown): void {
+const jsonRpcMessageSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    method: z.string().optional(),
+    params: z.json().optional(),
+  })
+  .passthrough();
+
+type JsonRpcMessage = z.infer<typeof jsonRpcMessageSchema>;
+
+function handleResponse(message: JsonRpcMessage): void {
   const parsed = jsonRpcResponseSchema.safeParse(message);
-  if (!parsed.success || typeof parsed.data.id !== "string") {
+  if (!parsed.success || !z.string().safeParse(parsed.data.id).success) {
     return;
   }
-  const pending = pendingToolCalls.get(parsed.data.id);
+  const parsedId = z.string().parse(parsed.data.id);
+  const pending = pendingToolCalls.get(parsedId);
   if (pending === undefined) {
     return;
   }
-  pendingToolCalls.delete(parsed.data.id);
+  pendingToolCalls.delete(parsedId);
   if (!sessions.has(pending.turn.session.threadId)) {
     return;
   }
@@ -760,7 +817,9 @@ function handleResponse(message: unknown): void {
     });
     return;
   }
-  const decoded = decodeToolCallResponsePayload(parsed.data.result);
+  const decoded = decodeToolCallResponsePayload(
+    jsonValueSchema.parse(parsed.data.result),
+  );
   finishEchoTurn(pending.turn, {
     content: decoded.content,
     isError: decoded.isError,
@@ -768,32 +827,27 @@ function handleResponse(message: unknown): void {
 }
 
 export function handleLine(line: string): void {
-  let message: unknown;
+  let rawMessage: JsonValue;
   try {
-    message = JSON.parse(line);
+    rawMessage = JSON.parse(line);
   } catch {
     return;
   }
-  if (
-    typeof message !== "object" ||
-    message === null ||
-    Array.isArray(message)
-  ) {
+  const parsedMessage = jsonRpcMessageSchema.safeParse(rawMessage);
+  if (!parsedMessage.success) {
     return;
   }
-  const { id, method, params } = message as {
-    id?: unknown;
-    method?: unknown;
-    params?: unknown;
-  };
-  if (typeof method !== "string") {
-    handleResponse(message);
+  const { id, method, params } = parsedMessage.data;
+  if (method === undefined) {
+    handleResponse(parsedMessage.data);
     return;
   }
-  if (typeof id !== "string" && typeof id !== "number") {
+  if (id === undefined) {
     return;
   }
-  const handler = handlers[method];
+  const handler = Object.entries(handlers).find(
+    ([handlerMethod]) => handlerMethod === method,
+  )?.[1];
   if (handler === undefined) {
     io.sendError(
       id,

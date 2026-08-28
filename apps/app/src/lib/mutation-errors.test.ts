@@ -1,5 +1,6 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as sonner from "sonner";
 import { HttpError } from "./api";
 import {
   getMutationErrorMessage,
@@ -18,47 +19,29 @@ interface CapturedToastOptions {
   id: string;
 }
 
-interface SonnerCustomOptions {
-  id?: string | number;
-}
-
 interface SonnerCustomToast {
   options: CapturedToastOptions;
   renderToast: (id: string | number) => ReactElement;
 }
 
-const mutationToastState = vi.hoisted(() => {
-  const invocations: SonnerCustomToast[] = [];
-  return {
-    custom: vi.fn(
-      (
-        renderToast: (id: string | number) => ReactElement,
-        options?: SonnerCustomOptions,
-      ) => {
-        const fallbackId = `toast-${invocations.length + 1}`;
-        const id =
-          typeof options?.id === "string" || typeof options?.id === "number"
-            ? String(options.id)
-            : fallbackId;
-        const toast = {
-          options: { id },
-          renderToast,
-        };
-        invocations.push(toast);
-        return id;
-      },
-    ),
-    dismiss: vi.fn(),
-    invocations,
-  };
-});
-
-vi.mock("sonner", () => ({
-  toast: {
-    custom: mutationToastState.custom,
-    dismiss: mutationToastState.dismiss,
-  },
-}));
+const invocations: SonnerCustomToast[] = [];
+const custom = vi
+  .spyOn(sonner.toast, "custom")
+  .mockImplementation((renderToast, options) => {
+    const fallbackId = `toast-${invocations.length + 1}`;
+    const id = options?.id === undefined ? fallbackId : String(options.id);
+    invocations.push({
+      options: { id },
+      renderToast,
+    });
+    return id;
+  });
+const dismiss = vi.spyOn(sonner.toast, "dismiss");
+const mutationToastState = {
+  invocations,
+  custom,
+  dismiss,
+};
 
 function readLatestToastProps(): CapturedToastProps {
   const invocation = mutationToastState.invocations.at(-1);

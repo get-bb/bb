@@ -1279,10 +1279,7 @@ describe("resolveSystemExecutionOptions", () => {
 function registerHeldModelListResponder(
   harness: TestAppHarness,
   args: { hostId: string; sessionId: string; modelId: string },
-): {
-  requests: HostDaemonOnlineRpcRequestMessage[];
-  release(): void;
-} {
+) {
   const requests: HostDaemonOnlineRpcRequestMessage[] = [];
   harness.hub.registerDaemon(args.sessionId, args.hostId, {
     close() {},

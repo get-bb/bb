@@ -28,9 +28,9 @@ export interface BundleStats {
   routeClosures: Record<string, BundleRouteClosure>;
 }
 
-const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
+const MEASURED_ROUTE_CLOSURES = {
   SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx",
-};
+} satisfies Record<string, string>;
 
 export interface BundleStatsChunkInput {
   fileName: string;

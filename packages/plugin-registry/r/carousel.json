@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "carousel",
   "description": "BB ui \"carousel\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "embla-carousel-react",
-    "lucide-react"
-  ],
-  "registryDependencies": [
-    "@bb/button",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/carousel.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/carousel.tsx"
     }
+  ],
+  "dependencies": [
+    "embla-carousel-react",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/utils"
   ]
 }

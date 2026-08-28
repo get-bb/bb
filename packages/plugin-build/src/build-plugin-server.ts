@@ -135,6 +135,7 @@ export async function buildPluginServer(
     const stagedJsPath = join(stageDir, "server.js");
     const stagedMetaPath = join(stageDir, "server.meta.json");
 
+    // SAFETY: toolchain.esbuild comes from the validated build toolchain and names the esbuild module contract.
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");

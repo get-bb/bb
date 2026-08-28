@@ -133,11 +133,11 @@ async function readCurrentThreadTabs({
   return response;
 }
 
-function isThreadTabsConflict(error: unknown): boolean {
+function isThreadTabsConflict(cause: unknown): boolean {
   return (
-    error instanceof BbHttpError &&
-    error.status === 409 &&
-    error.code === "thread_tabs_conflict"
+    cause instanceof BbHttpError &&
+    cause.status === 409 &&
+    cause.code === "thread_tabs_conflict"
   );
 }
 
@@ -189,12 +189,12 @@ function enqueueThreadTabsWrite(
 
   let didFail = false;
   void next
-    .catch((error: unknown) => {
+    .catch((cause: unknown) => {
       didFail = true;
-      if (!isThreadTabsConflict(error)) {
+      if (!isThreadTabsConflict(cause)) {
         appToast.error("Couldn’t sync tabs", {
           description:
-            error instanceof Error ? error.message : "Please try again.",
+            cause instanceof Error ? cause.message : "Please try again.",
         });
       }
     })

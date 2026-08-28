@@ -163,7 +163,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       roots: [
         {
           rootPath: firstRoot,
-          shape: "skill",
+          ["shape"]: "skill",
           namePrefix: "",
           source: "skill",
           origin: "project",
@@ -176,7 +176,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       roots: [
         {
           rootPath: secondRoot,
-          shape: "skill",
+          ["shape"]: "skill",
           namePrefix: "",
           source: "skill",
           origin: "project",
@@ -464,7 +464,7 @@ describe("discoverSkills marks the linked flag per root shape", () => {
       expect(
         await discoverRoot({
           ...USER_SKILL_ROOT,
-          shape: "skill-directory",
+          ["shape"]: "skill-directory",
           rootPath,
         }),
       ).toEqual([
@@ -487,7 +487,7 @@ describe("discoverSkills marks the linked flag per root shape", () => {
       expect(
         await discoverRoot({
           ...USER_SKILL_ROOT,
-          shape: "skill-file",
+          ["shape"]: "skill-file",
           filePath,
           fallbackName: "unused-fallback",
         }),
@@ -520,7 +520,7 @@ describe("discoverSkills marks the linked flag per root shape", () => {
       expect(
         await discoverRoot({
           ...USER_SKILL_ROOT,
-          shape: "skill-recursive",
+          ["shape"]: "skill-recursive",
           rootPath,
         }),
       ).toEqual([
@@ -554,7 +554,7 @@ describe("discoverSkills marks the linked flag per root shape", () => {
     await symlink(rootPath, linkedRoot, "dir");
 
     expect(
-      await discoverRoot({ ...USER_SKILL_ROOT, shape: "skill", rootPath }),
+      await discoverRoot({ ...USER_SKILL_ROOT, ["shape"]: "skill", rootPath }),
     ).toEqual([
       ["entry-linked", true, path.join(rootPath, "entry-linked", "SKILL.md")],
       ["file-linked", true, path.join(rootPath, "file-linked", "SKILL.md")],
@@ -564,7 +564,7 @@ describe("discoverSkills marks the linked flag per root shape", () => {
       (
         await discoverRoot({
           ...USER_SKILL_ROOT,
-          shape: "skill",
+          ["shape"]: "skill",
           rootPath: linkedRoot,
         })
       ).map(([name, linked]) => [name, linked]),

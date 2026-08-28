@@ -81,8 +81,9 @@ export function WaveformVisualizer({
     };
 
     const observeResize = (onResize: () => void): ResizeObserver | null => {
-      if (typeof ResizeObserver === "undefined") return null;
-      const observer = new ResizeObserver(onResize);
+      const ResizeObserverConstructor = globalThis.ResizeObserver;
+      if (!ResizeObserverConstructor) return null;
+      const observer = new ResizeObserverConstructor(onResize);
       observer.observe(canvas);
       return observer;
     };
@@ -95,13 +96,14 @@ export function WaveformVisualizer({
     measure();
 
     const audioTrack = stream?.getAudioTracks()[0] ?? null;
-    const canAnimate =
-      active &&
-      audioTrack !== null &&
-      typeof window.AudioContext !== "undefined" &&
-      !prefersReducedMotion;
+    const AudioContextConstructor = globalThis.AudioContext;
 
-    if (!canAnimate || audioTrack === null) {
+    if (
+      !active ||
+      audioTrack === null ||
+      !AudioContextConstructor ||
+      prefersReducedMotion
+    ) {
       if (barsRef.current.length === 0) {
         barsRef.current = Array.from(
           { length: barCount },
@@ -113,7 +115,7 @@ export function WaveformVisualizer({
       return () => observer?.disconnect();
     }
 
-    const audioCtx = new AudioContext();
+    const audioCtx = new AudioContextConstructor();
     void audioCtx.resume();
     const analysisTrack = audioTrack.clone();
     const source = audioCtx.createMediaStreamSource(

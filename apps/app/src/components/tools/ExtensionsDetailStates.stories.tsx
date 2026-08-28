@@ -103,7 +103,11 @@ function Story({
   return (
     <main
       className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "232px" } as CSSProperties}
+      style={
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          "--story-doc-width": "232px",
+        } as CSSProperties
+      }
     >
       <header>
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
@@ -549,12 +553,7 @@ function FailedReleaseLifecycle() {
     const originalFetch = globalThis.fetch;
     let cancelled = false;
     globalThis.fetch = async (input, init) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
+      const url = new Request(input, init).url;
       if (!url.endsWith(`/plugins/${UPDATE_FAILED_PLUGIN.id}/update`)) {
         return originalFetch.call(globalThis, input, init);
       }

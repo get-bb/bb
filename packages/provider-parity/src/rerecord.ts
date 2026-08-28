@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -23,15 +23,35 @@ const REDACT_SCRIPT = resolve(
     .pathname,
 );
 
-function redactInPlace(file: string): void {
+function runRedactScript(inDir: string, outDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [REDACT_SCRIPT, inDir, outDir], {
+      stdio: ["ignore", "ignore", "inherit"],
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          signal === null
+            ? `redact script exited with code ${code}`
+            : `redact script exited after ${signal}`,
+        ),
+      );
+    });
+  });
+}
+
+async function redactInPlace(file: string): Promise<void> {
   const inDir = mkdtempSync(join(tmpdir(), "bb-rerecord-redact-in-"));
   const outDir = mkdtempSync(join(tmpdir(), "bb-rerecord-redact-out-"));
   try {
     const staged = join(inDir, basename(file));
     writeFileSync(staged, readFileSync(file));
-    execFileSync(process.execPath, [REDACT_SCRIPT, inDir, outDir], {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
+    await runRedactScript(inDir, outDir);
     writeFileSync(file, readFileSync(join(outDir, basename(file))));
   } finally {
     rmSync(inDir, { recursive: true, force: true });
@@ -107,24 +127,27 @@ async function rerecordCell(
   planLeg: ParityLeg | null,
 ): Promise<string> {
   const bridge = firstPartyReplayBridge(cell.provider, checkoutRoot);
-  const result = await rerecordCurrentBridgeLane({
+  const replayOptions: Parameters<typeof rerecordCurrentBridgeLane>[0] = {
     recordingDir: cell.dir,
     providerId: cell.provider,
     bridge: bridge.launch,
     profile: bridge.profile,
     createAssembler: createParityAssembler,
-    ...(planLeg === null
-      ? {}
-      : { createPlanAssembler: planLeg.createAssembler }),
-    ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
-    ...(args.verbose
-      ? { onStderr: (text: string) => process.stderr.write(text) }
-      : {}),
-  });
+  };
+  if (planLeg !== null) {
+    replayOptions.createPlanAssembler = planLeg.createAssembler;
+  }
+  if (args.timeoutMs !== undefined) {
+    replayOptions.timeoutMs = args.timeoutMs;
+  }
+  if (args.verbose) {
+    replayOptions.onStderr = (text: string) => process.stderr.write(text);
+  }
+  const result = await rerecordCurrentBridgeLane(replayOptions);
   if (result.file === null) {
     return `STALL ${cellKey(cell)}: ${result.stalls.join("; ")} (current lane left untouched)`;
   }
-  redactInPlace(result.file);
+  await redactInPlace(result.file);
   return `OK ${cellKey(cell)}: ${result.lines} bridge→runtime lines (${result.events} events)`;
 }
 
@@ -163,7 +186,7 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((error: unknown) => {
+main().catch((error) => {
   process.stderr.write(
     `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );

@@ -8,6 +8,10 @@ import { toast } from "@/ui/Toast";
 
 let instance: ProfileClientRegistry | null = null;
 
+interface MutationToastOptions {
+  description?: string;
+}
+
 export function getAppProfileClientRegistry(): ProfileClientRegistry {
   if (!instance) {
     instance = createProfileClientRegistry({
@@ -16,11 +20,11 @@ export function getAppProfileClientRegistry(): ProfileClientRegistry {
           onMutationError: (error, mutation) => {
             const described = describeMutationErrorToast(error, mutation.meta);
             if (!described) return;
-            toast.error(described.title, {
-              ...(described.description
-                ? { description: described.description }
-                : {}),
-            });
+            const options: MutationToastOptions = {};
+            if (described.description) {
+              options.description = described.description;
+            }
+            toast.error(described.title, options);
           },
         }),
     });

@@ -1,5 +1,13 @@
-import type { ComponentType, ReactNode } from "react";
+import { Children, type ComponentType, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+
+function stringValue(value: ReactNode): string | undefined {
+  if (Array.isArray(value)) return undefined;
+  const children = Children.toArray(value);
+  if (children.length !== 1) return undefined;
+  const text = String(children[0]);
+  return text === children[0] ? text : undefined;
+}
 
 export const OPTION_BASE_CLASS_NAME =
   "h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight";
@@ -36,8 +44,9 @@ export function OptionDisplay({
   title,
   muted,
 }: OptionDisplayProps) {
+  const textValue = stringValue(value);
   const defaultTitle =
-    typeof value === "string" ? `${label}: ${value}` : undefined;
+    textValue === undefined ? undefined : `${label}: ${textValue}`;
 
   return (
     <div

@@ -1,12 +1,10 @@
 import {
   type ClientTurnRequestId,
-  type DeltaItemShape,
   type ThreadDelta,
   type ThreadEventItemStatus,
   extractResultText,
   type PreparedProviderCommandDispatch,
   type ProviderPostInitializeRequest,
-  type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
@@ -34,7 +32,16 @@ import {
   type CodexThreadPermissionSettings,
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
+import type { FunctionCallOutputBody } from "./generated/codex-app-server/schema/FunctionCallOutputBody.js";
 import { subAgentPresentation } from "./presentation.js";
+
+type DeltaItem = Extract<ThreadDelta, { kind: "item.open" }>["item"];
+
+interface CodexRuntimeEvent {
+  jsonrpc?: "2.0";
+  method?: string;
+  params?: object;
+}
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
@@ -67,7 +74,7 @@ type CodexParsedCommandOutput =
   | CodexUnparseableCommandOutput;
 
 type CommandCloseDelta = Extract<ThreadDelta, { kind: "item.close" }> & {
-  item: Extract<DeltaItemShape, { type: "command" }>;
+  item: Extract<DeltaItem, { type: "command" }>;
 };
 
 interface CodexRawCommandOutputState {
@@ -96,13 +103,8 @@ const codexDelegationArgsSchema = z
   })
   .passthrough();
 
-function collectStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(
-    (entry): entry is string => typeof entry === "string" && entry.length > 0,
-  );
+function collectStringArray(value: readonly string[] | undefined): string[] {
+  return value?.filter((entry) => entry.length > 0) ?? [];
 }
 
 function getCodexDelegationToolCall(
@@ -134,9 +136,7 @@ function getCodexDelegationToolCall(
       args.success ? args.data.receiverThreadIds : undefined,
     ),
     senderThreadId:
-      args.success &&
-      typeof args.data.senderThreadId === "string" &&
-      args.data.senderThreadId.length > 0
+      args.success && args.data.senderThreadId?.length
         ? args.data.senderThreadId
         : undefined,
   };
@@ -198,7 +198,7 @@ const codexProviderThreadIdParamsSchema = z
   .passthrough();
 
 function extractCodexProviderThreadId(
-  event: ProviderRuntimeEvent,
+  event: CodexRuntimeEvent,
 ): string | undefined {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
   if (!envelope.success) {
@@ -214,10 +214,10 @@ function extractCodexProviderThreadId(
 }
 
 function toCodexRawNotification(
-  event: ProviderRuntimeEvent,
+  event: CodexRuntimeEvent,
   expectedMethod?: string,
 ): { method: string; params: unknown } | null {
-  const rawMethod = typeof event.method === "string" ? event.method : undefined;
+  const rawMethod = event.method;
   if (expectedMethod && rawMethod !== expectedMethod) {
     return null;
   }
@@ -287,7 +287,7 @@ function findCodexOutputMarkerNextIndex(
 }
 
 function extractRecoveredCommandOutput(
-  rawToolOutput: unknown,
+  rawToolOutput: FunctionCallOutputBody,
 ): CodexParsedCommandOutput {
   const text = normalizeCommandOutputNewlines(extractResultText(rawToolOutput));
   if (text.length === 0) {
@@ -525,7 +525,7 @@ export function createCodexEventTranslator(
     }
   }
 
-  function clearClosedThreadState(event: ProviderRuntimeEvent): ThreadDelta[] {
+  function clearClosedThreadState(event: CodexRuntimeEvent): ThreadDelta[] {
     const rawEvent = toCodexRawNotification(event, "thread/closed");
     if (!rawEvent) {
       return [];
@@ -1206,7 +1206,7 @@ export function createCodexEventTranslator(
   }
 
   function translateCodexSubAgentActivity(
-    event: ProviderRuntimeEvent,
+    event: CodexRuntimeEvent,
   ): ThreadDelta[] | null {
     const activity = parseCodexSubAgentActivityEvent(event);
     if (!activity) {
@@ -1294,7 +1294,7 @@ export function createCodexEventTranslator(
   }
 
   function consumeCodexRawResponseItem(
-    event: ProviderRuntimeEvent,
+    event: CodexRuntimeEvent,
   ): ThreadDelta[] | null {
     const rawEvent = toCodexRawNotification(event, "rawResponseItem/completed");
     if (!rawEvent) {
@@ -1454,9 +1454,9 @@ export function createCodexEventTranslator(
       if (delta.item.aggregatedOutput === undefined) {
         return delta;
       }
-      const { aggregatedOutput: _aggregatedOutput, ...shapeWithoutOutput } =
+      const { aggregatedOutput: _aggregatedOutput, ...itemWithoutOutput } =
         delta.item;
-      return { ...delta, item: shapeWithoutOutput };
+      return { ...delta, item: itemWithoutOutput };
     }
 
     return {
@@ -1512,7 +1512,7 @@ export function createCodexEventTranslator(
           method: "account/rateLimits/read",
         },
         required: false,
-        onResult(result: unknown) {
+        onResult(result) {
           const response = codexRateLimitReadResponseSchema.parse(result);
           applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
         },
@@ -1520,7 +1520,7 @@ export function createCodexEventTranslator(
     ];
   }
 
-  function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
+  function translateEvent(event: CodexRuntimeEvent): ThreadDelta[] {
     const closedThreadDeltas = clearClosedThreadState(event);
     if (closedThreadDeltas.length > 0) {
       return closedThreadDeltas;
@@ -1587,37 +1587,42 @@ interface CodexTrackedSubAgent {
   terminal: boolean;
 }
 
+interface CodexDelegationDeltaKey {
+  providerItemId: string;
+  parentRef?: string;
+}
+
+const codexSubAgentActivityParamsSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string(),
+    item: codexSubAgentActivityItemSchema,
+  })
+  .passthrough();
+
 function parseCodexSubAgentActivityEvent(
-  event: ProviderRuntimeEvent,
+  event: CodexRuntimeEvent,
 ): CodexSubAgentActivityEvent | null {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
   if (!envelope.success || envelope.data.method !== "item/completed") {
     return null;
   }
 
-  const params = envelope.data.params;
-  if (!params) {
-    return null;
-  }
-  const item = codexSubAgentActivityItemSchema.safeParse(params.item);
-  if (
-    !item.success ||
-    typeof params.threadId !== "string" ||
-    typeof params.turnId !== "string"
-  ) {
+  const params = codexSubAgentActivityParamsSchema.safeParse(
+    envelope.data.params,
+  );
+  if (!params.success) {
     return null;
   }
 
   return {
-    item: item.data,
-    providerThreadId: params.threadId,
-    turnId: params.turnId,
+    item: params.data.item,
+    providerThreadId: params.data.threadId,
+    turnId: params.data.turnId,
   };
 }
 
-function buildSubAgentDelegationShape(
-  tracked: CodexTrackedSubAgent,
-): DeltaItemShape {
+function buildSubAgentDelegationItem(tracked: CodexTrackedSubAgent): DeltaItem {
   return {
     type: "delegation",
     childRef: tracked.agentThreadId,
@@ -1629,15 +1634,16 @@ function buildSubAgentDelegationShape(
 function buildCodexSubAgentOpenDelta(
   tracked: CodexTrackedSubAgent,
 ): ThreadDelta {
+  const key: CodexDelegationDeltaKey = {
+    providerItemId: tracked.callId,
+  };
+  if (tracked.parentToolCallId) {
+    key.parentRef = tracked.parentToolCallId;
+  }
   return {
     kind: "item.open",
-    key: {
-      providerItemId: tracked.callId,
-      ...(tracked.parentToolCallId
-        ? { parentRef: tracked.parentToolCallId }
-        : {}),
-    },
-    item: buildSubAgentDelegationShape(tracked),
+    key,
+    item: buildSubAgentDelegationItem(tracked),
     presentation: subAgentPresentation(tracked.agentPath),
     providerTurnId: tracked.parentTurnId,
   };
@@ -1647,16 +1653,17 @@ function buildCodexSubAgentCloseDelta(args: {
   status: Exclude<ThreadEventItemStatus, "pending">;
   tracked: CodexTrackedSubAgent;
 }): ThreadDelta {
+  const key: CodexDelegationDeltaKey = {
+    providerItemId: args.tracked.callId,
+  };
+  if (args.tracked.parentToolCallId) {
+    key.parentRef = args.tracked.parentToolCallId;
+  }
   return {
     kind: "item.close",
-    key: {
-      providerItemId: args.tracked.callId,
-      ...(args.tracked.parentToolCallId
-        ? { parentRef: args.tracked.parentToolCallId }
-        : {}),
-    },
+    key,
     status: args.status,
-    item: buildSubAgentDelegationShape(args.tracked),
+    item: buildSubAgentDelegationItem(args.tracked),
     presentation: subAgentPresentation(args.tracked.agentPath),
     providerTurnId: args.tracked.parentTurnId,
   };

@@ -3,6 +3,7 @@ import type {
   PluginCliContext,
   PluginCliResult,
 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import type { JsonValue } from "./types.js";
 import type {
   WorkflowCallInspection,
@@ -23,7 +24,34 @@ const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 100;
 const MAX_LIST_LIMIT = 50;
 
-function success(value: unknown): PluginCliResult {
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+interface WorkflowCommandContext {
+  projectId: string;
+  threadId: string;
+}
+
+interface BoundedText {
+  value: string | null;
+  truncated: boolean;
+}
+
+interface InlineRunResult {
+  available: boolean;
+  omitted: boolean;
+  value: JsonValue;
+}
+
+function success<T extends object>(value: T): PluginCliResult {
   return { exitCode: 0, stdout: `${JSON.stringify(value)}\n` };
 }
 
@@ -38,10 +66,7 @@ function failure(message: string): PluginCliResult {
   return { exitCode: 1, stderr: `${message}\n` };
 }
 
-function requireContext(ctx: PluginCliContext): {
-  projectId: string;
-  threadId: string;
-} {
+function requireContext(ctx: PluginCliContext): WorkflowCommandContext {
   if (ctx.projectId === undefined || ctx.threadId === undefined) {
     throw new Error("This command must run inside a BB project thread");
   }
@@ -109,7 +134,7 @@ function sourceInput(
 function parseJsonOption(value: string | undefined): JsonValue {
   if (value === undefined) return null;
   try {
-    return JSON.parse(value) as JsonValue;
+    return jsonValueSchema.parse(JSON.parse(value));
   } catch (error) {
     throw new Error(
       `--args must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
@@ -137,7 +162,7 @@ function parseIntegerOption(
 
 function parseStoredJson(value: string, description: string): JsonValue {
   try {
-    return JSON.parse(value) as JsonValue;
+    return jsonValueSchema.parse(JSON.parse(value));
   } catch (error) {
     throw new Error(
       `Persisted ${description} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
@@ -153,13 +178,7 @@ function utf8CodePointBytes(value: string): number {
   return 4;
 }
 
-function boundedText(
-  value: string | null,
-  maximumBytes: number,
-): {
-  value: string | null;
-  truncated: boolean;
-} {
+function boundedText(value: string | null, maximumBytes: number): BoundedText {
   if (value === null) return { value, truncated: false };
   const characters: string[] = [];
   let bytes = 0;
@@ -178,11 +197,7 @@ function boundedText(
   return { value, truncated: false };
 }
 
-function inlineRunResult(run: WorkflowRunRow): {
-  available: boolean;
-  omitted: boolean;
-  value: JsonValue;
-} {
+function inlineRunResult(run: WorkflowRunRow): InlineRunResult {
   if (run.resultJson === null) {
     return { available: false, omitted: false, value: null };
   }

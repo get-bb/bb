@@ -47,6 +47,7 @@ async function addMemory(
     threadId: `thread-${input.projectId}`,
   });
   expect(result.exitCode, result.stderr).toBe(0);
+  // SAFETY: The memory CLI returns this parsed object after a successful add command.
   return JSON.parse(result.stdout ?? "").memory as {
     id: string;
     version: number;
@@ -144,6 +145,7 @@ describe("bb-plugin-memory", () => {
       { projectId: "project-a" },
     );
     expect(search.exitCode, search.stderr).toBe(0);
+    // SAFETY: The memory CLI returns this parsed array after a successful search command.
     const searched = JSON.parse(search.stdout ?? "").memories as Array<{
       id: string;
       details?: string;
@@ -268,6 +270,7 @@ describe("bb-plugin-memory", () => {
 
     const history = await host.harness.runCli(["history", memory.id, "--json"]);
     expect(history.exitCode, history.stderr).toBe(0);
+    // SAFETY: The memory CLI returns this parsed array after a successful history command.
     const versions = JSON.parse(history.stdout ?? "").history as Array<{
       version: number;
       action: string;
@@ -307,6 +310,7 @@ describe("bb-plugin-memory", () => {
       summary: "Other project summary.",
     });
 
+    // SAFETY: The memory RPC returns this object for the listMemories method.
     const listed = (await host.harness.callRpc("listMemories")) as {
       memories: Array<{ id: string; summary: string; version: number }>;
     };
@@ -314,6 +318,7 @@ describe("bb-plugin-memory", () => {
       expect.arrayContaining([projectA.id, projectB.id]),
     );
 
+    // SAFETY: The memory RPC returns this object for the updateMemory method.
     const updated = (await host.harness.callRpc("updateMemory", {
       id: projectB.id,
       expectedVersion: 1,
@@ -336,6 +341,7 @@ describe("bb-plugin-memory", () => {
         expectedVersion: 1,
       }),
     ).resolves.toEqual({ deleted: { id: projectA.id, version: 2 } });
+    // SAFETY: The memory RPC returns this object for the listMemories method.
     const afterDelete = (await host.harness.callRpc("listMemories")) as {
       memories: Array<{ id: string }>;
     };

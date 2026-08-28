@@ -14,19 +14,34 @@ interface ObserverHandle {
 let observers: ObserverHandle[] = [];
 
 function installIntersectionObserverStub(): void {
-  class ControllableIntersectionObserver {
+  class ControllableIntersectionObserver implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly scrollMargin = "";
+    readonly thresholds: readonly number[] = [];
+
     constructor(private readonly callback: IntersectionObserverCallback) {
       observers.push({
         emit: (isIntersecting: boolean) => {
           this.callback(
-            [{ isIntersecting } as IntersectionObserverEntry],
-            this as unknown as IntersectionObserver,
+            [
+              {
+                boundingClientRect: new DOMRect(),
+                intersectionRatio: isIntersecting ? 1 : 0,
+                intersectionRect: new DOMRect(),
+                isIntersecting,
+                rootBounds: null,
+                target: document.createElement("div"),
+                time: 0,
+              },
+            ],
+            this,
           );
         },
       });
     }
-    observe(): void {}
-    unobserve(): void {}
+    observe(_target: Element): void {}
+    unobserve(_target: Element): void {}
     disconnect(): void {}
     takeRecords(): IntersectionObserverEntry[] {
       return [];

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
@@ -12,7 +12,10 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
-import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
+import type {
+  PluginCliContext,
+  PluginMentionTrigger,
+} from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import {
   createAppAssetCompressionCache,
@@ -27,6 +30,7 @@ import {
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
 } from "@bb/server-contract";
+import { z } from "zod";
 
 interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
@@ -34,9 +38,25 @@ interface PluginRoutesDeps {
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
+interface AppAssetResponseHeaders {
+  "cache-control": string;
+  "content-length": string;
+  "content-type": string;
+  [header: string]: string;
+}
+
+const pluginCliRequestSchema = z
+  .object({
+    argv: z.array(z.string()),
+    cwd: z.string().optional(),
+    threadId: z.string().optional(),
+    projectId: z.string().optional(),
+  })
+  .strict();
 
 const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
+const readFile = createRequire(import.meta.url)("node:fs/promises").readFile;
 const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
 const MAX_CACHED_APP_ASSETS = 64;
 const APP_ASSET_ENCODINGS = [
@@ -66,7 +86,7 @@ async function appAssetResponse(
     contentType: string;
   },
 ): Promise<Response> {
-  const responseHeaders: Record<string, string> = {
+  const responseHeaders: AppAssetResponseHeaders = {
     "cache-control": args.cacheControl,
     "content-length": String(bytes.length),
     "content-type": args.contentType,
@@ -120,12 +140,6 @@ function localAuthProblem(
   return browserRequestProblem(context, deps, {
     requireJsonForMutation: true,
   });
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) && value.every((entry) => typeof entry === "string")
-  );
 }
 
 function timingSafeEqualStrings(a: string, b: string): boolean {
@@ -222,32 +236,22 @@ export function registerPluginRoutes(
         authProblem.status,
       );
     }
-    const body = (await context.req.json().catch(() => null)) as {
-      argv?: unknown;
-      cwd?: unknown;
-      threadId?: unknown;
-      projectId?: unknown;
-    } | null;
-    const argv = body?.argv;
-    if (!isStringArray(argv)) {
+    const body = pluginCliRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    if (!body.success) {
       return context.json(
         { ok: false, error: "expected { argv: string[] }" },
         400,
       );
     }
-    const ctx: {
-      cwd?: string;
-      threadId?: string;
-      projectId?: string;
-      signal?: AbortSignal;
-    } = {};
-    if (typeof body?.cwd === "string") ctx.cwd = body.cwd;
-    if (typeof body?.threadId === "string") ctx.threadId = body.threadId;
-    if (typeof body?.projectId === "string") ctx.projectId = body.projectId;
-    ctx.signal = context.req.raw.signal;
+    const ctx: PluginCliContext = { signal: context.req.raw.signal };
+    if (body.data.cwd !== undefined) ctx.cwd = body.data.cwd;
+    if (body.data.threadId !== undefined) ctx.threadId = body.data.threadId;
+    if (body.data.projectId !== undefined) ctx.projectId = body.data.projectId;
     const result = await plugins.runCliCommand(
       context.req.param("id"),
-      argv,
+      body.data.argv,
       ctx,
     );
     return context.json(result);
@@ -504,15 +508,14 @@ export function registerPluginRoutes(
 
   app.post("/plugins/:id/token", async (context) => {
     const rawBody = await context.req.text();
-    let json: unknown = {};
-    if (rawBody.trim() !== "") {
+    const body = (() => {
+      if (rawBody.trim() === "") return pluginTokenRequestSchema.safeParse({});
       try {
-        json = JSON.parse(rawBody);
+        return pluginTokenRequestSchema.safeParse(JSON.parse(rawBody));
       } catch {
-        json = null;
+        return pluginTokenRequestSchema.safeParse(null);
       }
-    }
-    const body = pluginTokenRequestSchema.safeParse(json);
+    })();
     if (!body.success) {
       return context.json(
         { ok: false, error: "expected { rotate?: boolean }" },

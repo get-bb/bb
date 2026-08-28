@@ -8,7 +8,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   defaultAppSettings,
   type AppCommandId,
@@ -16,6 +17,10 @@ import {
   type AppKeybinding,
 } from "@bb/domain";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import * as threadPaletteResults from "./ThreadPaletteResults";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {
   removePluginSlotRegistrations,
@@ -78,48 +83,23 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
   }));
 }
 
-const testState = vi.hoisted(() => ({ calls: [] as string[] }));
+interface CommandPaletteTestState {
+  calls: string[];
+}
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: {
-        ...defaultAppSettings,
-        showKeyboardHints: false,
-      },
-      keybindings: [PALETTE_BINDING, THREAD_SEARCH_BINDING, THREAD_NEW_BINDING],
-      defaultKeybindings: [
-        PALETTE_BINDING,
-        THREAD_SEARCH_BINDING,
-        ...defaults(
-          "thread.new",
-          "thread.next",
-          "panel.toggle",
-          "terminal.open",
-        ),
-      ],
-    },
-  }),
-}));
+interface CommandPaletteLocation {
+  pathname: string;
+  state: {
+    searchMessageSeq: number;
+    searchThreadId: string;
+  };
+}
 
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
+const testState: CommandPaletteTestState = { calls: [] };
+const { queryClient } = createQueryClientTestHarness();
 
-vi.mock("./ThreadPaletteResults", () => ({
-  ThreadPaletteResults: ({
-    onSelect,
-    query,
-  }: {
-    onSelect: (item: {
-      id: string;
-      optionId: string;
-      projectId: string;
-      threadId: string;
-      messageSeq: number | null;
-    }) => void;
-    query: string;
-  }) => (
+vi.spyOn(threadPaletteResults, "ThreadPaletteResults").mockImplementation(
+  ({ onSelect, query }) => (
     <button
       type="button"
       role="option"
@@ -137,7 +117,7 @@ vi.mock("./ThreadPaletteResults", () => ({
       Matched thread {query}
     </button>
   ),
-}));
+);
 
 function LocationProbe() {
   const location = useLocation();
@@ -157,27 +137,44 @@ function Handler({ command }: { command: AppCommandId }) {
 }
 
 function renderPalette(isCompactViewport = false) {
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      generalSettings: {
+        ...defaultAppSettings,
+        showKeyboardHints: false,
+      },
+      keybindings: [PALETTE_BINDING, THREAD_SEARCH_BINDING, THREAD_NEW_BINDING],
+      defaultKeybindings: [
+        PALETTE_BINDING,
+        THREAD_SEARCH_BINDING,
+        ...defaults(
+          "thread.new",
+          "thread.next",
+          "panel.toggle",
+          "terminal.open",
+        ),
+      ],
+    }),
+  );
   const result = render(
-    <MemoryRouter>
-      <AppCommandProvider>
-        <button type="button" data-testid="origin">
-          origin
-        </button>
-        <Handler command="thread.new" />
-        <Handler command="thread.next" />
-        <Handler command="panel.toggle" />
-        <Handler command="terminal.open" />
-        <CommandPalette threadId={null} projectId={null} />
-        <LocationProbe />
-      </AppCommandProvider>
-    </MemoryRouter>,
-    {
-      wrapper: ({ children }) => (
-        <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
-          {children}
-        </CompactViewportOverrideProvider>
-      ),
-    },
+    <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AppCommandProvider>
+            <button type="button" data-testid="origin">
+              origin
+            </button>
+            <Handler command="thread.new" />
+            <Handler command="thread.next" />
+            <Handler command="panel.toggle" />
+            <Handler command="terminal.open" />
+            <CommandPalette threadId={null} projectId={null} />
+            <LocationProbe />
+          </AppCommandProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    </CompactViewportOverrideProvider>,
   );
   screen.getByTestId("origin").focus();
   return result;
@@ -218,7 +215,16 @@ afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("linear");
   testState.calls.length = 0;
+  queryClient.clear();
   window.localStorage.clear();
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+});
+
+beforeEach(() => {
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
 });
 
 describe("CommandPalette", () => {
@@ -227,7 +233,11 @@ describe("CommandPalette", () => {
     const event = openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     expect(event.defaultPrevented).toBe(true);
-    expect((searchField() as HTMLInputElement).value).toBe(">");
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        searchField() as HTMLInputElement
+      ).value,
+    ).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
     expect(titles).toHaveLength(5);
@@ -336,10 +346,11 @@ describe("CommandPalette", () => {
   });
 
   it("scrolls the highlighted row into view when arrowing, but not on hover", async () => {
-    const scrollIntoView = vi.spyOn(
-      Element.prototype,
-      "scrollIntoView",
-    ) as unknown as ReturnType<typeof vi.fn>;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
@@ -354,10 +365,12 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
 
     scrollIntoView.mockClear();
-    fireEvent.pointerMove(screen.getAllByRole("option")[0] as HTMLElement);
+    fireEvent.pointerMove(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getAllByRole(
+        "option",
+      )[0] as HTMLElement,
+    );
     expect(scrollIntoView).not.toHaveBeenCalled();
-
-    scrollIntoView.mockRestore();
   });
 
   it("lists a plugin's commandPaletteAction and runs it", async () => {
@@ -415,7 +428,11 @@ describe("CommandPalette", () => {
       ).toBeTruthy(),
     );
     expect(event.defaultPrevented).toBe(true);
-    expect((searchField() as HTMLInputElement).value).toBe("");
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        searchField() as HTMLInputElement
+      ).value,
+    ).toBe("");
     expect(screen.getByRole("listbox").getAttribute("aria-label")).toBe(
       "Thread search results",
     );
@@ -433,7 +450,7 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(searchField(), { key: "Enter" });
 
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         screen.getByRole("combobox", {
           name: "Search threads",
         }) as HTMLInputElement
@@ -457,9 +474,10 @@ describe("CommandPalette", () => {
         "thr_message",
       ),
     );
-    const location = JSON.parse(
-      screen.getByTestId("location").textContent ?? "{}",
-    ) as { pathname: string; state: Record<string, unknown> };
+    const location =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ JSON.parse(
+        screen.getByTestId("location").textContent ?? "{}",
+      ) as CommandPaletteLocation;
     expect(location.pathname).toContain("thr_message");
     expect(location.state).toEqual({
       searchMessageSeq: 7,

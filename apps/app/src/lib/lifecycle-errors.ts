@@ -411,12 +411,12 @@ function describeParentThreadInvalid({
   }
 }
 
-export function parseLifecycleError(error: unknown): LifecycleApiError | null {
-  if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
+export function parseLifecycleError(cause: unknown): LifecycleApiError | null {
+  if (!(cause instanceof HttpError) && !(cause instanceof BbHttpError)) {
     return null;
   }
 
-  const result = lifecycleApiErrorSchema.safeParse(error.body);
+  const result = lifecycleApiErrorSchema.safeParse(cause.body);
   return result.success ? result.data : null;
 }
 

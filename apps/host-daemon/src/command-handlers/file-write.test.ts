@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CommandDispatchError,
   type CommandOf,
+  getErrorCode,
   isExpectedCommandDispatchError,
 } from "../command-dispatch-support.js";
 import { writeHostFile } from "./file-write.js";
@@ -46,11 +47,14 @@ function writeCommand(
 
 async function captureWriteError(
   command: CommandOf<"host.write_file">,
-): Promise<unknown> {
+): Promise<Error> {
   try {
     await writeHostFile(command);
   } catch (error) {
-    return error;
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new Error("Expected writeHostFile to throw an Error");
   }
   throw new Error("Expected writeHostFile to fail");
 }
@@ -202,7 +206,7 @@ describe("writeHostFile", () => {
     );
 
     expect(isExpectedCommandDispatchError(error)).toBe(true);
-    expect((error as CommandDispatchError).code).toBe("ENOENT");
+    expect(getErrorCode(error)).toBe("ENOENT");
   });
 
   it("creates missing parents when createParents is true", async () => {
@@ -230,7 +234,7 @@ describe("writeHostFile", () => {
     );
 
     expect(error).toBeInstanceOf(CommandDispatchError);
-    expect((error as CommandDispatchError).code).toBe("invalid_path");
+    expect(getErrorCode(error)).toBe("invalid_path");
     await expect(
       fs.readFile(path.join(outsideDir, "escape.md"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });
@@ -248,7 +252,7 @@ describe("writeHostFile", () => {
     );
 
     expect(error).toBeInstanceOf(CommandDispatchError);
-    expect((error as CommandDispatchError).code).toBe("invalid_path");
+    expect(getErrorCode(error)).toBe("invalid_path");
   });
 
   it("allows contained writes under the declared root", async () => {
@@ -284,7 +288,7 @@ describe("writeHostFile", () => {
     const error = await captureWriteError(writeCommand({ path: dir }));
 
     expect(error).toBeInstanceOf(CommandDispatchError);
-    expect((error as CommandDispatchError).code).toBe("invalid_path");
+    expect(getErrorCode(error)).toBe("invalid_path");
   });
 
   it("rejects relative paths", async () => {
@@ -293,7 +297,7 @@ describe("writeHostFile", () => {
     );
 
     expect(error).toBeInstanceOf(CommandDispatchError);
-    expect((error as CommandDispatchError).code).toBe("invalid_path");
+    expect(getErrorCode(error)).toBe("invalid_path");
   });
 
   it("round-trips with readHostFile for compare-and-swap saves", async () => {

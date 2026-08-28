@@ -8,51 +8,66 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginSlotMount } from "./PluginSlotMount";
+import * as embeddedChatModule from "@/components/thread/embedded-chat";
+import * as timelineModule from "@/components/thread/timeline";
+import * as realtimeSubscriptionModule from "@/hooks/useRealtimeSubscription";
+import * as hostDaemonModule from "@/hooks/useHostDaemon";
 
-const mocks = vi.hoisted(() => ({
-  embeddedChatProps: [] as Array<Record<string, unknown>>,
-  timelinePanelProps: [] as Array<Record<string, unknown>>,
-}));
+type EmbeddedChatProps = Parameters<
+  typeof embeddedChatModule.EmbeddedThreadChat
+>[0];
+type TimelinePanelProps = Parameters<
+  typeof timelineModule.ThreadTimelinePanelContent
+>[0];
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: { get: vi.fn() },
-    environments: { get: vi.fn() },
-    providers: { list: vi.fn(async () => []) },
-  },
-  BbHttpError: class BbHttpError extends Error {
-    status: number;
-    constructor(status: number) {
-      super(`http ${status}`);
-      this.status = status;
-    }
-  },
-}));
+interface PluginThreadChatTestMocks {
+  embeddedChatProps: EmbeddedChatProps[];
+  timelinePanelProps: TimelinePanelProps[];
+}
 
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: vi.fn(),
-  useThreadListRealtimeSubscription: vi.fn(),
-  useEnvironmentDetailRealtimeSubscription: vi.fn(),
-  useSystemRealtimeSubscription: vi.fn(),
-}));
+const mocks: PluginThreadChatTestMocks = {
+  embeddedChatProps: [],
+  timelinePanelProps: [],
+};
 
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
-}));
-
-vi.mock("@/components/thread/embedded-chat", () => ({
-  EmbeddedThreadChat: (props: Record<string, unknown>) => {
+vi.spyOn(sdk.threads, "get");
+vi.spyOn(sdk.providers, "list").mockResolvedValue([]);
+vi.spyOn(
+  realtimeSubscriptionModule,
+  "useThreadDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscriptionModule,
+  "useThreadListRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscriptionModule,
+  "useEnvironmentDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscriptionModule,
+  "useSystemRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(hostDaemonModule, "useHostDaemon").mockReturnValue({
+  localDaemonHostId: null,
+  localHostId: null,
+  hasDaemon: true,
+  supportsNativeFolderPicker: false,
+  platform: null,
+  isLocalDaemonHost: () => true,
+});
+vi.spyOn(embeddedChatModule, "EmbeddedThreadChat").mockImplementation(
+  (props) => {
     mocks.embeddedChatProps.push(props);
     return <div data-testid="embedded-thread-chat" />;
   },
-}));
-
-vi.mock("@/components/thread/timeline", () => ({
-  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
+);
+vi.spyOn(timelineModule, "ThreadTimelinePanelContent").mockImplementation(
+  (props) => {
     mocks.timelinePanelProps.push(props);
     return <div data-testid="timeline-panel-content" />;
   },
-}));
+);
 
 const THREAD_FIXTURE = {
   id: "thr_demo",
@@ -102,8 +117,21 @@ afterEach(() => {
 beforeEach(() => {
   mocks.embeddedChatProps = [];
   mocks.timelinePanelProps = [];
-  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_FIXTURE as never);
+  vi.mocked(sdk.threads.get).mockResolvedValue(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ THREAD_FIXTURE as never,
+  );
 });
+
+function latestEmbeddedChatProps(): Extract<
+  EmbeddedChatProps,
+  { variant: "compact" }
+> {
+  const props = mocks.embeddedChatProps.at(-1);
+  if (props === undefined || props.variant !== "compact") {
+    throw new Error("Expected compact embedded chat props");
+  }
+  return props;
+}
 
 describe("PluginThreadChat", () => {
   it("gives a plugin page a working query client and sdk-backed thread context", async () => {
@@ -124,7 +152,7 @@ describe("PluginThreadChat", () => {
     expect(sdk.threads.get).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: "thr_demo" }),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = latestEmbeddedChatProps();
     expect(props.projectId).toBe("proj_demo");
     expect(props.providerId).toBe("provider_demo");
     expect(props.variant).toBe("compact");
@@ -156,7 +184,7 @@ describe("PluginThreadChat", () => {
     await waitFor(() =>
       expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
     );
-    expect(mocks.embeddedChatProps.at(-1)!.composer).toEqual(
+    expect(latestEmbeddedChatProps().composer).toEqual(
       expect.objectContaining({ permissionPolicy: "editable" }),
     );
   });
@@ -187,7 +215,7 @@ describe("PluginThreadChat", () => {
     await waitFor(() =>
       expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = latestEmbeddedChatProps();
     expect(props).toEqual(
       expect.objectContaining({
         onOpenLink,
@@ -196,13 +224,7 @@ describe("PluginThreadChat", () => {
       }),
     );
 
-    const embeddedResolveMentionLink = props.resolveMentionLink as (resource: {
-      kind: "path";
-      source: "workspace";
-      entryKind: "file";
-      path: string;
-      label: string;
-    }) => (() => void) | null;
+    const embeddedResolveMentionLink = props.resolveMentionLink;
     const workspaceMention = {
       kind: "path" as const,
       source: "workspace" as const,
@@ -231,9 +253,7 @@ describe("PluginThreadChat", () => {
       expect(screen.getByTestId("timeline-panel-content")).toBeTruthy(),
     );
     expect(mocks.embeddedChatProps).toHaveLength(0);
-    expect(mocks.timelinePanelProps.at(-1)).toEqual(
-      expect.objectContaining({ threadId: "thr_demo" }),
-    );
+    expect(mocks.timelinePanelProps.at(-1)?.threadId).toBe("thr_demo");
   });
 
   it("forwards leadingContent and maps messageActions to consumer actions", async () => {
@@ -252,11 +272,10 @@ describe("PluginThreadChat", () => {
     await waitFor(() =>
       expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = latestEmbeddedChatProps();
     expect(props.leadingContent).toBeTruthy();
-    const actions = props.consumerMessageActions as Array<
-      Record<string, unknown>
-    >;
+    const actions = props.consumerMessageActions;
+    if (actions === undefined) throw new Error("Expected consumer actions");
     expect(actions).toHaveLength(1);
     expect(actions[0]).toEqual(
       expect.objectContaining({
@@ -284,7 +303,7 @@ describe("PluginThreadChat", () => {
     await waitFor(() =>
       expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = latestEmbeddedChatProps();
     expect(props.measure).toBe("page");
     expect(props.layout).toBe("document");
     expect(props.composer).toEqual(

@@ -15,6 +15,12 @@ export interface FakeAiServiceCall<Input> {
   options: AiServiceCallOptions;
 }
 
+export interface FakeAiServiceRegistration {
+  inferenceCalls: FakeAiServiceCall<ExperimentalAiInferenceCompleteInput>[];
+  voiceCalls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[];
+  dispose(): void;
+}
+
 export function registerFakeAiService(
   registry: AiServiceRegistry,
   args: {
@@ -31,11 +37,7 @@ export function registerFakeAiService(
       | ExperimentalAiVoiceTranscribeOutput
       | Promise<ExperimentalAiVoiceTranscribeOutput>;
   } = {},
-): {
-  inferenceCalls: FakeAiServiceCall<ExperimentalAiInferenceCompleteInput>[];
-  voiceCalls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[];
-  dispose(): void;
-} {
+): FakeAiServiceRegistration {
   const inferenceCalls: FakeAiServiceCall<ExperimentalAiInferenceCompleteInput>[] =
     [];
   const voiceCalls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[] =

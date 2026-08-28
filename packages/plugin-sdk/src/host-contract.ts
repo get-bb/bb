@@ -160,13 +160,26 @@ export function experimental_defineHostEntry<
   handlers: ExperimentalHostRpcHandlers<Contract, Signals>;
   dispose?: () => void | Promise<void>;
 }): ExperimentalHostEntry<Contract, Signals> {
-  return {
+  const entry = {
     experimental_apiVersion: 1,
     contract: args.contract,
     handlers: args.handlers,
-    ...(args.experimental_signals === undefined
-      ? {}
-      : { experimental_signals: args.experimental_signals }),
-    ...(args.dispose === undefined ? {} : { dispose: args.dispose }),
-  };
+  } satisfies Pick<
+    ExperimentalHostEntry<Contract, Signals>,
+    "experimental_apiVersion" | "contract" | "handlers"
+  >;
+  if (args.experimental_signals !== undefined && args.dispose !== undefined) {
+    return {
+      ...entry,
+      experimental_signals: args.experimental_signals,
+      dispose: args.dispose,
+    };
+  }
+  if (args.experimental_signals !== undefined) {
+    return { ...entry, experimental_signals: args.experimental_signals };
+  }
+  if (args.dispose !== undefined) {
+    return { ...entry, dispose: args.dispose };
+  }
+  return entry;
 }

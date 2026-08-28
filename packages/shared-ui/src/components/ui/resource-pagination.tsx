@@ -130,7 +130,8 @@ export function useResourceViewportPageSize(
     }
 
     function scheduleMeasure() {
-      if (typeof requestAnimationFrame !== "function") {
+      const requestAnimationFrame = globalThis.requestAnimationFrame;
+      if (requestAnimationFrame === undefined) {
         measure();
         return;
       }
@@ -141,14 +142,14 @@ export function useResourceViewportPageSize(
       });
     }
 
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(scheduleMeasure);
+    if (globalThis.ResizeObserver !== undefined) {
+      resizeObserver = new globalThis.ResizeObserver(scheduleMeasure);
       resizeObserver.observe(viewportElement);
     }
     const mutationObserver =
-      typeof MutationObserver === "undefined"
+      globalThis.MutationObserver === undefined
         ? null
-        : new MutationObserver(scheduleMeasure);
+        : new globalThis.MutationObserver(scheduleMeasure);
     mutationObserver?.observe(viewportElement, {
       childList: true,
       subtree: true,
@@ -160,9 +161,9 @@ export function useResourceViewportPageSize(
       resizeObserver?.disconnect();
       if (
         scheduledFrame !== null &&
-        typeof cancelAnimationFrame === "function"
+        globalThis.cancelAnimationFrame !== undefined
       ) {
-        cancelAnimationFrame(scheduledFrame);
+        globalThis.cancelAnimationFrame(scheduledFrame);
       }
     };
   }, [fallbackPageSize, resetKey, viewport]);
@@ -271,7 +272,10 @@ export function ResourceInfiniteScrollSentinel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
-  onLoadMoreRef.current = onLoadMore;
+
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  }, [onLoadMore]);
 
   useEffect(() => {
     const element = ref.current;
@@ -279,14 +283,14 @@ export function ResourceInfiniteScrollSentinel({
       element === null ||
       !hasMore ||
       loading ||
-      typeof IntersectionObserver === "undefined"
+      globalThis.IntersectionObserver === undefined
     ) {
       return;
     }
     const root = element.closest(
       "[data-resource-collection-scroll], [data-infinite-scroll-root]",
     );
-    const observer = new IntersectionObserver(
+    const observer = new globalThis.IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
           onLoadMoreRef.current();
@@ -324,11 +328,11 @@ export function ResourceInfiniteScrollSentinel({
 function scrollToResults(scrollTargetId: string | undefined): void {
   if (
     scrollTargetId === undefined ||
-    typeof requestAnimationFrame !== "function"
+    globalThis.requestAnimationFrame === undefined
   ) {
     return;
   }
-  requestAnimationFrame(() => {
+  globalThis.requestAnimationFrame(() => {
     const target = document.getElementById(scrollTargetId);
     if (target === null) return;
     target.scrollTo?.({ top: 0, behavior: "instant" });

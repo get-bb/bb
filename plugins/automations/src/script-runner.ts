@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { access, mkdir, stat } from "node:fs/promises";
+import { z } from "zod";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
   type AutomationScriptInterpreter,
@@ -21,6 +22,10 @@ let resolvedBbPath: string | null = null;
 
 const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
+
+const wakeAgentMessageSchema = z
+  .object({ wakeAgent: z.boolean() })
+  .passthrough();
 
 async function commandWorks(command: string, args: string[]): Promise<boolean> {
   try {
@@ -101,13 +106,8 @@ export function isWakeAgentSuppressed(output: string): boolean {
   const last = lines[lines.length - 1];
   if (last === undefined) return false;
   try {
-    const parsed: unknown = JSON.parse(last);
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "wakeAgent" in parsed &&
-      (parsed as { wakeAgent: unknown }).wakeAgent === false
-    );
+    const parsed = wakeAgentMessageSchema.safeParse(JSON.parse(last));
+    return parsed.success && parsed.data.wakeAgent === false;
   } catch {
     return false;
   }
@@ -183,7 +183,8 @@ function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
     }
     child.kill(signal);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    const parsedError = z.object({ code: z.string() }).safeParse(error);
+    if (parsedError.success && parsedError.data.code === "ESRCH") return;
     try {
       child.kill(signal);
     } catch {}

@@ -48,11 +48,10 @@ export function resolveThreadInvalidationDebounce(
 }
 
 function detectCoarsePointer(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches
-  );
+  if (!("window" in globalThis) || !("matchMedia" in globalThis.window)) {
+    return false;
+  }
+  return globalThis.window.matchMedia("(pointer: coarse)").matches;
 }
 
 const {

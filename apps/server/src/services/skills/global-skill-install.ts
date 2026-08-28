@@ -128,12 +128,6 @@ export async function readGlobalCliSkillStatus(
   return { machines };
 }
 
-function installFailureMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  const message = error instanceof Error ? error.message : String(error);
-  return message.trim().length > 0 ? message : "The install failed";
-}
-
 export async function installGlobalCliSkills(
   deps: GlobalSkillInstallDeps,
   args: InstallGlobalCliSkillsArgs,
@@ -177,11 +171,20 @@ export async function installGlobalCliSkills(
           { hostId: host.id, err: error },
           "Failed to install the bb CLI skills on a machine",
         );
+        let errorMessage: string;
+        if (error instanceof ApiError) {
+          errorMessage = error.message;
+        } else {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          errorMessage =
+            message.trim().length > 0 ? message : "The install failed";
+        }
         return {
           ok: false as const,
           hostId: host.id,
           hostName: host.name,
-          errorMessage: installFailureMessage(error),
+          errorMessage,
         };
       }
     }),

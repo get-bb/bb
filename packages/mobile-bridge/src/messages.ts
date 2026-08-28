@@ -43,6 +43,23 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
 export type BridgeRequest = z.infer<typeof bridgeRequestSchema>;
 export type BridgeRequestKind = BridgeRequest["kind"];
 
+type JsonMessageObject = { readonly [key: string]: JsonMessageValue };
+type JsonMessageValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | JsonMessageValue[]
+  | JsonMessageObject;
+
+function isJsonText(value: JsonMessageValue): value is string {
+  return (
+    Object.prototype.toString.call(value) === "[object String]" &&
+    value === String(value)
+  );
+}
+
 export const NATIVE_SCREENS = ["device-settings"] as const;
 export const nativeScreenSchema = z.enum(NATIVE_SCREENS);
 export type NativeScreen = z.infer<typeof nativeScreenSchema>;
@@ -80,11 +97,13 @@ export type ParsedPageMessage =
   | { ok: true; message: PageToShellMessage }
   | { ok: false; reason: string };
 
-export function parsePageToShellMessage(raw: unknown): ParsedPageMessage {
-  if (typeof raw !== "string") {
+export function parsePageToShellMessage(
+  raw: JsonMessageValue,
+): ParsedPageMessage {
+  if (!isJsonText(raw)) {
     return { ok: false, reason: "message was not a string" };
   }
-  let json: unknown;
+  let json: JsonMessageValue;
   try {
     json = JSON.parse(raw);
   } catch {

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { z } from "zod";
 import {
   type ProviderHealthResult,
   type ProviderInstallationRunResult,
@@ -26,6 +27,16 @@ type PiVersionProbe =
   | { version: string; failure: null }
   | { version: null; failure: string };
 
+const piVersionProbeFailureSchema = z
+  .object({
+    code: z.union([z.string(), z.number()]).nullable().optional(),
+    killed: z.boolean().optional(),
+    message: z.string().optional(),
+    signal: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .transform((value) => Object.assign(new Error(value.message ?? ""), value));
+
 export async function probePiVersion(): Promise<PiVersionProbe> {
   const launch = resolvePiLaunch(process.env);
   const display = formatCommand(launch.command, [...launch.args, "--version"]);
@@ -39,9 +50,12 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
       },
     ));
   } catch (error) {
+    const parsedError = piVersionProbeFailureSchema.safeParse(error);
     return {
       version: null,
-      failure: `\`${display}\` ${describePiVersionProbeFailure(error)}`,
+      failure: `\`${display}\` ${describePiVersionProbeFailure(
+        parsedError.success ? parsedError.data : new Error(String(error)),
+      )}`,
     };
   }
   const version = versionFrom(stdout);
@@ -50,21 +64,23 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
     : { version, failure: null };
 }
 
-export function describePiVersionProbeFailure(error: unknown): string {
-  const failed =
-    error !== null && typeof error === "object"
-      ? (error as { code?: unknown; killed?: unknown; signal?: unknown })
-      : null;
-  if (failed?.killed === true) {
+export function describePiVersionProbeFailure(
+  error: Error & {
+    code?: string | number | null;
+    killed?: boolean;
+    signal?: string | null;
+  },
+): string {
+  if (error.killed === true) {
     return `timed out after ${VERSION_PROBE_TIMEOUT_MS / 1000} s`;
   }
-  if (typeof failed?.signal === "string") {
-    return `was stopped by ${failed.signal} before it answered`;
+  if (error.signal !== undefined && error.signal !== null) {
+    return `was stopped by ${error.signal} before it answered`;
   }
-  if (failed?.code !== undefined && failed.code !== null) {
-    return `exited with ${String(failed.code)}`;
+  if (error.code !== undefined && error.code !== null) {
+    return `exited with ${String(error.code)}`;
   }
-  return error instanceof Error ? error.message : String(error);
+  return error.message;
 }
 
 export async function getPiProviderInstallationStatus(): Promise<ProviderInstallationStatus> {

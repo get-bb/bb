@@ -4,10 +4,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
@@ -21,14 +18,7 @@
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts"
       ]
     },
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "server.ts",
-    "src",
-    "public-sdk-only.test.ts",
-    "vitest.config.ts"
-  ]
+  "include": ["server.ts", "src", "public-sdk-only.test.ts", "vitest.config.ts"]
 }

@@ -8,7 +8,9 @@ import {
 } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
@@ -45,6 +47,15 @@ interface NoteSummary {
   preview: string;
   modifiedAtMs: number;
 }
+
+type RpcBoundaryInput = Parameters<PluginRpcClient["call"]>[1];
+
+const optionalVaultInputSchema = z.object({ vaultId: z.string().optional() });
+const noteInputSchema = z.object({ vaultId: z.string(), path: z.string() });
+const renameToTitleInputSchema = z.object({
+  vaultId: z.string().optional(),
+  path: z.string(),
+});
 
 function listNotesResult(
   notes: NoteSummary[],
@@ -316,9 +327,9 @@ describe("Docs nav panel", () => {
       { subPath: "personal/one.md" },
       {
         rpc: {
-          listNotes: (rawInput: unknown) => {
-            const input = rawInput as { vaultId?: string } | undefined;
-            const vaultId = input?.vaultId ?? "personal";
+          listNotes: (rpcInput: RpcBoundaryInput) => {
+            const input = optionalVaultInputSchema.parse(rpcInput);
+            const vaultId = input.vaultId ?? "personal";
             const name = vaultId === "work" ? "Work" : "Personal";
             const path = vaultId === "work" ? "two.md" : "one.md";
             return {
@@ -338,16 +349,16 @@ describe("Docs nav panel", () => {
               },
             };
           },
-          readNote: (rawInput: unknown) => {
-            const input = rawInput as { vaultId: string };
+          readNote: (rpcInput: RpcBoundaryInput) => {
+            const input = noteInputSchema.parse(rpcInput);
             return {
               content: `# ${input.vaultId === "work" ? "Work" : "Personal"}`,
               sha256: input.vaultId,
             };
           },
           preparePreview: () => preview,
-          renameToTitle: (rawInput: unknown) => {
-            const input = rawInput as { path: string };
+          renameToTitle: (rpcInput: RpcBoundaryInput) => {
+            const input = renameToTitleInputSchema.parse(rpcInput);
             return { path: input.path };
           },
         },
@@ -407,15 +418,15 @@ describe("Docs nav panel", () => {
       },
     });
     const rpc = {
-      listNotes: (rawInput: unknown) => {
-        const input = rawInput as { vaultId?: string } | undefined;
-        const vaultId = input?.vaultId ?? "personal";
+      listNotes: (rpcInput: RpcBoundaryInput) => {
+        const input = optionalVaultInputSchema.parse(rpcInput);
+        const vaultId = input.vaultId ?? "personal";
         return new Promise<ReturnType<typeof listNotesResult>>((resolve) => {
           pending.push({ vaultId, resolve });
         });
       },
-      readNote: (rawInput: unknown) => {
-        const input = rawInput as { vaultId: string };
+      readNote: (rpcInput: RpcBoundaryInput) => {
+        const input = noteInputSchema.parse(rpcInput);
         return {
           content: `# ${input.vaultId === "work" ? "Work document" : "Personal document"}`,
           sha256: input.vaultId,
@@ -423,8 +434,8 @@ describe("Docs nav panel", () => {
       },
       preparePreview: () => preview,
       createNote: () => ({ path: "created.md" }),
-      renameToTitle: (rawInput: unknown) => {
-        const input = rawInput as { path: string };
+      renameToTitle: (rpcInput: RpcBoundaryInput) => {
+        const input = renameToTitleInputSchema.parse(rpcInput);
         return { path: input.path };
       },
     };
@@ -543,9 +554,9 @@ describe("Docs nav panel", () => {
       { subPath: "personal/personal.md" },
       {
         rpc: {
-          listNotes: (rawInput: unknown) => {
-            const input = rawInput as { vaultId?: string } | undefined;
-            if (input?.vaultId === "work") {
+          listNotes: (rpcInput: RpcBoundaryInput) => {
+            const input = optionalVaultInputSchema.parse(rpcInput);
+            if (input.vaultId === "work") {
               workNotebookRequested = true;
               return pendingWorkNotebook.promise;
             }
@@ -555,8 +566,8 @@ describe("Docs nav panel", () => {
               "Personal note",
             );
           },
-          readNote: (rawInput: unknown) => {
-            const input = rawInput as { vaultId: string };
+          readNote: (rpcInput: RpcBoundaryInput) => {
+            const input = noteInputSchema.parse(rpcInput);
             return {
               content:
                 input.vaultId === "work"
@@ -567,8 +578,8 @@ describe("Docs nav panel", () => {
           },
           preparePreview: () => preview,
           saveNote: () => pendingSave.promise,
-          renameToTitle: (rawInput: unknown) => {
-            const input = rawInput as { vaultId: string; path: string };
+          renameToTitle: (rpcInput: RpcBoundaryInput) => {
+            const input = renameToTitleInputSchema.parse(rpcInput);
             return {
               path:
                 input.vaultId === "personal"
@@ -604,7 +615,8 @@ describe("Docs nav panel", () => {
       slot.rpcCalls.filter(
         (call) =>
           call.method === "listNotes" &&
-          (call.input as { vaultId?: string }).vaultId === "personal",
+          JSON.stringify(call.input) ===
+            JSON.stringify({ vaultId: "personal" }),
       ),
     ).toHaveLength(1);
     expect(slot.navigateCalls).not.toContainEqual({
@@ -627,9 +639,9 @@ describe("Docs nav panel", () => {
       { subPath: "personal/personal.md" },
       {
         rpc: {
-          listNotes: (rawInput: unknown) => {
-            const input = rawInput as { vaultId?: string } | undefined;
-            if (input?.vaultId === "work") {
+          listNotes: (rpcInput: RpcBoundaryInput) => {
+            const input = optionalVaultInputSchema.parse(rpcInput);
+            if (input.vaultId === "work") {
               workNotebookRequested = true;
               return pendingWorkNotebook.promise;
             }
@@ -665,7 +677,8 @@ describe("Docs nav panel", () => {
       slot.rpcCalls.filter(
         (call) =>
           call.method === "listNotes" &&
-          (call.input as { vaultId?: string }).vaultId === "personal",
+          JSON.stringify(call.input) ===
+            JSON.stringify({ vaultId: "personal" }),
       ),
     ).toHaveLength(1);
     expect(slot.navigateCalls).not.toContainEqual({
@@ -749,7 +762,7 @@ describe("Docs nav panel", () => {
   });
 
   it("renders and autosaves editable Markdown tables", async () => {
-    const saveNote = vi.fn((_input: unknown) => ({
+    const saveNote = vi.fn((_input: RpcBoundaryInput) => ({
       outcome: "written",
       sha256: "next-sha",
     }));
@@ -812,7 +825,7 @@ describe("Docs nav panel", () => {
       "type: knowledge\r\n",
       "---\r\n",
     ].join("");
-    const saveNote = vi.fn((_input: unknown) => ({
+    const saveNote = vi.fn((_input: RpcBoundaryInput) => ({
       outcome: "written",
       sha256: "next-sha",
     }));

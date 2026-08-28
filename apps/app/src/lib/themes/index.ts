@@ -12,14 +12,14 @@ import { solarizedThemeCss } from "./solarized";
 const APP_THEME_STYLE_ELEMENT_ID = "bb-app-theme";
 export const APP_THEME_CSS_STORAGE_KEY = "bb.appThemeCss";
 
-const builtInThemeCss: Record<BuiltInThemeId, string> = {
+const builtInThemeCss = {
   default: "",
   nord: nordThemeCss,
   dracula: draculaThemeCss,
   solarized: solarizedThemeCss,
   gruvbox: gruvboxThemeCss,
   catppuccin: catppuccinThemeCss,
-};
+} satisfies Record<BuiltInThemeId, string>;
 
 export function resolveAppThemeCss(appearance: AppTheme): string {
   if (isBuiltInThemeId(appearance.themeId)) {
@@ -29,12 +29,14 @@ export function resolveAppThemeCss(appearance: AppTheme): string {
 }
 
 function getOrCreateStyleElement(): HTMLStyleElement | null {
-  if (typeof document === "undefined") return null;
-  const existing = document.getElementById(APP_THEME_STYLE_ELEMENT_ID);
+  if (globalThis.document === undefined) return null;
+  const existing = globalThis.document.getElementById(
+    APP_THEME_STYLE_ELEMENT_ID,
+  );
   if (existing instanceof HTMLStyleElement) return existing;
-  const style = document.createElement("style");
+  const style = globalThis.document.createElement("style");
   style.id = APP_THEME_STYLE_ELEMENT_ID;
-  document.head.appendChild(style);
+  globalThis.document.head.appendChild(style);
   return style;
 }
 
@@ -67,7 +69,7 @@ export function applyAppThemeCss(css: string): void {
 }
 
 export function applyCachedAppThemeCss(): void {
-  if (typeof document === "undefined") return;
+  if (globalThis.document === undefined) return;
   let cached: string | null = null;
   try {
     cached = localStorage.getItem(APP_THEME_CSS_STORAGE_KEY);
@@ -76,8 +78,8 @@ export function applyCachedAppThemeCss(): void {
   }
   if (!cached) return;
   const style = getOrCreateStyleElement();
-  if (style && style !== document.head.lastElementChild) {
-    document.head.appendChild(style);
+  if (style && style !== globalThis.document.head.lastElementChild) {
+    globalThis.document.head.appendChild(style);
   }
   applyAppThemeCss(cached);
 }

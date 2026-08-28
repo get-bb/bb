@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
+import { z } from "zod";
 import { resolveDesktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 const packageRoot = process.cwd();
@@ -16,24 +17,18 @@ const pluginSdkPackageJsonPath = resolve(
   "package.json",
 );
 
+const packageVersionSchema = z.object({ version: z.string().min(1) });
+
 function readPackageVersion(packageJsonText, label) {
-  const packageJson = JSON.parse(packageJsonText);
-  if (
-    typeof packageJson !== "object" ||
-    packageJson === null ||
-    typeof packageJson.version !== "string" ||
-    packageJson.version.length === 0
-  ) {
+  const packageJson = packageVersionSchema.safeParse(
+    JSON.parse(packageJsonText),
+  );
+  if (!packageJson.success) {
     throw new Error(`${label} must define a version`);
   }
-  return packageJson.version;
+  return packageJson.data.version;
 }
 
-/**
- * The About panel reports the commit a build came from. A tarball checkout or
- * a shallow CI clone can have no usable git metadata, so an unknown commit is
- * reported as such rather than failing the build.
- */
 function readBuildCommit(env) {
   const injected =
     env.BB_DESKTOP_COMMIT?.trim() ?? env.GITHUB_SHA?.trim() ?? "";

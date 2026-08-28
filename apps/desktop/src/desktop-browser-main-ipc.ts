@@ -8,6 +8,15 @@ import {
   bbDesktopBrowserStopFindInPageRequestSchema,
   bbDesktopBrowserTabRefSchema,
 } from "@bb/desktop-contract";
+import type {
+  BbDesktopBrowserAttachRequest,
+  BbDesktopBrowserFindInPageRequest,
+  BbDesktopBrowserNavigateRequest,
+  BbDesktopBrowserSetBoundsRequest,
+  BbDesktopBrowserSetVisibleRequest,
+  BbDesktopBrowserStopFindInPageRequest,
+  BbDesktopBrowserTabRef,
+} from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
@@ -37,6 +46,15 @@ interface RegisterDesktopBrowserTabCommandArgs {
   run: DesktopBrowserTabCommand;
 }
 
+type DesktopBrowserIpcPayload =
+  | BbDesktopBrowserAttachRequest
+  | BbDesktopBrowserFindInPageRequest
+  | BbDesktopBrowserNavigateRequest
+  | BbDesktopBrowserSetBoundsRequest
+  | BbDesktopBrowserSetVisibleRequest
+  | BbDesktopBrowserStopFindInPageRequest
+  | BbDesktopBrowserTabRef;
+
 function hostWindowFromBrowserIpcEvent(
   event: IpcMainEvent,
 ): BrowserWindow | null {
@@ -44,7 +62,7 @@ function hostWindowFromBrowserIpcEvent(
 }
 
 function registerTabCommand(args: RegisterDesktopBrowserTabCommandArgs): void {
-  ipcMain.on(args.channel, (event, payload: unknown) => {
+  ipcMain.on(args.channel, (event, payload: DesktopBrowserIpcPayload) => {
     const hostWindow = hostWindowFromBrowserIpcEvent(event);
     if (hostWindow === null) {
       return;
@@ -60,33 +78,39 @@ function registerTabCommand(args: RegisterDesktopBrowserTabCommandArgs): void {
 export function registerDesktopBrowserIpc(
   manager: DesktopBrowserViewManager,
 ): void {
-  ipcMain.on(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, (event, payload: unknown) => {
-    const hostWindow = hostWindowFromBrowserIpcEvent(event);
-    if (hostWindow === null) {
-      return;
-    }
-    const parsed = bbDesktopBrowserAttachRequestSchema.safeParse(payload);
-    if (!parsed.success) {
-      return;
-    }
-    manager.attach({ hostWindow, request: parsed.data });
-  });
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+    (event, payload: DesktopBrowserIpcPayload) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserAttachRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.attach({ hostWindow, request: parsed.data });
+    },
+  );
 
-  ipcMain.on(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, (event, payload: unknown) => {
-    const hostWindow = hostWindowFromBrowserIpcEvent(event);
-    if (hostWindow === null) {
-      return;
-    }
-    const parsed = bbDesktopBrowserNavigateRequestSchema.safeParse(payload);
-    if (!parsed.success) {
-      return;
-    }
-    manager.navigate({ hostWindow, request: parsed.data });
-  });
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
+    (event, payload: DesktopBrowserIpcPayload) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserNavigateRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.navigate({ hostWindow, request: parsed.data });
+    },
+  );
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
-    (event, payload: unknown) => {
+    (event, payload: DesktopBrowserIpcPayload) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
@@ -101,7 +125,7 @@ export function registerDesktopBrowserIpc(
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
-    (event, payload: unknown) => {
+    (event, payload: DesktopBrowserIpcPayload) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
@@ -116,7 +140,7 @@ export function registerDesktopBrowserIpc(
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
-    (event, payload: unknown) => {
+    (event, payload: DesktopBrowserIpcPayload) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
@@ -131,7 +155,7 @@ export function registerDesktopBrowserIpc(
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
-    (event, payload: unknown) => {
+    (event, payload: DesktopBrowserIpcPayload) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;
@@ -146,7 +170,7 @@ export function registerDesktopBrowserIpc(
 
   ipcMain.on(
     BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
-    (event, payload: unknown) => {
+    (event, payload: DesktopBrowserIpcPayload) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
       if (hostWindow === null) {
         return;

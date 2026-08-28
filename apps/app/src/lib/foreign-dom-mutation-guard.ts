@@ -41,13 +41,13 @@ function describeNode(node: Node): string {
   return `#node(${node.nodeType})`;
 }
 
-function isNotFoundError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "NotFoundError";
+function isNotFoundError(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === "NotFoundError";
 }
 
-function isHierarchyRequestError(error: unknown): boolean {
+function isHierarchyRequestError(cause: unknown): boolean {
   return (
-    error instanceof DOMException && error.name === "HierarchyRequestError"
+    cause instanceof DOMException && cause.name === "HierarchyRequestError"
   );
 }
 
@@ -169,7 +169,7 @@ function filterAppendNodes(
   if (isolationDepth === 0) return nodes;
   const kept: Array<Node | string> = [];
   for (const node of nodes) {
-    if (typeof node !== "string" && refusePluginReparent(node, parent)) {
+    if (node instanceof Node && refusePluginReparent(node, parent)) {
       continue;
     }
     kept.push(node);
@@ -178,7 +178,7 @@ function filterAppendNodes(
 }
 
 export function installForeignDomMutationGuard(): void {
-  if (installed !== null || typeof Node !== "function") return;
+  if (installed !== null || globalThis.Node === undefined) return;
 
   const nativeRemoveChild = Node.prototype.removeChild;
   const nativeInsertBefore = Node.prototype.insertBefore;
@@ -199,7 +199,7 @@ export function installForeignDomMutationGuard(): void {
     DocumentFragment.prototype.replaceChildren;
   const nativeInsertAdjacentElement = Element.prototype.insertAdjacentElement;
   const nativeRangeInsertNode =
-    typeof Range === "function" ? Range.prototype.insertNode : null;
+    globalThis.Range === undefined ? null : Range.prototype.insertNode;
   const nativeAddEventListener = EventTarget.prototype.addEventListener;
   const nativeRemoveEventListener = EventTarget.prototype.removeEventListener;
   const originalSetTimeout = window.setTimeout;
@@ -207,13 +207,13 @@ export function installForeignDomMutationGuard(): void {
   const originalSetInterval = window.setInterval;
   const nativeSetInterval = originalSetInterval.bind(window);
   const originalQueueMicrotask =
-    typeof queueMicrotask === "function" ? queueMicrotask : null;
+    globalThis.queueMicrotask === undefined ? null : queueMicrotask;
   const nativeQueueMicrotask =
     originalQueueMicrotask === null
       ? null
       : originalQueueMicrotask.bind(window);
   const NativeMutationObserver =
-    typeof MutationObserver === "function" ? MutationObserver : null;
+    globalThis.MutationObserver === undefined ? null : MutationObserver;
   const listenerWraps = new WeakMap<
     EventListenerOrEventListenerObject,
     EventListenerOrEventListenerObject
@@ -395,7 +395,7 @@ export function installForeignDomMutationGuard(): void {
     const existing = listenerWraps.get(listener);
     if (existing !== undefined) return existing;
     const wrapped: EventListenerOrEventListenerObject =
-      typeof listener === "function"
+      listener instanceof Function
         ? wrapCallback(listener, label)
         : {
             handleEvent: (event: Event) =>
@@ -435,34 +435,34 @@ export function installForeignDomMutationGuard(): void {
     handler: TimerHandler,
     label: string | null,
   ): TimerHandler {
-    if (typeof handler !== "function") return handler;
-    return function isolatedTimer(this: unknown, ...cbArgs: unknown[]) {
+    if (!(handler instanceof Function)) return handler;
+    return function isolatedTimer(this: Window, ...cbArgs: unknown[]) {
       return runWithPluginDomIsolation(
-        () => Reflect.apply(handler, this, cbArgs),
+        () => handler.call(this, ...cbArgs),
         label ?? undefined,
       );
     };
   }
 
-  window.setTimeout = ((
-    handler: TimerHandler,
-    timeout?: number,
-    ...args: unknown[]
-  ) => {
-    const scheduled =
-      isolationDepth > 0 ? wrapTimerHandler(handler, isolationLabel) : handler;
-    return nativeSetTimeout(scheduled, timeout, ...args);
-  }) as typeof setTimeout;
+  window.setTimeout =
+    /* SAFETY: This wrapper preserves the native setTimeout overload contract. */
+    ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const scheduled =
+        isolationDepth > 0
+          ? wrapTimerHandler(handler, isolationLabel)
+          : handler;
+      return nativeSetTimeout(scheduled, timeout, ...args);
+    }) as typeof setTimeout;
 
-  window.setInterval = ((
-    handler: TimerHandler,
-    timeout?: number,
-    ...args: unknown[]
-  ) => {
-    const scheduled =
-      isolationDepth > 0 ? wrapTimerHandler(handler, isolationLabel) : handler;
-    return nativeSetInterval(scheduled, timeout, ...args);
-  }) as typeof setInterval;
+  window.setInterval =
+    /* SAFETY: This wrapper preserves the native setInterval overload contract. */
+    ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const scheduled =
+        isolationDepth > 0
+          ? wrapTimerHandler(handler, isolationLabel)
+          : handler;
+      return nativeSetInterval(scheduled, timeout, ...args);
+    }) as typeof setInterval;
 
   if (nativeQueueMicrotask !== null) {
     window.queueMicrotask = (callback: VoidFunction) => {

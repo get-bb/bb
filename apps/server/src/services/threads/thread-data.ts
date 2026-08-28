@@ -16,6 +16,8 @@ import type {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 
+type StoredEventData = Parameters<typeof parseStoredThreadEvent>[0]["data"];
+
 type StoredEventPayloadRow = Pick<
   StoredEventRow,
   "data" | "sequence" | "threadId" | "type"
@@ -36,9 +38,7 @@ interface FindThreadEventArgs {
   type: ThreadEventType;
 }
 
-function parseStoredEventPayload(
-  row: StoredEventPayloadRow,
-): Record<string, unknown> {
+function parseStoredEventPayload(row: StoredEventPayloadRow): StoredEventData {
   let data: unknown;
   try {
     data = JSON.parse(row.data);

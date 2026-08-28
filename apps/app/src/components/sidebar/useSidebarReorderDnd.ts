@@ -91,7 +91,7 @@ function shouldInstallSidebarTouchMoveListener(): boolean {
 
 export class SidebarTouchSensor extends TouchSensor {
   static override setup(): () => void {
-    if (typeof window === "undefined") {
+    if (globalThis.window === undefined) {
       return () => {};
     }
     const noop = () => {};

@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "toggle",
   "description": "BB ui \"toggle\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-toggle",
-    "class-variance-authority"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/toggle.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/toggle.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-toggle",
+    "class-variance-authority"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

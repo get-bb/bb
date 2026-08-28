@@ -47,6 +47,20 @@ import {
 
 type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
+type RuntimeExecutionBase = Pick<
+  RuntimeThreadExecutionOptions,
+  "model" | "serviceTier" | "reasoningLevel" | "providerOptions"
+> &
+  Partial<Pick<RuntimeThreadExecutionOptions, "promptMode">>;
+
+interface ProviderOptionsContext {
+  threadId: string;
+  projectId: string;
+  model: string;
+  permissionMode: RuntimeThreadExecutionOptions["permissionMode"];
+  promptMode?: PromptMode;
+}
+
 export interface ThreadStopCommandArgs {
   environmentId: string;
   hostId: string;
@@ -134,6 +148,14 @@ interface BuildExecutionOptionsArgs {
   threadId: string;
 }
 
+interface ExistingThreadExecutionPlanArgs {
+  executionSource: "client/turn/requested";
+  input: ReturnType<typeof buildExistingThreadExecutionInput>;
+  threadId: string;
+  hostId?: string | null;
+  projectDefaults?: ProjectExecutionDefaults | null;
+}
+
 interface DispatchThreadRenameCommandArgs {
   environment: ThreadHostCommandEnvironment;
   providerId: string;
@@ -199,21 +221,28 @@ function toRuntimeExecutionOptions(
     input: args.input,
     providerId: args.providerId,
   });
+  const providerOptionsContext: ProviderOptionsContext = {
+    threadId: args.threadId,
+    projectId: args.projectId,
+    model: args.execution.model,
+    permissionMode,
+  };
+  if (promptMode !== undefined) {
+    providerOptionsContext.promptMode = promptMode;
+  }
   const providerOptions =
-    args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
-      threadId: args.threadId,
-      projectId: args.projectId,
-      model: args.execution.model,
-      permissionMode,
-      ...(promptMode !== undefined ? { promptMode } : {}),
-    }) ?? {};
-  const base = {
+    args.deps.providerRegistry
+      .get(args.providerId)
+      ?.deriveProviderOptions(providerOptionsContext) ?? {};
+  const base: RuntimeExecutionBase = {
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
-    ...(promptMode !== undefined ? { promptMode } : {}),
     providerOptions,
   };
+  if (promptMode !== undefined) {
+    base.promptMode = promptMode;
+  }
   if (permissionMode === "full") {
     return {
       ...base,
@@ -246,15 +275,18 @@ export async function buildExecutionOptions(
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
-  const plan = await resolveExistingThreadExecutionPlan(deps, {
-    ...(args.projectDefaults !== undefined
-      ? { projectDefaults: args.projectDefaults }
-      : {}),
-    ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
+  const planArgs: ExistingThreadExecutionPlanArgs = {
     executionSource: "client/turn/requested",
     input: buildExistingThreadExecutionInput(request),
     threadId: args.threadId,
-  });
+  };
+  if (args.projectDefaults !== undefined) {
+    planArgs.projectDefaults = args.projectDefaults;
+  }
+  if (args.hostId !== undefined) {
+    planArgs.hostId = args.hostId;
+  }
+  const plan = await resolveExistingThreadExecutionPlan(deps, planArgs);
   return plan.resolvedExecution;
 }
 
@@ -269,7 +301,7 @@ export async function buildThreadStartCommand(
     model: args.execution.model,
   });
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
-  return {
+  const command: Extract<HostDaemonCommand, { type: "thread.start" }> = {
     type: "thread.start",
     environmentId: args.environment.id,
     threadId: args.thread.id,
@@ -282,9 +314,6 @@ export async function buildThreadStartCommand(
     bridgeLaunch,
     requestId: args.requestId,
     input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
     options: toRuntimeExecutionOptions({
       ...args,
       deps,
@@ -297,8 +326,14 @@ export async function buildThreadStartCommand(
     injectedSkillSources: runtimeContext.injectedSkillSources,
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
-    ...(args.fork ? { fork: args.fork } : {}),
   };
+  if (args.inputGroups !== undefined) {
+    command.inputGroups = args.inputGroups;
+  }
+  if (args.fork !== null) {
+    command.fork = args.fork;
+  }
+  return command;
 }
 
 function buildPreparedTurnSubmitCommandPayload(
@@ -308,15 +343,12 @@ function buildPreparedTurnSubmitCommandPayload(
     args.deps,
     args.runtimeContext.providerId,
   );
-  return {
+  const command: PreparedTurnSubmitCommandPayload = {
     type: "turn.submit",
     environmentId: args.environmentId,
     threadId: args.threadId,
     bridgeLaunch,
     input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
     options: toRuntimeExecutionOptions({
       ...args,
       input: args.input,
@@ -339,6 +371,10 @@ function buildPreparedTurnSubmitCommandPayload(
       instructionMode: args.runtimeContext.instructionMode,
     },
   };
+  if (args.inputGroups !== undefined) {
+    command.inputGroups = args.inputGroups;
+  }
+  return command;
 }
 
 export function addRequestIdToTurnSubmitCommandPayload(
@@ -364,21 +400,22 @@ export async function prepareTurnSubmitCommandPayload(
     environment: args.environment,
     model: args.execution.model,
   });
-  return buildPreparedTurnSubmitCommandPayload({
+  const buildArgs: PreparedTurnSubmitCommandBuildArgs = {
     deps,
     environmentId: args.environment.id,
     hostId: args.environment.hostId,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,
     input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
     providerThreadId,
     runtimeContext,
     target: args.target,
     threadId: args.thread.id,
-  });
+  };
+  if (args.inputGroups !== undefined) {
+    buildArgs.inputGroups = args.inputGroups;
+  }
+  return buildPreparedTurnSubmitCommandPayload(buildArgs);
 }
 
 function requireProviderThreadId(

@@ -36,8 +36,9 @@ export function openUrlInExternalBrowser(url: string): void {
     return;
   }
   if (shellOpenExternal(url)) return;
-  if (typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener,noreferrer");
+  const browserWindow = globalThis.window;
+  if (browserWindow !== undefined) {
+    browserWindow.open(url, "_blank", "noopener,noreferrer");
   }
 }
 

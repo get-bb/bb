@@ -147,9 +147,12 @@ describe("toMonacoTheme", () => {
 
 describe("applyCodeTheme", () => {
   function fakeMonaco(defined: string[]) {
+    // SAFETY: The fake implements the editor.defineTheme member used by applyCodeTheme.
     return {
       editor: { defineTheme: (name: string) => defined.push(name) },
-    } as unknown as Parameters<typeof applyCodeTheme>[0];
+    } as Parameters<typeof applyCodeTheme>[0] & {
+      editor: { defineTheme: (name: string) => number };
+    };
   }
 
   it("falls back to Monaco's stock pair before the first theme document resolves", () => {

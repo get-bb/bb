@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULTS } from "@bb/config/defaults";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   createTelemetryService,
   runWithTelemetryAppSurface,
@@ -16,6 +17,19 @@ function createTestLogger() {
     warn: vi.fn(),
   };
 }
+
+const telemetryFetchCallSchema = z.tuple([
+  z.string(),
+  z.object({ body: z.string() }),
+]);
+const telemetryPayloadSchema = z
+  .object({
+    api_key: z.string(),
+    distinct_id: z.string(),
+    event: z.string(),
+    properties: z.record(z.string(), z.unknown()),
+  })
+  .passthrough();
 
 describe("telemetry service", () => {
   let dataDir: string;
@@ -68,8 +82,11 @@ describe("telemetry service", () => {
     expect(persistedId).toMatch(/^[0-9a-f]{32}$/);
 
     const calls = fetchMock.mock.calls.map((call) => {
-      const [url, init] = call as [string, { body: string }];
-      return { url, payload: JSON.parse(init.body) as Record<string, never> };
+      const [url, init] = telemetryFetchCallSchema.parse(call);
+      return {
+        url,
+        payload: telemetryPayloadSchema.parse(JSON.parse(init.body)),
+      };
     });
     for (const { url, payload } of calls) {
       expect(url).toBe("https://us.i.posthog.com/capture/");
@@ -123,8 +140,8 @@ describe("telemetry service", () => {
     second.capture({ name: "app_started" });
 
     const ids = fetchMock.mock.calls.map((call) => {
-      const [, init] = call as [string, { body: string }];
-      return (JSON.parse(init.body) as { distinct_id: string }).distinct_id;
+      const [, init] = telemetryFetchCallSchema.parse(call);
+      return telemetryPayloadSchema.parse(JSON.parse(init.body)).distinct_id;
     });
     expect(ids[0]).toBe(ids[1]);
   });

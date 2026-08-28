@@ -34,7 +34,9 @@ export function voiceUnsupportedMessage(
 }
 
 export function readVoiceSupportEnvironment(): VoiceSupportEnvironment {
-  if (typeof window === "undefined" || typeof navigator === "undefined") {
+  const browserWindow = globalThis.window;
+  const browserNavigator = globalThis.navigator;
+  if (browserWindow === undefined || browserNavigator === undefined) {
     return {
       hasMediaDevices: false,
       hasMediaRecorder: false,
@@ -42,8 +44,8 @@ export function readVoiceSupportEnvironment(): VoiceSupportEnvironment {
     };
   }
   return {
-    hasMediaDevices: Boolean(navigator.mediaDevices?.getUserMedia),
-    hasMediaRecorder: typeof window.MediaRecorder !== "undefined",
-    isSecureContext: window.isSecureContext !== false,
+    hasMediaDevices: Boolean(browserNavigator.mediaDevices?.getUserMedia),
+    hasMediaRecorder: browserWindow.MediaRecorder !== undefined,
+    isSecureContext: browserWindow.isSecureContext !== false,
   };
 }

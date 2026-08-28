@@ -26,7 +26,7 @@ const COMMAND_LINE_CLAMP_STYLE: CSSProperties = {
   WebkitLineClamp: 2,
 };
 
-const ANSI_THEME_COLORS: Record<number, string> = {
+const ANSI_THEME_COLORS = {
   0: "var(--ansi-0)",
   1: "var(--ansi-1)",
   2: "var(--ansi-2)",
@@ -43,7 +43,7 @@ const ANSI_THEME_COLORS: Record<number, string> = {
   13: "var(--ansi-13)",
   14: "var(--ansi-14)",
   15: "var(--ansi-15)",
-};
+} satisfies Record<number, string>;
 const ANSI_COLOR_INDEXES = Object.keys(ANSI_THEME_COLORS).map(Number);
 const BACKGROUND_RESET_STYLE = "background-color:var(--background)";
 const BACKGROUND_RESET_CONTRAST_STYLE = `${BACKGROUND_RESET_STYLE};color:var(--foreground)`;

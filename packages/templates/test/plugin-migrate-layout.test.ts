@@ -19,11 +19,27 @@ import { PLUGIN_SHIMMED_TYPE_DEPENDENCIES } from "../src/generated/plugin-starte
 
 const SDK_VERSION = "0.4.3";
 
+type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
+
+interface JsonObject {
+  readonly [key: string]: JsonValue;
+}
+
+interface ParsedJsonObject {
+  readonly [key: string]: JsonValue | undefined;
+  readonly compilerOptions?: JsonObject;
+  readonly dependencies?: JsonObject;
+  readonly devDependencies?: JsonObject;
+  readonly engines?: JsonObject;
+  readonly include?: JsonValue;
+  readonly paths?: JsonObject;
+}
+
 async function writeVendoredPlugin(
   rootDir: string,
   overrides: {
-    manifest?: Record<string, unknown>;
-    tsconfig?: Record<string, unknown>;
+    manifest?: ParsedJsonObject;
+    tsconfig?: ParsedJsonObject;
     declarations?: string[];
   } = {},
 ): Promise<void> {
@@ -72,9 +88,12 @@ async function writeVendoredPlugin(
   }
 }
 
-async function readJson(path: string): Promise<Record<string, unknown>> {
-  const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-  return parsed as Record<string, unknown>;
+async function readJson(path: string): Promise<ParsedJsonObject> {
+  const parsed: ParsedJsonObject = JSON.parse(await readFile(path, "utf8"));
+  if (parsed === null || Array.isArray(parsed) || Object(parsed) !== parsed) {
+    throw new Error(`Expected a JSON object in ${path}`);
+  }
+  return parsed;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -111,13 +130,13 @@ describe("migratePluginToPackageLayout", () => {
     expect(result.removedTypesDir).toBe(true);
 
     const manifest = await readJson(join(rootDir, "package.json"));
-    const devDependencies = manifest.devDependencies as Record<string, string>;
+    const devDependencies = manifest.devDependencies ?? {};
     expect(devDependencies["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
     expect(devDependencies.typescript).toBe("^5.7.0");
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
 
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    const compilerOptions = tsconfig.compilerOptions as Record<string, unknown>;
+    const compilerOptions = tsconfig.compilerOptions ?? {};
     expect(compilerOptions.paths).toEqual({ "@/*": ["./*"] });
     expect(compilerOptions.strict).toBe(true);
     expect(tsconfig.include).toEqual(["server.ts", "app.tsx"]);
@@ -134,11 +153,7 @@ describe("migratePluginToPackageLayout", () => {
     });
     expect(raised.enginesFloor).toEqual({ from: ">=0.2.0", to: ">=0.4.3" });
     expect(
-      (
-        (await readJson(join(rootDir, "package.json"))).engines as
-          | Record<string, string>
-          | undefined
-      )?.bbPluginSdk,
+      (await readJson(join(rootDir, "package.json"))).engines?.bbPluginSdk,
     ).toBe(">=0.4.3");
 
     const newer = await mkdtemp(join(tmpdir(), "bb-plugin-migrate-newer-"));
@@ -156,12 +171,7 @@ describe("migratePluginToPackageLayout", () => {
       });
       expect(result.enginesFloor).toBeNull();
       expect(
-        (
-          (await readJson(join(newer, "package.json"))).engines as Record<
-            string,
-            string
-          >
-        ).bbPluginSdk,
+        (await readJson(join(newer, "package.json"))).engines?.bbPluginSdk,
       ).toBe(">=9.1.0");
     } finally {
       await rm(newer, { recursive: true, force: true });
@@ -273,9 +283,7 @@ describe("migratePluginToPackageLayout", () => {
       "@bb/plugin-sdk/app",
     ]);
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    expect((tsconfig.compilerOptions as Record<string, unknown>).paths).toEqual(
-      { "@/*": ["./*"] },
-    );
+    expect(tsconfig.compilerOptions?.paths).toEqual({ "@/*": ["./*"] });
     expect((await resolvePluginSdkLayout(rootDir)).kind).toBe("package");
   });
 
@@ -326,11 +334,7 @@ describe("migratePluginToPackageLayout", () => {
     expect(result.pin).toEqual({ from: null, to: SDK_VERSION });
     expect(result.enginesFloor).toEqual({ from: null, to: `>=${SDK_VERSION}` });
     const manifest = await readJson(join(rootDir, "package.json"));
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(SDK_VERSION);
+    expect(manifest.devDependencies?.["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
   });
 
   it("rewrites pre-rename SDK imports across the plugin's sources", async () => {
@@ -554,14 +558,8 @@ describe("setPluginSdkPin", () => {
       shimmedTypePins: [],
     });
     const manifest = await readJson(join(rootDir, "package.json"));
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(SDK_VERSION);
-    expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
-      ">=0.2.0",
-    );
+    expect(manifest.devDependencies?.["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
+    expect(manifest.engines?.bbPluginSdk).toBe(">=0.2.0");
     expect(
       await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
     ).toBeNull();
@@ -590,11 +588,7 @@ describe("setPluginSdkPin", () => {
     expect(result?.movedFromDependencies).toBe(true);
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(SDK_VERSION);
+    expect(manifest.devDependencies?.["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
   });
 
   it("moves an already-exact pin out of dependencies", async () => {
@@ -680,7 +674,7 @@ describe("setPluginSdkPin", () => {
     });
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
-    const devDependencies = manifest.devDependencies as Record<string, string>;
+    const devDependencies = manifest.devDependencies ?? {};
     for (const [name, version] of Object.entries(
       PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
     )) {

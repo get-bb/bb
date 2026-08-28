@@ -3,6 +3,7 @@ import { PLUGINS_BROWSE_DESCRIPTION } from "@/components/plugin/plugins-collecti
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import {
   ShowcaseHeroCarousel,
+  type ShowcaseHeroCarouselDependencies,
   type ShowcaseHeroComposerConfig,
   type ShowcaseHeroCopy,
 } from "@/components/showcase-hero/ShowcaseHeroCarousel";
@@ -39,6 +40,7 @@ interface BrowseHeroCarouselProps {
     typeof ShowcaseHeroCarousel
   >["openRequest"];
   onComposingChange?: (composing: boolean) => void;
+  dependencies?: ShowcaseHeroCarouselDependencies;
 }
 
 export function BrowseHeroCarousel({
@@ -47,6 +49,7 @@ export function BrowseHeroCarousel({
   composerDisabled = false,
   openRequest = null,
   onComposingChange,
+  dependencies,
 }: BrowseHeroCarouselProps) {
   return (
     <ShowcaseHeroCarousel
@@ -60,6 +63,7 @@ export function BrowseHeroCarousel({
       composerDisabled={composerDisabled}
       openRequest={openRequest}
       onComposingChange={onComposingChange}
+      dependencies={dependencies}
     />
   );
 }

@@ -6,10 +6,15 @@ import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
   type Host,
-  type ReasoningLevel,
-  type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
+import {
+  permissionModeInputSchema,
+  reasoningLevelSchema,
+  serviceTierSchema,
+} from "@bb/domain";
+import { toRecord } from "@bb/core-ui";
+import { z } from "zod";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
@@ -74,7 +79,10 @@ import {
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import type { PromptDraftAttachment } from "@bb/client-core";
+import type {
+  AppCreateThreadRequest,
+  PromptDraftAttachment,
+} from "@bb/client-core";
 import {
   buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
@@ -82,6 +90,7 @@ import {
 } from "@bb/client-core";
 import {
   buildThreadHandoffPromptDraft,
+  THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY,
   readThreadHandoffCreateSeedFromLocationState,
 } from "@bb/client-core";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
@@ -187,18 +196,73 @@ const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
+const sectionIdStateSchema = z.object({ sectionId: z.string() });
+const focusPromptStateSchema = z.object({ focusPrompt: z.literal(true) });
+const reuseEnvironmentIdStateSchema = z.object({
+  reuseEnvironmentId: z.string(),
+});
+const initialPromptStateSchema = z.object({ initialPrompt: z.string() });
+const replaceInitialPromptStateSchema = z.object({
+  replaceInitialPrompt: z.literal(true),
+});
+const forkThreadCreateSeedSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    model: z.string().min(1),
+    permissionMode: permissionModeInputSchema,
+    projectId: z.string().min(1),
+    providerId: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema,
+    serviceTier: serviceTierSchema.optional(),
+    sourceSeqEnd: z.number().int().nonnegative().optional(),
+    sourceThreadId: z.string().min(1),
+    sourceThreadTitle: z.string().trim().min(1),
+  })
+  .transform((value): ForkThreadCreateSeed => ({
+    ...value,
+    serviceTier: value.serviceTier,
+    sourceSeqEnd: value.sourceSeqEnd,
+  }));
+const threadHandoffCreateSeedStateSchema = z.object({
+  environmentId: z.string().nullable(),
+  projectId: z.string(),
+  sourceThreadId: z.string(),
+  sourceThreadTitle: z.string(),
+});
+const rootComposeLocationStateSchema = z.object({
+  sectionId: z.union([z.string(), z.number()]).optional(),
+  focusPrompt: z.boolean().optional(),
+  reuseEnvironmentId: z.string().optional(),
+  initialPrompt: z.union([z.string(), z.number()]).optional(),
+  replaceInitialPrompt: z.boolean().optional(),
+  [FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY]:
+    forkThreadCreateSeedSchema.optional(),
+  [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]:
+    threadHandoffCreateSeedStateSchema.optional(),
+});
+type RootComposeLocationState = z.infer<
+  typeof rootComposeLocationStateSchema
+> | null;
+
+function parseRootComposeLocationState(
+  state: ReturnType<typeof toRecord>,
+): RootComposeLocationState {
+  const parsed = rootComposeLocationStateSchema.safeParse(state);
+  return parsed.success ? parsed.data : null;
+}
+
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
-export function readSectionIdFromLocationState(state: unknown): string | null {
-  if (typeof state !== "object" || state === null) {
-    return null;
-  }
-  if (!("sectionId" in state) || typeof state.sectionId !== "string") {
-    return null;
-  }
-  const sectionId = state.sectionId.trim();
+export function readSectionIdFromLocationState(
+  state: RootComposeLocationState,
+): string | null {
+  const value = toRecord(state);
+  if (!value) return null;
+  const parsed = sectionIdStateSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const sectionId = parsed.data.sectionId.trim();
   return sectionId.length > 0 ? sectionId : null;
 }
 
@@ -207,29 +271,27 @@ type RootComposeSectionTarget =
   | { sectionId: string; kind: "set" };
 
 export function readRootComposeSectionTargetFromLocationState(
-  state: unknown,
+  state: RootComposeLocationState,
 ): RootComposeSectionTarget | null {
-  if (typeof state !== "object" || state === null) {
-    return null;
-  }
+  const value = toRecord(state);
+  if (!value) return null;
 
-  if ("sectionId" in state) {
+  if ("sectionId" in value) {
     const sectionId = readSectionIdFromLocationState(state);
     return sectionId ? { sectionId, kind: "set" } : { kind: "clear" };
   }
 
-  if ("focusPrompt" in state && state.focusPrompt === true) {
+  if (focusPromptStateSchema.safeParse(value).success) {
     return { kind: "clear" };
   }
 
   return null;
 }
 
-export function shouldStartComposingFromLocationState(state: unknown): boolean {
-  if (typeof state !== "object" || state === null) {
-    return false;
-  }
-  return "focusPrompt" in state && state.focusPrompt === true;
+export function shouldStartComposingFromLocationState(
+  state: RootComposeLocationState,
+): boolean {
+  return focusPromptStateSchema.safeParse(toRecord(state)).success;
 }
 
 interface BuildMobileRecentThreadsArgs {
@@ -290,13 +352,10 @@ export function RootComposeRightPanelToggle({
 }
 
 function readReuseEnvironmentIdFromLocationState(
-  state: unknown,
+  state: RootComposeLocationState,
 ): string | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as { reuseEnvironmentId?: unknown })
-    .reuseEnvironmentId;
-  if (typeof candidate === "string" && candidate.length > 0) return candidate;
-  return null;
+  const parsed = reuseEnvironmentIdStateSchema.safeParse(toRecord(state));
+  return parsed.success ? parsed.data.reuseEnvironmentId : null;
 }
 
 export function shouldNavigateAfterThreadCreate({
@@ -307,74 +366,19 @@ export function shouldNavigateAfterThreadCreate({
 }
 
 function readForkThreadCreateSeedFromLocationState(
-  state: unknown,
+  state: RootComposeLocationState,
 ): ForkThreadCreateSeed | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as Record<string, unknown>)[
-    FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY
-  ];
-  if (!candidate || typeof candidate !== "object") return null;
-  const value = candidate as Record<string, unknown>;
-  if (
-    typeof value.environmentId !== "string" ||
-    value.environmentId.length === 0 ||
-    typeof value.model !== "string" ||
-    value.model.length === 0 ||
-    typeof value.permissionMode !== "string" ||
-    value.permissionMode.length === 0 ||
-    typeof value.projectId !== "string" ||
-    value.projectId.length === 0 ||
-    typeof value.providerId !== "string" ||
-    value.providerId.length === 0 ||
-    typeof value.reasoningLevel !== "string" ||
-    value.reasoningLevel.length === 0 ||
-    typeof value.sourceThreadId !== "string" ||
-    value.sourceThreadId.length === 0 ||
-    typeof value.sourceThreadTitle !== "string" ||
-    value.sourceThreadTitle.trim().length === 0
-  ) {
-    return null;
-  }
-  const seedPermissionMode =
-    value.permissionMode === "workspace-write"
-      ? "accept-edits"
-      : value.permissionMode === "accept-edits" ||
-          value.permissionMode === "auto" ||
-          value.permissionMode === "full"
-        ? value.permissionMode
-        : null;
-  if (seedPermissionMode === null) {
-    return null;
-  }
-  if (
-    value.serviceTier !== undefined &&
-    typeof value.serviceTier !== "string"
-  ) {
-    return null;
-  }
-  if (
-    value.sourceSeqEnd !== undefined &&
-    (typeof value.sourceSeqEnd !== "number" ||
-      !Number.isInteger(value.sourceSeqEnd) ||
-      value.sourceSeqEnd < 0)
-  ) {
-    return null;
-  }
-  return {
-    environmentId: value.environmentId,
-    model: value.model,
-    permissionMode: seedPermissionMode,
-    projectId: value.projectId,
-    providerId: value.providerId,
-    reasoningLevel: value.reasoningLevel as ReasoningLevel,
-    serviceTier: value.serviceTier as ServiceTier | undefined,
-    sourceSeqEnd: value.sourceSeqEnd as number | undefined,
-    sourceThreadId: value.sourceThreadId,
-    sourceThreadTitle: value.sourceThreadTitle.trim(),
-  };
+  const value = toRecord(state);
+  if (!value) return null;
+  const parsed = forkThreadCreateSeedSchema.safeParse(
+    value[FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY],
+  );
+  return parsed.success ? parsed.data : null;
 }
 
-export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
+export function hasSingleUseRootComposeTargetState(
+  state: RootComposeLocationState,
+): boolean {
   return (
     readRootComposeSectionTargetFromLocationState(state) !== null ||
     readReuseEnvironmentIdFromLocationState(state) !== null ||
@@ -384,23 +388,18 @@ export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
 }
 
 export function readInitialPromptFromLocationState(
-  state: unknown,
+  state: RootComposeLocationState,
 ): string | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as { initialPrompt?: unknown }).initialPrompt;
-  if (typeof candidate === "string" && candidate.length > 0) return candidate;
-  return null;
+  const parsed = initialPromptStateSchema.safeParse(toRecord(state));
+  return parsed.success && parsed.data.initialPrompt.length > 0
+    ? parsed.data.initialPrompt
+    : null;
 }
 
 export function shouldReplaceInitialPromptFromLocationState(
-  state: unknown,
+  state: RootComposeLocationState,
 ): boolean {
-  return (
-    state !== null &&
-    typeof state === "object" &&
-    "replaceInitialPrompt" in state &&
-    state.replaceInitialPrompt === true
-  );
+  return replaceInitialPromptStateSchema.safeParse(toRecord(state)).success;
 }
 
 export function buildMobileRecentThreads({
@@ -482,12 +481,16 @@ export function RootComposeView() {
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
+  const rootComposeLocationState = useMemo(
+    () => parseRootComposeLocationState(toRecord(location.state)),
+    [location.state],
+  );
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
-  >(() => readSectionIdFromLocationState(location.state));
+  >(() => readSectionIdFromLocationState(rootComposeLocationState));
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
@@ -497,7 +500,7 @@ export function RootComposeView() {
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
-    readForkThreadCreateSeedFromLocationState(location.state),
+    readForkThreadCreateSeedFromLocationState(rootComposeLocationState),
   );
 
   const handleProjectChange = useCallback(
@@ -513,25 +516,28 @@ export function RootComposeView() {
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
-      const createRequest =
-        forkSeed === null
-          ? {
-              ...request,
-              ...(rootComposeSectionId
-                ? { sectionId: rootComposeSectionId }
-                : {}),
-            }
-          : buildForkThreadRequest({
-              ...forkSeed,
-              input: request.input,
-              model: request.model,
-              permissionMode: request.permissionMode,
-              providerSupportsFork:
-                findCachedProviderInfo(queryClient, forkSeed.providerId)
-                  ?.capabilities.supportsFork ?? false,
-              reasoningLevel: request.reasoningLevel,
-              serviceTier: request.serviceTier,
-            });
+      let createRequest: AppCreateThreadRequest | null;
+      if (forkSeed === null) {
+        const requestWithSection = { ...request };
+        if (rootComposeSectionId) {
+          Object.assign(requestWithSection, {
+            sectionId: rootComposeSectionId,
+          });
+        }
+        createRequest = requestWithSection;
+      } else {
+        createRequest = buildForkThreadRequest({
+          ...forkSeed,
+          input: request.input,
+          model: request.model,
+          permissionMode: request.permissionMode,
+          providerSupportsFork:
+            findCachedProviderInfo(queryClient, forkSeed.providerId)
+              ?.capabilities.supportsFork ?? false,
+          reasoningLevel: request.reasoningLevel,
+          serviceTier: request.serviceTier,
+        });
+      }
       if (createRequest === null) return;
       const thread = await createThread.mutateAsync(createRequest);
       setLastCreatedThreadId(thread.id);
@@ -627,6 +633,10 @@ function RootComposeSurface({
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
   const location = useLocation();
+  const rootComposeLocationState = useMemo(
+    () => parseRootComposeLocationState(toRecord(location.state)),
+    [location.state],
+  );
   const navigate = useNavigate();
   const isPointerCoarse = usePointerCoarse();
   const quickCreateProject = useQuickCreateProjectController();
@@ -710,19 +720,19 @@ function RootComposeSurface({
   ]);
   useEffect(() => {
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
-      location.state,
+      rootComposeLocationState,
     );
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
-      location.state,
+      rootComposeLocationState,
     );
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
-      location.state,
+      rootComposeLocationState,
     );
     const nextHandoffSeed = readThreadHandoffCreateSeedFromLocationState(
-      location.state,
+      rootComposeLocationState,
     );
-    if (!hasSingleUseRootComposeTargetState(location.state)) return;
-    if (shouldStartComposingFromLocationState(location.state)) {
+    if (!hasSingleUseRootComposeTargetState(rootComposeLocationState)) return;
+    if (shouldStartComposingFromLocationState(rootComposeLocationState)) {
       setStartedComposing(true);
     }
     if (sectionTarget?.kind === "set") {
@@ -762,6 +772,7 @@ function RootComposeSurface({
     location.search,
     location.state,
     navigate,
+    rootComposeLocationState,
     seedEnvironmentSelectionValue,
     setForkSeed,
     setPermissionMode,
@@ -773,10 +784,12 @@ function RootComposeSurface({
     setStartedComposing,
   ]);
   useEffect(() => {
-    const initialPrompt = readInitialPromptFromLocationState(location.state);
+    const initialPrompt = readInitialPromptFromLocationState(
+      rootComposeLocationState,
+    );
     if (initialPrompt === null) return;
     const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
-    if (shouldReplaceInitialPromptFromLocationState(location.state)) {
+    if (shouldReplaceInitialPromptFromLocationState(rootComposeLocationState)) {
       setPromptDraft(nextDraft);
     } else {
       restorePromptDraftIfEmpty(nextDraft);
@@ -789,14 +802,13 @@ function RootComposeSurface({
     location.search,
     location.state,
     navigate,
+    rootComposeLocationState,
     restorePromptDraftIfEmpty,
     setPromptDraft,
   ]);
-  const shouldFocusPrompt =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "focusPrompt" in location.state &&
-    location.state.focusPrompt === true;
+  const shouldFocusPrompt = shouldStartComposingFromLocationState(
+    rootComposeLocationState,
+  );
   useEffect(() => {
     if (!shouldFocusPrompt || isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
@@ -967,21 +979,24 @@ function RootComposeSurface({
         isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "environment",
     },
   );
-  const globalTerminalsListQuery = useTerminals(
-    rootPanelTerminalTarget?.kind === "host_path"
-      ? {
-          kind: "host_path",
-          hostId: rootPanelTerminalTarget.hostId,
-          ...(rootPanelTerminalTarget.cwd === null
-            ? {}
-            : { cwd: rootPanelTerminalTarget.cwd }),
-        }
-      : null,
-    {
-      enabled:
-        isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "host_path",
-    },
-  );
+  let globalTerminalScope: {
+    kind: "host_path";
+    hostId: string;
+    cwd?: string;
+  } | null = null;
+  if (rootPanelTerminalTarget?.kind === "host_path") {
+    globalTerminalScope = {
+      kind: "host_path",
+      hostId: rootPanelTerminalTarget.hostId,
+    };
+    if (rootPanelTerminalTarget.cwd !== null) {
+      globalTerminalScope.cwd = rootPanelTerminalTarget.cwd;
+    }
+  }
+  const globalTerminalsListQuery = useTerminals(globalTerminalScope, {
+    enabled:
+      isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "host_path",
+  });
   const loadedTerminalSessions = useMemo(
     () =>
       buildRootComposeTerminalSessions({

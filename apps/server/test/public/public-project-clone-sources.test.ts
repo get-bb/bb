@@ -15,25 +15,35 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+interface CloneSourceRequestBody {
+  type: "clone";
+  hostId: string;
+  remoteUrl?: string;
+  targetPath?: string;
+}
+
 function cloneSourceRequest(args: {
   hostId: string;
   projectId: string;
   remoteUrl?: string;
   targetPath?: string;
 }) {
+  const body: CloneSourceRequestBody = {
+    type: "clone",
+    hostId: args.hostId,
+  };
+  if (args.remoteUrl !== undefined) {
+    body.remoteUrl = args.remoteUrl;
+  }
+  if (args.targetPath !== undefined) {
+    body.targetPath = args.targetPath;
+  }
   return new Request(
     `http://localhost/api/v1/projects/${args.projectId}/sources`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        type: "clone",
-        hostId: args.hostId,
-        ...(args.remoteUrl !== undefined ? { remoteUrl: args.remoteUrl } : {}),
-        ...(args.targetPath !== undefined
-          ? { targetPath: args.targetPath }
-          : {}),
-      }),
+      body: JSON.stringify(body),
     },
   );
 }

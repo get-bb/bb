@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { z } from "zod";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
@@ -106,6 +107,9 @@ const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;
 const SIDEBAR_DEFAULT_WIDTH = 320;
+const resourceRouteLabelDetailSchema = z
+  .object({ label: z.string().nullable() })
+  .passthrough();
 
 function clampSidebarWidth(value: number) {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
@@ -150,6 +154,7 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 interface SidebarStateBridgeProps {
   providerRef: Ref<HTMLDivElement>;
   children: ReactNode;
+  useAppCommandHandler: typeof useAppCommandHandler;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
@@ -158,6 +163,7 @@ type SidebarOpenChangeHandler = (open: boolean) => void;
 function SidebarStateBridge({
   providerRef,
   children,
+  useAppCommandHandler,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
@@ -193,11 +199,13 @@ function resetSidebarResizeDocumentState(): void {
 interface SidebarTriggerOverlayProps {
   reserveMacosTrafficLights: boolean;
   usesDesktopChrome: boolean;
+  useAppCommandShortcut: typeof useAppCommandShortcut;
 }
 
 function SidebarTriggerOverlay({
   reserveMacosTrafficLights,
   usesDesktopChrome,
+  useAppCommandShortcut,
 }: SidebarTriggerOverlayProps) {
   const shortcut = useAppCommandShortcut("sidebar.toggle");
   const triggerProps = {
@@ -253,18 +261,18 @@ function SidebarTriggerOverlay({
   );
 }
 
-const routeTitles: Record<string, { title: string }> = {
+const routeTitles = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
-};
+} satisfies Record<string, { title: string }>;
 
 function resolveRouteTitle(pathname: string): { title: string } | undefined {
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
-  return routeTitles[pathname];
+  return Object.entries(routeTitles).find(([path]) => path === pathname)?.[1];
 }
 
 interface AppHeaderProps {
@@ -280,6 +288,8 @@ interface AppHeaderProps {
     title: string;
     breadcrumbs?: Array<{ label: string; to?: string }>;
   };
+  AppPageHeader: typeof AppPageHeader;
+  headerIconButtonClass: typeof HEADER_ICON_BUTTON_CLASS;
 }
 
 function AppHeader({
@@ -292,6 +302,8 @@ function AppHeader({
   pluginPanelChrome,
   pluginPanelSubPath,
   meta,
+  AppPageHeader,
+  headerIconButtonClass,
 }: AppHeaderProps) {
   const headerBreadcrumbs = meta.breadcrumbs;
   const headerTitle =
@@ -328,7 +340,7 @@ function AppHeader({
       <Link
         to={getProjectSettingsRoutePath(projectId)}
         className={cn(
-          HEADER_ICON_BUTTON_CLASS,
+          headerIconButtonClass,
           "inline-flex items-center justify-center transition-colors",
           isSettingsView
             ? "bg-state-active text-foreground"
@@ -342,7 +354,7 @@ function AppHeader({
       {project ? (
         <ProjectActionsMenu
           project={project}
-          triggerClassName={HEADER_ICON_BUTTON_CLASS}
+          triggerClassName={headerIconButtonClass}
         />
       ) : null}
     </>
@@ -353,9 +365,81 @@ function AppHeader({
 
 interface AppLayoutProps {
   children: ReactNode;
+  dependencies?: AppLayoutDependencies;
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
+export interface AppLayoutDependencies {
+  AppLayoutSidebar: typeof AppLayoutSidebar;
+  useAppCommandHandler: typeof useAppCommandHandler;
+  useAppCommandShortcut: typeof useAppCommandShortcut;
+  ProjectActionsProvider: typeof ProjectActionsProvider;
+  ThreadActionsProvider: typeof ThreadActionsProvider;
+  ProjectPathDialog: typeof ProjectPathDialog;
+  AppPageHeader: typeof AppPageHeader;
+  headerIconButtonClass: typeof HEADER_ICON_BUTTON_CLASS;
+  IframeDragGuardOverlay: typeof IframeDragGuardOverlay;
+  getBbDesktopInfo: typeof getBbDesktopInfo;
+  shouldReserveMacosTrafficLights: typeof shouldReserveMacosTrafficLights;
+  shouldUseMacosDesktopChrome: typeof shouldUseMacosDesktopChrome;
+  useFaviconBadge: typeof useFaviconBadge;
+  useQuickCreateProjectController: typeof useQuickCreateProjectController;
+  useSidebarNavigation: typeof useSidebarNavigation;
+  didThreadDetailBootstrapRefreshAfterMount: typeof didThreadDetailBootstrapRefreshAfterMount;
+  useThread: typeof useThread;
+  useThreadDetailBootstrap: typeof useThreadDetailBootstrap;
+  useThreadPendingInteractions: typeof useThreadPendingInteractions;
+  getLatestPendingInteraction: typeof getLatestPendingInteraction;
+}
+
+export const defaultAppLayoutDependencies: AppLayoutDependencies = {
+  AppLayoutSidebar,
+  useAppCommandHandler,
+  useAppCommandShortcut,
+  ProjectActionsProvider,
+  ThreadActionsProvider,
+  ProjectPathDialog,
+  AppPageHeader,
+  headerIconButtonClass: HEADER_ICON_BUTTON_CLASS,
+  IframeDragGuardOverlay,
+  getBbDesktopInfo,
+  shouldReserveMacosTrafficLights,
+  shouldUseMacosDesktopChrome,
+  useFaviconBadge,
+  useQuickCreateProjectController,
+  useSidebarNavigation,
+  didThreadDetailBootstrapRefreshAfterMount,
+  useThread,
+  useThreadDetailBootstrap,
+  useThreadPendingInteractions,
+  getLatestPendingInteraction,
+};
+
+export function AppLayout({
+  children,
+  dependencies = defaultAppLayoutDependencies,
+}: AppLayoutProps) {
+  const {
+    AppLayoutSidebar,
+    useAppCommandHandler,
+    useAppCommandShortcut,
+    ProjectActionsProvider,
+    ThreadActionsProvider,
+    ProjectPathDialog,
+    AppPageHeader,
+    headerIconButtonClass,
+    IframeDragGuardOverlay,
+    getBbDesktopInfo,
+    shouldReserveMacosTrafficLights,
+    shouldUseMacosDesktopChrome,
+    useFaviconBadge,
+    useQuickCreateProjectController,
+    useSidebarNavigation,
+    didThreadDetailBootstrapRefreshAfterMount,
+    useThread,
+    useThreadDetailBootstrap,
+    useThreadPendingInteractions,
+    getLatestPendingInteraction,
+  } = dependencies;
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
   const store = useStore();
@@ -387,16 +471,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     setResourceRouteLabel(null);
     function handleResourceRouteLabel(event: Event) {
       if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail;
-      if (
-        typeof detail !== "object" ||
-        detail === null ||
-        !("label" in detail) ||
-        (typeof detail.label !== "string" && detail.label !== null)
-      ) {
-        return;
-      }
-      setResourceRouteLabel(detail.label);
+      const detail = resourceRouteLabelDetailSchema.safeParse(event.detail);
+      if (detail.success) setResourceRouteLabel(detail.data.label);
     }
     window.addEventListener(
       RESOURCE_ROUTE_LABEL_EVENT,
@@ -723,15 +799,18 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [finishSidebarResize, isSidebarResizing, store]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.title = documentTitle;
+    if (!globalThis.document) return;
+    globalThis.document.title = documentTitle;
   }, [documentTitle]);
 
   return (
     <ProjectActionsProvider>
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
-          <SidebarStateBridge providerRef={providerRef}>
+          <SidebarStateBridge
+            providerRef={providerRef}
+            useAppCommandHandler={useAppCommandHandler}
+          >
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView
@@ -766,6 +845,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                     pluginPanelChrome={pluginPanelChrome}
                     pluginPanelSubPath={pluginPanelSubPath}
                     meta={meta}
+                    AppPageHeader={AppPageHeader}
+                    headerIconButtonClass={headerIconButtonClass}
                   />
                 ) : null}
                 <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
@@ -776,6 +857,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <SidebarTriggerOverlay
               reserveMacosTrafficLights={reserveMacosTrafficLights}
               usesDesktopChrome={usesDesktopChrome}
+              useAppCommandShortcut={useAppCommandShortcut}
             />
           </SidebarStateBridge>
           <IframeDragGuardOverlay

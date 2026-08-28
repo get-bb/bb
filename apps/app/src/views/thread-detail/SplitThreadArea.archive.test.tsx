@@ -19,11 +19,15 @@ import {
 } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as appCommandProvider from "@/components/commands/AppCommandProvider";
+import * as realtime from "@/hooks/useRealtimeSubscription";
+import * as sdkModule from "@/lib/sdk";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { PaneContext } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
+import * as threadDetailViewModule from "./ThreadDetailView";
 
 const ARCHIVED_AT = 1_700_000_000_000;
 
@@ -36,49 +40,57 @@ interface SeedThread {
 let pendingArchive: {
   promise: Promise<void>;
   resolve: () => void;
-  reject: (reason: unknown) => void;
+  reject: (cause: Error) => void;
 } | null = null;
 
 function deferArchive() {
   let resolve!: () => void;
-  let reject!: (reason: unknown) => void;
+  let reject!: (cause: Error) => void;
   const promise = new Promise<void>((res, rej) => {
     resolve = () => res();
-    reject = rej;
+    reject = (cause) => rej(cause);
   });
   pendingArchive = { promise, resolve, reject };
 }
 
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: () => undefined,
-  useThreadListRealtimeSubscription: () => undefined,
-}));
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: { get: () => new Promise<never>(() => {}) },
-  },
-}));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandContext: () => undefined,
-  useAppCommandHandler: () => undefined,
-  useAppCommandShortcut: () => null,
-  useIndexedAppCommandHandlers: () => undefined,
-  useIsAppCommandModifierHeld: () => false,
-}));
-
-vi.mock("./ThreadDetailView", () => ({
-  ThreadDetailView: ({ threadId }: { threadId: string }) => {
+vi.spyOn(realtime, "useThreadDetailRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(realtime, "useThreadListRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(sdkModule.sdk.threads, "get").mockImplementation(
+  () => new Promise<never>(() => {}),
+);
+vi.spyOn(appCommandProvider, "useAppCommandContext").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(appCommandProvider, "useAppCommandHandler").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(appCommandProvider, "useIndexedAppCommandHandlers").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(appCommandProvider, "useAppCommandShortcut").mockImplementation(
+  () => null,
+);
+vi.spyOn(appCommandProvider, "useIsAppCommandModifierHeld").mockImplementation(
+  () => false,
+);
+vi.spyOn(threadDetailViewModule, "ThreadDetailView").mockImplementation(
+  (props) => {
+    if (props.surface !== "pane") {
+      return <div />;
+    }
     const pane = useContext(PaneContext);
     return (
       <div
-        data-testid={`pane-${threadId}`}
+        data-testid={`pane-${props.threadId}`}
         data-focused={pane?.isFocused ? "true" : "false"}
       />
     );
   },
-}));
+);
 
 function ArchiveHarness({ threadId }: { threadId: string }) {
   const queryClient = useQueryClient();

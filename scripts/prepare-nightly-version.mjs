@@ -13,6 +13,18 @@ const packagePaths = [
 const semverCorePattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)/u;
 const positiveIntegerPattern = /^[1-9]\d*$/u;
 
+function isJsonObject(value) {
+  return (
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
+function isStringValue(value) {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
 function normalizePositiveInteger(value, label) {
   if (!positiveIntegerPattern.test(value)) {
     throw new Error(`${label} must be a positive integer, got ${value}.`);
@@ -43,11 +55,7 @@ async function readCurrentVersions(repoRoot) {
       const packageJson = JSON.parse(
         await readFile(resolve(repoRoot, packagePath), "utf8"),
       );
-      if (
-        typeof packageJson !== "object" ||
-        packageJson === null ||
-        typeof packageJson.version !== "string"
-      ) {
+      if (!isJsonObject(packageJson) || !isStringValue(packageJson.version)) {
         throw new Error(`Missing string version in ${packagePath}.`);
       }
 

@@ -33,8 +33,8 @@ export interface SessionScheduler {
   onStateChange(listener: (state: SessionState) => void): () => void;
 }
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function describe(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 export function createSessionScheduler(

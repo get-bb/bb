@@ -26,8 +26,12 @@ export const EMPTY_SKILL_CATALOG_HASH = createHash("sha256")
   .digest("hex");
 
 export interface InjectedSkillsLogger {
-  debug(context: object, message: string): void;
-  warn(context: object, message: string): void;
+  debug(context: InjectedSkillsLogContext, message: string): void;
+  warn(context: InjectedSkillsLogContext, message: string): void;
+}
+
+interface InjectedSkillsLogContext {
+  [key: string]: string;
 }
 
 interface StageInjectedSkillSourcesArgs {

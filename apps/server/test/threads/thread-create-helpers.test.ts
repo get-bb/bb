@@ -139,8 +139,9 @@ describe("createThreadRecord", () => {
         throw new Error("Expected createThreadRecord to throw");
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError);
-        expect((error as ApiError).status).toBe(404);
-        expect((error as ApiError).body).toMatchObject({
+        if (!(error instanceof ApiError)) throw error;
+        expect(error.status).toBe(404);
+        expect(error.body).toMatchObject({
           code: "section_not_found",
           message: "Section not found",
         });

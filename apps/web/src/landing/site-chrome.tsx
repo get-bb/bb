@@ -61,7 +61,12 @@ function ThemeMenu() {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (
+        !(event.target instanceof Node) ||
+        !rootRef.current?.contains(event.target)
+      ) {
+        setOpen(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {

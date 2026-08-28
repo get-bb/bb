@@ -56,13 +56,15 @@ function createWebActivityMessage(
     ...(turnId
       ? eventProjectionMessageTurnScopeFields(turnId)
       : eventProjectionMessageThreadScopeFields()),
-    ...(payload.parentToolCallId
-      ? { parentToolCallId: payload.parentToolCallId }
-      : {}),
-    ...(payload.presentation ? { presentation: payload.presentation } : {}),
     callId: payload.callId,
     completedAt: status === "pending" ? null : meta.createdAt,
   };
+  if (payload.parentToolCallId) {
+    Object.assign(base, { parentToolCallId: payload.parentToolCallId });
+  }
+  if (payload.presentation) {
+    Object.assign(base, { presentation: payload.presentation });
+  }
 
   switch (payload.itemKind) {
     case "web-search":

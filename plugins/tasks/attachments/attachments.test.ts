@@ -46,6 +46,14 @@ async function upload(
   });
 }
 
+async function readAttachmentUploadResponse(response: Response): Promise<{
+  attachmentId: string;
+  url: string;
+}> {
+  // SAFETY: The upload endpoint returns this contract for every successful response in these tests.
+  return (await response.json()) as { attachmentId: string; url: string };
+}
+
 describe("task attachments", () => {
   it("uploads a raw body into the plugin blob directory and creates its row", async () => {
     const { harness, root, store, task } = setup();
@@ -57,10 +65,7 @@ describe("task attachments", () => {
         "../../unsafe.png",
       );
       expect(response.status).toBe(201);
-      const result = (await response.json()) as {
-        attachmentId: string;
-        url: string;
-      };
+      const result = await readAttachmentUploadResponse(response);
       const attachment = store.getAttachment(result.attachmentId);
 
       expect(result.url).toBe(buildAttachmentUrl(result.attachmentId));
@@ -144,9 +149,7 @@ describe("task attachments", () => {
         task.id,
         new TextEncoder().encode("image"),
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const response = await harness.fetchHttp(
         "GET",
         `/attachments/download?attachmentId=${attachmentId}`,
@@ -176,9 +179,7 @@ describe("task attachments", () => {
         "text/plain",
       );
       expect(uploaded.status).toBe(201);
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       expect(store.getAttachment(attachmentId)?.fileName).toBe(emDashName);
 
       const response = await harness.fetchHttp(
@@ -207,9 +208,7 @@ describe("task attachments", () => {
         name,
         "text/plain",
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const response = await harness.fetchHttp(
         "GET",
         `/attachments/download?attachmentId=${attachmentId}`,
@@ -238,9 +237,7 @@ describe("task attachments", () => {
         "photo\u202egnp.exe",
         "application/octet-stream",
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       expect(store.getAttachment(attachmentId)?.fileName).toBe("photo_gnp.exe");
       const response = await harness.fetchHttp(
         "GET",
@@ -266,9 +263,7 @@ describe("task attachments", () => {
         "active.svg",
         "image/svg+xml",
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
 
       expect(store.getAttachment(attachmentId)).toMatchObject({
         mime: "image/svg+xml",
@@ -299,9 +294,7 @@ describe("task attachments", () => {
         "note.txt",
         "text/plain",
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const attachment = store.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
       const blobDirectory = dirname(join(root, attachment.blobPath));
@@ -343,9 +336,7 @@ describe("task attachments", () => {
         "note.txt",
         "text/plain",
       );
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const attachment = store.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
       const blobDirectory = dirname(join(root, attachment.blobPath));
@@ -369,9 +360,7 @@ describe("task attachments", () => {
     });
     try {
       const uploaded = await upload(harness, task.id, "image");
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const attachment = store.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
       const description = `![diagram](${buildAttachmentUrl(attachmentId)})`;
@@ -403,9 +392,7 @@ describe("task attachments", () => {
     const { harness, root, store, task } = setup();
     try {
       const uploaded = await upload(harness, task.id, "image");
-      const { attachmentId } = (await uploaded.json()) as {
-        attachmentId: string;
-      };
+      const { attachmentId } = await readAttachmentUploadResponse(uploaded);
       const attachment = store.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
       store.updateTask(task.id, {

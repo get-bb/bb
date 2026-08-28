@@ -12,7 +12,14 @@ interface PayloadSize {
   jsonBytes: number;
 }
 
-function payloadSize(value: unknown): PayloadSize {
+type Payload =
+  | { sessionId: string; events: HostDaemonEventEnvelope[] }
+  | {
+      sessionId: string;
+      eventGroups: ReturnType<typeof groupHostDaemonEvents>;
+    };
+
+function payloadSize(value: Payload): PayloadSize {
   const json = JSON.stringify(value);
   return {
     gzipBytes: gzipSync(json).byteLength,

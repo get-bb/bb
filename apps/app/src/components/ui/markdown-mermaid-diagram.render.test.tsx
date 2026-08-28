@@ -12,19 +12,18 @@ import {
   readMermaidRenderCache,
   storeMermaidRenderCache,
 } from "./markdown-mermaid-render-cache";
+import * as mermaidLoader from "./markdown-mermaid-loader.js";
 
-const mermaidRender = vi.hoisted(() =>
-  vi.fn(async (_id: string, source: string) => ({
-    svg: `<svg data-source="${source}"></svg>`,
-    bindFunctions: undefined,
-  })),
-);
-vi.mock("./markdown-mermaid-loader.js", () => ({
-  loadMermaid: async () => ({
+const mermaidRender = vi.fn(async (_id: string, source: string) => ({
+  svg: `<svg data-source="${source}"></svg>`,
+  bindFunctions: undefined,
+}));
+vi.spyOn(mermaidLoader, "loadMermaid").mockResolvedValue(
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     initialize: () => undefined,
     render: mermaidRender,
-  }),
-}));
+  } as never,
+);
 
 type ObserverCallback = (
   entries: { isIntersecting: boolean; target: Element }[],

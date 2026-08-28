@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { JsonValue } from "@bb/domain";
 import {
   collectLogPayloads,
   getHelpOutput,
@@ -41,7 +42,7 @@ const pluginList = (id: string, source: string) => ({
   ],
 });
 
-function jsonResponse(value: object, status = 200): Response {
+function jsonResponse(value: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: { "Content-Type": "application/json" },

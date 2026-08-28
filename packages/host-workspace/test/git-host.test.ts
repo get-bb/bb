@@ -1,4 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { JsonValue } from "@bb/domain";
 import {
   getPullRequestForCurrentBranch,
   parseGitHostPullRequest,
@@ -6,39 +16,69 @@ import {
   type GitHostPullRequestAction,
 } from "../src/git-host.js";
 
-const execFileMock = vi.hoisted(() => vi.fn());
+interface FakeGhError extends Error {
+  code?: number | string | null;
+  killed?: boolean;
+  stderr?: string;
+}
 
-vi.mock("node:child_process", async () => {
-  const actual =
-    await vi.importActual<typeof import("node:child_process")>(
-      "node:child_process",
-    );
-  const { promisify } = await import("node:util");
-  Object.defineProperty(execFileMock, promisify.custom, {
-    value: (file: string, args: readonly string[], options: object) =>
-      new Promise((resolve, reject) => {
-        execFileMock(
-          file,
-          args,
-          options,
-          (error: Error | null, stdout = "", stderr = "") => {
-            if (error) reject(error);
-            else resolve({ stdout, stderr });
-          },
-        );
-      }),
-  });
-  return {
-    ...actual,
-    execFile: execFileMock,
-  };
+let commandDir: string;
+let ghPath: string;
+
+function testShellPath(): string {
+  return [commandDir, dirname(process.execPath), "/usr/bin", "/bin"].join(
+    delimiter,
+  );
+}
+
+const gitScript = `#!${process.execPath}
+import { appendFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+appendFileSync(join(dirname(process.argv[1]), "git-log"), process.argv.slice(2).join("\\t") + "\\n");
+`;
+
+const ghScript = `#!${process.execPath}
+import { appendFileSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+const directory = dirname(process.argv[1]);
+appendFileSync(join(directory, "gh-log"), process.argv.slice(2).join("\\t") + "\\n");
+const mode = readFileSync(join(directory, "gh-mode"), "utf8").trim();
+if (mode === "timeout") {
+  setInterval(() => {}, 1_000);
+} else if (mode === "error") {
+  process.stderr.write(readFileSync(join(directory, "gh-error"), "utf8"));
+  process.exit(Number(readFileSync(join(directory, "gh-code"), "utf8")));
+} else if (mode === "invalid") {
+  process.stdout.write("not json at all");
+} else {
+  process.stdout.write(readFileSync(join(directory, "gh-output"), "utf8"));
+}
+`;
+
+beforeAll(() => {
+  commandDir = mkdtempSync(join(tmpdir(), "bb-git-host-test-"));
+  ghPath = join(commandDir, "gh");
+  writeFileSync(join(commandDir, "git"), gitScript);
+  writeFileSync(ghPath, ghScript);
+  chmodSync(join(commandDir, "git"), 0o755);
+  chmodSync(ghPath, 0o755);
 });
 
 beforeEach(() => {
-  execFileMock.mockReset();
+  writeFileSync(ghPath, ghScript);
+  chmodSync(ghPath, 0o755);
+  writeFileSync(join(commandDir, "gh-log"), "");
+  writeFileSync(join(commandDir, "gh-mode"), "success");
+  writeFileSync(join(commandDir, "gh-output"), ghJson());
+  writeFileSync(join(commandDir, "gh-error"), "");
+  writeFileSync(join(commandDir, "gh-code"), "1");
 });
 
-function ghJson(overrides: Record<string, unknown> = {}): string {
+afterAll(() => {
+  rmSync(commandDir, { recursive: true, force: true });
+});
+
+function ghJson(overrides: Record<string, JsonValue> = {}): string {
   return JSON.stringify({
     number: 42,
     title: "Add pull request section",
@@ -55,6 +95,26 @@ function ghJson(overrides: Record<string, unknown> = {}): string {
     mergeable: "MERGEABLE",
     ...overrides,
   });
+}
+
+function ghCalls(): string[][] {
+  const log = readFileSync(join(commandDir, "gh-log"), "utf8").trim();
+  return log === "" ? [] : log.split("\n").map((line) => line.split("\t"));
+}
+
+function setGhStdout(stdout: string): void {
+  writeFileSync(join(commandDir, "gh-mode"), "success");
+  writeFileSync(join(commandDir, "gh-output"), stdout);
+}
+
+function setGhFailure(error: FakeGhError): void {
+  if (error.killed === true) {
+    writeFileSync(join(commandDir, "gh-mode"), "timeout");
+    return;
+  }
+  writeFileSync(join(commandDir, "gh-mode"), "error");
+  writeFileSync(join(commandDir, "gh-error"), error.stderr ?? "");
+  writeFileSync(join(commandDir, "gh-code"), String(error.code ?? 1));
 }
 
 describe("parseGitHostPullRequest", () => {
@@ -185,26 +245,17 @@ describe("parseGitHostPullRequest", () => {
 
 describe("runPullRequestActionForCurrentBranch", () => {
   const actionArgs = {
-    cwd: "/tmp/workspace",
+    get cwd(): string {
+      return commandDir;
+    },
     localBranch: "bb/pr-action",
-    shellPath: "/Users/test/.local/bin:/usr/bin",
+    get shellPath(): string {
+      return testShellPath();
+    },
   };
 
   function mockGhSuccess(): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
-        }
-        callback(null, "", "");
-      },
-    );
+    setGhStdout("");
   }
 
   it.each([
@@ -235,49 +286,17 @@ describe("runPullRequestActionForCurrentBranch", () => {
         action,
       });
 
-      expect(execFileMock).toHaveBeenCalledWith(
-        "gh",
-        expectedArgs,
-        expect.objectContaining({
-          cwd: "/tmp/workspace",
-          encoding: "utf8",
-          env: expect.objectContaining({
-            PATH: "/Users/test/.local/bin:/usr/bin",
-          }),
-          maxBuffer: 16 * 1024 * 1024,
-          timeout: 60_000,
-        }),
-        expect.any(Function),
-      );
+      expect(ghCalls()).toContainEqual(expectedArgs);
     },
   );
 
   it("maps a missing gh executable to a workspace error", async () => {
-    const error = Object.assign(new Error("spawn gh ENOENT"), {
-      code: "ENOENT",
-    });
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (
-          error: Error | null,
-          stdout?: string,
-          stderr?: string,
-        ) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
-        }
-        callback(error);
-      },
-    );
+    rmSync(ghPath);
 
     await expect(
       runPullRequestActionForCurrentBranch({
         ...actionArgs,
+        shellPath: commandDir,
         action: { operation: "ready" },
       }),
     ).rejects.toMatchObject({
@@ -289,47 +308,21 @@ describe("runPullRequestActionForCurrentBranch", () => {
 
 describe("getPullRequestForCurrentBranch", () => {
   const lookupArgs = {
-    cwd: "/tmp/workspace",
+    get cwd(): string {
+      return commandDir;
+    },
     localBranch: "bb/pr-lookup",
-    shellPath: "/Users/test/.local/bin:/usr/bin",
+    get shellPath(): string {
+      return testShellPath();
+    },
   };
 
   function mockGhStdout(stdout: string): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
-        }
-        callback(null, stdout, "");
-      },
-    );
+    setGhStdout(stdout);
   }
 
-  function mockGhFailure(error: Error): void {
-    execFileMock.mockImplementation(
-      (
-        file: string,
-        _args: readonly string[],
-        _options: object,
-        callback: (
-          error: Error | null,
-          stdout?: string,
-          stderr?: string,
-        ) => void,
-      ) => {
-        if (file === "git") {
-          callback(null, "", "");
-          return;
-        }
-        callback(error);
-      },
-    );
+  function mockGhFailure(error: FakeGhError): void {
+    setGhFailure(error);
   }
 
   it("uses bare gh lookup when the branch has no differently named upstream", async () => {
@@ -340,17 +333,8 @@ describe("getPullRequestForCurrentBranch", () => {
       outcome: "found",
       pullRequest: { number: 42, state: "OPEN" },
     });
-    expect(execFileMock).toHaveBeenCalledWith(
-      "gh",
-      ["pr", "view", "--json", expect.any(String)],
-      expect.objectContaining({
-        cwd: "/tmp/workspace",
-        env: expect.objectContaining({
-          PATH: "/Users/test/.local/bin:/usr/bin",
-        }),
-      }),
-      expect.any(Function),
-    );
+    expect(ghCalls()[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
+    expect(ghCalls()[0]?.[3]).toContain("number");
   });
 
   it("returns none when gh reports the branch has no PR", async () => {
@@ -366,10 +350,13 @@ describe("getPullRequestForCurrentBranch", () => {
   });
 
   it("returns unavailable when gh is not installed", async () => {
-    mockGhFailure(
-      Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
-    );
-    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
+    rmSync(ghPath);
+    await expect(
+      getPullRequestForCurrentBranch({
+        ...lookupArgs,
+        shellPath: commandDir,
+      }),
+    ).resolves.toEqual({
       outcome: "unavailable",
       message: "GitHub CLI is not available",
     });

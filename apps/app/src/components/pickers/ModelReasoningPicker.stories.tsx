@@ -43,7 +43,8 @@ const codexBase = {
   modelValue: "gpt-5.5",
   modelOptions: STORY_CODEX_MODELS,
   onModelChange: noop,
-  reasoningValue: "medium" as ReasoningLevel,
+  reasoningValue:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ "medium" as ReasoningLevel,
   reasoningOptions: STORY_CODEX_REASONING,
   onReasoningChange: noop,
   fastModeEnabled: false,
@@ -61,32 +62,33 @@ const claudeBase = {
   showFastModeToggle: false,
 };
 
-const MODEL_OPTIONS_BY_PROVIDER_ID: Record<
-  string,
-  readonly ModelPickerOption[]
-> = {
+const STORY_PROVIDER_IDS = ["codex", "claude-code", "pi"] as const;
+type StoryProviderId = (typeof STORY_PROVIDER_IDS)[number];
+
+const MODEL_OPTIONS_BY_PROVIDER_ID = {
   codex: STORY_CODEX_MODELS,
   "claude-code": STORY_CLAUDE_CODE_MODELS,
   pi: STORY_PI_MODELS,
-};
+} satisfies Record<StoryProviderId, readonly ModelPickerOption[]>;
 
-const MORE_MODEL_OPTIONS_BY_PROVIDER_ID: Record<
-  string,
-  readonly ModelPickerOption[]
-> = {
+const MORE_MODEL_OPTIONS_BY_PROVIDER_ID = {
   codex: [],
   "claude-code": STORY_CLAUDE_CODE_MORE_MODELS,
   pi: [],
-};
+} satisfies Record<StoryProviderId, readonly ModelPickerOption[]>;
 
-const REASONING_OPTIONS_BY_PROVIDER_ID: Record<
-  string,
-  readonly (typeof STORY_CODEX_REASONING)[number][]
-> = {
+const REASONING_OPTIONS_BY_PROVIDER_ID = {
   codex: STORY_CODEX_REASONING,
   "claude-code": STORY_CLAUDE_REASONING,
   pi: STORY_CODEX_REASONING,
-};
+} satisfies Record<
+  StoryProviderId,
+  readonly (typeof STORY_CODEX_REASONING)[number][]
+>;
+
+function getStoryProviderId(value: string): StoryProviderId | undefined {
+  return STORY_PROVIDER_IDS.find((providerId) => providerId === value);
+}
 
 export function Overview() {
   return (
@@ -157,13 +159,19 @@ export function Overview() {
 
 function ModelReasoningPickerInteractive() {
   const [selectedProviderId, setSelectedProviderId] = useState("codex");
+  const storyProviderId = getStoryProviderId(selectedProviderId);
   const modelOptions =
-    MODEL_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ?? STORY_CODEX_MODELS;
+    storyProviderId === undefined
+      ? STORY_CODEX_MODELS
+      : MODEL_OPTIONS_BY_PROVIDER_ID[storyProviderId];
   const moreModelOptions =
-    MORE_MODEL_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ?? [];
+    storyProviderId === undefined
+      ? []
+      : MORE_MODEL_OPTIONS_BY_PROVIDER_ID[storyProviderId];
   const reasoningOptions =
-    REASONING_OPTIONS_BY_PROVIDER_ID[selectedProviderId] ??
-    STORY_CODEX_REASONING;
+    storyProviderId === undefined
+      ? STORY_CODEX_REASONING
+      : REASONING_OPTIONS_BY_PROVIDER_ID[storyProviderId];
   const [modelValue, setModelValue] = useState(modelOptions[0]?.value ?? "");
   const [reasoningValue, setReasoningValue] =
     useState<ReasoningLevel>("medium");
@@ -173,8 +181,11 @@ function ModelReasoningPickerInteractive() {
       selectedProviderId={selectedProviderId}
       onSelectedProviderChange={(providerId) => {
         setSelectedProviderId(providerId);
+        const nextStoryProviderId = getStoryProviderId(providerId);
         const nextModels =
-          MODEL_OPTIONS_BY_PROVIDER_ID[providerId] ?? STORY_CODEX_MODELS;
+          nextStoryProviderId === undefined
+            ? STORY_CODEX_MODELS
+            : MODEL_OPTIONS_BY_PROVIDER_ID[nextStoryProviderId];
         setModelValue(nextModels[0]?.value ?? "");
       }}
       modelValue={modelValue}
@@ -183,7 +194,9 @@ function ModelReasoningPickerInteractive() {
       reasoningValue={reasoningValue}
       reasoningOptions={reasoningOptions}
       showFastModeToggle={
-        STORY_SERVICE_TIER_SUPPORT[selectedProviderId] ?? false
+        storyProviderId === undefined
+          ? false
+          : (STORY_SERVICE_TIER_SUPPORT[storyProviderId] ?? false)
       }
       onReasoningChange={setReasoningValue}
       modal={false}

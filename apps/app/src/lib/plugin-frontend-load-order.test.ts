@@ -26,14 +26,16 @@ function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
   };
 }
 
-function pluginModule(): Record<string, unknown> {
+function pluginModule() {
   return { default: definePluginApp(() => {}) };
 }
+
+type PluginModule = ReturnType<typeof pluginModule>;
 
 function makeDeferredImports() {
   const started: string[] = [];
   const resolvers = new Map<string, () => void>();
-  const importModule = vi.fn((url: string): Promise<unknown> => {
+  const importModule = vi.fn((url: string): Promise<PluginModule> => {
     started.push(url);
     return new Promise((resolve) => {
       resolvers.set(url, () => resolve(pluginModule()));

@@ -1,9 +1,8 @@
 import {
   compareBridgeVersions,
   isBridgeUsable,
-  NATIVE_BRIDGE_GLOBAL,
   parseNativeShellHandshake,
-  parseShellToPageEvent,
+  nativeShellHandshakeSchema,
   safeAreaInsetsSchema,
   shareResultSchema,
   type BridgeHapticKind,
@@ -11,62 +10,67 @@ import {
   type NativeScreen,
   type NativeCapability,
   type NativeShellHandshake,
+  type PageToShellMessage,
   type SafeAreaInsets,
+  type ShareResult,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
+import { z } from "zod";
 
-interface NativeBridgeGlobal {
-  post(message: unknown): void;
-  request(kind: string, payload: unknown): Promise<unknown>;
-  subscribe(listener: (event: unknown) => void): () => void;
-  safeArea?: unknown;
+interface NativeBridgeContainer {
+  native?: object;
 }
+
+declare global {
+  interface Window {
+    bb?: NativeBridgeContainer;
+  }
+}
+
+interface NativeBridgeGlobal extends NativeShellHandshake {
+  post(message: PageToShellMessage): void;
+  request(kind: "share", payload: BridgeSharePayload): Promise<ShareResult>;
+  subscribe(listener: (event: ShellToPageEvent) => void): () => void;
+}
+
+const nativeBridgeContractSchema = nativeShellHandshakeSchema
+  .extend({
+    post: z.function(),
+    request: z.function(),
+    subscribe: z.function(),
+  })
+  .passthrough();
+
+const nativeBridgeSchema = z.custom<NativeBridgeGlobal>(
+  (value) => nativeBridgeContractSchema.safeParse(value).success,
+);
 
 export interface NativeShell {
   handshake: NativeShellHandshake;
   safeArea(): SafeAreaInsets;
   has(capability: NativeCapability): boolean;
-  post(message: unknown): void;
-  request(kind: string, payload: unknown): Promise<unknown>;
+  post(message: PageToShellMessage): void;
+  request(kind: "share", payload: BridgeSharePayload): Promise<ShareResult>;
   subscribe(listener: (event: ShellToPageEvent) => void): () => void;
 }
 
 function readBridgeGlobal(): NativeBridgeGlobal | null {
-  if (typeof window === "undefined") return null;
-  const root = (window as unknown as Record<string, unknown>)[
-    NATIVE_BRIDGE_GLOBAL
-  ];
-  if (typeof root !== "object" || root === null) return null;
-  const native = (root as Record<string, unknown>).native;
-  if (typeof native !== "object" || native === null) return null;
-  const candidate = native as Partial<NativeBridgeGlobal>;
-  if (
-    typeof candidate.post !== "function" ||
-    typeof candidate.request !== "function" ||
-    typeof candidate.subscribe !== "function"
-  ) {
-    return null;
-  }
-  return native as NativeBridgeGlobal;
-}
-
-function pickHandshakeFields(bridge: NativeBridgeGlobal): unknown {
-  const source = bridge as unknown as Record<string, unknown>;
-  return {
-    bridgeVersion: source.bridgeVersion,
-    appVersion: source.appVersion,
-    platform: source.platform,
-    profileMode: source.profileMode,
-    secureContext: source.secureContext,
-    safeArea: source.safeArea,
-    capabilities: source.capabilities,
-  };
+  const parsed = nativeBridgeSchema.safeParse(globalThis.window?.bb?.native);
+  return parsed.success ? parsed.data : null;
 }
 
 function buildNativeShell(): NativeShell | null {
   const bridge = readBridgeGlobal();
   if (bridge === null) return null;
-  const handshake = parseNativeShellHandshake(pickHandshakeFields(bridge));
+  const handshake = parseNativeShellHandshake({
+    bridgeVersion: bridge.bridgeVersion,
+    appVersion: bridge.appVersion,
+    platform: bridge.platform,
+    profileMode: bridge.profileMode,
+    secureContext: bridge.secureContext,
+    safeArea: bridge.safeArea,
+    capabilities: bridge.capabilities,
+  });
   if (handshake === null) return null;
   if (!isBridgeUsable(compareBridgeVersions(handshake.bridgeVersion))) {
     return null;
@@ -79,13 +83,10 @@ function buildNativeShell(): NativeShell | null {
       return live.success ? live.data : handshake.safeArea;
     },
     has: (capability) => capabilities.has(capability),
-    post: (message) => bridge.post(message),
-    request: (kind, payload) => bridge.request(kind, payload),
-    subscribe: (listener) =>
-      bridge.subscribe((event) => {
-        const parsed = parseShellToPageEvent(event);
-        if (parsed !== null) listener(parsed);
-      }),
+    post: bridge.post,
+    request: async (kind, payload) =>
+      shareResultSchema.parse(await bridge.request(kind, payload)),
+    subscribe: bridge.subscribe,
   };
 }
 
@@ -117,15 +118,10 @@ export function shellSetBadge(count: number): void {
     shell.post({ type: "badge", count: normalized });
     return;
   }
-  if (typeof navigator === "undefined") return;
-  const badging = navigator as Navigator & {
-    setAppBadge?: (count?: number) => Promise<void>;
-    clearAppBadge?: () => Promise<void>;
-  };
   const update =
     normalized === 0
-      ? badging.clearAppBadge?.()
-      : badging.setAppBadge?.(normalized);
+      ? globalThis.navigator?.clearAppBadge?.()
+      : globalThis.navigator?.setAppBadge?.(normalized);
   void update?.catch(() => undefined);
 }
 
@@ -148,11 +144,12 @@ export async function shellShare(
       return null;
     }
   }
-  if (typeof navigator === "undefined" || navigator.share === undefined) {
+  const browserNavigator = globalThis.navigator;
+  if (browserNavigator?.share === undefined) {
     return null;
   }
   try {
-    await navigator.share(payload);
+    await browserNavigator.share(payload);
     return true;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {

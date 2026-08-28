@@ -411,10 +411,13 @@ const ICON_MAP = {
 
 export type IconName = keyof typeof ICON_MAP;
 
-export const ICON_NAMES = Object.keys(ICON_MAP) as readonly IconName[];
+export const ICON_NAMES = Object.keys(ICON_MAP).filter(isIconName);
 
-export function isIconName(value: unknown): value is IconName {
-  return typeof value === "string" && Object.hasOwn(ICON_MAP, value);
+export function isIconName(value: ReactNode): value is IconName {
+  const parsed = z.string().safeParse(value);
+  return parsed.success && Object.hasOwn(ICON_MAP, parsed.data);
 }
 
 export { ICON_MAP };
+import type { ReactNode } from "react";
+import { z } from "zod";

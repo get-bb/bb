@@ -26,22 +26,22 @@ public API would have a hole.
 
 Registration (`server.ts`, `bb.providers.register`):
 
-| Capability                                                                                                                                                              | Where                                              |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `strings` — sign-in and expiry hints, install URL, brand prefix, plan-mode copy, icon tint                                                                 | `server.ts`                                        |
-| `reasoningLevels` — labelled picker options beside the coarse ladder                                                                                       | `server.ts`                                        |
-| `serviceTiers` and `capabilities.supportsServiceTier`                                                                                                      | `server.ts`                                        |
-| `capabilities` — permission modes, fork, archive/rename                                                                                                                 | `server.ts`                                        |
-| `maintenance.health: true` — the server polls `provider/health` through the bridge; usage and installation stay off                                         | `server.ts`, answered in `src/provider-bridge.ts`  |
-| `composerActions: ["plan"]`                                                                                                                                             | `server.ts`                                        |
-| `models.fallback` — the cold-cache model list                                                                                                              | `server.ts`                                        |
-| `env.passthrough` — one daemon env var the bridge may read                                                                                                 | `server.ts`, read in `src/provider-bridge.ts`      |
-| `experimental_nativeSkillRoots` — one workspace-relative skill root (`.echo/skills`) bb lists beside its own skills                                        | `server.ts`, asserted in `server.test.ts`          |
-| `deriveProviderOptions` — the plugin's `shout` setting (`bb.settings.define`) travels to the bridge as `providerOptions`                                   | `server.ts`, read back in `src/provider-bridge.ts` |
-| `extensionKinds` — one item kind (`echo-provider/receipt`) and one state kind (`echo-provider/mood`), each with a zod schema the server enforces at ingest | `src/vocabulary.ts`                                |
-| `bb.agents.registerTool` with `presentation` — a bb tool whose row reads the way the plugin says                                                           | `server.ts`                                        |
+| Capability                                                                                                                                                                         | Where                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `strings` — sign-in and expiry hints, install URL, brand prefix, plan-mode copy, icon tint                                                                                         | `server.ts`                                              |
+| `reasoningLevels` — labelled picker options beside the coarse ladder                                                                                                               | `server.ts`                                              |
+| `serviceTiers` and `capabilities.supportsServiceTier`                                                                                                                              | `server.ts`                                              |
+| `capabilities` — permission modes, fork, archive/rename                                                                                                                            | `server.ts`                                              |
+| `maintenance.health: true` — the server polls `provider/health` through the bridge; usage and installation stay off                                                                | `server.ts`, answered in `src/provider-bridge.ts`        |
+| `composerActions: ["plan"]`                                                                                                                                                        | `server.ts`                                              |
+| `models.fallback` — the cold-cache model list                                                                                                                                      | `server.ts`                                              |
+| `env.passthrough` — one daemon env var the bridge may read                                                                                                                         | `server.ts`, read in `src/provider-bridge.ts`            |
+| `experimental_nativeSkillRoots` — one workspace-relative skill root (`.echo/skills`) bb lists beside its own skills                                                                | `server.ts`, asserted in `server.test.ts`                |
+| `deriveProviderOptions` — the plugin's `shout` setting (`bb.settings.define`) travels to the bridge as `providerOptions`                                                           | `server.ts`, read back in `src/provider-bridge.ts`       |
+| `extensionKinds` — one item kind (`echo-provider/receipt`) and one state kind (`echo-provider/mood`), each with a zod schema the server enforces at ingest                         | `src/vocabulary.ts`                                      |
+| `bb.agents.registerTool` with `presentation` — a bb tool whose row reads the way the plugin says                                                                                   | `server.ts`                                              |
 | `bb.branding.experimental_icons` — one declared icon (`receipt`) the receipt row references as `echo-provider/receipt`; the server serves it hashed and checks the glyph at ingest | `package.json`, `icons/receipt.svg`, `src/vocabulary.ts` |
-| `bb.host` — one artifact carrying the bridge and a host RPC entry                                                                                                       | `host.ts`, `contract.ts`                           |
+| `bb.host` — one artifact carrying the bridge and a host RPC entry                                                                                                                  | `host.ts`, `contract.ts`                                 |
 
 The bridge (`src/provider-bridge.ts`, grammar v3). Every accepted prompt runs
 the same scripted turn:

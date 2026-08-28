@@ -1,4 +1,5 @@
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { z } from "zod";
 
 const DIFF_WORKER_POOL_MAX_SIZE = 4;
 const DIFF_WORKER_POOL_CONSTRAINED_MAX_SIZE = 2;
@@ -33,29 +34,26 @@ export function computeDiffWorkerPoolSize({
 }
 
 function readDeviceMemory(): number | undefined {
-  if (typeof navigator === "undefined") return undefined;
-  const value: unknown = Reflect.get(navigator, "deviceMemory");
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+  if (!("navigator" in globalThis)) return undefined;
+  const parsed = z
+    .object({ deviceMemory: z.number().finite() })
+    .safeParse(globalThis.navigator);
+  return parsed.success ? parsed.data.deviceMemory : undefined;
 }
 
 function readCoarsePointer(): boolean {
-  if (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function"
-  ) {
+  if (!("window" in globalThis)) {
     return false;
   }
-  return window.matchMedia(POINTER_COARSE_QUERY).matches;
+  if (!("matchMedia" in globalThis.window)) return false;
+  return globalThis.window.matchMedia(POINTER_COARSE_QUERY).matches;
 }
 
 export function getDiffWorkerPoolSize(): number {
+  const browserNavigator =
+    "navigator" in globalThis ? globalThis.navigator : undefined;
   return computeDiffWorkerPoolSize({
-    hardwareConcurrency:
-      typeof navigator !== "undefined"
-        ? navigator.hardwareConcurrency
-        : undefined,
+    hardwareConcurrency: browserNavigator?.hardwareConcurrency,
     coarsePointer: readCoarsePointer(),
     deviceMemory: readDeviceMemory(),
   });

@@ -1,6 +1,6 @@
 import type { JsonObject } from "../json-value.js";
 
-export const nordLightCodeTheme = {
+export const nordLightCodeTheme: JsonObject = {
   colors: {
     "activityBar.activeBackground": "#e5e9f0",
     "activityBar.activeBorder": "#88c0d0",
@@ -1278,4 +1278,4 @@ export const nordLightCodeTheme = {
     },
   ],
   type: "light",
-} as JsonObject;
+};

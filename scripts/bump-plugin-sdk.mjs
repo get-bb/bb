@@ -1,22 +1,8 @@
-// Bumps @get-bb/plugin-sdk in the two files that must always agree:
-//
-//   packages/domain/src/plugin-sdk-version.ts  (PLUGIN_SDK_VERSION)
-//   packages/plugin-sdk/package.json           (version)
-//
-// The publish job is publish-if-missing (.github/workflows/publish-bb-app.yml,
-// job publish-plugin-sdk): it never republishes a version that already exists on
-// npm. So any change to the package's published content — dist/, bundled-types/,
-// README.md, or a consumer-facing manifest field — needs a new version, or npm
-// keeps serving the old content forever. check-npm-version-guard.mjs fails CI
-// when that happens and points here.
-//
-// Both files are written atomically: a temp file per target, then renames, with
-// the originals restored if any rename fails. A half-applied bump would leave
-// the repo in the exact inconsistent state this script exists to prevent.
 import { randomUUID } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { compareSemver, resolveVersionArgument } from "./lib/semver.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -25,12 +11,8 @@ const USAGE =
   "Usage: node scripts/bump-plugin-sdk.mjs <new-version>|--patch|--minor|--major";
 const MANIFEST_PATH = "packages/plugin-sdk/package.json";
 const VERSION_MODULE_PATH = "packages/domain/src/plugin-sdk-version.ts";
+const packageManifestSchema = z.object({ version: z.string() }).passthrough();
 
-/**
- * Matches the `PLUGIN_SDK_VERSION` export in plugin-sdk-version.ts. Anchored to
- * the export statement rather than the bare string so the long explanatory
- * comment above it — which cites version numbers — is never rewritten.
- */
 const VERSION_EXPORT_PATTERN =
   /(export const PLUGIN_SDK_VERSION = ")([^"]+)(";)/u;
 
@@ -43,21 +25,11 @@ function detectPackageJsonIndent(content) {
 }
 
 function readManifestVersion({ content, path }) {
-  const packageJson = JSON.parse(content);
-
-  if (
-    typeof packageJson !== "object" ||
-    packageJson === null ||
-    Array.isArray(packageJson)
-  ) {
+  const parsed = packageManifestSchema.safeParse(JSON.parse(content));
+  if (!parsed.success) {
     throw new Error(`Invalid package JSON object in ${path}`);
   }
-
-  if (typeof packageJson.version !== "string") {
-    throw new Error(`Missing string version field in ${path}`);
-  }
-
-  return { packageJson, version: packageJson.version };
+  return { packageJson: parsed.data, version: parsed.data.version };
 }
 
 function writeManifestVersion({ content, packageJson, newVersion }) {
@@ -145,8 +117,6 @@ export async function bumpPluginSdk(options) {
     path: VERSION_MODULE_PATH,
   });
 
-  // Drifted sources have no single "current" version to bump from, and picking
-  // one would silently pin the other. Make the operator resolve it.
   if (manifestVersion !== moduleVersion) {
     throw new Error(
       `Version mismatch before bump: ${MANIFEST_PATH}=${manifestVersion} ${VERSION_MODULE_PATH}=${moduleVersion}. Set both to the same version, then bump.`,

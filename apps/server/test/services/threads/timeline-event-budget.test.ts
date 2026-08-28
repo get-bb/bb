@@ -33,7 +33,7 @@ function requestId(value: number): ClientTurnRequestId {
   return encodeClientTurnRequestIdNumber({ value });
 }
 
-function setup(): { db: DbConnection; thread: Thread } {
+function setup() {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
@@ -107,10 +107,9 @@ function insertTurns(
       parentToolCallId: null,
       data: JSON.stringify({ clientRequestId }),
     });
-    const items =
-      typeof itemsPerTurn === "number"
-        ? itemsPerTurn
-        : (itemsPerTurn[turn - 1] ?? 1);
+    const items = Array.isArray(itemsPerTurn)
+      ? (itemsPerTurn[turn - 1] ?? 1)
+      : itemsPerTurn;
     for (let item = 0; item < items; item += 1) {
       sequence += 1;
       events.push({

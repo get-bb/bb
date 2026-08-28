@@ -4,6 +4,7 @@ import {
   type NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import type { StandardSchemaV1 } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { loadFirstPartyProviderDeclarations } from "../helpers/provider-registry.js";
 
@@ -221,9 +222,14 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
-        deriveProviderOptions: () => ({
-          oops: (() => undefined) as unknown as string,
-        }),
+        deriveProviderOptions: () => {
+          const invalidOptions: Record<string, null> = {};
+          Object.defineProperty(invalidOptions, "oops", {
+            enumerable: true,
+            value: () => undefined,
+          });
+          return invalidOptions;
+        },
       }),
       readSettings: NO_SETTINGS,
     });
@@ -370,10 +376,10 @@ describe("buildPluginProviderRegistration", () => {
   });
 });
 
-function standardSchema() {
+function standardSchema(): StandardSchemaV1["~standard"] {
   return {
     version: 1 as const,
     vendor: "test",
-    validate: (value: unknown) => ({ value }),
+    validate: (value) => ({ value }),
   };
 }

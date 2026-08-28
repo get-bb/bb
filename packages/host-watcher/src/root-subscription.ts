@@ -184,7 +184,9 @@ export class RootSubscription {
       if (this.disposed) {
         return;
       }
-      this.reportWatchError(toWatchErrorMessage(error));
+      const watchError =
+        error instanceof Error ? error : new Error(String(error));
+      this.reportWatchError(toWatchErrorMessage(watchError));
       this.scheduleRetry();
     }
   }

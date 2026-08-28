@@ -10,7 +10,11 @@ export function missingClaudeCliGuidance(): string {
   return MISSING_CLAUDE_CLI_GUIDANCE;
 }
 
-export function translateMissingClaudeCliError(error: unknown): unknown {
+type MissingClaudeCliTranslation<T> = T | Error;
+
+export function translateMissingClaudeCliError<T>(
+  error: T,
+): MissingClaudeCliTranslation<T> {
   if (error instanceof Error && isMissingClaudeCliMessage(error.message)) {
     return new Error(MISSING_CLAUDE_CLI_GUIDANCE, { cause: error });
   }

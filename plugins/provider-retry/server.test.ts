@@ -27,6 +27,12 @@ type TurnRequestEventRow = Extract<
 >;
 type ThreadSend = BbPluginApi["sdk"]["threads"]["send"];
 
+interface HostSubscription {
+  hostChanged:
+    | ((changes: Array<"host-connected" | "host-disconnected">) => void)
+    | null;
+}
+
 interface TestFailedTurnInspection {
   candidate: null | {
     events: ThreadEventRows;
@@ -427,10 +433,11 @@ describe("provider retry scheduler", () => {
     let eventReads = 0;
     const observedEvents = new Proxy(events, {
       get(target, property, receiver) {
-        if (typeof property === "string" && /^\d+$/u.test(property)) {
+        if (/^\d+$/u.test(String(property))) {
           eventReads += 1;
         }
-        return Reflect.get(target, property, receiver);
+        // SAFETY: Proxy property keys index the same array that the trap receives.
+        return target[property as keyof typeof target];
       },
     });
 
@@ -1016,11 +1023,7 @@ describe("provider retry scheduler", () => {
         }),
       )
       .mockResolvedValueOnce({ ok: true as const, delivery: "sent" as const });
-    const subscription = {
-      hostChanged: null as
-        | ((changes: Array<"host-connected" | "host-disconnected">) => void)
-        | null,
-    };
+    const subscription: HostSubscription = { hostChanged: null };
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,

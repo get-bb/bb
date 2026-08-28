@@ -36,16 +36,16 @@ type ReasoningLevel = ExperimentalProviderModelPickerValue["reasoningLevel"];
 export type PermissionMode = PresetPermissionMode;
 type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
-export const PERMISSION_LABELS: Record<PermissionMode, string> = {
+export const PERMISSION_LABELS = {
   "accept-edits": "Accept Edits",
   auto: "Approve for me",
   full: "Full Access",
-};
+} satisfies Record<PermissionMode, string>;
 
-const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
+const ENVIRONMENT_LABELS = {
   "project-default": "Project default",
   "new-worktree": "New worktree",
-};
+} satisfies Record<EnvironmentKind, string>;
 
 interface MachineOption {
   id: string;
@@ -68,7 +68,7 @@ export function describePresetEnvironment(
 
 const DEFAULT_MACHINE_VALUE = "__default-machine__";
 
-export function describeError(error: unknown): string {
+export function describeError<Value>(error: Value): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -177,10 +177,10 @@ export function PresetDialog({
     providerId: draft.providerId,
     model: draft.modelId,
     reasoningLevel: draft.reasoningLevel,
-    ...(draft.serviceTier === undefined
-      ? {}
-      : { serviceTier: draft.serviceTier }),
   };
+  if (draft.serviceTier !== undefined) {
+    pickerValue.serviceTier = draft.serviceTier;
+  }
   const pickerRouting =
     draft.environmentKind === "new-worktree" && draft.machineId.trim() !== ""
       ? ({ kind: "host", hostId: draft.machineId.trim() } as const)
@@ -242,14 +242,17 @@ export function PresetDialog({
             <Select
               value={draft.environmentKind}
               onValueChange={(value) => {
-                const kind = value as EnvironmentKind;
-                setDraft((current) => ({
-                  ...current,
-                  environmentKind: kind,
-                  ...(kind === "new-worktree"
-                    ? {}
-                    : { baseBranch: "", machineId: "" }),
-                }));
+                const kind =
+                  PRESET_ENVIRONMENT_KINDS.find((entry) => entry === value) ??
+                  "project-default";
+                setDraft((current) => {
+                  const next = { ...current, environmentKind: kind };
+                  if (kind !== "new-worktree") {
+                    next.baseBranch = "";
+                    next.machineId = "";
+                  }
+                  return next;
+                });
               }}
             >
               <SelectTrigger aria-label="Execution environment" className="h-8">
@@ -345,9 +348,7 @@ export function PresetDialog({
               setError(null);
               onSave(draft)
                 .then(() => onOpenChange(false))
-                .catch((saveError: unknown) =>
-                  setError(describeError(saveError)),
-                )
+                .catch((saveError) => setError(describeError(saveError)))
                 .finally(() => setSubmitting(false));
             }}
           >

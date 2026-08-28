@@ -14,12 +14,14 @@ import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { PluginHostManager } from "./plugin-host-manager.js";
 
 type PluginCall = Extract<
   HostDaemonOnlineRpcCommand,
   { type: "plugin.host.call" }
 >;
+type PluginCallResult = Awaited<ReturnType<PluginHostManager["call"]>>;
 
 const artifactSource = Buffer.from(`
 const anySchema = { "~standard": { validate(value) { return { value }; } } };
@@ -101,6 +103,23 @@ export default {
 };
 `);
 
+const workerPidOutputSchema = z.object({ pid: z.number() });
+const workerPathsOutputSchema = z.object({
+  dataDir: z.string(),
+  tempDir: z.string(),
+});
+
+function workerPid(output: PluginCallResult["output"]): number {
+  return workerPidOutputSchema.parse(output).pid;
+}
+
+function workerPaths(output: PluginCallResult["output"]): {
+  dataDir: string;
+  tempDir: string;
+} {
+  return workerPathsOutputSchema.parse(output);
+}
+
 function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
   return {
     type: "plugin.host.call",
@@ -162,9 +181,7 @@ describe("PluginHostManager", () => {
     ]);
 
     expect(first.output).toMatchObject({ input: { value: "hello" } });
-    expect(Reflect.get(Object(first.output), "pid")).toBe(
-      Reflect.get(Object(second.output), "pid"),
-    );
+    expect(workerPid(first.output)).toBe(workerPid(second.output));
     expect(fetchArtifact).toHaveBeenCalledOnce();
   });
 
@@ -335,12 +352,12 @@ describe("PluginHostManager", () => {
       workerIdleTimeoutMs: 20,
     });
     const first = await manager.call(callCommand());
-    const firstPid = Reflect.get(Object(first.output), "pid");
+    const firstPid = workerPid(first.output);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     const restarted = await manager.call(callCommand());
 
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
+    expect(workerPid(restarted.output)).not.toBe(firstPid);
     expect(onWorkerExit).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({ digest: expect.any(String) }),
@@ -361,18 +378,18 @@ describe("PluginHostManager", () => {
     const retained = await manager.call(
       callCommand({ method: "retain", input: { enabled: true } }),
     );
-    const retainedPid = Reflect.get(Object(retained.output), "pid");
+    const retainedPid = workerPid(retained.output);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     const whileRetained = await manager.call(callCommand());
-    expect(Reflect.get(Object(whileRetained.output), "pid")).toBe(retainedPid);
+    expect(workerPid(whileRetained.output)).toBe(retainedPid);
 
     await manager.call(
       callCommand({ method: "retain", input: { enabled: false } }),
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
     const restarted = await manager.call(callCommand());
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(retainedPid);
+    expect(workerPid(restarted.output)).not.toBe(retainedPid);
   });
 
   it("rejects unverified or invalid artifacts", async () => {
@@ -507,7 +524,7 @@ describe("PluginHostManager", () => {
     const manager = await createManager({ onSignal });
     const command = callCommand({ method: "pathsAndSignal" });
     const result = await manager.call(command);
-    const paths = result.output as { dataDir: string; tempDir: string };
+    const paths = workerPaths(result.output);
 
     await vi.waitFor(() => expect(onSignal).toHaveBeenCalledOnce());
     expect(onSignal).toHaveBeenCalledWith({
@@ -585,7 +602,7 @@ describe("PluginHostManager", () => {
     };
     const manager = await createManager({ logger, onWorkerExit });
     const first = await manager.call(callCommand());
-    const firstPid = Reflect.get(Object(first.output), "pid");
+    const firstPid = workerPid(first.output);
 
     await expect(
       manager.call(callCommand({ method: "crash" })),
@@ -605,7 +622,7 @@ describe("PluginHostManager", () => {
       "Host plugin worker exited unexpectedly",
     );
     const restarted = await manager.call(callCommand());
-    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
+    expect(workerPid(restarted.output)).not.toBe(firstPid);
 
     await manager.reconcileGenerations([]);
     await expect(manager.call(callCommand())).rejects.toThrow(/is retired/u);

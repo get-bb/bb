@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { z } from "zod";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
 interface SeqAnchoredRow {
@@ -31,8 +32,9 @@ const FLASH_DURATION_MS = 1700;
 const POST_WINDOW_SETTLE_REVEAL_MS = 800;
 
 function escapeTimelineRowId(rowId: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(rowId);
+  const cssEscape = globalThis.CSS?.escape;
+  if (cssEscape) {
+    return cssEscape(rowId);
   }
   return rowId.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
@@ -155,23 +157,19 @@ export function collectSearchedMessageAncestorRowIds(
   return ancestorIds;
 }
 
+const searchMessageTargetSchema = z.object({
+  searchMessageSeq: z.number(),
+  searchThreadId: z.string().nullable().optional(),
+});
+
 export function readSearchMessageTarget(
-  state: unknown,
+  state: z.input<typeof searchMessageTargetSchema>,
 ): SearchMessageTarget | null {
-  if (
-    state !== null &&
-    typeof state === "object" &&
-    "searchMessageSeq" in state
-  ) {
-    const value = (state as { searchMessageSeq: unknown }).searchMessageSeq;
-    if (typeof value !== "number") {
-      return null;
-    }
-    const threadIdValue = (state as { searchThreadId?: unknown })
-      .searchThreadId;
+  const parsed = searchMessageTargetSchema.safeParse(state);
+  if (parsed.success) {
     return {
-      seq: value,
-      threadId: typeof threadIdValue === "string" ? threadIdValue : null,
+      seq: parsed.data.searchMessageSeq,
+      threadId: parsed.data.searchThreadId ?? null,
     };
   }
   return null;

@@ -34,10 +34,7 @@ export const RETRY_ACTION_ICON = "RotateCcw";
 
 export const UPDATE_ACTION_ICON = "Download";
 
-export const UPDATE_STATE_PRESENTATION: Record<
-  UpdateState,
-  UpdateStatePresentation
-> = {
+export const UPDATE_STATE_PRESENTATION = {
   "up-to-date": {
     icon: RUN_STATE_PRESENTATION.succeeded.icon,
     label: "Up to date",
@@ -71,4 +68,4 @@ export const UPDATE_STATE_PRESENTATION: Record<
     tone: "error",
   },
   offline: { icon: "CircleX", label: "Offline", tone: "muted" },
-};
+} satisfies Record<UpdateState, UpdateStatePresentation>;

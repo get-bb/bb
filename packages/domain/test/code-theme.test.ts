@@ -9,6 +9,11 @@ import {
   resolveCodeTheme,
 } from "../src/code-theme.js";
 
+interface NestedThemeFixture {
+  child?: NestedThemeFixture;
+  name?: string;
+}
+
 describe("code theme resolution", () => {
   it("falls back to Pierre defaults when nothing is declared", () => {
     expect(resolveCodeTheme(null)).toEqual({
@@ -102,7 +107,7 @@ describe("code theme resolution", () => {
   });
 
   it("rejects deeply nested theme JSON instead of throwing", () => {
-    let nested: unknown = { name: "Deep" };
+    let nested: NestedThemeFixture = { name: "Deep" };
     for (let depth = 0; depth < 64; depth += 1) {
       nested = { child: nested };
     }

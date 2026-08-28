@@ -20,8 +20,53 @@ interface SlotRegistration {
   icon?: string;
   path?: string;
   extensions?: string[];
-  component: unknown;
+  component: () => void;
 }
+
+interface PluginSetup {
+  slots: Record<string, (registration: SlotRegistration) => void>;
+}
+
+interface PluginApp {
+  __bbPluginApp: true;
+  setup: (app: PluginSetup) => void;
+}
+
+interface PluginRuntime {
+  react: {
+    forwardRef: (render: () => void) => () => void;
+    createContext: () => object;
+    memo: (component: () => void) => () => void;
+  };
+  reactDom: () => void;
+  reactDomClient: () => void;
+  jsxRuntime: { jsx: () => object; jsxs: () => object; Fragment: object };
+  pluginSdkApp: {
+    definePluginApp: (setup: (app: PluginSetup) => void) => PluginApp;
+  };
+  sonner: () => void;
+  vaul: () => void;
+  pierreDiffs: () => void;
+  pierreDiffsReact: () => void;
+  radixContextMenu: () => void;
+  radixDialog: () => void;
+  radixSelect: () => void;
+  clsx: () => void;
+  tailwindMerge: () => void;
+  classVarianceAuthority: () => void;
+  sharedUiIcon: () => void;
+}
+
+interface RegisteredSlots {
+  homepageSection: SlotRegistration[];
+  navPanel: SlotRegistration[];
+  threadPanelAction: SlotRegistration[];
+  sidebarFooterAction: SlotRegistration[];
+  fileOpener: SlotRegistration[];
+  messageDirective: SlotRegistration[];
+}
+
+const PLUGIN_RUNTIME_KEY = "__bbPluginRuntime";
 
 describe("Docs official plugin frontend bundle", () => {
   let root: string;
@@ -32,8 +77,8 @@ describe("Docs official plugin frontend bundle", () => {
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
-    delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
-    delete (globalThis as { document?: unknown }).document;
+    Reflect.deleteProperty(globalThis, PLUGIN_RUNTIME_KEY);
+    Reflect.deleteProperty(globalThis, "document");
   });
 
   it("registers the Docs nav, directive, thread-panel, and file-opener surfaces", async () => {
@@ -56,7 +101,7 @@ describe("Docs official plugin frontend bundle", () => {
       await testToolchain(),
     );
 
-    const registered: Record<string, SlotRegistration[]> = {
+    const registered: RegisteredSlots = {
       homepageSection: [],
       navPanel: [],
       threadPanelAction: [],
@@ -64,24 +109,24 @@ describe("Docs official plugin frontend bundle", () => {
       fileOpener: [],
       messageDirective: [],
     };
-    const componentStub: unknown = new Proxy(function stub() {}, {
+    const componentStubTarget = function stub() {};
+    let componentStub: typeof componentStubTarget;
+    componentStub = new Proxy(componentStubTarget, {
       get: (target, prop) =>
-        prop === "prototype"
-          ? Reflect.get(target, prop)
-          : (componentStub as object),
+        prop === "prototype" ? target.prototype : componentStub,
       set: () => true,
     });
-    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
+    const runtime: PluginRuntime = {
       react: {
-        forwardRef: (render: unknown) => render,
+        forwardRef: (render) => render,
         createContext: () => ({}),
-        memo: (component: unknown) => component,
+        memo: (component) => component,
       },
       reactDom: componentStub,
       reactDomClient: componentStub,
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       pluginSdkApp: {
-        definePluginApp: (setup: unknown) => ({ __bbPluginApp: true, setup }),
+        definePluginApp: (setup) => ({ __bbPluginApp: true, setup }),
       },
       sonner: componentStub,
       vaul: componentStub,
@@ -95,22 +140,24 @@ describe("Docs official plugin frontend bundle", () => {
       classVarianceAuthority: componentStub,
       sharedUiIcon: componentStub,
     };
-    (globalThis as { document?: unknown }).document = {
-      createElement: () => ({ innerHTML: "", textContent: "", style: {} }),
-      documentElement: { style: {} },
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    };
-    const mod = (await import(
+    Object.defineProperty(globalThis, PLUGIN_RUNTIME_KEY, {
+      configurable: true,
+      value: runtime,
+      writable: true,
+    });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        createElement: () => ({ innerHTML: "", textContent: "", style: {} }),
+        documentElement: { style: {} },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+      writable: true,
+    });
+    const mod: { default: PluginApp } = await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href
-    )) as {
-      default: {
-        __bbPluginApp: boolean;
-        setup: (app: {
-          slots: Record<string, (registration: SlotRegistration) => void>;
-        }) => void;
-      };
-    };
+    );
     expect(mod.default.__bbPluginApp).toBe(true);
     mod.default.setup({
       slots: {
@@ -129,22 +176,26 @@ describe("Docs official plugin frontend bundle", () => {
       title: "Docs",
       path: "docs",
     });
-    expect(typeof registered.navPanel[0]?.component).toBe("function");
+    expect(registered.navPanel[0]?.component).toEqual(expect.any(Function));
 
     expect(registered.homepageSection).toHaveLength(0);
     expect(registered.threadPanelAction[0]).toMatchObject({
       id: "document",
       title: "Document",
     });
-    expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
+    expect(registered.threadPanelAction[0]?.component).toEqual(
+      expect.any(Function),
+    );
     expect(registered.messageDirective[0]).toMatchObject({ id: "docs" });
-    expect(typeof registered.messageDirective[0]?.component).toBe("function");
+    expect(registered.messageDirective[0]?.component).toEqual(
+      expect.any(Function),
+    );
     expect(registered.sidebarFooterAction).toHaveLength(0);
     expect(registered.fileOpener[0]).toMatchObject({
       id: "docs",
       title: "Markdown",
       extensions: ["md", "mdx", "markdown"],
     });
-    expect(typeof registered.fileOpener[0]?.component).toBe("function");
+    expect(registered.fileOpener[0]?.component).toEqual(expect.any(Function));
   });
 });

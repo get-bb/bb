@@ -89,7 +89,7 @@ export function createParcelChildHandler(args: {
           await emitRescan(message.id, message.dir);
         }
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         cancelledBeforeReady.delete(message.id);
         args.send({
           kind: "subscribe-failed",

@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import { z } from "zod";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -15,15 +17,26 @@ const WORKER_ENTRY = fileURLToPath(
 );
 const TSX_LOADER = import.meta.resolve("tsx");
 
-interface BridgeLine {
-  id?: number | string;
-  method?: string;
-  params?: {
-    deltas?: { kind?: string; channel?: string; text?: unknown }[];
-  };
-  result?: { providerThreadId?: unknown };
-  error?: { message?: string };
-}
+const bridgeLineSchema = z.object({
+  id: z.union([z.number(), z.string()]).optional(),
+  method: z.string().optional(),
+  params: z
+    .object({
+      deltas: z
+        .array(
+          z.object({
+            kind: z.string().optional(),
+            channel: z.string().optional(),
+            text: jsonValueSchema.optional(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  result: z.object({ providerThreadId: jsonValueSchema.optional() }).optional(),
+  error: z.object({ message: z.string().optional() }).optional(),
+});
+type BridgeLine = z.infer<typeof bridgeLineSchema>;
 
 interface AdvertisedMcpServer {
   name: string;
@@ -31,6 +44,15 @@ interface AdvertisedMcpServer {
   args: string[];
   env: { name: string; value: string }[];
 }
+
+const advertisedMcpServersSchema = z.array(
+  z.object({
+    name: z.string(),
+    command: z.string(),
+    args: z.array(z.string()),
+    env: z.array(z.object({ name: z.string(), value: z.string() })),
+  }),
+);
 
 const children: ChildProcess[] = [];
 const tempDirs: string[] = [];
@@ -101,7 +123,7 @@ function spawnBridgeLikeTheAgentRuntime(dataDir: string): ChildProcess {
   }
   createInterface({ input: bridge.stdout }).on("line", (line) => {
     try {
-      bridgeLines.push(JSON.parse(line) as BridgeLine);
+      bridgeLines.push(bridgeLineSchema.parse(JSON.parse(line)));
     } catch {}
   });
   return bridge;
@@ -110,7 +132,7 @@ function spawnBridgeLikeTheAgentRuntime(dataDir: string): ChildProcess {
 function sendToBridge(
   bridge: ChildProcess,
   method: string,
-  params: unknown,
+  params: JsonValue,
 ): number {
   const id = nextRequestId++;
   if (!bridge.stdin) {
@@ -183,9 +205,9 @@ async function readAdvertisedMcpServer(
     () => agentMessageTexts().find((text) => text.startsWith(configPrefix)),
     "mcp-server-config echo",
   );
-  const [config] = JSON.parse(
-    configText.slice(configPrefix.length),
-  ) as AdvertisedMcpServer[];
+  const [config] = advertisedMcpServersSchema.parse(
+    JSON.parse(configText.slice(configPrefix.length)),
+  );
   if (!config) {
     throw new Error("Fake ACP agent reported no MCP server config");
   }

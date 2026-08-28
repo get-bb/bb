@@ -5,12 +5,35 @@ import {
   type Program,
 } from "acorn";
 import { ancestor } from "acorn-walk";
+import { z } from "zod";
 import type { JsonObject, JsonValue, ParsedWorkflow } from "./types.js";
 import {
   assertValidJsonSchema,
   assertValidWorkflowSourceText,
 } from "./validation.js";
 import { canonicalizeJson } from "./cache.js";
+
+type JsonPrimitive = string | number | boolean | null;
+
+const jsonPrimitiveSchema: z.ZodType<JsonPrimitive> = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    jsonPrimitiveSchema,
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
 
 export interface LiteralAgentSelection {
   provider: string;
@@ -36,14 +59,8 @@ function literalValue(node: Expression, path: string): JsonValue {
   switch (node.type) {
     case "Literal": {
       const value = node.value;
-      if (
-        value === null ||
-        typeof value === "string" ||
-        typeof value === "boolean" ||
-        (typeof value === "number" && Number.isFinite(value))
-      ) {
-        return value;
-      }
+      const parsed = jsonPrimitiveSchema.safeParse(value);
+      if (parsed.success) return parsed.data;
       throw new Error(`${path} contains a non-JSON literal`);
     }
     case "ArrayExpression":
@@ -69,9 +86,8 @@ function literalValue(node: Expression, path: string): JsonValue {
         const key =
           property.key.type === "Identifier"
             ? property.key.name
-            : property.key.type === "Literal" &&
-                typeof property.key.value === "string"
-              ? property.key.value
+            : property.key.type === "Literal"
+              ? stringValue(property.key.value)
               : null;
         if (key === null) throw new Error(`${path} contains an invalid key`);
         if (seen.has(key)) {
@@ -96,12 +112,15 @@ function literalValue(node: Expression, path: string): JsonValue {
     case "UnaryExpression":
       if (
         (node.operator === "+" || node.operator === "-") &&
-        node.argument.type === "Literal" &&
-        typeof node.argument.value === "number"
+        node.argument.type === "Literal"
       ) {
+        const numberValue = z.number().finite().safeParse(node.argument.value);
+        if (!numberValue.success) {
+          throw new Error(`${path} contains a non-JSON expression`);
+        }
         const value =
-          node.operator === "-" ? -node.argument.value : node.argument.value;
-        if (Number.isFinite(value)) return value;
+          node.operator === "-" ? -numberValue.data : numberValue.data;
+        return value;
       }
       throw new Error(`${path} contains a non-JSON expression`);
     default:
@@ -109,14 +128,31 @@ function literalValue(node: Expression, path: string): JsonValue {
   }
 }
 
+type AcornLiteralValue =
+  | string
+  | number
+  | bigint
+  | boolean
+  | null
+  | RegExp
+  | undefined;
+
+function stringValue(value: AcornLiteralValue): string | null {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function literalString(expression: Expression): string | null {
+  return expression.type === "Literal" ? stringValue(expression.value) : null;
+}
+
 function propertyName(
   property: ObjectExpression["properties"][number],
 ): string | null {
   if (property.type !== "Property" || property.computed) return null;
   if (property.key.type === "Identifier") return property.key.name;
-  return property.key.type === "Literal" &&
-    typeof property.key.value === "string"
-    ? property.key.value
+  return property.key.type === "Literal"
+    ? stringValue(property.key.value)
     : null;
 }
 
@@ -169,16 +205,13 @@ function inspectAgentOptions(
   if (presentCount === selectionKeys.length) {
     const values = selectionKeys.map((key) => {
       const expression = properties.get(key)!;
-      if (
-        expression.type !== "Literal" ||
-        typeof expression.value !== "string" ||
-        expression.value.trim() === ""
-      ) {
+      const value = literalString(expression);
+      if (value === null || value.trim() === "") {
         throw new Error(
           `agent options.${key} must be a non-empty string literal when selecting a provider`,
         );
       }
-      return expression.value;
+      return value;
     });
     selections.push({
       provider: values[0]!,
@@ -218,9 +251,10 @@ function inspectAgentOptions(
   }
   for (const key of ["title", "label", "phase"] as const) {
     const expression = properties.get(key);
+    const value = expression === undefined ? null : literalString(expression);
     if (
       expression?.type === "Literal" &&
-      (typeof expression.value !== "string" || expression.value.trim() === "")
+      (value === null || value.trim() === "")
     ) {
       throw new Error(`agent options.${key} must be a non-empty string`);
     }
@@ -228,11 +262,11 @@ function inspectAgentOptions(
   const title = properties.get("title");
   const label = properties.get("label");
   if (
-    title?.type === "Literal" &&
-    typeof title.value === "string" &&
-    label?.type === "Literal" &&
-    typeof label.value === "string" &&
-    title.value !== label.value
+    title !== undefined &&
+    label !== undefined &&
+    literalString(title) !== null &&
+    literalString(label) !== null &&
+    literalString(title) !== literalString(label)
   ) {
     throw new Error(
       "agent options.title and agent options.label must match when both are provided",
@@ -241,10 +275,11 @@ function inspectAgentOptions(
 }
 
 function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
-  const value = literalValue(node, "meta");
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = jsonObjectSchema.safeParse(literalValue(node, "meta"));
+  if (!parsedValue.success) {
     throw new Error("meta must be an object literal");
   }
+  const value = parsedValue.data;
   const allowed = new Set([
     "name",
     "description",
@@ -256,18 +291,14 @@ function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
     if (!allowed.has(key))
       throw new Error(`Unknown meta field ${JSON.stringify(key)}`);
   }
-  if (
-    typeof value.name !== "string" ||
-    !/^[a-z][a-z0-9-]{0,63}$/.test(value.name)
-  ) {
+  const name = z.string().safeParse(value.name);
+  if (!name.success || !/^[a-z][a-z0-9-]{0,63}$/.test(name.data)) {
     throw new Error(
       "meta.name must be a lowercase kebab-case name up to 64 characters",
     );
   }
-  if (
-    typeof value.description !== "string" ||
-    value.description.trim() === ""
-  ) {
+  const description = z.string().safeParse(value.description);
+  if (!description.success || description.data.trim() === "") {
     throw new Error("meta.description must be a non-empty string");
   }
   const inputSchema = value.inputSchema ?? null;
@@ -282,44 +313,45 @@ function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
   }
   const phaseTitles = new Set<string>();
   const phases = phasesValue.map((phase, index) => {
-    if (typeof phase !== "object" || phase === null || Array.isArray(phase)) {
+    const parsedPhase = jsonObjectSchema.safeParse(phase);
+    if (!parsedPhase.success) {
       throw new Error(`meta.phases[${index}] must be an object`);
     }
-    for (const key of Object.keys(phase)) {
+    const phaseObject = parsedPhase.data;
+    for (const key of Object.keys(phaseObject)) {
       if (key !== "title" && key !== "detail") {
         throw new Error(
           `Unknown meta.phases[${index}] field ${JSON.stringify(key)}`,
         );
       }
     }
-    if (typeof phase.title !== "string" || phase.title.trim() === "") {
+    const title = z.string().safeParse(phaseObject.title);
+    if (!title.success || title.data.trim() === "") {
       throw new Error(`meta.phases[${index}].title must be a non-empty string`);
     }
-    if (phaseTitles.has(phase.title)) {
+    if (phaseTitles.has(title.data)) {
       throw new Error(
-        `meta.phases contains duplicate title ${JSON.stringify(phase.title)}`,
+        `meta.phases contains duplicate title ${JSON.stringify(title.data)}`,
       );
     }
-    phaseTitles.add(phase.title);
+    phaseTitles.add(title.data);
     let detail: string | null;
-    if (phase.detail === undefined) {
+    if (phaseObject.detail === undefined) {
       detail = null;
-    } else if (typeof phase.detail !== "string") {
-      throw new Error(
-        `meta.phases[${index}].detail must be a non-empty string when provided`,
-      );
-    } else if (phase.detail.trim() === "") {
-      throw new Error(
-        `meta.phases[${index}].detail must be a non-empty string when provided`,
-      );
     } else {
-      detail = phase.detail;
+      const parsedDetail = z.string().safeParse(phaseObject.detail);
+      if (!parsedDetail.success || parsedDetail.data.trim() === "") {
+        throw new Error(
+          `meta.phases[${index}].detail must be a non-empty string when provided`,
+        );
+      }
+      detail = parsedDetail.data;
     }
-    return { title: phase.title, detail };
+    return { title: title.data, detail };
   });
   return {
-    name: value.name,
-    description: value.description,
+    name: name.data,
+    description: description.data,
     inputSchema,
     outputSchema,
     phases,

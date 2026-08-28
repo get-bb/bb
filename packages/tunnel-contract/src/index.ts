@@ -90,6 +90,17 @@ export type Frame =
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+type FrameJsonObject = {
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | null
+    | HeaderPair[]
+    | string[]
+    | undefined;
+};
+
 function withHeader(
   type: number,
   streamId: number,
@@ -105,7 +116,7 @@ function withHeader(
   return out;
 }
 
-function jsonPayload(value: unknown): Uint8Array {
+function jsonPayload(value: FrameJsonObject): Uint8Array {
   return encoder.encode(JSON.stringify(value));
 }
 
@@ -120,7 +131,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
           path: frame.path,
           headers: frame.headers,
           hasBody: frame.hasBody,
-          ...(frame.target !== undefined ? { target: frame.target } : {}),
+          target: frame.target,
         }),
       );
     case "body-chunk": {
@@ -147,7 +158,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
           path: frame.path,
           headers: frame.headers,
           protocols: frame.protocols,
-          ...(frame.target !== undefined ? { target: frame.target } : {}),
+          target: frame.target,
         }),
       );
     case "ws-open-ack":
@@ -173,6 +184,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
 
 function parseJson<T>(payload: Uint8Array, what: string): T {
   try {
+    // SAFETY: The frame decoder supplies the typed payload contract for each frame kind.
     return JSON.parse(decoder.decode(payload)) as T;
   } catch {
     throw new Error(`tunnel-contract: malformed ${what} frame payload`);
@@ -194,17 +206,18 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Frame {
         path: string;
         headers: HeaderPair[];
         hasBody: boolean;
-        target?: unknown;
+        target?: string;
       }>(payload, "open-http");
-      return {
+      const frame: OpenHttpFrame = {
         type: "open-http",
         streamId,
         method: meta.method,
         path: meta.path,
         headers: meta.headers,
         hasBody: meta.hasBody,
-        ...(typeof meta.target === "string" ? { target: meta.target } : {}),
       };
+      if (meta.target !== undefined) frame.target = meta.target;
+      return frame;
     }
     case FRAME_TYPE.bodyChunk:
       return { type: "body-chunk", streamId, data: payload };
@@ -222,16 +235,17 @@ export function decodeFrame(message: ArrayBuffer | Uint8Array): Frame {
         path: string;
         headers: HeaderPair[];
         protocols: string[];
-        target?: unknown;
+        target?: string;
       }>(payload, "open-ws");
-      return {
+      const frame: OpenWsFrame = {
         type: "open-ws",
         streamId,
         path: meta.path,
         headers: meta.headers,
         protocols: meta.protocols,
-        ...(typeof meta.target === "string" ? { target: meta.target } : {}),
       };
+      if (meta.target !== undefined) frame.target = meta.target;
+      return frame;
     }
     case FRAME_TYPE.wsOpenAck: {
       const meta = parseJson<{ protocol: string | null }>(

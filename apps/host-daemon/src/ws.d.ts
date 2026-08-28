@@ -1,6 +1,6 @@
 declare module "ws" {
   import { EventEmitter } from "node:events";
-  import type { IncomingMessage } from "node:http";
+  import type { ClientRequest, IncomingMessage } from "node:http";
   import type { Duplex } from "node:stream";
 
   export type RawData = string | Buffer | ArrayBuffer | Buffer[];
@@ -33,7 +33,7 @@ declare module "ws" {
     on(event: "error", listener: (error: Error) => void): this;
     on(
       event: "unexpected-response",
-      listener: (request: unknown, response: IncomingMessage) => void,
+      listener: (request: ClientRequest, response: IncomingMessage) => void,
     ): this;
     removeAllListeners(): this;
   }

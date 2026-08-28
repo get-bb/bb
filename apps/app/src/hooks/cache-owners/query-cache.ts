@@ -1,4 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import { z } from "zod";
 import type {
   Thread,
   ThreadListEntry,
@@ -34,10 +35,28 @@ import {
   threadQueryKey,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
-  type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
 } from "../queries/query-keys";
+
+const threadListQueryFiltersSchema = z.object({
+  archived: z.boolean(),
+  hasParent: z.boolean().optional(),
+  limit: z.number().optional(),
+  originKind: z.literal("fork").optional(),
+  parentThreadId: z.string().optional(),
+  projectId: z.string().optional(),
+  sourceThreadId: z.string().optional(),
+});
+
+const archivedThreadsListFiltersSchema = z
+  .object({
+    kind: z.enum(["all", "root", "child"]).optional(),
+    projectId: z.string().optional(),
+  })
+  .strict();
+
+const environmentWorkStatusRefSchema = z.string().nullable();
 
 type TimelineRowsUpdater = (
   rows: readonly TimelineRow[],
@@ -98,90 +117,8 @@ function getThreadListFiltersFromQueryKey(
     return undefined;
   }
 
-  const candidate = queryKey[1];
-  if (candidate === undefined) {
-    return undefined;
-  }
-
-  if (!isThreadListQueryFilters(candidate)) {
-    return undefined;
-  }
-
-  return candidate;
-}
-
-function isThreadListQueryFilters(
-  candidate: unknown,
-): candidate is ThreadListQueryFilters {
-  if (
-    typeof candidate !== "object" ||
-    candidate === null ||
-    Array.isArray(candidate)
-  ) {
-    return false;
-  }
-
-  if (!("archived" in candidate) || typeof candidate.archived !== "boolean") {
-    return false;
-  }
-  if (
-    "projectId" in candidate &&
-    candidate.projectId !== undefined &&
-    typeof candidate.projectId !== "string"
-  ) {
-    return false;
-  }
-  if (
-    "parentThreadId" in candidate &&
-    candidate.parentThreadId !== undefined &&
-    typeof candidate.parentThreadId !== "string"
-  ) {
-    return false;
-  }
-  if (
-    "limit" in candidate &&
-    candidate.limit !== undefined &&
-    typeof candidate.limit !== "number"
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-function isArchivedThreadsListFilters(
-  candidate: unknown,
-): candidate is ArchivedThreadsListFilters {
-  if (
-    typeof candidate !== "object" ||
-    candidate === null ||
-    Array.isArray(candidate)
-  ) {
-    return false;
-  }
-
-  for (const key of Object.keys(candidate)) {
-    if (key !== "projectId" && key !== "kind") {
-      return false;
-    }
-  }
-
-  if ("projectId" in candidate && candidate.projectId !== undefined) {
-    if (typeof candidate.projectId !== "string") {
-      return false;
-    }
-  }
-  if (
-    "kind" in candidate &&
-    candidate.kind !== undefined &&
-    candidate.kind !== "all" &&
-    candidate.kind !== "root" &&
-    candidate.kind !== "child"
-  ) {
-    return false;
-  }
-
-  return true;
+  const parsed = threadListQueryFiltersSchema.safeParse(queryKey[1]);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function getArchivedThreadListFiltersFromQueryKey(
@@ -194,12 +131,8 @@ function getArchivedThreadListFiltersFromQueryKey(
     return undefined;
   }
 
-  const filters = queryKey[2];
-  if (!isArchivedThreadsListFilters(filters)) {
-    return undefined;
-  }
-
-  return filters;
+  const parsed = archivedThreadsListFiltersSchema.safeParse(queryKey[2]);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function isArchivedThreadListQueryKey(queryKey: QueryKey): boolean {
@@ -413,25 +346,18 @@ export function getEnvironmentBranchListInvalidationQueryKeys({
   return [environmentMergeBaseBranchesQueryKeyPrefix(environmentId)];
 }
 
-function isEnvironmentWorkStatusQueryKeyForEnvironment(
+function parseEnvironmentWorkStatusRef(
   queryKey: QueryKey,
   environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    queryKey[0] === ENVIRONMENT_WORK_STATUS_QUERY_KEY &&
-    queryKey[1] === environmentId &&
-    (typeof queryKey[2] === "string" || queryKey[2] === null)
-  );
-}
-
-function isMergeBaseEnvironmentWorkStatusQueryKey(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    isEnvironmentWorkStatusQueryKeyForEnvironment(queryKey, environmentId) &&
-    typeof queryKey[2] === "string"
-  );
+): string | null | undefined {
+  if (
+    queryKey[0] !== ENVIRONMENT_WORK_STATUS_QUERY_KEY ||
+    queryKey[1] !== environmentId
+  ) {
+    return undefined;
+  }
+  const parsed = environmentWorkStatusRefSchema.safeParse(queryKey[2]);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
@@ -443,8 +369,14 @@ export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
   for (const [queryKey] of queryClient.getQueriesData({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   })) {
-    if (isMergeBaseEnvironmentWorkStatusQueryKey(queryKey, environmentId)) {
-      queryKeys.push(environmentWorkStatusQueryKey(environmentId, queryKey[2]));
+    const environmentRef = parseEnvironmentWorkStatusRef(
+      queryKey,
+      environmentId,
+    );
+    if (environmentRef !== undefined && environmentRef !== null) {
+      queryKeys.push(
+        environmentWorkStatusQueryKey(environmentId, environmentRef),
+      );
     }
   }
 

@@ -246,16 +246,22 @@ function AddPluginDialogContent({
   const plan = planQuery.data;
 
   const install = useMutation({
-    mutationFn: (body: NonNullable<typeof request>) =>
-      body.kind === "catalog"
-        ? installCatalogPlugin(fetch, {
-            entryId: body.entryId,
-            marketplace: body.marketplace,
-            ...(thirdParty && plan?.kind === "marketplace"
-              ? { confirmedSource: plan.resolvedSource }
-              : {}),
-          })
-        : installPlugin(fetch, body.source),
+    mutationFn: (body: NonNullable<typeof request>) => {
+      if (body.kind === "direct") {
+        return installPlugin(fetch, body.source);
+      }
+      const catalogRequest = {
+        entryId: body.entryId,
+        marketplace: body.marketplace,
+      };
+      if (thirdParty && plan?.kind === "marketplace") {
+        return installCatalogPlugin(fetch, {
+          ...catalogRequest,
+          confirmedSource: plan.resolvedSource,
+        });
+      }
+      return installCatalogPlugin(fetch, catalogRequest);
+    },
     onSuccess: (plugin) => {
       applyInstalledPlugin({ queryClient, plugin });
       invalidatePluginList({ queryClient });

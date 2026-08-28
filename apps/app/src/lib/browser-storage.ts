@@ -30,17 +30,19 @@ interface StoredValueCodec<T> {
 }
 
 export function getLocalStorage(): Storage | null {
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return null;
   }
-  return window.localStorage;
+  return browserWindow.localStorage;
 }
 
 function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return null;
   }
-  return window.sessionStorage;
+  return browserWindow.sessionStorage;
 }
 
 function subscribeToLocalStorageKey(
@@ -48,11 +50,8 @@ function subscribeToLocalStorageKey(
   callback: StoredValueListener,
 ): () => void {
   const localStorage = getLocalStorage();
-  if (
-    !localStorage ||
-    typeof window === "undefined" ||
-    typeof window.addEventListener !== "function"
-  ) {
+  const browserWindow = globalThis.window;
+  if (!localStorage || browserWindow === undefined) {
     return () => {};
   }
 
@@ -62,9 +61,9 @@ function subscribeToLocalStorageKey(
     }
   };
 
-  window.addEventListener("storage", handleStorage);
+  browserWindow.addEventListener("storage", handleStorage);
   return () => {
-    window.removeEventListener("storage", handleStorage);
+    browserWindow.removeEventListener("storage", handleStorage);
   };
 }
 
@@ -93,6 +92,7 @@ export function createJsonLocalStorage<T>(): SyncStorage<T> {
       }
 
       try {
+        /* SAFETY: JSON storage callers select the matching generic type for this codec. */
         return JSON.parse(storedValue) as T;
       } catch {
         return initialValue;

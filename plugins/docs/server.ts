@@ -35,7 +35,7 @@ const DOCS_STATUS_HELP = [
   "Exit 4 is a successful status result. Review the output, then run bb docs push separately.",
 ].join("\n");
 
-const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
+const CLI_OPTIONS_BY_COMMAND = {
   vaults: new Set(["--json"]),
   "vault-add": new Set(["--json"]),
   "vault-remove": new Set(["--json"]),
@@ -68,7 +68,7 @@ const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
   mkdir: new Set(["--vault", "--json"]),
   move: new Set(["--vault", "--json"]),
   remove: new Set(["--vault", "--recursive", "--json"]),
-};
+} satisfies Record<string, ReadonlySet<string>>;
 
 interface VaultWatcher {
   close(): void;
@@ -114,6 +114,18 @@ const vaultSchema = z
     rootPath: z.string().min(1),
   })
   .strict();
+const vaultRowSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    host_id: z.string().min(1).nullable(),
+    root_path: z.string().min(1),
+  })
+  .strict();
+const entryOrderRowSchema = z
+  .object({ child_path: z.string().min(1) })
+  .strict();
+const cliValueSchema = z.json();
 const vaultPathSchema = z.string().transform((value, context) => {
   try {
     return requireVaultPath(value);
@@ -233,6 +245,71 @@ type SyncStateEntry = z.infer<typeof syncStateEntrySchema>;
 type SyncState = z.infer<typeof syncStateSchema>;
 type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
 type OpenerSource = z.infer<typeof openerSourceSchema>;
+type VaultRow = z.infer<typeof vaultRowSchema>;
+type CliPositionalsRange = { minimum: number; maximum: number };
+interface MarkdownSummary {
+  title: string;
+  preview: string;
+}
+interface CliArgs {
+  command: string;
+  positionals: string[];
+  vaultId?: string;
+  content?: string;
+  into?: string;
+  workspaceHostId?: string;
+  recursive: boolean;
+  json: boolean;
+  all: boolean;
+  folder: boolean;
+  delete: boolean;
+  dryRun: boolean;
+  diff: boolean;
+}
+interface FileWriteArgs {
+  hostId?: string;
+  path: string;
+  rootPath: string;
+  content: string;
+  contentEncoding: "utf8" | "base64";
+  createParents?: boolean;
+  expectedSha256?: string | null;
+}
+interface WriteFileInput {
+  vaultId?: string;
+  rawPath: string;
+  content: string;
+  contentEncoding?: "utf8" | "base64";
+  expectedSha256?: string | null;
+  createOnly?: boolean;
+}
+interface FileAccessArgs {
+  hostId?: string;
+  path: string;
+  rootPath: string;
+}
+interface DirectoryCreateArgs {
+  hostId?: string;
+  path: string;
+  recursive: boolean;
+}
+interface PreviewArgs {
+  hostId?: string;
+  rootPath: string;
+}
+interface HttpIssue {
+  message: string;
+  path?: PropertyKey[];
+}
+interface CliRunResult {
+  exitCode: number;
+  stdout?: string;
+  stderr?: string;
+}
+type CliValue = z.infer<typeof cliValueSchema>;
+interface CliObject {
+  [key: string]: CliValue;
+}
 
 export const docsRpcContract = defineRpcContract({
   syncSnapshot: {
@@ -436,24 +513,14 @@ export const docsRpcContract = defineRpcContract({
   },
 });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord(value: CliValue): value is CliObject {
+  return value !== null && value instanceof Object && !Array.isArray(value);
 }
 
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) throw new Error("Expected an object");
-  return value;
-}
-
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`"${field}" must be a non-empty string`);
-  }
-  return value.trim();
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function requireString(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`"${field}" must be a non-empty string`);
+  return trimmed;
 }
 
 function expandHome(rawPath: string): string {
@@ -464,7 +531,7 @@ function expandHome(rawPath: string): string {
 }
 
 function requireVaultPath(
-  value: unknown,
+  value: string,
   options?: { extension?: string },
 ): string {
   const raw = requireString(value, "path").replace(/\\/g, "/");
@@ -493,12 +560,12 @@ function requireVaultPath(
   return normalized;
 }
 
-function requireOptionalDirectory(value: unknown): string {
+function requireOptionalDirectory(value: string | undefined): string {
   if (value === undefined || value === null || value === "") return "";
   return requireVaultPath(value);
 }
 
-function requireThreadStoragePath(value: unknown): string {
+function requireThreadStoragePath(value: string): string {
   const raw = requireString(value, "path").replace(/\\/g, "/");
   if (
     path.posix.isAbsolute(raw) ||
@@ -547,10 +614,7 @@ function markdownHeadingLevel(line: string): number | null {
   return match ? match[1]!.length : null;
 }
 
-function summarizeMarkdown(
-  content: string,
-  fallback: string,
-): { title: string; preview: string } {
+function summarizeMarkdown(content: string, fallback: string): MarkdownSummary {
   const document = parseMarkdownDocument(content);
   const lines = document.body.split("\n");
   const cleanedLines = lines.map(cleanLine);
@@ -614,33 +678,20 @@ function sanitizeName(raw: string): string {
     .slice(0, 80);
 }
 
-function parseVaultRow(value: unknown): Vault {
-  const row = requireRecord(value);
+function parseVaultRow(row: VaultRow): Vault {
   return {
-    id: requireString(row.id, "id"),
-    name: requireString(row.name, "name"),
-    hostId: typeof row.host_id === "string" && row.host_id ? row.host_id : null,
-    rootPath: requireString(row.root_path, "root_path"),
+    id: row.id,
+    name: row.name,
+    hostId: row.host_id,
+    rootPath: row.root_path,
   };
 }
 
-function parseCli(argv: string[]): {
-  command: string;
-  positionals: string[];
-  vaultId?: string;
-  content?: string;
-  into?: string;
-  workspaceHostId?: string;
-  recursive: boolean;
-  json: boolean;
-  all: boolean;
-  folder: boolean;
-  delete: boolean;
-  dryRun: boolean;
-  diff: boolean;
-} {
+function parseCli(argv: string[]): CliArgs {
   const command = argv[0] ?? "help";
-  const allowedOptions = CLI_OPTIONS_BY_COMMAND[command];
+  const allowedOptions = Object.entries(CLI_OPTIONS_BY_COMMAND).find(
+    ([name]) => name === command,
+  )?.[1];
   const positionals: string[] = [];
   let vaultId: string | undefined;
   let content: string | undefined;
@@ -699,7 +750,7 @@ function parseCli(argv: string[]): {
 }
 
 function validateCliPositionals(args: ReturnType<typeof parseCli>): void {
-  const expected: Record<string, { minimum: number; maximum: number }> = {
+  const expected = {
     vaults: { minimum: 0, maximum: 0 },
     "vault-add": { minimum: 2, maximum: 3 },
     "vault-remove": { minimum: 1, maximum: 1 },
@@ -711,8 +762,10 @@ function validateCliPositionals(args: ReturnType<typeof parseCli>): void {
     mkdir: { minimum: 1, maximum: 1 },
     move: { minimum: 2, maximum: 2 },
     remove: { minimum: 1, maximum: 1 },
-  };
-  const range = expected[args.command];
+  } satisfies Record<string, CliPositionalsRange>;
+  const range = Object.entries(expected).find(
+    ([command]) => command === args.command,
+  )?.[1];
   if (!range) return;
   if (
     args.positionals.length < range.minimum ||
@@ -781,7 +834,7 @@ export default async function plugin(
         "SELECT id, name, host_id, root_path FROM vaults ORDER BY created_at, name",
       )
       .all()
-      .map(parseVaultRow);
+      .map((row) => parseVaultRow(vaultRowSchema.parse(row)));
   }
 
   function getVault(vaultId?: string): Vault {
@@ -802,7 +855,7 @@ export default async function plugin(
         "SELECT child_path FROM entry_order WHERE vault_id = ? ORDER BY parent_path, position",
       )
       .all(vaultId)
-      .map((row) => requireString(requireRecord(row).child_path, "child_path"));
+      .map((row) => entryOrderRowSchema.parse(row).child_path);
   }
 
   if (seededDefaultVault) {
@@ -901,7 +954,7 @@ export default async function plugin(
     }
   }
 
-  async function readFile(vaultId: string | undefined, rawPath: unknown) {
+  async function readFile(vaultId: string | undefined, rawPath: string) {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
     const file = await bb.sdk.files.read({
@@ -912,32 +965,22 @@ export default async function plugin(
     return { ...file, path: relativePath };
   }
 
-  async function writeFile(args: {
-    vaultId?: string;
-    rawPath: unknown;
-    content: unknown;
-    contentEncoding?: "utf8" | "base64";
-    expectedSha256?: unknown;
-    createOnly?: boolean;
-  }) {
+  async function writeFile(args: WriteFileInput) {
     const vault = getVault(args.vaultId);
     const relativePath = requireVaultPath(args.rawPath);
-    if (typeof args.content !== "string")
-      throw new Error('"content" must be a string');
-    const result = await bb.sdk.files.write({
-      ...hostArgs(vault),
+    const writeArgs: FileWriteArgs = {
       path: absolutePath(vault, relativePath),
       rootPath: vault.rootPath,
       content: args.content,
       contentEncoding: args.contentEncoding ?? "utf8",
       createParents: true,
-      ...(args.createOnly
-        ? { expectedSha256: null }
-        : args.expectedSha256 === null ||
-            typeof args.expectedSha256 === "string"
-          ? { expectedSha256: args.expectedSha256 }
-          : {}),
-    });
+    };
+    const hostId = vault.hostId;
+    if (hostId) writeArgs.hostId = hostId;
+    if (args.createOnly) writeArgs.expectedSha256 = null;
+    else if (args.expectedSha256 !== undefined)
+      writeArgs.expectedSha256 = args.expectedSha256;
+    const result = await bb.sdk.files.write(writeArgs);
     if (result.outcome === "written") {
       bb.realtime.publish("vault-changed", { vaultId: vault.id });
     }
@@ -946,9 +989,10 @@ export default async function plugin(
 
   async function resolveOpenerFile(
     source: OpenerSource,
-    pathValue: unknown,
+    pathValue: string,
   ): Promise<ResolvedOpenerFile> {
-    const filePath = requireString(pathValue, "path");
+    const filePath = pathValue.trim();
+    if (!filePath) throw new Error('"path" must be a non-empty string');
     if (source.kind === "host") {
       if (!isAbsoluteHostPath(filePath)) {
         throw new Error("Host file paths must be absolute");
@@ -1035,13 +1079,11 @@ export default async function plugin(
 
   async function createNote(
     vaultId: string | undefined,
-    input: Record<string, unknown>,
+    input: z.output<typeof docsRpcContract.createNote.input>,
   ) {
     const vault = getVault(vaultId);
     const parent = requireOptionalDirectory(input.parent);
-    const base =
-      sanitizeName(typeof input.name === "string" ? input.name : "") ||
-      "Untitled";
+    const base = sanitizeName(input.name ?? "") || "Untitled";
     const { entries } = await listEntries(vault);
     const existing = new Set(entries.map((entry) => entry.path.toLowerCase()));
     let relativePath = parent ? `${parent}/${base}.md` : `${base}.md`;
@@ -1055,7 +1097,7 @@ export default async function plugin(
     await writeFile({
       vaultId: vault.id,
       rawPath: relativePath,
-      content: typeof input.content === "string" ? input.content : "",
+      content: input.content ?? "",
       createOnly: true,
     });
     return { path: relativePath };
@@ -1063,8 +1105,8 @@ export default async function plugin(
 
   async function movePath(
     vaultId: string | undefined,
-    fromValue: unknown,
-    toValue: unknown,
+    fromValue: string,
+    toValue: string,
   ) {
     const vault = getVault(vaultId);
     const from = requireVaultPath(fromValue);
@@ -1081,7 +1123,7 @@ export default async function plugin(
 
   async function removePath(
     vaultId: string | undefined,
-    rawPath: unknown,
+    rawPath: string,
     recursive = false,
   ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
@@ -1104,11 +1146,6 @@ export default async function plugin(
     );
   }
 
-  function isMissingFileError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return /\bENOENT\b|path does not exist|not found/i.test(message);
-  }
-
   async function readExistingFile(
     vault: Vault,
     relativePath: string,
@@ -1120,7 +1157,9 @@ export default async function plugin(
         rootPath: vault.rootPath,
       });
     } catch (error) {
-      if (isMissingFileError(error)) return null;
+      const message = error instanceof Error ? error.message : String(error);
+      if (/\bENOENT\b|path does not exist|not found/i.test(message))
+        return null;
       throw error;
     }
   }
@@ -1496,7 +1535,8 @@ export default async function plugin(
         await removePath(vault.id, directory, false);
         deletedDirectories.push(directory);
       } catch (error) {
-        if (isMissingFileError(error)) continue;
+        const message = error instanceof Error ? error.message : String(error);
+        if (/\bENOENT\b|path does not exist|not found/i.test(message)) continue;
         errors.push({
           path: directory,
           message: error instanceof Error ? error.message : String(error),
@@ -1636,13 +1676,14 @@ export default async function plugin(
       const rootPath = requireString(input.rootPath, "rootPath");
       if (!isAbsoluteHostPath(rootPath))
         throw new Error('"rootPath" must be absolute');
-      const hostId = optionalString(input.hostId) ?? null;
+      const hostId = input.hostId?.trim() || null;
       const resolvedRoot = normalizeHostRoot(rootPath);
-      await bb.sdk.files.mkdir({
-        ...(hostId ? { hostId } : {}),
+      const mkdirArgs: DirectoryCreateArgs = {
         path: resolvedRoot,
         recursive: true,
-      });
+      };
+      if (hostId) mkdirArgs.hostId = hostId;
+      await bb.sdk.files.mkdir(mkdirArgs);
       const baseId = kebabCase(name) || "vault";
       const ids = new Set(listVaults().map((vault) => vault.id));
       let id = baseId;
@@ -1708,24 +1749,24 @@ export default async function plugin(
         path: absolutePath(vault, relativePath),
         rootPath: vault.rootPath,
       });
-      return bb.sdk.files.createPreview({
-        ...hostArgs(vault),
+      const previewArgs: PreviewArgs = {
         rootPath: vault.rootPath,
-      });
+      };
+      if (vault.hostId) previewArgs.hostId = vault.hostId;
+      return bb.sdk.files.createPreview(previewArgs);
     },
     async openFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
-      const args = {
-        ...(target.hostId ? { hostId: target.hostId } : {}),
+      const args: FileAccessArgs = {
         path: target.path,
         rootPath: target.rootPath,
       };
+      if (target.hostId) args.hostId = target.hostId;
+      const previewArgs: PreviewArgs = { rootPath: target.rootPath };
+      if (target.hostId) previewArgs.hostId = target.hostId;
       const [file, preview] = await Promise.all([
         bb.sdk.files.read(args),
-        bb.sdk.files.createPreview({
-          ...(target.hostId ? { hostId: target.hostId } : {}),
-          rootPath: target.rootPath,
-        }),
+        bb.sdk.files.createPreview(previewArgs),
       ]);
       const pathApi = path.win32.isAbsolute(target.rootPath)
         ? path.win32
@@ -1740,16 +1781,16 @@ export default async function plugin(
     },
     async saveOpenedFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
-      return bb.sdk.files.write({
-        ...(target.hostId ? { hostId: target.hostId } : {}),
+      const writeArgs: FileWriteArgs = {
         path: target.path,
         rootPath: target.rootPath,
         content: input.content,
-        ...(input.expectedSha256 === null ||
-        typeof input.expectedSha256 === "string"
-          ? { expectedSha256: input.expectedSha256 }
-          : {}),
-      });
+        contentEncoding: "utf8",
+      };
+      if (target.hostId) writeArgs.hostId = target.hostId;
+      if (input.expectedSha256 !== undefined)
+        writeArgs.expectedSha256 = input.expectedSha256;
+      return bb.sdk.files.write(writeArgs);
     },
   };
 
@@ -1789,10 +1830,11 @@ export default async function plugin(
           error: {
             code: "invalid_input",
             message: "request input validation failed",
-            issues: result.error.issues.map((issue) => ({
-              message: issue.message,
-              ...(issue.path.length > 0 ? { path: issue.path } : {}),
-            })),
+            issues: result.error.issues.map((issue) => {
+              const formattedIssue: HttpIssue = { message: issue.message };
+              if (issue.path.length > 0) formattedIssue.path = issue.path;
+              return formattedIssue;
+            }),
           },
         },
         400,
@@ -1861,7 +1903,9 @@ export default async function plugin(
         rootPath,
       });
     } catch (error) {
-      if (isMissingFileError(error)) return null;
+      const message = error instanceof Error ? error.message : String(error);
+      if (/\bENOENT\b|path does not exist|not found/i.test(message))
+        return null;
       throw error;
     }
   }
@@ -2171,7 +2215,10 @@ export default async function plugin(
           });
           deletedDirectories.push(directory);
         } catch (error) {
-          if (!isMissingFileError(error)) throw error;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!/\bENOENT\b|path does not exist|not found/i.test(message))
+            throw error;
         }
       }
       await writeSyncState(
@@ -2513,13 +2560,12 @@ export default async function plugin(
     return { outcome: "pushed" as const, ...plan, applied };
   }
 
-  function stringArray(value: unknown): string[] {
-    return Array.isArray(value)
-      ? value.filter((entry): entry is string => typeof entry === "string")
-      : [];
+  function stringArray(value: CliValue): string[] {
+    const result = z.array(z.string()).safeParse(value);
+    return result.success ? result.data : [];
   }
 
-  function formatSyncHumanOutput(command: string, result: unknown): string {
+  function formatSyncHumanOutput(command: string, result: CliValue): string {
     if (!isRecord(result)) return JSON.stringify(result, null, 2);
     if (command === "pull") {
       if (result.outcome === "conflict") {
@@ -2766,31 +2812,46 @@ export default async function plugin(
         else if (args.command === "read")
           result = await readFile(args.vaultId, args.positionals[0]);
         else if (args.command === "pull") {
-          result = await runPull(args, context);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (isRecord(result) && result.outcome === "partial")
+          const parsedResult = cliValueSchema.parse(
+            await runPull(args, context),
+          );
+          result = parsedResult;
+          if (isRecord(parsedResult) && parsedResult.outcome === "conflict")
+            exitCode = 3;
+          else if (isRecord(parsedResult) && parsedResult.outcome === "partial")
             exitCode = 1;
         } else if (args.command === "status") {
-          result = await runPushPlan(args, context, false);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
+          const parsedResult = cliValueSchema.parse(
+            await runPushPlan(args, context, false),
+          );
+          result = parsedResult;
+          if (isRecord(parsedResult) && parsedResult.outcome === "conflict")
+            exitCode = 3;
           else if (
-            isRecord(result) &&
-            ((Array.isArray(result.writes) && result.writes.length > 0) ||
-              (Array.isArray(result.deletes) && result.deletes.length > 0) ||
-              (Array.isArray(result.directories) &&
-                result.directories.length > 0) ||
-              (Array.isArray(result.deleteDirectories) &&
-                result.deleteDirectories.length > 0) ||
-              (Array.isArray(result.warnings) && result.warnings.length > 0))
+            isRecord(parsedResult) &&
+            ((Array.isArray(parsedResult.writes) &&
+              parsedResult.writes.length > 0) ||
+              (Array.isArray(parsedResult.deletes) &&
+                parsedResult.deletes.length > 0) ||
+              (Array.isArray(parsedResult.directories) &&
+                parsedResult.directories.length > 0) ||
+              (Array.isArray(parsedResult.deleteDirectories) &&
+                parsedResult.deleteDirectories.length > 0) ||
+              (Array.isArray(parsedResult.warnings) &&
+                parsedResult.warnings.length > 0))
           )
             exitCode = 4;
         } else if (args.command === "push") {
-          result = await runPushPlan(args, context, true);
+          const parsedResult = cliValueSchema.parse(
+            await runPushPlan(args, context, true),
+          );
+          result = parsedResult;
           if (
-            isRecord(result) &&
-            (result.outcome === "conflict" || result.outcome === "partial")
+            isRecord(parsedResult) &&
+            (parsedResult.outcome === "conflict" ||
+              parsedResult.outcome === "partial")
           )
-            exitCode = result.outcome === "conflict" ? 3 : 1;
+            exitCode = parsedResult.outcome === "conflict" ? 3 : 1;
         } else if (args.command === "write") {
           if (args.content === undefined)
             throw new CliUsageError("write requires --content <text>");
@@ -2830,41 +2891,46 @@ export default async function plugin(
             stderr: DOCS_CLI_USAGE,
           };
         }
-        const output =
-          args.command === "read" &&
-          !args.json &&
-          isRecord(result) &&
-          typeof result.content === "string"
-            ? result.content
+        const parsedResult = cliValueSchema.parse(result);
+        let output: string | null = null;
+        if (args.command === "read" && !args.json && isRecord(parsedResult)) {
+          const content = z.string().safeParse(parsedResult.content);
+          if (content.success) output = content.data;
+        }
+        const renderedOutput =
+          output !== null
+            ? output
             : args.json
-              ? JSON.stringify(result, null, 2)
-              : formatSyncHumanOutput(args.command, result);
-        return {
+              ? JSON.stringify(parsedResult, null, 2)
+              : formatSyncHumanOutput(args.command, parsedResult);
+        const response: CliRunResult = {
           exitCode,
-          stdout: output,
-          ...(warning ? { stderr: warning } : {}),
+          stdout: renderedOutput,
         };
+        if (warning) response.stderr = warning;
+        return response;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const usageError = error instanceof CliUsageError;
-        return {
+        const response: CliRunResult = {
           exitCode: usageError ? 2 : 1,
-          ...(wantsJson
-            ? {
-                stdout: JSON.stringify(
-                  {
-                    outcome: "error",
-                    error: {
-                      code: usageError ? "usage_error" : "operation_failed",
-                      message,
-                    },
-                  },
-                  null,
-                  2,
-                ),
-              }
-            : { stderr: message }),
         };
+        if (wantsJson) {
+          response.stdout = JSON.stringify(
+            {
+              outcome: "error",
+              error: {
+                code: usageError ? "usage_error" : "operation_failed",
+                message,
+              },
+            },
+            null,
+            2,
+          );
+        } else {
+          response.stderr = message;
+        }
+        return response;
       }
     },
   });

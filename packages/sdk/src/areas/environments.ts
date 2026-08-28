@@ -229,13 +229,17 @@ function environmentDiffFileQuery(
 function environmentDiffBranchesQuery(
   args: EnvironmentDiffBranchesArgs,
 ): EnvironmentDiffBranchesQuery {
-  return {
-    ...(args.query !== undefined ? { query: args.query } : {}),
-    ...(args.limit !== undefined ? { limit: args.limit } : {}),
-    ...(args.selectedBranch !== undefined
-      ? { selectedBranch: args.selectedBranch }
-      : {}),
-  };
+  const query: EnvironmentDiffBranchesQuery = {};
+  if (args.query !== undefined) {
+    query.query = args.query;
+  }
+  if (args.limit !== undefined) {
+    query.limit = args.limit;
+  }
+  if (args.selectedBranch !== undefined) {
+    query.selectedBranch = args.selectedBranch;
+  }
+  return query;
 }
 
 function environmentPathsQuery(

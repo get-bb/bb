@@ -4,6 +4,7 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadPullRequest } from "@bb/domain";
 import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import * as realtimeSubscriptionModule from "@/hooks/useRealtimeSubscription";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { environmentPullRequestQueryKey } from "./query-keys";
@@ -14,13 +15,11 @@ import {
   useEnvironmentPullRequest,
 } from "./environment-queries";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { pullRequest: vi.fn() } },
-}));
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useEnvironmentDetailRealtimeSubscription: vi.fn(),
-}));
+vi.spyOn(sdk.environments, "pullRequest");
+vi.spyOn(
+  realtimeSubscriptionModule,
+  "useEnvironmentDetailRealtimeSubscription",
+).mockImplementation(() => undefined);
 
 const ENVIRONMENT_ID = "env-1";
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;

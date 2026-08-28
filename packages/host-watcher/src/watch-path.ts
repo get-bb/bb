@@ -5,7 +5,7 @@ import {
   type ParcelWatcherEventBatch,
 } from "./root-subscription.js";
 import { createDebouncedCallbackScheduler } from "./watch-callback-scheduler.js";
-import { toWatchErrorMessage } from "./watch-error.js";
+import { toWatchErrorMessage, type WatchError } from "./watch-error.js";
 import type {
   PathChangeEvent,
   PathChangeCallback,
@@ -29,7 +29,7 @@ interface PathChangeWatcherArgs extends PathChangeWatchArgs {
 
 function createPathChangeCallbackError(
   watchedPath: string,
-  error: unknown,
+  error: WatchError,
 ): PathChangeWatchError {
   return {
     message: `Path change callback failed: ${toWatchErrorMessage(error)}`,
@@ -92,8 +92,10 @@ class PathChangeWatcher {
           }
           this.args.onChange({ changedPaths });
         } catch (error) {
+          const watchError: WatchError =
+            error instanceof Error ? error : { message: String(error) };
           this.args.onWatchError(
-            createPathChangeCallbackError(this.targetPath, error),
+            createPathChangeCallbackError(this.targetPath, watchError),
           );
         }
       },

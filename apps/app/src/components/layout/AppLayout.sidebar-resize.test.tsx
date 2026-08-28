@@ -4,27 +4,24 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AppLayout } from "./AppLayout";
+import { Sidebar } from "@/components/ui/sidebar";
+import {
+  AppLayout,
+  defaultAppLayoutDependencies,
+  type AppLayoutDependencies,
+} from "./AppLayout";
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: () => {},
-  useAppCommandShortcut: () => null,
-  useAppCommandShortcuts: () => new Map(),
-  useAppCommandRunner: () => ({
-    dispatch: () => false,
-    isCommandAvailable: () => false,
-  }),
-  useIsAppCommandModifierHeld: () => false,
-}));
-
-vi.mock("@/components/sidebar/AppSidebar", async () => {
-  const { Sidebar } = await vi.importActual<
-    typeof import("@/components/ui/sidebar")
-  >("@/components/ui/sidebar");
-  return {
-    AppSidebar: ({
+/* SAFETY: The fixture replaces each production dependency with a focused test implementation. */
+/* SAFETY: The fixture replaces each production dependency with focused test implementations. */
+const appLayoutDependencies: AppLayoutDependencies = Object.assign(
+  {},
+  defaultAppLayoutDependencies,
+  {
+    useAppCommandHandler: () => {},
+    useAppCommandShortcut: () => null,
+    AppLayoutSidebar: ({
       onResizeMouseDown,
     }: {
       onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -34,99 +31,65 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
         <div data-testid="resize-handle" onMouseDown={onResizeMouseDown} />
       </Sidebar>
     ),
-  };
-});
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      experiments: {
-        editMessages: false,
-        providerSessionReaping: false,
+    ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
+      <>{children}</>
+    ),
+    ThreadActionsProvider: ({ children }: { children: ReactNode }) => (
+      <>{children}</>
+    ),
+    ProjectPathDialog: () => null,
+    AppPageHeader: () => <header />,
+    headerIconButtonClass: "header-icon-button",
+    IframeDragGuardOverlay: ({
+      active,
+      cursor,
+    }: {
+      active: boolean;
+      cursor: string;
+    }) =>
+      active ? (
+        <div
+          data-testid="iframe-drag-guard-overlay"
+          className={`cursor-${cursor}`}
+        />
+      ) : null,
+    getBbDesktopInfo: () => null,
+    shouldReserveMacosTrafficLights: () => false,
+    shouldUseMacosDesktopChrome: () => false,
+    useFaviconBadge: () => {},
+    useQuickCreateProjectController: () => ({
+      hostId: null,
+      hostName: null,
+      isCreating: false,
+      platform: "darwin",
+      projectPathDialog: { onOpenChange: vi.fn(), target: null },
+      submitProjectPath: vi.fn(),
+    }),
+    useSidebarNavigation: () => ({
+      data: {
+        sections: [],
+        personalProject: {
+          id: "proj_personal",
+          kind: "personal",
+          name: "Personal",
+          sources: [],
+          threads: [],
+          defaultExecutionOptions: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        projects: [],
       },
-    },
-  }),
-}));
-
-vi.mock("@/components/project/ProjectActionsProvider", () => ({
-  ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  ThreadActionsProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-}));
-
-vi.mock("@/components/dialogs/ProjectPathDialog", () => ({
-  ProjectPathDialog: () => null,
-}));
-
-vi.mock("./AppPageHeader", () => ({
-  HEADER_ICON_BUTTON_CLASS: "header-icon-button",
-  AppPageHeader: () => <header />,
-}));
-
-vi.mock("@/lib/bb-desktop", () => ({
-  BROWSER_SIDEBAR_TRIGGER_INSET_CLASS: "",
-  CHROME_ROW_CLASS: "",
-  DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
-  MACOS_CHROME_CONTROL_AXIS_CLASS: "",
-  MACOS_CHROME_CONTROL_NO_DRAG_CLASS: "",
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS: "",
-  MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
-  MACOS_WINDOW_DRAG_CLASS: "",
-  MACOS_WINDOW_NO_DRAG_CLASS: "",
-  getBbDesktopInfo: () => null,
-  shouldReserveMacosTrafficLights: () => false,
-  shouldUseMacosDesktopChrome: () => false,
-}));
-
-vi.mock("@/lib/favicon-color-preference", () => ({
-  useFaviconBadge: vi.fn(),
-}));
-
-vi.mock("@/hooks/useQuickCreateProject", () => ({
-  useQuickCreateProjectController: () => ({
-    hostId: null,
-    hostName: null,
-    isCreating: false,
-    platform: "darwin",
-    projectPathDialog: { onOpenChange: vi.fn(), target: null },
-    submitProjectPath: vi.fn(),
-  }),
-}));
-
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({
-    data: {
-      sections: [],
-      personalProject: {
-        id: "proj_personal",
-        kind: "personal",
-        name: "Personal",
-        sources: [],
-        threads: [],
-        defaultExecutionOptions: null,
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      projects: [],
-    },
-    isError: false,
-    isSuccess: true,
-  }),
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  didThreadDetailBootstrapRefreshAfterMount: () => true,
-  useThread: () => ({ data: undefined }),
-  useThreadDetailBootstrap: () => ({ isError: false, isSuccess: false }),
-  useThreadPendingInteractions: () => ({ data: undefined }),
-  getLatestPendingInteraction: () => null,
-}));
+      isError: false,
+      isSuccess: true,
+    }),
+    didThreadDetailBootstrapRefreshAfterMount: () => true,
+    useThread: () => ({ data: undefined }),
+    useThreadDetailBootstrap: () => ({ isError: false, isSuccess: false }),
+    useThreadPendingInteractions: () => ({ data: undefined }),
+    getLatestPendingInteraction: () => null,
+  },
+);
 
 function widthVar(element: Element | null): string {
   if (!(element instanceof HTMLElement)) throw new Error("missing element");
@@ -169,7 +132,7 @@ describe("AppLayout sidebar resize drag", () => {
   function renderLayout() {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <AppLayout>
+        <AppLayout dependencies={appLayoutDependencies}>
           <div data-testid="route-content">Route</div>
         </AppLayout>
       </MemoryRouter>,

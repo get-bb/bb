@@ -108,13 +108,17 @@ export function useUpdateEnvironment() {
       showErrorToast: false,
     },
     mutationFn: ({ id, ...request }: UpdateEnvironmentMutationRequest) => {
+      if (request.name !== undefined && request.mergeBaseBranch !== undefined) {
+        return sdk.environments.update({
+          environmentId: id,
+          name: request.name,
+          mergeBaseBranch: request.mergeBaseBranch,
+        });
+      }
       if (request.name !== undefined) {
         return sdk.environments.update({
           environmentId: id,
           name: request.name,
-          ...(request.mergeBaseBranch !== undefined
-            ? { mergeBaseBranch: request.mergeBaseBranch }
-            : {}),
         });
       }
       if (request.mergeBaseBranch !== undefined) {

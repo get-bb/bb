@@ -56,13 +56,17 @@ export function TerminalHostSelector({
 }: TerminalHostSelectorProps) {
   const options = useMemo<readonly PickerOption<string>[]>(
     () =>
-      hosts.map((host) => ({
-        value: host.id,
-        label: host.name,
-        ...(host.status === "connected"
-          ? {}
-          : { disabled: true, disabledReason: "Offline" }),
-      })),
+      hosts.map((host) => {
+        const option: PickerOption<string> = {
+          value: host.id,
+          label: host.name,
+        };
+        if (host.status !== "connected") {
+          option.disabled = true;
+          option.disabledReason = "Offline";
+        }
+        return option;
+      }),
     [hosts],
   );
 

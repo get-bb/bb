@@ -1,5 +1,17 @@
-import { useCallback, useMemo, useRef, type CSSProperties } from "react";
-import type { FileDiffOptions, SelectedLineRange } from "@pierre/diffs";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type ComponentProps,
+  type ComponentType,
+  type CSSProperties,
+} from "react";
+import {
+  processFile,
+  type FileDiffOptions,
+  type SelectedLineRange,
+  type PostRenderPhase,
+} from "@pierre/diffs";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
@@ -17,10 +29,35 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { BbDiffProps } from "./code-rendering";
 
-const DIFF_VIEW_STYLE = {
+export type BbDiffRenderer = ComponentType<{
+  fileDiff: ComponentProps<typeof DiffView>["fileDiff"];
+  options:
+    | FileDiffOptions<undefined>
+    | {
+        onPostRender(
+          node: HTMLElement,
+          instance: { rerender(): void },
+          phase: PostRenderPhase,
+        ): void;
+      }
+    | undefined;
+  selectedLines: ComponentProps<typeof DiffView>["selectedLines"];
+}>;
+
+export interface BbDiffDependencies {
+  DiffView: BbDiffRenderer;
+  processFile: typeof processFile;
+}
+
+const defaultBbDiffDependencies: BbDiffDependencies = {
+  DiffView,
+  processFile,
+};
+
+const DIFF_VIEW_STYLE: CSSProperties & Record<`--${string}`, string> = {
   "--diffs-font-size": "12px",
   "--diffs-line-height": "18px",
-} as CSSProperties;
+};
 
 const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
 
@@ -46,7 +83,10 @@ export function BbDiff({
   showLineNumbers,
   className,
   onSelectionAddToChat,
-}: BbDiffProps) {
+  dependencies = defaultBbDiffDependencies,
+}: BbDiffProps & { dependencies?: BbDiffDependencies }) {
+  const processFileFn = dependencies.processFile;
+  const DiffRenderer = dependencies.DiffView;
   const oldPath = fullFileContents?.old.path;
   const oldContent = fullFileContents?.old.content;
   const newPath = fullFileContents?.new.path;
@@ -60,13 +100,24 @@ export function BbDiff({
     ) {
       return file;
     }
-    return enrichGitDiffFileForContext({
-      fileDiff: file,
-      oldFile: { name: oldPath, contents: oldContent },
-      newFile: { name: newPath, contents: newContent },
-      patchText: patchText ?? buildFileDiffPatchText(file),
-    });
-  }, [file, newContent, newPath, oldContent, oldPath, patchText]);
+    return enrichGitDiffFileForContext(
+      {
+        fileDiff: file,
+        oldFile: { name: oldPath, contents: oldContent },
+        newFile: { name: newPath, contents: newContent },
+        patchText: patchText ?? buildFileDiffPatchText(file),
+      },
+      processFileFn,
+    );
+  }, [
+    file,
+    newContent,
+    newPath,
+    oldContent,
+    oldPath,
+    patchText,
+    processFileFn,
+  ]);
   const expansionLineCount =
     resolvedFile !== file && resolvedFile.isPartial === false
       ? DEFAULT_DIFF_EXPANSION_LINE_COUNT
@@ -100,13 +151,12 @@ export function BbDiff({
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
   });
-  const baseOptions = useMemo<FileDiffOptions<undefined>>(
-    () => ({
+  const baseOptions = useMemo<FileDiffOptions<undefined>>(() => {
+    const options: FileDiffOptions<undefined> = {
       diffStyle: view,
       overflow,
       disableLineNumbers: !showLineNumbers,
       disableFileHeader: true,
-      ...(expansionLineCount === undefined ? {} : { expansionLineCount }),
       themeType,
       theme: codeTheme,
       enableGutterUtility: onSelectionAddToChat !== undefined,
@@ -120,21 +170,24 @@ export function BbDiff({
       onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
       onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
-    }),
-    [
-      codeTheme,
-      expansionLineCount,
-      lineSelectionActions.onGutterUtilityClick,
-      lineSelectionActions.onLineSelectionChange,
-      lineSelectionActions.onLineSelectionEnd,
-      lineSelectionActions.onLineSelectionStart,
-      onSelectionAddToChat,
-      overflow,
-      showLineNumbers,
-      themeType,
-      view,
-    ],
-  );
+    };
+    if (expansionLineCount !== undefined) {
+      options.expansionLineCount = expansionLineCount;
+    }
+    return options;
+  }, [
+    codeTheme,
+    expansionLineCount,
+    lineSelectionActions.onGutterUtilityClick,
+    lineSelectionActions.onLineSelectionChange,
+    lineSelectionActions.onLineSelectionEnd,
+    lineSelectionActions.onLineSelectionStart,
+    onSelectionAddToChat,
+    overflow,
+    showLineNumbers,
+    themeType,
+    view,
+  ]);
   const options = usePierreStrictModeRecoveryOptions(baseOptions);
   const isWorkerPoolReady = useRequirePierreWorkerPool();
   if (!isWorkerPoolReady) {
@@ -150,7 +203,7 @@ export function BbDiff({
     >
       <div className="w-full max-w-full" style={DIFF_VIEW_STYLE}>
         <PierreWorkerPoolBoundary>
-          <DiffView
+          <DiffRenderer
             fileDiff={resolvedFile}
             options={options}
             selectedLines={lineSelectionActions.selectedRange}

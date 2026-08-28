@@ -9,11 +9,11 @@ export interface PermissionModeOption extends CorePermissionModeOption {
   iconName: IconName;
 }
 
-const PERMISSION_MODE_ICONS: Record<PermissionMode, IconName> = {
+const PERMISSION_MODE_ICONS = {
   "accept-edits": "FolderEdit",
   auto: "SecurityCheck",
   full: "SquareUnlock02",
-};
+} satisfies Record<PermissionMode, IconName>;
 
 export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] =
   CORE_PERMISSION_MODE_OPTIONS.map((option) => ({

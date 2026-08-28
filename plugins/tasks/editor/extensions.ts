@@ -35,16 +35,15 @@ const THREAD_MENTION_SCHEME = "bbthread://";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-function svgSpecAttributes(
-  attrs: Record<string, string | number>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "key") continue;
-    out[key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)] =
-      String(value);
-  }
-  return out;
+function svgSpecAttributes(attrs: Record<string, string | number>) {
+  return Object.fromEntries(
+    Object.entries(attrs)
+      .filter(([key]) => key !== "key")
+      .map(([key, value]) => [
+        key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`),
+        String(value),
+      ]),
+  );
 }
 
 function mentionIconSpec(icon: IconSvgElement): DOMOutputSpec {

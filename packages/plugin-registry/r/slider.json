@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "slider",
   "description": "BB ui \"slider\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-slider"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/slider.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/slider.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-slider"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

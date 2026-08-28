@@ -13,27 +13,33 @@ interface ListTaskFilters {
   labelIds: readonly string[] | null;
 }
 
+interface ListTaskQuery {
+  activeOnly: boolean;
+  labelIds?: string[];
+  parentTaskId: null;
+  priorities?: TaskPriority[];
+  projectId?: string;
+  statuses?: TaskStatus[];
+}
+
 export function useListTasks(
   projectId: string | null,
   activeOnly: boolean,
   filters: ListTaskFilters,
 ) {
   return useTasksQuery(
-    async (rpc) =>
-      listAllTasks(rpc, {
-        ...(projectId === null ? {} : { projectId }),
-        ...(filters.statuses.length > 0
-          ? { statuses: [...filters.statuses] }
-          : {}),
-        ...(filters.priorities.length > 0
-          ? { priorities: [...filters.priorities] }
-          : {}),
-        ...(filters.labelIds !== null
-          ? { labelIds: [...filters.labelIds] }
-          : {}),
-        activeOnly,
-        parentTaskId: null,
-      }),
+    async (rpc) => {
+      const query: ListTaskQuery = { activeOnly, parentTaskId: null };
+      if (projectId !== null) query.projectId = projectId;
+      if (filters.statuses.length > 0) {
+        query.statuses = [...filters.statuses];
+      }
+      if (filters.priorities.length > 0) {
+        query.priorities = [...filters.priorities];
+      }
+      if (filters.labelIds !== null) query.labelIds = [...filters.labelIds];
+      return listAllTasks(rpc, query);
+    },
     ["tasks:changed", "threads:changed"],
     [
       projectId,

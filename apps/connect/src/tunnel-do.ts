@@ -85,6 +85,7 @@ export class TunnelDO {
   ) {
     let maxSeen = 0;
     for (const ws of this.state.getWebSockets()) {
+      // SAFETY: Durable Object attachments come from this class and contain an optional stream ID.
       const attachment = ws.deserializeAttachment() as {
         streamId?: number;
       } | null;
@@ -97,11 +98,7 @@ export class TunnelDO {
     );
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<number>("protocolVersion");
-      if (
-        typeof stored === "number" &&
-        Number.isFinite(stored) &&
-        stored >= 0
-      ) {
+      if (stored !== undefined && Number.isFinite(stored) && stored >= 0) {
         this.clientProtocolVersion = stored;
       }
     });
@@ -267,17 +264,15 @@ export class TunnelDO {
         .map((p) => p.trim())
         .filter(Boolean) ?? [];
 
-    const opened = this.trySend(
-      tunnel,
-      encodeFrame({
-        type: "open-ws",
-        streamId,
-        path: url.pathname + url.search,
-        headers: forwardableHeaders(request.headers),
-        protocols,
-        ...(target !== undefined ? { target } : {}),
-      }),
-    );
+    const frame: Extract<Frame, { type: "open-ws" }> = {
+      type: "open-ws",
+      streamId,
+      path: url.pathname + url.search,
+      headers: forwardableHeaders(request.headers),
+      protocols,
+    };
+    if (target !== undefined) frame.target = target;
+    const opened = this.trySend(tunnel, encodeFrame(frame));
     if (!opened) return this.offlineResponse();
 
     const pair = new WebSocketPair();
@@ -320,18 +315,16 @@ export class TunnelDO {
       });
     });
 
-    const opened = this.trySend(
-      tunnel,
-      encodeFrame({
-        type: "open-http",
-        streamId,
-        method: request.method,
-        path: url.pathname + url.search,
-        headers: forwardableHeaders(request.headers),
-        hasBody,
-        ...(target !== undefined ? { target } : {}),
-      }),
-    );
+    const frame: Extract<Frame, { type: "open-http" }> = {
+      type: "open-http",
+      streamId,
+      method: request.method,
+      path: url.pathname + url.search,
+      headers: forwardableHeaders(request.headers),
+      hasBody,
+    };
+    if (target !== undefined) frame.target = target;
+    const opened = this.trySend(tunnel, encodeFrame(frame));
     if (!opened) {
       const entry = this.pendingHttp.get(streamId);
       if (entry) {
@@ -440,17 +433,18 @@ export class TunnelDO {
   webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): void {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
-      if (typeof message === "string") return;
+      if (!(message instanceof ArrayBuffer)) return;
       this.onTunnelFrame(decodeFrame(message));
       return;
     }
+    // SAFETY: A visitor WebSocket always stores its numeric stream ID as its attachment.
     const attachment = ws.deserializeAttachment() as { streamId: number };
     const tunnel = this.tunnelSocket();
     if (!tunnel) {
       ws.close(1011, "tunnel disconnected");
       return;
     }
-    const isBinary = typeof message !== "string";
+    const isBinary = message instanceof ArrayBuffer;
     const sent = this.trySend(
       tunnel,
       encodeFrame({
@@ -579,6 +573,7 @@ export class TunnelDO {
       );
       return;
     }
+    // SAFETY: A visitor WebSocket always stores its numeric stream ID as its attachment.
     const attachment = ws.deserializeAttachment() as { streamId: number };
     const tunnel = this.tunnelSocket();
     if (tunnel) {

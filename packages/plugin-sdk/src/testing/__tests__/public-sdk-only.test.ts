@@ -6,7 +6,15 @@ import { experimental_scanPublicSdkOnly as scanPublicSdkOnly } from "../index.js
 
 let packageRoot: string;
 
-function plant(files: Record<string, string>, manifest: object = {}): void {
+interface PackageManifest {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+function plant(
+  files: Record<string, string>,
+  manifest: PackageManifest = {},
+): void {
   packageRoot = mkdtempSync(join(tmpdir(), "bb-public-sdk-only-"));
   writeFileSync(
     join(packageRoot, "package.json"),

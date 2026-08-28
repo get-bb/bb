@@ -695,13 +695,15 @@ function dirtyActiveThreadListQueries({
       ]
     : getCachedThreadListQueryKeys(queryClient);
   for (const queryKey of listQueryKeys) {
-    queryClient.invalidateQueries({
-      exact: true,
-      queryKey,
-      ...(isArchivedThreadListQueryKey(queryKey)
-        ? { refetchType: "none" }
-        : {}),
-    });
+    if (isArchivedThreadListQueryKey(queryKey)) {
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey,
+        refetchType: "none",
+      });
+    } else {
+      queryClient.invalidateQueries({ exact: true, queryKey });
+    }
   }
   return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
 }

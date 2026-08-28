@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createConnection, migrate } from "@bb/db";
-import type { Logger } from "@bb/logger";
 import { createPluginRuntime } from "../../../src/services/plugins/plugin-runtime.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
@@ -20,7 +19,7 @@ async function createRuntime() {
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
-      logger: testLogger as unknown as Logger,
+      logger: testLogger,
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       dataDir: await mkdtemp(join(tmpdir(), "bb-dev-build-problems-")),

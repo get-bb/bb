@@ -78,10 +78,10 @@ function runSidebarFooterAction({
       getPluginConfigurationRoutePath({ pluginId: action.pluginId }),
     );
   };
-  const warn = (error: unknown) => {
+  const warn = (cause: unknown) => {
     console.warn(
       `[plugin:${action.pluginId}] sidebarFooterAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
+        cause instanceof Error ? cause.message : String(cause)
       }`,
     );
   };

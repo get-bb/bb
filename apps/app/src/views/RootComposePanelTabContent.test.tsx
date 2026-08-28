@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -9,85 +9,103 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
 import { RootComposePanelTabContent } from "./RootComposePanelTabContent";
+import * as environmentQueries from "@/hooks/queries/environment-queries";
+import * as lazySecondaryPanelComponents from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import * as pluginPanelActions from "@/components/plugin/PluginPanelActions";
+import * as threadStorageViewer from "@/components/secondary-panel/useThreadStorageViewer";
+import * as hostDaemon from "@/hooks/useHostDaemon";
+import * as localOpenTargets from "@/hooks/useLocalOpenTargets";
 
-vi.mock("@/components/secondary-panel/lazySecondaryPanelComponents", () => ({
-  LazyFilePreview: () => null,
-  LazyHostFilePreviewTabContent: () => null,
-  LazyNewTabPage: () => null,
-  LazyProjectFilePreviewTabContent: ({
-    activePath,
-    environmentId,
-    hostId,
-    projectId,
-  }: {
-    activePath: string;
-    environmentId: string | null;
-    hostId: string | null;
-    projectId: string;
-  }) => (
-    <div
-      data-testid={`project-${activePath}`}
-      data-environment-id={environmentId}
-      data-host-id={hostId}
-      data-project-id={projectId}
-    />
-  ),
-  LazyThreadStorageFilePreviewTabContent: () => null,
-  LazyThreadTerminalPanel: ({ terminalId }: { terminalId?: string }) => (
-    <div data-testid={`terminal-${terminalId ?? "missing"}`} />
-  ),
-  LazyWorkspaceFilePreviewTabContent: ({
-    activePath,
-    environmentId,
-  }: {
-    activePath: string;
-    environmentId: string;
-  }) => (
-    <div
-      data-testid={`workspace-${activePath}`}
-      data-environment-id={environmentId}
-    />
-  ),
-}));
-
-vi.mock("@/components/plugin/PluginPanelActions", () => ({
-  PluginPanelTabContent: ({
-    fileOpenerOriginal,
-  }: {
-    fileOpenerOriginal?: ReactNode;
-  }) => fileOpenerOriginal ?? null,
-}));
-
-vi.mock("@/hooks/queries/environment-queries", () => ({
-  useEnvironment: (environmentId: string | null) => ({
-    data:
-      environmentId === null
-        ? undefined
-        : {
-            hostId: `host-${environmentId}`,
-            path: `/workspace/${environmentId}`,
-          },
-  }),
-}));
-
-vi.mock("@/components/secondary-panel/useThreadStorageViewer", () => ({
-  useThreadStorageViewer: () => ({ threadStorageRootPath: null }),
-}));
-
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
-}));
-
-vi.mock("@/hooks/useLocalOpenTargets", () => ({
-  useLocalOpenTargets: () => ({
+vi.spyOn(lazySecondaryPanelComponents, "LazyFilePreview").mockImplementation(
+  () => <span />,
+);
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyHostFilePreviewTabContent",
+).mockImplementation(() => <span />);
+vi.spyOn(lazySecondaryPanelComponents, "LazyNewTabPage").mockImplementation(
+  () => <span />,
+);
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyProjectFilePreviewTabContent",
+).mockImplementation(({ activePath, environmentId, hostId, projectId }) => (
+  <div
+    data-testid={`project-${activePath}`}
+    data-environment-id={environmentId}
+    data-host-id={hostId}
+    data-project-id={projectId}
+  />
+));
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyThreadStorageFilePreviewTabContent",
+).mockImplementation(() => <span />);
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyThreadTerminalPanel",
+).mockImplementation(({ terminalId }) => (
+  <div data-testid={`terminal-${terminalId ?? "missing"}`} />
+));
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyWorkspaceFilePreviewTabContent",
+).mockImplementation(({ activePath, environmentId }) => (
+  <div
+    data-testid={`workspace-${activePath}`}
+    data-environment-id={environmentId}
+  />
+));
+vi.spyOn(pluginPanelActions, "PluginPanelTabContent").mockImplementation(
+  ({ fileOpenerOriginal }) => <>{fileOpenerOriginal}</>,
+);
+vi.spyOn(environmentQueries, "useEnvironment").mockImplementation(
+  (environmentId) => {
+    /* SAFETY: This faithful hook fixture supplies only the data field consumed by the component. */
+    return {
+      data:
+        environmentId === null
+          ? undefined
+          : {
+              hostId: `host-${environmentId}`,
+              path: `/workspace/${environmentId}`,
+            },
+    } as ReturnType<typeof environmentQueries.useEnvironment>;
+  },
+);
+vi.spyOn(threadStorageViewer, "useThreadStorageViewer").mockImplementation(
+  () => {
+    /* SAFETY: This faithful hook fixture supplies only the data field consumed by the component. */
+    return {
+      threadStorageRootPath: null,
+    } as ReturnType<typeof threadStorageViewer.useThreadStorageViewer>;
+  },
+);
+vi.spyOn(hostDaemon, "useHostDaemon").mockImplementation(() => {
+  return {
+    localDaemonHostId: null,
+    localHostId: null,
+    hasDaemon: false,
+    supportsNativeFolderPicker: false,
+    platform: null,
+    isLocalDaemonHost: () => true,
+  };
+});
+vi.spyOn(localOpenTargets, "useLocalOpenTargets").mockImplementation(() => {
+  return {
+    canOpenPreferredDirectoryTarget: false,
     canOpenPreferredFileTarget: false,
-    openPathInPreferredFileTarget: vi.fn(),
-  }),
-}));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: () => undefined,
-}));
+    directoryOpenTargets: [],
+    fileOpenTargets: [],
+    isLoading: false,
+    openPathInDirectoryTarget: async () => false,
+    openPathInFileTarget: async () => false,
+    openPathInPreferredDirectoryTarget: async () => false,
+    openPathInPreferredFileTarget: async () => false,
+    preferredDirectoryTarget: null,
+    preferredFileTarget: null,
+  };
+});
 
 type PanelContentProps = ComponentProps<typeof RootComposePanelTabContent>;
 

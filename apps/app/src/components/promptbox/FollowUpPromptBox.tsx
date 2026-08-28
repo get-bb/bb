@@ -91,15 +91,13 @@ function PromptBoxWithScrollAnchor({
             bottomAnchor?.scrollToBottom();
           }
         };
-  const anchoredSubmission =
-    submission === undefined
-      ? undefined
-      : {
-          ...submission,
-          ...(handleModifierSubmit
-            ? { onModifierSubmit: handleModifierSubmit }
-            : {}),
-        };
+  let anchoredSubmission = submission;
+  if (submission !== undefined) {
+    anchoredSubmission = { ...submission };
+    if (handleModifierSubmit !== undefined) {
+      anchoredSubmission.onModifierSubmit = handleModifierSubmit;
+    }
+  }
   return (
     <PromptBoxInternal
       {...promptBoxProps}
@@ -591,8 +589,9 @@ function FollowUpPromptBoxWithComposer({
 
   useEffect(() => {
     const element = stackRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
+    const ResizeObserverConstructor = globalThis.ResizeObserver;
+    if (!element || ResizeObserverConstructor === undefined) return;
+    const observer = new ResizeObserverConstructor((entries) => {
       const entry = entries.find((candidate) => candidate.target === element);
       if (!entry) return;
       const borderBoxSize = Array.isArray(entry.borderBoxSize)

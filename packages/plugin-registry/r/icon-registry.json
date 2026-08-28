@@ -4,9 +4,6 @@
   "type": "registry:ui",
   "title": "icon-registry",
   "description": "BB ui \"icon-registry\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@hugeicons/react"
-  ],
   "files": [
     {
       "path": "registry/components/ui/icon-registry.ts",
@@ -14,5 +11,8 @@
       "type": "registry:ui",
       "target": "components/ui/icon-registry.ts"
     }
+  ],
+  "dependencies": [
+    "@hugeicons/react"
   ]
 }

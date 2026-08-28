@@ -36,11 +36,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mockResizeObserverDeliveries(): {
-  notifyResize: () => void;
-  observerCount: () => number;
-  observed: Element[];
-} {
+function mockResizeObserverDeliveries() {
   const observed: Element[] = [];
   const observers: Array<{
     callback: ResizeObserverCallback;
@@ -53,7 +49,8 @@ function mockResizeObserverDeliveries(): {
     constructor(callback: ResizeObserverCallback) {
       this.record = {
         callback,
-        instance: this as unknown as ResizeObserver,
+        instance:
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ this as ResizeObserver,
         targets: new Set(),
       };
       observers.push(this.record);
@@ -81,7 +78,10 @@ function mockResizeObserverDeliveries(): {
           callback(
             Array.from(
               targets,
-              (target) => ({ target }) as unknown as ResizeObserverEntry,
+              (target) =>
+                /* SAFETY: The test controls this fixture and verifies its behavior. */ ({
+                  target,
+                }) as ResizeObserverEntry,
             ),
             instance,
           );
@@ -164,7 +164,11 @@ describe("MarkdownPreview", () => {
     );
     vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(
       function (this: Element) {
-        return Number((this as HTMLElement).dataset.width ?? 300);
+        return Number(
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+            this as HTMLElement
+          ).dataset.width ?? 300,
+        );
       },
     );
 
@@ -237,8 +241,10 @@ describe("MarkdownPreview", () => {
     const { container } = render(
       <MarkdownPreview content={"| A |\n| - |\n| B |"} />,
     );
-    const breakout = container.querySelector("table")?.parentElement
-      ?.parentElement as HTMLElement;
+    const breakout =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        "table",
+      )?.parentElement?.parentElement as HTMLElement;
     expect(breakout.style.getPropertyValue("--md-content-w")).toBe("");
     notifyResize();
     expect(breakout.style.getPropertyValue("--md-content-w")).toBe("320px");

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import {
@@ -25,6 +26,72 @@ function testToolchain() {
 }
 
 const TEST_BB_VERSION = "0.9.0-test";
+
+interface RuntimeFunction {
+  (...args: never[]): RuntimeValue;
+}
+
+interface RuntimeObject {
+  [key: string]: RuntimeValue;
+}
+
+type RuntimeValue =
+  | RuntimeFunction
+  | RuntimeObject
+  | string
+  | number
+  | boolean
+  | null;
+
+interface TestPluginRuntime {
+  react: {
+    useState?: () => [number, () => void];
+    forwardRef?: (render: RuntimeValue) => RuntimeValue;
+    createContext?: () => RuntimeValue;
+  };
+  reactDom?: RuntimeValue;
+  reactDomClient?: { createRoot: () => RuntimeValue };
+  jsxRuntime: {
+    jsx: () => RuntimeValue;
+    jsxs: () => RuntimeValue;
+    Fragment: RuntimeValue;
+  };
+  jsxDevRuntime?: RuntimeValue;
+  classVarianceAuthority?: { cva: () => () => string };
+  clsx?: { clsx: () => string };
+  tailwindMerge?: { twMerge: (value: string) => string };
+  pluginSdkApp: {
+    definePluginApp: (value: RuntimeValue) => RuntimeValue;
+    useBbContext?: () => {
+      projectId: string | null;
+      threadId: string | null;
+    };
+  };
+}
+
+declare global {
+  var __bbPluginRuntime: TestPluginRuntime | undefined;
+}
+
+const packageJsonSchema = z
+  .object({
+    bb: z
+      .object({ branding: z.object({ icon: z.string() }).passthrough() })
+      .passthrough(),
+  })
+  .passthrough();
+
+const pluginBundleSchema = z.object({
+  default: z
+    .object({
+      __bbPluginApp: z.boolean().optional(),
+      setup: z.function().optional(),
+    })
+    .optional(),
+});
+const packageDependencySchema = z
+  .object({ name: z.string().optional() })
+  .passthrough();
 
 async function failingTailwindToolchain(
   dir: string,
@@ -191,17 +258,17 @@ describe("buildPluginApp", () => {
       /must be loaded by the BB app/,
     );
 
-    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
+    globalThis.__bbPluginRuntime = {
       react: { useState: () => [0, () => {}] },
       reactDomClient: { createRoot: () => ({}) },
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
-      pluginSdkApp: { definePluginApp: (value: unknown) => value },
+      pluginSdkApp: { definePluginApp: (value: RuntimeValue) => value },
     };
     try {
       const mod = await import(/* @vite-ignore */ `${url}?with-runtime`);
       expect(mod.default).toBeDefined();
     } finally {
-      delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
+      delete globalThis.__bbPluginRuntime;
     }
   });
 
@@ -319,9 +386,9 @@ describe("buildPluginApp", () => {
 
   it("validates a path-shaped branding.icon before building", async () => {
     await writeFixture();
-    const packageJson = JSON.parse(FIXTURE_PACKAGE_JSON) as {
-      bb: { branding: { icon: string } };
-    };
+    const packageJson = packageJsonSchema.parse(
+      JSON.parse(FIXTURE_PACKAGE_JSON),
+    );
     packageJson.bb.branding.icon = "./assets/icon.svg";
     await writeFile(
       join(root, "package.json"),
@@ -365,9 +432,9 @@ describe("buildPluginApp", () => {
     const css = await readFile(result.cssPath, "utf8");
     expect(css).toContain(".rounded-md");
 
-    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
+    globalThis.__bbPluginRuntime = {
       react: {
-        forwardRef: (render: unknown) => render,
+        forwardRef: (render: RuntimeValue) => render,
         createContext: () => ({}),
       },
       reactDom: {},
@@ -376,7 +443,7 @@ describe("buildPluginApp", () => {
       clsx: { clsx: () => "" },
       tailwindMerge: { twMerge: (value: string) => value },
       pluginSdkApp: {
-        definePluginApp: (setup: unknown) => ({
+        definePluginApp: (setup: RuntimeValue) => ({
           __bbPluginApp: true,
           setup,
         }),
@@ -384,13 +451,13 @@ describe("buildPluginApp", () => {
       },
     };
     try {
-      const mod = (await import(
-        /* @vite-ignore */ pathToFileURL(result.jsPath).href
-      )) as { default?: { __bbPluginApp?: unknown; setup?: unknown } };
+      const mod = pluginBundleSchema.parse(
+        await import(/* @vite-ignore */ pathToFileURL(result.jsPath).href),
+      );
       expect(mod.default?.__bbPluginApp).toBe(true);
-      expect(typeof mod.default?.setup).toBe("function");
+      expect(mod.default?.setup).toEqual(expect.any(Function));
     } finally {
-      delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
+      delete globalThis.__bbPluginRuntime;
     }
   });
 });
@@ -409,9 +476,9 @@ async function linkScaffoldDeps(
     while (true) {
       const candidate = join(packageRoot, "package.json");
       if (existsSync(candidate)) {
-        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
-          name?: string;
-        };
+        const parsed = packageDependencySchema.parse(
+          JSON.parse(readFileSync(candidate, "utf8")),
+        );
         if (parsed.name === name) break;
       }
       const parent = dirname(packageRoot);

@@ -1,8 +1,7 @@
 import { createApiClient } from "@bb/server-contract";
 import { fetchWithAppSurface } from "./app-surface";
 
-const BASE_URL =
-  typeof window === "undefined" ? "http://localhost" : window.location.origin;
+const BASE_URL = globalThis.window?.location.origin ?? "http://localhost";
 
 const client = createApiClient(BASE_URL, { fetch: fetchWithAppSurface });
 

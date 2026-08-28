@@ -1,9 +1,21 @@
 // @vitest-environment jsdom
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect } from "react";
 import { Provider } from "jotai";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  QueryClient,
+  QueryClientProvider,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+import {
+  PERSONAL_PROJECT_ID,
+  type AvailableModel,
+  type ThreadListEntry,
+} from "@bb/domain";
+import type {
+  ProjectWithThreadsResponse,
+  SidebarBootstrapResponse,
+} from "@bb/server-contract";
 import {
   act,
   cleanup,
@@ -17,242 +29,382 @@ import {
   MemoryRouter,
   RouterProvider,
 } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
+import type { NewThreadPromptBoxProps } from "@/components/promptbox/NewThreadPromptBox";
+import * as newThreadPromptBox from "@/components/promptbox/NewThreadPromptBox";
 import {
   encodeReuseValue,
   REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import { sdk } from "@/lib/sdk";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { RootComposeView } from "@/views/RootComposeView";
+import { makeProviderInfo } from "@/test/provider-info-fixture";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
+import * as sidebarNavigationQuery from "@/hooks/queries/sidebar-navigation-query";
+import * as hostQueries from "@/hooks/queries/host-queries";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import * as threadQueries from "@/hooks/queries/thread-queries";
+import * as projectQueries from "@/hooks/queries/project-queries";
+import * as projectDefaultExecutionOptionsQuery from "@/hooks/queries/project-default-execution-options-query";
+import * as projectMutations from "@/hooks/mutations/project-mutations";
+import * as promptMentions from "@/hooks/usePromptMentions";
+import * as commandSuggestions from "@/hooks/useCommandSuggestions";
+import * as quickCreateProject from "@/hooks/useQuickCreateProject";
+import * as projectMachineSetupDialog from "@/components/dialogs/ProjectMachineSetupDialog";
+import * as rootComposeSecondaryContent from "@/views/RootComposeSecondaryContent";
 
-const mocks = vi.hoisted(() => ({
-  promptBoxProps: [] as Array<Record<string, any>>,
-  copyAttachments: vi.fn(),
-  uploadAttachment: vi.fn(),
-  projectThreads: [] as ThreadListEntry[],
+type TestProject = SidebarBootstrapResponse["projects"][number];
+type UploadAttachmentMutation = ReturnType<
+  typeof projectMutations.useUploadPromptAttachment
+>;
+
+interface ComposerTestMocks {
+  promptBoxProps: NewThreadPromptBoxProps[];
+  copyAttachments: Mock<typeof sdk.projects.attachments.copy>;
+  uploadAttachment: Mock<UploadAttachmentMutation["mutateAsync"]>;
+  projectThreads: ThreadListEntry[];
+  sidebarNavigationSettled: boolean;
+  sidebarNavigationReplayed: boolean;
+  extraProjects: readonly TestProject[];
+  promptHistoryQueryOptions: Array<{ enabled?: boolean } | undefined>;
+}
+
+const mocks: ComposerTestMocks = {
+  promptBoxProps: [],
+  copyAttachments: vi.fn<typeof sdk.projects.attachments.copy>(),
+  uploadAttachment: vi.fn<UploadAttachmentMutation["mutateAsync"]>(),
+  projectThreads: [],
   sidebarNavigationSettled: true,
   sidebarNavigationReplayed: false,
-  extraProjects: [] as Array<Record<string, unknown>>,
-  promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
-}));
+  extraProjects: [],
+  promptHistoryQueryOptions: [],
+};
 
-vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
-  NewThreadPromptBox: (props: Record<string, unknown>) => {
+vi.spyOn(newThreadPromptBox, "NewThreadPromptBox").mockImplementation(
+  (props) => {
     mocks.promptBoxProps.push(props);
     return <div data-testid="new-thread-prompt-box" />;
   },
-}));
+);
+vi.spyOn(sdk.projects.attachments, "copy").mockImplementation((request) =>
+  mocks.copyAttachments(request),
+);
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
-}));
+function queryResult<T>(
+  data: T | undefined,
+  isPlaceholderData = false,
+): UseQueryResult<T, Error> {
+  const common = {
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle" as const,
+    isEnabled: true,
+    isError: false,
+    isFetching: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isPaused: false,
+    isStale: false,
+    refetch: async () => queryResult(data),
+  } as const;
+  if (data === undefined) {
+    return {
+      ...common,
+      data: undefined,
+      isFetched: false,
+      isFetchedAfterMount: false,
+      isInitialLoading: true,
+      isLoading: true,
+      isPending: true,
+      isSuccess: false,
+      promise: new Promise<T>(() => {}),
+      status: "pending" as const,
+    };
+  }
+  const result = {
+    ...common,
+    data,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isInitialLoading: false,
+    isLoading: false,
+    isPending: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    status: "success" as const,
+  } as const;
+  if (isPlaceholderData) {
+    return { ...result, isPlaceholderData: true };
+  }
+  return result;
+}
 
-const PROJECT = {
+const PROJECT_SOURCE = {
+  id: "src_1",
+  projectId: "proj_1",
+  type: "local_path" as const,
+  hostId: "host_1",
+  path: "/repo",
+  isDefault: true,
+  createdAt: 0,
+  updatedAt: 0,
+};
+
+const PROJECT: TestProject = {
   id: "proj_1",
+  kind: "standard",
   name: "Project One",
+  gitRemoteUrl: null,
+  createdAt: 0,
+  updatedAt: 0,
   defaultExecutionOptions: {
     providerId: "codex",
     model: "gpt-5.6",
-    serviceTier: undefined,
+    serviceTier: "default",
     reasoningLevel: "medium",
     permissionMode: "auto",
   },
-  sources: [
-    {
-      id: "src_1",
-      projectId: "proj_1",
-      type: "local_path",
-      hostId: "host_1",
-      path: "/repo",
-      isDefault: true,
-      createdAt: 0,
-      updatedAt: 0,
-    },
-  ],
+  sources: [PROJECT_SOURCE],
   threads: [],
 };
 
-const OTHER_PROJECT = {
+const OTHER_PROJECT: TestProject = {
   ...PROJECT,
   id: "proj_2",
   name: "Project Two",
-  sources: [{ ...PROJECT.sources[0], id: "src_2", projectId: "proj_2" }],
+  sources: [{ ...PROJECT_SOURCE, id: "src_2", projectId: "proj_2" }],
 };
 
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () =>
+vi.spyOn(sidebarNavigationQuery, "useSidebarNavigation").mockImplementation(
+  () =>
     mocks.sidebarNavigationSettled
-      ? {
-          data: {
+      ? queryResult<SidebarBootstrapResponse>(
+          {
+            sections: [],
             projects: [
               { ...PROJECT, threads: mocks.projectThreads },
               OTHER_PROJECT,
               ...mocks.extraProjects,
             ],
             personalProject: {
-              id: "personal",
+              ...PROJECT,
+              id: PERSONAL_PROJECT_ID,
+              kind: "personal",
               name: "Personal",
+              gitRemoteUrl: null,
+              defaultExecutionOptions: null,
               sources: [],
               threads: [],
             },
           },
-          isError: false,
-          isLoading: false,
-          isSuccess: true,
-          isPlaceholderData: mocks.sidebarNavigationReplayed,
-        }
-      : {
-          data: undefined,
-          isError: false,
-          isLoading: true,
-          isSuccess: false,
-          isPlaceholderData: false,
-        },
-}));
+          mocks.sidebarNavigationReplayed,
+        )
+      : queryResult<SidebarBootstrapResponse>(undefined),
+);
 
-vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: () => ({ data: [{ id: "host_1", name: "Machine" }] }),
-  selectPrimaryHost: (
-    hosts: Array<{ id: string }> | undefined,
-    primaryHostId: string | null,
-  ) => hosts?.find((host) => host.id === primaryHostId) ?? hosts?.[0] ?? null,
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemProviderStates: () => ({ data: undefined, isPending: false }),
-  useKnownProviderModelCatalogScope: () => undefined,
-  useHostProviderCliStatus: () => ({ data: undefined }),
-  useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
-  useSystemExecutionOptions: () => ({
-    data: {
-      providers: [
-        {
-          id: "codex",
-          displayName: "Codex",
-          logoUrl: null,
-          capabilities: {
-            supportsServiceTier: false,
-            permissionModes: ["auto", "accept-edits", "full"],
-          },
-          composerActions: [],
-        },
-        {
-          id: "claude-code",
-          displayName: "Claude Code",
-          logoUrl: null,
-          capabilities: {
-            supportsServiceTier: false,
-            permissionModes: ["auto", "accept-edits", "full"],
-          },
-          composerActions: [],
-        },
-      ],
-      models: [
-        {
-          model: "gpt-5.6",
-          displayName: "GPT-5.6",
-          isDefault: true,
-          supportedReasoningEfforts: [
-            { reasoningEffort: "low" },
-            { reasoningEffort: "medium" },
-            { reasoningEffort: "high" },
-          ],
-        },
-        {
-          model: "gpt-5.6-sol",
-          displayName: "GPT-5.6 Sol",
-          isDefault: false,
-          supportedReasoningEfforts: [
-            { reasoningEffort: "medium" },
-            { reasoningEffort: "high" },
-          ],
-        },
-      ],
-      selectedOnlyModels: [],
-      modelLoadError: null,
+vi.spyOn(hostQueries, "useHosts").mockImplementation(() =>
+  queryResult([
+    {
+      id: "host_1",
+      name: "Machine",
+      type: "persistent" as const,
+      status: "connected" as const,
+      maxPermissionMode: "full" as const,
+      lastSeenAt: 0,
+      lastRejectedProtocolVersion: null,
+      createdAt: 0,
+      updatedAt: 0,
     },
-    isLoading: false,
-    isError: false,
-    isPlaceholderData: false,
-  }),
-}));
+  ]),
+);
+vi.spyOn(hostQueries, "selectPrimaryHost").mockImplementation(
+  (hosts, primaryHostId) =>
+    hosts?.find((host) => host.id === primaryHostId) ?? hosts?.[0] ?? null,
+);
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreadStorageFiles: () => ({
-    data: undefined,
-    error: null,
-    isLoading: false,
-    refetch: vi.fn(),
-  }),
-  useThreadStorageFilePreview: () => ({
-    data: undefined,
-    error: null,
-    isLoading: false,
-  }),
-}));
+vi.spyOn(systemQueries, "useSystemProviderStates").mockImplementation(() =>
+  queryResult<
+    Exclude<
+      ReturnType<typeof systemQueries.useSystemProviderStates>["data"],
+      undefined
+    >
+  >(undefined),
+);
+vi.spyOn(systemQueries, "useKnownProviderModelCatalogScope").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(systemQueries, "useHostProviderCliStatus").mockImplementation(() =>
+  queryResult<
+    Exclude<
+      ReturnType<typeof systemQueries.useHostProviderCliStatus>["data"],
+      undefined
+    >
+  >(undefined),
+);
+vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(() =>
+  queryResult<
+    Exclude<ReturnType<typeof systemQueries.useSystemConfig>["data"], undefined>
+  >(undefined),
+);
 
-vi.mock("@/hooks/queries/project-queries", () => ({
-  stripProjectThreads: (project: unknown) => project,
-  useProjectPromptHistory: (
-    _projectId: unknown,
-    options?: { enabled?: boolean },
-  ) => {
-    mocks.promptHistoryQueryOptions.push(options);
-    return { data: [] };
+const EXECUTION_MODELS: AvailableModel[] = [
+  {
+    id: "gpt-5.6",
+    model: "gpt-5.6",
+    displayName: "GPT-5.6",
+    description: "",
+    isDefault: true,
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      { reasoningEffort: "low", description: "Low" },
+      { reasoningEffort: "medium", description: "Medium" },
+      { reasoningEffort: "high", description: "High" },
+    ],
   },
-  useProjectSourceBranches: () => ({
-    data: {
-      branches: ["main", "release"],
-      branchesTruncated: false,
-      checkout: { kind: "branch", branchName: "main" },
-      defaultBranch: "main",
-      defaultBranchRelation: null,
-      hasUncommittedChanges: false,
-      operation: { kind: "none" },
-      originDefaultBranch: null,
-      remoteBranches: [],
-      remoteBranchesTruncated: false,
-      selectedBranch: null,
-      defaultWorktreeBaseBranch: null,
-    },
-    isLoading: false,
-    isFetching: false,
-    refetch: vi.fn(),
+  {
+    id: "gpt-5.6-sol",
+    model: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
+    description: "",
+    isDefault: false,
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      { reasoningEffort: "medium", description: "Medium" },
+      { reasoningEffort: "high", description: "High" },
+    ],
+  },
+];
+
+vi.spyOn(systemQueries, "useSystemExecutionOptions").mockImplementation(() =>
+  queryResult({
+    providers: [
+      makeProviderInfo({ id: "codex", displayName: "Codex", logoUrl: null }),
+      makeProviderInfo({
+        id: "claude-code",
+        displayName: "Claude Code",
+        logoUrl: null,
+      }),
+    ],
+    models: EXECUTION_MODELS,
+    selectedOnlyModels: [],
+    permissionCeiling: "full",
+    modelLoadError: null,
   }),
-}));
+);
 
-vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
-  useProjectDefaultExecutionOptions: () => ({ data: undefined }),
-}));
+vi.spyOn(threadQueries, "useThreadStorageFiles").mockImplementation(() =>
+  queryResult<
+    Exclude<
+      ReturnType<typeof threadQueries.useThreadStorageFiles>["data"],
+      undefined
+    >
+  >(undefined),
+);
+vi.spyOn(threadQueries, "useThreadStorageFilePreview").mockImplementation(() =>
+  queryResult<
+    Exclude<
+      ReturnType<typeof threadQueries.useThreadStorageFilePreview>["data"],
+      undefined
+    >
+  >(undefined),
+);
 
-vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({
-    mutateAsync: mocks.uploadAttachment,
-    isPending: false,
+vi.spyOn(projectQueries, "stripProjectThreads").mockImplementation(
+  (project: ProjectWithThreadsResponse) => project,
+);
+vi.spyOn(projectQueries, "useProjectPromptHistory").mockImplementation(
+  (_projectId, options) => {
+    mocks.promptHistoryQueryOptions.push(options);
+    return queryResult([]);
+  },
+);
+vi.spyOn(projectQueries, "useProjectSourceBranches").mockImplementation(() => ({
+  ...queryResult({
+    branches: ["main", "release"],
+    branchesTruncated: false,
+    checkout: { kind: "branch", branchName: "main", headSha: null },
+    defaultBranch: "main",
+    defaultBranchRelation: null,
+    hasUncommittedChanges: false,
+    operation: { kind: "none" },
+    originDefaultBranch: null,
+    remoteBranches: [],
+    remoteBranchesTruncated: false,
+    selectedBranch: null,
+    defaultWorktreeBaseBranch: null,
   }),
+  refreshFromRemote: () => Promise.resolve(),
 }));
 
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
-    triggers: [],
-    suggestions: [],
-    isLoading: false,
+vi.spyOn(
+  projectDefaultExecutionOptionsQuery,
+  "useProjectDefaultExecutionOptions",
+).mockImplementation(() =>
+  queryResult<
+    Exclude<
+      ReturnType<
+        typeof projectDefaultExecutionOptionsQuery.useProjectDefaultExecutionOptions
+      >["data"],
+      undefined
+    >
+  >(undefined),
+);
+
+vi.spyOn(projectMutations, "useUploadPromptAttachment").mockImplementation(
+  () => ({
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
     isError: false,
-    setQuery: vi.fn(),
+    isIdle: true,
+    isPaused: false,
+    isPending: false,
+    isSuccess: false,
+    mutate: vi.fn<UploadAttachmentMutation["mutate"]>(),
+    mutateAsync: mocks.uploadAttachment,
+    reset: vi.fn<UploadAttachmentMutation["reset"]>(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
   }),
+);
+
+vi.spyOn(promptMentions, "usePromptMentions").mockImplementation(() => ({
+  query: null,
+  triggers: [],
+  suggestions: [],
+  isLoading: false,
+  isError: false,
+  setQuery: vi.fn(),
 }));
 
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
+vi.spyOn(commandSuggestions, "useCommandSuggestions").mockImplementation(
+  () => ({
     trigger: null,
     suggestions: [],
     isLoading: false,
@@ -261,40 +413,84 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
     isLoadingMore: false,
     loadMore: vi.fn(),
   }),
+);
+
+vi.spyOn(
+  quickCreateProject,
+  "useQuickCreateProjectController",
+).mockImplementation(() => ({
+  hostId: null,
+  hostName: null,
+  hosts: [],
+  isAvailable: false,
+  isCreating: false,
+  openCreateDialog: vi.fn(),
+  platform: null,
+  projectPathDialog: {
+    isOpen: false,
+    onOpenChange: vi.fn(),
+    target: null,
+  },
+  submitProjectPath: vi.fn(),
 }));
 
-vi.mock("@/hooks/useQuickCreateProject", () => ({
-  useQuickCreateProjectController: () => ({
-    hostId: null,
-    hostName: null,
-    hosts: [],
-    isAvailable: false,
-    isCreating: false,
-    openCreateDialog: vi.fn(),
-    platform: null,
-    projectPathDialog: {
-      isOpen: false,
-      onOpenChange: vi.fn(),
-      target: null,
-    },
-    submitProjectPath: vi.fn(),
-  }),
-}));
+vi.spyOn(
+  projectMachineSetupDialog,
+  "ProjectMachineSetupDialog",
+).mockImplementation(() => <></>);
 
-vi.mock("@/components/dialogs/ProjectMachineSetupDialog", () => ({
-  ProjectMachineSetupDialog: () => null,
-}));
+vi.spyOn(
+  rootComposeSecondaryContent,
+  "RootComposeSecondaryContent",
+).mockImplementation(({ children }) => <>{children}</>);
 
-vi.mock("@/views/RootComposeSecondaryContent", () => ({
-  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS: "",
-  RootComposeSecondaryContent: ({ children }: { children: ReactNode }) =>
-    children,
-}));
-
-function latestPromptBoxProps(): Record<string, any> {
+function latestPromptBoxProps(): NewThreadPromptBoxProps {
   const props = mocks.promptBoxProps.at(-1);
   expect(props).toBeDefined();
-  return props as Record<string, any>;
+  if (props === undefined) {
+    throw new Error("The prompt box did not render.");
+  }
+  return props;
+}
+
+function latestProjectConfig(): NonNullable<
+  NewThreadPromptBoxProps["project"]
+> {
+  const project = latestPromptBoxProps().project;
+  if (project === undefined) {
+    throw new Error("The project picker did not render.");
+  }
+  return project;
+}
+
+function latestComposerHost(): NonNullable<
+  NewThreadPromptBoxProps["pluginComposerHost"]
+> {
+  const host = latestPromptBoxProps().pluginComposerHost;
+  if (host === undefined || host === null) {
+    throw new Error("The composer host did not render.");
+  }
+  return host;
+}
+
+function latestAttachFiles(): NonNullable<
+  NewThreadPromptBoxProps["attachments"]["onAttachFiles"]
+> {
+  const onAttachFiles = latestPromptBoxProps().attachments.onAttachFiles;
+  if (onAttachFiles === undefined) {
+    throw new Error("The attachment handler did not render.");
+  }
+  return onAttachFiles;
+}
+
+function latestClearBranch(): NonNullable<
+  NewThreadPromptBoxProps["modeConfig"]["branch"]["onClear"]
+> {
+  const onClear = latestPromptBoxProps().modeConfig.branch.onClear;
+  if (onClear === undefined) {
+    throw new Error("The branch clear handler did not render.");
+  }
+  return onClear;
 }
 
 function RootReuseProbe() {
@@ -428,7 +624,7 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
-    const host = latestPromptBoxProps().pluginComposerHost;
+    const host = latestComposerHost();
     expect(host.scope).toEqual({ kind: "new-thread", projectId: "proj_1" });
     expect(host.getCurrent().text).toBe("review every PR for slop");
 
@@ -458,9 +654,9 @@ describe("PluginNewThreadComposer seeding", () => {
     );
 
     await waitFor(() => {
-      expect(latestPromptBoxProps().project.value).toBe("proj_new");
+      expect(latestProjectConfig().value).toBe("proj_new");
     });
-    expect(latestPromptBoxProps().project.isLoading).toBe(true);
+    expect(latestProjectConfig().isLoading).toBe(true);
     expect(latestPromptBoxProps().disabled).toBe(true);
 
     mocks.sidebarNavigationReplayed = false;
@@ -469,15 +665,13 @@ describe("PluginNewThreadComposer seeding", () => {
         ...PROJECT,
         id: "proj_new",
         name: "Project New",
-        sources: [
-          { ...PROJECT.sources[0], id: "src_new", projectId: "proj_new" },
-        ],
+        sources: [{ ...PROJECT_SOURCE, id: "src_new", projectId: "proj_new" }],
       },
     ];
     rerender(composerElement(seed, onSubmit, "replay-unknown-project"));
 
     await waitFor(() => {
-      expect(latestPromptBoxProps().project.isLoading).toBe(false);
+      expect(latestProjectConfig().isLoading).toBe(false);
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
     await submit();
@@ -493,8 +687,8 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
-    expect(latestPromptBoxProps().project.isLoading).toBe(false);
-    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+    expect(latestProjectConfig().isLoading).toBe(false);
+    expect(latestProjectConfig().value).toBe("proj_1");
   });
 
   it("allows submitting a projectless thread", async () => {
@@ -509,13 +703,13 @@ describe("PluginNewThreadComposer seeding", () => {
 
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
-      expect(latestPromptBoxProps().project.allowNoProject).toBe(true);
+      expect(latestProjectConfig().allowNoProject).toBe(true);
     });
     await act(async () => {
-      await latestPromptBoxProps().project.onChange(null);
+      await latestProjectConfig().onChange(null);
     });
     await waitFor(() => {
-      expect(latestPromptBoxProps().project.value).toBeNull();
+      expect(latestProjectConfig().value).toBeNull();
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
     await submit();
@@ -592,7 +786,7 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     await act(async () => {
-      latestPromptBoxProps().modeConfig.branch.onClear();
+      latestClearBranch();
     });
 
     const otherProjectRecord: NewThreadRequest = {
@@ -789,7 +983,7 @@ describe("PluginNewThreadComposer seeding", () => {
     );
 
     expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
-    expect(latestPromptBoxProps().project.isLoading).toBe(true);
+    expect(latestProjectConfig().isLoading).toBe(true);
     expect(mocks.promptHistoryQueryOptions.length).toBeGreaterThan(0);
     expect(
       mocks.promptHistoryQueryOptions.every(
@@ -880,7 +1074,7 @@ describe("PluginNewThreadComposer seeding", () => {
       </Provider>,
     );
 
-    expect(latestPromptBoxProps().project.isLoading).toBe(false);
+    expect(latestProjectConfig().isLoading).toBe(false);
     expect(mocks.promptHistoryQueryOptions.at(-1)?.enabled).toBe(true);
   });
 
@@ -943,7 +1137,7 @@ describe("PluginNewThreadComposer seeding", () => {
       mocks.promptBoxProps.some(
         (props) =>
           props.value === "Continue from @thread:thr_source" &&
-          props.attachments.items.length > 0,
+          (props.attachments.items?.length ?? 0) > 0,
       ),
     ).toBe(false);
     expect(latestPromptBoxProps().attachments.items).toEqual([]);
@@ -994,10 +1188,8 @@ describe("PluginNewThreadComposer seeding", () => {
     });
     expect(rootDraft.getCurrent().text).toBe("Create a kanban plugin");
     const updateDepthErrors = consoleError.mock.calls.filter((call) =>
-      call.some(
-        (argument) =>
-          typeof argument === "string" &&
-          argument.includes("Maximum update depth exceeded"),
+      call.some((argument) =>
+        String(argument).includes("Maximum update depth exceeded"),
       ),
     );
     consoleError.mockRestore();
@@ -1096,7 +1288,7 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     await act(async () => {
-      await latestPromptBoxProps().attachments.onAttachFiles([
+      await latestAttachFiles()([
         new File(["notes"], "notes.txt", { type: "text/plain" }),
       ]);
     });
@@ -1104,7 +1296,7 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
     });
     await act(async () => {
-      await latestPromptBoxProps().project.onChange("proj_2");
+      await latestProjectConfig().onChange("proj_2");
     });
 
     expect(mocks.copyAttachments).toHaveBeenCalledWith({
@@ -1112,7 +1304,7 @@ describe("PluginNewThreadComposer seeding", () => {
       sourceProjectId: "proj_1",
       paths: [".bb/attachments/notes.txt"],
     });
-    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+    expect(latestProjectConfig().value).toBe("proj_1");
     expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
   });
 });

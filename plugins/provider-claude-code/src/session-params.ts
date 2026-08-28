@@ -3,6 +3,8 @@ import {
   removeCommandMentionsFromPromptInput,
   type DynamicTool,
   type InstructionMode,
+  type JsonObject,
+  type JsonValue,
   type PromptInput,
   type ReasoningLevel,
   type RuntimePermissionPolicy,
@@ -25,6 +27,51 @@ interface ClaudeLocalPluginConfig {
 
 interface ClaudeSkillConfigParams {
   plugins: ClaudeLocalPluginConfig[];
+}
+
+interface ClaudeCodeConfigParams {
+  envVars: Record<string, string>;
+}
+
+interface ClaudeDynamicToolParams {
+  name: string;
+  description: string;
+  inputSchema: JsonValue;
+}
+
+interface ClaudeSessionParams {
+  baseInstructions: string;
+  threadId: string;
+  cwd: string;
+  instructionMode: InstructionMode;
+  permissionMode: ClaudePermissionMode;
+  approvedPlanPermissionMode: ClaudePermissionMode;
+  permissionScope: RuntimePermissionPolicy["permissionScope"];
+  permissionEscalation: RuntimePermissionPolicy["permissionEscalation"];
+  additionalWorkspaceWriteRoots?: string[];
+  plugins?: ClaudeLocalPluginConfig[];
+  config?: ClaudeCodeConfigParams;
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  workflowsEnabled: boolean;
+  memoryEnabled?: boolean;
+  providerSubagentsEnabled?: boolean;
+  dynamicTools?: ClaudeDynamicToolParams[];
+  disallowedTools?: string[];
+}
+
+interface ClaudeTurnParams {
+  threadId: string;
+  providerThreadId: string | null;
+  expectedTurnId?: string;
+  input: PromptInput[];
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  workflowsEnabled?: boolean;
+  memoryEnabled?: boolean;
+  providerSubagentsEnabled?: boolean;
+  permissionEscalation: RuntimePermissionPolicy["permissionEscalation"];
+  claudeCodePermissionMode?: "plan";
 }
 
 export interface ClaudeCodeSkillRoot {
@@ -57,7 +104,7 @@ function buildClaudeSkillConfigParams(
 
 function buildClaudeCodeConfig(
   envVars?: Record<string, string>,
-): Record<string, unknown> | undefined {
+): ClaudeCodeConfigParams | undefined {
   if (!envVars) {
     return undefined;
   }
@@ -95,14 +142,15 @@ interface BuildInternalSessionParamsArgs {
 
 function buildInternalSessionParams(
   args: BuildInternalSessionParamsArgs,
-): Record<string, unknown> {
+): ClaudeSessionParams {
   const baseInstructions = args.options.instructions ?? "";
   const config = buildClaudeCodeConfig(args.options.envVars);
-  const dynamicTools = args.dynamicTools?.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: jsonValueSchema.parse(t.inputSchema),
-  }));
+  const dynamicTools: ClaudeDynamicToolParams[] | undefined =
+    args.dynamicTools?.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: jsonValueSchema.parse(t.inputSchema),
+    }));
   const permissionPolicy = args.options;
   const additionalWorkspaceWriteRootsParams =
     permissionPolicy.permissionScope === "workspace"
@@ -111,7 +159,7 @@ function buildInternalSessionParams(
         )
       : undefined;
   const skillConfig = buildClaudeSkillConfigParams(args.options.skillRoots);
-  return {
+  const params: ClaudeSessionParams = {
     baseInstructions,
     threadId: args.threadId,
     cwd: args.cwd,
@@ -120,23 +168,33 @@ function buildInternalSessionParams(
     approvedPlanPermissionMode: toClaudePermissionMode(permissionPolicy),
     permissionScope: permissionPolicy.permissionScope,
     permissionEscalation: permissionPolicy.permissionEscalation,
-    ...(additionalWorkspaceWriteRootsParams
-      ? additionalWorkspaceWriteRootsParams
-      : {}),
-    ...(skillConfig ? skillConfig : {}),
-    ...(config ? { config } : {}),
-    ...(args.options.model ? { model: args.options.model } : {}),
-    ...(args.options.reasoningLevel
-      ? { reasoningLevel: args.options.reasoningLevel }
-      : {}),
     workflowsEnabled: args.options.workflowsEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
-    ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
-    ...(args.disallowedTools && args.disallowedTools.length > 0
-      ? { disallowedTools: [...args.disallowedTools] }
-      : {}),
   };
+  if (additionalWorkspaceWriteRootsParams !== undefined) {
+    params.additionalWorkspaceWriteRoots =
+      additionalWorkspaceWriteRootsParams.additionalWorkspaceWriteRoots;
+  }
+  if (skillConfig !== undefined) {
+    params.plugins = skillConfig.plugins;
+  }
+  if (config !== undefined) {
+    params.config = config;
+  }
+  if (args.options.model !== undefined && args.options.model.length > 0) {
+    params.model = args.options.model;
+  }
+  if (args.options.reasoningLevel !== undefined) {
+    params.reasoningLevel = args.options.reasoningLevel;
+  }
+  if (dynamicTools !== undefined && dynamicTools.length > 0) {
+    params.dynamicTools = dynamicTools;
+  }
+  if (args.disallowedTools !== undefined && args.disallowedTools.length > 0) {
+    params.disallowedTools = [...args.disallowedTools];
+  }
+  return params;
 }
 
 const claudeProviderOptionsSchema = z
@@ -154,7 +212,7 @@ type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   reasoningLevel?: ReasoningLevel | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
-  providerOptions?: Record<string, unknown> | undefined;
+  providerOptions?: JsonObject | undefined;
 };
 
 interface BuildClaudeSessionParamsArgs {
@@ -169,7 +227,7 @@ interface BuildClaudeSessionParamsArgs {
 
 export function buildClaudeSessionParams(
   args: BuildClaudeSessionParamsArgs,
-): Record<string, unknown> {
+): ClaudeSessionParams {
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
@@ -215,30 +273,33 @@ interface BuildClaudeTurnParamsArgs {
 
 export function buildClaudeTurnParams(
   args: BuildClaudeTurnParamsArgs,
-): Record<string, unknown> {
+): ClaudeTurnParams {
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
-  return {
+  const params: ClaudeTurnParams = {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
-    ...(args.expectedTurnId !== undefined
-      ? { expectedTurnId: args.expectedTurnId }
-      : {}),
     input: stripClaudePlanCommandMentions({
       input: args.input,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
     }),
-    ...(args.options.model ? { model: args.options.model } : {}),
-    ...(args.options.reasoningLevel
-      ? { reasoningLevel: args.options.reasoningLevel }
-      : {}),
     workflowsEnabled: providerOptions.workflowsEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     permissionEscalation: args.options.permissionEscalation,
-    ...(providerOptions.claudeCodePermissionMode !== undefined
-      ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }
-      : {}),
   };
+  if (args.expectedTurnId !== undefined) {
+    params.expectedTurnId = args.expectedTurnId;
+  }
+  if (args.options.model !== undefined && args.options.model.length > 0) {
+    params.model = args.options.model;
+  }
+  if (args.options.reasoningLevel !== undefined) {
+    params.reasoningLevel = args.options.reasoningLevel;
+  }
+  if (providerOptions.claudeCodePermissionMode !== undefined) {
+    params.claudeCodePermissionMode = providerOptions.claudeCodePermissionMode;
+  }
+  return params;
 }

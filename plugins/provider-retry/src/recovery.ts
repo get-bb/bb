@@ -359,13 +359,21 @@ async function findLatestProviderRateLimitsEvent(
 ): Promise<RateLimitsEventRow | undefined> {
   let beforeSeq: string | undefined;
   while (true) {
-    const page = await bb.sdk.threads.events.list({
-      threadId,
-      ...(beforeSeq === undefined ? {} : { beforeSeq }),
-      limit: String(RATE_LIMIT_PAGE_SIZE),
-      order: "desc",
-      types: RATE_LIMIT_EVENT_TYPES,
-    });
+    const page =
+      beforeSeq === undefined
+        ? await bb.sdk.threads.events.list({
+            threadId,
+            limit: String(RATE_LIMIT_PAGE_SIZE),
+            order: "desc",
+            types: RATE_LIMIT_EVENT_TYPES,
+          })
+        : await bb.sdk.threads.events.list({
+            beforeSeq,
+            threadId,
+            limit: String(RATE_LIMIT_PAGE_SIZE),
+            order: "desc",
+            types: RATE_LIMIT_EVENT_TYPES,
+          });
     const match = page.find(
       (row): row is RateLimitsEventRow =>
         isRateLimitsEvent(row) && row.data.rateLimits.providerId === providerId,

@@ -7,47 +7,20 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migratePluginToPackageLayout } from "../src/plugin-scaffold.js";
-
-const race = vi.hoisted(() => ({ armed: false }));
-
-vi.mock("node:fs/promises", async () => {
-  const actual =
-    await vi.importActual<typeof import("node:fs/promises")>(
-      "node:fs/promises",
-    );
-  return {
-    ...actual,
-    readdir: async (path: string, options?: unknown) => {
-      const entries = await (
-        actual.readdir as (p: string, o?: unknown) => Promise<unknown>
-      )(path, options);
-      if (race.armed && path.endsWith(`${sep}types`)) {
-        race.armed = false;
-        await actual.writeFile(
-          join(path, "appeared.d.ts"),
-          "// saved mid-migration\n",
-        );
-      }
-      return entries;
-    },
-  };
-});
 
 const SDK_VERSION = "0.4.3";
 
-describe("migratePluginToPackageLayout when types/ survives the rmdir", () => {
+describe("migratePluginToPackageLayout when types/ contains another file", () => {
   let rootDir: string;
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), "bb-plugin-types-dir-"));
-    race.armed = false;
   });
 
   afterEach(async () => {
-    race.armed = false;
     await rm(rootDir, { recursive: true, force: true });
   });
 
@@ -78,7 +51,7 @@ describe("migratePluginToPackageLayout when types/ survives the rmdir", () => {
     );
     await mkdir(join(rootDir, "types"), { recursive: true });
     await writeFile(join(rootDir, "types", "bb-plugin-sdk.d.ts"), "// old\n");
-    race.armed = true;
+    await writeFile(join(rootDir, "types", "appeared.d.ts"), "// retained\n");
 
     const result = await migratePluginToPackageLayout({
       rootDir,

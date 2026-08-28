@@ -166,7 +166,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     autoReconnect: args.autoReconnect,
   });
   const setSession = vi.fn();
-  const connection = new ServerConnection({
+  const connectionOptions: ConstructorParameters<typeof ServerConnection>[0] = {
     dataDir: "/tmp/bb-server-connection-test",
     hostId: "host-server-connection-test",
     hostKey: "host-key-server-connection-test",
@@ -175,12 +175,6 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     instanceId: "instance-server-connection-test",
     localApiPort: 38_887,
     logger,
-    ...(args.machineCredential !== undefined
-      ? { machineCredential: args.machineCredential }
-      : {}),
-    ...(args.connectMachineId !== undefined
-      ? { connectMachineId: args.connectMachineId }
-      : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
     protocolSelfUpdater: args.protocolSelfUpdater,
@@ -188,7 +182,14 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
-  });
+  };
+  if (args.machineCredential !== undefined) {
+    connectionOptions.machineCredential = args.machineCredential;
+  }
+  if (args.connectMachineId !== undefined) {
+    connectionOptions.connectMachineId = args.connectMachineId;
+  }
+  const connection = new ServerConnection(connectionOptions);
 
   return {
     connection,

@@ -15,7 +15,7 @@ function toHonoClientOptions(
   if (options === undefined) {
     return undefined;
   }
-  return { fetch: options.fetch as typeof fetch };
+  return { fetch: options.fetch };
 }
 
 export function createPublicApiClient(

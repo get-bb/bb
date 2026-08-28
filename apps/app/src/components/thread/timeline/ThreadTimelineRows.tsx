@@ -834,10 +834,10 @@ function buildRowConsumerMessageActions(args: {
       icon: action.icon,
       label: action.label,
       onSelect: () => {
-        const warn = (error: unknown) => {
+        const warn = (cause: unknown) => {
           console.warn(
             `ThreadChat messageAction "${action.id}" failed: ${
-              error instanceof Error ? error.message : String(error)
+              cause instanceof Error ? cause.message : String(cause)
             }`,
           );
         };

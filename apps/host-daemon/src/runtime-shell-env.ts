@@ -3,6 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { assignIfDefined } from "@bb/config/objects";
 
@@ -63,16 +64,11 @@ function getDefaultCliRuntimePath(): string {
   return fileURLToPath(new URL("../../cli/dist/index.js", import.meta.url));
 }
 
-function getErrorCode(error: unknown): string | undefined {
-  if (
-    error &&
-    typeof error === "object" &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
-  }
-  return undefined;
+const errorCodeSchema = z.object({ code: z.string().optional() }).passthrough();
+
+function getErrorCode<T>(error: T): string | undefined {
+  const parsed = errorCodeSchema.safeParse(error);
+  return parsed.success ? parsed.data.code : undefined;
 }
 
 async function resolveCliEntryPath(cliExecutablePath: string): Promise<string> {

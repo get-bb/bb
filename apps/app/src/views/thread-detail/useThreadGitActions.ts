@@ -44,6 +44,11 @@ interface ShowGitActionErrorToastParams {
   toastId: string | number;
 }
 
+interface GitActionErrorToastOptions {
+  id: string | number;
+  description?: string;
+}
+
 interface ShowGitActionSuccessToastParams {
   response: GitActionSuccessResponse;
   toastId: string | number;
@@ -133,10 +138,11 @@ function showGitActionErrorToast({
   });
   const description = message === title ? undefined : message;
 
-  appToast.error(title, {
+  const options: GitActionErrorToastOptions = {
     id: toastId,
-    ...(description ? { description } : {}),
-  });
+  };
+  if (description !== undefined) options.description = description;
+  appToast.error(title, options);
 }
 
 export function useThreadGitActions({

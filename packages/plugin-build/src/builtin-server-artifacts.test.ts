@@ -61,10 +61,10 @@ describe("builtin server artifacts", () => {
         ),
       ).toEqual([]);
 
-      const imported: unknown = await import(
+      const imported = await import(
         `${pathToFileURL(built.jsPath).href}?test=${Date.now()}`
       );
-      expect(typeof Reflect.get(Object(imported), "default")).toBe("function");
+      expect(imported.default).toEqual(expect.any(Function));
     },
     90_000,
   );

@@ -1,4 +1,5 @@
 import pRetry, { AbortError } from "p-retry";
+import { z } from "zod";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonEventBatchResponseSchema,
@@ -36,16 +37,19 @@ import type {
   FetchProjectAttachmentArgs,
 } from "./project-attachments.js";
 
-interface JsonRecord {
-  readonly [key: string]: unknown;
-}
+const apiErrorResponseBodySchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: z.unknown().optional(),
+  retryable: z.boolean().optional(),
+});
+const apiErrorRetryDetailsSchema = z
+  .object({ retryUpdate: z.literal(true) })
+  .passthrough();
 
-interface ApiErrorResponseBody {
-  code: string;
-  message: string;
+type ApiErrorResponseBody = z.infer<typeof apiErrorResponseBodySchema> & {
   protocolUpdateRetryRequested: boolean;
-  retryable?: boolean;
-}
+};
 
 interface ServerResponseErrorArgs {
   action: string;
@@ -83,52 +87,25 @@ export class ServerResponseError extends Error {
   }
 }
 
-function isJsonRecord(value: unknown): value is JsonRecord {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toJsonRecord(value: unknown): JsonRecord | null {
-  return isJsonRecord(value) ? value : null;
-}
-
 function parseApiErrorResponseBody(text: string): ApiErrorResponseBody | null {
   if (text.trim() === "") {
     return null;
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    const parsed = apiErrorResponseBodySchema.safeParse(JSON.parse(text));
+    if (!parsed.success) {
+      return null;
+    }
+    return {
+      ...parsed.data,
+      protocolUpdateRetryRequested: apiErrorRetryDetailsSchema.safeParse(
+        parsed.data.details,
+      ).success,
+    };
   } catch {
     return null;
   }
-
-  const record = toJsonRecord(parsed);
-  if (
-    !record ||
-    typeof record.code !== "string" ||
-    typeof record.message !== "string"
-  ) {
-    return null;
-  }
-
-  const details = toJsonRecord(record.details);
-  const protocolUpdateRetryRequested = details?.retryUpdate === true;
-
-  if (typeof record.retryable === "boolean") {
-    return {
-      code: record.code,
-      message: record.message,
-      protocolUpdateRetryRequested,
-      retryable: record.retryable,
-    };
-  }
-
-  return {
-    code: record.code,
-    message: record.message,
-    protocolUpdateRetryRequested,
-  };
 }
 
 async function readApiErrorResponseBody(
@@ -394,13 +371,17 @@ export function createServerClient(
   }
 
   function headers(): HeadersInit {
-    return {
+    const result = {
       authorization: `Bearer ${options.hostKey}`,
       "content-type": "application/json",
-      ...(options.machineCredential !== undefined
-        ? { "x-bb-connect-machine": options.machineCredential }
-        : {}),
     };
+    if (options.machineCredential !== undefined) {
+      return {
+        ...result,
+        "x-bb-connect-machine": options.machineCredential,
+      };
+    }
+    return result;
   }
 
   function buildInternalUrl(
@@ -454,9 +435,6 @@ export function createServerClient(
         instanceId: args.instanceId,
         hostName: args.hostName,
         hostType: args.hostType,
-        ...(args.connectMachineId !== undefined
-          ? { connectMachineId: args.connectMachineId }
-          : {}),
         hasMachineCredential:
           options.machineCredential !== undefined &&
           options.machineCredential.trim().length > 0,
@@ -467,6 +445,9 @@ export function createServerClient(
         activeThreads: await args.activeThreads,
         loadedEnvironments: await args.loadedEnvironments,
       };
+      if (args.connectMachineId !== undefined) {
+        payload.connectMachineId = args.connectMachineId;
+      }
       const response = await fetchFn(buildInternalUrl("/session/open"), {
         method: "POST",
         headers: headers(),
@@ -584,11 +565,11 @@ export function createServerClient(
         turnId: request.turnId,
         callId: request.callId,
         tool: request.tool,
-        ...(request.arguments !== undefined
-          ? { arguments: request.arguments }
-          : {}),
         sessionId: requireSessionId(),
       };
+      if (request.arguments !== undefined) {
+        payload.arguments = request.arguments;
+      }
       const response = await fetchFn(buildInternalUrl("/session/tool-call"), {
         method: "POST",
         headers: headers(),

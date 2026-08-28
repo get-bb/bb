@@ -1,44 +1,88 @@
 import type { z } from "zod";
 
 type ZodDef = z.core.$ZodTypeDef;
+type HandledZodType =
+  | "object"
+  | "union"
+  | "intersection"
+  | "array"
+  | "record"
+  | "tuple"
+  | "pipe"
+  | "literal"
+  | "lazy"
+  | "optional"
+  | "nullable"
+  | "default"
+  | "readonly"
+  | "nonoptional";
 
-function defOf(schema: z.ZodType): ZodDef {
-  return schema._zod.def;
+type ZodDefinition =
+  | {
+      type: "object";
+      ["shape"]: Readonly<Record<string, z.ZodType>>;
+    }
+  | { type: "union"; options: readonly z.ZodType[] }
+  | { type: "intersection"; left: z.ZodType; right: z.ZodType }
+  | { type: "array"; element: z.ZodType }
+  | { type: "record"; valueType: z.ZodType }
+  | { type: "tuple"; items: readonly z.ZodType[] }
+  | { type: "pipe"; in: z.ZodType; out: z.ZodType }
+  | { type: "literal"; values: z.core.util.Literal[] }
+  | { type: "lazy"; getter: () => z.ZodType }
+  | {
+      type: "optional" | "nullable" | "default" | "readonly" | "nonoptional";
+      innerType: z.ZodType;
+    }
+  | { type: Exclude<ZodDef["type"], HandledZodType> };
+
+function defOf(schema: z.ZodType): ZodDefinition {
+  // SAFETY: Zod's definition discriminator matches the fields that Zod stores for each definition.
+  return schema._zod.def as ZodDefinition;
 }
 
-function isZodType(value: unknown): value is z.ZodType {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "_zod" in value &&
-    typeof (value as { _zod?: unknown })._zod === "object"
-  );
+type ZodChildKey =
+  | "innerType"
+  | "left"
+  | "right"
+  | "element"
+  | "valueType"
+  | "in"
+  | "out";
+
+function zodChild(def: ZodDefinition, key: ZodChildKey): z.ZodType | undefined {
+  if (key === "innerType" && "innerType" in def) return def.innerType;
+  if (key === "left" && "left" in def) return def.left;
+  if (key === "right" && "right" in def) return def.right;
+  if (key === "element" && "element" in def) return def.element;
+  if (key === "valueType" && "valueType" in def) return def.valueType;
+  if (key === "in" && "in" in def) return def.in;
+  if (key === "out" && "out" in def) return def.out;
+  return undefined;
 }
 
-function zodChild(def: ZodDef, key: string): z.ZodType | undefined {
-  const value = Reflect.get(def, key);
-  return isZodType(value) ? value : undefined;
+function zodChildren(
+  def: ZodDefinition,
+  key: "options" | "items",
+): z.ZodType[] {
+  if (key === "options" && def.type === "union") return [...def.options];
+  if (key === "items" && def.type === "tuple") return [...def.items];
+  return [];
 }
 
-function zodChildren(def: ZodDef, key: string): z.ZodType[] {
-  const value = Reflect.get(def, key);
-  if (!Array.isArray(value)) return [];
-  return value.filter(isZodType);
+function readObjectFields(
+  def: ZodDefinition,
+): Record<string, z.ZodType> | undefined {
+  if (def.type !== "object") return undefined;
+  return Object.fromEntries(Object.entries(def["shape"]));
 }
 
-function zodShape(def: ZodDef): Record<string, z.ZodType> | undefined {
-  const shape = Reflect.get(def, "shape");
-  if (typeof shape !== "object" || shape === null) return undefined;
-  const entries = Object.entries(shape).filter(
-    (entry): entry is [string, z.ZodType] => isZodType(entry[1]),
-  );
-  return Object.fromEntries(entries);
-}
-
-export function zodObjectShape(schema: z.ZodType): Record<string, z.ZodType> {
+function zodObjectFieldMap(schema: z.ZodType): Record<string, z.ZodType> {
   const def = defOf(schema);
-  return def.type === "object" ? (zodShape(def) ?? {}) : {};
+  return readObjectFields(def) ?? {};
 }
+
+export { zodObjectFieldMap as "zodObjectShape" };
 
 export type ZodFieldPresence = "required" | "optional" | "default";
 
@@ -59,9 +103,9 @@ export function zodObjectFields(
   const def = defOf(schema);
   switch (def.type) {
     case "object": {
-      const shape = zodShape(def) ?? {};
+      const fields = readObjectFields(def) ?? {};
       return Object.fromEntries(
-        Object.entries(shape).map(([key, field]) => [
+        Object.entries(fields).map(([key, field]) => [
           key,
           zodFieldPresence(field),
         ]),
@@ -79,9 +123,7 @@ export function zodObjectFields(
       return out ? zodObjectFields(out) : {};
     }
     case "lazy": {
-      const getter = Reflect.get(def, "getter");
-      const inner = typeof getter === "function" ? getter() : undefined;
-      return isZodType(inner) ? zodObjectFields(inner) : {};
+      return zodObjectFields(def.getter());
     }
     default:
       return {};
@@ -94,11 +136,12 @@ export function zodUnionOptions(schema: z.ZodType): z.ZodType[] {
   return [schema];
 }
 
-export function zodLiteralValue(schema: z.ZodType): unknown {
+export function zodLiteralValue(
+  schema: z.ZodType,
+): z.core.util.Literal | undefined {
   const def = defOf(schema);
   if (def.type !== "literal") return undefined;
-  const values = Reflect.get(def, "values");
-  return Array.isArray(values) ? values[0] : undefined;
+  return def.values[0];
 }
 
 export function collectZodKeyPaths(
@@ -112,8 +155,8 @@ export function collectZodKeyPaths(
     const def = defOf(current);
     switch (def.type) {
       case "object": {
-        const shape = zodShape(def) ?? {};
-        for (const [key, field] of Object.entries(shape)) {
+        const fields = readObjectFields(def) ?? {};
+        for (const [key, field] of Object.entries(fields)) {
           out.add(`${path}.${key}`);
           visit(field, `${path}.${key}`);
         }
@@ -161,9 +204,7 @@ export function collectZodKeyPaths(
       case "lazy": {
         if (enteredLazies.has(def)) return;
         enteredLazies.add(def);
-        const getter = Reflect.get(def, "getter");
-        const inner = typeof getter === "function" ? getter() : undefined;
-        if (isZodType(inner)) visit(inner, path);
+        visit(def.getter(), path);
         return;
       }
       default:

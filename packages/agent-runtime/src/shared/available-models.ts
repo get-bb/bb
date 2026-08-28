@@ -11,8 +11,8 @@ interface ParsedModelListResult {
   selectedOnlyModels: AvailableModel[];
 }
 
-export function parseAvailableModelList(
-  result: unknown,
+export function parseAvailableModelList<TModelListResult>(
+  result: TModelListResult,
 ): ParsedModelListResult {
   return modelListResultSchema.parse(result);
 }

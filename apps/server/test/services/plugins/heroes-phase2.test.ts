@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
-import type { PromptInput } from "@bb/domain";
+import type { JsonObject, PromptInput } from "@bb/domain";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
@@ -30,6 +31,33 @@ const EXAMPLES_DIR = fileURLToPath(
 );
 
 const APP_VERSION = "1.0.0";
+
+const toolCallResultSchema = z.object({
+  success: z.boolean(),
+  contentItems: z.array(z.object({ text: z.string() })),
+});
+const cliResultSchema = z.object({
+  exitCode: z.number(),
+  stdout: z.string(),
+});
+const mentionsSearchResponseSchema = z.object({
+  ok: z.boolean(),
+  groups: z.array(
+    z.object({
+      pluginId: z.string(),
+      providerId: z.string(),
+      label: z.string(),
+      items: z.array(
+        z.object({
+          itemId: z.string(),
+          title: z.string(),
+          subtitle: z.string(),
+          icon: z.null(),
+        }),
+      ),
+    }),
+  ),
+});
 
 describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
   let harness: TestAppHarness;
@@ -120,7 +148,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
 
   it("the internal tool-call route dispatches docs_search; the CLI command shares its kv cache", async () => {
     const { session, thread } = seedThreadFixture(2);
-    const postToolCall = (args: unknown) =>
+    const postToolCall = (args: JsonObject) =>
       harness.app.request("/internal/session/tool-call", {
         method: "POST",
         headers: internalAuthHeaders(harness),
@@ -137,19 +165,13 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
 
     const response = await postToolCall({ query: "conventional commits" });
     expect(response.status).toBe(200);
-    const result = (await readJson(response)) as {
-      success: boolean;
-      contentItems: Array<{ text: string }>;
-    };
+    const result = toolCallResultSchema.parse(await readJson(response));
     expect(result.success).toBe(true);
     expect(result.contentItems[0].text).toContain("conventions.md");
     expect(result.contentItems[0].text).toContain("conventional commits");
 
     const invalid = await postToolCall({});
-    const invalidResult = (await readJson(invalid)) as {
-      success: boolean;
-      contentItems: Array<{ text: string }>;
-    };
+    const invalidResult = toolCallResultSchema.parse(await readJson(invalid));
     expect(invalidResult.success).toBe(false);
     expect(invalidResult.contentItems[0].text).toContain(
       'Invalid arguments for tool "docs_search"',
@@ -170,10 +192,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
       },
     );
     expect(last.status).toBe(200);
-    const lastBody = (await last.json()) as {
-      exitCode: number;
-      stdout: string;
-    };
+    const lastBody = cliResultSchema.parse(await last.json());
     expect(lastBody.exitCode).toBe(0);
     expect(lastBody.stdout).toContain('"conventional commits"');
   });
@@ -183,10 +202,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
       "http://127.0.0.1:3334/api/v1/plugins/mentions/search?q=test",
     );
     expect(search.status).toBe(200);
-    const searchBody = (await search.json()) as {
-      ok: boolean;
-      groups: unknown;
-    };
+    const searchBody = mentionsSearchResponseSchema.parse(await search.json());
     expect(searchBody.ok).toBe(true);
     expect(searchBody.groups).toEqual([
       {

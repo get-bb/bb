@@ -37,6 +37,14 @@ interface MetadataCompletedEntryArgs extends MetadataTextArgs {
   startedAt: number;
 }
 
+interface MetadataCompletedEntryMetadata {
+  [key: string]: boolean | number | string | undefined;
+  branchNameGenerated: boolean;
+  durationMs: number;
+  reason?: ThreadMetadataGenerationOutcome["reason"];
+  titleGenerated: boolean;
+}
+
 function metadataStartedText(args: MetadataRequirements): string {
   return args.generateBranchName
     ? "Generating title and branch name"
@@ -66,19 +74,23 @@ function metadataCompletedText(args: MetadataTextArgs): string {
 function metadataCompletedEntry(
   args: MetadataCompletedEntryArgs,
 ): ProvisioningTranscriptEntry {
+  const metadata: MetadataCompletedEntryMetadata = {
+    durationMs: args.outcome.durationMs,
+    branchNameGenerated:
+      args.generateBranchName && Boolean(args.outcome.metadata?.branchSlug),
+    titleGenerated: Boolean(args.outcome.metadata?.title),
+  };
+  if (args.outcome.reason) {
+    metadata.reason = args.outcome.reason;
+  }
+
   return {
     type: "step",
     key: "metadata-completed",
     text: metadataCompletedText(args),
     status: "completed",
     startedAt: args.startedAt,
-    metadata: {
-      durationMs: args.outcome.durationMs,
-      branchNameGenerated:
-        args.generateBranchName && Boolean(args.outcome.metadata?.branchSlug),
-      titleGenerated: Boolean(args.outcome.metadata?.title),
-      ...(args.outcome.reason ? { reason: args.outcome.reason } : {}),
-    },
+    metadata,
   };
 }
 

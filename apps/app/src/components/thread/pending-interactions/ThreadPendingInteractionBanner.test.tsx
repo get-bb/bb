@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PendingInteraction, PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
@@ -16,38 +22,13 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
+import { sdk } from "@/lib/sdk";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
 
-const mocks = vi.hoisted(() => ({
-  resolveMutateAsync: vi.fn(async () => ({})),
-  stopMutateAsync: vi.fn(async () => undefined),
-}));
-
-vi.mock(
-  "@/hooks/mutations/thread-runtime-mutations",
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import("@/hooks/mutations/thread-runtime-mutations")
-    >()),
-    useStopThread: () => ({
-      mutateAsync: mocks.stopMutateAsync,
-      mutate: mocks.stopMutateAsync,
-      isPending: false,
-    }),
-  }),
-);
-
-vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
-  useResolveThreadPendingInteraction: () => ({
-    mutateAsync: mocks.resolveMutateAsync,
-    isPending: false,
-    error: null,
-  }),
-}));
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { interactions: { respond: vi.fn(), cancel: vi.fn() } } },
-}));
+const resolveInteraction = vi.spyOn(sdk.threads.interactions, "resolve");
+const stopThread = vi.spyOn(sdk.threads, "stop");
+const respondToInteraction = vi.spyOn(sdk.threads.interactions, "respond");
+const cancelInteraction = vi.spyOn(sdk.threads.interactions, "cancel");
 
 const planReview: PendingInteraction = {
   id: "pint_plan",
@@ -123,6 +104,13 @@ const pluginRequest: PluginPendingInteraction = {
   payload: { kind: "plugin", title: "Add secrets", data: { fields: ["KEY"] } },
 };
 
+beforeEach(() => {
+  resolveInteraction.mockResolvedValue(planReview);
+  stopThread.mockResolvedValue({ ok: true });
+  respondToInteraction.mockResolvedValue(planReview);
+  cancelInteraction.mockResolvedValue(planReview);
+});
+
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
 ): PluginRegistrationSet {
@@ -156,12 +144,14 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
-  mocks.resolveMutateAsync.mockClear();
-  mocks.stopMutateAsync.mockClear();
+  resolveInteraction.mockClear();
+  stopThread.mockClear();
+  respondToInteraction.mockClear();
+  cancelInteraction.mockClear();
 });
 
 describe("ThreadPendingInteractionBanner tool-use approval", () => {
-  it("renders the ask from the subject's presentation with the permission decisions", () => {
+  it("renders the ask from the subject's presentation with the permission decisions", async () => {
     renderBanner(toolUseApproval);
     expect(screen.getByText("Creating issue")).toBeTruthy();
     const ask = screen.getByTestId("tool-use-ask");
@@ -172,11 +162,16 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
       /light-dark\(rgb\(18, 52, 86\), rgb\(171, 205, 239\)\)/,
     );
     fireEvent.click(screen.getByRole("button", { name: "Allow for session" }));
-    expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        interactionId: "pint_tool",
-        resolution: { decision: "allow_for_session", grantedPermissions: null },
-      }),
+    await waitFor(() =>
+      expect(resolveInteraction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          interactionId: "pint_tool",
+          resolution: {
+            decision: "allow_for_session",
+            grantedPermissions: null,
+          },
+        }),
+      ),
     );
   });
 
@@ -235,7 +230,7 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
 });
 
 describe("ThreadPendingInteractionBanner request family", () => {
-  it("renders a plan review as a request with plan-verdict actions, resolved through today's approval", () => {
+  it("renders a plan review as a request with plan-verdict actions, resolved through today's approval", async () => {
     renderBanner(planReview);
     expect(screen.getByText("Ready to code?")).toBeTruthy();
     expect(screen.getByTestId("plan-review-request").textContent).toContain(
@@ -244,18 +239,22 @@ describe("ThreadPendingInteractionBanner request family", () => {
     expect(screen.getByText("/tmp/plans/picker.md")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
-    expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        threadId: "thr_1",
-        interactionId: "pint_plan",
-        resolution: expect.objectContaining({ decision: "allow_once" }),
-      }),
+    await waitFor(() =>
+      expect(resolveInteraction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: "thr_1",
+          interactionId: "pint_plan",
+          resolution: expect.objectContaining({ decision: "allow_once" }),
+        }),
+      ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Keep planning" }));
-    expect(mocks.resolveMutateAsync).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        resolution: expect.objectContaining({ decision: "deny" }),
-      }),
+    await waitFor(() =>
+      expect(resolveInteraction).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          resolution: expect.objectContaining({ decision: "deny" }),
+        }),
+      ),
     );
   });
 
@@ -303,11 +302,13 @@ describe("ThreadPendingInteractionBanner request family", () => {
     expect(screen.getByText(/The agent asks through/)).toBeTruthy();
   });
 
-  it("backs out of a provider's request by stopping the turn, never by cancelling", () => {
+  it("backs out of a provider's request by stopping the turn, never by cancelling", async () => {
     renderBanner(providerPluginRequest);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
-    expect(mocks.stopMutateAsync).toHaveBeenCalledWith("thr_1");
+    await waitFor(() =>
+      expect(stopThread).toHaveBeenCalledWith({ threadId: "thr_1" }),
+    );
   });
 });
 

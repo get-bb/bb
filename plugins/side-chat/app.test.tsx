@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 
 const app = await loadPluginApp(() => import("./app"));
 const { parsePanelParams } = await import("./app");
@@ -12,17 +13,16 @@ afterEach(() => {
 });
 
 function stubRpcFetch(
-  handler: (method: string, input: unknown) => unknown,
+  handler: (method: string, input: JsonValue) => JsonValue,
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = String(url).split("/rpc/")[1] ?? "";
-    const input: unknown = init?.body ? JSON.parse(String(init.body)) : null;
+    const input: JsonValue = init?.body ? JSON.parse(String(init.body)) : null;
     const result = handler(decodeURIComponent(method), input);
-    return {
-      ok: true,
+    return new Response(JSON.stringify({ ok: true, result }), {
+      headers: { "content-type": "application/json" },
       status: 200,
-      json: async () => ({ ok: true, result }),
-    } as unknown as Response;
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -91,9 +91,7 @@ describe("reply-in-side-chat message action", () => {
       "/api/v1/plugins/side-chat/rpc/createSideChat",
       expect.objectContaining({ method: "POST" }),
     );
-    const body = JSON.parse(
-      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
-    );
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toEqual({
       sourceThreadId: "thr_src",
       sourceSeqEnd: 42,
@@ -112,17 +110,19 @@ describe("reply-in-side-chat message action", () => {
   });
 
   it("single-flights a double invocation while the first fork RPC is pending", async () => {
-    let resolveRpc!: (value: unknown) => void;
-    const deferred = new Promise((resolve) => {
+    let resolveRpc!: () => void;
+    const deferred = new Promise<void>((resolve) => {
       resolveRpc = resolve;
     });
     const fetchMock = vi.fn(async () => {
       await deferred;
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, result: { threadId: "thr_fork" } }),
-      } as unknown as Response;
+      return new Response(
+        JSON.stringify({ ok: true, result: { threadId: "thr_fork" } }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
     const openPanel = vi.fn(() => true);
@@ -142,7 +142,7 @@ describe("reply-in-side-chat message action", () => {
     const second = app.messageActions[0]!.run(context);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    resolveRpc(undefined);
+    resolveRpc();
     await Promise.all([first, second]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

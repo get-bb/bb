@@ -1320,8 +1320,10 @@ function stubIntersectionObserver() {
   return () => {
     for (const callback of [...callbacks]) {
       callback(
-        [{ isIntersecting: true }] as IntersectionObserverEntry[],
-        {} as IntersectionObserver,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ [
+          { isIntersecting: true },
+        ] as IntersectionObserverEntry[],
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as IntersectionObserver,
       );
     }
   };

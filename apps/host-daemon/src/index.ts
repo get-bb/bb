@@ -10,10 +10,10 @@ import {
 
 interface ReportStartupFailureArgs {
   diagnosticsLogsDir: string;
-  error: unknown;
+  error: Error;
 }
 
-type MainFailureHandler = (error: unknown) => void;
+type MainFailureHandler = (error: Error) => void;
 
 const entrypointDir = dirname(fileURLToPath(import.meta.url));
 
@@ -39,10 +39,7 @@ function reportStartupFailure(args: ReportStartupFailureArgs): void {
     });
   } catch {}
 
-  const message =
-    args.error instanceof Error
-      ? (args.error.stack ?? args.error.message)
-      : String(args.error);
+  const message = args.error.stack ?? args.error.message;
   process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 }
@@ -68,7 +65,7 @@ async function runHostDaemonEntrypoint(): Promise<void> {
 
 const entrypointPath = process.argv[1];
 const isMainModule =
-  typeof entrypointPath === "string" &&
+  entrypointPath !== undefined &&
   fileURLToPath(import.meta.url) === entrypointPath;
 
 if (isMainModule) {
@@ -80,5 +77,9 @@ if (isMainModule) {
   const handleMainFailure: MainFailureHandler = (error) => {
     reportStartupFailure({ diagnosticsLogsDir, error });
   };
-  void runHostDaemonEntrypoint().catch(handleMainFailure);
+  void runHostDaemonEntrypoint().catch((error) => {
+    handleMainFailure(
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  });
 }

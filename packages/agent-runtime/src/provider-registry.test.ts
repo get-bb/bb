@@ -73,10 +73,10 @@ function expectBridgeSpawn(
     "/data/plugins/provider-fixture/bridge-data",
   ]);
   const moduleArg = args.at(-3) ?? "";
-  if (typeof expected.module === "string") {
-    expect(moduleArg).toBe(expected.module);
-  } else {
+  if (expected.module instanceof RegExp) {
     expect(moduleArg).toMatch(expected.module);
+  } else {
+    expect(moduleArg).toBe(expected.module);
   }
   const workerArgs = args.slice(0, -3);
   if (expected.bundleDir === undefined) {

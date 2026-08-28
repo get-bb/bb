@@ -4,6 +4,7 @@ import type {
   ProviderInstallationRequirement,
   ProviderInstallationStatus,
 } from "@bb/provider-bridge-protocol";
+import { normalizeCaughtError } from "./error-utils.js";
 
 export const PROVIDER_INSTALLATION_GATE_TTL_MS = 5 * 60_000;
 
@@ -83,11 +84,11 @@ export function createProviderInstallationGate({
           }
           return status;
         },
-        (error: unknown) => {
+        (cause: unknown) => {
           if (startedGeneration !== generation) {
             return run(key, probe);
           }
-          throw error;
+          throw normalizeCaughtError(cause);
         },
       )
       .finally(() => {

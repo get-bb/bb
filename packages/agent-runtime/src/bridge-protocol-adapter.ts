@@ -1,11 +1,16 @@
 import type {
   AvailableModel,
+  JsonObject,
   ProviderCapabilities,
   ProviderFork,
   ThreadEvent,
 } from "@bb/domain";
-import { PROVIDER_FORK_VALUES } from "@bb/domain";
-import { pendingInteractionPayloadSchema } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  pendingInteractionPayloadSchema,
+  PROVIDER_FORK_VALUES,
+} from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -54,7 +59,7 @@ export interface BridgeProtocolAdapter {
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
-  parseModelListResult(result: unknown): {
+  parseModelListResult<TModelListResult>(result: TModelListResult): {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   };
@@ -87,7 +92,21 @@ interface BridgeProtocolAdapterOptions {
   id: string;
   capabilities: BridgeAdapterCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
-  staticProviderOptions?: Record<string, unknown>;
+  staticProviderOptions?: object;
+}
+
+interface BridgeWireOptions {
+  model?: ProviderExecutionContext["model"];
+  serviceTier?: ProviderExecutionContext["serviceTier"];
+  reasoningLevel?: ProviderExecutionContext["reasoningLevel"];
+  promptMode?: ProviderExecutionContext["promptMode"];
+  instructions?: ProviderExecutionContext["instructions"];
+  envVars?: ProviderExecutionContext["envVars"];
+  permissionMode: ProviderExecutionContext["permissionMode"];
+  permissionScope: ProviderExecutionContext["permissionScope"];
+  approvalReviewer: ProviderExecutionContext["approvalReviewer"];
+  permissionEscalation: ProviderExecutionContext["permissionEscalation"];
+  providerOptions?: JsonObject;
 }
 
 const threadIdentityNotificationParamsSchema = z
@@ -129,8 +148,8 @@ const providerNativeIdsParamsSchema = z
 
 function toBridgeWireOptions(
   options: ProviderExecutionContext,
-  staticProviderOptions?: Record<string, unknown>,
-): Record<string, unknown> {
+  staticProviderOptions?: JsonObject,
+): BridgeWireOptions {
   const {
     model,
     serviceTier,
@@ -147,24 +166,42 @@ function toBridgeWireOptions(
     ...staticProviderOptions,
     ...options.providerOptions,
   };
-  return {
-    ...(model !== undefined ? { model } : {}),
-    ...(serviceTier !== undefined ? { serviceTier } : {}),
-    ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
-    ...(promptMode !== undefined ? { promptMode } : {}),
-    ...(instructions !== undefined ? { instructions } : {}),
-    ...(envVars !== undefined ? { envVars } : {}),
+  const wireOptions: BridgeWireOptions = {
     permissionMode,
     permissionScope,
     approvalReviewer,
     permissionEscalation,
-    ...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
   };
+  addOptionalProperty(wireOptions, "model", model);
+  addOptionalProperty(wireOptions, "serviceTier", serviceTier);
+  addOptionalProperty(wireOptions, "reasoningLevel", reasoningLevel);
+  addOptionalProperty(wireOptions, "promptMode", promptMode);
+  addOptionalProperty(wireOptions, "instructions", instructions);
+  addOptionalProperty(wireOptions, "envVars", envVars);
+  if (Object.keys(providerOptions).length > 0) {
+    wireOptions.providerOptions = providerOptions;
+  }
+  return wireOptions;
+}
+
+function addOptionalProperty<T extends object, K extends string, V>(
+  target: T,
+  key: K,
+  value: V | undefined,
+): T {
+  if (value !== undefined) {
+    Object.assign(target, { [key]: value });
+  }
+  return target;
 }
 
 export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): BridgeProtocolAdapter {
+  const staticProviderOptions =
+    options.staticProviderOptions === undefined
+      ? undefined
+      : jsonObjectSchema.parse(options.staticProviderOptions);
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
   const { fork: declaredFork, ...declaredCapabilities } = options.capabilities;
   const capabilities: BridgeEnforcedCapabilities = {
@@ -204,64 +241,71 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.modelList,
-            params: {
-              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-              ...(options.staticProviderOptions !== undefined
-                ? { providerOptions: options.staticProviderOptions }
-                : {}),
-            },
+            params: addOptionalProperty(
+              addOptionalProperty({}, "cwd", command.cwd),
+              "providerOptions",
+              staticProviderOptions,
+            ),
           };
         case "provider/health":
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.providerHealth,
-            params: {
-              providerId: options.id,
-              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-              ...(options.staticProviderOptions !== undefined
-                ? { providerOptions: options.staticProviderOptions }
-                : {}),
-            },
+            params: addOptionalProperty(
+              addOptionalProperty(
+                { providerId: options.id },
+                "cwd",
+                command.cwd,
+              ),
+              "providerOptions",
+              staticProviderOptions,
+            ),
           };
         case "provider/usage":
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.providerUsage,
-            params: {
-              providerId: options.id,
-              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-              ...(options.staticProviderOptions !== undefined
-                ? { providerOptions: options.staticProviderOptions }
-                : {}),
-            },
+            params: addOptionalProperty(
+              addOptionalProperty(
+                { providerId: options.id },
+                "cwd",
+                command.cwd,
+              ),
+              "providerOptions",
+              staticProviderOptions,
+            ),
           };
         case "provider/installation/status":
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.providerInstallationStatus,
-            params: {
-              providerId: options.id,
-              ...(command.requirement !== undefined
-                ? { requirement: command.requirement }
-                : {}),
-              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-              ...(options.staticProviderOptions !== undefined
-                ? { providerOptions: options.staticProviderOptions }
-                : {}),
-            },
+            params: addOptionalProperty(
+              addOptionalProperty(
+                addOptionalProperty(
+                  { providerId: options.id },
+                  "requirement",
+                  command.requirement,
+                ),
+                "cwd",
+                command.cwd,
+              ),
+              "providerOptions",
+              staticProviderOptions,
+            ),
           };
         case "provider/installation/run":
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.providerInstallationRun,
-            params: {
-              providerId: options.id,
-              action: command.action,
-              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-              ...(options.staticProviderOptions !== undefined
-                ? { providerOptions: options.staticProviderOptions }
-                : {}),
-            },
+            params: addOptionalProperty(
+              addOptionalProperty(
+                { providerId: options.id, action: command.action },
+                "cwd",
+                command.cwd,
+              ),
+              "providerOptions",
+              staticProviderOptions,
+            ),
           };
         case "skills/configure":
           if (!handshake.skills.configure) {
@@ -276,42 +320,46 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadStart,
-            params: {
-              threadId: command.threadId,
-              cwd: command.cwd,
-              options: toBridgeWireOptions(
-                command.options,
-                options.staticProviderOptions,
+            params: addOptionalProperty(
+              addOptionalProperty(
+                {
+                  threadId: command.threadId,
+                  cwd: command.cwd,
+                  options: toBridgeWireOptions(
+                    command.options,
+                    staticProviderOptions,
+                  ),
+                  instructionMode: command.instructionMode,
+                },
+                "dynamicTools",
+                command.dynamicTools,
               ),
-              ...(command.dynamicTools !== undefined
-                ? { dynamicTools: command.dynamicTools }
-                : {}),
-              ...(command.disallowedTools !== undefined
-                ? { disallowedTools: command.disallowedTools }
-                : {}),
-              instructionMode: command.instructionMode,
-            },
+              "disallowedTools",
+              command.disallowedTools,
+            ),
           };
         case "thread/resume":
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadResume,
-            params: {
-              threadId: command.threadId,
-              cwd: command.cwd,
-              providerThreadId: command.providerThreadId,
-              options: toBridgeWireOptions(
-                command.options,
-                options.staticProviderOptions,
+            params: addOptionalProperty(
+              addOptionalProperty(
+                {
+                  threadId: command.threadId,
+                  cwd: command.cwd,
+                  providerThreadId: command.providerThreadId,
+                  options: toBridgeWireOptions(
+                    command.options,
+                    staticProviderOptions,
+                  ),
+                  instructionMode: command.instructionMode,
+                },
+                "dynamicTools",
+                command.dynamicTools,
               ),
-              ...(command.dynamicTools !== undefined
-                ? { dynamicTools: command.dynamicTools }
-                : {}),
-              ...(command.disallowedTools !== undefined
-                ? { disallowedTools: command.disallowedTools }
-                : {}),
-              instructionMode: command.instructionMode,
-            },
+              "disallowedTools",
+              command.disallowedTools,
+            ),
           };
         case "thread/fork": {
           const fork = effectiveFork();
@@ -331,28 +379,28 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadFork,
-            params: {
-              threadId: command.threadId,
-              cwd: command.cwd,
-              sourceProviderThreadId: command.sourceProviderThreadId,
-              ...(command.sourceProviderCheckpointId !== undefined
-                ? {
-                    sourceProviderCheckpointId:
-                      command.sourceProviderCheckpointId,
-                  }
-                : {}),
-              options: toBridgeWireOptions(
-                command.options,
-                options.staticProviderOptions,
+            params: addOptionalProperty(
+              addOptionalProperty(
+                addOptionalProperty(
+                  {
+                    threadId: command.threadId,
+                    cwd: command.cwd,
+                    sourceProviderThreadId: command.sourceProviderThreadId,
+                    options: toBridgeWireOptions(
+                      command.options,
+                      staticProviderOptions,
+                    ),
+                    instructionMode: command.instructionMode,
+                  },
+                  "sourceProviderCheckpointId",
+                  command.sourceProviderCheckpointId,
+                ),
+                "dynamicTools",
+                command.dynamicTools,
               ),
-              ...(command.dynamicTools !== undefined
-                ? { dynamicTools: command.dynamicTools }
-                : {}),
-              ...(command.disallowedTools !== undefined
-                ? { disallowedTools: command.disallowedTools }
-                : {}),
-              instructionMode: command.instructionMode,
-            },
+              "disallowedTools",
+              command.disallowedTools,
+            ),
           };
         }
         case "turn/start":
@@ -366,7 +414,7 @@ export function createBridgeProtocolAdapter(
               clientRequestId: command.clientRequestId,
               options: toBridgeWireOptions(
                 command.options,
-                options.staticProviderOptions,
+                staticProviderOptions,
               ),
             },
           };
@@ -386,7 +434,7 @@ export function createBridgeProtocolAdapter(
               clientRequestId: command.clientRequestId,
               options: toBridgeWireOptions(
                 command.options,
-                options.staticProviderOptions,
+                staticProviderOptions,
               ),
             },
           };
@@ -505,7 +553,9 @@ export function createBridgeProtocolAdapter(
       ];
     },
 
-    parseModelListResult: parseAvailableModelList,
+    parseModelListResult<TModelListResult>(result: TModelListResult) {
+      return parseAvailableModelList(result);
+    },
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;
@@ -594,20 +644,19 @@ export function createBridgeProtocolAdapter(
       if (!parsed.success) {
         return null;
       }
-      return {
-        ...(parsed.data.threadId === undefined
-          ? {}
-          : { threadId: parsed.data.threadId }),
+      const recoveryHint: ProviderRecoveryHint = {
         kind: parsed.data.kind,
         message: parsed.data.message,
         retryable: parsed.data.retryable,
       };
+      addOptionalProperty(recoveryHint, "threadId", parsed.data.threadId);
+      return recoveryHint;
     },
 
     decodeToolCallRequest(
       request: ProviderInboundRequest,
     ): DecodedToolCallRequest | null {
-      if (typeof request.id !== "string" && typeof request.id !== "number") {
+      if (request.id === undefined) {
         return null;
       }
       const decoded = decodeNormalizedProviderToolCallRequest(
@@ -644,7 +693,7 @@ export function createBridgeProtocolAdapter(
     ): DecodedInteractiveRequest | null {
       if (
         request.method !== BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest ||
-        (typeof request.id !== "string" && typeof request.id !== "number")
+        request.id === undefined
       ) {
         return null;
       }
@@ -672,20 +721,21 @@ export function createBridgeProtocolAdapter(
           };
         }
       }
-      return {
+      const response: DecodedInteractiveRequest = {
         requestId: request.id,
         method: request.method,
         providerThreadId: decoded.providerThreadId,
         turnId,
         payload,
-        ...(threadId ? { threadId } : {}),
       };
+      addOptionalProperty(response, "threadId", threadId);
+      return response;
     },
 
     buildInteractiveResponse(
       args: BuildInteractiveResponseArgs,
     ): ProviderInteractiveResponse {
-      return args.resolution as unknown as ProviderInteractiveResponse;
+      return jsonValueSchema.parse(args.resolution);
     },
   };
 

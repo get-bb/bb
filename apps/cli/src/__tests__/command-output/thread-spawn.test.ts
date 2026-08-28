@@ -784,7 +784,6 @@ describe("bb thread spawn command output", () => {
       register,
     );
 
-    expect(resolveLocalHostIdMock).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",

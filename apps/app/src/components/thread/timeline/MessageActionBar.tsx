@@ -138,24 +138,26 @@ export function useMeasuredWidth({
 }: {
   enabled: boolean;
   resolveTarget?: (node: HTMLElement) => Element | null;
-}): {
-  measureRef: (node: HTMLElement | null) => void;
-  width: number | undefined;
-} {
+}) {
   const [width, setWidth] = useState<number | undefined>(undefined);
   const observerRef = useRef<ResizeObserver | null>(null);
   const measureRef = useCallback(
     (node: HTMLElement | null) => {
       observerRef.current?.disconnect();
       observerRef.current = null;
-      if (!enabled || node === null || typeof ResizeObserver === "undefined") {
+      const ResizeObserverConstructor = globalThis.ResizeObserver;
+      if (
+        !enabled ||
+        node === null ||
+        ResizeObserverConstructor === undefined
+      ) {
         return;
       }
       const target = resolveTarget ? resolveTarget(node) : node;
       if (target === null) {
         return;
       }
-      const observer = new ResizeObserver(([entry]) => {
+      const observer = new ResizeObserverConstructor(([entry]) => {
         const inlineSize =
           entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
         setWidth(Math.floor(inlineSize));
@@ -444,7 +446,10 @@ export function MessageActionBar({
       document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [expanded]);
   const handleExpandedRowClick = (event: MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement | null)?.closest("button")) {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button") !== null
+    ) {
       setExpanded(false);
     }
   };

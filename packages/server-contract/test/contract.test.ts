@@ -44,6 +44,10 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
+interface IntentionalOptionalServerFields {
+  [field: string]: string;
+}
+
 const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 30;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
@@ -276,8 +280,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
 
 function buildIntentionalOptionalServerFields(
   groups: readonly OptionalServerFieldGroup[],
-): Record<string, string> {
-  const fields: Record<string, string> = {};
+): IntentionalOptionalServerFields {
+  const fields: IntentionalOptionalServerFields = {};
   for (const group of groups) {
     for (const field of group.fields) {
       fields[field] = group.reason;

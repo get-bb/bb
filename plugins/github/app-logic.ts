@@ -72,11 +72,11 @@ function unquote(value: string): string {
   return value.replace(/"/g, "");
 }
 
-const STATE_VALUES: Record<string, string> = {
-  open: "OPEN",
-  closed: "CLOSED",
-  merged: "MERGED",
-};
+const STATE_VALUES = new Map<string, string>([
+  ["open", "OPEN"],
+  ["closed", "CLOSED"],
+  ["merged", "MERGED"],
+]);
 
 export function parseQuery(query: string): ParsedQuery {
   const parsed: ParsedQuery = {
@@ -96,7 +96,7 @@ export function parseQuery(query: string): ParsedQuery {
     if (idx > 0 && value.length === 0) continue;
     if (key === "is" || key === "state") {
       parsed.states.push(
-        STATE_VALUES[value.toLowerCase()] ?? value.toUpperCase(),
+        STATE_VALUES.get(value.toLowerCase()) ?? value.toUpperCase(),
       );
     } else if (key === "assignee") {
       parsed.assignees.push(value.toLowerCase());
@@ -211,7 +211,7 @@ export function buildSuggestions(
       icon: {
         kind: "state",
         itemKind: kind,
-        state: STATE_VALUES[state] ?? "OPEN",
+        state: STATE_VALUES.get(state) ?? "OPEN",
       },
     }));
   }
@@ -223,11 +223,12 @@ export function buildSuggestions(
         avatarLogin === null
           ? undefined
           : { kind: "avatar", login: avatarLogin };
-      return {
+      const suggestion: Suggestion = {
         insert: `${key}:${login} `,
         label: login === "@me" && viewer !== null ? `@me (${viewer})` : login,
-        ...(icon === undefined ? {} : { icon }),
       };
+      if (icon !== undefined) suggestion.icon = icon;
+      return suggestion;
     });
   }
   if (key === "label") {

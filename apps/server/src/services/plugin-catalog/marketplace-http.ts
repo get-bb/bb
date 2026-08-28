@@ -2,6 +2,8 @@ import { lookup as dnsLookup } from "node:dns";
 import { request } from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
+import { z } from "zod";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 
 export type MarketplaceFetch = (
   input: string,
@@ -151,50 +153,60 @@ export const publicMarketplaceFetch: MarketplaceFetch = async (input, init) => {
   return new Promise<Response>((resolve, reject) => {
     const headers = Object.fromEntries(new Headers(init.headers).entries());
     const requestSignal = init.signal ?? undefined;
-    const outgoing = request(
-      url,
-      {
-        method: init.method ?? "GET",
-        headers,
-        lookup: publicMarketplaceLookup,
-        ...(requestSignal === undefined ? {} : { signal: requestSignal }),
-      },
-      (incoming) => {
-        const status = incoming.statusCode;
-        if (status === undefined) {
-          incoming.destroy();
-          reject(new Error("marketplace response has no HTTP status"));
-          return;
+    const requestOptions: import("node:https").RequestOptions = {
+      method: init.method ?? "GET",
+      headers,
+      lookup: publicMarketplaceLookup,
+    };
+    if (requestSignal !== undefined) requestOptions.signal = requestSignal;
+    const outgoing = request(url, requestOptions, (incoming) => {
+      const status = incoming.statusCode;
+      if (status === undefined) {
+        incoming.destroy();
+        reject(new Error("marketplace response has no HTTP status"));
+        return;
+      }
+      const responseHeaders = new Headers();
+      for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
+        const name = incoming.rawHeaders[index];
+        const value = incoming.rawHeaders[index + 1];
+        if (name !== undefined && value !== undefined) {
+          responseHeaders.append(name, value);
         }
-        const responseHeaders = new Headers();
-        for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
-          const name = incoming.rawHeaders[index];
-          const value = incoming.rawHeaders[index + 1];
-          if (name !== undefined && value !== undefined) {
-            responseHeaders.append(name, value);
-          }
-        }
-        const hasNoBody = status === 204 || status === 205 || status === 304;
-        resolve(
-          new Response(
-            hasNoBody
-              ? null
-              : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>),
-            { status, headers: responseHeaders },
-          ),
-        );
-      },
-    );
+      }
+      const hasNoBody = status === 204 || status === 205 || status === 304;
+      /* SAFETY: Readable.toWeb returns the response stream accepted by Response. */
+      resolve(
+        new Response(
+          hasNoBody
+            ? null
+            : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>),
+          { status, headers: responseHeaders },
+        ),
+      );
+    });
     outgoing.once("error", reject);
     outgoing.end();
   });
 };
 
-export function marketplaceErrorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === "TimeoutError") {
+const marketplaceErrorSchema = z.union([
+  z.instanceof(DOMException),
+  z.instanceof(Error),
+  z.string(),
+]);
+
+export function marketplaceErrorMessage<T>(error: T): string {
+  const parsed = marketplaceErrorSchema.safeParse(error);
+  if (!parsed.success) return String(error);
+  if (
+    parsed.data instanceof DOMException &&
+    parsed.data.name === "TimeoutError"
+  ) {
     return `request timed out after ${MARKETPLACE_FETCH_TIMEOUT_MS}ms`;
   }
-  return error instanceof Error ? error.message : String(error);
+  if (parsed.data instanceof Error) return parsed.data.message;
+  return parsed.data;
 }
 
 export async function boundedResponseBytes(
@@ -241,10 +253,10 @@ export async function boundedResponseJson(
   response: Response,
   maxBytes: number,
   label: string,
-): Promise<unknown> {
+): Promise<JsonValue> {
   const bytes = await boundedResponseBytes(response, maxBytes, label);
   try {
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return jsonValueSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
   } catch (error) {
     throw new Error(
       `${label} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,

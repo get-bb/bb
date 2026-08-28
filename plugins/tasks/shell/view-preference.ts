@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { TaskViewMode } from "./routes.js";
 
 export const VIEW_PREFERENCE_STORAGE_KEY = "bb-tasks:view-preferences";
@@ -11,13 +12,18 @@ interface StoredDocumentV1 {
   projects: Record<string, TaskViewMode>;
 }
 
-function asViewMode(value: unknown): TaskViewMode | null {
+const jsonValueSchema = z.json();
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+const finiteNumberSchema = z.number().finite();
+type StoredJsonValue = z.infer<typeof jsonValueSchema>;
+
+function asViewMode(value: StoredJsonValue): TaskViewMode | null {
   return value === "list" || value === "board" ? value : null;
 }
 
 interface ParsedStorage {
   lastUsed: TaskViewMode | null;
-  projects: Record<string, unknown>;
+  projects: Record<string, StoredJsonValue>;
   isFutureVersion: boolean;
 }
 
@@ -25,26 +31,16 @@ function readStorage(): ParsedStorage | null {
   try {
     const raw = window.localStorage.getItem(VIEW_PREFERENCE_STORAGE_KEY);
     if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
+    const parsed = jsonObjectSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
       return null;
     }
-    const record = parsed as Record<string, unknown>;
-    const version =
-      typeof record.version === "number" && Number.isFinite(record.version)
-        ? record.version
-        : null;
+    const record = parsed.data;
+    const parsedVersion = finiteNumberSchema.safeParse(record.version);
+    const version = parsedVersion.success ? parsedVersion.data : null;
     if (version !== null && version < VIEW_PREFERENCE_VERSION) return null;
-    const projects =
-      record.projects !== null &&
-      typeof record.projects === "object" &&
-      !Array.isArray(record.projects)
-        ? (record.projects as Record<string, unknown>)
-        : {};
+    const parsedProjects = jsonObjectSchema.safeParse(record.projects);
+    const projects = parsedProjects.success ? parsedProjects.data : {};
     return {
       lastUsed: asViewMode(record.lastUsed),
       projects,

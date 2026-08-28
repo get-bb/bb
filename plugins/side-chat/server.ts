@@ -44,14 +44,22 @@ interface SideChatForkCandidate {
   createdAt: number;
 }
 
-function isSessionUnavailableError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code: unknown }).code === "fork_source_session_unavailable"
-  );
+interface SideChatForkArgs {
+  sourceThreadId: string;
+  visibility: "hidden";
+  workspace: "reuse";
+  agentContextSeed?: Array<{
+    type: "text";
+    text: string;
+    mentions: [];
+    visibility: "agent-only";
+  }>;
+  sourceSeqEnd?: number;
 }
+
+const sessionUnavailableErrorSchema = z.object({
+  code: z.literal("fork_source_session_unavailable"),
+});
 
 function isOwnLiveHiddenFork(
   thread: SideChatForkCandidate,
@@ -92,31 +100,33 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(sideChatRpcContract, {
     async createSideChat({ sourceThreadId, sourceSeqEnd, anchorText }) {
       const seedText = resolveReplySeedText(anchorText);
-      const forkArgs = {
+      const forkArgs: SideChatForkArgs = {
         sourceThreadId,
-        visibility: "hidden" as const,
-        workspace: "reuse" as const,
-        ...(seedText !== null
-          ? {
-              agentContextSeed: [
-                {
-                  type: "text" as const,
-                  text: `${REPLY_SEED_PREFIX}${seedText}`,
-                  mentions: [],
-                  visibility: "agent-only" as const,
-                },
-              ],
-            }
-          : {}),
+        visibility: "hidden",
+        workspace: "reuse",
       };
+      if (seedText !== null) {
+        forkArgs.agentContextSeed = [
+          {
+            type: "text",
+            text: `${REPLY_SEED_PREFIX}${seedText}`,
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ];
+      }
+      const forkArgsWithSequence: SideChatForkArgs = { ...forkArgs };
+      if (sourceSeqEnd !== undefined) {
+        forkArgsWithSequence.sourceSeqEnd = sourceSeqEnd;
+      }
       try {
-        const fork = await bb.sdk.threads.fork({
-          ...forkArgs,
-          ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
-        });
+        const fork = await bb.sdk.threads.fork(forkArgsWithSequence);
         return { threadId: fork.id };
       } catch (error) {
-        if (sourceSeqEnd === undefined || !isSessionUnavailableError(error)) {
+        if (
+          sourceSeqEnd === undefined ||
+          !sessionUnavailableErrorSchema.safeParse(error).success
+        ) {
           throw error;
         }
         const fork = await bb.sdk.threads.fork(forkArgs);

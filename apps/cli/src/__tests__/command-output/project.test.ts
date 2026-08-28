@@ -211,7 +211,7 @@ describe("bb project command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(projects);
-    expect(get).toHaveBeenCalledWith({ query: {} });
+    expect(get).toHaveBeenCalledWith({});
   });
 
   it("bb project list can include the personal project", async () => {

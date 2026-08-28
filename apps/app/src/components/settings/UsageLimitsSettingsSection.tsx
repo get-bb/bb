@@ -40,6 +40,12 @@ interface ProviderConfig {
   provider: ProviderInfo | undefined;
 }
 
+interface UsageLimitsQueryArgs {
+  enabled: boolean;
+  hostId?: string;
+  providerIds: string[];
+}
+
 function providerConfig(
   providerId: string,
   info: ProviderInfo | undefined,
@@ -470,11 +476,14 @@ export function UsageLimitsSettingsSection() {
         },
   );
   const providers = providersQuery.data ?? [];
-  const usageQuery = useSystemProviderUsageLimits({
-    ...(usageHostId === undefined ? {} : { hostId: usageHostId }),
+  const usageQueryArgs: UsageLimitsQueryArgs = {
     enabled: systemConfigQuery.data !== undefined && providersQuery.isSuccess,
     providerIds: providers.map((provider) => provider.id),
-  });
+  };
+  if (usageHostId !== undefined) {
+    usageQueryArgs.hostId = usageHostId;
+  }
+  const usageQuery = useSystemProviderUsageLimits(usageQueryArgs);
 
   return (
     <UsageLimitsSettingsSectionContent

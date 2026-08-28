@@ -47,12 +47,18 @@ export function reconnectProvisionArgs(
 export function reconnectProvisionArgsFromWorkspaceContext(
   args: WorkspaceContextProvisionArgs,
 ): ProvisionWorkspaceArgs {
-  return reconnectProvisionArgs({
-    environmentId: args.environmentId,
-    ...(args.personalWorkspaceRoot !== undefined
-      ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
-      : {}),
-    workspacePath: args.workspaceContext.workspacePath,
-    workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
-  });
+  const reconnectArgs =
+    args.personalWorkspaceRoot === undefined
+      ? {
+          environmentId: args.environmentId,
+          workspacePath: args.workspaceContext.workspacePath,
+          workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
+        }
+      : {
+          environmentId: args.environmentId,
+          personalWorkspaceRoot: args.personalWorkspaceRoot,
+          workspacePath: args.workspaceContext.workspacePath,
+          workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
+        };
+  return reconnectProvisionArgs(reconnectArgs);
 }

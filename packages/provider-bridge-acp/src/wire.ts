@@ -101,7 +101,7 @@ const acpToolCallNameSchema = z
   .transform((value) => value ?? undefined)
   .optional();
 
-const acpToolCallFieldsSchema = z.object({
+const acpToolCallNormalizedFieldsSchema = z.object({
   toolCallId: z.string(),
   title: z.string().optional(),
   name: acpToolCallNameSchema,
@@ -114,27 +114,39 @@ const acpToolCallFieldsSchema = z.object({
   rawOutput: z.unknown().optional(),
 });
 
-function openAcpToolCallEnums(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
+const acpToolCallRawFieldsSchema = z
+  .object({
+    toolCallId: z.string(),
+    title: z.string().optional(),
+    name: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    content: z.array(z.unknown()).optional(),
+    locations: z.array(acpToolCallLocationSchema).optional(),
+    rawInput: z.unknown().optional(),
+    rawOutput: z.unknown().optional(),
+  })
+  .passthrough();
+const acpToolCallRawFieldsPartialSchema = acpToolCallRawFieldsSchema.partial();
+
+function normalizeAcpToolCallEnums(
+  fields: z.infer<typeof acpToolCallRawFieldsPartialSchema>,
+) {
+  const next = { ...fields };
+  if (fields.kind == null) {
+    delete next.kind;
+  } else if (ACP_TOOL_KIND_SET.has(fields.kind)) {
+    next.kind = fields.kind;
+  } else {
+    next.kind = "other";
+    next.rawKind = fields.kind;
   }
-  const fields = value as Record<string, unknown>;
-  const { kind, status, ...rest } = fields;
-  const next: Record<string, unknown> = rest;
-  if (typeof kind === "string") {
-    if (ACP_TOOL_KIND_SET.has(kind)) {
-      next["kind"] = kind;
-    } else {
-      next["kind"] = "other";
-      next["rawKind"] = kind;
-    }
-  } else if (kind !== undefined && kind !== null) {
-    next["kind"] = kind;
-  }
-  if (typeof status === "string") {
-    next["status"] = ACP_TOOL_CALL_STATUS_SET.has(status) ? status : "pending";
-  } else if (status !== undefined && status !== null) {
-    next["status"] = status;
+  if (fields.status == null) {
+    delete next.status;
+  } else if (ACP_TOOL_CALL_STATUS_SET.has(fields.status)) {
+    next.status = fields.status;
+  } else {
+    next.status = "pending";
   }
   return next;
 }
@@ -153,13 +165,22 @@ export const acpAgentThoughtChunkUpdateSchema = z
   })
   .passthrough();
 
-export const acpToolCallUpdateEventSchema = z.preprocess(
-  openAcpToolCallEnums,
-  acpToolCallFieldsSchema
-    .extend({
-      sessionUpdate: z.enum(["tool_call", "tool_call_update"]),
-    })
-    .passthrough(),
+const acpToolCallUpdateEventFieldsSchema = acpToolCallNormalizedFieldsSchema
+  .extend({
+    sessionUpdate: z.enum(["tool_call", "tool_call_update"]),
+  })
+  .passthrough();
+export const acpToolCallUpdateEventSchema =
+  acpToolCallRawFieldsSchema.transform((fields) =>
+    acpToolCallUpdateEventFieldsSchema.parse(normalizeAcpToolCallEnums(fields)),
+  );
+
+const acpToolCallPartialFieldsSchema = acpToolCallNormalizedFieldsSchema
+  .partial()
+  .passthrough();
+const acpToolCallPartialSchema = acpToolCallRawFieldsPartialSchema.transform(
+  (fields) =>
+    acpToolCallPartialFieldsSchema.parse(normalizeAcpToolCallEnums(fields)),
 );
 export type AcpToolCallUpdateEvent = z.infer<
   typeof acpToolCallUpdateEventSchema
@@ -327,26 +348,26 @@ function parseAcpConfigOptions(
     if (loose.data.id === undefined) {
       continue;
     }
-    parsedOptions.push({
+    const parsedOption: AcpConfigOption = {
       id: loose.data.id,
-      ...(typeof loose.data.name === "string" ? { name: loose.data.name } : {}),
-      ...(loose.data.category !== undefined
-        ? { category: loose.data.category }
-        : {}),
-      type: typeof loose.data.type === "string" ? loose.data.type : "",
-      ...(typeof loose.data.currentValue === "string"
-        ? { currentValue: loose.data.currentValue }
-        : {}),
-      ...(Array.isArray(loose.data.options)
-        ? {
-            options: loose.data.options.flatMap((selectOption) => {
-              const parsed =
-                acpConfigOptionSelectOptionSchema.safeParse(selectOption);
-              return parsed.success ? [parsed.data] : [];
-            }),
-          }
-        : {}),
-    });
+      type: z.string().catch("").parse(loose.data.type),
+    };
+    const name = z.string().safeParse(loose.data.name);
+    if (name.success) parsedOption.name = name.data;
+    if (loose.data.category !== undefined) {
+      parsedOption.category = loose.data.category;
+    }
+    const currentValue = z.string().safeParse(loose.data.currentValue);
+    if (currentValue.success) parsedOption.currentValue = currentValue.data;
+    const optionsList = z.array(z.unknown()).safeParse(loose.data.options);
+    if (optionsList.success) {
+      parsedOption.options = optionsList.data.flatMap((selectOption) => {
+        const parsed =
+          acpConfigOptionSelectOptionSchema.safeParse(selectOption);
+        return parsed.success ? [parsed.data] : [];
+      });
+    }
+    parsedOptions.push(parsedOption);
   }
   return parsedOptions;
 }
@@ -416,12 +437,7 @@ export type AcpPermissionOption = z.infer<typeof acpPermissionOptionSchema>;
 export const acpRequestPermissionParamsSchema = z
   .object({
     sessionId: z.string(),
-    toolCall: z
-      .preprocess(
-        openAcpToolCallEnums,
-        acpToolCallFieldsSchema.partial().passthrough(),
-      )
-      .optional(),
+    toolCall: acpToolCallPartialSchema.optional(),
     options: z.array(acpPermissionOptionSchema).min(1),
   })
   .passthrough();

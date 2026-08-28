@@ -23,7 +23,7 @@ export interface JsonOutputOptions {
   json?: boolean;
 }
 
-export function outputJson(opts: JsonOutputOptions, data: unknown): boolean {
+export function outputJson<T>(opts: JsonOutputOptions, data: T): boolean {
   if (!opts.json) return false;
   console.log(JSON.stringify(data, null, 2));
   return true;
@@ -79,7 +79,7 @@ export async function confirmDestructiveAction(
   }
 }
 
-export function getErrorMessage(err: unknown): string {
+export function getErrorMessage<T>(err: T): string {
   if (!(err instanceof Error)) return String(err);
   const seen = new Set<Error>();
   const messages: string[] = [];
@@ -125,7 +125,7 @@ export function parseReasoningLevel(
   );
 }
 
-export function prependErrorContext(context: string, err: unknown): Error {
+export function prependErrorContext<T>(context: string, err: T): Error {
   return new Error(`${context}: ${getErrorMessage(err)}`);
 }
 

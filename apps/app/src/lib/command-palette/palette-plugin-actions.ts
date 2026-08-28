@@ -10,8 +10,8 @@ export interface BuildPluginPaletteActionsArgs {
   openThreadPanel: PluginThreadPanelOpenHandler | null;
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function describeError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function actionContext(
@@ -57,9 +57,9 @@ export function buildPluginPaletteActions(
       title: slot.title,
       shortcut: null,
       run: () => {
-        const warn = (error: unknown) => {
+        const warn = (cause: unknown) => {
           console.warn(
-            `[plugin:${slot.pluginId}] commandPaletteAction "${slot.id}" failed: ${describeError(error)}`,
+            `[plugin:${slot.pluginId}] commandPaletteAction "${slot.id}" failed: ${describeError(cause)}`,
           );
         };
         try {

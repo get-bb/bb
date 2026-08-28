@@ -10,12 +10,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 import { PLUGIN_SHIMMED_TYPE_DEPENDENCIES } from "../src/generated/plugin-starter-files.generated.js";
 
-const execFileAsync = promisify(execFile);
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const appRoot = join(repoRoot, "apps", "app");
 const pluginSdkRoot = join(repoRoot, "packages", "plugin-sdk");
@@ -55,20 +53,19 @@ async function runTsc(
   targetDir: string,
 ): Promise<{ ok: boolean; output: string }> {
   const tsc = join(workspacePackageRoot("typescript"), "lib", "tsc.js");
-  try {
-    const { stdout, stderr } = await execFileAsync(
+  return new Promise((resolveResult) => {
+    execFile(
       process.execPath,
       [tsc, "--project", "tsconfig.json"],
       { cwd: targetDir },
+      (error, stdout, stderr) => {
+        resolveResult({
+          ok: error === null,
+          output: `${stdout}${stderr}`,
+        });
+      },
     );
-    return { ok: true, output: `${stdout}${stderr}` };
-  } catch (error) {
-    const failed = error as { stdout?: string; stderr?: string };
-    return {
-      ok: false,
-      output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`,
-    };
-  }
+  });
 }
 
 const SHIMMED_SPECIFIERS = [

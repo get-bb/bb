@@ -12,16 +12,28 @@ import {
 
 type DemoThreadTarget = { kind: "thread"; threadId: string };
 
+function readJsonString(value: JsonValue | undefined): string | undefined {
+  if (value === undefined || value !== String(value)) return undefined;
+  return String(value);
+}
+
+function readJsonObjectEntries(
+  value: JsonValue | null,
+): readonly (readonly [string, JsonValue])[] | null {
+  if (value === null || Array.isArray(value) || Object(value) !== value) {
+    return null;
+  }
+  return Object.entries(value);
+}
+
 function isDemoThreadTarget(value: JsonValue): value is DemoThreadTarget {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 2 &&
-    value.kind === "thread" &&
-    typeof value.threadId === "string" &&
-    value.threadId.length > 0
+  const entries = readJsonObjectEntries(value);
+  if (entries === null || entries.length !== 2) return false;
+  const kind = entries.find(([key]) => key === "kind")?.[1];
+  const threadId = readJsonString(
+    entries.find(([key]) => key === "threadId")?.[1],
   );
+  return kind === "thread" && threadId !== undefined && threadId.length > 0;
 }
 
 function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
@@ -117,20 +129,24 @@ const demoThreadFixedTab: PluginFixedTabRegistration<DemoThreadTarget> = {
   experimental_target: { validate: isDemoThreadTarget },
 };
 
-interface DemoPanelParams {
+type DemoPanelParams = {
   anchorText?: string;
   selectedText?: string;
-}
+};
 
-function readDemoPanelParams(params: unknown): DemoPanelParams {
-  if (typeof params !== "object" || params === null) return {};
-  const record = params as Record<string, unknown>;
-  return {
-    anchorText:
-      typeof record.anchorText === "string" ? record.anchorText : undefined,
-    selectedText:
-      typeof record.selectedText === "string" ? record.selectedText : undefined,
-  };
+function readDemoPanelParams(params: JsonValue | null): DemoPanelParams {
+  const entries = readJsonObjectEntries(params);
+  if (entries === null) return {};
+  const parsed: DemoPanelParams = {};
+  const anchorText = readJsonString(
+    entries.find(([key]) => key === "anchorText")?.[1],
+  );
+  const selectedText = readJsonString(
+    entries.find(([key]) => key === "selectedText")?.[1],
+  );
+  if (anchorText !== undefined) parsed.anchorText = anchorText;
+  if (selectedText !== undefined) parsed.selectedText = selectedText;
+  return parsed;
 }
 
 function MessageAnchoredPanel({
@@ -138,7 +154,7 @@ function MessageAnchoredPanel({
   params,
 }: {
   threadId: string;
-  params: unknown;
+  params: JsonValue | null;
 }) {
   const { anchorText, selectedText } = readDemoPanelParams(params);
   return (
@@ -178,15 +194,16 @@ export default definePluginApp((app) => {
     title: "Open in demo panel",
     icon: "MessageSquarePlus",
     run(context) {
+      const params: DemoPanelParams = {
+        anchorText: context.message.text.slice(0, 200),
+      };
+      if (context.selectedText !== undefined) {
+        params.selectedText = context.selectedText.slice(0, 200);
+      }
       const opened = context.openPanel({
         actionId: "demo-panel",
         title: "Demo panel",
-        params: {
-          anchorText: context.message.text.slice(0, 200),
-          ...(context.selectedText !== undefined
-            ? { selectedText: context.selectedText.slice(0, 200) }
-            : {}),
-        },
+        params,
       });
       if (!opened) {
         console.warn(

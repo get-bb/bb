@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
-import { machine } from "@bb/connect-db";
+import * as accountSessionModule from "./account-session.js";
+import * as cacheModule from "./cache.js";
+import * as machineLabelModule from "./machine-label.js";
+import * as serversModule from "./servers.js";
+import * as sessionModule from "./session.js";
 
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
@@ -101,87 +105,66 @@ describe("parseClientProtocolVersion", () => {
   });
 });
 
-vi.mock("./session.js", () => ({
-  invalidateSessionCookie: vi.fn(),
-  markMachineSeen: vi.fn(),
-  parseCookie: vi.fn(),
-  resolveLabel: vi.fn(),
-  verifyMachineCredentialDetails: vi.fn(),
-  verifySessionCookieDetails: vi.fn(),
-}));
-
-vi.mock("./account-session.js", () => ({
-  refreshAccountSessionCookies: vi.fn(),
-}));
-
-vi.mock("./servers.js", () => ({
-  handleCreateDesktopSession: vi.fn(),
-  handleDisconnectServer: vi.fn(),
-  handleListAccountServers: vi.fn(),
-  verifyDesktopSessionCookie: vi.fn(),
-}));
-
-vi.mock("./machine-label.js", () => ({
-  handleAssignMachineLabel: vi.fn(),
-}));
-
-vi.mock("./cache.js", async () => {
-  const actual =
-    await vi.importActual<typeof import("./cache.js")>("./cache.js");
-  return {
-    ...actual,
-    serveWithCache: vi.fn(
-      async (
-        _request: Request,
-        _namespace: string,
-        _ctx: ExecutionContext,
-        fetchOrigin: () => Promise<Response>,
-      ) => ({ cacheable: false, response: await fetchOrigin() }),
-    ),
-  };
-});
-
-vi.mock("drizzle-orm/d1", () => ({
-  drizzle: vi.fn(() => ({})),
-}));
-
-import { drizzle } from "drizzle-orm/d1";
-
-import {
-  invalidateSessionCookie,
-  markMachineSeen,
-  parseCookie,
-  resolveLabel,
-  verifyMachineCredentialDetails,
-  verifySessionCookieDetails,
-} from "./session.js";
-import { refreshAccountSessionCookies } from "./account-session.js";
-import {
-  handleCreateDesktopSession,
-  handleDisconnectServer,
-  handleListAccountServers,
-  verifyDesktopSessionCookie,
-} from "./servers.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
-import { handleAssignMachineLabel } from "./machine-label.js";
-import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
-import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
+import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 
-const mockParseCookie = vi.mocked(parseCookie);
-const mockInvalidateSession = vi.mocked(invalidateSessionCookie);
-const mockRefreshAccountSession = vi.mocked(refreshAccountSessionCookies);
-const mockResolveLabel = vi.mocked(resolveLabel);
-const mockMarkMachineSeen = vi.mocked(markMachineSeen);
-const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
-const mockVerifySessionDetails = vi.mocked(verifySessionCookieDetails);
-const mockServeWithCache = vi.mocked(serveWithCache);
-const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
-const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
-const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
-const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
-const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
-
+const mockParseCookie = vi.spyOn(sessionModule, "parseCookie");
+const mockInvalidateSession = vi.spyOn(
+  sessionModule,
+  "invalidateSessionCookie",
+);
+const mockRefreshAccountSession = vi.spyOn(
+  accountSessionModule,
+  "refreshAccountSessionCookies",
+);
+const mockResolveLabel = vi.spyOn(sessionModule, "resolveLabel");
+const mockMarkMachineSeen = vi.spyOn(sessionModule, "markMachineSeen");
+const mockVerifyMachine = vi.spyOn(
+  sessionModule,
+  "verifyMachineCredentialDetails",
+);
+const mockVerifySessionDetails = vi.spyOn(
+  sessionModule,
+  "verifySessionCookieDetails",
+);
+const mockServeWithCache = vi
+  .spyOn(cacheModule, "serveWithCache")
+  .mockImplementation(async (_request, _namespace, _ctx, fetchOrigin) => ({
+    cacheable: false,
+    response: await fetchOrigin(),
+  }));
+const mockHandleListAccountServers = vi.spyOn(
+  serversModule,
+  "handleListAccountServers",
+);
+const mockHandleCreateDesktopSession = vi.spyOn(
+  serversModule,
+  "handleCreateDesktopSession",
+);
+const mockHandleDisconnectServer = vi.spyOn(
+  serversModule,
+  "handleDisconnectServer",
+);
+const mockVerifyDesktopSession = vi.spyOn(
+  serversModule,
+  "verifyDesktopSessionCookie",
+);
+const mockHandleAssignMachineLabel = vi.spyOn(
+  machineLabelModule,
+  "handleAssignMachineLabel",
+);
+mockParseCookie.mockReturnValue(null);
+mockResolveLabel.mockResolvedValue(null);
+mockMarkMachineSeen.mockResolvedValue(true);
+mockVerifyMachine.mockResolvedValue(null);
+mockVerifySessionDetails.mockResolvedValue(null);
+mockRefreshAccountSession.mockResolvedValue(null);
+mockVerifyDesktopSession.mockResolvedValue(null);
+mockHandleListAccountServers.mockResolvedValue(new Response());
+mockHandleCreateDesktopSession.mockResolvedValue(new Response());
+mockHandleDisconnectServer.mockResolvedValue(new Response());
+mockHandleAssignMachineLabel.mockResolvedValue(new Response());
 function sessionDetails(userId = OWNER, needsRefresh = false) {
   return { userId, needsRefresh };
 }
@@ -231,6 +214,60 @@ const BASE = "getbb.app";
 const OWNER = "user-owner";
 const OTHER = "user-other";
 
+type TestDatabase =
+  | Partial<D1Database>
+  | {
+      prepare?: (...args: never[]) => TestD1Statement;
+    };
+
+type TestD1Statement = {
+  bind: (...args: never[]) => TestD1BoundStatement;
+};
+
+type TestD1BoundStatement = {
+  run: (...args: never[]) => Promise<{
+    meta: Record<string, never>;
+    success: boolean;
+  }>;
+};
+
+function asD1Database(value: TestDatabase): D1Database {
+  // SAFETY: These test doubles call only the D1 methods that the test supplies.
+  return value as D1Database;
+}
+
+type TestDurableObjectNamespace =
+  | Partial<DurableObjectNamespace>
+  | {
+      get?: () => TestDurableObjectStub;
+      idFromName?: (name: string) => TestDurableObjectId;
+    };
+
+type TestDurableObjectId = {
+  name: string;
+};
+
+type TestDurableObjectStub = {
+  fetch: (req: Request) => Promise<Response>;
+};
+
+function asDurableObjectNamespace(
+  value: TestDurableObjectNamespace,
+): DurableObjectNamespace {
+  // SAFETY: These test doubles call only the namespace methods that the test supplies.
+  return value as DurableObjectNamespace;
+}
+
+type TestExecutionContext = {
+  passThroughOnException: () => void;
+  waitUntil: (...args: never[]) => void;
+};
+
+function asExecutionContext(value: TestExecutionContext): ExecutionContext {
+  // SAFETY: The test context implements the two ExecutionContext methods that the worker uses.
+  return value as ExecutionContext;
+}
+
 function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
   const captured: Request[] = [];
   const routingKeys: string[] = [];
@@ -240,22 +277,24 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
       return Promise.resolve(doFetch(req));
     },
   };
-  const env = {
-    TUNNEL_DO: {
-      idFromName: (name: string) => {
-        routingKeys.push(name);
-        return { name };
-      },
-      get: () => stub,
+  const database = asD1Database({});
+  const tunnelNamespace = asDurableObjectNamespace({
+    idFromName: (name: string) => {
+      routingKeys.push(name);
+      return { name };
     },
-    DB: {} as D1Database,
+    get: () => stub,
+  });
+  const env: Env = {
+    TUNNEL_DO: tunnelNamespace,
+    DB: database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
   };
-  const ctx = {
+  const ctx = asExecutionContext({
     waitUntil: vi.fn(),
     passThroughOnException: vi.fn(),
-  } as unknown as ExecutionContext;
+  });
   return { env, ctx, captured, routingKeys };
 }
 
@@ -290,7 +329,7 @@ describe("GET /api/connect/servers", () => {
       visitorRequest("sawyer.getbb.app", "/api/connect/servers", {
         headers: { "x-bb-connect-machine": "bbcm_ok" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(200);
@@ -308,7 +347,7 @@ describe("GET /api/connect/servers", () => {
       new Request("https://getbb.app/api/connect/servers", {
         headers: { host: "getbb.app" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(401);
@@ -327,7 +366,7 @@ describe("POST /api/connect/desktop-session", () => {
         method: "POST",
         headers: { "x-bb-connect-machine": "paired" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(200);
@@ -348,7 +387,7 @@ describe("POST /api/connect/disconnect", () => {
         headers: { "x-bb-connect-machine": "paired" },
       },
     );
-    const response = await worker.fetch(request, env as never, ctx);
+    const response = await worker.fetch(request, env, ctx);
 
     expect(response.status).toBe(200);
     expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
@@ -375,7 +414,7 @@ describe("POST /api/connect/machine-label", () => {
         body: JSON.stringify({ desiredName: "Sawyer Air" }),
       },
     );
-    const response = await worker.fetch(request, env as never, ctx);
+    const response = await worker.fetch(request, env, ctx);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
@@ -414,7 +453,7 @@ describe("gate tunnel authentication", () => {
           },
         },
       ),
-      env as never,
+      env,
       ctx,
     );
 
@@ -447,7 +486,7 @@ describe("gate tunnel authentication", () => {
     const beforeEnv = makeEnv(() => new Response("origin"));
     const before = await worker.fetch(
       visitorRequest("sawyer-air.getbb.app", "/"),
-      beforeEnv.env as never,
+      beforeEnv.env,
       beforeEnv.ctx,
     );
     expect(before.status).toBe(404);
@@ -462,7 +501,7 @@ describe("gate tunnel authentication", () => {
         headers: { "x-bb-connect-machine": credential },
         body: JSON.stringify({ desiredName: "Sawyer Air" }),
       }),
-      assignmentEnv.env as never,
+      assignmentEnv.env,
       assignmentEnv.ctx,
     );
     expect(assigned.status).toBe(200);
@@ -472,7 +511,7 @@ describe("gate tunnel authentication", () => {
       visitorRequest("sawyer-air.getbb.app", "/__tunnel", {
         headers: { authorization: `Bearer ${credential}` },
       }),
-      dialEnv.env as never,
+      dialEnv.env,
       dialEnv.ctx,
     );
     expect(dial.status).toBe(200);
@@ -506,7 +545,7 @@ describe("gate tunnel authentication", () => {
       visitorRequest("sawyer-air.getbb.app", "/__tunnel", {
         headers: { authorization: `Bearer ${credential}` },
       }),
-      firstEnv.env as never,
+      firstEnv.env,
       firstEnv.ctx,
     );
     expect(stale.status).toBe(404);
@@ -526,7 +565,7 @@ describe("gate tunnel authentication", () => {
       visitorRequest("sawyer-air.getbb.app", "/__tunnel", {
         headers: { authorization: `Bearer ${credential}` },
       }),
-      secondEnv.env as never,
+      secondEnv.env,
       secondEnv.ctx,
     );
     expect(revoked.status).toBe(403);
@@ -545,7 +584,7 @@ describe("machine gate auth", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open"),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(403);
@@ -562,14 +601,14 @@ describe("machine gate auth", () => {
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
         headers: { "x-bb-connect-machine": "bogus" },
       }),
-      env as never,
+      env,
       ctx,
     );
     const crossTenant = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
         headers: { "x-bb-connect-machine": "bbcm_other" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(bogus.status).toBe(403);
@@ -590,7 +629,7 @@ describe("machine gate auth", () => {
           "x-bb-cloud-dev-host": "smuggled",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
     const api = await worker.fetch(
@@ -600,7 +639,7 @@ describe("machine gate auth", () => {
           "x-bb-cloud-dev-host": "smuggled",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(internal.status).toBe(200);
@@ -644,7 +683,7 @@ describe("machine gate auth", () => {
         method: "POST",
         headers: { "x-bb-connect-machine": "bbcm_owner" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(403);
@@ -662,7 +701,7 @@ describe("machine gate auth", () => {
         method: "POST",
         headers: { "x-bb-connect-machine": "bbcm_owner" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(403);
@@ -677,7 +716,7 @@ describe("machine gate auth", () => {
         visitorRequest("sawyer.getbb.app", path, {
           headers: { "x-bb-cloud-dev-host": "smuggled" },
         }),
-        env as never,
+        env,
         ctx,
       );
       expect(response.status).toBe(200);
@@ -709,7 +748,7 @@ describe("bb mobile app-link association files", () => {
       const { env, ctx, captured } = makeEnv(() => new Response("origin"));
       const response = await worker.fetch(
         visitorRequest("sawyer.getbb.app", path),
-        env as never,
+        env,
         ctx,
       );
       expect(response.status).toBe(200);
@@ -728,10 +767,11 @@ describe("bb mobile app-link association files", () => {
         "nobody-here.getbb.app",
         "/.well-known/apple-app-site-association",
       ),
-      env as never,
+      env,
       ctx,
     );
     expect(unknown.status).toBe(200);
+    // SAFETY: This response comes from the worker's fixed Apple association payload.
     const body = (await unknown.json()) as {
       applinks: { details: { appIDs: string[] }[] };
     };
@@ -750,7 +790,7 @@ describe("bb mobile app-link association files", () => {
       const { env, ctx, captured } = makeEnv(() => new Response("origin"));
       const share = await worker.fetch(
         visitorRequest("sawyer--8000.getbb.app", path),
-        env as never,
+        env,
         ctx,
       );
       expect(share.status).toBe(401);
@@ -763,9 +803,10 @@ describe("bb mobile app-link association files", () => {
     const { env, ctx } = makeEnv(() => new Response("origin"));
     const empty = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/.well-known/assetlinks.json"),
-      env as never,
+      env,
       ctx,
     );
+    // SAFETY: This response comes from the worker's fixed Android association payload.
     const emptyBody = (await empty.json()) as {
       target: { sha256_cert_fingerprints: string[] };
     }[];
@@ -773,9 +814,10 @@ describe("bb mobile app-link association files", () => {
 
     const withEnv = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/.well-known/assetlinks.json"),
-      { ...env, ASSETLINKS_SHA256_FINGERPRINTS: "aa:bb,cc:dd" } as never,
+      { ...env, ASSETLINKS_SHA256_FINGERPRINTS: "aa:bb,cc:dd" },
       ctx,
     );
+    // SAFETY: This response comes from the worker's fixed Android association payload.
     const withEnvBody = (await withEnv.json()) as {
       target: { package_name: string; sha256_cert_fingerprints: string[] };
     }[];
@@ -790,7 +832,7 @@ describe("bb mobile app-link association files", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/.well-known/openid-configuration"),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(401);
@@ -817,7 +859,7 @@ describe("gate worker share hosts", () => {
       visitorRequest("sawyer--8000.getbb.app", "/app", {
         headers: { [TUNNEL_TARGET_HEADER]: "smuggled" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(200);
@@ -840,7 +882,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
-      env as never,
+      env,
       ctx,
     );
 
@@ -862,7 +904,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
-      env as never,
+      env,
       ctx,
     );
 
@@ -887,7 +929,7 @@ describe("gate worker share hosts", () => {
 
       const response = await worker.fetch(
         visitorRequest("sawyer.getbb.app", "/assets/app.js"),
-        env as never,
+        env,
         ctx,
       );
 
@@ -916,7 +958,7 @@ describe("gate worker share hosts", () => {
           "x-bb-cloud-dev-host": "sawyer",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
 
@@ -936,7 +978,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
       visitorRequest("sawyer-air.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
 
@@ -964,7 +1006,7 @@ describe("gate worker share hosts", () => {
           "x-bb-cloud-dev-host": "sawyer-air",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
 
@@ -978,7 +1020,7 @@ describe("gate worker share hosts", () => {
     const ownerEnv = makeEnv(() => new Response("machine-origin"));
     const ownerResponse = await worker.fetch(
       visitorRequest("sawyer-air--3000.getbb.app", "/"),
-      ownerEnv.env as never,
+      ownerEnv.env,
       ownerEnv.ctx,
     );
     expect(ownerResponse.status).toBe(200);
@@ -994,7 +1036,7 @@ describe("gate worker share hosts", () => {
     const otherEnv = makeEnv(() => new Response("machine-origin"));
     const otherResponse = await worker.fetch(
       visitorRequest("sawyer-air--3000.getbb.app", "/"),
-      otherEnv.env as never,
+      otherEnv.env,
       otherEnv.ctx,
     );
     expect(otherResponse.status).toBe(403);
@@ -1008,7 +1050,7 @@ describe("gate worker share hosts", () => {
     const oldEnv = makeEnv(() => new Response("owner-a"));
     const oldResponse = await worker.fetch(
       visitorRequest("shared-machine--3000.getbb.app", "/asset.js"),
-      oldEnv.env as never,
+      oldEnv.env,
       oldEnv.ctx,
     );
     expect(oldResponse.status).toBe(200);
@@ -1029,7 +1071,7 @@ describe("gate worker share hosts", () => {
     const blockedEnv = makeEnv(() => new Response("wrong-owner-content"));
     const blockedResponse = await worker.fetch(
       visitorRequest("shared-machine--3000.getbb.app", "/asset.js"),
-      blockedEnv.env as never,
+      blockedEnv.env,
       blockedEnv.ctx,
     );
     expect(blockedResponse.status).toBe(403);
@@ -1040,7 +1082,7 @@ describe("gate worker share hosts", () => {
     const newEnv = makeEnv(() => new Response("owner-b"));
     const newResponse = await worker.fetch(
       visitorRequest("shared-machine--3000.getbb.app", "/asset.js"),
-      newEnv.env as never,
+      newEnv.env,
       newEnv.ctx,
     );
     expect(newResponse.status).toBe(200);
@@ -1062,7 +1104,7 @@ describe("gate worker share hosts", () => {
           "x-bb-cloud-dev-host": "smuggled",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(captured).toHaveLength(1);
@@ -1083,7 +1125,7 @@ describe("gate worker share hosts", () => {
         method: "POST",
         headers: { [GATE_AUTH_HEADER]: "machine" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(200);
@@ -1096,7 +1138,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer-desktop--3000.getbb.app", "/app"),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(200);
@@ -1119,7 +1161,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(401);
@@ -1144,7 +1186,7 @@ describe("gate worker share hosts", () => {
           "x-bb-cloud-dev-host": "sawyer",
         },
       }),
-      env as never,
+      env,
       ctx,
     );
 
@@ -1159,7 +1201,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(403);
@@ -1176,7 +1218,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(200);
@@ -1196,7 +1238,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
     expect(response.status).toBe(200);
@@ -1207,7 +1249,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const tunnel = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/__tunnel"),
-      env as never,
+      env,
       ctx,
     );
     expect(tunnel.status).toBe(404);
@@ -1215,7 +1257,7 @@ describe("gate worker share hosts", () => {
 
     const internal = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/internal/x"),
-      env as never,
+      env,
       ctx,
     );
     expect(internal.status).toBe(404);
@@ -1227,7 +1269,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const reserved = await worker.fetch(
       visitorRequest("docs.getbb.app", "/docs"),
-      env as never,
+      env,
       ctx,
     );
     expect(reserved.status).toBe(301);
@@ -1235,7 +1277,7 @@ describe("gate worker share hosts", () => {
 
     const apex = await worker.fetch(
       new Request("https://getbb.app/", { headers: { host: "getbb.app" } }),
-      env as never,
+      env,
       ctx,
     );
     expect(apex.status).toBe(404);
@@ -1251,7 +1293,7 @@ describe("gate worker share hosts", () => {
       visitorRequest("sawyer--8000.getbb.app", "/ws", {
         headers: { upgrade: "websocket" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(captured).toHaveLength(1);
@@ -1272,7 +1314,7 @@ describe("gate worker share hosts", () => {
       visitorRequest("sawyer--8000.getbb.app", "/internal/ws", {
         headers: { "x-bb-connect-machine": "bbcm_ok" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(404);
@@ -1284,7 +1326,7 @@ describe("gate worker share hosts", () => {
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer--08000.getbb.app", "/"),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(404);
@@ -1321,7 +1363,7 @@ describe("gate offline page", () => {
       visitorRequest("sawyer.getbb.app", "/", {
         headers: { accept: "text/html" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(503);
@@ -1339,7 +1381,7 @@ describe("gate offline page", () => {
       visitorRequest("sawyer.getbb.app", "/", {
         headers: { accept: "text/html" },
       }),
-      env as never,
+      env,
       ctx,
     );
     const html = await res.text();
@@ -1356,7 +1398,7 @@ describe("gate offline page", () => {
       visitorRequest("sawyer-air--3000.getbb.app", "/", {
         headers: { accept: "text/html" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(503);
@@ -1373,7 +1415,7 @@ describe("gate offline page", () => {
       visitorRequest("sawyer.getbb.app", "/api/threads", {
         headers: { accept: "application/json" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(503);
@@ -1390,7 +1432,7 @@ describe("gate offline page", () => {
       visitorRequest("sawyer.getbb.app", "/", {
         headers: { accept: "text/html" },
       }),
-      env as never,
+      env,
       ctx,
     );
     expect(res.status).toBe(503);
@@ -1448,18 +1490,45 @@ class FakeWebSocketRequestResponsePair {
 }
 vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
+type StorageValue = string | number;
+
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
-  storage: Map<string, unknown>;
+  storage: Map<string, StorageValue>;
   restore: Promise<void>;
   api: DurableObjectState;
 };
 
-function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
-  const storage = new Map<string, unknown>(Object.entries(initialStorage));
+type TestDurableObjectState =
+  | Partial<DurableObjectState>
+  | {
+      acceptWebSocket: (ws: WebSocket, tags?: string[]) => void;
+      blockConcurrencyWhile: (fn: () => Promise<void>) => Promise<void>;
+      getTags: (ws: WebSocket) => string[];
+      getWebSockets: (tag?: string) => WebSocket[];
+      setWebSocketAutoResponse: (...args: never[]) => void;
+      storage: {
+        delete: (key: string) => Promise<void>;
+        get: (key: string) => Promise<StorageValue | undefined>;
+        put: (key: string, value: StorageValue) => Promise<void>;
+        setAlarm: (...args: never[]) => void;
+      };
+    };
+
+function asDurableObjectState(
+  value: TestDurableObjectState,
+): DurableObjectState {
+  // SAFETY: The fake implements every Durable Object member that TunnelDO calls.
+  return value as DurableObjectState;
+}
+
+function mockDoState(
+  initialStorage: Record<string, StorageValue> = {},
+): MockState {
+  const storage = new Map<string, StorageValue>(Object.entries(initialStorage));
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
   let restore = Promise.resolve();
-  const api = {
+  const api = asDurableObjectState({
     getWebSockets: (tag?: string) =>
       entries
         .filter((entry) => tag === undefined || entry.tags.includes(tag))
@@ -1476,7 +1545,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
     },
     storage: {
       get: async (key: string) => storage.get(key),
-      put: async (key: string, value: unknown) => {
+      put: async (key: string, value: StorageValue) => {
         storage.set(key, value);
       },
       delete: async (key: string) => {
@@ -1484,7 +1553,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       },
       setAlarm: async () => {},
     },
-  } as unknown as DurableObjectState;
+  });
   return {
     addSocket: (ws: WebSocket, tags: string[]) => {
       entries.push({ ws, tags });
@@ -1497,25 +1566,40 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   };
 }
 
-function makeDoEnv() {
+const emptyDatabase = asD1Database({});
+
+function makeDoEnv(database: D1Database = emptyDatabase): Env {
+  const namespace = asDurableObjectNamespace({});
   return {
-    TUNNEL_DO: {} as DurableObjectNamespace,
-    DB: {} as D1Database,
+    TUNNEL_DO: namespace,
+    DB: database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
   };
+}
+
+type TestWebSocket = {
+  close: (...args: never[]) => void;
+  deserializeAttachment: () => null;
+  readyState: number;
+  send: (data: ArrayBuffer | ArrayBufferView | string) => void;
+};
+
+function asWebSocket(value: TestWebSocket): WebSocket {
+  // SAFETY: The fake supplies the WebSocket members that TunnelDO calls.
+  return value as WebSocket;
 }
 
 function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1,
 ) {
-  return {
+  return asWebSocket({
     send: send ?? vi.fn(),
     close: vi.fn(),
     deserializeAttachment: () => null,
     readyState,
-  } as unknown as WebSocket;
+  });
 }
 
 describe("TunnelDO machine presence", () => {
@@ -1533,20 +1617,19 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("bumps machine.lastSeenAt when a machine-label tunnel is connected", async () => {
-    const run = vi.fn(async () => {});
-    const where = vi.fn(() => ({ run }));
-    const set = vi.fn(() => ({ where }));
-    const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    const run = vi.fn(async () => ({ success: true, meta: {} }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const database = asD1Database({ prepare });
     const state = mockDoState({ machineId: "machine-air", protocolVersion: 1 });
-    const dob = new TunnelDO(state.api, makeDoEnv());
+    const dob = new TunnelDO(state.api, makeDoEnv(database));
     await state.restore;
     state.addSocket(fakeTunnelSocket(), ["tunnel"]);
 
     await dob.alarm();
 
-    expect(update).toHaveBeenCalledWith(machine);
-    expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("update"));
+    expect(bind).toHaveBeenCalledWith(expect.any(Number), "machine-air");
     expect(run).toHaveBeenCalledTimes(1);
   });
 });
@@ -1595,10 +1678,11 @@ describe("TunnelDO targeted request with old client", () => {
       await state.restore;
       state.addSocket(
         fakeTunnelSocket((data) => {
-          if (typeof data === "string") return;
           if (data instanceof ArrayBuffer) {
             sent.push(new Uint8Array(data));
-          } else {
+            return;
+          }
+          if (ArrayBuffer.isView(data)) {
             sent.push(
               new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
             );
@@ -1635,10 +1719,11 @@ describe("TunnelDO targeted request with old client", () => {
 
 function captureSent(sent: Uint8Array[]) {
   return (data: ArrayBuffer | ArrayBufferView | string) => {
-    if (typeof data === "string") return;
     if (data instanceof ArrayBuffer) {
       sent.push(new Uint8Array(data));
-    } else {
+      return;
+    }
+    if (ArrayBuffer.isView(data)) {
       sent.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
     }
   };
@@ -1646,10 +1731,9 @@ function captureSent(sent: Uint8Array[]) {
 
 function frameBuffer(frame: Frame): ArrayBuffer {
   const u8 = encodeFrame(frame);
-  return u8.buffer.slice(
-    u8.byteOffset,
-    u8.byteOffset + u8.byteLength,
-  ) as ArrayBuffer;
+  const buffer = new ArrayBuffer(u8.byteLength);
+  new Uint8Array(buffer).set(u8);
+  return buffer;
 }
 
 function openHttpStreamId(sent: Uint8Array[], index: number): number {
@@ -1842,9 +1926,11 @@ describe("TunnelDO response relay", () => {
         }
       }
     }
-    globalThis.Response = WorkersResponse as never;
-    (globalThis as { WebSocketPair?: unknown }).WebSocketPair =
-      FakeWebSocketPair;
+    globalThis.Response = WorkersResponse;
+    Object.defineProperty(globalThis, "WebSocketPair", {
+      configurable: true,
+      value: FakeWebSocketPair,
+    });
     try {
       const upgrade = await dob.fetch(
         new Request("https://do.internal/__tunnel?v=1", {
@@ -1854,7 +1940,7 @@ describe("TunnelDO response relay", () => {
       expect(upgrade.status).toBe(101);
     } finally {
       globalThis.Response = RealResponse;
-      delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+      Reflect.deleteProperty(globalThis, "WebSocketPair");
     }
 
     expect(vi.mocked(oldTunnel.close)).toHaveBeenCalledWith(

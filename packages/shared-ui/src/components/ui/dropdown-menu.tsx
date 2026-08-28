@@ -224,6 +224,7 @@ const DropdownMenuItem = React.forwardRef<
     if (isCompactViewport) {
       return (
         <button
+          // SAFETY: The compact menu item renders a button, so the forwarded ref targets an HTMLButtonElement.
           ref={ref as React.RefCallback<HTMLButtonElement> | null}
           type="button"
           role={role}
@@ -306,6 +307,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     if (isCompactViewport) {
       return (
         <button
+          // SAFETY: The compact checkbox item renders a button, so the forwarded ref targets an HTMLButtonElement.
           ref={ref as React.RefCallback<HTMLButtonElement> | null}
           type="button"
           role="menuitemcheckbox"
@@ -491,6 +493,7 @@ const DropdownMenuSeparator = React.forwardRef<
   if (isCompactViewport) {
     return (
       <hr
+        // SAFETY: The compact separator renders an hr element, so the forwarded ref targets an HTMLHRElement.
         ref={ref as React.RefCallback<HTMLHRElement> | null}
         className={cn("-mx-1 my-1 h-px border-0 bg-muted", className)}
       />

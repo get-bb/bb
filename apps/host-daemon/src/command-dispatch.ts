@@ -8,6 +8,7 @@ import {
   type HostDaemonSettledCommandType,
   type ProviderCliInstallEvent,
 } from "@bb/host-daemon-contract";
+import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import semver from "semver";
 import {
   ExpectedCommandDispatchError,
@@ -101,11 +102,29 @@ type OnlineRpcHandlerMap = {
   ) => Promise<HostDaemonOnlineRpcResult<TType>>;
 };
 
-function throwExpectedWorkspacePathNotFoundOrRethrow(error: unknown): never {
+function throwExpectedWorkspacePathNotFoundOrRethrow(error: Error): never {
   if (error instanceof WorkspaceError && error.code === "path_not_found") {
     throw new ExpectedCommandDispatchError(error.code, error.message);
   }
   throw error;
+}
+
+interface ProviderRequestArgs {
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+  providerId: string;
+}
+
+function providerRequestArgs(
+  command: { cwd?: string; providerId: string },
+  bridgeLaunch: AgentRuntimeBridgeLaunch,
+): ProviderRequestArgs {
+  const args: ProviderRequestArgs = {
+    bridgeLaunch,
+    providerId: command.providerId,
+  };
+  if (command.cwd !== undefined) args.cwd = command.cwd;
+  return args;
 }
 
 function providerCliEnvFromShellEnv(
@@ -223,11 +242,7 @@ async function runProviderInstallationOnHost(
       command.bridgeLaunch,
       options,
     );
-    const maintenanceArgs = {
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    };
+    const maintenanceArgs = providerRequestArgs(command, bridgeLaunch);
     const run = await options.providerInstallationRun({
       ...maintenanceArgs,
       action: command.action,
@@ -459,16 +474,18 @@ const commandHandlers: CommandHandlerMap = {
   },
   "interactive.resolve": resolveInteractiveRequest,
   "environment.provision": provisionEnvironment,
-  "project.clone": (command, options) =>
-    cloneProject({
+  "project.clone": (command, options) => {
+    const cloneArgs: Parameters<typeof cloneProject>[0] = {
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
       remoteUrl: command.remoteUrl,
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
-      ...(command.targetPath !== undefined
-        ? { targetPath: command.targetPath }
-        : {}),
-    }),
+    };
+    if (command.targetPath !== undefined) {
+      cloneArgs.targetPath = command.targetPath;
+    }
+    return cloneProject(cloneArgs);
+  },
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {
     const transcript: HostDaemonCommandResult<"environment.destroy">["transcript"] =
@@ -606,47 +623,34 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return options.listModels({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
+    return options.listModels(providerRequestArgs(command, bridgeLaunch));
   },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
       options,
     );
-    return options.providerHealth({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
+    return options.providerHealth(providerRequestArgs(command, bridgeLaunch));
   },
   "provider.usage": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
       options,
     );
-    return options.providerUsage({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
+    return options.providerUsage(providerRequestArgs(command, bridgeLaunch));
   },
   "provider.installation.status": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
       options,
     );
-    return options.providerInstallationStatus({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.requirement !== undefined
-        ? { requirement: command.requirement }
-        : {}),
-      bridgeLaunch,
-    });
+    const statusArgs: Parameters<
+      CommandDispatchOptions["providerInstallationStatus"]
+    >[0] = providerRequestArgs(command, bridgeLaunch);
+    if (command.requirement !== undefined) {
+      statusArgs.requirement = command.requirement;
+    }
+    return options.providerInstallationStatus(statusArgs);
   },
   "provider.installation.run": runProviderInstallationOnHost,
   "workspace.status": async (command, options) => {
@@ -810,7 +814,10 @@ export async function dispatchCommand<
   try {
     return await commandHandlers[command.type](command, options);
   } catch (error) {
-    throwExpectedWorkspacePathNotFoundOrRethrow(error);
+    if (error instanceof Error) {
+      throwExpectedWorkspacePathNotFoundOrRethrow(error);
+    }
+    throw error;
   }
 }
 
@@ -823,6 +830,9 @@ export async function dispatchOnlineRpcCommand<
   try {
     return await onlineRpcHandlers[command.type](command, options);
   } catch (error) {
-    throwExpectedWorkspacePathNotFoundOrRethrow(error);
+    if (error instanceof Error) {
+      throwExpectedWorkspacePathNotFoundOrRethrow(error);
+    }
+    throw error;
   }
 }

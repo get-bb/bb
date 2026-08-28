@@ -33,17 +33,21 @@ function installAppFocusEvents(): void {
   appFocusEventsInstalled = true;
 
   focusManager.setEventListener((handleFocus) => {
-    if (typeof window === "undefined" || !window.addEventListener) {
+    const browserWindow = globalThis.window;
+    if (
+      browserWindow === undefined ||
+      browserWindow.addEventListener === undefined
+    ) {
       return;
     }
 
     const listener = () => handleFocus();
-    window.addEventListener("visibilitychange", listener, false);
-    window.addEventListener("pageshow", listener, false);
+    browserWindow.addEventListener("visibilitychange", listener, false);
+    browserWindow.addEventListener("pageshow", listener, false);
 
     return () => {
-      window.removeEventListener("visibilitychange", listener);
-      window.removeEventListener("pageshow", listener);
+      browserWindow.removeEventListener("visibilitychange", listener);
+      browserWindow.removeEventListener("pageshow", listener);
     };
   });
 }
@@ -53,7 +57,9 @@ export function installAppQueryClientBrowserEvents(
 ): AppQueryClientBrowserEventCleanup {
   installAppFocusEvents();
 
-  if (typeof window === "undefined" || typeof document === "undefined") {
+  const browserWindow = globalThis.window;
+  const browserDocument = globalThis.document;
+  if (browserWindow === undefined || browserDocument === undefined) {
     return { cleanup: () => {} };
   }
 
@@ -77,17 +83,24 @@ export function installAppQueryClientBrowserEvents(
     }
   };
 
-  window.addEventListener("pagehide", handlePageHide, false);
-  window.addEventListener("pageshow", handlePageShow, false);
-  window.addEventListener("focus", handleWindowFocus, false);
-  document.addEventListener("visibilitychange", handleVisibilityChange, false);
+  browserWindow.addEventListener("pagehide", handlePageHide, false);
+  browserWindow.addEventListener("pageshow", handlePageShow, false);
+  browserWindow.addEventListener("focus", handleWindowFocus, false);
+  browserDocument.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange,
+    false,
+  );
 
   return {
     cleanup: () => {
-      window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      browserWindow.removeEventListener("pagehide", handlePageHide);
+      browserWindow.removeEventListener("pageshow", handlePageShow);
+      browserWindow.removeEventListener("focus", handleWindowFocus);
+      browserDocument.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
     },
   };
 }

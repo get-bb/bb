@@ -134,6 +134,7 @@ export function utilityPrompt(example: UtilityExample): string {
 
 const COMPOSER_REQUEST_NONCE_KEY = "__bbBrowseComposerRequestNonce";
 export function nextComposerRequestNonce(): number {
+  // SAFETY: This global property belongs to this module and stores only its numeric request nonce.
   const holder = globalThis as typeof globalThis & {
     [COMPOSER_REQUEST_NONCE_KEY]?: number;
   };

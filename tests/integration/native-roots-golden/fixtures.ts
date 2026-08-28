@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { JsonObject, JsonValue } from "@bb/domain";
 
 export const PROVIDER_IDS = [
   "claude-code",
@@ -73,7 +74,7 @@ async function writeText(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content, "utf8");
 }
 
-async function writeJson(filePath: string, value: unknown): Promise<void> {
+async function writeJson(filePath: string, value: JsonValue): Promise<void> {
   await writeText(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -139,7 +140,7 @@ const CLAUDE_PLUGIN_MANIFEST = path.join(".claude-plugin", "plugin.json");
 async function writeSimpleClaudePlugin(
   pluginRoot: string,
   name: string,
-  manifestExtra: Record<string, unknown> = {},
+  manifestExtra: JsonObject = {},
   options: { command?: boolean } = {},
 ): Promise<void> {
   await writeJson(path.join(pluginRoot, CLAUDE_PLUGIN_MANIFEST), {
@@ -455,7 +456,7 @@ function claudeCodeVariant(
 
 async function writeCodexPlugin(
   pluginRoot: string,
-  manifest: Record<string, unknown>,
+  manifest: JsonObject,
 ): Promise<void> {
   await writeJson(
     path.join(pluginRoot, ".codex-plugin", "plugin.json"),
@@ -934,7 +935,7 @@ async function writeGrokPlugin(
   pluginRoot: string,
   name: string,
   manifestFile: string,
-  manifestExtra: Record<string, unknown> = {},
+  manifestExtra: JsonObject = {},
   skillsDirName = "skills",
 ): Promise<void> {
   await writeJson(path.join(pluginRoot, manifestFile), {

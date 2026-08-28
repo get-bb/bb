@@ -36,12 +36,46 @@ interface DashboardSearch {
   returnTo?: string;
 }
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+interface DashboardSearchInput {
+  returnTo?: JsonValue;
+}
+
+function isJsonObject<T>(value: T): value is T & {
+  readonly [key: string]: JsonValue;
+} {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function isStringValue<T>(value: T): value is T & string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isJsonValue<T>(value: T): value is T & JsonValue {
+  if (value === null || isStringValue(value)) return true;
+  const tag = Object.prototype.toString.call(value);
+  if (tag === "[object Number]" || tag === "[object Boolean]") return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isJsonObject(value) && Object.values(value).every(isJsonValue);
+}
+
+function parseJsonValue<T>(value: T): JsonValue | null {
+  return isJsonValue(value) ? value : null;
+}
+
 function validateDashboardSearch(
-  search: Record<string, unknown>,
+  search: DashboardSearchInput,
 ): DashboardSearch {
   const raw = search.returnTo;
   if (
-    typeof raw === "string" &&
+    isStringValue(raw) &&
     raw !== "" &&
     raw !== "null" &&
     raw !== "undefined"
@@ -297,16 +331,17 @@ async function signInWithGithub(returnTo: string | undefined) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ provider: "github", callbackURL }),
   });
-  const data = (await res.json().catch(() => ({}))) as { url?: string };
-  if (data.url) window.location.href = data.url;
+  const data = parseJsonValue(await res.json().catch(() => null));
+  if (isJsonObject(data) && isStringValue(data.url)) {
+    window.location.href = data.url;
+  }
 }
 
 type EmailAuthMode = "sign-in" | "sign-up";
 
-function authResponseMessage(value: unknown): string | null {
-  if (typeof value !== "object" || value === null) return null;
-  if (!("message" in value) || typeof value.message !== "string") return null;
-  return value.message;
+function authResponseMessage(value: JsonValue): string | null {
+  if (!isJsonObject(value)) return null;
+  return isStringValue(value.message) ? value.message : null;
 }
 
 async function authenticateWithEmail(input: {
@@ -324,7 +359,7 @@ async function authenticateWithEmail(input: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const responseBody: unknown = await response.json().catch(() => null);
+  const responseBody = parseJsonValue(await response.json().catch(() => null));
   if (response.ok) return null;
   return authResponseMessage(responseBody) ?? "Could not authenticate";
 }
@@ -535,23 +570,33 @@ function ClaimField({
   layout: "card" | "dialog";
 }) {
   const [value, setValue] = useState(initial);
-  const [avail, setAvail] = useState<LabelAvailability | null>(null);
+  const [availability, setAvailability] = useState<{
+    label: string;
+    value: LabelAvailability | null;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<{
+    label: string;
+    message: string;
+  } | null>(null);
   const label = value.trim().toLowerCase();
+  const avail = availability?.label === label ? availability.value : null;
+  const error =
+    (submitError?.label === label ? submitError.message : null) ??
+    (avail ? availabilityCopy(avail) : null);
 
   useEffect(() => {
-    setSubmitError(null);
     if (!label) {
-      setAvail(null);
       return;
     }
     let cancelled = false;
-    setAvail(null);
     const t = setTimeout(() => {
       void checkAvailabilityFn({ data: label }).then((r) => {
         if (cancelled) return;
-        setAvail("available" in r ? r : null);
+        setAvailability({
+          label,
+          value: "available" in r ? r : null,
+        });
       });
     }, 350);
     return () => {
@@ -560,7 +605,6 @@ function ClaimField({
     };
   }, [label]);
 
-  const error = submitError ?? (avail ? availabilityCopy(avail) : null);
   const canSubmit = !busy && !!label && (avail?.available ?? false);
   const preview = serverUrlTemplate.replace("{label}", label || "you");
   const addressSuffix = serverUrlTemplate.split("{label}")[1] ?? "";
@@ -570,7 +614,7 @@ function ClaimField({
     setBusy(true);
     const err = await onClaim(label);
     setBusy(false);
-    if (err) setSubmitError(err);
+    if (err) setSubmitError({ label, message: err });
   }
 
   const submitButton = (
@@ -678,7 +722,8 @@ function SetupCodePanel({
   }, [serverId]);
 
   useEffect(() => {
-    void fetchCode();
+    const t = setTimeout(() => void fetchCode(), 0);
+    return () => clearTimeout(t);
   }, [fetchCode]);
 
   useEffect(() => {
@@ -1137,17 +1182,13 @@ function AccountDashboard({ state }: { state: ServerState }) {
     return () => clearInterval(id);
   }, [refreshIntervalMs, router]);
 
-  useEffect(() => {
-    if (pendingId == null) return;
-    if (
-      state.servers.find((s: ServerSummary) => s.id === pendingId)?.connected
-    ) {
-      setConnectOpen(false);
-      setPendingId(null);
-    }
-  }, [state.servers, pendingId]);
+  const pendingServerConnected =
+    pendingId !== null &&
+    state.servers.some(
+      (server: ServerSummary) => server.id === pendingId && server.connected,
+    );
 
-  const dialog = connectOpen && (
+  const dialog = connectOpen && !pendingServerConnected && (
     <ConnectAnotherDialog
       state={state}
       onClose={() => {
@@ -1178,7 +1219,10 @@ function AccountDashboard({ state }: { state: ServerState }) {
           </h3>
           <button
             className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-recessed hover:text-foreground"
-            onClick={() => setConnectOpen(true)}
+            onClick={() => {
+              setPendingId(null);
+              setConnectOpen(true);
+            }}
           >
             <HugeiconsIcon icon={PlusSignIcon} className="size-3" />
             Add a bb

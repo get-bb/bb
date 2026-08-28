@@ -70,13 +70,13 @@ const EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 
 function shouldRetryExecutionOptions(
   failureCount: number,
-  error: unknown,
+  cause: unknown,
 ): boolean {
   if (failureCount >= 1) return false;
-  if (error instanceof BbHttpError) {
-    return error.status === 408 || error.status === 429 || error.status >= 500;
+  if (cause instanceof BbHttpError) {
+    return cause.status === 408 || cause.status === 429 || cause.status >= 500;
   }
-  return isTransientReadError(error);
+  return isTransientReadError(cause);
 }
 
 function isSameExecutionOptionsRoute(

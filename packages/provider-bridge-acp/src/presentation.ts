@@ -76,49 +76,48 @@ interface KindPresentationSpec {
   glyph: string;
 }
 
-const KIND_PRESENTATIONS: Readonly<Record<AcpToolKind, KindPresentationSpec>> =
-  {
-    read: {
-      label: { pending: "Reading file", completed: "Read file" },
-      glyph: "FileText",
-    },
-    edit: {
-      label: { pending: "Editing file", completed: "Edited file" },
-      glyph: "EditFile",
-    },
-    delete: {
-      label: { pending: "Deleting file", completed: "Deleted file" },
-      glyph: "Trash2",
-    },
-    move: {
-      label: { pending: "Moving file", completed: "Moved file" },
-      glyph: "FolderEdit",
-    },
-    search: {
-      label: { pending: "Searching", completed: "Searched" },
-      glyph: "Search",
-    },
-    execute: {
-      label: { pending: "Running command", completed: "Ran command" },
-      glyph: "Terminal",
-    },
-    think: {
-      label: { pending: "Thinking", completed: "Thought" },
-      glyph: "Brain",
-    },
-    fetch: {
-      label: { pending: "Fetching", completed: "Fetched" },
-      glyph: "Globe",
-    },
-    switch_mode: {
-      label: { pending: "Switching mode", completed: "Switched mode" },
-      glyph: "SlidersHorizontal",
-    },
-    other: {
-      label: { pending: "Running tool", completed: "Ran tool" },
-      glyph: "Toolbox",
-    },
-  };
+const KIND_PRESENTATIONS = {
+  read: {
+    label: { pending: "Reading file", completed: "Read file" },
+    glyph: "FileText",
+  },
+  edit: {
+    label: { pending: "Editing file", completed: "Edited file" },
+    glyph: "EditFile",
+  },
+  delete: {
+    label: { pending: "Deleting file", completed: "Deleted file" },
+    glyph: "Trash2",
+  },
+  move: {
+    label: { pending: "Moving file", completed: "Moved file" },
+    glyph: "FolderEdit",
+  },
+  search: {
+    label: { pending: "Searching", completed: "Searched" },
+    glyph: "Search",
+  },
+  execute: {
+    label: { pending: "Running command", completed: "Ran command" },
+    glyph: "Terminal",
+  },
+  think: {
+    label: { pending: "Thinking", completed: "Thought" },
+    glyph: "Brain",
+  },
+  fetch: {
+    label: { pending: "Fetching", completed: "Fetched" },
+    glyph: "Globe",
+  },
+  switch_mode: {
+    label: { pending: "Switching mode", completed: "Switched mode" },
+    glyph: "SlidersHorizontal",
+  },
+  other: {
+    label: { pending: "Running tool", completed: "Ran tool" },
+    glyph: "Toolbox",
+  },
+} satisfies Readonly<Record<AcpToolKind, KindPresentationSpec>>;
 
 export function toolKindPresentation(args: {
   kind: AcpToolKind | undefined;

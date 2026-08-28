@@ -18,6 +18,7 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
+import { normalizeCaughtError } from "./error-utils.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
@@ -237,18 +238,19 @@ export class WatchManager {
     }
 
     try {
+      const provisionContext: Parameters<
+        typeof reconnectProvisionArgsFromWorkspaceContext
+      >[0] = {
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+      };
+      if (this.options.dataDir !== undefined) {
+        provisionContext.personalWorkspaceRoot = getPersonalWorkspaceRoot(
+          this.options.dataDir,
+        );
+      }
       const workspace = await this.provisionWorkspace(
-        reconnectProvisionArgsFromWorkspaceContext({
-          environmentId: target.environmentId,
-          ...(this.options.dataDir
-            ? {
-                personalWorkspaceRoot: getPersonalWorkspaceRoot(
-                  this.options.dataDir,
-                ),
-              }
-            : {}),
-          workspaceContext: target.workspaceContext,
-        }),
+        reconnectProvisionArgsFromWorkspaceContext(provisionContext),
       );
       const entry: WorkspaceWatchEntry = {
         stopWatchingStatus: STOP_WATCHING,
@@ -319,7 +321,7 @@ export class WatchManager {
       if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
         return;
       }
-      this.reportWorkspaceWatchError(entry, error);
+      this.reportWorkspaceWatchError(entry, normalizeCaughtError(error));
     }
   }
 
@@ -413,13 +415,13 @@ export class WatchManager {
         environmentId: args.entry.target.environmentId,
       });
     } catch (error) {
-      this.reportWorkspaceWatchError(args.entry, error);
+      this.reportWorkspaceWatchError(args.entry, normalizeCaughtError(error));
     }
   }
 
   private reportWorkspaceWatchError(
     entry: WorkspaceWatchEntry,
-    error: unknown,
+    error: Error,
   ): void {
     this.options.onWorkspaceStatusWatchError?.({
       error: {
@@ -440,17 +442,19 @@ export class WatchManager {
     if (entry.workspace.isGitRepo) {
       return;
     }
-    const provision = reconnectProvisionArgsFromWorkspaceContext({
+    const provisionContext: Parameters<
+      typeof reconnectProvisionArgsFromWorkspaceContext
+    >[0] = {
       environmentId: entry.target.environmentId,
-      ...(this.options.dataDir
-        ? {
-            personalWorkspaceRoot: getPersonalWorkspaceRoot(
-              this.options.dataDir,
-            ),
-          }
-        : {}),
       workspaceContext: entry.target.workspaceContext,
-    });
+    };
+    if (this.options.dataDir !== undefined) {
+      provisionContext.personalWorkspaceRoot = getPersonalWorkspaceRoot(
+        this.options.dataDir,
+      );
+    }
+    const provision =
+      reconnectProvisionArgsFromWorkspaceContext(provisionContext);
     const workspace = await this.refreshWorkspace({
       environmentId: entry.target.environmentId,
       provision,

@@ -32,17 +32,17 @@ function todoIdFor(seq: number, index: number): string {
   return `seq:${seq}:${index}`;
 }
 
-const PLAN_STEP_TODO_STATUSES: Readonly<
-  Record<
-    NonNullable<ThreadEventPlanStep["status"]>,
-    ThreadTimelinePendingTodoItemStatus
-  >
-> = {
+const PLAN_STEP_TODO_STATUSES = {
   pending: "pending",
   active: "in_progress",
   completed: "completed",
   failed: "completed",
-};
+} satisfies Readonly<
+  Record<
+    NonNullable<ThreadEventPlanStep["status"]>,
+    ThreadTimelinePendingTodoItemStatus
+  >
+>;
 
 function extractPlanStepsCandidate(
   event: ThreadEvent,

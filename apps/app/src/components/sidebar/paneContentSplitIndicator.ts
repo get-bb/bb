@@ -31,10 +31,7 @@ const NO_INDICATOR: PaneContentSplitIndicator = {
 
 const NULL_LAYOUT_ATOM = atom<SplitLayout | null>(null);
 
-function useSplitLayoutForIndicator(enabled: boolean): {
-  layout: SplitLayout | null;
-  isCompact: boolean;
-} {
+function useSplitLayoutForIndicator(enabled: boolean) {
   const isCompact = useIsCompactViewport();
   const layout = useAtomValue(
     enabled && !isCompact ? splitLayoutAtom : NULL_LAYOUT_ATOM,

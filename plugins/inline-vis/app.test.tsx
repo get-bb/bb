@@ -69,6 +69,7 @@ describe("InlineVisDirective", () => {
     const iframe = await waitFor(() => {
       const el = slot.container.querySelector("iframe");
       expect(el).toBeTruthy();
+      // SAFETY: The query selector targets the iframe rendered by this test.
       return el as HTMLIFrameElement;
     });
 
@@ -112,6 +113,7 @@ describe("InlineVisDirective", () => {
     const iframe = await waitFor(() => {
       const el = slot.container.querySelector("iframe");
       expect(el).toBeTruthy();
+      // SAFETY: The query selector targets the iframe rendered by this test.
       return el as HTMLIFrameElement;
     });
     expect(iframe.style.height).toBe("480px");

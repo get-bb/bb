@@ -1,7 +1,8 @@
 import http from "node:http";
-import net, { type AddressInfo } from "node:net";
+import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
+import { z } from "zod";
 import {
   startMachineAuthProxy,
   type MachineAuthProxy,
@@ -16,7 +17,7 @@ async function listen(server: http.Server | net.Server): Promise<number> {
     server.listen(0, "127.0.0.1", resolve);
   });
   servers.push(server);
-  return (server.address() as AddressInfo).port;
+  return z.object({ port: z.number() }).parse(server.address()).port;
 }
 
 async function closeServer(server: http.Server | net.Server): Promise<void> {
@@ -72,7 +73,7 @@ describe("startMachineAuthProxy", () => {
   it("streams multipart attachment bytes while adding the machine credential", async () => {
     const binary = new Uint8Array([0, 255, 1, 128, 42]);
     let resolveReceived: (() => void) | undefined;
-    let rejectReceived: ((error: unknown) => void) | undefined;
+    let rejectReceived: ((error: Error) => void) | undefined;
     const received = new Promise<void>((resolve, reject) => {
       resolveReceived = resolve;
       rejectReceived = reject;
@@ -100,9 +101,11 @@ describe("startMachineAuthProxy", () => {
           expect(new Uint8Array(await file.arrayBuffer())).toEqual(binary);
           response.writeHead(201).end();
           resolveReceived?.();
-        })().catch((error: unknown) => {
+        })().catch((error) => {
           response.writeHead(500).end();
-          rejectReceived?.(error);
+          rejectReceived?.(
+            error instanceof Error ? error : new Error(String(error)),
+          );
         });
       });
     });

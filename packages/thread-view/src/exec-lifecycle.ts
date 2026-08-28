@@ -1,11 +1,14 @@
 import {
+  jsonObjectSchema,
   jsonValueSchema,
   type JsonObject,
+  type JsonValue,
   ThreadEvent,
   ThreadEventItemApprovalStatus,
   ThreadEventItemPresentation,
   ThreadEventItemStatus,
 } from "@bb/domain";
+import { z } from "zod";
 import { getEventParentToolCallId, type EventMeta } from "./event-decode.js";
 import type {
   EventProjectionApprovalLifecycleStatus,
@@ -23,16 +26,23 @@ interface DelegationMetadata {
   model?: string;
 }
 
-function parseToolArgs(
-  args: Record<string, unknown> | null,
-): JsonObject | null {
-  if (!args) return null;
-  const toolArgs: JsonObject = {};
-  for (const [key, value] of Object.entries(args)) {
-    toolArgs[key] = jsonValueSchema.parse(value);
-  }
-  return toolArgs;
+interface TextToolResult {
+  kind: "text";
+  value: string;
 }
+
+interface JsonToolResult {
+  kind: "json";
+  value: JsonValue;
+}
+
+const toolResultSchema = z.union([
+  z.string().transform((value): TextToolResult => ({ kind: "text", value })),
+  jsonValueSchema.transform((value): JsonToolResult => ({
+    kind: "json",
+    value,
+  })),
+]);
 
 type ExecItemViewStatus = EventProjectionToolCallMessage["status"];
 
@@ -132,16 +142,19 @@ export function parseExecLifecycleEvent(
   if (decoded.type === "item/commandExecution/outputDelta") {
     const callId = decoded.itemId;
     if (!callId) return null;
-    return {
-      kind: "output",
-      output: {
-        callId,
-        output: decoded.delta,
-        status: "pending",
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-      },
-      ...(decoded.reset ? { replaceOutput: true } : { appendOutput: true }),
+    const output: ExecutionOutputUpdate = {
+      callId,
+      output: decoded.delta,
+      status: "pending",
     };
+    if (parentToolCallId) output.parentToolCallId = parentToolCallId;
+    const event: Extract<ExecLifecycleEvent, { kind: "output" }> = {
+      kind: "output",
+      output,
+    };
+    if (decoded.reset) event.replaceOutput = true;
+    else event.appendOutput = true;
+    return event;
   }
 
   if (
@@ -160,21 +173,22 @@ export function parseExecLifecycleEvent(
     const completedAt = kind === "end" ? meta.createdAt : null;
 
     const command = extractShellCommandFromString(decoded.item.command);
+    const call: CommandExecutionUpdate = {
+      kind: "command",
+      callId,
+      command,
+      cwd: decoded.item.cwd,
+      parsedIntents: parseShellCommandIntents(command),
+      output: decoded.item.aggregatedOutput,
+      exitCode,
+      completedAt,
+      approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
+      status,
+    };
+    if (parentToolCallId) call.parentToolCallId = parentToolCallId;
     return {
       kind,
-      call: {
-        kind: "command",
-        callId,
-        command,
-        cwd: decoded.item.cwd,
-        parsedIntents: parseShellCommandIntents(command),
-        output: decoded.item.aggregatedOutput,
-        exitCode,
-        completedAt,
-        approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
-        status,
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-      },
+      call,
     };
   }
 
@@ -207,21 +221,22 @@ function parseDelegationItemLifecycleEvent(
   const status =
     kind === "end" ? itemStatusToExecStatus(decoded.item.status) : "pending";
   const presentation = decoded.item.presentation;
+  const call: DelegationExecutionUpdate = {
+    kind: "delegation",
+    callId: decoded.item.id,
+    toolName: DELEGATION_ITEM_TOOL_NAME,
+    childRef: decoded.item.childRef,
+    background: decoded.item.background,
+    description: decoded.item.label,
+    output: decoded.item.summary,
+    completedAt: kind === "end" ? meta.createdAt : null,
+    status,
+  };
+  if (presentation) call.presentation = presentation;
+  if (parentToolCallId) call.parentToolCallId = parentToolCallId;
   return {
     kind,
-    call: {
-      kind: "delegation",
-      callId: decoded.item.id,
-      toolName: DELEGATION_ITEM_TOOL_NAME,
-      childRef: decoded.item.childRef,
-      background: decoded.item.background,
-      description: decoded.item.label,
-      output: decoded.item.summary,
-      completedAt: kind === "end" ? meta.createdAt : null,
-      status,
-      ...(presentation ? { presentation } : {}),
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    },
+    call,
   };
 }
 
@@ -236,14 +251,15 @@ export function parseToolCallLifecycleEvent(
     decoded.type === "item/toolCall/progress" ||
     decoded.type === "item/mcpToolCall/progress"
   ) {
+    const output: ExecutionOutputUpdate = {
+      callId: decoded.itemId,
+      output: decoded.message ?? "Progress update",
+      status: "pending",
+    };
+    if (parentToolCallId) output.parentToolCallId = parentToolCallId;
     return {
       kind: "output",
-      output: {
-        callId: decoded.itemId,
-        output: decoded.message ?? "Progress update",
-        status: "pending",
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-      },
+      output,
     };
   }
 
@@ -271,29 +287,32 @@ export function parseToolCallLifecycleEvent(
       kind === "end" ? itemStatusToExecStatus(decoded.item.status) : "pending";
     const completedAt = kind === "end" ? meta.createdAt : null;
     const result = decoded.item.result;
+    const parsedResult = toolResultSchema.optional().parse(result);
     const output =
-      typeof result === "string"
-        ? result
-        : result !== undefined
-          ? JSON.stringify(result)
-          : undefined;
+      parsedResult === undefined
+        ? undefined
+        : parsedResult.kind === "text"
+          ? parsedResult.value
+          : JSON.stringify(parsedResult.value);
     const errorField = decoded.item.error;
-    const toolArgs = parseToolArgs(parsedArgs);
+    const toolArgs =
+      parsedArgs === null ? null : jsonObjectSchema.parse(parsedArgs);
     const presentation = decoded.item.presentation;
+    const call: ToolCallExecutionUpdate = {
+      kind: "tool-call",
+      callId,
+      toolName: fullToolName,
+      output: kind === "end" ? (output ?? errorField) : undefined,
+      completedAt,
+      status,
+      toolArgs,
+    };
+    if (presentation) call.presentation = presentation;
+    if (parentToolCallId) call.parentToolCallId = parentToolCallId;
 
     return {
       kind,
-      call: {
-        kind: "tool-call",
-        callId,
-        toolName: fullToolName,
-        output: kind === "end" ? (output ?? errorField) : undefined,
-        completedAt,
-        status,
-        toolArgs,
-        ...(presentation ? { presentation } : {}),
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-      },
+      call,
     };
   }
 

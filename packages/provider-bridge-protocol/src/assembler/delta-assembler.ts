@@ -11,13 +11,14 @@ import type { BridgeGrammarVersions } from "../handshake.js";
 import type {
   DeltaFileChange,
   DeltaItemKey,
-  DeltaItemShape,
   DeltaNoTurnFallback,
   DeltaTextChannel,
   ThreadDelta,
 } from "../thread-delta.js";
 import { THREAD_DELTA_KEY_SEPARATOR } from "../thread-delta.js";
 import { THREAD_DELTA_GRAMMAR_V3 } from "../version.js";
+
+type DeltaItemData = Extract<ThreadDelta, { kind: "item.open" }>["item"];
 
 export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
   THREAD_DELTA_GRAMMAR_V3,
@@ -35,6 +36,7 @@ type UnstampedThreadId = string & {
   readonly [unstampedThreadIdBrand]: "runtime-stamped-thread-id";
 };
 
+// SAFETY: This branded placeholder carries no runtime value and receives the real thread ID before emission.
 const UNSTAMPED_THREAD_ID = "" as UnstampedThreadId;
 
 export interface DiffCumulativeTextArgs {
@@ -477,28 +479,36 @@ export function createDeltaAssembler(
   }
 
   function buildFileChanges(
-    shape: Extract<DeltaItemShape, { type: "fileChange" }>,
+    itemData: Extract<DeltaItemData, { type: "fileChange" }>,
   ): Extract<ThreadEventItem, { type: "fileChange" }>["changes"] {
-    return shape.changes.map((change: DeltaFileChange) => {
+    return itemData.changes.map((change: DeltaFileChange) => {
       const diff =
         change.diff ??
         (change.newText === undefined
           ? undefined
           : buildEditDiff(change.path, change.oldText, change.newText));
-      return {
+      const result: Extract<
+        ThreadEventItem,
+        { type: "fileChange" }
+      >["changes"][number] = {
         path: change.path,
         kind: change.kind,
-        ...(change.movePath === undefined ? {} : { movePath: change.movePath }),
-        ...(diff ? { diff } : {}),
       };
+      if (change.movePath !== undefined) {
+        result.movePath = change.movePath;
+      }
+      if (diff !== undefined) {
+        result.diff = diff;
+      }
+      return result;
     });
   }
 
-  function shapeMatchesItem(
-    shape: DeltaItemShape,
+  function itemDataMatchesItem(
+    itemData: DeltaItemData,
     item: ThreadEventItem,
   ): boolean {
-    switch (shape.type) {
+    switch (itemData.type) {
       case "command":
         return item.type === "commandExecution";
       case "fileChange":
@@ -518,120 +528,128 @@ export function createDeltaAssembler(
       case "search":
       case "delegation":
       case "planSteps":
-        return item.type === shape.type;
+        return item.type === itemData.type;
       case "extension":
-        return item.type === "extension" && item.kind === shape.kind;
+        return item.type === "extension" && item.kind === itemData.kind;
     }
   }
 
   function buildBackgroundTaskItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "backgroundTask" }>,
+    itemData: Extract<DeltaItemData, { type: "backgroundTask" }>,
     parentToolCallId: string | undefined,
   ): Extract<ThreadEventItem, { type: "backgroundTask" }> {
-    return withParentToolCallId(
-      {
-        type: "backgroundTask",
-        id: bbItemId,
-        familyId: shape.familyId,
-        taskType: shape.taskType,
-        description: shape.description,
-        status: shape.status,
-        taskStatus: shape.taskStatus,
-        skipTranscript: shape.skipTranscript,
-        ...(shape.workflowName === undefined
-          ? {}
-          : { workflowName: shape.workflowName }),
-        ...(shape.workflow === undefined ? {} : { workflow: shape.workflow }),
-        ...(shape.usage === undefined ? {} : { usage: shape.usage }),
-        ...(shape.summary === undefined ? {} : { summary: shape.summary }),
-        ...(shape.error === undefined ? {} : { error: shape.error }),
-        ...(shape.outputFile === undefined
-          ? {}
-          : { outputFile: shape.outputFile }),
-      },
-      parentToolCallId,
-    );
+    const item: Extract<ThreadEventItem, { type: "backgroundTask" }> = {
+      type: "backgroundTask",
+      id: bbItemId,
+      familyId: itemData.familyId,
+      taskType: itemData.taskType,
+      description: itemData.description,
+      status: itemData.status,
+      taskStatus: itemData.taskStatus,
+      skipTranscript: itemData.skipTranscript,
+    };
+    if (itemData.workflowName !== undefined) {
+      item.workflowName = itemData.workflowName;
+    }
+    if (itemData.workflow !== undefined) {
+      item.workflow = itemData.workflow;
+    }
+    if (itemData.usage !== undefined) {
+      item.usage = itemData.usage;
+    }
+    if (itemData.summary !== undefined) {
+      item.summary = itemData.summary;
+    }
+    if (itemData.error !== undefined) {
+      item.error = itemData.error;
+    }
+    if (itemData.outputFile !== undefined) {
+      item.outputFile = itemData.outputFile;
+    }
+    return withParentToolCallId(item, parentToolCallId);
   }
 
   function buildFileReadItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "fileRead" }>,
+    itemData: Extract<DeltaItemData, { type: "fileRead" }>,
     status: ThreadEventItemStatus,
     parentToolCallId: string | undefined,
   ): Extract<ThreadEventItem, { type: "fileRead" }> {
-    return withParentToolCallId(
-      {
-        type: "fileRead",
-        id: bbItemId,
-        path: shape.path,
-        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
-        status,
-      },
-      parentToolCallId,
-    );
+    const item: Extract<ThreadEventItem, { type: "fileRead" }> = {
+      type: "fileRead",
+      id: bbItemId,
+      path: itemData.path,
+      status,
+    };
+    if (itemData.cmd !== undefined) {
+      item.cmd = itemData.cmd;
+    }
+    return withParentToolCallId(item, parentToolCallId);
   }
 
   function buildSearchItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "search" }>,
+    itemData: Extract<DeltaItemData, { type: "search" }>,
     status: ThreadEventItemStatus,
     parentToolCallId: string | undefined,
   ): Extract<ThreadEventItem, { type: "search" }> {
-    return withParentToolCallId(
-      {
-        type: "search",
-        id: bbItemId,
-        mode: shape.mode,
-        query: shape.query,
-        ...(shape.path === undefined ? {} : { path: shape.path }),
-        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
-        status,
-      },
-      parentToolCallId,
-    );
+    const item: Extract<ThreadEventItem, { type: "search" }> = {
+      type: "search",
+      id: bbItemId,
+      mode: itemData.mode,
+      query: itemData.query,
+      status,
+    };
+    if (itemData.path !== undefined) {
+      item.path = itemData.path;
+    }
+    if (itemData.cmd !== undefined) {
+      item.cmd = itemData.cmd;
+    }
+    return withParentToolCallId(item, parentToolCallId);
   }
 
   function buildDelegationItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "delegation" }>,
+    itemData: Extract<DeltaItemData, { type: "delegation" }>,
     status: ThreadEventItemStatus,
     parentToolCallId: string | undefined,
     fallbackSummary?: string,
   ): Extract<ThreadEventItem, { type: "delegation" }> {
-    const summary = shape.summary ?? fallbackSummary;
-    return withParentToolCallId(
-      {
-        type: "delegation",
-        id: bbItemId,
-        childRef: shape.childRef,
-        label: shape.label,
-        status,
-        background: shape.background,
-        ...(summary === undefined ? {} : { summary }),
-      },
-      parentToolCallId,
-    );
+    const summary = itemData.summary ?? fallbackSummary;
+    const item: Extract<ThreadEventItem, { type: "delegation" }> = {
+      type: "delegation",
+      id: bbItemId,
+      childRef: itemData.childRef,
+      label: itemData.label,
+      status,
+      background: itemData.background,
+    };
+    if (summary !== undefined) {
+      item.summary = summary;
+    }
+    return withParentToolCallId(item, parentToolCallId);
   }
 
   function buildExtensionItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "extension" }>,
+    itemData: Extract<DeltaItemData, { type: "extension" }>,
     status: ThreadEventItemStatus,
     parentToolCallId: string | undefined,
     presentation: ThreadEventItemPresentation | undefined,
   ): Extract<ThreadEventItem, { type: "extension" }> {
     if (presentation === undefined) {
       throw new Error(
-        `extension item "${shape.kind}" reached the assembler without a presentation`,
+        `extension item "${itemData.kind}" reached the assembler without a presentation`,
       );
     }
     return withParentToolCallId(
       {
         type: "extension",
         id: bbItemId,
-        kind: shape.kind,
-        payload: shape.payload,
+        kind: itemData.kind,
+        payload: itemData.payload,
         status,
         presentation,
       },
@@ -641,30 +659,28 @@ export function createDeltaAssembler(
 
   function buildPlanStepsItem(
     bbItemId: string,
-    shape: Extract<DeltaItemShape, { type: "planSteps" }>,
+    itemData: Extract<DeltaItemData, { type: "planSteps" }>,
     status: ThreadEventItemStatus,
     parentToolCallId: string | undefined,
   ): Extract<ThreadEventItem, { type: "planSteps" }> {
-    return withParentToolCallId(
-      {
-        type: "planSteps",
-        id: bbItemId,
-        steps: shape.steps,
-        ...(shape.explanation === undefined
-          ? {}
-          : { explanation: shape.explanation }),
-        status,
-      },
-      parentToolCallId,
-    );
+    const item: Extract<ThreadEventItem, { type: "planSteps" }> = {
+      type: "planSteps",
+      id: bbItemId,
+      steps: itemData.steps,
+      status,
+    };
+    if (itemData.explanation !== undefined) {
+      item.explanation = itemData.explanation;
+    }
+    return withParentToolCallId(item, parentToolCallId);
   }
 
-  function isThreadAttachedShape(shape: DeltaItemShape): boolean {
-    switch (shape.type) {
+  function isThreadAttachedItemData(itemData: DeltaItemData): boolean {
+    switch (itemData.type) {
       case "backgroundTask":
         return true;
       case "delegation":
-        return shape.background;
+        return itemData.background;
       case "command":
       case "fileChange":
       case "tool":
@@ -685,73 +701,78 @@ export function createDeltaAssembler(
 
   function buildOpenedItem(
     bbItemId: string,
-    shape: DeltaItemShape,
+    itemData: DeltaItemData,
     parentToolCallId: string | undefined,
     presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     return withPresentation(
-      buildOpenedItemShape(bbItemId, shape, parentToolCallId, presentation),
+      buildOpenedItemData(bbItemId, itemData, parentToolCallId, presentation),
       presentation,
     );
   }
 
-  function buildOpenedItemShape(
+  function buildOpenedItemData(
     bbItemId: string,
-    shape: DeltaItemShape,
+    itemData: DeltaItemData,
     parentToolCallId: string | undefined,
     presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
-    switch (shape.type) {
-      case "command":
-        return withParentToolCallId(
-          {
-            type: "commandExecution",
-            id: bbItemId,
-            command: shape.command,
-            cwd: shape.cwd,
-            ...(shape.aggregatedOutput === undefined
-              ? {}
-              : { aggregatedOutput: shape.aggregatedOutput }),
-            ...(shape.exitCode === undefined
-              ? {}
-              : { exitCode: shape.exitCode }),
-            ...(shape.durationMs === undefined
-              ? {}
-              : { durationMs: shape.durationMs }),
-            status: "pending",
-            approvalStatus: null,
-          },
-          parentToolCallId,
-        );
+    switch (itemData.type) {
+      case "command": {
+        const item: Extract<ThreadEventItem, { type: "commandExecution" }> = {
+          type: "commandExecution",
+          id: bbItemId,
+          command: itemData.command,
+          cwd: itemData.cwd,
+          status: "pending",
+          approvalStatus: null,
+        };
+        if (itemData.aggregatedOutput !== undefined) {
+          item.aggregatedOutput = itemData.aggregatedOutput;
+        }
+        if (itemData.exitCode !== undefined) {
+          item.exitCode = itemData.exitCode;
+        }
+        if (itemData.durationMs !== undefined) {
+          item.durationMs = itemData.durationMs;
+        }
+        return withParentToolCallId(item, parentToolCallId);
+      }
       case "fileChange":
         return withParentToolCallId(
           {
             type: "fileChange",
             id: bbItemId,
-            changes: buildFileChanges(shape),
+            changes: buildFileChanges(itemData),
             status: "pending",
             approvalStatus: null,
           },
           parentToolCallId,
         );
       case "tool": {
-        const toolArguments = toOptionalRecord(shape.args);
-        return withParentToolCallId(
-          {
-            type: "toolCall",
-            id: bbItemId,
-            ...(shape.server === undefined ? {} : { server: shape.server }),
-            tool: shape.tool,
-            ...(toolArguments ? { arguments: toolArguments } : {}),
-            status: "pending",
-            ...(shape.result === undefined ? {} : { result: shape.result }),
-            ...(shape.error === undefined ? {} : { error: shape.error }),
-            ...(shape.durationMs === undefined
-              ? {}
-              : { durationMs: shape.durationMs }),
-          },
-          parentToolCallId,
-        );
+        const toolArguments = toOptionalRecord(itemData.args);
+        const item: Extract<ThreadEventItem, { type: "toolCall" }> = {
+          type: "toolCall",
+          id: bbItemId,
+          tool: itemData.tool,
+          status: "pending",
+        };
+        if (itemData.server !== undefined) {
+          item.server = itemData.server;
+        }
+        if (toolArguments !== undefined) {
+          item.arguments = toolArguments;
+        }
+        if (itemData.result !== undefined) {
+          item.result = itemData.result;
+        }
+        if (itemData.error !== undefined) {
+          item.error = itemData.error;
+        }
+        if (itemData.durationMs !== undefined) {
+          item.durationMs = itemData.durationMs;
+        }
+        return withParentToolCallId(item, parentToolCallId);
       }
       case "compaction":
         return withParentToolCallId(
@@ -760,7 +781,7 @@ export function createDeltaAssembler(
         );
       case "agentMessage":
         return withParentToolCallId(
-          { type: "agentMessage", id: bbItemId, text: shape.text },
+          { type: "agentMessage", id: bbItemId, text: itemData.text },
           parentToolCallId,
         );
       case "reasoning":
@@ -768,14 +789,14 @@ export function createDeltaAssembler(
           {
             type: "reasoning",
             id: bbItemId,
-            summary: shape.summary,
-            content: shape.content,
+            summary: itemData.summary,
+            content: itemData.content,
           },
           parentToolCallId,
         );
       case "plan":
         return withParentToolCallId(
-          { type: "plan", id: bbItemId, text: shape.text },
+          { type: "plan", id: bbItemId, text: itemData.text },
           parentToolCallId,
         );
       case "webSearch":
@@ -783,7 +804,7 @@ export function createDeltaAssembler(
           {
             type: "webSearch",
             id: bbItemId,
-            queries: shape.queries,
+            queries: itemData.queries,
             resultText: null,
           },
           parentToolCallId,
@@ -793,37 +814,47 @@ export function createDeltaAssembler(
           {
             type: "webFetch",
             id: bbItemId,
-            url: shape.url,
-            prompt: shape.prompt ?? null,
-            pattern: shape.pattern,
+            url: itemData.url,
+            prompt: itemData.prompt ?? null,
+            pattern: itemData.pattern,
             resultText: null,
           },
           parentToolCallId,
         );
       case "imageView":
         return withParentToolCallId(
-          { type: "imageView", id: bbItemId, path: shape.path },
+          { type: "imageView", id: bbItemId, path: itemData.path },
           parentToolCallId,
         );
       case "backgroundTask":
-        return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+        return buildBackgroundTaskItem(bbItemId, itemData, parentToolCallId);
       case "fileRead":
-        return buildFileReadItem(bbItemId, shape, "pending", parentToolCallId);
+        return buildFileReadItem(
+          bbItemId,
+          itemData,
+          "pending",
+          parentToolCallId,
+        );
       case "search":
-        return buildSearchItem(bbItemId, shape, "pending", parentToolCallId);
+        return buildSearchItem(bbItemId, itemData, "pending", parentToolCallId);
       case "delegation":
         return buildDelegationItem(
           bbItemId,
-          shape,
+          itemData,
           "pending",
           parentToolCallId,
         );
       case "planSteps":
-        return buildPlanStepsItem(bbItemId, shape, "pending", parentToolCallId);
+        return buildPlanStepsItem(
+          bbItemId,
+          itemData,
+          "pending",
+          parentToolCallId,
+        );
       case "extension":
         return buildExtensionItem(
           bbItemId,
-          shape,
+          itemData,
           "pending",
           parentToolCallId,
           presentation,
@@ -847,24 +878,23 @@ export function createDeltaAssembler(
   ): ThreadEventItem {
     const parent = parentToolCallId ?? started.parentToolCallId;
     switch (started.type) {
-      case "commandExecution":
-        return withParentToolCallId(
-          {
-            type: "commandExecution",
-            id: started.id,
-            command: started.command,
-            cwd: started.cwd,
-            ...(close.aggregatedOutput === undefined
-              ? {}
-              : { aggregatedOutput: close.aggregatedOutput }),
-            ...(close.exitCode === undefined
-              ? {}
-              : { exitCode: close.exitCode }),
-            status: close.status,
-            approvalStatus: started.approvalStatus,
-          },
-          parent,
-        );
+      case "commandExecution": {
+        const item: Extract<ThreadEventItem, { type: "commandExecution" }> = {
+          type: "commandExecution",
+          id: started.id,
+          command: started.command,
+          cwd: started.cwd,
+          status: close.status,
+          approvalStatus: started.approvalStatus,
+        };
+        if (close.aggregatedOutput !== undefined) {
+          item.aggregatedOutput = close.aggregatedOutput;
+        }
+        if (close.exitCode !== undefined) {
+          item.exitCode = close.exitCode;
+        }
+        return withParentToolCallId(item, parent);
+      }
       case "fileChange":
         return withParentToolCallId(
           {
@@ -876,22 +906,21 @@ export function createDeltaAssembler(
           },
           parent,
         );
-      case "toolCall":
-        return withParentToolCallId(
-          {
-            type: "toolCall",
-            id: started.id,
-            tool: started.tool,
-            ...(started.arguments === undefined
-              ? {}
-              : { arguments: started.arguments }),
-            status: close.status,
-            ...(close.resultText === undefined
-              ? {}
-              : { result: close.resultText }),
-          },
-          parent,
-        );
+      case "toolCall": {
+        const item: Extract<ThreadEventItem, { type: "toolCall" }> = {
+          type: "toolCall",
+          id: started.id,
+          tool: started.tool,
+          status: close.status,
+        };
+        if (started.arguments !== undefined) {
+          item.arguments = started.arguments;
+        }
+        if (close.resultText !== undefined) {
+          item.result = close.resultText;
+        }
+        return withParentToolCallId(item, parent);
+      }
       case "contextCompaction":
         return withParentToolCallId(
           { type: "contextCompaction", id: started.id },
@@ -918,17 +947,17 @@ export function createDeltaAssembler(
     }
   }
 
-  function buildClosedItemFromShape(
+  function buildClosedItemFromItemData(
     bbItemId: string,
-    shape: DeltaItemShape,
+    itemData: DeltaItemData,
     close: CloseFields,
     parentToolCallId: string | undefined,
     presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     return withPresentation(
-      buildClosedItemShape(
+      buildClosedItemData(
         bbItemId,
-        shape,
+        itemData,
         close,
         parentToolCallId,
         presentation,
@@ -937,65 +966,73 @@ export function createDeltaAssembler(
     );
   }
 
-  function buildClosedItemShape(
+  function buildClosedItemData(
     bbItemId: string,
-    shape: DeltaItemShape,
+    itemData: DeltaItemData,
     close: CloseFields,
     parentToolCallId: string | undefined,
     presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
-    switch (shape.type) {
+    switch (itemData.type) {
       case "command": {
         const aggregatedOutput =
-          close.aggregatedOutput ?? shape.aggregatedOutput;
-        const exitCode = close.exitCode ?? shape.exitCode;
-        return withParentToolCallId(
-          {
-            type: "commandExecution",
-            id: bbItemId,
-            command: shape.command,
-            cwd: shape.cwd,
-            ...(aggregatedOutput === undefined ? {} : { aggregatedOutput }),
-            ...(exitCode === undefined ? {} : { exitCode }),
-            ...(shape.durationMs === undefined
-              ? {}
-              : { durationMs: shape.durationMs }),
-            status: close.status,
-            approvalStatus: close.approvalStatus ?? null,
-          },
-          parentToolCallId,
-        );
+          close.aggregatedOutput ?? itemData.aggregatedOutput;
+        const exitCode = close.exitCode ?? itemData.exitCode;
+        const item: Extract<ThreadEventItem, { type: "commandExecution" }> = {
+          type: "commandExecution",
+          id: bbItemId,
+          command: itemData.command,
+          cwd: itemData.cwd,
+          status: close.status,
+          approvalStatus: close.approvalStatus ?? null,
+        };
+        if (aggregatedOutput !== undefined) {
+          item.aggregatedOutput = aggregatedOutput;
+        }
+        if (exitCode !== undefined) {
+          item.exitCode = exitCode;
+        }
+        if (itemData.durationMs !== undefined) {
+          item.durationMs = itemData.durationMs;
+        }
+        return withParentToolCallId(item, parentToolCallId);
       }
       case "fileChange":
         return withParentToolCallId(
           {
             type: "fileChange",
             id: bbItemId,
-            changes: buildFileChanges(shape),
+            changes: buildFileChanges(itemData),
             status: close.status,
             approvalStatus: close.approvalStatus ?? null,
           },
           parentToolCallId,
         );
       case "tool": {
-        const toolArguments = toOptionalRecord(shape.args);
-        const result = shape.result ?? close.resultText;
-        return withParentToolCallId(
-          {
-            type: "toolCall",
-            id: bbItemId,
-            ...(shape.server === undefined ? {} : { server: shape.server }),
-            tool: shape.tool,
-            ...(toolArguments ? { arguments: toolArguments } : {}),
-            status: close.status,
-            ...(result === undefined ? {} : { result }),
-            ...(shape.error === undefined ? {} : { error: shape.error }),
-            ...(shape.durationMs === undefined
-              ? {}
-              : { durationMs: shape.durationMs }),
-          },
-          parentToolCallId,
-        );
+        const toolArguments = toOptionalRecord(itemData.args);
+        const result = itemData.result ?? close.resultText;
+        const item: Extract<ThreadEventItem, { type: "toolCall" }> = {
+          type: "toolCall",
+          id: bbItemId,
+          tool: itemData.tool,
+          status: close.status,
+        };
+        if (itemData.server !== undefined) {
+          item.server = itemData.server;
+        }
+        if (toolArguments !== undefined) {
+          item.arguments = toolArguments;
+        }
+        if (result !== undefined) {
+          item.result = result;
+        }
+        if (itemData.error !== undefined) {
+          item.error = itemData.error;
+        }
+        if (itemData.durationMs !== undefined) {
+          item.durationMs = itemData.durationMs;
+        }
+        return withParentToolCallId(item, parentToolCallId);
       }
       case "compaction":
         return withParentToolCallId(
@@ -1007,7 +1044,7 @@ export function createDeltaAssembler(
           {
             type: "webSearch",
             id: bbItemId,
-            queries: shape.queries,
+            queries: itemData.queries,
             resultText: close.resultText ?? null,
           },
           parentToolCallId,
@@ -1017,28 +1054,33 @@ export function createDeltaAssembler(
           {
             type: "webFetch",
             id: bbItemId,
-            url: shape.url,
-            prompt: shape.prompt ?? null,
-            pattern: shape.pattern,
+            url: itemData.url,
+            prompt: itemData.prompt ?? null,
+            pattern: itemData.pattern,
             resultText: close.resultText ?? null,
           },
           parentToolCallId,
         );
       case "backgroundTask":
-        return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+        return buildBackgroundTaskItem(bbItemId, itemData, parentToolCallId);
       case "fileRead":
         return buildFileReadItem(
           bbItemId,
-          shape,
+          itemData,
           close.status,
           parentToolCallId,
         );
       case "search":
-        return buildSearchItem(bbItemId, shape, close.status, parentToolCallId);
+        return buildSearchItem(
+          bbItemId,
+          itemData,
+          close.status,
+          parentToolCallId,
+        );
       case "delegation":
         return buildDelegationItem(
           bbItemId,
-          shape,
+          itemData,
           close.status,
           parentToolCallId,
           close.delegationSummary,
@@ -1046,14 +1088,14 @@ export function createDeltaAssembler(
       case "planSteps":
         return buildPlanStepsItem(
           bbItemId,
-          shape,
+          itemData,
           close.status,
           parentToolCallId,
         );
       case "extension":
         return buildExtensionItem(
           bbItemId,
-          shape,
+          itemData,
           close.status,
           parentToolCallId,
           presentation,
@@ -1062,9 +1104,9 @@ export function createDeltaAssembler(
       case "reasoning":
       case "plan":
       case "imageView":
-        return buildOpenedItemShape(
+        return buildOpenedItemData(
           bbItemId,
-          shape,
+          itemData,
           parentToolCallId,
           presentation,
         );
@@ -1081,7 +1123,7 @@ export function createDeltaAssembler(
       return;
     }
     const parentToolCallId = mapParentRef(state, parentRef);
-    events.push({
+    const event: Extract<ThreadEvent, { type: "provider/unhandled" }> = {
       type: "provider/unhandled",
       threadId: UNSTAMPED_THREAD_ID,
       providerThreadId: "",
@@ -1089,8 +1131,11 @@ export function createDeltaAssembler(
       rawType: fallback.rawType,
       rawEvent: fallback.raw,
       scope: threadScope(),
-      ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-    });
+    };
+    if (parentToolCallId !== undefined) {
+      event.parentToolCallId = parentToolCallId;
+    }
+    events.push(event);
   }
 
   function detachAssistantStreams(
@@ -1220,7 +1265,7 @@ export function createDeltaAssembler(
           return;
         }
         const parentToolCallId = mapParentRef(state, delta.parentRef);
-        events.push({
+        const event: Extract<ThreadEvent, { type: "item/completed" }> = {
           type: "item/completed",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
@@ -1229,22 +1274,28 @@ export function createDeltaAssembler(
             type: "userMessage",
             id: mintItemId(),
             content: [{ type: "text", text: delta.text }],
-            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           },
-        });
+        };
+        if (parentToolCallId !== undefined) {
+          event.item.parentToolCallId = parentToolCallId;
+        }
+        events.push(event);
         return;
       }
 
       case "turn.open": {
         if (delta.providerTurnId !== undefined) {
           const parentToolCallId = mapParentRef(state, delta.parentRef);
-          events.push({
+          const event: Extract<ThreadEvent, { type: "turn/started" }> = {
             type: "turn/started",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(resolveVouchedTurnId(state, delta.providerTurnId)),
-            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-          });
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
           return;
         }
         ensureTurnOpen(state, events);
@@ -1253,17 +1304,20 @@ export function createDeltaAssembler(
 
       case "turn.boundary": {
         if (delta.providerTurnId !== undefined) {
-          events.push({
+          const event: Extract<ThreadEvent, { type: "turn/completed" }> = {
             type: "turn/completed",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(resolveVouchedTurnId(state, delta.providerTurnId)),
             status: delta.status,
-            ...(delta.error === undefined ? {} : { error: delta.error }),
-            ...(delta.providerCheckpointId === undefined
-              ? {}
-              : { providerCheckpointId: delta.providerCheckpointId }),
-          });
+          };
+          if (delta.error !== undefined) {
+            event.error = delta.error;
+          }
+          if (delta.providerCheckpointId !== undefined) {
+            event.providerCheckpointId = delta.providerCheckpointId;
+          }
+          events.push(event);
           return;
         }
         const turnId =
@@ -1274,17 +1328,20 @@ export function createDeltaAssembler(
         if (turnId === undefined) {
           return;
         }
-        events.push({
+        const event: Extract<ThreadEvent, { type: "turn/completed" }> = {
           type: "turn/completed",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnScope(turnId),
           status: delta.status,
-          ...(delta.error === undefined ? {} : { error: delta.error }),
-          ...(delta.providerCheckpointId === undefined
-            ? {}
-            : { providerCheckpointId: delta.providerCheckpointId }),
-        });
+        };
+        if (delta.error !== undefined) {
+          event.error = delta.error;
+        }
+        if (delta.providerCheckpointId !== undefined) {
+          event.providerCheckpointId = delta.providerCheckpointId;
+        }
+        events.push(event);
         finishTurn(state);
         return;
       }
@@ -1328,7 +1385,7 @@ export function createDeltaAssembler(
           bbItemId,
           key: delta.key,
           item,
-          threadAttached: isThreadAttachedShape(delta.item),
+          threadAttached: isThreadAttachedItemData(delta.item),
           text: "",
           summaryText: "",
         });
@@ -1344,7 +1401,7 @@ export function createDeltaAssembler(
       }
 
       case "item.close": {
-        const threadScoped = isThreadAttachedShape(delta.item);
+        const threadScoped = isThreadAttachedItemData(delta.item);
         const turnId = threadScoped
           ? undefined
           : delta.providerTurnId !== undefined
@@ -1370,26 +1427,26 @@ export function createDeltaAssembler(
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
         const openDelegationSummary =
           open?.item.type === "delegation" ? open.item.summary : undefined;
-        const closeFields: CloseFields = {
-          status: delta.status,
-          ...(delta.resultText === undefined
-            ? {}
-            : { resultText: delta.resultText }),
-          ...(delta.exitCode === undefined ? {} : { exitCode: delta.exitCode }),
-          ...(delta.aggregatedOutput === undefined
-            ? {}
-            : { aggregatedOutput: delta.aggregatedOutput }),
-          ...(delta.approvalStatus === undefined
-            ? {}
-            : { approvalStatus: delta.approvalStatus }),
-          ...(openDelegationSummary === undefined
-            ? {}
-            : { delegationSummary: openDelegationSummary }),
-        };
+        const closeFields: CloseFields = { status: delta.status };
+        if (delta.resultText !== undefined) {
+          closeFields.resultText = delta.resultText;
+        }
+        if (delta.exitCode !== undefined) {
+          closeFields.exitCode = delta.exitCode;
+        }
+        if (delta.aggregatedOutput !== undefined) {
+          closeFields.aggregatedOutput = delta.aggregatedOutput;
+        }
+        if (delta.approvalStatus !== undefined) {
+          closeFields.approvalStatus = delta.approvalStatus;
+        }
+        if (openDelegationSummary !== undefined) {
+          closeFields.delegationSummary = openDelegationSummary;
+        }
         if (
           open !== undefined &&
           turnId !== undefined &&
-          !shapeMatchesItem(delta.item, open.item)
+          !itemDataMatchesItem(delta.item, open.item)
         ) {
           events.push({
             type: "item/completed",
@@ -1412,7 +1469,7 @@ export function createDeltaAssembler(
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
         const presentation = delta.presentation ?? presentationOf(open?.item);
-        const item = buildClosedItemFromShape(
+        const item = buildClosedItemFromItemData(
           bbItemId,
           delta.item,
           closeFields,
@@ -1515,15 +1572,23 @@ export function createDeltaAssembler(
             );
             return;
           }
-          event = {
+          const progressEvent: Extract<
+            ThreadEvent,
+            { type: "item/toolCall/progress" }
+          > = {
             type: "item/toolCall/progress",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(turnId),
             itemId: bbItemId,
-            ...(delta.message === undefined ? {} : { message: delta.message }),
-            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           };
+          if (delta.message !== undefined) {
+            progressEvent.message = delta.message;
+          }
+          if (parentToolCallId !== undefined) {
+            progressEvent.parentToolCallId = parentToolCallId;
+          }
+          event = progressEvent;
         }
         const lastEmit = state.progressLastEmitByKey.get(keyStr);
         if (
@@ -1570,7 +1635,7 @@ export function createDeltaAssembler(
           if (delta.key.providerItemId !== undefined) {
             registerItemId(state, delta.key.providerItemId, bbItemId);
           }
-          const shape: DeltaItemShape =
+          const itemData: DeltaItemData =
             delta.channel === "agentMessage"
               ? { type: "agentMessage", text: "" }
               : delta.channel === "plan"
@@ -1578,7 +1643,7 @@ export function createDeltaAssembler(
                 : { type: "reasoning", summary: [], content: [] };
           const item = buildOpenedItem(
             bbItemId,
-            shape,
+            itemData,
             parentToolCallId,
             undefined,
           );
@@ -1614,15 +1679,68 @@ export function createDeltaAssembler(
               : delta.channel === "reasoningText"
                 ? ("item/reasoning/textDelta" as const)
                 : ("item/plan/delta" as const);
-        events.push({
-          type,
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          itemId: bbItemId,
-          delta: delta.text,
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
+        if (type === "item/agentMessage/delta") {
+          const event: Extract<
+            ThreadEvent,
+            { type: "item/agentMessage/delta" }
+          > = {
+            type,
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        } else if (type === "item/reasoning/summaryTextDelta") {
+          const event: Extract<
+            ThreadEvent,
+            { type: "item/reasoning/summaryTextDelta" }
+          > = {
+            type,
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        } else if (type === "item/reasoning/textDelta") {
+          const event: Extract<
+            ThreadEvent,
+            { type: "item/reasoning/textDelta" }
+          > = {
+            type,
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        } else {
+          const event: Extract<ThreadEvent, { type: "item/plan/delta" }> = {
+            type,
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        }
         return;
       }
 
@@ -1723,18 +1841,39 @@ export function createDeltaAssembler(
           }
         }
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        events.push({
-          type:
-            delta.channel === "command"
-              ? "item/commandExecution/outputDelta"
-              : "item/fileChange/outputDelta",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          itemId: bbItemId,
-          delta: delta.text,
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
+        if (delta.channel === "command") {
+          const event: Extract<
+            ThreadEvent,
+            { type: "item/commandExecution/outputDelta" }
+          > = {
+            type: "item/commandExecution/outputDelta",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        } else {
+          const event: Extract<
+            ThreadEvent,
+            { type: "item/fileChange/outputDelta" }
+          > = {
+            type: "item/fileChange/outputDelta",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            itemId: bbItemId,
+            delta: delta.text,
+          };
+          if (parentToolCallId !== undefined) {
+            event.parentToolCallId = parentToolCallId;
+          }
+          events.push(event);
+        }
         return;
       }
 
@@ -1762,16 +1901,24 @@ export function createDeltaAssembler(
         }
         state.commandSnapshotsByKey.set(keyStr, diffed.nextText);
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        events.push({
+        const event: Extract<
+          ThreadEvent,
+          { type: "item/commandExecution/outputDelta" }
+        > = {
           type: "item/commandExecution/outputDelta",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnScope(state.currentTurnId),
           itemId: open.bbItemId,
           delta: diffed.delta,
-          ...(diffed.reset ? { reset: true } : {}),
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
+        };
+        if (diffed.reset) {
+          event.reset = true;
+        }
+        if (parentToolCallId !== undefined) {
+          event.parentToolCallId = parentToolCallId;
+        }
+        events.push(event);
         return;
       }
 
@@ -1860,20 +2007,23 @@ export function createDeltaAssembler(
                 (state.pendingAccepted.length > 0
                   ? ensureTurnOpen(state, events)
                   : undefined));
-        events.push({
+        const event: Extract<ThreadEvent, { type: "provider/error" }> = {
           type: "provider/error",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnId === undefined ? threadScope() : turnScope(turnId),
           message: delta.message,
-          ...(delta.detail === undefined ? {} : { detail: delta.detail }),
-          ...(delta.willRetry === undefined
-            ? {}
-            : { willRetry: delta.willRetry }),
-          ...(delta.errorInfo === undefined
-            ? {}
-            : { errorInfo: delta.errorInfo }),
-        });
+        };
+        if (delta.detail !== undefined) {
+          event.detail = delta.detail;
+        }
+        if (delta.willRetry !== undefined) {
+          event.willRetry = delta.willRetry;
+        }
+        if (delta.errorInfo !== undefined) {
+          event.errorInfo = delta.errorInfo;
+        }
+        events.push(event);
         if (delta.settlesTurn === true && turnId !== undefined) {
           events.push({
             type: "turn/completed",
@@ -1905,15 +2055,20 @@ export function createDeltaAssembler(
       case "provider.warning": {
         const turnId =
           delta.vouchedTurn === true ? state.currentTurnId : undefined;
-        events.push({
+        const event: Extract<ThreadEvent, { type: "provider/warning" }> = {
           type: "provider/warning",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnId === undefined ? threadScope() : turnScope(turnId),
           category: delta.category ?? "general",
-          ...(delta.summary === undefined ? {} : { summary: delta.summary }),
-          ...(delta.details === undefined ? {} : { details: delta.details }),
-        });
+        };
+        if (delta.summary !== undefined) {
+          event.summary = delta.summary;
+        }
+        if (delta.details !== undefined) {
+          event.details = delta.details;
+        }
+        events.push(event);
         return;
       }
 
@@ -1928,7 +2083,7 @@ export function createDeltaAssembler(
               ? state.currentTurnId
               : undefined;
         const parentToolCallId = mapParentRef(state, delta.parentRef);
-        events.push({
+        const event: Extract<ThreadEvent, { type: "provider/unhandled" }> = {
           type: "provider/unhandled",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
@@ -1936,8 +2091,11 @@ export function createDeltaAssembler(
           rawType: delta.rawType,
           rawEvent: delta.raw,
           scope: turnId === undefined ? threadScope() : turnScope(turnId),
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
+        };
+        if (parentToolCallId !== undefined) {
+          event.parentToolCallId = parentToolCallId;
+        }
+        events.push(event);
         return;
       }
 

@@ -10,25 +10,46 @@ import {
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { Provider as JotaiProvider } from "jotai";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import * as localPathPicker from "@/hooks/useLocalPathPicker";
+import { ProjectActionsProvider } from "./ProjectActionsProvider";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
-const mockPathPickerHost = vi.hoisted(() => ({
-  value: { hostId: null as string | null, hostName: null as string | null },
-}));
+interface TestPathPickerHost {
+  value: { hostId: string | null; hostName: string | null };
+}
 
-const mockProjectActions = vi.hoisted(() => ({
-  requestRename: vi.fn(),
-  requestDelete: vi.fn(),
-  requestAddLocalPath: vi.fn(),
-}));
+const mockPathPickerHost: TestPathPickerHost = {
+  value: { hostId: null, hostName: null },
+};
+const mockLocalPathPicker = {
+  isAvailable: false,
+  hostId: null,
+  hostName: null,
+  openPathEntry: vi.fn(),
+  openPicker: vi.fn(),
+  platform: null,
+  projectPathDialog: {
+    isOpen: false,
+    onClose: vi.fn(),
+    onOpen: vi.fn(),
+    onOpenChange: vi.fn(),
+    setTarget: vi.fn(),
+    target: null,
+  },
+  submitProjectPath: vi.fn(),
+};
 
-vi.mock("@/hooks/useLocalPathPicker", () => ({
-  usePathPickerHost: () => mockPathPickerHost.value,
+vi.spyOn(localPathPicker, "usePathPickerHost").mockImplementation(() => ({
+  canUseNativeFolderPicker: false,
+  clientHostId: null,
+  ...mockPathPickerHost.value,
 }));
-
-vi.mock("./ProjectActionsProvider", () => ({
-  useProjectActions: () => mockProjectActions,
-}));
+vi.spyOn(localPathPicker, "useLocalPathPicker").mockReturnValue(
+  mockLocalPathPicker,
+);
 
 function makeProject(): ProjectResponse {
   return {
@@ -43,6 +64,8 @@ function makeProject(): ProjectResponse {
 }
 
 describe("ProjectActionsMenu", () => {
+  const { queryClient } = createQueryClientTestHarness();
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -54,7 +77,13 @@ describe("ProjectActionsMenu", () => {
 
     render(
       <MemoryRouter>
-        <ProjectActionsMenu project={project} />
+        <JotaiProvider>
+          <QueryClientProvider client={queryClient}>
+            <ProjectActionsProvider>
+              <ProjectActionsMenu project={project} />
+            </ProjectActionsProvider>
+          </QueryClientProvider>
+        </JotaiProvider>
       </MemoryRouter>,
     );
 

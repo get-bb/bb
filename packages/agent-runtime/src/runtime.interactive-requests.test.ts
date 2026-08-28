@@ -9,8 +9,12 @@ import type {
   ThreadEvent,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
+import type { BridgeCapabilities } from "@bb/provider-bridge-protocol";
 import { parseJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  JsonRpcMessage,
+  JsonRpcObject,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { createProviderForId } from "./provider-registry.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
 import {
@@ -76,7 +80,7 @@ const deniedEscalationOptions = {
 
 async function answerDirectRequest(args: {
   rawRequest: JsonRpcMessage;
-  handshake?: Record<string, unknown>;
+  handshake?: Partial<BridgeCapabilities>;
   getActiveTurnId?: (threadId: string) => string | null;
   getThreadExecutionOptions?: () => typeof deniedEscalationOptions | undefined;
   onInteractiveRequest?:
@@ -84,7 +88,7 @@ async function answerDirectRequest(args: {
         request: PendingInteractionCreate,
       ) => Promise<PendingInteractionResolution>)
     | undefined;
-}): Promise<unknown> {
+}): Promise<JsonRpcObject> {
   const child = spawn(process.execPath, [
     "-e",
     "process.stdin.pipe(process.stdout)",
@@ -99,7 +103,7 @@ async function answerDirectRequest(args: {
     capabilities: { grammarVersions: [3, 3], ...args.handshake },
   });
   const id = args.rawRequest.id;
-  if (typeof id !== "string" && typeof id !== "number") {
+  if (id === undefined) {
     throw new Error("request needs an id");
   }
   try {

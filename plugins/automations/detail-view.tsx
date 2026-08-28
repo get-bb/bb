@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import type {
   AgentEnvironment,
@@ -83,14 +83,15 @@ const PERSONAL_PROJECT_ID = "proj_personal";
 function providerModelValue(
   execution: Extract<AutomationExecution, { mode: "agent" }>,
 ): ExperimentalProviderModelPickerValue {
-  return {
+  const value: ExperimentalProviderModelPickerValue = {
     providerId: execution.providerId,
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
-    ...(execution.serviceTier === undefined
-      ? {}
-      : { serviceTier: execution.serviceTier }),
   };
+  if (execution.serviceTier !== undefined) {
+    value.serviceTier = execution.serviceTier;
+  }
+  return value;
 }
 
 function providerModelRouting(
@@ -197,10 +198,11 @@ function AutomationScriptContent({ content }: { content: string }) {
     };
     updateOverflow();
 
+    const resizeObserverConstructor = globalThis.ResizeObserver;
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
+      resizeObserverConstructor === undefined
         ? null
-        : new ResizeObserver(updateOverflow);
+        : new resizeObserverConstructor(updateOverflow);
     resizeObserver?.observe(scrollArea);
 
     return () => {
@@ -346,35 +348,31 @@ function isSilentRun(run: AutomationRunResponse): boolean {
   );
 }
 
-const AUTOMATION_RUN_STATUS_VISUALS: Record<
-  AutomationRunStatus,
-  {
-    label: string;
-    icon: IconName;
-    className: string;
-  }
-> = {
+const AUTOMATION_RUN_STATUS_VISUALS = {
   running: {
     label: "Running",
-    icon: RUN_STATE_PRESENTATION["in-progress"].icon as IconName,
+    icon: RUN_STATE_PRESENTATION["in-progress"].icon,
     className: "animate-spin text-muted-foreground",
   },
   failed: {
     label: RUN_STATE_PRESENTATION.failed.label,
-    icon: RUN_STATE_PRESENTATION.failed.icon as IconName,
+    icon: RUN_STATE_PRESENTATION.failed.icon,
     className: "text-destructive",
   },
   skipped: {
     label: RUN_STATE_PRESENTATION.skipped.label,
-    icon: RUN_STATE_PRESENTATION.skipped.icon as IconName,
+    icon: RUN_STATE_PRESENTATION.skipped.icon,
     className: "text-subtle-foreground",
   },
   succeeded: {
     label: RUN_STATE_PRESENTATION.succeeded.label,
-    icon: RUN_STATE_PRESENTATION.succeeded.icon as IconName,
+    icon: RUN_STATE_PRESENTATION.succeeded.icon,
     className: "text-success",
   },
-};
+} satisfies Record<
+  AutomationRunStatus,
+  { label: string; icon: IconName; className: string }
+>;
 
 export function AutomationRunStatusIndicator({
   status,
@@ -519,18 +517,6 @@ function AgentAutomationDefinition({
   const [permissionMode, setPermissionMode] = useState(
     execution.permissionMode,
   );
-  useEffect(() => {
-    setPrompt(execution.prompt);
-    setProviderModel(providerModelValue(execution));
-    setPermissionMode(execution.permissionMode);
-  }, [
-    execution.model,
-    execution.permissionMode,
-    execution.prompt,
-    execution.providerId,
-    execution.reasoningLevel,
-    execution.serviceTier,
-  ]);
   const pickerRouting = providerModelRouting(execution.environment);
   const trimmedPrompt = prompt.trim();
   const dirty =
@@ -826,6 +812,7 @@ export function AutomationDetailView({
         >
           {execution.mode === "agent" ? (
             <AgentAutomationDefinition
+              key={`${execution.providerId}:${execution.model}:${execution.reasoningLevel}:${execution.serviceTier ?? ""}:${execution.permissionMode}:${execution.prompt}`}
               execution={execution}
               editing={editing}
               pending={actionPending}

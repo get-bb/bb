@@ -54,12 +54,16 @@ import {
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
 
-const PERMISSION_MODE_PRESENTATION: Record<
-  PermissionMode,
-  (typeof PERMISSION_MODE_OPTIONS)[number]
-> = Object.fromEntries(
-  PERMISSION_MODE_OPTIONS.map((option) => [option.value, option]),
-) as Record<PermissionMode, (typeof PERMISSION_MODE_OPTIONS)[number]>;
+function getPermissionModePresentation(
+  permissionMode: PermissionMode,
+): (typeof PERMISSION_MODE_OPTIONS)[number] {
+  for (const option of PERMISSION_MODE_OPTIONS) {
+    if (option.value === permissionMode) {
+      return option;
+    }
+  }
+  throw new Error(`Unknown permission mode: ${permissionMode}`);
+}
 
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
@@ -68,12 +72,12 @@ const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
 
 const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
-const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
+const PLATFORM_LABELS = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
   unknown: null,
-};
+} satisfies Record<HostPlatform, string | null>;
 
 interface MachineRowProps {
   host: Host;
@@ -102,7 +106,7 @@ function MachineRow({
   onRetryUpdate,
   retryUpdatePending,
 }: MachineRowProps) {
-  const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
+  const permission = getPermissionModePresentation(host.maxPermissionMode);
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel =
     host.status === "connected"
@@ -257,7 +261,7 @@ export function MachinesSettingsSection() {
     return counts;
   }, [projects]);
 
-  const now = Date.now();
+  const [now] = useState(() => Date.now());
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
   const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
 

@@ -1,4 +1,5 @@
 import { getThread, listEvents } from "@bb/db";
+import { threadListResponseSchema } from "@bb/server-contract";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -153,10 +154,7 @@ async function readBannerActivity(
     `/api/v1/threads?projectId=${fixture.projectId}`,
   );
   expect(response.status).toBe(200);
-  const threads = (await readJson(response)) as Array<{
-    id: string;
-    activity: { activeGoalCount: number; activePlanModeCount: number };
-  }>;
+  const threads = threadListResponseSchema.parse(await readJson(response));
   const thread = threads.find((entry) => entry.id === fixture.threadId);
   if (!thread) throw new Error(`Missing thread ${fixture.threadId}`);
   return thread.activity;

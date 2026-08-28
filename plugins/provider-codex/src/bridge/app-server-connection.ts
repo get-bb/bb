@@ -1,14 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
-import type { z } from "zod";
+import { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
 const KILL_ESCALATION_MS = 4_000;
+const jsonValueSchema = z.json();
 
 export interface CodexAppServerRequestResponder {
-  result(value: unknown): void;
+  result(value: JsonValue | undefined): void;
   error(code: number, message: string): void;
 }
 
@@ -25,10 +27,10 @@ interface CreateCodexAppServerConnectionOptions {
   cwd: string;
   env: Record<string, string | undefined>;
   recordThreadId: string | null;
-  onNotification(method: string, params: unknown): void;
+  onNotification(method: string, params: JsonValue | undefined): void;
   onRequest(
     method: string,
-    params: unknown,
+    params: JsonValue | undefined,
     responder: CodexAppServerRequestResponder,
   ): void;
   onExit(info: CodexAppServerExitInfo): void;
@@ -36,14 +38,14 @@ interface CreateCodexAppServerConnectionOptions {
 
 interface CodexAppServerRequestArgs<TResult> {
   method: string;
-  params?: unknown;
+  params?: JsonValue;
   resultSchema: z.ZodType<TResult>;
   timeoutMs?: number;
 }
 
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
-  notify(method: string, params?: unknown): void;
+  notify(method: string, params?: JsonValue): void;
   kill(): void;
   readonly exited: boolean;
 }
@@ -59,34 +61,44 @@ export class CodexAppServerExitedError extends Error {
 }
 
 interface PendingChildRequest {
-  resolve(value: unknown): void;
+  resolve(value: JsonValue | undefined): void;
   reject(error: Error): void;
   timeout: NodeJS.Timeout | null;
 }
 
-interface ParsedChildMessage {
-  id?: string | number;
-  method?: string;
-  result?: unknown;
-  error?: { code?: number; message?: string };
-  params?: unknown;
-}
+const childMessageSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    method: z.string().optional(),
+    result: jsonValueSchema.optional(),
+    error: z
+      .object({
+        code: z.number().optional(),
+        message: z.string().optional(),
+      })
+      .optional(),
+    params: jsonValueSchema.optional(),
+  })
+  .passthrough();
+
+type ParsedChildMessage = z.infer<typeof childMessageSchema>;
 
 function parseChildLine(line: string): ParsedChildMessage | null {
   const trimmed = line.trim();
   if (!trimmed) {
     return null;
   }
-  let parsed: unknown;
+  let parsed: JsonValue;
   try {
-    parsed = JSON.parse(trimmed);
+    parsed = jsonValueSchema.parse(JSON.parse(trimmed));
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  const message = childMessageSchema.safeParse(parsed);
+  if (!message.success) {
     return null;
   }
-  return parsed as ParsedChildMessage;
+  return message.data;
 }
 
 export function createCodexAppServerConnection(
@@ -113,12 +125,12 @@ export function createCodexAppServerConnection(
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
 
-  function writeLine(message: object): void {
+  function writeLine<TMessage extends object>(message: TMessage): void {
     const stdin = child.stdin;
     if (!stdin || stdin.destroyed || !stdin.writable) {
       return;
     }
-    stdin.write(JSON.stringify(message) + "\n");
+    stdin.write(JSON.stringify(jsonValueSchema.parse(message)) + "\n");
   }
 
   function rejectAllPending(error: Error): void {
@@ -170,11 +182,8 @@ export function createCodexAppServerConnection(
       }
 
       const id = message.id;
-      if (
-        (typeof id === "string" || typeof id === "number") &&
-        message.method === undefined
-      ) {
-        const numericId = typeof id === "number" ? id : Number(id);
+      if (id !== undefined && message.method === undefined) {
+        const numericId = Number(id);
         const request = pending.get(numericId);
         if (!request) {
           return;
@@ -196,11 +205,11 @@ export function createCodexAppServerConnection(
         return;
       }
 
-      if (typeof message.method !== "string") {
+      if (message.method === undefined) {
         return;
       }
 
-      if (typeof id === "string" || typeof id === "number") {
+      if (id !== undefined) {
         let settled = false;
         options.onRequest(message.method, message.params, {
           result(value) {

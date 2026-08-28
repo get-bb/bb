@@ -37,6 +37,23 @@ const acpModelListParamsSchema = canonicalModelListParamsSchema.extend({
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const acpBridgeCommandMethodValues = [
+  "initialize",
+  "model/list",
+  "provider/health",
+  "provider/usage",
+  "provider/installation/status",
+  "provider/installation/run",
+  "thread/start",
+  "thread/resume",
+  "thread/fork",
+  "turn/start",
+  "turn/steer",
+  "thread/stop",
+  "thread/discard",
+  "skills/configure",
+] as const;
+
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -96,9 +113,6 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   }),
 ]);
 
-export const acpBridgeCommandMethodValues = acpBridgeCommandSchema.options.map(
-  (option) => option.shape.method.value,
-);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
 
 export const ACP_TURN_STARTED_METHOD = "acp/turn/started";

@@ -57,13 +57,14 @@ export function parseFileEditFromItemEvent(
     const callId = decoded.itemId;
     if (!callId) return null;
 
-    return {
+    const result: FileEditOutputPartial = {
       callId,
       stdout: decoded.delta,
       appendStdout: true,
       status: "pending",
-      ...(parentToolCallId ? { parentToolCallId } : {}),
     };
+    if (parentToolCallId) result.parentToolCallId = parentToolCallId;
+    return result;
   }
 
   if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
@@ -76,14 +77,14 @@ export function parseFileEditFromItemEvent(
 
   const changes = mapFileChanges(decoded.item.changes);
 
-  return {
+  const result: FileEditChangesPartial = {
     callId,
     changes,
     approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
     status: itemStatusToExecStatus(decoded.item.status),
-    ...(decoded.item.presentation
-      ? { presentation: decoded.item.presentation }
-      : {}),
-    ...(parentToolCallId ? { parentToolCallId } : {}),
   };
+  if (decoded.item.presentation)
+    result.presentation = decoded.item.presentation;
+  if (parentToolCallId) result.parentToolCallId = parentToolCallId;
+  return result;
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import { z } from "zod";
+import { jsonValueSchema, type JsonObject } from "@bb/domain";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type {
   BridgeJsonRpcId,
@@ -31,7 +32,7 @@ const RESPONSE_DEADLINE_MS = 60_000;
 
 const threadDeltaParamsSchema = z.object({
   threadId: z.string(),
-  deltas: z.array(z.record(z.string(), z.unknown())),
+  deltas: z.array(z.record(z.string(), jsonValueSchema)),
 });
 
 export interface StartFakePiBridgeOptions {
@@ -55,11 +56,11 @@ export interface FakePiBridgeHarness {
     threadId: string,
     extra?: BridgeJsonRpcObject,
   ): Promise<BridgeJsonRpcOutputMessage>;
-  deltasOf(threadId: string): Record<string, unknown>[];
+  deltasOf(threadId: string): JsonObject[];
   waitFor(predicate: () => boolean, what: string): Promise<void>;
   waitForDelta(
     threadId: string,
-    predicate: (delta: Record<string, unknown>) => boolean,
+    predicate: (delta: JsonObject) => boolean,
     since?: number,
   ): Promise<void>;
   waitForTurnBoundary(threadId: string, since?: number): Promise<number>;

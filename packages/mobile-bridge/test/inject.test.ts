@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildBridgeEventScript,
   buildBridgeInjectionScript,
+  parseShellToPageEvent,
   parsePageToShellMessage,
   type NativeShellApi,
   type NativeShellHandshake,
+  type ShellToPageEvent,
 } from "../src/index.js";
 
 const handshake: NativeShellHandshake = {
@@ -26,6 +28,10 @@ const handshake: NativeShellHandshake = {
 
 interface FakeWindow {
   ReactNativeWebView: { postMessage(raw: string): void };
+  bb?: { native?: NativeShellApi };
+}
+
+interface EmptyFakeWindow {
   bb?: { native?: NativeShellApi };
 }
 
@@ -109,8 +115,11 @@ describe("buildBridgeInjectionScript", () => {
 
   it("updates the safe area and notifies subscribers on rotation", () => {
     const { native, run } = installBridge();
-    const seen: unknown[] = [];
-    const unsubscribe = native.subscribe((event: unknown) => seen.push(event));
+    const seen: ShellToPageEvent[] = [];
+    const unsubscribe = native.subscribe((event) => {
+      const parsed = parseShellToPageEvent(event);
+      if (parsed !== null) seen.push(parsed);
+    });
     run(
       buildBridgeEventScript({
         type: "safe-area",
@@ -131,8 +140,11 @@ describe("buildBridgeInjectionScript", () => {
 
   it("re-applies the handshake instead of installing twice", () => {
     const { native, run, fakeWindow } = installBridge();
-    const seen: unknown[] = [];
-    native.subscribe((event: unknown) => seen.push(event));
+    const seen: ShellToPageEvent[] = [];
+    native.subscribe((event) => {
+      const parsed = parseShellToPageEvent(event);
+      if (parsed !== null) seen.push(parsed);
+    });
     run(
       buildBridgeInjectionScript({
         ...handshake,
@@ -155,10 +167,11 @@ describe("buildBridgeInjectionScript", () => {
   });
 
   it("survives a page with no ReactNativeWebView", () => {
-    const fakeWindow: Record<string, unknown> = {};
+    const fakeWindow: EmptyFakeWindow = {};
     // eslint-disable-next-line no-new-func
     new Function("window", buildBridgeInjectionScript(handshake))(fakeWindow);
-    const native = (fakeWindow.bb as { native: NativeShellApi }).native;
+    const native = fakeWindow.bb?.native;
+    if (native === undefined) throw new Error("bridge did not install");
     expect(() => native.post({ type: "ready", path: "/" })).not.toThrow();
   });
 });

@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   buildDaemonRestartCommand,
   buildStandaloneRuntimeEnv,
@@ -386,7 +387,10 @@ describe("standalone restart command", () => {
         });
       });
       const address = server.address();
-      if (!address || typeof address === "string") {
+      const parsedAddress = z
+        .object({ port: z.number().int().positive() })
+        .safeParse(address);
+      if (!parsedAddress.success) {
         throw new Error("Expected test server to listen on a TCP port");
       }
 
@@ -402,7 +406,7 @@ describe("standalone restart command", () => {
         logPath,
         parentPid: process.pid,
         pidPath,
-        serverUrl: `http://127.0.0.1:${address.port}`,
+        serverUrl: `http://127.0.0.1:${parsedAddress.data.port}`,
       });
 
       const shellResult = await runShellCommand(command, {

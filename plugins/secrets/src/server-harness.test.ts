@@ -30,7 +30,8 @@ describe("secrets plugin server", () => {
         },
       },
     });
-    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    // SAFETY: The fake host implements the BbPluginApi contract used by the secrets plugin.
+    plugin(host.bb as Parameters<typeof plugin>[0]);
 
     const command = host.harness.runCli(
       [
@@ -102,7 +103,8 @@ describe("secrets plugin server", () => {
         },
       },
     });
-    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    // SAFETY: The fake host implements the BbPluginApi contract used by the secrets plugin.
+    plugin(host.bb as Parameters<typeof plugin>[0]);
 
     const command = host.harness.runCli(
       ["request", "API_KEY", "--write-env", "/var/plugin/.env"],
@@ -136,7 +138,8 @@ describe("secrets plugin server", () => {
     "reports a usage error for missing option values",
     async ({ argv, message }) => {
       const host = createFakePluginHost({ pluginId: "secrets" });
-      plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+      // SAFETY: The fake host implements the BbPluginApi contract used by the secrets plugin.
+      plugin(host.bb as Parameters<typeof plugin>[0]);
 
       const result = await host.harness.runCli(argv, {
         threadId: "thr-test",

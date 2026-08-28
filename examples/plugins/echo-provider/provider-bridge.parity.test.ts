@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import { z } from "zod";
 import {
   CURRENT_BRIDGE_LANE_FILE,
   experimental_assembleRecordedEvents as assembleRecordedEvents,
@@ -26,6 +27,17 @@ const packageRoot = dirname(fileURLToPath(import.meta.url));
 const RECORDINGS_ROOT = join(packageRoot, "recordings");
 const BRIDGE_MODULE = join(packageRoot, "src", "provider-bridge.ts");
 const PLUGIN_ID = "echo-provider";
+
+const bridgeLaneEntrySchema = z.object({ line: z.string() });
+const bridgeToolCallMessageSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    method: z.string().optional(),
+  })
+  .passthrough();
+const bridgeRuntimeRequestSchema = z
+  .object({ params: z.object({ cwd: z.string() }).passthrough() })
+  .passthrough();
 
 const SCRIPTED_ITEM_KINDS = [
   "agentMessage",
@@ -153,24 +165,24 @@ it("re-records the bridge lane beside a copy of the recording and replays from i
     expect(result.file).toBe(join(copy, CURRENT_BRIDGE_LANE_FILE));
 
     const lane = readFileSync(join(copy, CURRENT_BRIDGE_LANE_FILE), "utf8");
-    const recordedCwd = (
-      JSON.parse(
-        readBridgeRecording(cell.dir).entries.find(
-          (entry) => entry.dir === "runtime→bridge",
-        )!.line,
-      ) as { params: { cwd: string } }
+    const runtimeEntry = readBridgeRecording(cell.dir).entries.find(
+      (entry) => entry.dir === "runtime→bridge",
+    );
+    if (runtimeEntry === undefined) {
+      throw new Error("The recording has no runtime-to-bridge entry.");
+    }
+    const recordedCwd = bridgeRuntimeRequestSchema.parse(
+      JSON.parse(runtimeEntry.line),
     ).params.cwd;
     expect(lane).toContain(recordedCwd);
     expect(lane).not.toContain("bb-parity-ws-");
     const toolCallIds = lane
       .split("\n")
       .filter((raw) => raw.length > 0)
-      .map(
-        (raw) =>
-          JSON.parse((JSON.parse(raw) as { line: string }).line) as {
-            id?: string;
-            method?: string;
-          },
+      .map((raw) =>
+        bridgeToolCallMessageSchema.parse(
+          JSON.parse(bridgeLaneEntrySchema.parse(JSON.parse(raw)).line),
+        ),
       )
       .filter((message) => message.method === "item/tool/call")
       .map((message) => message.id);

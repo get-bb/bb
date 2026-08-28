@@ -17,6 +17,7 @@ import type {
 let tempRoot: string;
 let homeDir: string;
 let cwd: string;
+const ROOT_KIND_FIELD = "shape";
 
 beforeEach(async () => {
   tempRoot = await mkdtemp(path.join(tmpdir(), "bb-acp-native-roots-"));
@@ -81,7 +82,7 @@ describe("opencode", () => {
         path: home(".config", "opencode", "skills"),
         origin: "user",
         recursive: false,
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
     ]);
 
@@ -151,11 +152,11 @@ describe("omp", () => {
       path: skillRoot,
       origin: "user",
       recursive: false,
-      shape: "skills",
+      [ROOT_KIND_FIELD]: "skills",
     });
     expect(byPath(roots, home("shared", "SKILL.md"))).toMatchObject({
       origin: "user",
-      shape: "skill-file",
+      [ROOT_KIND_FIELD]: "skill-file",
     });
   });
 
@@ -233,7 +234,7 @@ describe("omp", () => {
       path: path.join(pluginRoot, "skills"),
       origin: "user",
       namePrefix: "tools:",
-      shape: "skills",
+      [ROOT_KIND_FIELD]: "skills",
     });
     expect(roots.some((root) => root.path.includes("commands"))).toBe(false);
   });
@@ -251,25 +252,25 @@ describe("hermes", () => {
         path: home(".hermes", "skills"),
         origin: "user",
         recursive: true,
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: path.join(tempRoot, "hermes-external"),
         origin: "user",
         recursive: true,
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: home(".hermes", "shared"),
         origin: "user",
         recursive: true,
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: home("home-skills"),
         origin: "user",
         recursive: true,
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
     ]);
   });
@@ -309,14 +310,14 @@ describe("grok", () => {
       origin: "project",
       recursive: true,
       ancestors: true,
-      shape: "skills",
+      [ROOT_KIND_FIELD]: "skills",
       skipIfManifest: ".claude-plugin/plugin.json",
     });
     expect(byPath(roots, home(".cursor", "skills"))).toEqual({
       path: home(".cursor", "skills"),
       origin: "user",
       recursive: true,
-      shape: "skills",
+      [ROOT_KIND_FIELD]: "skills",
     });
     expect(byPath(roots, home(".grok", "skills"))).toMatchObject({
       recursive: true,
@@ -410,14 +411,14 @@ describe("grok", () => {
       path: userSkills,
       origin: "user",
       recursive: true,
-      shape: "skills",
+      [ROOT_KIND_FIELD]: "skills",
     });
     expect(byPath(roots, projectSkills)).toMatchObject({
       origin: "project",
       recursive: true,
     });
     expect(byPath(roots, home("one", "SKILL.md"))).toMatchObject({
-      shape: "skill-file",
+      [ROOT_KIND_FIELD]: "skill-file",
     });
     const userOnly = await resolveSkills(
       resolveGrokNativeRoots,
@@ -464,27 +465,27 @@ describe("grok", () => {
         origin: "user",
         recursive: true,
         namePrefix: "release-tools:",
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: home(".claude", "plugins", "renamed-dir", "custom-skills"),
         origin: "user",
         recursive: true,
         namePrefix: "renamed:",
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: home(".claude", "plugins", "renamed-dir", "one", "SKILL.md"),
         origin: "user",
         namePrefix: "renamed:",
-        shape: "skill-file",
+        [ROOT_KIND_FIELD]: "skill-file",
       },
       {
         path: home("auto-plugins", "auto-on", "skills"),
         origin: "user",
         recursive: true,
         namePrefix: "auto-on:",
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
     ]);
   });
@@ -522,14 +523,14 @@ describe("grok", () => {
         origin: "user",
         recursive: true,
         namePrefix: "dir-name:",
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
       {
         path: home(".claude", "plugins", "flag-dir", "skills"),
         origin: "user",
         recursive: true,
         namePrefix: "flag-dir:",
-        shape: "skills",
+        [ROOT_KIND_FIELD]: "skills",
       },
     ]);
   });

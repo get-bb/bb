@@ -1,4 +1,4 @@
-import type { PluginFileOpenerSource } from "@get-bb/plugin-sdk/app";
+import type { JsonValue, PluginFileOpenerSource } from "@get-bb/plugin-sdk/app";
 
 const PDF_MIME_TYPE = "application/pdf";
 
@@ -12,12 +12,21 @@ interface EnvironmentFileResponse {
   mimeType: string;
 }
 
+type JsonObject = { [key: string]: JsonValue };
+
 function encodePathSegments(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function queryUrl(path: string, values: Record<string, string>): string {
-  return `${path}?${new URLSearchParams(values).toString()}`;
+function queryUrl<Values extends Record<string, string | undefined>>(
+  path: string,
+  values: Values,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) params.set(key, value);
+  }
+  return `${path}?${params.toString()}`;
 }
 
 export function resolvePdfReadTarget(
@@ -42,16 +51,15 @@ export function resolvePdfReadTarget(
         };
       }
       if (source.projectId !== null) {
+        const values =
+          source.experimental_hostId === undefined
+            ? { path }
+            : { path, hostId: source.experimental_hostId };
         return {
           kind: "raw",
           url: queryUrl(
             `/api/v1/projects/${encodeURIComponent(source.projectId)}/files/content`,
-            {
-              path,
-              ...(source.experimental_hostId
-                ? { hostId: source.experimental_hostId }
-                : {}),
-            },
+            values,
           ),
         };
       }
@@ -76,8 +84,12 @@ export function resolvePdfReadTarget(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function isStringValue(value: JsonValue): value is string {
+  return Object.prototype.toString.call(value) === "[object String]";
 }
 
 function normalizeMimeType(value: string): string {
@@ -90,15 +102,17 @@ function requirePdfMimeType(value: string | null): void {
   }
 }
 
-function parseEnvironmentFileResponse(value: unknown): EnvironmentFileResponse {
-  if (!isRecord(value)) {
+function parseEnvironmentFileResponse(
+  value: JsonValue,
+): EnvironmentFileResponse {
+  if (!isJsonObject(value)) {
     throw new Error("The workspace returned an invalid file response.");
   }
   const { content, contentEncoding, mimeType } = value;
   if (
-    typeof content !== "string" ||
+    !isStringValue(content) ||
     (contentEncoding !== "base64" && contentEncoding !== "utf8") ||
-    typeof mimeType !== "string"
+    !isStringValue(mimeType)
   ) {
     throw new Error("The workspace returned an invalid file response.");
   }
@@ -135,7 +149,8 @@ export async function loadPdfBlob(
     return response.blob();
   }
 
-  const file = parseEnvironmentFileResponse(await response.json());
+  const payload: JsonValue = await response.json();
+  const file = parseEnvironmentFileResponse(payload);
   const bytes =
     file.contentEncoding === "base64"
       ? decodeBase64(file.content)

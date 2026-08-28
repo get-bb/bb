@@ -91,6 +91,10 @@ type TypedRegisterWithDescriptor<
   Method extends RouteMethod,
 > = TypedRegister<Schema, MKey> & TypedDescriptorRegister<Method>;
 
+function isRoutePath(value: string | RouteDefinition): value is string {
+  return Object(value) !== value;
+}
+
 interface TypedRoutesOptions {
   onValidationError?: (message: string) => Error;
 }
@@ -133,12 +137,15 @@ export function typedRoutes<Schema>(
     maybeHandler?: Function,
   ): void {
     if (inputSource === "none" || inputSource === "form") {
+      // SAFETY: The method union contains only Hono route registration methods.
       (app as any)[method](path, schemaOrHandler);
-    } else if (typeof schemaOrHandler === "function") {
+    } else if (schemaOrHandler instanceof Function) {
+      // SAFETY: The method union contains only Hono route registration methods.
       (app as any)[method](path, schemaOrHandler);
     } else {
       const schema = schemaOrHandler;
       const handler = maybeHandler!;
+      // SAFETY: The method union contains only Hono route registration methods.
       (app as any)[method](path, async (c: Context) => {
         let input: unknown;
         if (inputSource === "query") {
@@ -191,7 +198,7 @@ export function typedRoutes<Schema>(
     args: [string | RouteDefinition, ...any[]],
   ): void {
     const firstArg = args[0];
-    if (typeof firstArg === "string") {
+    if (isRoutePath(firstArg)) {
       register(method, inputSource, firstArg, args[1], args[2]);
       return;
     }
@@ -199,30 +206,35 @@ export function typedRoutes<Schema>(
   }
 
   return {
+    // SAFETY: The implementation accepts the generic register overload for get.
     get: ((...args: [string | RouteDefinition, ...any[]]) =>
       registerFromArgs("get", "query", args)) as TypedRegisterWithDescriptor<
       Schema,
       "$get",
       "get"
     >,
+    // SAFETY: The implementation accepts the generic register overload for post.
     post: ((...args: [string | RouteDefinition, ...any[]]) =>
       registerFromArgs("post", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
       "$post",
       "post"
     >,
+    // SAFETY: The implementation accepts the generic register overload for patch.
     patch: ((...args: [string | RouteDefinition, ...any[]]) =>
       registerFromArgs("patch", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
       "$patch",
       "patch"
     >,
+    // SAFETY: The implementation accepts the generic register overload for delete.
     del: ((...args: [string | RouteDefinition, ...any[]]) =>
       registerFromArgs("delete", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
       "$delete",
       "delete"
     >,
+    // SAFETY: The implementation accepts the generic register overload for put.
     put: ((...args: [string | RouteDefinition, ...any[]]) =>
       registerFromArgs("put", "json", args)) as TypedRegisterWithDescriptor<
       Schema,

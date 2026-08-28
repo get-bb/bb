@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { z } from "zod";
 import type { ResolvedWorkflowExecutionSelection } from "./cache.js";
 import type { JsonValue, WorkflowAgentOptions } from "./types.js";
 
@@ -88,24 +89,82 @@ type StoreStructuredResultOutcome =
   | "conflict"
   | "inactive";
 
-interface RawRunRow extends Omit<WorkflowRunRow, "notificationSent"> {
-  notificationSent: 0 | 1;
-}
+const workflowRunRowSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  originThreadId: z.string(),
+  environmentId: z.string(),
+  originProvider: z.string(),
+  originModel: z.string(),
+  originReasoningLevel: z.string(),
+  originPermissionMode: z.string(),
+  name: z.string(),
+  source: z.string(),
+  sourceHash: z.string(),
+  argsJson: z.string(),
+  settingsJson: z.string(),
+  status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+  resumedFromRunId: z.string().nullable(),
+  resultJson: z.string().nullable(),
+  error: z.string().nullable(),
+  phase: z.string().nullable(),
+  replaySafetyVersion: z.number(),
+  replayBarrierIndex: z.number().nullable(),
+  notificationSent: z.union([z.literal(0), z.literal(1)]),
+  notificationOutcome: z.enum(["pending", "delivered", "abandoned"]),
+  notificationAttemptCount: z.number(),
+  notificationNextAttemptAt: z.number().nullable(),
+  notificationError: z.string().nullable(),
+  createdAt: z.number(),
+  startedAt: z.number().nullable(),
+  finishedAt: z.number().nullable(),
+});
 
-function runRow(value: unknown): WorkflowRunRow {
-  const row = value as RawRunRow;
+const workflowCallRowSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  callIndex: z.number(),
+  cacheKey: z.string(),
+  prompt: z.string(),
+  optionsJson: z.string(),
+  resolvedProvider: z.string(),
+  resolvedModel: z.string(),
+  resolvedReasoningLevel: z.string(),
+  resolvedPermissionMode: z.string(),
+  status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+  childThreadId: z.string().nullable(),
+  repairAttempts: z.number(),
+  providerRetryAttempts: z.number(),
+  resultJson: z.string().nullable(),
+  error: z.string().nullable(),
+  replayedFromCallId: z.string().nullable(),
+  replaySource: z.enum(["same-run", "resumed-run"]).nullable(),
+  createdAt: z.number(),
+  startedAt: z.number().nullable(),
+  lastActivityAt: z.number().nullable(),
+  finishedAt: z.number().nullable(),
+});
+
+function runRow(value: z.output<typeof workflowRunRowSchema>): WorkflowRunRow {
+  const row = value;
   return { ...row, notificationSent: row.notificationSent === 1 };
 }
 
-function optionalRun(value: unknown): WorkflowRunRow | null {
+function optionalRun(
+  value: z.output<typeof workflowRunRowSchema> | undefined,
+): WorkflowRunRow | null {
   return value === undefined ? null : runRow(value);
 }
 
-function callRow(value: unknown): WorkflowCallRow {
-  return value as WorkflowCallRow;
+function callRow(
+  value: z.output<typeof workflowCallRowSchema>,
+): WorkflowCallRow {
+  return value;
 }
 
-function optionalCall(value: unknown): WorkflowCallRow | null {
+function optionalCall(
+  value: z.output<typeof workflowCallRowSchema> | undefined,
+): WorkflowCallRow | null {
   return value === undefined ? null : callRow(value);
 }
 
@@ -263,7 +322,11 @@ export function createRun(
 }
 
 export function getRun(db: Db, id: string): WorkflowRunRow | null {
-  return optionalRun(db.prepare(`${RUN_SELECT} WHERE id = ?`).get(id));
+  return optionalRun(
+    workflowRunRowSchema
+      .optional()
+      .parse(db.prepare(`${RUN_SELECT} WHERE id = ?`).get(id)),
+  );
 }
 
 export function getRunRequired(db: Db, id: string): WorkflowRunRow {
@@ -277,11 +340,15 @@ export function getLatestRunForOriginThread(
   originThreadId: string,
 ): WorkflowRunRow | null {
   return optionalRun(
-    db
-      .prepare(
-        `${RUN_SELECT} WHERE origin_thread_id = ? ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
-      )
-      .get(originThreadId),
+    workflowRunRowSchema
+      .optional()
+      .parse(
+        db
+          .prepare(
+            `${RUN_SELECT} WHERE origin_thread_id = ? ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
+          )
+          .get(originThreadId),
+      ),
   );
 }
 
@@ -295,6 +362,7 @@ export function listActiveRunsForOriginThread(
        ORDER BY created_at DESC, workflow_runs.rowid DESC`,
     )
     .all(originThreadId)
+    .map((value) => workflowRunRowSchema.parse(value))
     .map(runRow);
 }
 
@@ -307,6 +375,7 @@ export function listRuns(
       `${RUN_SELECT} WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
     )
     .all(args.projectId, args.limit)
+    .map((value) => workflowRunRowSchema.parse(value))
     .map(runRow);
 }
 
@@ -315,18 +384,26 @@ export function claimQueuedRun(
   maxActiveRuns: number,
 ): WorkflowRunRow | null {
   return db.transaction(() => {
-    const active = db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running'`,
-      )
-      .get() as { count: number };
+    const active = z
+      .object({ count: z.number() })
+      .parse(
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running'`,
+          )
+          .get(),
+      );
     if (active.count >= maxActiveRuns) return null;
     const row = optionalRun(
-      db
-        .prepare(
-          `${RUN_SELECT} WHERE status = 'queued' ORDER BY created_at LIMIT 1`,
-        )
-        .get(),
+      workflowRunRowSchema
+        .optional()
+        .parse(
+          db
+            .prepare(
+              `${RUN_SELECT} WHERE status = 'queued' ORDER BY created_at LIMIT 1`,
+            )
+            .get(),
+        ),
     );
     if (row === null) return null;
     const changed = db
@@ -354,6 +431,7 @@ export function settleRun(
         `${CALL_SELECT} WHERE run_id = ? AND status IN ('queued', 'running')`,
       )
       .all(args.id)
+      .map((value) => workflowCallRowSchema.parse(value))
       .map(callRow);
     const now = Date.now();
     const changed = db
@@ -435,15 +513,17 @@ export function beginNotificationAttempt(db: Db, id: string): boolean {
 
 export function recoverInterruptedRuns(db: Db): string[] {
   return db.transaction(() => {
-    const childRows = db
-      .prepare(
-        `SELECT calls.child_thread_id AS childThreadId
-         FROM workflow_calls calls
-         JOIN workflow_runs runs ON runs.id = calls.run_id
-         WHERE runs.status = 'running' AND calls.status = 'running'
-           AND calls.child_thread_id IS NOT NULL`,
-      )
-      .all() as Array<{ childThreadId: string }>;
+    const childRows = z.array(z.object({ childThreadId: z.string() })).parse(
+      db
+        .prepare(
+          `SELECT calls.child_thread_id AS childThreadId
+             FROM workflow_calls calls
+             JOIN workflow_runs runs ON runs.id = calls.run_id
+             WHERE runs.status = 'running' AND calls.status = 'running'
+               AND calls.child_thread_id IS NOT NULL`,
+        )
+        .all(),
+    );
     const now = Date.now();
     db.prepare(
       `UPDATE workflow_calls SET status = 'succeeded', error = NULL, finished_at = ?
@@ -471,9 +551,13 @@ export function getCall(
   callIndex: number,
 ): WorkflowCallRow | null {
   return optionalCall(
-    db
-      .prepare(`${CALL_SELECT} WHERE run_id = ? AND call_index = ?`)
-      .get(runId, callIndex),
+    workflowCallRowSchema
+      .optional()
+      .parse(
+        db
+          .prepare(`${CALL_SELECT} WHERE run_id = ? AND call_index = ?`)
+          .get(runId, callIndex),
+      ),
   );
 }
 
@@ -482,7 +566,11 @@ export function getCallByChildThread(
   threadId: string,
 ): WorkflowCallRow | null {
   return optionalCall(
-    db.prepare(`${CALL_SELECT} WHERE child_thread_id = ?`).get(threadId),
+    workflowCallRowSchema
+      .optional()
+      .parse(
+        db.prepare(`${CALL_SELECT} WHERE child_thread_id = ?`).get(threadId),
+      ),
   );
 }
 
@@ -490,6 +578,7 @@ export function listCallsForRun(db: Db, runId: string): WorkflowCallRow[] {
   return db
     .prepare(`${CALL_SELECT} WHERE run_id = ? ORDER BY call_index`)
     .all(runId)
+    .map((value) => workflowCallRowSchema.parse(value))
     .map(callRow);
 }
 
@@ -503,21 +592,33 @@ export function listCallsForRunPage(
        ORDER BY call_index LIMIT ?`,
     )
     .all(args.runId, args.afterCallIndex, args.limit)
+    .map((value) => workflowCallRowSchema.parse(value))
     .map(callRow);
 }
 
 export function countCallsForRun(db: Db, runId: string): WorkflowCallCounts {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS total,
-       COALESCE(SUM(status = 'queued'), 0) AS queued,
-       COALESCE(SUM(status = 'running'), 0) AS running,
-       COALESCE(SUM(status = 'succeeded'), 0) AS succeeded,
-       COALESCE(SUM(status = 'failed'), 0) AS failed,
-       COALESCE(SUM(status = 'cancelled'), 0) AS cancelled
-       FROM workflow_calls WHERE run_id = ?`,
-    )
-    .get(runId) as WorkflowCallCounts;
+  const row = z
+    .object({
+      total: z.number(),
+      queued: z.number(),
+      running: z.number(),
+      succeeded: z.number(),
+      failed: z.number(),
+      cancelled: z.number(),
+    })
+    .parse(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS total,
+           COALESCE(SUM(status = 'queued'), 0) AS queued,
+           COALESCE(SUM(status = 'running'), 0) AS running,
+           COALESCE(SUM(status = 'succeeded'), 0) AS succeeded,
+           COALESCE(SUM(status = 'failed'), 0) AS failed,
+           COALESCE(SUM(status = 'cancelled'), 0) AS cancelled
+           FROM workflow_calls WHERE run_id = ?`,
+        )
+        .get(runId),
+    );
   return row;
 }
 
@@ -528,6 +629,7 @@ export function listRunningCalls(db: Db, limit: number): WorkflowCallRow[] {
        ORDER BY COALESCE(last_activity_at, started_at), id LIMIT ?`,
     )
     .all(limit)
+    .map((value) => workflowCallRowSchema.parse(value))
     .map(callRow);
 }
 
@@ -543,6 +645,7 @@ export function listTimedOutRuns(
        ORDER BY started_at, id LIMIT ?`,
     )
     .all(now, limit)
+    .map((value) => workflowRunRowSchema.parse(value))
     .map(runRow);
 }
 
@@ -656,7 +759,11 @@ export function queueCallProviderRetry(
     .run(error, Date.now(), callId).changes;
   return changed === 0
     ? null
-    : optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId));
+    : optionalCall(
+        workflowCallRowSchema
+          .optional()
+          .parse(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId)),
+      );
 }
 
 export function storeStructuredResult(
@@ -675,7 +782,9 @@ export function storeStructuredResult(
     if (changed === 1) return "accepted";
 
     const row = optionalCall(
-      db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+      workflowCallRowSchema
+        .optional()
+        .parse(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId)),
     );
     if (row?.resultJson === null || row === null) return "inactive";
     try {
@@ -698,7 +807,9 @@ export function incrementRepairAttempts(db: Db, callId: string): number | null {
     .run(Date.now(), callId).changes;
   if (changed === 0) return null;
   const row = optionalCall(
-    db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+    workflowCallRowSchema
+      .optional()
+      .parse(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId)),
   );
   if (row === null) throw new Error(`Unknown workflow call ${callId}`);
   return row.repairAttempts;
@@ -727,9 +838,26 @@ export function settleCall(
   });
 }
 
+type JsonObject = { [key: string]: JsonValue };
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
+
 function equalJsonValues(left: JsonValue, right: JsonValue): boolean {
   if (left === right) return true;
-  if (left === null || right === null || typeof left !== typeof right) {
+  if (left === null || right === null) {
     return false;
   }
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -740,14 +868,17 @@ function equalJsonValues(left: JsonValue, right: JsonValue): boolean {
       left.every((value, index) => equalJsonValues(value, right[index]!))
     );
   }
-  if (typeof left !== "object" || typeof right !== "object") return false;
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
+  const leftObject = jsonObjectSchema.safeParse(left);
+  const rightObject = jsonObjectSchema.safeParse(right);
+  if (!leftObject.success || !rightObject.success) return false;
+  const leftKeys = Object.keys(leftObject.data).sort();
+  const rightKeys = Object.keys(rightObject.data).sort();
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every(
       (key, index) =>
-        key === rightKeys[index] && equalJsonValues(left[key]!, right[key]!),
+        key === rightKeys[index] &&
+        equalJsonValues(leftObject.data[key]!, rightObject.data[key]!),
     )
   );
 }
@@ -770,15 +901,18 @@ export function cancelRun(db: Db, id: string): boolean {
 }
 
 export function activeChildThreadsForRun(db: Db, runId: string): string[] {
-  return (
-    db
-      .prepare(
-        `SELECT child_thread_id AS childThreadId FROM workflow_calls
-         WHERE run_id = ? AND status IN ('queued', 'running')
-           AND child_thread_id IS NOT NULL`,
-      )
-      .all(runId) as Array<{ childThreadId: string }>
-  ).map((row) => row.childThreadId);
+  return z
+    .array(z.object({ childThreadId: z.string() }))
+    .parse(
+      db
+        .prepare(
+          `SELECT child_thread_id AS childThreadId FROM workflow_calls
+           WHERE run_id = ? AND status IN ('queued', 'running')
+             AND child_thread_id IS NOT NULL`,
+        )
+        .all(runId),
+    )
+    .map((row) => row.childThreadId);
 }
 
 export function listPendingNotificationRuns(
@@ -794,6 +928,7 @@ export function listPendingNotificationRuns(
        ORDER BY finished_at, id LIMIT ?`,
     )
     .all(now, limit)
+    .map((value) => workflowRunRowSchema.parse(value))
     .map(runRow);
 }
 
@@ -840,6 +975,7 @@ export function listExpiredTerminalRuns(
   now: number,
   limit: number,
 ): ExpiredTerminalRuns {
+  // SAFETY: The query selects one string column named id for each returned row.
   const runIds = (
     db.prepare(EXPIRED_TERMINAL_RUN_IDS_SQL).all(now, now, limit) as Array<{
       id: string;
@@ -847,6 +983,7 @@ export function listExpiredTerminalRuns(
   ).map((row) => row.id);
   if (runIds.length === 0) return { runIds: [], childThreadIds: [] };
   const placeholders = runIds.map(() => "?").join(", ");
+  // SAFETY: The query selects one non-null string column named childThreadId for each returned row.
   const childThreadIds = (
     db
       .prepare(

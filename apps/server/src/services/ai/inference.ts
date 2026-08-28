@@ -83,10 +83,11 @@ export class InferenceTimeoutError extends Error {
 }
 
 function toToolCallArguments(value: JsonValue): JsonObject {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  const parsed = jsonObjectSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("Structured inference result must be a JSON object");
   }
-  return value;
+  return parsed.data;
 }
 
 function validateStructuredResult<T extends TSchema>(
@@ -107,6 +108,7 @@ function validateStructuredResult<T extends TSchema>(
     arguments: toToolCallArguments(value),
   };
 
+  /* SAFETY: validateToolCall validates the tool call against the supplied schema. */
   return validateToolCall(tools, toolCall) as Static<T>;
 }
 
@@ -191,26 +193,31 @@ export async function inferenceCompleteWithFallback<T extends TSchema>(
           : new Error(`Non-Error thrown during ${args.label.toLowerCase()}`);
       const transient = isTransientInferenceError(err);
       if (transient && attempt < maxAttempts) {
-        deps.logger.info(
-          {
-            attempt,
-            errorCode:
-              err instanceof ApiError
-                ? err.body.code
-                : err instanceof AiServiceCallError
-                  ? AI_SERVICE_ERROR_CODES[err.code]
-                  : "timeout",
-            fallbackModel,
-            maxAttempts,
-            model,
-            reason: "transient-failure",
-            ...(err instanceof InferenceTimeoutError
-              ? { timeoutMs: err.timeoutMs }
-              : {}),
-            ...args.logContext,
-          },
-          `${args.label} failed transiently; using fallback model`,
-        );
+        const fields = {
+          attempt,
+          errorCode:
+            err instanceof ApiError
+              ? err.body.code
+              : err instanceof AiServiceCallError
+                ? AI_SERVICE_ERROR_CODES[err.code]
+                : "timeout",
+          fallbackModel,
+          maxAttempts,
+          model,
+          reason: "transient-failure",
+          ...args.logContext,
+        };
+        if (err instanceof InferenceTimeoutError) {
+          deps.logger.info(
+            { ...fields, timeoutMs: err.timeoutMs },
+            `${args.label} failed transiently; using fallback model`,
+          );
+        } else {
+          deps.logger.info(
+            fields,
+            `${args.label} failed transiently; using fallback model`,
+          );
+        }
         if (args.retryDelayMs > 0) {
           await delay(args.retryDelayMs);
         }
@@ -355,5 +362,6 @@ export async function inferenceComplete<T extends TSchema>(
     return null;
   }
 
+  /* SAFETY: validateToolCall validates the tool call against the supplied schema. */
   return validateToolCall(tools, toolCall) as Static<T>;
 }

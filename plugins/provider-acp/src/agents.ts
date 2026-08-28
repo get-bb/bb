@@ -36,8 +36,6 @@ export interface AcpAgentDefinition {
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-const launchSpecFields = experimental_acpLaunchSpecSchema.shape;
-
 export const customAcpAgentSchema = z
   .object({
     id: z.string().regex(SLUG_PATTERN),
@@ -47,13 +45,17 @@ export const customAcpAgentSchema = z
     env: z.record(z.string().regex(ENV_NAME_PATTERN), z.string()).default({}),
     cwd: z.string().min(1).optional(),
     dialect: z.string().min(1).optional(),
-    modelCli: launchSpecFields.modelCli,
-    reasoningCli: launchSpecFields.reasoningCli,
-    nativeReasoning: launchSpecFields.nativeReasoning,
-    nativeSkillRoots: launchSpecFields.nativeSkillRoots,
-    permissionCli: launchSpecFields.permissionCli,
     supportsManualCompaction: z.boolean().default(false),
   })
+  .strict()
+  .merge(
+    experimental_acpLaunchSpecSchema.omit({
+      displayName: true,
+      command: true,
+      args: true,
+      env: true,
+    }),
+  )
   .strict();
 export type CustomAcpAgent = z.infer<typeof customAcpAgentSchema>;
 
@@ -65,42 +67,50 @@ export function customAcpAgentDefinition(
 ): AcpAgentDefinition {
   const nativeSkillRoots =
     agent.nativeSkillRoots ?? shipped?.launch.nativeSkillRoots;
-  return {
+  const launch: AcpLaunchSpec = {
+    displayName: agent.displayName,
+    command: agent.command,
+    args: [...agent.args],
+    env: { ...agent.env },
+  };
+  if (agent.cwd !== undefined) launch.cwd = agent.cwd;
+  if (agent.modelCli !== undefined) launch.modelCli = agent.modelCli;
+  if (agent.reasoningCli !== undefined) {
+    launch.reasoningCli = agent.reasoningCli;
+  }
+  if (agent.nativeReasoning !== undefined) {
+    launch.nativeReasoning = agent.nativeReasoning;
+  }
+  if (nativeSkillRoots !== undefined)
+    launch.nativeSkillRoots = nativeSkillRoots;
+  if (agent.permissionCli !== undefined)
+    launch.permissionCli = agent.permissionCli;
+
+  const definition: AcpAgentDefinition = {
     id: formatCustomAcpProviderId(agent.id),
     displayName: agent.displayName,
     icon: CUSTOM_AGENT_GLYPH,
-    launch: {
-      displayName: agent.displayName,
-      command: agent.command,
-      args: [...agent.args],
-      env: { ...agent.env },
-      ...(agent.cwd === undefined ? {} : { cwd: agent.cwd }),
-      ...(agent.modelCli === undefined ? {} : { modelCli: agent.modelCli }),
-      ...(agent.reasoningCli === undefined
-        ? {}
-        : { reasoningCli: agent.reasoningCli }),
-      ...(agent.nativeReasoning === undefined
-        ? {}
-        : { nativeReasoning: agent.nativeReasoning }),
-      ...(nativeSkillRoots === undefined ? {} : { nativeSkillRoots }),
-      ...(agent.permissionCli === undefined
-        ? {}
-        : { permissionCli: agent.permissionCli }),
-    },
-    ...(agent.dialect === undefined ? {} : { dialect: agent.dialect }),
-    ...(shipped?.nativeRootsResolver === undefined
-      ? {}
-      : { nativeRootsResolver: shipped.nativeRootsResolver }),
+    launch,
     visibility: "always",
     fork: "none",
     supportsManualCompaction: agent.supportsManualCompaction,
   };
+  if (agent.dialect !== undefined) definition.dialect = agent.dialect;
+  if (shipped?.nativeRootsResolver !== undefined) {
+    definition.nativeRootsResolver = shipped.nativeRootsResolver;
+  }
+  return definition;
+}
+
+interface ParsedCustomAcpAgents {
+  agents: CustomAcpAgent[];
+  problems: string[];
 }
 
 export function parseCustomAcpAgents(args: {
   entries: readonly unknown[];
   reservedProviderIds: ReadonlySet<string>;
-}): { agents: CustomAcpAgent[]; problems: string[] } {
+}): ParsedCustomAcpAgents {
   const agents: CustomAcpAgent[] = [];
   const problems: string[] = [];
   const seen = new Set<string>();

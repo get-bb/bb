@@ -155,24 +155,24 @@ export function findCachedProviderInfo(
   return null;
 }
 
-function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
+function isAbortLikeError(cause: unknown): boolean {
+  return toRecord(cause)?.name === "AbortError";
 }
 
 function shouldRetrySystemExecutionOptions(
   failureCount: number,
-  error: unknown,
+  cause: unknown,
 ): boolean {
   if (failureCount >= SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT) {
     return false;
   }
 
-  if (isAbortLikeError(error)) {
+  if (isAbortLikeError(cause)) {
     return false;
   }
 
-  if (error instanceof BbHttpError) {
-    return error.status === 408 || error.status === 429 || error.status >= 500;
+  if (cause instanceof BbHttpError) {
+    return cause.status === 408 || cause.status === 429 || cause.status >= 500;
   }
 
   return true;
@@ -219,29 +219,23 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
     queryFn: ({ signal }) => {
       if (args.environmentId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          environmentId: args.environmentId,
-          signal,
-        });
+        const options = { environmentId: args.environmentId, signal };
+        if (args.capability === undefined) {
+          return sdk.providers.list(options);
+        }
+        return sdk.providers.list({ ...options, capability: args.capability });
       }
       if (args.hostId !== undefined) {
-        return sdk.providers.list({
-          ...(args.capability === undefined
-            ? {}
-            : { capability: args.capability }),
-          hostId: args.hostId,
-          signal,
-        });
+        const options = { hostId: args.hostId, signal };
+        if (args.capability === undefined) {
+          return sdk.providers.list(options);
+        }
+        return sdk.providers.list({ ...options, capability: args.capability });
       }
-      return sdk.providers.list({
-        ...(args.capability === undefined
-          ? {}
-          : { capability: args.capability }),
-        signal,
-      });
+      if (args.capability === undefined) {
+        return sdk.providers.list({ signal });
+      }
+      return sdk.providers.list({ signal, capability: args.capability });
     },
     enabled,
     staleTime: 60_000,
@@ -412,12 +406,13 @@ export function useSystemProviderUsageLimits(
   const queries = useQueries({
     queries: args.providerIds.map((providerId) => ({
       queryKey: systemUsageLimitsQueryKey(hostId, providerId),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        sdk.system.usageLimits({
-          ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
-          providerId,
-          signal,
-        }),
+      queryFn: ({ signal }: { signal: AbortSignal }) => {
+        const options = { providerId, signal };
+        if (args.hostId === undefined) {
+          return sdk.system.usageLimits(options);
+        }
+        return sdk.system.usageLimits({ ...options, hostId: args.hostId });
+      },
       enabled,
       ...FOCUS_OWNED_LIVE_QUERY_POLICY,
     })),

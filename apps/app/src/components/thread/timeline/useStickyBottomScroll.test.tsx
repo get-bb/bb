@@ -77,7 +77,11 @@ describe("useStickyBottomScroll", () => {
     let fireResize: (() => void) | undefined;
     class StubResizeObserver {
       constructor(callback: ResizeObserverCallback) {
-        fireResize = () => callback([], this as unknown as ResizeObserver);
+        fireResize = () =>
+          callback(
+            [],
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ this as ResizeObserver,
+          );
       }
       observe(element: Element) {
         observed.push(element);

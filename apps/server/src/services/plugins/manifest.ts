@@ -1,4 +1,3 @@
-import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
 import {
@@ -13,6 +12,9 @@ import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
 } from "@bb/plugin-build";
+
+const { lstat, readdir, readFile, realpath, stat } =
+  process.getBuiltinModule("node:fs/promises");
 
 export interface PluginManifest {
   id: string;
@@ -45,6 +47,11 @@ export interface PluginManifest {
   skillsRootPaths: string[];
   skillNames: string[];
   rootDir: string;
+}
+
+interface PluginCodeThemePaths {
+  dark?: string;
+  light?: string;
 }
 
 function resolveEntry(rootDir: string, entry: string, label: string): string {
@@ -145,23 +152,21 @@ export async function readPluginManifest(
     }
     return resolveEntry(rootDir, entry, label);
   };
-  const brandingLogo =
-    bb.branding.logo === undefined
-      ? undefined
-      : {
-          lightPath: resolveBrandingAsset(
-            bb.branding.logo.light,
-            "bb.branding.logo.light",
-          ),
-          ...(bb.branding.logo.dark === undefined
-            ? {}
-            : {
-                darkPath: resolveBrandingAsset(
-                  bb.branding.logo.dark,
-                  "bb.branding.logo.dark",
-                ),
-              }),
-        };
+  let brandingLogo: PluginManifest["branding"]["logo"];
+  if (bb.branding.logo !== undefined) {
+    brandingLogo = {
+      lightPath: resolveBrandingAsset(
+        bb.branding.logo.light,
+        "bb.branding.logo.light",
+      ),
+    };
+    if (bb.branding.logo.dark !== undefined) {
+      brandingLogo.darkPath = resolveBrandingAsset(
+        bb.branding.logo.dark,
+        "bb.branding.logo.dark",
+      );
+    }
+  }
   const brandingCompactIconPath =
     bb.branding.icon !== undefined && isPluginOwnedIconPath(bb.branding.icon)
       ? resolveBrandingAsset(bb.branding.icon, "bb.branding.icon")
@@ -233,7 +238,7 @@ export async function readPluginManifest(
       );
     }
     const codeTheme = theme.codeTheme ?? null;
-    const codeThemePaths: { dark?: string; light?: string } = {};
+    const codeThemePaths: PluginCodeThemePaths = {};
     if (codeTheme?.dark !== undefined && isCodeThemeFilePath(codeTheme.dark)) {
       codeThemePaths.dark = resolvePluginCodeThemePath(
         rootDir,
@@ -280,20 +285,25 @@ export async function readPluginManifest(
       }
     }
   }
+  const branding: PluginManifest["branding"] = {
+    icons: brandingIcons,
+  };
+  if (bb.branding.icon !== undefined) {
+    branding.icon = bb.branding.icon;
+  }
+  if (brandingCompactIconPath !== undefined) {
+    branding.compactIconPath = brandingCompactIconPath;
+  }
+  if (brandingLogo !== undefined) {
+    branding.logo = brandingLogo;
+  }
   return {
     id: derivePluginId(packageName),
     packageName,
     version,
     name: bb.name,
     description: bb.description,
-    branding: {
-      ...(bb.branding.icon === undefined ? {} : { icon: bb.branding.icon }),
-      ...(brandingCompactIconPath === undefined
-        ? {}
-        : { compactIconPath: brandingCompactIconPath }),
-      ...(brandingLogo === undefined ? {} : { logo: brandingLogo }),
-      icons: brandingIcons,
-    },
+    branding,
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,

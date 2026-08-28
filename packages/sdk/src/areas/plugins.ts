@@ -256,11 +256,12 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     return schema.parse(json);
   }
 
-  function jsonInit(method: "POST" | "PUT", body: unknown): RequestInit {
+  function jsonInit<T>(method: "POST" | "PUT", body: T): RequestInit {
+    const parsedBody = jsonValueSchema.parse(body);
     return {
       method,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(parsedBody),
     };
   }
 

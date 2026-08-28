@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
+import type { JsonObject, JsonValue } from "@bb/domain";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
@@ -43,6 +45,9 @@ const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
 const MULTILINE_TEXTAREA_CLASS =
   "max-h-96 min-h-32 w-full resize-y overflow-y-auto font-mono text-xs field-sizing-content";
+const booleanSettingValueSchema = z.boolean();
+const stringSettingValueSchema = z.string();
+const secretStatusSchema = z.object({ set: z.boolean() });
 
 function multilineRows(value: string): number {
   const lines = value.split("\n").length;
@@ -99,9 +104,9 @@ function SettingOptionPicker({
 
 interface PluginSettingFieldProps {
   descriptor: PluginSettingFieldDescriptor;
-  draft: unknown;
+  draft: string | boolean | undefined;
   onChange: (value: string | boolean) => void;
-  storedValue: unknown;
+  storedValue: JsonValue | undefined;
 }
 
 function PluginSettingField({
@@ -115,12 +120,9 @@ function PluginSettingField({
   });
 
   if (descriptor.type === "boolean") {
-    const checked =
-      typeof draft === "boolean"
-        ? draft
-        : typeof storedValue === "boolean"
-          ? storedValue
-          : false;
+    const draftValue = booleanSettingValueSchema.safeParse(draft).data;
+    const storedValueResult = booleanSettingValueSchema.safeParse(storedValue);
+    const checked = draftValue ?? storedValueResult.data ?? false;
     return (
       <Switch
         checked={checked}
@@ -131,12 +133,9 @@ function PluginSettingField({
   }
 
   if (descriptor.type === "select") {
-    const value =
-      typeof draft === "string"
-        ? draft
-        : typeof storedValue === "string"
-          ? storedValue
-          : "";
+    const draftValue = stringSettingValueSchema.safeParse(draft).data;
+    const storedValueResult = stringSettingValueSchema.safeParse(storedValue);
+    const value = draftValue ?? storedValueResult.data ?? "";
     return (
       <SettingOptionPicker
         ariaLabel={descriptor.label}
@@ -151,12 +150,9 @@ function PluginSettingField({
   }
 
   if (descriptor.type === "project") {
-    const value =
-      typeof draft === "string"
-        ? draft
-        : typeof storedValue === "string"
-          ? storedValue
-          : "";
+    const draftValue = stringSettingValueSchema.safeParse(draft).data;
+    const storedValueResult = stringSettingValueSchema.safeParse(storedValue);
+    const value = draftValue ?? storedValueResult.data ?? "";
     const navigation = projects.data;
     const options = navigation
       ? [
@@ -184,17 +180,11 @@ function PluginSettingField({
   }
 
   const isSecret = descriptor.secret === true;
-  const secretIsSet =
-    isSecret &&
-    typeof storedValue === "object" &&
-    storedValue !== null &&
-    (storedValue as { set?: unknown }).set === true;
-  const value =
-    typeof draft === "string"
-      ? draft
-      : !isSecret && typeof storedValue === "string"
-        ? storedValue
-        : "";
+  const secretStatus = secretStatusSchema.safeParse(storedValue).data;
+  const secretIsSet = isSecret && secretStatus?.set === true;
+  const draftValue = stringSettingValueSchema.safeParse(draft).data;
+  const storedValueResult = stringSettingValueSchema.safeParse(storedValue);
+  const value = draftValue ?? (!isSecret ? (storedValueResult.data ?? "") : "");
   if (isMultilineSetting(descriptor)) {
     return (
       <Textarea
@@ -226,7 +216,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
   const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
+    mutationFn: (values: JsonObject) =>
       updatePluginSettings(fetch, pluginId, values),
     onSuccess: (view) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
@@ -243,7 +233,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const view = viewQuery.data ?? null;
   if (view === null || Object.keys(view.schema).length === 0) return null;
 
-  const changedValues: Record<string, unknown> = {};
+  const changedValues: JsonObject = {};
   for (const [key, draft] of Object.entries(drafts)) {
     const descriptor = view.schema[key];
     if (descriptor === undefined) continue;

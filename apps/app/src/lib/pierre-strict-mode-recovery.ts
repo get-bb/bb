@@ -12,7 +12,7 @@ interface PierrePostRenderOptions<
     node: HTMLElement,
     instance: TInstance,
     phase: PostRenderPhase,
-  ): unknown;
+  ): void;
 }
 
 export function usePierreStrictModeRecoveryOptions<

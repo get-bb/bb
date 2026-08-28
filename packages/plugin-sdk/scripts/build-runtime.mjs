@@ -9,9 +9,6 @@ const packageRoot = path.resolve(
   "..",
 );
 
-// A node program bundled from CommonJS dependencies (the bootstrap pulls
-// cross-spawn through @bb/process-utils) needs `require` in ESM scope; the
-// daemon's bundles carry the same banner (apps/host-daemon/scripts/bundle-manifest.mjs).
 const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
   'import { dirname as __pathDirname } from "node:path";',
@@ -24,35 +21,21 @@ const NODE_ESM_REQUIRE_BANNER = [
 const entries = [
   { source: "src/index.ts", output: "dist/index.js", external: [] },
   { source: "src/app.ts", output: "dist/app.js", external: [] },
-  // Real code, not a stub: the provider-bridge surface is schemas and pure
-  // helpers, so the published bundle carries them. zod stays external (peer
-  // dependency).
   {
     source: "src/provider-bridge.ts",
     output: "dist/provider-bridge.js",
     external: ["zod", "zod/*"],
   },
-  // The AI-services contract: zod schemas shared by a serving plugin's host
-  // entry and the server's caller.
   {
     source: "src/ai-services.ts",
     output: "dist/ai-services.js",
     external: ["zod", "zod/*"],
   },
-  // The testing kit: conformance scenarios, the real delta assembler, the
-  // JSON-RPC harness, the calibration normalizer and the recorded-replay
-  // harness. Framework-agnostic, so only zod stays external.
   {
     source: "src/provider-bridge-testing.ts",
     output: "dist/provider-bridge-testing.js",
     external: ["zod", "zod/*"],
   },
-  // The replay harness spawns two programs beside its own bundle: the
-  // provider-bridge bootstrap that runs a bridge module the way the runtime
-  // does, and the replay child a bridge spawns in place of its provider.
-  // Both are resolved relative to `import.meta.url` of the testing bundle
-  // (`packages/provider-bridge-protocol/src/testing/parity.ts`), so they must
-  // land next to it under the names it expects.
   {
     source: "../provider-bridge-protocol/src/bridge-worker-entry.ts",
     output: "dist/provider-bridge-worker-entry.mjs",
@@ -63,9 +46,6 @@ const entries = [
     copy: "../provider-bridge-protocol/src/testing/replay-provider-child.mjs",
     output: "dist/replay-provider-child.mjs",
   },
-  // The ACP kit: the generic Agent Client Protocol bridge a provider plugin
-  // re-exports from its host artifact, plus the dialect hooks. Real code, so
-  // only zod stays external.
   {
     source: "src/provider-bridge-acp.ts",
     output: "dist/provider-bridge-acp.js",
@@ -140,8 +120,7 @@ try {
       await copyFile(path.join(packageRoot, entry.copy), destination);
       continue;
     }
-    await build({
-      ...(entry.banner === undefined ? {} : { banner: { js: entry.banner } }),
+    const buildOptions = {
       bundle: true,
       conditions: ["source"],
       entryPoints: [path.join(packageRoot, entry.source)],
@@ -151,7 +130,12 @@ try {
       outfile: path.join(stagingDir, path.relative("dist", entry.output)),
       platform: "node",
       target: "node20",
-    });
+    };
+    if (entry.banner !== undefined) {
+      await build({ ...buildOptions, banner: { js: entry.banner } });
+    } else {
+      await build(buildOptions);
+    }
   }
   await promoteRuntimeEntries({
     distDir: path.join(packageRoot, "dist"),

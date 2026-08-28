@@ -232,10 +232,8 @@ describe("SidebarSplitContainer", () => {
     expect(activate).toHaveBeenCalledTimes(1);
     expect(
       consoleError.mock.calls.some((call) =>
-        call.some(
-          (value) =>
-            typeof value === "string" &&
-            value.includes("Cannot update a component while rendering"),
+        call.some((value) =>
+          String(value).includes("Cannot update a component while rendering"),
         ),
       ),
     ).toBe(false);
@@ -320,7 +318,7 @@ describe("SidebarSplitContainer", () => {
       const [terminalOpen, setTerminalOpen] = useState(false);
       const tabs = terminalOpen
         ? [
-            TABS[0] as SidebarSplitTabDescriptor,
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ TABS[0] as SidebarSplitTabDescriptor,
             { id: "terminal-a", label: "Terminal" },
           ]
         : TABS;
@@ -1213,7 +1211,9 @@ describe("SidebarSplitContainer", () => {
           {paneId}
         </button>
       ),
-      tabs: [TABS[0] as SidebarSplitTabDescriptor],
+      tabs: [
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ TABS[0] as SidebarSplitTabDescriptor,
+      ],
     });
 
     fireEvent.pointerDown(screen.getByTestId("only-pane"));

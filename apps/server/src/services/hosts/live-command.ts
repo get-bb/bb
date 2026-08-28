@@ -106,15 +106,18 @@ function commandFailureCode(error: Error): string {
 function liveHostCommandBaseLogFields<
   TType extends HostDaemonSettledCommandType,
 >(args: LiveHostCommandErrorHandlerArgs<TType>): LiveHostCommandBaseLogFields {
-  return {
+  const fields: LiveHostCommandBaseLogFields = {
     commandType: args.command.type,
-    ...("environmentId" in args.command
-      ? { environmentId: args.command.environmentId }
-      : {}),
     executionId: args.execution.id,
     hostId: args.hostId,
-    ...("threadId" in args.command ? { threadId: args.command.threadId } : {}),
   };
+  if ("environmentId" in args.command) {
+    fields.environmentId = args.command.environmentId;
+  }
+  if ("threadId" in args.command) {
+    fields.threadId = args.command.threadId;
+  }
+  return fields;
 }
 
 export function expectedLiveHostCommandErrorLogFields(

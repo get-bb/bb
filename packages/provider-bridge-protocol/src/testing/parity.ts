@@ -9,7 +9,14 @@ import {
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ThreadEvent } from "@bb/domain";
+import { z } from "zod";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+  type ThreadEvent,
+} from "@bb/domain";
 import { readBoundedLines } from "../bridge-kit/bounded-line-reader.js";
 import type { BridgeRecordingEntry } from "../bridge-kit/bridge-recorder.js";
 import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "../version.js";
@@ -137,6 +144,39 @@ export const DEFAULT_REPLAY_PROFILE: ReplayProviderProfile = {
   env: () => ({}),
 };
 
+function isJsonObjectValue(value: JsonValue | undefined): value is JsonObject {
+  return (
+    value !== undefined &&
+    value !== null &&
+    Object(value) === value &&
+    !Array.isArray(value)
+  );
+}
+
+function jsonObjectValue(value: JsonValue | undefined): JsonObject | null {
+  return isJsonObjectValue(value) ? value : null;
+}
+
+function stringValue(value: JsonValue | undefined): string | null {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function numberOrStringValue(
+  value: JsonValue | undefined,
+): number | string | null {
+  const parsed = z.union([z.number(), z.string()]).safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseJsonObject(line: string): JsonObject | null {
+  try {
+    return jsonObjectSchema.parse(JSON.parse(line));
+  } catch {
+    return null;
+  }
+}
+
 function rewriteRecordedMachineFacts(
   line: string,
   workspaceDir: string,
@@ -144,30 +184,21 @@ function rewriteRecordedMachineFacts(
   if (!line.includes('"PATH"') && !line.includes('"cwd"')) {
     return line;
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
+  const parsed = parseJsonObject(line);
+  if (parsed === null) {
     return line;
   }
-  const params = (
-    parsed as {
-      params?: {
-        cwd?: unknown;
-        options?: { envVars?: Record<string, unknown> };
-      };
-    }
-  ).params;
-  if (params === undefined) {
-    return line;
-  }
+  const params = jsonObjectValue(parsed.params);
+  if (params === null) return line;
   let changed = false;
-  const envVars = params.options?.envVars;
-  if (envVars !== undefined && typeof envVars.PATH === "string") {
-    envVars.PATH = process.env.PATH ?? envVars.PATH;
+  const options = jsonObjectValue(params.options);
+  const envVars = jsonObjectValue(options?.envVars);
+  const recordedPath = stringValue(envVars?.PATH);
+  if (envVars !== null && recordedPath !== null) {
+    envVars.PATH = process.env.PATH ?? recordedPath;
     changed = true;
   }
-  if (typeof params.cwd === "string") {
+  if (stringValue(params.cwd) !== null) {
     params.cwd = workspaceDir;
     changed = true;
   }
@@ -178,8 +209,9 @@ function recordedWorkspaceDir(recording: BridgeRecording): string | null {
   for (const entry of recording.entries) {
     if (entry.dir !== "runtime→bridge") continue;
     const message = parseWire(entry.line);
-    const cwd = (message?.params as { cwd?: unknown } | undefined)?.cwd;
-    if (typeof cwd === "string" && cwd.length > 0) return cwd;
+    const params = jsonObjectValue(message?.params);
+    const cwd = stringValue(params?.cwd);
+    if (cwd !== null && cwd.length > 0) return cwd;
   }
   return null;
 }
@@ -220,35 +252,55 @@ export interface ParityRun {
 
 interface ParsedWireMessage {
   id?: string | number;
+  jsonrpc?: string;
   method?: string;
-  params?: unknown;
-  result?: unknown;
-  error?: unknown;
+  params?: JsonValue;
+  result?: JsonValue;
+  error?: JsonValue;
 }
+
+type ParsedWireRequest = ParsedWireMessage & {
+  id: string | number;
+  method: string;
+};
+
+type ParsedWireResponse = ParsedWireMessage & {
+  id: string | number;
+  method?: undefined;
+};
 
 function parseWire(line: string): ParsedWireMessage | null {
-  try {
-    const parsed: unknown = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as ParsedWireMessage)
-      : null;
-  } catch {
+  const parsed = parseJsonObject(line);
+  if (parsed === null) {
     return null;
   }
+  const message: ParsedWireMessage = {};
+  const id = numberOrStringValue(parsed.id);
+  const jsonrpc = stringValue(parsed.jsonrpc);
+  const method = stringValue(parsed.method);
+  if (id !== null) message.id = id;
+  if (jsonrpc !== null) message.jsonrpc = jsonrpc;
+  if (method !== null) message.method = method;
+  if (parsed.params !== undefined) message.params = parsed.params;
+  if (parsed.result !== undefined) message.result = parsed.result;
+  if (parsed.error !== undefined) message.error = parsed.error;
+  return message;
 }
 
-function isRequest(message: ParsedWireMessage): boolean {
-  return message.id !== undefined && typeof message.method === "string";
+function isRequest(message: ParsedWireMessage): message is ParsedWireRequest {
+  return message.id !== undefined && message.method !== undefined;
 }
 
-function isResponse(message: ParsedWireMessage): boolean {
+function isResponse(message: ParsedWireMessage): message is ParsedWireResponse {
   return message.id !== undefined && message.method === undefined;
 }
 
-function countTurnBoundaries(events: readonly ThreadEvent[]): {
+interface TurnBoundaries {
   started: number;
   completed: number;
-} {
+}
+
+function countTurnBoundaries(events: readonly ThreadEvent[]): TurnBoundaries {
   let started = 0;
   let completed = 0;
   for (const event of events) {
@@ -423,11 +475,8 @@ export async function replayRecording(
   for (const step of steps) {
     if (step.message !== null && isResponse(step.message)) {
       const method =
-        methodOfRecordedBridgeRequest(
-          recording,
-          step.entry,
-          step.message.id as string | number,
-        ) ?? "?";
+        methodOfRecordedBridgeRequest(recording, step.entry, step.message.id) ??
+        "?";
       const queue = recordedAnswers.get(method) ?? [];
       queue.push(step.message);
       recordedAnswers.set(method, queue);
@@ -485,8 +534,8 @@ export async function replayRecording(
       }
       if (isRequest(message)) {
         pendingBridgeRequests.push({
-          id: message.id as string | number,
-          method: message.method!,
+          id: message.id,
+          method: message.method,
         });
         answerBridgeRequest(message);
         return;
@@ -606,12 +655,10 @@ export async function replayRecording(
     if (child.exitCode !== null) break;
     if (
       method === "thread/stop" &&
-      typeof request.params === "object" &&
-      request.params !== null &&
-      (request.params as { intent?: unknown }).intent === "release"
+      stringValue(jsonObjectValue(request.params)?.intent) === "release"
     ) {
-      const threadId = (request.params as { threadId?: unknown }).threadId;
-      if (typeof threadId === "string") grammar.clearThread(threadId);
+      const threadId = stringValue(jsonObjectValue(request.params)?.threadId);
+      if (threadId !== null) grammar.clearThread(threadId);
     }
     const rewritten = rewriteRecordedMachineFacts(
       step.entry.line,
@@ -680,15 +727,17 @@ export async function replayRecording(
   };
 }
 
+interface AssembledRecordedEvents {
+  events: ThreadEvent[];
+  grammarViolations: ParityGrammarViolation[];
+  invalidDeltas: string[];
+}
+
 export function assembleRecordedEvents(
   recording: BridgeRecording,
   createAssembler: CreateParityAssembler,
   providerId: string,
-): {
-  events: ThreadEvent[];
-  grammarViolations: ParityGrammarViolation[];
-  invalidDeltas: string[];
-} {
+): AssembledRecordedEvents {
   const assembler = createAssembler(providerId);
   const grammar = new ThreadEventGrammar();
   const events: ThreadEvent[] = [];
@@ -700,12 +749,10 @@ export function assembleRecordedEvents(
       if (
         message !== null &&
         message.method === "thread/stop" &&
-        typeof message.params === "object" &&
-        message.params !== null &&
-        (message.params as { intent?: unknown }).intent === "release"
+        stringValue(jsonObjectValue(message.params)?.intent) === "release"
       ) {
-        const threadId = (message.params as { threadId?: unknown }).threadId;
-        if (typeof threadId === "string") grammar.clearThread(threadId);
+        const threadId = stringValue(jsonObjectValue(message.params)?.threadId);
+        if (threadId !== null) grammar.clearThread(threadId);
       }
       continue;
     }
@@ -748,8 +795,8 @@ export interface ParityAllowlistEntry {
 }
 
 export interface ParityLayerDiff {
-  onlyInOld: unknown[];
-  onlyInNew: unknown[];
+  onlyInOld: JsonValue[];
+  onlyInNew: JsonValue[];
 }
 
 export interface ParityComparison {
@@ -782,22 +829,60 @@ const TIME_FIELDS = new Set([
   "expiresAt",
 ]);
 
-function blankTimeFields(value: unknown): unknown {
+const numberOrStringSchema = z.union([z.number(), z.string()]);
+const jsonValueArraySchema = z.array(jsonValueSchema);
+
+function blankTimeFields(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
     return value.map(blankTimeFields);
   }
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      out[key] =
-        TIME_FIELDS.has(key) &&
-        (typeof entry === "number" || typeof entry === "string")
-          ? 0
-          : blankTimeFields(entry);
+  const object = jsonObjectValue(value);
+  if (object !== null) {
+    const out: JsonObject = {};
+    for (const [key, entry] of Object.entries(object)) {
+      const shouldBlank =
+        TIME_FIELDS.has(key) && numberOrStringSchema.safeParse(entry).success;
+      out[key] = shouldBlank ? 0 : blankTimeFields(entry);
     }
     return out;
   }
   return value;
+}
+
+function normalizeParityValues(
+  values: readonly JsonValue[],
+  internedIdFields: readonly string[],
+): JsonValue[] {
+  const assigned = new Map<string, string>();
+  const idFields = new Set(internedIdFields);
+  const normalize = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(normalize);
+    const object = jsonObjectValue(value);
+    if (object === null) return value;
+    const normalized: JsonObject = {};
+    for (const [key, entry] of Object.entries(object)) {
+      if (key === "providerCheckpointId") continue;
+      if (key === "threadId" || key === "providerThreadId") {
+        normalized[key] = entry === null ? null : "";
+        continue;
+      }
+      const stringEntry = stringValue(entry);
+      if (idFields.has(key) && stringEntry !== null) {
+        const existing = assigned.get(stringEntry);
+        if (existing !== undefined) {
+          normalized[key] = existing;
+        } else {
+          const token = `#${assigned.size + 1}`;
+          assigned.set(stringEntry, token);
+          normalized[key] = token;
+        }
+        continue;
+      }
+      normalized[key] = normalize(entry);
+    }
+    return normalized;
+  };
+  return values.map(normalize);
 }
 
 const ROW_ID_FIELDS = [
@@ -819,23 +904,24 @@ const ROW_ID_FIELDS = [
 
 export function normalizeParityEvents(
   events: readonly ThreadEvent[],
-): unknown[] {
-  return blankTimeFields(normalizeCalibrationEvents(events)) as unknown[];
+): JsonValue[] {
+  const normalized = jsonValueArraySchema.parse(
+    normalizeCalibrationEvents(events),
+  );
+  return jsonValueArraySchema.parse(blankTimeFields(normalized));
 }
 
-export function normalizeParityRows(rows: readonly unknown[]): unknown[] {
-  return blankTimeFields(
-    normalizeCalibrationEvents(rows as unknown as readonly ThreadEvent[], {
-      internedIdFields: ROW_ID_FIELDS,
-    }),
-  ) as unknown[];
+export function normalizeParityRows(rows: readonly unknown[]): JsonValue[] {
+  const parsedRows = jsonValueArraySchema.parse(rows);
+  const normalized = normalizeParityValues(parsedRows, ROW_ID_FIELDS);
+  return jsonValueArraySchema.parse(blankTimeFields(normalized));
 }
 
 function pointerSegments(path: string): string[] {
   return path.split("/").filter((segment) => segment.length > 0);
 }
 
-export function maskPath(value: unknown, path: string): number {
+export function maskPath(value: JsonValue, path: string): number {
   const segments = pointerSegments(path);
   if (segments.length === 0) {
     if (!Array.isArray(value)) return 0;
@@ -844,35 +930,40 @@ export function maskPath(value: unknown, path: string): number {
     return removed;
   }
   let removed = 0;
-  const visit = (node: unknown, index: number): void => {
-    if (index >= segments.length || node === null || typeof node !== "object") {
+  const visit = (node: JsonValue, index: number): void => {
+    if (index >= segments.length) {
       return;
     }
+    const container = Array.isArray(node) ? node : jsonObjectValue(node);
+    if (container === null) return;
     const segment = segments[index];
     const last = index === segments.length - 1;
     if (segment === "**") {
       visit(node, index + 1);
-      for (const child of Object.values(node as Record<string, unknown>)) {
+      for (const child of Object.values(container)) {
         visit(child, index);
       }
       return;
     }
     const keys =
       segment === "*"
-        ? Object.keys(node as Record<string, unknown>)
-        : Object.hasOwn(node, segment)
+        ? Object.keys(container)
+        : Object.hasOwn(container, segment)
           ? [segment]
           : [];
     for (const key of keys) {
       if (last) {
-        if (Array.isArray(node)) {
-          (node as unknown[])[Number(key)] = null;
+        if (Array.isArray(container)) {
+          container[Number(key)] = null;
         } else {
-          delete (node as Record<string, unknown>)[key];
+          delete container[key];
         }
         removed += 1;
       } else {
-        visit((node as Record<string, unknown>)[key], index + 1);
+        const child = Array.isArray(container)
+          ? container[Number(key)]
+          : container[key];
+        if (child !== undefined) visit(child, index + 1);
       }
     }
   };
@@ -946,25 +1037,22 @@ function diffLayer(
   newSide: readonly unknown[],
 ): ParityLayerDiff {
   const diff = diffCalibrationStreams(oldSide, newSide);
-  return { onlyInOld: diff.onlyInLegacy, onlyInNew: diff.onlyInBridge };
+  return {
+    onlyInOld: jsonValueArraySchema.parse(diff.onlyInLegacy),
+    onlyInNew: jsonValueArraySchema.parse(diff.onlyInBridge),
+  };
 }
 
-export function describeParityValue(value: unknown): string {
-  if (value === null || typeof value !== "object") {
+export function describeParityValue(value: JsonValue): string {
+  const record = jsonObjectValue(value);
+  if (record === null) {
     return String(value);
   }
-  const record = value as Record<string, unknown>;
-  const type =
-    typeof record.type === "string"
-      ? record.type
-      : typeof record.kind === "string"
-        ? record.kind
-        : "?";
+  const type = stringValue(record.type) ?? stringValue(record.kind) ?? "?";
   const item = record.item;
-  const suffix =
-    item !== null && typeof item === "object" && "type" in item
-      ? `:${String((item as { type: unknown }).type)}`
-      : "";
+  const itemRecord = jsonObjectValue(item);
+  const itemType = stringValue(itemRecord?.type);
+  const suffix = itemType === null ? "" : `:${itemType}`;
   return `${type}${suffix} ${JSON.stringify(value).slice(0, 160)}`;
 }
 
@@ -998,20 +1086,21 @@ export async function replayRecordedCells(
         cell.provider,
       );
       const bridge = options.bridge(cell);
-      const run = await replayRecording({
+      const replayOptions: ReplayRecordingOptions = {
         recordingDir: cell.dir,
         providerId: cell.provider,
         bridge: bridge.launch,
-        ...(bridge.profile === undefined ? {} : { profile: bridge.profile }),
         createAssembler: options.createAssembler,
         planFromCurrentLane: true,
-        ...(options.timeoutMs !== undefined
-          ? { timeoutMs: options.timeoutMs }
-          : {}),
-        ...(options.onStderr !== undefined
-          ? { onStderr: options.onStderr }
-          : {}),
-      });
+      };
+      if (bridge.profile !== undefined) replayOptions.profile = bridge.profile;
+      if (options.timeoutMs !== undefined) {
+        replayOptions.timeoutMs = options.timeoutMs;
+      }
+      if (options.onStderr !== undefined) {
+        replayOptions.onStderr = options.onStderr;
+      }
+      const run = await replayRecording(replayOptions);
       return {
         provider: cell.provider,
         cell: cell.cell,

@@ -204,19 +204,17 @@ export type HostDaemonEventEnvelope = z.infer<
   typeof hostDaemonEventEnvelopeSchema
 >;
 
-const hostDaemonWireEventSchema = z
-  .unknown()
-  .superRefine((value, context) => {
-    if (typeof value !== "object" || value === null) return;
-    if (Object.hasOwn(value, "sequence")) {
-      context.addIssue({
-        code: "custom",
-        message: "Daemon events must not provide a server-owned sequence",
-        path: ["sequence"],
-      });
-    }
-  })
-  .pipe(threadEventSchema);
+const hostDaemonWireEventSchema = z.preprocess((value, context) => {
+  const parsed = z.record(z.string(), z.json()).safeParse(value);
+  if (parsed.success && Object.hasOwn(parsed.data, "sequence")) {
+    context.addIssue({
+      code: "custom",
+      message: "Daemon events must not provide a server-owned sequence",
+      path: ["sequence"],
+    });
+  }
+  return value;
+}, threadEventSchema);
 
 const hostDaemonEventGroupSchema = z
   .object({

@@ -21,6 +21,7 @@ let tempRoot: string;
 let homeDir: string;
 let cwd: string;
 let claudeDir: string;
+const RESOLVED_ROOT_KIND_KEY = "shape";
 
 beforeEach(async () => {
   tempRoot = await mkdtemp(path.join(tmpdir(), "bb-vendor-plugin-roots-"));
@@ -43,13 +44,28 @@ async function writeFileEnsuringDir(
   await writeFile(filePath, content, "utf8");
 }
 
-async function writeJson(filePath: string, value: unknown): Promise<void> {
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+type PluginManifestFixture = {
+  name?: string;
+  defaultEnabled?: boolean;
+  skills?: string | string[];
+  commands?: string | string[];
+};
+
+async function writeJson(filePath: string, value: JsonValue): Promise<void> {
   await writeFileEnsuringDir(filePath, JSON.stringify(value, null, 2));
 }
 
 async function writePlugin(
   pluginRoot: string,
-  manifest: Record<string, unknown>,
+  manifest: PluginManifestFixture,
 ): Promise<void> {
   await writeJson(
     path.join(pluginRoot, ".claude-plugin", "plugin.json"),
@@ -140,7 +156,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix: "moved-plugin:",
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
     ]);
   });
@@ -263,45 +279,45 @@ describe("experimental_resolveClaudePluginRoots", () => {
       {
         path: path.join(fallbackPluginRoot, "SKILL.md"),
         ...prefixed("fallback-plugin:"),
-        shape: "skill-file",
+        [RESOLVED_ROOT_KIND_KEY]: "skill-file",
         fallbackName: "fallback-plugin",
       },
       {
         path: path.join(fallbackPluginRoot, "skills"),
         ...prefixed("fallback-plugin:"),
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
       {
         path: path.join(fallbackPluginRoot, "linked-skill", "SKILL.md"),
         ...prefixed("fallback-plugin:"),
-        shape: "skill-file",
+        [RESOLVED_ROOT_KIND_KEY]: "skill-file",
       },
       {
         path: path.join(fallbackPluginRoot, "linked-skills"),
         ...prefixed("fallback-plugin:"),
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
       {
         path: path.join(fallbackPluginRoot, "single"),
         ...prefixed("fallback-plugin:"),
-        shape: "skill",
+        [RESOLVED_ROOT_KIND_KEY]: "skill",
       },
       {
         path: path.join(tildePluginRoot, "skills"),
         ...prefixed("tilde-plugin:"),
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
     ]);
     expect(roots.commands).toEqual([
       {
         path: path.join(fallbackPluginRoot, "commands"),
         ...prefixed("fallback-plugin:"),
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
       {
         path: path.join(fallbackPluginRoot, "extra", "deploy.md"),
         ...prefixed("fallback-plugin:"),
-        shape: "command-file",
+        [RESOLVED_ROOT_KIND_KEY]: "command-file",
       },
     ]);
   });
@@ -361,19 +377,19 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(namedRoot, "commands"),
         origin: "user",
         namePrefix: "manifest-name:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
       {
         path: path.join(idRoot, "commands"),
         origin: "user",
         namePrefix: "from-id:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
       {
         path: path.join(bareRoot, "commands"),
         origin: "user",
         namePrefix: "bare-dir:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
     ]);
   });
@@ -474,7 +490,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(projectPluginRoot, "skills"),
         origin: "project",
         namePrefix: "project-plugin:",
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
     ]);
     expect(workspace.commands).toEqual([
@@ -482,7 +498,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(localPluginRoot, "commands"),
         origin: "project",
         namePrefix: "local-plugin:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
     ]);
   });
@@ -569,20 +585,20 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(userLinked, "skills"),
         origin: "user",
         namePrefix: "linked-tool:",
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
       {
         path: path.join(userTool, "SKILL.md"),
         origin: "user",
         namePrefix: "local-tool:",
-        shape: "skill-file",
+        [RESOLVED_ROOT_KIND_KEY]: "skill-file",
         fallbackName: "local-tool",
       },
       {
         path: path.join(userTool, "skills"),
         origin: "user",
         namePrefix: "local-tool:",
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
     ]);
     expect(roots.commands).toEqual([
@@ -590,7 +606,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(projectTool, "commands"),
         origin: "project",
         namePrefix: "project-tool:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
     ]);
   });
@@ -629,7 +645,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix: "dup-plugin:",
-        shape: "skills",
+        [RESOLVED_ROOT_KIND_KEY]: "skills",
       },
     ]);
     expect(roots.commands).toEqual([
@@ -637,7 +653,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
         path: path.join(pluginRoot, "commands"),
         origin: "user",
         namePrefix: "dup-plugin:",
-        shape: "commands",
+        [RESOLVED_ROOT_KIND_KEY]: "commands",
       },
     ]);
   });
@@ -680,20 +696,20 @@ describe("experimental_resolveVendorPluginRoots", () => {
           origin: "user",
           recursive: true,
           namePrefix: "tools:",
-          shape: "skills",
+          [RESOLVED_ROOT_KIND_KEY]: "skills",
         },
         {
           path: path.join(pluginRoot, "single"),
           origin: "user",
           recursive: true,
           namePrefix: "tools:",
-          shape: "skills",
+          [RESOLVED_ROOT_KIND_KEY]: "skills",
         },
         {
           path: path.join(pluginRoot, "one", "SKILL.md"),
           origin: "user",
           namePrefix: "tools:",
-          shape: "skill-file",
+          [RESOLVED_ROOT_KIND_KEY]: "skill-file",
         },
       ],
       commands: [],
@@ -726,7 +742,7 @@ describe("experimental_resolveVendorPluginRoots", () => {
           path: path.join(inner, "skills"),
           origin: "user",
           namePrefix: "outer:",
-          shape: "skills",
+          [RESOLVED_ROOT_KIND_KEY]: "skills",
         },
       ],
       commands: [
@@ -734,7 +750,7 @@ describe("experimental_resolveVendorPluginRoots", () => {
           path: path.join(inner, "commands"),
           origin: "user",
           namePrefix: "outer:",
-          shape: "commands",
+          [RESOLVED_ROOT_KIND_KEY]: "commands",
         },
       ],
     });

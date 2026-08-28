@@ -33,9 +33,9 @@ export function ServersScreen() {
 
   const activate = (profile: ServerProfile) => {
     if (profile.id === activeProfile?.id) return;
-    setActiveProfile(profile.id).catch((error: unknown) => {
+    setActiveProfile(profile.id).catch((cause: unknown) => {
       toast.error("Could not switch server", {
-        description: describeError(error),
+        description: describeError(cause),
       });
     });
   };
@@ -43,9 +43,9 @@ export function ServersScreen() {
   const remove = (profile: ServerProfile) => {
     removeProfile(profile.id)
       .then(() => toast.success(`Removed ${profile.label}`))
-      .catch((error: unknown) => {
+      .catch((cause: unknown) => {
         toast.error("Could not remove server", {
-          description: describeError(error),
+          description: describeError(cause),
         });
       });
   };

@@ -1,5 +1,10 @@
 import { Buffer } from "node:buffer";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import {
   parseProviderModelConfig,
   type ProviderModelInfo,
@@ -15,6 +20,7 @@ import {
   inferenceCompleteWithFallback,
 } from "./inference.js";
 import { Type } from "@earendil-works/pi-ai";
+import { z } from "zod";
 
 interface TranscribeVoiceInputArgs {
   file: File;
@@ -71,10 +77,8 @@ function trimPrompt(prompt: string | undefined): string | null {
 }
 
 function jsonObjectFromValue(value: OptionalJsonValue): JsonObject | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value;
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function jsonStringProperty(
@@ -83,7 +87,8 @@ function jsonStringProperty(
 ): string | null {
   const object = jsonObjectFromValue(value);
   const propertyValue = object?.[propertyName];
-  return typeof propertyValue === "string" ? propertyValue : null;
+  const parsed = z.string().safeParse(propertyValue);
+  return parsed.success ? parsed.data : null;
 }
 
 function openAiErrorMessage(payload: OptionalJsonValue): string {

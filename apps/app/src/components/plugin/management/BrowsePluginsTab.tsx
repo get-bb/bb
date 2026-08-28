@@ -41,15 +41,26 @@ import {
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { CatalogEntryIcon } from "./plugin-ui";
+import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+
+export interface BrowsePluginsTabDependencies {
+  PluginNewThreadComposer: typeof PluginNewThreadComposer;
+}
+
+const defaultBrowsePluginsTabDependencies: BrowsePluginsTabDependencies = {
+  PluginNewThreadComposer,
+};
 
 export function BrowsePluginsTab({
   onInstall,
   onOpenPlugin,
   onInstallFromSource,
+  dependencies = defaultBrowsePluginsTabDependencies,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
   onInstallFromSource: () => void;
+  dependencies?: BrowsePluginsTabDependencies;
 }) {
   const [query, setQuery] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,17 +75,14 @@ export function BrowsePluginsTab({
   const [requestedCreationView, setRequestedCreationView] =
     useState(creationViewActive);
   const [composing, setComposing] = useState(false);
-  const openComposer = (seed?: string) =>
-    setHeroRequest({
-      nonce: nextComposerRequestNonce(),
-      ...(seed === undefined ? {} : { seed }),
-    });
+  const openComposer = (seed?: string) => {
+    const nonce = nextComposerRequestNonce();
+    setHeroRequest(seed === undefined ? { nonce } : { nonce, seed });
+  };
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
-    setHeroRequest({
-      nonce: nextComposerRequestNonce(),
-      ...(creationViewActive ? {} : { close: true }),
-    });
+    const nonce = nextComposerRequestNonce();
+    setHeroRequest(creationViewActive ? { nonce } : { nonce, close: true });
   }
   useEffect(() => {
     if (heroRequest === null) return;
@@ -174,6 +182,7 @@ export function BrowsePluginsTab({
         <BrowseHeroCarousel
           openRequest={heroRequest}
           onComposingChange={setComposing}
+          dependencies={dependencies}
         />
 
         {composing ? (

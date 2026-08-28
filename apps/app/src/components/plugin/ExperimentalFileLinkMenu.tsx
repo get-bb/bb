@@ -33,12 +33,13 @@ export function ExperimentalFileLinkMenu({
 }) {
   const navigation = useAppNavigationHost();
   const resolved = useResolvedLiveFileTarget(intent.target, { enabled: true });
-  const localTargets = useLocalOpenTargets({
+  const localOpenTargetOptions: Parameters<typeof useLocalOpenTargets>[0] = {
     enabled: resolved.status === "available",
-    ...(resolved.status === "available"
-      ? { openContext: resolved.openContext }
-      : {}),
-  });
+  };
+  if (resolved.status === "available") {
+    localOpenTargetOptions.openContext = resolved.openContext;
+  }
+  const localTargets = useLocalOpenTargets(localOpenTargetOptions);
   const { fileOpeners } = usePluginSlots();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =

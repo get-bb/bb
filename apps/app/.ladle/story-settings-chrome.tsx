@@ -52,6 +52,7 @@ export function SettingsStoryChrome({
   return (
     <SidebarProvider
       className="h-screen min-h-[640px] bg-background"
+      // SAFETY: SidebarProvider accepts the string-valued CSS custom property used by the shell height styles.
       style={{ "--bb-shell-height": "100vh" } as CSSProperties}
     >
       <SettingsSidebarContent

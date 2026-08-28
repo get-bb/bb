@@ -85,6 +85,7 @@ function setup(
                 code: "thread_not_found",
               });
             }
+            // SAFETY: The fake thread result supplies the fields used by this test.
             return {
               id: threadId,
               environmentId: "environment-1",
@@ -99,6 +100,7 @@ function setup(
               code: "thread_not_found",
             });
           }
+          // SAFETY: The fake thread result supplies the fields used by this test.
           return {
             id: threadId,
             environmentId: "environment-1",
@@ -120,6 +122,7 @@ function setup(
           childCount += 1;
           const id = `child-${childCount}`;
           workers.set(id, { status: "active", output: null, deleted: false });
+          // SAFETY: The fake spawn result supplies the child thread identifier.
           return { id } as never;
         },
         send: async () => ({ ok: true }),
@@ -129,6 +132,7 @@ function setup(
             throw new Error("Host unavailable");
           }
           archived.push(threadId);
+          // SAFETY: The fake archive result matches the SDK response shape used by this test.
           return { ok: true } as never;
         },
       },
@@ -158,19 +162,22 @@ function setup(
         }),
       },
       environments: {
-        get: async () =>
-          ({
+        get: async () => {
+          // SAFETY: The fake environment result supplies the fields used by this test.
+          return {
             id: "environment-1",
             projectId: "project-test",
             hostId: "host-1",
             path: "/workspace",
-          }) as never,
+          } as never;
+        },
       },
       files: {
         read: async ({ path }) => {
           const content = files[path];
           if (content === undefined)
             throw new Error(`Missing test file ${path}`);
+          // SAFETY: The fake file result supplies the fields used by this test.
           return {
             content,
             contentEncoding: "utf8",
@@ -277,12 +284,14 @@ describe("workflow service policy integration", () => {
       settings: initial,
       sdk: {
         threads: {
-          get: async () =>
-            ({
+          get: async () => {
+            // SAFETY: The fake thread result supplies the fields used by this test.
+            return {
               id: "thread-test",
               environmentId: "environment-1",
               providerId: "codex",
-            }) as never,
+            } as never;
+          },
           defaultExecutionOptions: async () => ({
             model: "gpt-test",
             reasoningLevel: "medium",
@@ -297,6 +306,7 @@ describe("workflow service policy integration", () => {
     await plugin(bb);
     expect(harness.registrations.settingsDescriptors).not.toEqual({});
 
+    // SAFETY: The fake agent tool returns the JSON string asserted by this test.
     const first = JSON.parse(
       (await harness.callAgentTool("bb_workflow_run", {
         script: source("return null;", "settings-one"),
@@ -311,6 +321,7 @@ describe("workflow service policy integration", () => {
       maxNotificationBytes: "4096",
     };
     await harness.setSettings(next);
+    // SAFETY: The fake agent tool returns the JSON string asserted by this test.
     const second = JSON.parse(
       (await harness.callAgentTool("bb_workflow_run", {
         script: source("return null;", "settings-two"),
@@ -331,9 +342,11 @@ describe("workflow service policy integration", () => {
     );
     expect(firstStatusResult).toMatchObject({ exitCode: 0 });
     expect(secondStatusResult).toMatchObject({ exitCode: 0 });
+    // SAFETY: The status CLI fixture returns the settings object asserted below.
     const firstStatus = JSON.parse(firstStatusResult.stdout!) as {
       settings: Record<string, number>;
     };
+    // SAFETY: The status CLI fixture returns the settings object asserted below.
     const secondStatus = JSON.parse(secondStatusResult.stdout!) as {
       settings: Record<string, number>;
     };
@@ -452,20 +465,21 @@ describe("workflow service policy integration", () => {
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    const children: Record<string, string> = {
-      "/workspace/.bb/workflows/first.js": source(
-        `return await agent("first-agent");`,
-        "first",
-      ),
-      "/workspace/.bb/workflows/second.js": source(
-        `return await agent("second-agent");`,
-        "second",
-      ),
-    };
+    const children = new Map([
+      [
+        "/workspace/.bb/workflows/first.js",
+        source(`return await agent("first-agent");`, "first"),
+      ],
+      [
+        "/workspace/.bb/workflows/second.js",
+        source(`return await agent("second-agent");`, "second"),
+      ],
+    ]);
+    // SAFETY: The files.read stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("files.read", (async ({ path }: { path: string }) => {
       reads.push(path);
       if (path.endsWith("/first.js")) await firstGate;
-      const content = children[path];
+      const content = children.get(path);
       if (content === undefined) throw new Error(`missing ${path}`);
       return {
         content,
@@ -518,6 +532,7 @@ describe("workflow service policy integration", () => {
       `return await agent("inline-agent");`,
       "inline-child",
     );
+    // SAFETY: The files.read stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("files.read", (async ({ path }: { path: string }) => {
       reads.push(path);
       await missingGate;
@@ -699,12 +714,11 @@ describe("workflow service policy integration", () => {
 
       await eventually(() => {
         expect(
-          test.harness.sdk
-            .callsTo("threads.send")
-            .filter(
-              ([input]) =>
-                (input as { threadId: string }).threadId === "child-1",
-            ),
+          test.harness.sdk.callsTo("threads.send").filter(
+            ([input]) =>
+              // SAFETY: The threads.send test call contains the threadId field.
+              (input as { threadId: string }).threadId === "child-1",
+          ),
         ).toHaveLength(1);
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -755,12 +769,11 @@ describe("workflow service policy integration", () => {
 
       await eventually(() => {
         expect(
-          test.harness.sdk
-            .callsTo("threads.send")
-            .filter(
-              ([input]) =>
-                (input as { threadId: string }).threadId === "child-1",
-            ),
+          test.harness.sdk.callsTo("threads.send").filter(
+            ([input]) =>
+              // SAFETY: The threads.send test call contains the threadId field.
+              (input as { threadId: string }).threadId === "child-1",
+          ),
         ).toHaveLength(1);
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -822,11 +835,10 @@ describe("workflow service policy integration", () => {
         });
       });
       expect(
-        test.harness.sdk
-          .callsTo("threads.stop")
-          .some(
-            ([input]) => (input as { threadId: string }).threadId === "child-1",
-          ),
+        test.harness.sdk.callsTo("threads.stop").some(
+          // SAFETY: The threads.stop test call contains the threadId field.
+          ([input]) => (input as { threadId: string }).threadId === "child-1",
+        ),
       ).toBe(true);
     } finally {
       controller.abort();
@@ -943,11 +955,10 @@ describe("workflow service policy integration", () => {
       expect(getRunRequired(test.db, run.id).status).toBe("cancelled"),
     );
     expect(
-      test.harness.sdk
-        .callsTo("threads.stop")
-        .some(
-          ([input]) => (input as { threadId: string }).threadId === "child-1",
-        ),
+      test.harness.sdk.callsTo("threads.stop").some(
+        // SAFETY: The threads.stop test call contains the threadId field.
+        ([input]) => (input as { threadId: string }).threadId === "child-1",
+      ),
     ).toBe(true);
     controller.abort();
     await worker;
@@ -960,6 +971,7 @@ describe("workflow service policy integration", () => {
       test.harness.realtimeSignals.filter(
         (signal) =>
           signal.channel === "workflow-runs" &&
+          // SAFETY: The workflow signal fixture supplies the threadId payload field.
           (signal.payload as { threadId?: unknown }).threadId === threadId,
       );
     const run = await test.start(
@@ -987,6 +999,7 @@ describe("workflow service policy integration", () => {
     const catalogGate = new Promise<void>((resolve) => {
       releaseCatalog = resolve;
     });
+    // SAFETY: The providers.models stub matches the SDK callback contract used by this test.
     catalogBlocked.harness.sdk.stub("providers.models", (async () => {
       await catalogGate;
       return {
@@ -1026,6 +1039,7 @@ describe("workflow service policy integration", () => {
     const spawnGate = new Promise<{ id: string }>((resolve) => {
       releaseSpawn = resolve;
     });
+    // SAFETY: The threads.spawn stub matches the SDK callback contract used by this test.
     spawnBlocked.harness.sdk.stub("threads.spawn", (() => spawnGate) as never);
     const spawnRun = await spawnBlocked.start(
       source(`return await agent("spawn");`),
@@ -1039,12 +1053,11 @@ describe("workflow service policy integration", () => {
     releaseSpawn?.({ id: "late-child" });
     await eventually(() =>
       expect(
-        spawnBlocked.harness.sdk
-          .callsTo("threads.stop")
-          .some(
-            ([input]) =>
-              (input as { threadId: string }).threadId === "late-child",
-          ),
+        spawnBlocked.harness.sdk.callsTo("threads.stop").some(
+          // SAFETY: The threads.stop test call contains the threadId field.
+          ([input]) =>
+            (input as { threadId: string }).threadId === "late-child",
+        ),
       ).toBe(true),
     );
     expect(getCall(spawnBlocked.db, spawnRun.id, 0)).toMatchObject({
@@ -1232,6 +1245,7 @@ describe("workflow service policy integration", () => {
     const stopGate = new Promise<void>((resolve) => {
       releaseStop = resolve;
     });
+    // SAFETY: The threads.stop stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("threads.stop", (async () => {
       await stopGate;
       return { ok: true };
@@ -1249,6 +1263,7 @@ describe("workflow service policy integration", () => {
     expect(test.harness.sdk.callsTo("threads.send")).toHaveLength(0);
 
     const restarted = createWorkflowService(test.bb, test.db);
+    // SAFETY: The threads.stop stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("threads.stop", (async () => ({
       ok: true,
     })) as never);
@@ -1271,6 +1286,7 @@ describe("workflow service policy integration", () => {
     const firstAttempt = new Promise<void>((resolve) => {
       attempted = resolve;
     });
+    // SAFETY: The threads.send stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("threads.send", (() => {
       attempted?.();
       throw new Error("origin temporarily unavailable");
@@ -1291,6 +1307,7 @@ describe("workflow service policy integration", () => {
       getRunRequired(test.db, run.id).notificationNextAttemptAt,
     ).toBeGreaterThan(Date.now() - 1);
 
+    // SAFETY: The threads.send stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("threads.send", (async () => ({
       ok: true,
     })) as never);
@@ -1318,6 +1335,7 @@ describe("workflow service policy integration", () => {
   it("permanently settles a missing-origin notification", async () => {
     const test = setup();
     harnesses.push(test.harness);
+    // SAFETY: The threads.send stub matches the SDK callback contract used by this test.
     test.harness.sdk.stub("threads.send", (async () => {
       throw Object.assign(new Error("deleted"), {
         status: 404,

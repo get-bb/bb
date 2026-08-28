@@ -1,4 +1,4 @@
 declare module "cloudflare:workers" {
-  export const env: Record<string, unknown>;
-  export function waitUntil(promise: Promise<unknown>): void;
+  export const env: import("./env.js").Env;
+  export function waitUntil(promise: Promise<void>): void;
 }

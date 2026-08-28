@@ -49,6 +49,7 @@ describe("plugin component registry", () => {
     const itemNames: string[] = [];
     for (const fileName of (await readdir(registryDir)).sort()) {
       if (fileName === "index.json") continue;
+      // SAFETY: Registry fixture files follow the RegistryItem contract used by this test.
       const item = JSON.parse(
         await readFile(path.join(registryDir, fileName), "utf8"),
       ) as RegistryItem;

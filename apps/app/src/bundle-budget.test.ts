@@ -91,7 +91,20 @@ interface Fixture {
   budgetDir: string;
 }
 
-async function writeFixture(budget: unknown): Promise<Fixture> {
+interface BundleBudgetRoute {
+  maxBytes: number;
+  maxBrotliBytes: number;
+  forbiddenPackages: string[];
+}
+
+interface BundleBudget {
+  maxBootBytes: number;
+  maxBootBrotliBytes: number;
+  forbiddenBootPackages: string[];
+  routeClosures: { SplitWorkspaceRoute: BundleBudgetRoute };
+}
+
+async function writeFixture(budget: BundleBudget): Promise<Fixture> {
   const root = await mkdtemp(resolve(tmpdir(), "bb-bundle-budget-test-"));
   const distDir = resolve(root, "dist");
   await mkdir(resolve(distDir, "assets"), { recursive: true });
@@ -117,11 +130,12 @@ async function runCheck(fixture: Fixture) {
     ]);
     return { code: 0, output: stdout };
   } catch (error) {
-    const failure = error as {
-      code?: number;
-      stdout?: string;
-      stderr?: string;
-    };
+    const failure =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ error as {
+        code?: number;
+        stdout?: string;
+        stderr?: string;
+      };
     return {
       code: failure.code ?? 1,
       output: `${failure.stdout ?? ""}${failure.stderr ?? ""}`,

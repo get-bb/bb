@@ -60,14 +60,20 @@ interface SourceCodeWorkerPoolStats {
   diffCacheSize: number;
 }
 
+interface SourceViewStyle extends CSSProperties {
+  "--diffs-font-size": string;
+  "--diffs-line-height": string;
+  "--diffs-gap-block": string;
+}
+
 const SOURCE_LINE_HEIGHT_PX = 18;
 const SOURCE_GAP_BLOCK_PX = 16;
 
-const SOURCE_VIEW_STYLE = {
+const SOURCE_VIEW_STYLE: SourceViewStyle = {
   "--diffs-font-size": "12px",
   "--diffs-line-height": `${SOURCE_LINE_HEIGHT_PX}px`,
   "--diffs-gap-block": `${SOURCE_GAP_BLOCK_PX}px`,
-} as CSSProperties;
+};
 
 const SOURCE_VIRTUAL_FILE_METRICS: VirtualFileMetrics = {
   hunkLineCount: 50,
@@ -495,7 +501,7 @@ const TARGET_LINE_MAX_ATTEMPTS = 40;
 
 function SourceCodeViewport({ children }: { children: ReactNode }) {
   const [virtualizer] = useState(() =>
-    typeof window === "undefined" ? undefined : new PierreVirtualizer(),
+    globalThis.window === undefined ? undefined : new PierreVirtualizer(),
   );
   const viewportRef = useCallback(
     (node: HTMLDivElement | null) => {

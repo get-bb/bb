@@ -2,22 +2,32 @@ import {
   createBridgeProtocolAdapter,
   type BridgeProtocolAdapter,
 } from "./bridge-protocol-adapter.js";
+import type { JsonObject } from "@bb/domain";
 import { resolveBridgeWorkerProcessArgs } from "./shared/bridge-path.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 
+interface PluginStaticProviderOptions {
+  staticProviderOptions?: JsonObject;
+}
+
+interface BridgeWorkerProcessOptions {
+  bridgeBundleDir?: string;
+}
+
 function buildPluginStaticProviderOptions(
   options: CreateBridgeAdapterOptions,
-): { staticProviderOptions?: Record<string, unknown> } {
+): PluginStaticProviderOptions {
   const additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
-  const staticProviderOptions = {
+  const staticProviderOptions: JsonObject = {
     ...options.bridgeLaunch.providerOptions,
-    ...(additionalWorkspaceWriteRoots.length > 0
-      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
-      : {}),
   };
-  return Object.keys(staticProviderOptions).length > 0
-    ? { staticProviderOptions }
-    : {};
+  if (additionalWorkspaceWriteRoots.length > 0) {
+    staticProviderOptions.additionalWorkspaceWriteRoots = [
+      ...additionalWorkspaceWriteRoots,
+    ];
+  }
+  if (Object.keys(staticProviderOptions).length === 0) return {};
+  return { staticProviderOptions };
 }
 
 export function createProviderForId(
@@ -25,6 +35,10 @@ export function createProviderForId(
   adapterOptions: CreateBridgeAdapterOptions,
 ): BridgeProtocolAdapter {
   const { bridgeLaunch } = adapterOptions;
+  const bridgeWorkerOptions: BridgeWorkerProcessOptions = {};
+  if (adapterOptions.bridgeBundleDir !== undefined) {
+    bridgeWorkerOptions.bridgeBundleDir = adapterOptions.bridgeBundleDir;
+  }
   return createBridgeProtocolAdapter({
     id: providerId,
     capabilities: {
@@ -35,11 +49,7 @@ export function createProviderForId(
     process: {
       command: adapterOptions.bridgeNodeExecutablePath ?? "node",
       args: [
-        ...resolveBridgeWorkerProcessArgs({
-          ...(adapterOptions.bridgeBundleDir === undefined
-            ? {}
-            : { bridgeBundleDir: adapterOptions.bridgeBundleDir }),
-        }),
+        ...resolveBridgeWorkerProcessArgs(bridgeWorkerOptions),
         bridgeLaunch.source.artifactPath,
         bridgeLaunch.pluginId,
         bridgeLaunch.dataDir,
@@ -56,11 +66,15 @@ export function createProviderForId(
 function pickDeclaredEnv(
   env: NodeJS.ProcessEnv,
   names: readonly string[],
-): Record<string, string> {
-  const picked: Record<string, string> = {};
+): PluginEnvironment {
+  const picked: PluginEnvironment = {};
   for (const name of names) {
     const value = env[name];
     if (value !== undefined && value !== "") picked[name] = value;
   }
   return picked;
+}
+
+interface PluginEnvironment {
+  [name: string]: string;
 }

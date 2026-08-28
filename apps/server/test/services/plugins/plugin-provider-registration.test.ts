@@ -6,6 +6,14 @@ import { listSystemProviderInfos } from "../../../src/services/system/execution-
 import { resolveCreateThreadExecutionDefaults } from "../../../src/services/threads/thread-default-policy.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
+interface PluginFixtureManifest {
+  branding: { icon: string };
+  description: string;
+  host?: string;
+  name: string;
+  server: string;
+}
+
 async function writePlugin(
   dir: string,
   options: {
@@ -18,18 +26,19 @@ async function writePlugin(
   const withBridge = options.withBridge ?? true;
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
+  const bb: PluginFixtureManifest = {
+    name: "Provider fixture",
+    description: "Provider registration plugin fixture.",
+    branding: { icon: "Zap" },
+    server: "./server.ts",
+  };
+  if (withBridge) bb.host = "./bridge.ts";
   await writeFile(
     join(rootDir, "package.json"),
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: {
-        name: "Provider fixture",
-        description: "Provider registration plugin fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(withBridge ? { host: "./bridge.ts" } : {}),
-      },
+      bb,
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);

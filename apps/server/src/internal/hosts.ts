@@ -63,10 +63,12 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
         );
       }
       assertLoopbackRequest(getTrustedRemoteAddress(context));
-      const issued = await issuePersistentHostEnrollKey(deps, {
-        enrollSource: "loopback",
-        ...(payload.hostId ? { hostId: payload.hostId } : {}),
-      });
+      const enrollKeyArgs: Parameters<typeof issuePersistentHostEnrollKey>[1] =
+        {
+          enrollSource: "loopback",
+        };
+      if (payload.hostId !== undefined) enrollKeyArgs.hostId = payload.hostId;
+      const issued = await issuePersistentHostEnrollKey(deps, enrollKeyArgs);
 
       return context.json(
         {
@@ -98,12 +100,15 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       if (!enrollment) {
         throw new ApiError(401, "unauthorized", "Unauthorized");
       }
-      upsertHost(deps.db, deps.hub, {
-        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
+      const hostInput: Parameters<typeof upsertHost>[2] = {
         id: enrollment.metadata.hostId,
         name: payload.hostName,
         type: enrollment.metadata.hostType,
-      });
+      };
+      if (connectMachineId !== undefined) {
+        hostInput.connectMachineId = connectMachineId;
+      }
+      upsertHost(deps.db, deps.hub, hostInput);
 
       return context.json(
         {

@@ -30,13 +30,14 @@ interface WarningLogger {
 }
 
 function createSpawnResult(args: CreateSpawnResultArgs): ShellPathSpawnResult {
-  return {
-    ...(args.error === undefined ? {} : { error: args.error }),
+  const result: ShellPathSpawnResult = {
     signal: args.signal ?? null,
     status: args.status ?? 0,
     stderr: args.stderr ?? "",
     stdout: args.stdout ?? "",
   };
+  if (args.error !== undefined) result.error = args.error;
+  return result;
 }
 
 function createFakeSpawn(args: CreateFakeSpawnArgs): FakeSpawn {

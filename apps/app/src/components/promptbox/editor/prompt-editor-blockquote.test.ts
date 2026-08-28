@@ -28,7 +28,16 @@ const schema = getSchema([
   }),
 ]);
 
-function stateFromJson(docJson: unknown, selectionPosition: number) {
+type PromptEditorDocumentJson = {
+  type: string;
+  content?: PromptEditorDocumentJson[];
+  text?: string;
+};
+
+function stateFromJson(
+  docJson: PromptEditorDocumentJson,
+  selectionPosition: number,
+) {
   const doc = Node.fromJSON(schema, docJson);
   return EditorState.create({
     schema,

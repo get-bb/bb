@@ -4,7 +4,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { TerminalSession } from "@bb/server-contract";
 import { createElement, type ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
@@ -21,28 +21,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import * as threadTabsQuery from "@/hooks/queries/thread-tabs-query";
+import * as threadTabsSync from "@/lib/thread-tabs-sync";
 
-const syncMocks = vi.hoisted(() => ({
-  scheduleLocalThreadTabsMigration: vi.fn(),
-  scheduleThreadTabsPersistence: vi.fn(),
-  useThreadTabs: vi.fn(() => ({ data: undefined })),
-}));
-
-vi.mock("@/hooks/queries/thread-tabs-query", () => ({
-  useThreadTabs: syncMocks.useThreadTabs,
-}));
-
-vi.mock("@/lib/thread-tabs-sync", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/thread-tabs-sync")>();
-  return {
-    ...actual,
-    hasPendingThreadTabsWrite: () => false,
-    scheduleLocalThreadTabsMigration:
-      syncMocks.scheduleLocalThreadTabsMigration,
-    scheduleThreadTabsPersistence: syncMocks.scheduleThreadTabsPersistence,
-  };
-});
+const realUseThreadTabs = threadTabsQuery.useThreadTabs;
 
 type TerminalSessionOverrides = Partial<TerminalSession>;
 
@@ -83,9 +65,22 @@ afterEach(() => {
   queryClient.clear();
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
-  syncMocks.scheduleLocalThreadTabsMigration.mockClear();
-  syncMocks.scheduleThreadTabsPersistence.mockClear();
-  syncMocks.useThreadTabs.mockClear();
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.spyOn(threadTabsQuery, "useThreadTabs").mockImplementation(
+    (threadId, options) =>
+      realUseThreadTabs(threadId, { ...options, enabled: false }),
+  );
+  vi.spyOn(threadTabsSync, "hasPendingThreadTabsWrite").mockReturnValue(false);
+  vi.spyOn(
+    threadTabsSync,
+    "scheduleLocalThreadTabsMigration",
+  ).mockImplementation(() => {});
+  vi.spyOn(threadTabsSync, "scheduleThreadTabsPersistence").mockImplementation(
+    () => {},
+  );
 });
 
 describe("useThreadFileTabs terminal pruning", () => {
@@ -104,11 +99,13 @@ describe("useThreadFileTabs terminal pruning", () => {
       result.current.openTab({ kind: "new-tab" });
     });
 
-    expect(syncMocks.useThreadTabs).toHaveBeenCalledWith("", {
+    expect(threadTabsQuery.useThreadTabs).toHaveBeenCalledWith("", {
       enabled: false,
     });
-    expect(syncMocks.scheduleLocalThreadTabsMigration).not.toHaveBeenCalled();
-    expect(syncMocks.scheduleThreadTabsPersistence).not.toHaveBeenCalled();
+    expect(
+      threadTabsSync.scheduleLocalThreadTabsMigration,
+    ).not.toHaveBeenCalled();
+    expect(threadTabsSync.scheduleThreadTabsPersistence).not.toHaveBeenCalled();
   });
 
   it("drops disconnected terminal tabs when not retained", async () => {
@@ -536,12 +533,13 @@ describe("useThreadFileTabs file opener diversion", () => {
       actionId: "file-opener:editor",
       title: "todo.md",
     });
-    const params = JSON.parse(
-      result.current.activePluginPanelTab?.paramsJson ?? "null",
-    ) as {
-      path: string;
-      source: { kind: string; environmentId: string | null };
-    };
+    const params =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ JSON.parse(
+        result.current.activePluginPanelTab?.paramsJson ?? "null",
+      ) as {
+        path: string;
+        source: { kind: string; environmentId: string | null };
+      };
     expect(params.path).toBe("notes/todo.md");
     expect(params.source).toMatchObject({
       kind: "workspace",
@@ -710,12 +708,13 @@ describe("useThreadFileTabs file opener diversion", () => {
       actionId: "file-opener:editor",
       title: "todo.md",
     });
-    const params = JSON.parse(
-      result.current.activePluginPanelTab?.paramsJson ?? "null",
-    ) as {
-      path: string;
-      source: { kind: string; environmentId: string | null };
-    };
+    const params =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ JSON.parse(
+        result.current.activePluginPanelTab?.paramsJson ?? "null",
+      ) as {
+        path: string;
+        source: { kind: string; environmentId: string | null };
+      };
     expect(params.path).toBe("notes/todo.md");
     expect(params.source).toMatchObject({
       kind: "workspace",

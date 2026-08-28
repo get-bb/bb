@@ -1,5 +1,7 @@
+import type { JsonValue } from "@bb/domain";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
@@ -21,7 +23,9 @@ const READ_RESULT = {
   sizeBytes: 4,
 } as const;
 
-function postJson(path: string, body: unknown): [string, RequestInit] {
+const filePreviewLeaseSchema = z.object({ baseUrl: z.string() });
+
+function postJson(path: string, body: JsonValue): [string, RequestInit] {
   return [
     path,
     {
@@ -111,19 +115,10 @@ describe("host file routes", () => {
         ...postJson("/api/v1/files/previews", { rootPath: "/notes" }),
       );
       expect(leaseResponse.status).toBe(200);
-      const lease = await readJson(leaseResponse);
+      const lease = filePreviewLeaseSchema.parse(await readJson(leaseResponse));
       expect(lease).toMatchObject({
         baseUrl: expect.stringMatching(/^\/api\/v1\/file-previews\//),
       });
-      if (
-        typeof lease !== "object" ||
-        lease === null ||
-        !("baseUrl" in lease) ||
-        typeof lease.baseUrl !== "string"
-      ) {
-        throw new Error("Preview response missing baseUrl");
-      }
-
       const content = await harness.app.request(`${lease.baseUrl}/report.html`);
       expect(content.status).toBe(200);
       expect(content.headers.get("content-security-policy")).toBe(

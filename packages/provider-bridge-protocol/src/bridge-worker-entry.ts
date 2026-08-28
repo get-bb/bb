@@ -54,11 +54,13 @@ if (recorder !== null) {
   const outbound = createRecordingLineSplitter((line) =>
     recorder.recordRuntimeLine("bridge→runtime", line),
   );
+  // SAFETY: The wrapper preserves the process.stdout.write signature and forwards every argument.
   process.stdout.write = ((
     chunk: string | Uint8Array,
     ...rest: unknown[]
   ): boolean => {
     outbound.push(chunk);
+    // SAFETY: originalStdoutWrite is the bound process.stdout.write function.
     return (originalStdoutWrite as (...args: unknown[]) => boolean)(
       chunk,
       ...rest,
@@ -69,11 +71,9 @@ if (recorder !== null) {
 
 let entry: ProviderBridgeEntry;
 try {
-  const imported: unknown = await import(pathToFileURL(bridgeModulePath).href);
+  const imported = await import(pathToFileURL(bridgeModulePath).href);
   const parsed = parseProviderBridgeEntry(
-    typeof imported === "object" && imported !== null
-      ? Reflect.get(imported, PROVIDER_BRIDGE_EXPORT_NAME)
-      : undefined,
+    imported[PROVIDER_BRIDGE_EXPORT_NAME],
   );
   if (parsed.entry === null) {
     fail(

@@ -1,3 +1,5 @@
+import type { JsonObject } from "@bb/domain";
+import { z } from "zod";
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
@@ -400,7 +402,9 @@ function getCommandTokenIndex(tokens: readonly ShellToken[]): number {
   return index;
 }
 
-function segmentHasWriteShape(argTokens: readonly ShellToken[]): boolean {
+function segmentContainsWriteRedirect(
+  argTokens: readonly ShellToken[],
+): boolean {
   let i = 0;
   while (i < argTokens.length) {
     const redir = scanRedirectAt(argTokens, i);
@@ -462,7 +466,7 @@ function classifyShellSegment(
   ) {
     return { kind: "write" };
   }
-  if (segmentHasWriteShape(argTokens)) return { kind: "write" };
+  if (segmentContainsWriteRedirect(argTokens)) return { kind: "write" };
 
   switch (commandName) {
     case "rg":
@@ -561,14 +565,17 @@ export function parseShellCommandIntents(
 
 export function formatToolCallCommand(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): string {
   if (!args) return toolName;
   const entries = Object.entries(args).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return toolName;
   const compact = entries
     .map(([k, v]) => {
-      const vs = typeof v === "string" ? v.trim() : JSON.stringify(v);
+      const stringValue = z.string().safeParse(v);
+      const vs = stringValue.success
+        ? stringValue.data.trim()
+        : JSON.stringify(v);
       const display = vs.length > 40 ? `${vs.slice(0, 37)}...` : vs;
       return `${k}: ${display}`;
     })

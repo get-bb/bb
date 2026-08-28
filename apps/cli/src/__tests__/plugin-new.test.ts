@@ -53,10 +53,10 @@ describe.sequential("bb plugin new dependency install", () => {
     vi.stubEnv("NODE_ENV", "production");
     logged = [];
     warned = [];
-    vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+    vi.spyOn(console, "log").mockImplementation((line: string) => {
       logged.push(String(line));
     });
-    vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
+    vi.spyOn(console, "warn").mockImplementation((line: string) => {
       warned.push(String(line));
     });
   });

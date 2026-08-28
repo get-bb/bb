@@ -130,14 +130,19 @@ function PluginThreadChatBody({
     () =>
       messageActions === undefined || messageActions.length === 0
         ? undefined
-        : messageActions.map((action) => ({
-            id: action.id,
-            pluginId: action.icon !== undefined ? null : pluginId,
-            icon: action.icon ?? null,
-            label: action.title,
-            ...(action.roles !== undefined ? { roles: action.roles } : {}),
-            run: action.run,
-          })),
+        : messageActions.map((action) => {
+            const entry = {
+              id: action.id,
+              pluginId: action.icon !== undefined ? null : pluginId,
+              icon: action.icon ?? null,
+              label: action.title,
+              run: action.run,
+            };
+            if (action.roles !== undefined) {
+              return { ...entry, roles: action.roles };
+            }
+            return entry;
+          }),
     [messageActions, pluginId],
   );
 

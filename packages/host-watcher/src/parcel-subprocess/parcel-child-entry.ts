@@ -12,6 +12,7 @@ const handler = createParcelChildHandler({
 });
 
 process.on("message", (message) => {
+  /* SAFETY: The fork channel sends only ParentToChildMessage values from the parent watcher. */
   handler.handleMessage(message as ParentToChildMessage);
 });
 

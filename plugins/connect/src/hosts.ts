@@ -12,6 +12,7 @@ const threadEnvironmentSchema = z.object({
     .nullable()
     .optional(),
 });
+const notFoundErrorSchema = z.object({ status: z.literal(404) }).passthrough();
 
 export interface ShareHost {
   id: string;
@@ -24,15 +25,6 @@ export class ShareHostNotFoundError extends Error {
     super(`host ${hostId} not found`);
     this.name = "ShareHostNotFoundError";
   }
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    error.status === 404
-  );
 }
 
 export class ShareHostResolver {
@@ -61,7 +53,9 @@ export class ShareHostResolver {
         await this.getSdk().hosts.get({ hostId: normalized }),
       );
     } catch (error) {
-      if (isNotFoundError(error)) throw new ShareHostNotFoundError(normalized);
+      if (notFoundErrorSchema.safeParse(error).success) {
+        throw new ShareHostNotFoundError(normalized);
+      }
       throw error;
     }
     const server = knownServerHost ? null : await this.serverHost();

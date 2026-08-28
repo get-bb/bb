@@ -3,10 +3,12 @@ import {
   type PermissionEscalation,
   type ReasoningLevel,
   type RuntimePermissionScope,
+  jsonValueSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import type {
@@ -14,6 +16,8 @@ import type {
   ClaudeSdkReasoningEffort,
   SdkSessionOptions,
 } from "./sdk-session.js";
+
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
 export interface BuildSessionOptionsArgs {
   additionalWorkspaceWriteRoots?: readonly string[];
@@ -87,14 +91,15 @@ export function buildMutableFlagSettings(args: {
   reasoningLevel: ReasoningLevel | undefined;
   workflowsEnabled: boolean;
 }): ClaudeMutableFlagSettings {
-  return {
+  const settings: ClaudeMutableFlagSettings = {
     autoMemoryEnabled: args.memoryEnabled,
     enableWorkflows: args.workflowsEnabled,
-    ...(args.reasoningLevel !== undefined
-      ? { effortLevel: toSdkEffort(args.reasoningLevel) }
-      : {}),
     ultracode: args.reasoningLevel === "ultracode",
   };
+  if (args.reasoningLevel !== undefined) {
+    settings.effortLevel = toSdkEffort(args.reasoningLevel);
+  }
+  return settings;
 }
 
 export function buildReadonlyDenialMessage(): string {
@@ -129,9 +134,10 @@ function buildReadonlyHooks(
               return { continue: true };
             }
             if (input.tool_name === READONLY_BASH_TOOL_NAME) {
-              const updatedInput = buildReadonlyBashUpdatedInput(
-                input.tool_input,
-              );
+              const toolInput = jsonObjectSchema.safeParse(input.tool_input);
+              const updatedInput = toolInput.success
+                ? buildReadonlyBashUpdatedInput(toolInput.data)
+                : null;
               if (updatedInput) {
                 return {
                   continue: true,
@@ -144,18 +150,17 @@ function buildReadonlyHooks(
               }
             }
 
+            const workContext: PermissionEscalationWorkContext = {
+              toolUseId: input.tool_use_id,
+            };
+            if (input.agent_id !== undefined) {
+              workContext.agentId = input.agent_id;
+            }
+            if (input.prompt_id !== undefined) {
+              workContext.promptId = input.prompt_id;
+            }
             const permissionDecision =
-              getPermissionEscalation({
-                ...(input.agent_id !== undefined
-                  ? { agentId: input.agent_id }
-                  : {}),
-                ...(input.prompt_id !== undefined
-                  ? { promptId: input.prompt_id }
-                  : {}),
-                toolUseId: input.tool_use_id,
-              }) === "deny"
-                ? "deny"
-                : "ask";
+              getPermissionEscalation(workContext) === "deny" ? "deny" : "ask";
             return {
               continue: true,
               hookSpecificOutput: {
@@ -190,16 +195,17 @@ function buildWorkspaceWriteSandbox(
   }
 
   const allowWrite = params.additionalWorkspaceWriteRoots ?? [];
-  return {
+  const sandbox: NonNullable<Options["sandbox"]> = {
     enabled: true,
     failIfUnavailable: false,
     autoAllowBashIfSandboxed: true,
     allowUnsandboxedCommands: true,
     network: { allowLocalBinding: true },
-    ...(allowWrite.length > 0
-      ? { filesystem: { allowWrite: [...allowWrite] } }
-      : {}),
   };
+  if (allowWrite.length > 0) {
+    sandbox.filesystem = { allowWrite: [...allowWrite] };
+  }
+  return sandbox;
 }
 
 function isExecutableFile(candidatePath: string): boolean {
@@ -284,16 +290,26 @@ export function buildSessionOptions(
   params: BuildSessionOptionsArgs,
   env: NodeJS.ProcessEnv,
 ): SdkSessionOptions {
-  const systemPrompt: Exclude<Options["systemPrompt"], undefined> =
-    params.instructionMode === "replace"
-      ? (params.baseInstructions ?? "You are a helpful coding assistant.")
-      : {
-          type: "preset",
-          preset: "claude_code",
-          ...(params.baseInstructions && params.baseInstructions.length > 0
-            ? { append: params.baseInstructions }
-            : {}),
-        };
+  let systemPrompt: Exclude<Options["systemPrompt"], undefined>;
+  if (params.instructionMode === "replace") {
+    systemPrompt =
+      params.baseInstructions ?? "You are a helpful coding assistant.";
+  } else {
+    const presetPrompt: Extract<
+      Exclude<Options["systemPrompt"], undefined>,
+      { type: "preset" }
+    > = {
+      type: "preset",
+      preset: "claude_code",
+    };
+    if (
+      params.baseInstructions !== undefined &&
+      params.baseInstructions.length > 0
+    ) {
+      presetPrompt.append = params.baseInstructions;
+    }
+    systemPrompt = presetPrompt;
+  }
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
   const hooks = buildReadonlyHooks(params);
@@ -303,28 +319,35 @@ export function buildSessionOptions(
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
 
-  return {
+  const options: SdkSessionOptions = {
     cwd: params.cwd,
     systemPrompt,
     model,
     env,
     permissionMode: params.permissionMode,
-    ...(params.reasoningLevel
-      ? { effort: toSdkEffort(params.reasoningLevel) }
-      : {}),
-    ...(params.reasoningLevel
-      ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
-      : {}),
     settings: flagSettings,
-    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
-    ...(params.plugins ? { plugins: params.plugins } : {}),
-    ...(sandbox ? { sandbox } : {}),
-    ...(hooks ? { hooks } : {}),
-    ...(additionalDirectories.length > 0
-      ? { additionalDirectories: [...additionalDirectories] }
-      : {}),
-    ...(params.disallowedTools && params.disallowedTools.length > 0
-      ? { disallowedTools: [...params.disallowedTools] }
-      : {}),
   };
+  if (params.reasoningLevel) {
+    options.effort = toSdkEffort(params.reasoningLevel);
+    options.thinking = SUMMARIZED_ADAPTIVE_THINKING;
+  }
+  if (pathToClaudeCodeExecutable) {
+    options.pathToClaudeCodeExecutable = pathToClaudeCodeExecutable;
+  }
+  if (params.plugins) {
+    options.plugins = params.plugins;
+  }
+  if (sandbox) {
+    options.sandbox = sandbox;
+  }
+  if (hooks) {
+    options.hooks = hooks;
+  }
+  if (additionalDirectories.length > 0) {
+    options.additionalDirectories = [...additionalDirectories];
+  }
+  if (params.disallowedTools && params.disallowedTools.length > 0) {
+    options.disallowedTools = [...params.disallowedTools];
+  }
+  return options;
 }

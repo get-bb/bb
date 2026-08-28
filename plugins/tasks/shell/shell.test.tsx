@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { Task, TaskStatus } from "../shared/contract.js";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -58,7 +60,9 @@ const folder = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function seededRpc(overrides: Record<string, unknown> = {}) {
+type RpcOverride = (input: JsonValue) => JsonValue | Promise<JsonValue>;
+
+function seededRpc(overrides: Record<string, RpcOverride> = {}) {
   return {
     listProjects: () => ({ projects: [project] }),
     listFolders: () => ({ folders: [folder] }),
@@ -176,7 +180,7 @@ describe("project view preference", () => {
   });
 });
 
-function pagerTask(key: string, status: string, position: number) {
+function pagerTask(key: string, status: TaskStatus, position: number): Task {
   return {
     id: `01HZZZZZZZZZZZZZZZZZZZZ${key.replace("-", "")}`,
     projectId: PROJECT_ID,
@@ -191,7 +195,7 @@ function pagerTask(key: string, status: string, position: number) {
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
     labelIds: [],
-  } as never;
+  };
 }
 
 describe("task pager", () => {
@@ -410,9 +414,9 @@ describe("tasks app shell", () => {
     const initialProjectCalls = listProjectCalls;
 
     holdProjects = true;
-    const refresh = page.getByRole("button", {
+    const refresh = page.getByRole<HTMLButtonElement>("button", {
       name: "Refresh tasks",
-    }) as HTMLButtonElement;
+    });
     fireEvent.click(refresh);
 
     await waitFor(() =>
@@ -521,9 +525,9 @@ describe("tasks app shell", () => {
     const baselineCalls = listTasksCalls;
     expect(baselineCalls).toBeGreaterThan(0);
 
-    const refresh = slot.getByRole("button", {
+    const refresh = slot.getByRole<HTMLButtonElement>("button", {
       name: "Refresh tasks",
-    }) as HTMLButtonElement;
+    });
     const idleClassName = refresh.className;
     expect(idleClassName).toMatch(/size-7/);
     expect(refresh.getAttribute("aria-busy")).not.toBe("true");
@@ -558,11 +562,9 @@ describe("tasks app shell", () => {
     await slot.findByText("Flight title B");
     await waitFor(() => {
       expect(
-        (
-          slot.getByRole("button", {
-            name: "Refresh tasks",
-          }) as HTMLButtonElement
-        ).disabled,
+        slot.getByRole<HTMLButtonElement>("button", {
+          name: "Refresh tasks",
+        }).disabled,
       ).toBe(false);
     });
 
@@ -574,14 +576,14 @@ describe("tasks app shell", () => {
     releaseAllPending();
     await slot.findByText("Flight title C");
     await waitFor(() => {
-      const button = slot.getByRole("button", {
+      const button = slot.getByRole<HTMLButtonElement>("button", {
         name: "Refresh tasks",
-      }) as HTMLButtonElement;
+      });
       expect(button.disabled).toBe(false);
       expect(button.getAttribute("aria-busy")).not.toBe("true");
     });
     expect(
-      (slot.getByRole("button", { name: "Refresh tasks" }) as HTMLButtonElement)
+      slot.getByRole<HTMLButtonElement>("button", { name: "Refresh tasks" })
         .className,
     ).toMatch(/size-7/);
   });
@@ -618,11 +620,9 @@ describe("tasks app shell", () => {
     await waitFor(() => expect(slot.getByText("Stable title")).toBeDefined());
     await waitFor(() => {
       expect(
-        (
-          slot.getByRole("button", {
-            name: "Refresh tasks",
-          }) as HTMLButtonElement
-        ).disabled,
+        slot.getByRole<HTMLButtonElement>("button", {
+          name: "Refresh tasks",
+        }).disabled,
       ).toBe(false);
     });
     expect(slot.getByText("Stable title")).toBeDefined();

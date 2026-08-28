@@ -23,11 +23,14 @@ export type AcpAgentProbe =
     }
   | { reachable: false; reason: string };
 
-function describe(error: unknown): string {
+const errorSchema = z.instanceof(Error);
+
+function describe<T>(error: T): string {
   if (error instanceof AcpAgentExitedError) {
     return `the agent exited before it answered initialize: ${error.message}`;
   }
-  return error instanceof Error ? error.message : String(error);
+  const parsed = errorSchema.safeParse(error);
+  return parsed.success ? parsed.data.message : String(error);
 }
 
 export async function probeAcpAgent(

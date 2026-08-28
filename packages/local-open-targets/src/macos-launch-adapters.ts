@@ -120,8 +120,13 @@ const LEGACY_WINDSURF_EXECUTABLE: MacCommandExecutableAdapter = {
 function jetBrainsToolbox(
   executable: string,
   ...bundlePrefixes: string[]
-): { bundlePrefixes: string[]; executable: string } {
+): MacJetBrainsToolboxDefinition {
   return { bundlePrefixes, executable };
+}
+
+interface MacJetBrainsToolboxDefinition {
+  bundlePrefixes: string[];
+  executable: string;
 }
 
 export const LAUNCH_ADAPTERS: LaunchAdapter[] = [

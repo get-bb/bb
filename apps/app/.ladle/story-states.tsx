@@ -1,5 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 
+type StoryStyle = CSSProperties & { "--story-doc-width": string };
+
+const storyStyle: StoryStyle = { "--story-doc-width": "232px" };
+
 export function StoryStates({
   title,
   description,
@@ -16,7 +20,7 @@ export function StoryStates({
   return (
     <main
       className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "232px" } as CSSProperties}
+      style={storyStyle}
     >
       <header>
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>

@@ -13,35 +13,32 @@ import type {
 } from "@/hooks/useUpdateInventory";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
+import * as updateInventoryModule from "@/hooks/useUpdateInventory";
+import { sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
+import { makeProviderInfo as provider } from "@/test/provider-info-fixture";
 
-const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/hooks/useUpdateInventory", () => ({
-  useUpdateInventory: useUpdateInventoryMock,
-}));
-
-vi.mock("@/lib/sdk", async () => {
-  const { makeProviderInfo: provider } =
-    await import("@/test/provider-info-fixture");
-  return {
-    sdk: {
-      providers: {
-        list: vi.fn(async () => [
-          provider({ id: "claude-code", displayName: "Claude Code" }),
-          provider({ id: "codex", displayName: "Codex" }),
-        ]),
-      },
-    },
-  };
-});
-
-vi.mock("@/lib/ws", () => ({
-  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
+const useUpdateInventoryMock = vi.spyOn(
+  updateInventoryModule,
+  "useUpdateInventory",
+);
+const providersList = vi
+  .spyOn(sdk.providers, "list")
+  .mockResolvedValue([
+    provider({ id: "claude-code", displayName: "Claude Code" }),
+    provider({ id: "codex", displayName: "Codex" }),
+  ]);
+const subscribe = vi.spyOn(wsManager, "subscribe").mockImplementation(() => {});
+const unsubscribe = vi
+  .spyOn(wsManager, "unsubscribe")
+  .mockImplementation(() => {});
 
 afterEach(() => {
   cleanup();
   useUpdateInventoryMock.mockReset();
+  providersList.mockClear();
+  subscribe.mockClear();
+  unsubscribe.mockClear();
 });
 
 function providerIssue(
@@ -131,7 +128,7 @@ function machine(
 }
 
 function renderBadge(inventory: Partial<UpdateInventory>) {
-  useUpdateInventoryMock.mockReturnValue({
+  const updateInventory: UpdateInventory = {
     isLoading: false,
     systemVersion: undefined,
     desktopInfo: null,
@@ -141,7 +138,10 @@ function renderBadge(inventory: Partial<UpdateInventory>) {
     actionableCount: 0,
     hasAttention: false,
     ...inventory,
-  });
+    pluginAttentionCount: inventory.pluginAttentionCount ?? 0,
+    lastCheckedAt: inventory.lastCheckedAt ?? null,
+  };
+  useUpdateInventoryMock.mockReturnValue(updateInventory);
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>

@@ -8,6 +8,11 @@ import { TasksEditor } from "./tasks-editor.js";
 
 afterEach(cleanup);
 
+interface TaskMentionAttrs {
+  key: string;
+  label: string;
+}
+
 function mockPointerCoarse(matches: boolean): () => void {
   const original = window.matchMedia;
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -39,7 +44,7 @@ function roundTrip(markdown: string): string {
     content: markdown,
   });
   try {
-    return editor.storage.markdown.getMarkdown() as string;
+    return editor.storage.markdown.getMarkdown();
   } finally {
     editor.destroy();
   }
@@ -144,10 +149,12 @@ describe("mention extension", () => {
       content: "Ping [TSK-42](bbtask://TSK-42) today.",
     });
     const findMentions = () => {
-      const found: Array<Record<string, unknown>> = [];
+      const found: TaskMentionAttrs[] = [];
       editor.state.doc.descendants((node) => {
-        if (node.type.name === "taskMention")
-          found.push(node.attrs as Record<string, unknown>);
+        if (node.type.name === "taskMention") {
+          // SAFETY: The taskMention node schema defines string key and label attributes.
+          found.push(node.attrs as TaskMentionAttrs);
+        }
       });
       return found;
     };
@@ -455,36 +462,38 @@ describe("TasksEditor component", () => {
     );
     const { handlePaste, handleDrop } = editor!.options.editorProps;
     const file = new File(["png"], "shot.png", { type: "image/png" });
+    // SAFETY: The editor callback contract accepts null for the absent parsed slice in this test.
+    const noSlice = null as never;
 
-    const pasteEvent = {
-      clipboardData: { files: [file] },
-    } as unknown as ClipboardEvent;
+    // SAFETY: The handler reads only clipboardData.files from this synthetic paste event.
+    const pasteEvent = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: { files: [file] },
+    });
+    // SAFETY: The handler reads only clipboardData.files from this synthetic paste event.
+    const textPaste = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(textPaste, "clipboardData", {
+      value: { files: [] },
+    });
     expect(
-      handlePaste!.call(editor!.view, editor!.view, pasteEvent, null as never),
+      handlePaste!.call(editor!.view, editor!.view, pasteEvent, noSlice),
     ).toBe(true);
     expect(onAttachFiles).toHaveBeenCalledWith([file]);
     expect(onUploadImage).not.toHaveBeenCalled();
 
-    const textPaste = {
-      clipboardData: { files: [] },
-    } as unknown as ClipboardEvent;
     expect(
-      handlePaste!.call(editor!.view, editor!.view, textPaste, null as never),
+      handlePaste!.call(editor!.view, editor!.view, textPaste, noSlice),
     ).toBe(false);
 
     const preventDefault = vi.fn();
-    const dropEvent = {
-      dataTransfer: { files: [file] },
-      preventDefault,
-    } as unknown as DragEvent;
+    // SAFETY: The handler reads only dataTransfer.files and preventDefault from this synthetic drop event.
+    const dropEvent = new Event("drop") as DragEvent;
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: { files: [file] },
+    });
+    vi.spyOn(dropEvent, "preventDefault").mockImplementation(preventDefault);
     expect(
-      handleDrop!.call(
-        editor!.view,
-        editor!.view,
-        dropEvent,
-        null as never,
-        false,
-      ),
+      handleDrop!.call(editor!.view, editor!.view, dropEvent, noSlice, false),
     ).toBe(true);
     expect(preventDefault).toHaveBeenCalled();
     expect(onAttachFiles).toHaveBeenCalledTimes(2);
@@ -511,7 +520,7 @@ describe("TasksEditor component", () => {
     );
     editor!.chain().focus("end").insertContent("caption").run();
     await waitFor(() => {
-      const markdown = editor!.storage.markdown.getMarkdown() as string;
+      const markdown = editor!.storage.markdown.getMarkdown();
       expect(markdown).toContain("![shot](https://example.com/a.png)");
       expect(markdown).toContain("caption");
     });

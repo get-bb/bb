@@ -1,43 +1,9 @@
 import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  fetchHostStatus: vi.fn(),
-  fetchSystemConfig: vi.fn(async () => ({
-    ok: true,
-    json: async () => ({
-      hostDaemonPort: 38_887,
-      localHelperPorts: [38_887, 38_888],
-    }),
-  })),
-}));
-
-vi.mock("./api-server", () => ({
-  apiClient: {
-    system: {
-      config: {
-        $get: mocks.fetchSystemConfig,
-      },
-    },
-  },
-}));
-
-vi.mock("./api-host-daemon", () => ({
-  fetchHostStatus: mocks.fetchHostStatus,
-  fetchWorkspaceOpenTargets: vi.fn(async () => []),
-}));
-
-vi.mock("./bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
-
-vi.mock("./ws", () => ({
-  wsManager: {
-    onChanged: () => () => {},
-    onConnected: () => () => {},
-  },
-}));
-
+import * as apiHostDaemon from "./api-host-daemon";
+import * as bbDesktop from "./bb-desktop";
+import * as ws from "./ws";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   hostDaemonPortAtom,
   localHostDaemonAccessStateAtom,
@@ -45,8 +11,27 @@ import {
   requestLocalHostDaemonAccessAtom,
 } from "./system-config-atoms";
 
+const fetchHostStatus = vi.spyOn(apiHostDaemon, "fetchHostStatus");
+const fetchSystemConfig = vi.fn();
+const fetchWorkspaceOpenTargets = vi
+  .spyOn(apiHostDaemon, "fetchWorkspaceOpenTargets")
+  .mockResolvedValue([]);
+vi.spyOn(bbDesktop, "getBbDesktopInfo").mockReturnValue(null);
+vi.spyOn(ws.wsManager, "onChanged").mockReturnValue(() => {});
+vi.spyOn(ws.wsManager, "onConnected").mockReturnValue(() => {});
+
 beforeEach(() => {
-  mocks.fetchHostStatus.mockReset();
+  fetchHostStatus.mockReset();
+  fetchSystemConfig.mockImplementation(async () => ({
+    ok: true,
+    json: async () =>
+      makeSystemConfig({
+        hostDaemonPort: 38_887,
+        localHelperPorts: [38_887, 38_888],
+      }),
+  }));
+  fetchWorkspaceOpenTargets.mockResolvedValue([]);
+  vi.stubGlobal("fetch", fetchSystemConfig);
   vi.stubGlobal("window", {
     location: {
       hostname: "remote.getbb.app",
@@ -63,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -74,17 +60,17 @@ describe("local host daemon access atoms", () => {
       "permission-required",
     );
     await expect(store.get(localHostStatusAtom)).resolves.toBeNull();
-    expect(mocks.fetchHostStatus).not.toHaveBeenCalled();
+    expect(fetchHostStatus).not.toHaveBeenCalled();
   });
 
   it("probes every advertised helper port when access is explicitly requested", async () => {
-    mocks.fetchHostStatus.mockResolvedValue(null);
+    fetchHostStatus.mockResolvedValue(null);
     const store = createStore();
 
     await expect(store.set(requestLocalHostDaemonAccessAtom)).resolves.toBe(
       false,
     );
-    expect(mocks.fetchHostStatus.mock.calls).toEqual([[38_887], [38_888]]);
+    expect(fetchHostStatus.mock.calls).toEqual([[38_887], [38_888]]);
   });
 
   it("keeps successful explicit access when permission queries are unsupported", async () => {
@@ -96,10 +82,13 @@ describe("local host daemon access atoms", () => {
       },
       userAgent: "test",
     });
-    mocks.fetchHostStatus.mockResolvedValue({
+    fetchHostStatus.mockResolvedValue({
       connected: true,
       hostId: "host-local",
+      protocolVersion: 1,
       serverUrl: "https://remote.getbb.app",
+      supportsNativeFolderPicker: false,
+      platform: "unknown",
     });
     const store = createStore();
 
@@ -115,11 +104,14 @@ describe("local host daemon access atoms", () => {
   });
 
   it("prefers the helper enrolled with the server serving the browser", async () => {
-    mocks.fetchHostStatus.mockImplementation(async (port: number) => ({
+    fetchHostStatus.mockImplementation(async (port: number) => ({
       connected: true,
       hostId: port === 38_888 ? "host-browser-machine" : "host-primary",
+      protocolVersion: 1,
       serverUrl:
         port === 38_888 ? "https://remote.getbb.app" : "http://127.0.0.1:38886",
+      supportsNativeFolderPicker: false,
+      platform: "unknown",
     }));
     const store = createStore();
 
@@ -140,20 +132,20 @@ describe("local host daemon access atoms", () => {
       },
       userAgent: "test",
     });
-    mocks.fetchHostStatus.mockResolvedValue(null);
+    fetchHostStatus.mockResolvedValue(null);
     const store = createStore();
 
     const status = store.get(localHostStatusAtom);
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(2);
+    expect(fetchHostStatus).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(999);
-    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(2);
+    expect(fetchHostStatus).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
-    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(4);
+    expect(fetchHostStatus).toHaveBeenCalledTimes(4);
 
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(status).resolves.toBeNull();
-    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(6);
+    expect(fetchHostStatus).toHaveBeenCalledTimes(6);
   });
 });

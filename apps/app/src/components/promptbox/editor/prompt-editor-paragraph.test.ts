@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSchema } from "@tiptap/core";
+import { getSchema, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
@@ -30,7 +30,7 @@ const editorContext = {
   extensionManager: { attributes: [], splittableMarks: [] },
 };
 
-function stateFromJson(docJson: unknown, selectionPosition: number) {
+function stateFromJson(docJson: JSONContent, selectionPosition: number) {
   const doc = Node.fromJSON(schema, docJson);
   return EditorState.create({
     schema,

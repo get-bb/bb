@@ -22,7 +22,7 @@ import type {
   ProviderServerCapabilities,
 } from "./provider-registry.js";
 
-const REASONING_LEVEL_LABELS: Readonly<Record<string, string>> = {
+const REASONING_LEVEL_LABELS = {
   none: "None",
   low: "Low",
   medium: "Medium",
@@ -31,7 +31,7 @@ const REASONING_LEVEL_LABELS: Readonly<Record<string, string>> = {
   ultracode: "Ultracode",
   max: "Max",
   ultra: "Ultra",
-};
+} satisfies Readonly<Record<string, string>>;
 
 const DEFAULT_SERVICE_TIERS: readonly ProviderOptionDescriptor[] = [
   { id: "default", label: "Default" },
@@ -41,13 +41,16 @@ const DEFAULT_SERVICE_TIERS: readonly ProviderOptionDescriptor[] = [
 function toOptionDescriptors(
   declared: readonly PluginProviderOptionDescriptor[],
 ): ProviderOptionDescriptor[] {
-  return declared.map((option) => ({
-    id: option.id,
-    label: option.label,
-    ...(option.description === undefined
-      ? {}
-      : { description: option.description }),
-  }));
+  return declared.map((option) => {
+    const descriptor: ProviderOptionDescriptor = {
+      id: option.id,
+      label: option.label,
+    };
+    if (option.description !== undefined) {
+      descriptor.description = option.description;
+    }
+    return descriptor;
+  });
 }
 
 function projectReasoningLevels(
@@ -150,7 +153,6 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     pluginId: args.pluginId,
     displayName: declaration.displayName,
-    ...(declaration.family === undefined ? {} : { family: declaration.family }),
     available: args.available,
     maintenance: { ...declaration.maintenance },
     logoUrl:
@@ -159,11 +161,6 @@ export function buildPluginProviderRegistration(args: {
         isNamespacedGlyph(declaration.icon))
         ? `/api/v1/system/providers/${declaration.id}/logo`
         : null,
-    ...(declaration.icon !== undefined &&
-    !isPluginOwnedIconPath(declaration.icon) &&
-    !isNamespacedGlyph(declaration.icon)
-      ? { icon: { glyph: declaration.icon } }
-      : {}),
     capabilities: {
       supportsThreadArchive,
       supportsThreadRename,
@@ -175,28 +172,42 @@ export function buildPluginProviderRegistration(args: {
       modelCatalogScope: declaration.models.scope,
     },
     composerActions,
-    ...(strings === undefined
-      ? {}
-      : {
-          strings: {
-            signInHint: strings.signInHint,
-            expiredHint: strings.expiredHint,
-            installUrl: strings.installUrl,
-            ...(strings.brandPrefix === undefined
-              ? {}
-              : { brandPrefix: strings.brandPrefix }),
-            ...(strings.planModeCopy === undefined
-              ? {}
-              : { planModeCopy: strings.planModeCopy }),
-            ...(strings.iconTint === undefined
-              ? {}
-              : { iconTint: { ...strings.iconTint } }),
-          },
-        }),
     reasoningLevels: projectReasoningLevels(declaration),
-    ...(serviceTiers === undefined ? {} : { serviceTiers }),
-    ...(extensionKinds === undefined ? {} : { extensionKinds }),
   };
+
+  if (declaration.family !== undefined) {
+    info.family = declaration.family;
+  }
+  if (
+    declaration.icon !== undefined &&
+    !isPluginOwnedIconPath(declaration.icon) &&
+    !isNamespacedGlyph(declaration.icon)
+  ) {
+    info.icon = { glyph: declaration.icon };
+  }
+  if (strings !== undefined) {
+    const providerStrings: NonNullable<ProviderInfo["strings"]> = {
+      signInHint: strings.signInHint,
+      expiredHint: strings.expiredHint,
+      installUrl: strings.installUrl,
+    };
+    if (strings.brandPrefix !== undefined) {
+      providerStrings.brandPrefix = strings.brandPrefix;
+    }
+    if (strings.planModeCopy !== undefined) {
+      providerStrings.planModeCopy = strings.planModeCopy;
+    }
+    if (strings.iconTint !== undefined) {
+      providerStrings.iconTint = { ...strings.iconTint };
+    }
+    info.strings = providerStrings;
+  }
+  if (serviceTiers !== undefined) {
+    info.serviceTiers = serviceTiers;
+  }
+  if (extensionKinds !== undefined) {
+    info.extensionKinds = extensionKinds;
+  }
 
   const serverCapabilities: ProviderServerCapabilities = {
     reasoningLevels: [...capabilities.reasoningLevels],

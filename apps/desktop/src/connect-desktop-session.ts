@@ -64,17 +64,21 @@ export type ConnectDesktopSessionResult =
 type MintDesktopSessionCookieResult =
   | { cookie: DesktopSessionCookie; ok: true }
   | { code: ConnectDesktopSessionFailureCode; detail: string; ok: false };
+type MintDesktopSessionFailure = Extract<
+  MintDesktopSessionCookieResult,
+  { ok: false }
+>;
 
 type DesktopSessionCookieSource = () => Promise<MintDesktopSessionCookieResult>;
 
 function failure(
   code: ConnectDesktopSessionFailureCode,
   detail: string,
-): { code: ConnectDesktopSessionFailureCode; detail: string; ok: false } {
+): MintDesktopSessionFailure {
   return { code, detail, ok: false };
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage<T>(error: T): string {
   return error instanceof Error ? error.message : String(error);
 }
 

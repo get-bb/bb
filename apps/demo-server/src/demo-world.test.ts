@@ -32,6 +32,13 @@ import { DEMO_THREADS } from "./fixtures/timelines.js";
 
 const ORIGIN = "https://demo.example.test";
 const THREAD_ID = DEMO_THREADS[0].id;
+type DemoRequestBody =
+  | null
+  | boolean
+  | number
+  | string
+  | DemoRequestBody[]
+  | { [key: string]: DemoRequestBody };
 
 function createWorld() {
   let now = 1_800_000_000_000;
@@ -52,7 +59,7 @@ function createWorld() {
     }
   };
   const get = (path: string) => world.handle(new Request(`${ORIGIN}${path}`));
-  const send = (method: string, path: string, body: unknown) =>
+  const send = (method: string, path: string, body: DemoRequestBody) =>
     world.handle(
       new Request(`${ORIGIN}${path}`, {
         method,

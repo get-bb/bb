@@ -121,7 +121,7 @@ describe("theme vars", () => {
     expect(px("radius-xl")).toBe(nativeRadii.xl);
     expect(px("radius-2xl")).toBe(nativeRadii.xl2);
     expect(px("radius-full")).toBe(nativeRadii.full);
-    const ratio = (name: string): { lineHeight: number; fontSize: number } => {
+    const ratio = (name: string) => {
       const match = GLOBAL_CSS.match(
         new RegExp(`--${name}:\\s*calc\\((\\d+)\\s*/\\s*(\\d+)\\)`),
       );

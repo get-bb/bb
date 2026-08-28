@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
+import { jsonValueSchema } from "@bb/domain";
+import { z } from "zod";
 import {
   checkRecordedCellReplay,
   RECORDED_CONFORMANCE_CELLS,
@@ -21,12 +23,7 @@ import {
   type RecordedCell,
 } from "./recording.js";
 
-export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
-  Record<
-    string,
-    { modulePath: string; legacyModulePaths?: string[]; pluginId: string }
-  >
-> = {
+export const FIRST_PARTY_BRIDGE_MODULES = {
   codex: {
     modulePath: "plugins/provider-codex/src/bridge/bridge.ts",
     pluginId: "provider-codex",
@@ -45,7 +42,42 @@ export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
     legacyModulePaths: ["plugins/provider-pi/src/bridge/bridge.ts"],
     pluginId: "provider-pi",
   },
-};
+} as const satisfies Record<
+  string,
+  {
+    modulePath: string;
+    legacyModulePaths?: readonly string[];
+    pluginId: string;
+  }
+>;
+
+const recordedWireMessageSchema = z
+  .object({
+    method: z.string().optional(),
+    params: z
+      .object({
+        sourceProviderThreadId: z.string().optional(),
+        sourceProviderCheckpointId: z.string().optional(),
+        options: z
+          .object({
+            providerOptions: z
+              .object({
+                acpLaunchSpec: z
+                  .object({ modelCli: jsonValueSchema.optional() })
+                  .catchall(jsonValueSchema)
+                  .optional(),
+              })
+              .catchall(jsonValueSchema)
+              .optional(),
+          })
+          .catchall(jsonValueSchema)
+          .optional(),
+      })
+      .catchall(jsonValueSchema)
+      .optional(),
+  })
+  .catchall(jsonValueSchema);
+type RecordedWireMessage = z.infer<typeof recordedWireMessageSchema>;
 
 const BRIDGE_WORKER_ENTRY =
   "packages/provider-bridge-protocol/src/bridge-worker-entry.ts";
@@ -67,6 +99,11 @@ export class UnreplayableProviderError extends Error {
 type FirstPartyReplayProfile = ReplayProviderProfile & {
   bridgeFamily: keyof typeof FIRST_PARTY_BRIDGE_MODULES;
 };
+
+interface FirstPartyReplayBridge {
+  launch: ProviderBridgeLaunch;
+  profile: ReplayProviderProfile;
+}
 
 export function resolveReplayProfile(
   providerId: string,
@@ -134,11 +171,8 @@ function seedPiSessionFiles(args: {
     if (entry.dir !== "runtime→bridge") continue;
     const message = parseWire(entry.line);
     if (message === null || message.method !== "thread/fork") continue;
-    const params = message.params as
-      | { sourceProviderThreadId?: unknown }
-      | undefined;
-    const sourceThreadId = params?.sourceProviderThreadId;
-    if (typeof sourceThreadId !== "string") continue;
+    const sourceThreadId = message.params?.sourceProviderThreadId;
+    if (sourceThreadId === undefined) continue;
     writeFileSync(
       join(
         sessionDir,
@@ -167,17 +201,11 @@ function seedClaudeForkTranscripts(args: {
     if (entry.dir !== "runtime→bridge") continue;
     const message = parseWire(entry.line);
     if (message === null || message.method !== "thread/fork") continue;
-    const params = message.params as
-      | {
-          sourceProviderThreadId?: unknown;
-          sourceProviderCheckpointId?: unknown;
-        }
-      | undefined;
-    const sessionId = params?.sourceProviderThreadId;
-    if (typeof sessionId !== "string") continue;
+    const sessionId = message.params?.sourceProviderThreadId;
+    if (sessionId === undefined) continue;
     const checkpointId =
-      typeof params?.sourceProviderCheckpointId === "string"
-        ? params.sourceProviderCheckpointId
+      message.params?.sourceProviderCheckpointId !== undefined
+        ? message.params.sourceProviderCheckpointId
         : randomUUID();
     const userUuid = randomUUID();
     const timestamp = "2026-01-01T00:00:00.000Z";
@@ -213,28 +241,20 @@ function seedClaudeForkTranscripts(args: {
 }
 
 function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
-  let parsed: unknown;
+  let parsed: RecordedWireMessage;
   try {
-    parsed = JSON.parse(line);
+    parsed = recordedWireMessageSchema.parse(JSON.parse(line));
   } catch {
     return line;
   }
-  if (typeof parsed !== "object" || parsed === null) {
-    return line;
-  }
-  const message = parsed as {
-    params?: { options?: { providerOptions?: Record<string, unknown> } };
-  };
-  const providerOptions = message.params?.options?.providerOptions;
-  const spec = providerOptions?.acpLaunchSpec;
+  const providerOptions = parsed.params?.options?.providerOptions;
   if (
     providerOptions === undefined ||
-    typeof spec !== "object" ||
-    spec === null
+    providerOptions.acpLaunchSpec === undefined
   ) {
     return line;
   }
-  const { modelCli: _modelCli, ...rest } = spec as Record<string, unknown>;
+  const { modelCli: _modelCli, ...rest } = providerOptions.acpLaunchSpec;
   providerOptions.acpLaunchSpec = {
     ...rest,
     command: replayCommand[0],
@@ -244,12 +264,9 @@ function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
   return JSON.stringify(parsed);
 }
 
-function parseWire(line: string): { method?: string; params?: unknown } | null {
+function parseWire(line: string): RecordedWireMessage | null {
   try {
-    const parsed: unknown = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as { method?: string; params?: unknown })
-      : null;
+    return recordedWireMessageSchema.parse(JSON.parse(line));
   } catch {
     return null;
   }
@@ -257,7 +274,7 @@ function parseWire(line: string): { method?: string; params?: unknown } | null {
 
 export function resolveFirstPartyBridgeModulePath(
   checkoutRoot: string,
-  entry: { modulePath: string; legacyModulePaths?: string[] },
+  entry: { modulePath: string; legacyModulePaths?: readonly string[] },
 ): string | null {
   for (const candidate of [
     entry.modulePath,
@@ -272,7 +289,7 @@ export function resolveFirstPartyBridgeModulePath(
 
 function resolveModulePath(
   checkoutRoot: string,
-  entry: { modulePath: string; legacyModulePaths?: string[] },
+  entry: { modulePath: string; legacyModulePaths?: readonly string[] },
 ): string {
   return (
     resolveFirstPartyBridgeModulePath(checkoutRoot, entry) ?? entry.modulePath
@@ -300,7 +317,7 @@ export function resolveBridgeLaunch(
 export function firstPartyReplayBridge(
   providerId: string,
   checkoutRoot: string,
-): { launch: ProviderBridgeLaunch; profile: ReplayProviderProfile } {
+): FirstPartyReplayBridge {
   return {
     launch: resolveBridgeLaunch({ checkoutRoot, providerId }),
     profile: resolveReplayProfile(providerId),

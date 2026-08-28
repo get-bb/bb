@@ -132,9 +132,10 @@ const GIT_QUOTED_PATH_ESCAPE_BYTES = new Map<string, number>([
   ["v", 11],
 ]);
 
-function toExecError(error: unknown): ExecFileException | undefined {
-  if (error instanceof Error) {
-    return error as ExecFileException;
+function toExecError(cause: unknown): ExecFileException | undefined {
+  if (cause instanceof Error) {
+    // SAFETY: execFile rejects with the Node child-process exception contract.
+    return cause as ExecFileException;
   }
   return undefined;
 }
@@ -144,8 +145,9 @@ function trimOutput(value: string): string {
 }
 
 function getExitCode(error: ExecFileException | undefined): number {
-  if (typeof error?.code === "number") {
-    return error.code;
+  const code = error?.code;
+  if (code !== undefined && code === Number(code)) {
+    return Number(code);
   }
   return 1;
 }
@@ -153,28 +155,29 @@ function getExitCode(error: ExecFileException | undefined): number {
 function resolveGitProcessEnv(
   args: ResolveGitProcessEnvArgs,
 ): NodeJS.ProcessEnv {
+  const sanitizedArgs = {
+    env: process.env,
+    shellPath: args.shellPath,
+  };
   return {
-    ...sanitizeInheritedChildProcessEnv({
-      env: process.env,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    }),
+    ...sanitizeInheritedChildProcessEnv(sanitizedArgs),
     ...args.env,
   };
 }
 
-function isMaxBufferExceededError(error: unknown): boolean {
+function isMaxBufferExceededError(cause: unknown): boolean {
   return (
-    error instanceof Error &&
-    "code" in error &&
-    error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+    cause instanceof Error &&
+    "code" in cause &&
+    cause.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
   );
 }
 
-function isStdoutMaxBufferExceededError(error: unknown): boolean {
+function isStdoutMaxBufferExceededError(cause: unknown): boolean {
   return (
-    isMaxBufferExceededError(error) &&
-    error instanceof Error &&
-    error.message.includes("stdout maxBuffer")
+    isMaxBufferExceededError(cause) &&
+    cause instanceof Error &&
+    cause.message.includes("stdout maxBuffer")
   );
 }
 
@@ -183,7 +186,7 @@ function readCommandTimeoutMs(
   timeoutMs: number | undefined,
 ): number | null {
   if (
-    typeof timeoutMs === "number" &&
+    timeoutMs !== undefined &&
     error?.killed === true &&
     error.signal === "SIGTERM"
   ) {

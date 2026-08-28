@@ -31,6 +31,10 @@ type PolicyTestParentThread = Pick<
   | "parentThreadId"
   | "projectId"
 >;
+interface UserProviderPreferences {
+  providerOrder: string[];
+  defaultProviderId: string | null;
+}
 
 function makeThread(
   overrides: Partial<PolicyTestThread> = {},
@@ -86,9 +90,9 @@ describe("resolveCreateThreadExecutionDefaults", () => {
   });
 
   it("honors the user's default provider and picker order", async () => {
-    const preferences = {
+    const preferences: UserProviderPreferences = {
       providerOrder: ["pi", "claude-code"],
-      defaultProviderId: null as string | null,
+      defaultProviderId: null,
     };
     const userRegistry = createProviderRegistryService({
       readUserProviderPreferences: () => preferences,

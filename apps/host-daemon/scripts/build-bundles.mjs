@@ -32,7 +32,9 @@ function pluginSdkDeclarationsDefine() {
     app: readFileSync(resolve(typesDir, "bb-plugin-sdk-app.d.ts"), "utf8"),
   };
   return {
-    __BB_PLUGIN_SDK_DTS_JSON__: JSON.stringify(JSON.stringify(declarations)),
+    "globalThis.__BB_PLUGIN_SDK_DTS_JSON__": JSON.stringify(
+      JSON.stringify(declarations),
+    ),
   };
 }
 

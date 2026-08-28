@@ -53,7 +53,7 @@ function contextWindowSizes(threadId: string): number[] {
     .deltasOf(threadId)
     .filter((delta) => delta.kind === "contextWindow")
     .map((delta) => delta.size)
-    .filter((size): size is number => typeof size === "number");
+    .filter((size): size is number => z.number().safeParse(size).success);
 }
 
 function turnStart(

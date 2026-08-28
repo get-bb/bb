@@ -55,12 +55,13 @@ describe("resolveAcpDialect", () => {
   });
 });
 
-const toolCall = (fields: Partial<AcpToolCallUpdateEvent>) =>
-  ({
-    sessionUpdate: "tool_call",
-    toolCallId: "call-1",
-    ...fields,
-  }) as AcpToolCallUpdateEvent;
+const toolCall = (
+  fields: Partial<AcpToolCallUpdateEvent>,
+): AcpToolCallUpdateEvent => ({
+  sessionUpdate: "tool_call",
+  toolCallId: "call-1",
+  ...fields,
+});
 
 describe("omp command results", () => {
   const result = (fields: Partial<AcpToolCallUpdateEvent>) =>
@@ -172,7 +173,9 @@ describe("omp command results", () => {
 });
 
 describe("OpenCode command results", () => {
-  const normalize = (rawOutput: unknown) =>
+  type AcpRawOutput = AcpToolCallUpdateEvent["rawOutput"];
+
+  const normalize = (rawOutput: AcpRawOutput) =>
     OPENCODE_ACP_DIALECT.normalizeCommandEvent?.(toolCall({ rawOutput }))
       .rawOutput;
 
@@ -307,12 +310,10 @@ describe("cursor sub-agents", () => {
 });
 
 describe("grok dialect", () => {
-  const identity = (meta: unknown) =>
-    GROK_ACP_DIALECT.toolIdentity?.({
-      sessionUpdate: "tool_call",
-      toolCallId: "call-1",
-      _meta: meta,
-    } as Parameters<NonNullable<typeof GROK_ACP_DIALECT.toolIdentity>>[0]);
+  type AcpToolMeta = AcpToolCallUpdateEvent["_meta"];
+
+  const identity = (meta: AcpToolMeta) =>
+    GROK_ACP_DIALECT.toolIdentity?.(toolCall({ _meta: meta }));
 
   it("reads the tool name and kind from x.ai/tool", () => {
     expect(

@@ -43,8 +43,8 @@ async function bundleFixture(): Promise<string> {
 function serveShellOverTunnel(ws: ClientWebSocket): void {
   const send = (frame: Frame) => ws.send(new Uint8Array(encodeFrame(frame)));
   ws.addEventListener("message", (event) => {
-    if (typeof event.data === "string") return;
-    const frame = decodeFrame(event.data as ArrayBuffer);
+    if (!(event.data instanceof ArrayBuffer)) return;
+    const frame = decodeFrame(event.data);
     if (frame.type !== "open-http") return;
     const legacy = new URL(
       frame.path,
@@ -70,6 +70,7 @@ function serveShellOverTunnel(ws: ClientWebSocket): void {
     }
     originLog.push({ ifNoneMatch, sentBody: true });
     const gzip = gzipSync(Buffer.from(currentBuild.html));
+    const etagHeader: [string, string] = ["etag", currentBuild.etag];
     send({
       type: "resp-head",
       streamId: frame.streamId,
@@ -79,7 +80,7 @@ function serveShellOverTunnel(ws: ClientWebSocket): void {
         ["content-encoding", "gzip"],
         ["content-length", String(gzip.byteLength)],
         ["cache-control", SHELL_CACHE_CONTROL],
-        ...(legacy ? [] : [["etag", currentBuild.etag] as [string, string]]),
+        ...(legacy ? [] : [etagHeader]),
       ],
     });
     send({

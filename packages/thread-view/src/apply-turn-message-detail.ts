@@ -120,10 +120,10 @@ function applyTurnMessageDetail(
     completedAt: turn.completedAt,
     status: turn.status,
     summaryCount,
-    ...(turn.externalUserBoundarySeqs
-      ? { externalUserBoundarySeqs: turn.externalUserBoundarySeqs }
-      : {}),
   };
+  if (turn.externalUserBoundarySeqs) {
+    detailedTurn.externalUserBoundarySeqs = turn.externalUserBoundarySeqs;
+  }
   if (terminalMessage) {
     detailedTurn.terminalMessage = terminalMessage;
   }

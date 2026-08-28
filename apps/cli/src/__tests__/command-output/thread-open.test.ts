@@ -12,8 +12,14 @@ import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
 
+interface ThreadRequest {
+  param: {
+    id: string;
+  };
+}
+
 type OpenThreadHandler = (
-  request: unknown,
+  request: ThreadRequest,
 ) => Promise<{ delivered: number }> | { delivered: number };
 
 function stubThreadOpenApi(args: {
@@ -21,16 +27,16 @@ function stubThreadOpenApi(args: {
   open?: OpenThreadHandler;
   threads?: Record<string, Thread>;
 }) {
-  const getThread = vi.fn(async (request: unknown) => {
-    const threadId = (request as { param: { id: string } }).param.id;
+  const getThread = vi.fn(async (request: ThreadRequest) => {
+    const threadId = request.param.id;
     const thread = args.threads?.[threadId];
     if (!thread) {
       throw new Error(`missing test thread ${threadId}`);
     }
     return thread;
   });
-  const getEnvironment = vi.fn(async (request: unknown) => {
-    const environmentId = (request as { param: { id: string } }).param.id;
+  const getEnvironment = vi.fn(async (request: ThreadRequest) => {
+    const environmentId = request.param.id;
     const environment = args.environments?.[environmentId];
     if (!environment) {
       throw new Error(`missing test environment ${environmentId}`);

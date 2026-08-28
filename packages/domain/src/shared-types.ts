@@ -151,24 +151,22 @@ const canonicalPromptMentionResourceSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-function normalizeLegacyPromptMentionResource(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
+const legacyPromptMentionResourceSchema = z
+  .object({
+    kind: z.literal("folder"),
+    folderId: z.string(),
+    label: z.string(),
+  })
+  .transform(({ folderId, label }) => ({
+    kind: "section" as const,
+    sectionId: folderId,
+    label,
+  }));
 
-  const record = value as Record<string, unknown>;
-  if (record.kind !== "folder" || typeof record.folderId !== "string") {
-    return value;
-  }
-
-  const { folderId, ...rest } = record;
-  return { ...rest, kind: "section", sectionId: folderId };
-}
-
-export const promptMentionResourceSchema = z.preprocess(
-  normalizeLegacyPromptMentionResource,
+export const promptMentionResourceSchema = z.union([
   canonicalPromptMentionResourceSchema,
-);
+  legacyPromptMentionResourceSchema,
+]);
 export type PromptMentionResource = z.infer<typeof promptMentionResourceSchema>;
 
 export const promptTextMentionSchema = z.object({

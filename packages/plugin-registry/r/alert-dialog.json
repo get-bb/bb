@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "alert-dialog",
   "description": "BB ui \"alert-dialog\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-alert-dialog"
-  ],
-  "registryDependencies": [
-    "@bb/button",
-    "@bb/portal-scope",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/alert-dialog.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/alert-dialog.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-alert-dialog"
+  ],
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/portal-scope",
+    "@bb/utils"
   ]
 }

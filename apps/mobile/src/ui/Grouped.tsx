@@ -1,5 +1,6 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import { z } from "zod";
 import { useTheme } from "@/theme/ThemeProvider";
 import { cn } from "./cn";
 import { Icon, isIconName, type IconName } from "./Icon";
@@ -243,6 +244,7 @@ export function GroupedSection({
   testID,
 }: GroupedSectionProps) {
   const { tokens, mode } = useTheme();
+  const textFooter = z.string().safeParse(footer);
   const cardColor =
     surface === "raised" && mode === "dark"
       ? tokens.surfaceRaised
@@ -289,9 +291,9 @@ export function GroupedSection({
         ))}
       </View>
       {footer ? (
-        typeof footer === "string" ? (
+        textFooter.success ? (
           <Text variant="footnote" tone="muted" className="px-4">
-            {footer}
+            {textFooter.data}
           </Text>
         ) : (
           <View className="px-4">{footer}</View>

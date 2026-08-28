@@ -4,9 +4,6 @@
   "type": "registry:hook",
   "title": "use-compact-viewport",
   "description": "BB hook \"use-compact-viewport\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "registryDependencies": [
-    "@bb/use-media-query"
-  ],
   "files": [
     {
       "path": "registry/components/ui/hooks/use-compact-viewport.tsx",
@@ -14,5 +11,8 @@
       "type": "registry:hook",
       "target": "components/ui/hooks/use-compact-viewport.tsx"
     }
+  ],
+  "registryDependencies": [
+    "@bb/use-media-query"
   ]
 }

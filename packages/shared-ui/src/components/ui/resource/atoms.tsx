@@ -14,7 +14,7 @@ export const RESOURCE_ROUTE_LABEL_EVENT = "bb:resource-route-label";
 
 export function useResourceRouteLabel(label: string | null | undefined) {
   useEffect(() => {
-    if (!label || typeof window === "undefined") return;
+    if (!label) return;
 
     let active = true;
     queueMicrotask(() => {

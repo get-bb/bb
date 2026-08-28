@@ -44,7 +44,7 @@ process.once("SIGTERM", () => {
 });
 
 const [code, signal] = await once(child, "exit");
-if (typeof code === "number") {
+if (code !== null) {
   process.exitCode = code;
 } else {
   process.exitCode = signal === null ? 1 : 128;

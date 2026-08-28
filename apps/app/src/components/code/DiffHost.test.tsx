@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalDiffFullFileContents,
@@ -23,26 +23,27 @@ import {
 } from "@/lib/plugin-replacement-preference";
 import { diffRendererProviderAtom } from "./codeRendererProvider";
 import { DiffHost } from "./DiffHost";
+import type { BbDiffProps } from "./code-rendering";
 
-const bbDiff = vi.hoisted(() => ({
+const bbDiff = {
   loaded: false,
-  lastProps: null as Record<string, unknown> | null,
-}));
+  lastProps:
+    /* SAFETY: The test fixture starts without renderer props. */ null as BbDiffProps | null,
+};
 
-vi.mock("./BbDiff", async () => {
-  const React = await import("react");
+function TestBbDiff(props: BbDiffProps) {
   bbDiff.loaded = true;
-  return {
-    default: (props: Record<string, unknown>) => {
-      bbDiff.lastProps = props;
-      return React.createElement(
-        "div",
-        { "data-testid": "bb-diff" },
-        `bb diff ${String(props.view)}/${String(props.overflow)}`,
-      );
-    },
-  };
-});
+  bbDiff.lastProps = props;
+  return (
+    <div data-testid="bb-diff">
+      bb diff {String(props.view)}/{String(props.overflow)}
+    </div>
+  );
+}
+
+function TestDiffHost(props: ComponentProps<typeof DiffHost>) {
+  return <DiffHost {...props} renderer={TestBbDiff} />;
+}
 
 const PATCH = [
   "diff --git a/src/app.ts b/src/app.ts",
@@ -126,7 +127,7 @@ describe("DiffHost", () => {
     });
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={FULL_FILE_CONTENTS}
@@ -151,7 +152,7 @@ describe("DiffHost", () => {
     });
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={FULL_FILE_CONTENTS}
@@ -180,7 +181,7 @@ describe("DiffHost", () => {
       return <div data-testid="plugin-diff">plugin diff</div>;
     });
 
-    render(<DiffHost file={parseFixture()} fullFileContents={null} />);
+    render(<TestDiffHost file={parseFixture()} fullFileContents={null} />);
 
     await screen.findByTestId("plugin-diff");
     const patch = receivedProps.at(-1)?.patch ?? "";
@@ -200,7 +201,7 @@ describe("DiffHost", () => {
     );
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}
@@ -222,7 +223,7 @@ describe("DiffHost", () => {
 
     render(
       <JotaiProvider store={store}>
-        <DiffHost
+        <TestDiffHost
           file={parseFixture()}
           patchText={PATCH}
           fullFileContents={null}
@@ -263,7 +264,7 @@ describe("DiffHost", () => {
 
     render(
       <JotaiProvider store={store}>
-        <DiffHost
+        <TestDiffHost
           file={parseFixture()}
           patchText={PATCH}
           fullFileContents={null}
@@ -283,7 +284,7 @@ describe("DiffHost", () => {
     });
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}
@@ -294,7 +295,7 @@ describe("DiffHost", () => {
   });
 
   it("uses BB's renderer with resolved presentation defaults when nothing is registered", async () => {
-    render(<DiffHost file={parseFixture()} fullFileContents={null} />);
+    render(<TestDiffHost file={parseFixture()} fullFileContents={null} />);
 
     await screen.findByTestId("bb-diff");
     expect(bbDiff.lastProps?.view).toBe("unified");
@@ -345,13 +346,12 @@ describe("experimental_Diff", () => {
         patch={PATCH}
         path="src/app.ts"
         experimental_fullFileContents={FULL_FILE_CONTENTS}
+        renderer={TestBbDiff}
       />,
     );
 
     await screen.findByTestId("bb-diff");
-    const file = bbDiff.lastProps?.file as ReturnType<
-      typeof parseFixture
-    > | null;
+    const file = bbDiff.lastProps?.file;
     expect(file?.isPartial).toBe(true);
     expect(bbDiff.lastProps?.patchText).toBe(PATCH);
     expect(bbDiff.lastProps?.fullFileContents).toBe(FULL_FILE_CONTENTS);
@@ -381,7 +381,7 @@ describe("DiffHost experimental_Original alias", () => {
     });
 
     const { rerender } = render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}
@@ -391,7 +391,7 @@ describe("DiffHost experimental_Original alias", () => {
     expect(bbDiff.lastProps?.view).toBe("unified");
 
     rerender(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}
@@ -411,7 +411,7 @@ describe("DiffHost experimental_Original alias", () => {
     registerDiffRenderer(({ Original }) => <Original />);
 
     render(
-      <DiffHost
+      <TestDiffHost
         file={parseFixture()}
         patchText={PATCH}
         fullFileContents={null}

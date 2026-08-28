@@ -1,5 +1,9 @@
 import { execFile } from "node:child_process";
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type JsonValue,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
@@ -261,36 +265,138 @@ export const githubRpcContract = defineRpcContract({
 type RepoInfo = z.infer<typeof repoInfoSchema>;
 type CachedItem = z.infer<typeof itemSchema>;
 
-interface GhListEntry {
-  number?: unknown;
-  title?: unknown;
-  state?: unknown;
-  author?: { login?: unknown };
-  labels?: Array<{ name?: unknown }>;
-  assignees?: Array<{ login?: unknown }>;
-  url?: unknown;
-  body?: unknown;
-  updatedAt?: unknown;
-}
+const ghNullableStringSchema = z.string().nullable().optional();
+const ghActorSchema = z
+  .object({ login: ghNullableStringSchema })
+  .strip()
+  .nullable()
+  .optional();
+const ghNamedEntrySchema = z
+  .object({ name: ghNullableStringSchema })
+  .strip()
+  .nullable();
+const ghListEntrySchema = z
+  .object({
+    number: z.number().nullable().optional(),
+    title: ghNullableStringSchema,
+    state: ghNullableStringSchema,
+    author: ghActorSchema,
+    labels: z.array(ghNamedEntrySchema).optional(),
+    assignees: z.array(ghActorSchema).optional(),
+    url: ghNullableStringSchema,
+    body: ghNullableStringSchema,
+    updatedAt: ghNullableStringSchema,
+  })
+  .strip();
+type GhListEntry = z.infer<typeof ghListEntrySchema>;
+
+const ghCommentSchema = z
+  .object({
+    author: ghActorSchema,
+    body: ghNullableStringSchema,
+    createdAt: ghNullableStringSchema,
+  })
+  .strip();
+const ghIssueDetailSchema = ghListEntrySchema.extend({
+  comments: z.array(ghCommentSchema).optional(),
+});
+const ghStatusCheckSchema = z
+  .object({
+    name: ghNullableStringSchema,
+    context: ghNullableStringSchema,
+    status: ghNullableStringSchema,
+    conclusion: ghNullableStringSchema,
+    state: ghNullableStringSchema,
+    detailsUrl: ghNullableStringSchema,
+    targetUrl: ghNullableStringSchema,
+  })
+  .strip();
+const ghReviewSchema = z
+  .object({
+    author: ghActorSchema,
+    state: ghNullableStringSchema,
+    body: ghNullableStringSchema,
+    submittedAt: ghNullableStringSchema,
+  })
+  .strip();
+const ghReviewRequestSchema = z
+  .object({
+    login: ghNullableStringSchema,
+    name: ghNullableStringSchema,
+    slug: ghNullableStringSchema,
+  })
+  .strip();
+const ghPullViewSchema = ghListEntrySchema.extend({
+  isDraft: z.boolean().optional(),
+  createdAt: ghNullableStringSchema,
+  baseRefName: ghNullableStringSchema,
+  headRefName: ghNullableStringSchema,
+  additions: z.number().nullable().optional(),
+  deletions: z.number().nullable().optional(),
+  changedFiles: z.number().nullable().optional(),
+  reviewDecision: ghNullableStringSchema,
+  mergeStateStatus: ghNullableStringSchema,
+  statusCheckRollup: z.array(ghStatusCheckSchema).optional(),
+  comments: z.array(ghCommentSchema).optional(),
+  reviews: z.array(ghReviewSchema).optional(),
+  reviewRequests: z.array(ghReviewRequestSchema).optional(),
+});
+const ghReviewApiRowSchema = z
+  .object({
+    id: z.number().nullable().optional(),
+    in_reply_to_id: z.number().nullable().optional(),
+    path: ghNullableStringSchema,
+    line: z.number().nullable().optional(),
+    original_line: z.number().nullable().optional(),
+    diff_hunk: ghNullableStringSchema,
+    body: ghNullableStringSchema,
+    created_at: ghNullableStringSchema,
+    user: ghActorSchema,
+  })
+  .strip();
+const ghPullFileSchema = z
+  .object({
+    filename: ghNullableStringSchema,
+    status: ghNullableStringSchema,
+    additions: z.number().nullable().optional(),
+    deletions: z.number().nullable().optional(),
+    patch: ghNullableStringSchema,
+  })
+  .strip();
+const githubApiRowSchema = ghReviewApiRowSchema.merge(ghPullFileSchema);
+type GithubApiRow = z.infer<typeof githubApiRowSchema>;
+const stringArraySchema = z.array(z.string());
+const cachedItemRowSchema = z
+  .object({
+    repo: z.string(),
+    number: z.number(),
+    kind: z.enum(["issue", "pr"]),
+    title: z.string(),
+    state: z.string(),
+    author: z.string(),
+    labels: z.string(),
+    assignees: z.string(),
+    url: z.string(),
+    body: z.string(),
+    updated_at: z.string(),
+  })
+  .strict();
+type CachedItemRow = z.infer<typeof cachedItemRowSchema>;
+const ghViewerSchema = z
+  .object({ login: z.string().nullable().optional() })
+  .strip();
 
 type GhRunner = (args: string[]) => Promise<string>;
 
-interface ThreadLink {
+type JsonObject = { [key: string]: JsonValue };
+
+type ThreadLink = JsonObject & {
   kind: "issue" | "pr";
   repo: string;
   number: number;
   threadId: string;
   createdAt: string;
-}
-
-interface BbProjectSummary {
-  id: string;
-  sources?: Array<{ type: string; path: string }>;
-}
-
-interface SpawnedThreadSummary {
-  id: string;
-}
+};
 
 function needsConfiguration(message: string): Error {
   return Object.assign(new Error(message), {
@@ -298,16 +404,16 @@ function needsConfiguration(message: string): Error {
   });
 }
 
-function isNeedsConfigurationError(error: unknown): error is Error {
-  return error instanceof Error && error.name === "NeedsConfigurationError";
+function isNeedsConfigurationError(cause: unknown): cause is Error {
+  return cause instanceof Error && cause.name === "NeedsConfigurationError";
 }
 
 function ghUnavailable(message: string): Error {
   return Object.assign(new Error(message), { name: "GhUnavailableError" });
 }
 
-function isGhUnavailableError(error: unknown): error is Error {
-  return error instanceof Error && error.name === "GhUnavailableError";
+function isGhUnavailableError(cause: unknown): cause is Error {
+  return cause instanceof Error && cause.name === "GhUnavailableError";
 }
 
 const GH_NO_CREDENTIALS = /no oauth token|not logged in/i;
@@ -321,14 +427,11 @@ function parseGithubRemote(url: string): string | null {
   return `${match[1]}/${match[2]}`;
 }
 
-function isRepoName(value: unknown): value is string {
-  return typeof value === "string" && /^[\w.-]+\/[\w.-]+$/.test(value);
+function isRepoName(value: string): boolean {
+  return /^[\w.-]+\/[\w.-]+$/.test(value);
 }
 
-export function parseExtraRepos(raw: string): {
-  repos: string[];
-  ignored: string[];
-} {
+export function parseExtraRepos(raw: string) {
   const repos: string[] = [];
   const ignored: string[] = [];
   for (const entry of raw.split(/[\s,]+/)) {
@@ -376,21 +479,23 @@ function run(
   });
 }
 
-export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
+export function parsePaginatedGhApi(raw: string): GithubApiRow[] {
+  const parsed = z.array(z.unknown()).safeParse(JSON.parse(raw));
+  if (!parsed.success) {
     throw new Error("GitHub API pagination returned a non-array response");
   }
-  const rows: Record<string, unknown>[] = [];
-  for (const page of parsed) {
-    if (!Array.isArray(page)) {
+  const rows: GithubApiRow[] = [];
+  for (const page of parsed.data) {
+    const parsedPage = z.array(z.unknown()).safeParse(page);
+    if (!parsedPage.success) {
       throw new Error("GitHub API pagination returned a malformed page");
     }
-    for (const row of page) {
-      if (typeof row !== "object" || row === null || Array.isArray(row)) {
+    for (const row of parsedPage.data) {
+      const parsedRow = githubApiRowSchema.safeParse(row);
+      if (!parsedRow.success) {
         throw new Error("GitHub API pagination returned a malformed row");
       }
-      rows.push(row as Record<string, unknown>);
+      rows.push(parsedRow.data);
     }
   }
   return rows;
@@ -421,11 +526,11 @@ function toItems(
   repo: string,
   kind: "issue" | "pr",
 ): CachedItem[] {
-  const entries = JSON.parse(raw) as GhListEntry[];
+  const entries = z.array(ghListEntrySchema).parse(JSON.parse(raw));
   return entries
     .filter(
       (entry): entry is GhListEntry & { number: number } =>
-        typeof entry?.number === "number",
+        entry.number !== undefined && entry.number !== null,
     )
     .map((entry) => ({
       repo,
@@ -439,7 +544,7 @@ function toItems(
         String(user?.login ?? ""),
       ),
       url: String(entry.url ?? ""),
-      body: typeof entry.body === "string" ? entry.body : "",
+      body: entry.body ?? "",
       updatedAt: String(entry.updatedAt ?? ""),
     }));
 }
@@ -451,9 +556,9 @@ export async function fetchRepoItems(
   const fields =
     "number,title,state,author,labels,assignees,url,body,updatedAt";
   const ghIssuesTolerant = (args: string[]) =>
-    gh(args).catch((error: unknown) => {
-      if (String(error).toLowerCase().includes("disabled issues")) return "[]";
-      throw error;
+    gh(args).catch((cause: unknown) => {
+      if (String(cause).toLowerCase().includes("disabled issues")) return "[]";
+      throw cause;
     });
   const [openIssues, closedIssues, openPrs, closedPrs] = await Promise.all([
     ghIssuesTolerant([
@@ -609,8 +714,7 @@ export default async function plugin(bb: BbPluginApi) {
     }
     const byRepo = new Map<string, RepoInfo>();
     try {
-      const projects =
-        (await bb.sdk.projects.list()) as unknown as BbProjectSummary[];
+      const projects = await bb.sdk.projects.list();
       for (const project of projects) {
         for (const source of project.sources ?? []) {
           if (source.type !== "local_path") continue;
@@ -670,27 +774,27 @@ export default async function plugin(bb: BbPluginApi) {
     `ALTER TABLE items ADD COLUMN assignees TEXT NOT NULL DEFAULT '[]'`,
   ]);
 
-  function parseStringArray(raw: unknown): string[] {
+  function parseStringArray(raw: string): string[] {
     try {
-      const parsed = JSON.parse(String(raw));
-      if (Array.isArray(parsed)) return parsed.map(String);
+      const parsed = stringArraySchema.safeParse(JSON.parse(raw));
+      if (parsed.success) return parsed.data;
     } catch {}
     return [];
   }
 
-  function rowToItem(row: Record<string, unknown>): CachedItem {
+  function rowToItem(row: CachedItemRow): CachedItem {
     return {
-      repo: String(row.repo),
-      number: Number(row.number),
-      kind: row.kind === "pr" ? "pr" : "issue",
-      title: String(row.title),
-      state: String(row.state),
-      author: String(row.author),
+      repo: row.repo,
+      number: row.number,
+      kind: row.kind,
+      title: row.title,
+      state: row.state,
+      author: row.author,
       labels: parseStringArray(row.labels),
       assignees: parseStringArray(row.assignees),
-      url: String(row.url),
-      body: String(row.body),
-      updatedAt: String(row.updated_at),
+      url: row.url,
+      body: row.body,
+      updatedAt: row.updated_at,
     };
   }
 
@@ -731,7 +835,8 @@ export default async function plugin(bb: BbPluginApi) {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = db
       .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC`)
-      .all(...params) as Record<string, unknown>[];
+      .all(...params)
+      .map((row) => cachedItemRowSchema.parse(row));
     return rows.map(rowToItem);
   }
 
@@ -742,8 +847,8 @@ export default async function plugin(bb: BbPluginApi) {
   ): CachedItem | null {
     const row = db
       .prepare("SELECT * FROM items WHERE repo = ? AND kind = ? AND number = ?")
-      .get(repo, kind, number) as Record<string, unknown> | undefined;
-    return row === undefined ? null : rowToItem(row);
+      .get(repo, kind, number);
+    return row === undefined ? null : rowToItem(cachedItemRowSchema.parse(row));
   }
 
   function replaceRepoRows(repo: string, items: CachedItem[]): void {
@@ -964,12 +1069,12 @@ export default async function plugin(bb: BbPluginApi) {
               "Summarize your findings with file/line references. Do not push " +
               "changes or post to GitHub unless asked.",
           ].join("\n");
-    const thread = (await bb.sdk.threads.spawn({
+    const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: { type: "project-default" },
       title: `${ref}: ${title}`.slice(0, 120),
       prompt,
-    })) as unknown as SpawnedThreadSummary;
+    });
     await addLink({
       kind,
       repo,
@@ -991,7 +1096,7 @@ export default async function plugin(bb: BbPluginApi) {
       return viewerCache.login;
     }
     const raw = await gh(["api", "user"], 15_000);
-    const login = String((JSON.parse(raw) as { login?: unknown })?.login ?? "");
+    const login = ghViewerSchema.parse(JSON.parse(raw)).login ?? "";
     if (login.length === 0)
       throw new Error("could not resolve the gh viewer login");
     viewerCache = { login, fetchedAt: Date.now() };
@@ -1016,9 +1121,9 @@ export default async function plugin(bb: BbPluginApi) {
       ["api", `repos/${repo}/assignees?per_page=100`],
       15_000,
     );
-    const entries = JSON.parse(raw) as Array<{ login?: unknown }>;
+    const entries = z.array(ghActorSchema).parse(JSON.parse(raw));
     const users = entries
-      .map((entry) => String(entry?.login ?? ""))
+      .map((entry) => entry?.login ?? "")
       .filter((login) => login.length > 0)
       .sort((a, b) => a.localeCompare(b));
     assignableCache.set(repo, { users, fetchedAt: Date.now() });
@@ -1031,9 +1136,9 @@ export default async function plugin(bb: BbPluginApi) {
       return cached.labels;
     }
     const raw = await gh(["api", `repos/${repo}/labels?per_page=100`], 15_000);
-    const entries = JSON.parse(raw) as Array<{ name?: unknown }>;
+    const entries = z.array(ghNamedEntrySchema).parse(JSON.parse(raw));
     const labels = entries
-      .map((entry) => String(entry?.name ?? "").trim())
+      .map((entry) => (entry?.name ?? "").trim())
       .filter((name) => name.length > 0)
       .sort((a, b) => a.localeCompare(b));
     labelsCache.set(repo, { labels, fetchedAt: Date.now() });
@@ -1135,9 +1240,10 @@ export default async function plugin(bb: BbPluginApi) {
         ["issue", "view", String(number), "-R", repo, "--json", "labels"],
         15_000,
       );
-      const currentDetail = JSON.parse(currentRaw) as {
-        labels?: Array<{ name?: unknown }>;
-      };
+      const currentDetail = z
+        .object({ labels: z.array(ghNamedEntrySchema).optional() })
+        .strict()
+        .parse(JSON.parse(currentRaw));
       const current = (currentDetail.labels ?? [])
         .map((label) => String(label?.name ?? "").trim())
         .filter((label) => label.length > 0);
@@ -1163,13 +1269,7 @@ export default async function plugin(bb: BbPluginApi) {
         "--json",
         "number,title,body,state,author,createdAt,updatedAt,labels,assignees,url,comments",
       ]);
-      const detail = JSON.parse(raw) as {
-        comments?: Array<{
-          author?: { login?: unknown };
-          body?: unknown;
-          createdAt?: unknown;
-        }>;
-      } & GhListEntry;
+      const detail = ghIssueDetailSchema.parse(JSON.parse(raw));
       return {
         issue: {
           repo,
@@ -1177,7 +1277,7 @@ export default async function plugin(bb: BbPluginApi) {
           title: String(detail.title ?? ""),
           state: String(detail.state ?? ""),
           author: String(detail.author?.login ?? ""),
-          body: typeof detail.body === "string" ? detail.body : "",
+          body: detail.body ?? "",
           labels: (detail.labels ?? []).map((label) =>
             String(label?.name ?? ""),
           ),
@@ -1188,7 +1288,7 @@ export default async function plugin(bb: BbPluginApi) {
           updatedAt: String(detail.updatedAt ?? ""),
           comments: (detail.comments ?? []).map((comment) => ({
             author: String(comment.author?.login ?? ""),
-            body: typeof comment.body === "string" ? comment.body : "",
+            body: comment.body ?? "",
             createdAt: String(comment.createdAt ?? ""),
           })),
         },
@@ -1226,51 +1326,14 @@ export default async function plugin(bb: BbPluginApi) {
         ),
       ]);
 
-      interface GhPullView extends GhListEntry {
-        isDraft?: unknown;
-        createdAt?: unknown;
-        baseRefName?: unknown;
-        headRefName?: unknown;
-        additions?: unknown;
-        deletions?: unknown;
-        changedFiles?: unknown;
-        reviewDecision?: unknown;
-        mergeStateStatus?: unknown;
-        statusCheckRollup?: Array<{
-          __typename?: unknown;
-          name?: unknown;
-          context?: unknown;
-          status?: unknown;
-          conclusion?: unknown;
-          state?: unknown;
-          detailsUrl?: unknown;
-          targetUrl?: unknown;
-        }>;
-        comments?: Array<{
-          author?: { login?: unknown };
-          body?: unknown;
-          createdAt?: unknown;
-        }>;
-        reviews?: Array<{
-          author?: { login?: unknown };
-          state?: unknown;
-          body?: unknown;
-          submittedAt?: unknown;
-        }>;
-        reviewRequests?: Array<{
-          login?: unknown;
-          name?: unknown;
-          slug?: unknown;
-        }>;
-      }
-      const view = JSON.parse(viewRaw) as GhPullView;
+      const view = ghPullViewSchema.parse(JSON.parse(viewRaw));
 
       const checks = (view.statusCheckRollup ?? []).map((entry) => {
         const conclusion = String(
           entry.conclusion ?? entry.state ?? "",
         ).toUpperCase();
         const running =
-          entry.conclusion === "" ||
+          (entry.conclusion ?? "") === "" ||
           ["IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING"].includes(
             String(entry.status ?? entry.state ?? "").toUpperCase(),
           );
@@ -1291,20 +1354,7 @@ export default async function plugin(bb: BbPluginApi) {
         };
       });
 
-      interface GhReviewComment {
-        id?: unknown;
-        in_reply_to_id?: unknown;
-        path?: unknown;
-        line?: unknown;
-        original_line?: unknown;
-        diff_hunk?: unknown;
-        body?: unknown;
-        created_at?: unknown;
-        user?: { login?: unknown };
-      }
-      const reviewComments = parsePaginatedGhApi(
-        reviewCommentsRaw,
-      ) as GhReviewComment[];
+      const reviewComments = parsePaginatedGhApi(reviewCommentsRaw);
       interface ReviewThread {
         path: string;
         line: number | null;
@@ -1317,7 +1367,7 @@ export default async function plugin(bb: BbPluginApi) {
         const replyTo = Number(comment.in_reply_to_id ?? NaN);
         const entry = {
           author: String(comment.user?.login ?? ""),
-          body: typeof comment.body === "string" ? comment.body : "",
+          body: comment.body ?? "",
           createdAt: String(comment.created_at ?? ""),
         };
         const rootThread = Number.isFinite(replyTo)
@@ -1332,33 +1382,23 @@ export default async function plugin(bb: BbPluginApi) {
         const thread: ReviewThread = {
           path: String(comment.path ?? ""),
           line: Number.isFinite(line) ? line : null,
-          diffHunk:
-            typeof comment.diff_hunk === "string" ? comment.diff_hunk : "",
+          diffHunk: comment.diff_hunk ?? "",
           comments: [entry],
         };
         if (Number.isFinite(id)) threadByRootId.set(id, thread);
       }
       const reviewThreads = [...new Set(threadByRootId.values())];
 
-      interface GhPullFile {
-        filename?: unknown;
-        status?: unknown;
-        additions?: unknown;
-        deletions?: unknown;
-        patch?: unknown;
-      }
-      const files = (parsePaginatedGhApi(filesRaw) as GhPullFile[]).map(
-        (file) => {
-          const patch = typeof file.patch === "string" ? file.patch : null;
-          return {
-            path: String(file.filename ?? ""),
-            status: String(file.status ?? "modified"),
-            additions: Number(file.additions ?? 0),
-            deletions: Number(file.deletions ?? 0),
-            patch: patch !== null && patch.length <= 20_000 ? patch : null,
-          };
-        },
-      );
+      const files = parsePaginatedGhApi(filesRaw).map((file) => {
+        const patch = file.patch ?? null;
+        return {
+          path: file.filename ?? "",
+          status: file.status ?? "modified",
+          additions: Number(file.additions ?? 0),
+          deletions: Number(file.deletions ?? 0),
+          patch: patch !== null && patch.length <= 20_000 ? patch : null,
+        };
+      });
 
       return {
         pull: {
@@ -1370,7 +1410,7 @@ export default async function plugin(bb: BbPluginApi) {
               ? "DRAFT"
               : String(view.state ?? ""),
           author: String(view.author?.login ?? ""),
-          body: typeof view.body === "string" ? view.body : "",
+          body: view.body ?? "",
           url: String(view.url ?? ""),
           createdAt: String(view.createdAt ?? ""),
           updatedAt: String(view.updatedAt ?? ""),
@@ -1393,13 +1433,13 @@ export default async function plugin(bb: BbPluginApi) {
           checks,
           comments: (view.comments ?? []).map((comment) => ({
             author: String(comment.author?.login ?? ""),
-            body: typeof comment.body === "string" ? comment.body : "",
+            body: comment.body ?? "",
             createdAt: String(comment.createdAt ?? ""),
           })),
           reviews: (view.reviews ?? []).map((review) => ({
             author: String(review.author?.login ?? ""),
             state: String(review.state ?? ""),
-            body: typeof review.body === "string" ? review.body : "",
+            body: review.body ?? "",
             createdAt: String(review.submittedAt ?? ""),
           })),
           reviewThreads,
@@ -1416,10 +1456,8 @@ export default async function plugin(bb: BbPluginApi) {
     async pullForThread({ threadId }) {
       let environmentId: string | null = null;
       try {
-        const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
-          environmentId?: string | null;
-        };
-        if (thread?.environmentId) {
+        const thread = await bb.sdk.threads.get({ threadId });
+        if (thread.environmentId) {
           environmentId = thread.environmentId;
           const result = await bb.sdk.environments.pullRequest({
             environmentId: thread.environmentId,
@@ -1427,9 +1465,9 @@ export default async function plugin(bb: BbPluginApi) {
           const url =
             result.outcome === "available" ? result.pullRequest.url : null;
           const match =
-            typeof url === "string"
-              ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)
-              : null;
+            url === null
+              ? null
+              : url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/);
           if (match !== null) {
             return {
               pull: {
@@ -1515,7 +1553,7 @@ export default async function plugin(bb: BbPluginApi) {
       }));
   }
 
-  function parseMentionId(itemId: string): { repo: string; number: number } {
+  function parseMentionId(itemId: string) {
     const match = itemId.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
     if (match === null) throw new Error(`malformed mention id "${itemId}"`);
     return { repo: match[1], number: Number(match[2]) };
@@ -1550,7 +1588,7 @@ export default async function plugin(bb: BbPluginApi) {
             ],
         15_000,
       );
-      const detail = JSON.parse(raw) as GhListEntry;
+      const detail = ghListEntrySchema.parse(JSON.parse(raw));
       return {
         context: [
           `# GitHub ${noun} ${repo}#${number}: ${String(detail.title ?? "")}`,
@@ -1558,7 +1596,9 @@ export default async function plugin(bb: BbPluginApi) {
           `State: ${String(detail.state ?? "")} · Author: ${String(detail.author?.login ?? "")}`,
           `URL: ${String(detail.url ?? "")}`,
           "",
-          typeof detail.body === "string" && detail.body.length > 0
+          detail.body !== null &&
+          detail.body !== undefined &&
+          detail.body.length > 0
             ? detail.body
             : "(no description)",
           "",

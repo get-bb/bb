@@ -69,6 +69,7 @@ import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
+import { z } from "zod";
 
 type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
@@ -441,13 +442,20 @@ function toTimelineFileChange(
   };
 }
 
+const provisioningDurationMetadataSchema = z.object({
+  durationMs: z.number(),
+});
+
 function formatProvisioningTranscriptEntryText(
   entry: EventProjectionProvisioningTranscriptEntry,
 ): string {
-  const durationMs =
-    typeof entry.metadata?.durationMs === "number"
-      ? entry.metadata.durationMs
-      : null;
+  const parsedDuration =
+    entry.metadata === undefined
+      ? null
+      : provisioningDurationMetadataSchema.safeParse(entry.metadata);
+  const durationMs = parsedDuration?.success
+    ? parsedDuration.data.durationMs
+    : null;
   if (
     durationMs !== null &&
     (entry.status === "completed" || entry.status === "failed")

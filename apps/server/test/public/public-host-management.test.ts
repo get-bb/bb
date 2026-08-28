@@ -11,6 +11,7 @@ import {
 } from "@bb/server-contract";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonEnrollResponseSchema,
   hostDaemonSessionOpenResponseSchema,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -75,7 +76,9 @@ describe("public host management", () => {
       );
 
       expect(enrollResponse.status).toBe(201);
-      const enrolled = (await readJson(enrollResponse)) as { hostKey: string };
+      const enrolled = hostDaemonEnrollResponseSchema.parse(
+        await readJson(enrollResponse),
+      );
       expect(getHost(harness.db, issued.hostId)).toMatchObject({
         connectMachineId: "machine-cloud-1",
         name: "Build Machine",

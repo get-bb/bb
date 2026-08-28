@@ -106,20 +106,20 @@ function filterResolvedRootSide<Root extends ProviderResolvedNativeRootInput>(
   dropped: ExperimentalDroppedNativeRoot[],
   warn: (message: string) => void,
   warned: Set<string>,
-): { kept: Root[]; truncated: number } {
+) {
   // The domain's per-root schema plus this side's shape rule, as the server
   // boundary applies them, so what passes here passes there.
-  const rootSchema = providerResolvedNativeRootsSchema.shape[side].element;
+  const rootSchema = providerResolvedNativeRootsSchema["shape"][side].element;
   const kept: Root[] = [];
   for (const root of roots) {
     // The original object is what the answer carries, so the original must
     // pass: the strict input shape first (an unknown key such as `source`
     // would fail the contract's strict output schema and void the whole
     // answer), then the domain's per-root rules on the normalized form.
-    const shape = providerResolvedNativeRootInputSchema.safeParse(root);
-    const result = shape.success
+    const parsedRoot = providerResolvedNativeRootInputSchema.safeParse(root);
+    const result = parsedRoot.success
       ? rootSchema.safeParse(normalizeProviderResolvedNativeRoot(root, side))
-      : shape;
+      : parsedRoot;
     if (result.success) {
       kept.push(root);
       continue;

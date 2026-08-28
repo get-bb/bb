@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { DiffProps } from "@get-bb/plugin-sdk";
-import { DiffHost } from "@/components/code/DiffHost";
+import { DiffHost, type DiffRenderer } from "@/components/code/DiffHost";
 import { normalizeFilePatch } from "@/components/git-diff/git-diff-parsing";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -12,7 +12,8 @@ export function PluginDiff({
   showLineNumbers,
   experimental_fullFileContents: fullFileContents,
   className,
-}: DiffProps) {
+  renderer,
+}: DiffProps & { renderer?: DiffRenderer }) {
   const normalized = useMemo(
     () => normalizeFilePatch({ patch, path }),
     [patch, path],
@@ -38,6 +39,7 @@ export function PluginDiff({
       overflow={overflow}
       showLineNumbers={showLineNumbers}
       className={className}
+      renderer={renderer}
     />
   );
 }

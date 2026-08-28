@@ -16,7 +16,7 @@ describe("@bb/sdk/node entry", () => {
       const nodeEntry = await import("../src/node.js");
       const sdk = nodeEntry.createNodeBbSdk({ baseUrl: "http://server" });
 
-      expect(typeof sdk.threads.list).toBe("function");
+      expect(sdk.threads.list).toBeInstanceOf(Function);
     },
     NODE_ENTRY_IMPORT_TEST_TIMEOUT_MS,
   );

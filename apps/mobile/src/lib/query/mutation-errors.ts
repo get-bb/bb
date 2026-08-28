@@ -1,5 +1,7 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import { BbHttpError } from "@bb/sdk/browser";
+import type { Mutation } from "@tanstack/react-query";
+import { z } from "zod";
 import { isTransientReadError } from "./query-client";
 
 const HTTP_STATUS_PREFIX_PATTERN = /^HTTP \d{3}:\s*/u;
@@ -21,26 +23,26 @@ function stripHttpStatusPrefix(message: string): string {
   return message.replace(HTTP_STATUS_PREFIX_PATTERN, "");
 }
 
-function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
+function isAbortLikeError(cause: unknown): boolean {
+  return toRecord(cause)?.name === "AbortError";
 }
 
-function getMutationErrorMeta(
-  value: Readonly<Record<string, unknown>> | undefined,
-): MutationErrorMeta {
-  if (!value) return {};
-  const errorMessage =
-    typeof value.errorMessage === "string"
-      ? normalizeMessage(value.errorMessage)
-      : undefined;
-  const showErrorToast =
-    typeof value.showErrorToast === "boolean"
-      ? value.showErrorToast
-      : undefined;
-  return {
-    ...(errorMessage ? { errorMessage } : {}),
-    ...(showErrorToast === undefined ? {} : { showErrorToast }),
-  };
+const mutationErrorMetaSchema = z.object({
+  errorMessage: z.string().optional(),
+  showErrorToast: z.boolean().optional(),
+});
+
+function getMutationErrorMeta(value: Mutation["meta"]): MutationErrorMeta {
+  const parsed = mutationErrorMetaSchema.safeParse(value);
+  if (!parsed.success) return {};
+  const errorMessage = parsed.data.errorMessage
+    ? normalizeMessage(parsed.data.errorMessage)
+    : undefined;
+  const showErrorToast = parsed.data.showErrorToast;
+  const meta: MutationErrorMeta = {};
+  if (errorMessage) meta.errorMessage = errorMessage;
+  if (showErrorToast !== undefined) meta.showErrorToast = showErrorToast;
+  return meta;
 }
 
 function getHttpErrorMessage(error: BbHttpError): string | null {
@@ -75,14 +77,14 @@ export interface MutationErrorToast {
 }
 
 export function describeMutationErrorToast(
-  error: unknown,
-  meta: Readonly<Record<string, unknown>> | undefined,
+  cause: unknown,
+  meta: Mutation["meta"],
 ): MutationErrorToast | null {
   const parsed = getMutationErrorMeta(meta);
   if (parsed.showErrorToast === false) return null;
-  if (isAbortLikeError(error)) return null;
+  if (isAbortLikeError(cause)) return null;
   const message = getMutationErrorMessage({
-    error,
+    error: cause,
     fallbackMessage: parsed.errorMessage ?? GENERIC_REQUEST_FAILED_MESSAGE,
   }).replace(TRAILING_PERIOD_PATTERN, "");
   if (message === GENERIC_REQUEST_FAILED_MESSAGE) {

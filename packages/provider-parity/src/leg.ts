@@ -23,19 +23,15 @@ const COLLECTOR_CANDIDATES = [
 ];
 
 interface CollectorModule {
-  createBridgeDeltaEventCollector?: unknown;
+  createBridgeDeltaEventCollector?: CreateCollector;
 }
 
 interface LegPackageModule {
-  createParityAssembler?: unknown;
-  projectParityRows?: unknown;
+  createParityAssembler?: CreateParityAssembler;
+  projectParityRows?: ParityRowProjector;
 }
 
 type CreateCollector = (providerId: string) => ParityAssembler;
-
-function isCreateCollector(value: unknown): value is CreateCollector {
-  return typeof value === "function";
-}
 
 async function importFromCheckout<T>(
   checkoutRoot: string,
@@ -45,6 +41,7 @@ async function importFromCheckout<T>(
   if (!existsSync(file)) {
     return null;
   }
+  // SAFETY: The checkout module is the typed parity leg or collector contract selected by its known path.
   return (await import(pathToFileURL(file).href)) as T;
 }
 
@@ -57,14 +54,13 @@ export async function loadParityLeg(checkoutRoot: string): Promise<ParityLeg> {
   );
   if (
     ownPackage !== null &&
-    typeof ownPackage.createParityAssembler === "function" &&
-    typeof ownPackage.projectParityRows === "function"
+    ownPackage.createParityAssembler !== undefined &&
+    ownPackage.projectParityRows !== undefined
   ) {
     return {
       checkoutRoot: root,
-      createAssembler:
-        ownPackage.createParityAssembler as CreateParityAssembler,
-      projectRows: ownPackage.projectParityRows as ParityRowProjector,
+      createAssembler: ownPackage.createParityAssembler,
+      projectRows: ownPackage.projectParityRows,
       source: LEG_PACKAGE_ENTRY,
     };
   }
@@ -73,7 +69,7 @@ export async function loadParityLeg(checkoutRoot: string): Promise<ParityLeg> {
     const module = await importFromCheckout<CollectorModule>(root, candidate);
     if (
       module === null ||
-      !isCreateCollector(module.createBridgeDeltaEventCollector)
+      module.createBridgeDeltaEventCollector === undefined
     ) {
       continue;
     }

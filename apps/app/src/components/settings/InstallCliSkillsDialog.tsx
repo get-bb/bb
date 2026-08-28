@@ -21,12 +21,12 @@ interface InstallCliSkillsDialogContentProps {
   statusByHostId: ReadonlyMap<string, CliSkillMachineStatus>;
 }
 
-const MACHINE_STATUS_LABELS: Record<CliSkillMachineStatus, string | null> = {
+const MACHINE_STATUS_LABELS = {
   installed: "Installed",
   outdated: "Out of date",
   missing: "Not installed",
   unknown: null,
-};
+} satisfies Record<CliSkillMachineStatus, string | null>;
 
 function isConnected(host: Host): boolean {
   return host.status === "connected";

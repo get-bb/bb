@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-function loadDotEnv(): Record<string, string> {
+function loadDotEnv() {
   try {
     const content = readFileSync(resolve(__dirname, "../../.env"), "utf8");
     const env: Record<string, string> = {};

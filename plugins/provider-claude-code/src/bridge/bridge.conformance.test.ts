@@ -1,36 +1,36 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { JsonObject } from "@bb/domain";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { installClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
-  queryMock: vi.fn(),
-}));
+const forkSessionMock = vi.fn();
+const queryMock = vi.fn();
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => queryMock(params),
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
+});
 
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
-  forkSession: forkSessionMock,
-  createSdkMcpServer: vi.fn(() => ({})),
-  tool: vi.fn((_name, _desc, _schema, handler) => handler),
-}));
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "./bridge.js";
 
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
-function asSdkMessage(message: Record<string, unknown>): SDKMessage {
-  return message as unknown as SDKMessage;
+function asSdkMessage(message: JsonObject): SDKMessage {
+  // SAFETY: The scripted objects contain the fields that the bridge reads for these test cases.
+  return message as SDKMessage;
 }
 
 interface ScriptedClaudeQueryCall {

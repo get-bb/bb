@@ -47,6 +47,11 @@ const UNTRUSTED_IMAGE_HEADERS = {
   "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
 };
 
+interface BrandingFixture {
+  icon?: string;
+  logo?: { light?: string; dark?: string };
+}
+
 function expectUntrustedImageHeaders(response: Response): void {
   for (const [name, value] of Object.entries(UNTRUSTED_IMAGE_HEADERS)) {
     expect(response.headers.get(name), name).toBe(value);
@@ -65,6 +70,20 @@ async function writeLogoPluginFixture(
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
+  const branding: BrandingFixture = {};
+  if (options.brandingIcon !== null) {
+    branding.icon = options.brandingIcon ?? "Zap";
+  }
+  if (options.logoLight !== undefined || options.logoDark !== undefined) {
+    const logo: BrandingFixture["logo"] = {};
+    if (options.logoLight !== undefined) {
+      logo.light = options.logoLight;
+    }
+    if (options.logoDark !== undefined) {
+      logo.dark = options.logoDark;
+    }
+    branding.logo = logo;
+  }
   await writeFile(
     join(rootDir, "package.json"),
     JSON.stringify({
@@ -73,23 +92,7 @@ async function writeLogoPluginFixture(
       bb: {
         name: options.pluginName ?? "Logo fixture",
         description: "Plugin branding fixture.",
-        branding: {
-          ...(options.brandingIcon === null
-            ? {}
-            : { icon: options.brandingIcon ?? "Zap" }),
-          ...(options.logoLight === undefined && options.logoDark === undefined
-            ? {}
-            : {
-                logo: {
-                  ...(options.logoLight === undefined
-                    ? {}
-                    : { light: options.logoLight }),
-                  ...(options.logoDark === undefined
-                    ? {}
-                    : { dark: options.logoDark }),
-                },
-              }),
-        },
+        branding,
         server: "./server.ts",
       },
     }),

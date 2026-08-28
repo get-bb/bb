@@ -1,6 +1,12 @@
-export default function plugin(bb: any) {
-  const globals = globalThis as any;
-  globals.__builtinFixtureLoads = (globals.__builtinFixtureLoads ?? 0) + 1;
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
+
+declare global {
+  var __builtinFixtureLoads: number | undefined;
+}
+
+export default function plugin(bb: BbPluginApi) {
+  globalThis.__builtinFixtureLoads =
+    (globalThis.__builtinFixtureLoads ?? 0) + 1;
 
   bb.cli.register({
     name: "builtin-fixture",

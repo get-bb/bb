@@ -53,7 +53,7 @@ export const deltaFileChangeSchema = z.object({
 });
 export type DeltaFileChange = z.infer<typeof deltaFileChangeSchema>;
 
-export const deltaBackgroundTaskShapeSchema = z.object({
+const deltaBackgroundTaskSchema = z.object({
   type: z.literal("backgroundTask"),
   familyId: z.string().min(1),
   taskType: z.string(),
@@ -68,50 +68,48 @@ export const deltaBackgroundTaskShapeSchema = z.object({
   error: z.string().optional(),
   outputFile: z.string().optional(),
 });
-export type DeltaBackgroundTaskShape = z.infer<
-  typeof deltaBackgroundTaskShapeSchema
->;
+type DeltaBackgroundTask = z.infer<typeof deltaBackgroundTaskSchema>;
 
-export const deltaFileReadShapeSchema = z.object({
+const deltaFileReadSchema = z.object({
   type: z.literal("fileRead"),
   path: z.string(),
   cmd: z.string().optional(),
 });
-export type DeltaFileReadShape = z.infer<typeof deltaFileReadShapeSchema>;
+type DeltaFileRead = z.infer<typeof deltaFileReadSchema>;
 
-export const deltaSearchShapeSchema = z.object({
+const deltaSearchSchema = z.object({
   type: z.literal("search"),
   mode: threadEventSearchModeSchema,
   query: z.string(),
   path: z.string().optional(),
   cmd: z.string().optional(),
 });
-export type DeltaSearchShape = z.infer<typeof deltaSearchShapeSchema>;
+type DeltaSearch = z.infer<typeof deltaSearchSchema>;
 
-export const deltaDelegationShapeSchema = z.object({
+const deltaDelegationSchema = z.object({
   type: z.literal("delegation"),
   childRef: deltaKeyPartSchema,
   label: z.string(),
   background: z.boolean(),
   summary: z.string().optional(),
 });
-export type DeltaDelegationShape = z.infer<typeof deltaDelegationShapeSchema>;
+type DeltaDelegation = z.infer<typeof deltaDelegationSchema>;
 
-export const deltaPlanStepsShapeSchema = z.object({
+const deltaPlanStepsSchema = z.object({
   type: z.literal("planSteps"),
   steps: z.array(threadEventPlanStepSchema),
   explanation: z.string().optional(),
 });
-export type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsShapeSchema>;
+type DeltaPlanSteps = z.infer<typeof deltaPlanStepsSchema>;
 
-export const deltaExtensionShapeSchema = z.object({
+const deltaExtensionSchema = z.object({
   type: z.literal("extension"),
   kind: extensionKindSchema,
   payload: jsonValueSchema,
 });
-export type DeltaExtensionShape = z.infer<typeof deltaExtensionShapeSchema>;
+type DeltaExtension = z.infer<typeof deltaExtensionSchema>;
 
-export const deltaItemShapeSchema = z.discriminatedUnion("type", [
+const deltaItemSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),
     command: z.string(),
@@ -152,19 +150,19 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
     pattern: z.string().nullable(),
   }),
   z.object({ type: z.literal("imageView"), path: z.string() }),
-  deltaBackgroundTaskShapeSchema,
-  deltaFileReadShapeSchema,
-  deltaSearchShapeSchema,
-  deltaDelegationShapeSchema,
-  deltaPlanStepsShapeSchema,
-  deltaExtensionShapeSchema,
+  deltaBackgroundTaskSchema,
+  deltaFileReadSchema,
+  deltaSearchSchema,
+  deltaDelegationSchema,
+  deltaPlanStepsSchema,
+  deltaExtensionSchema,
 ]);
-export type DeltaItemShape = z.infer<typeof deltaItemShapeSchema>;
-export type DeltaItemShapeType = DeltaItemShape["type"];
+type DeltaItem = z.infer<typeof deltaItemSchema>;
+type DeltaItemType = DeltaItem["type"];
 
 export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
-  deltaBackgroundTaskShapeSchema,
-  deltaDelegationShapeSchema,
+  deltaBackgroundTaskSchema,
+  deltaDelegationSchema,
 ]);
 export type DeltaProgressSnapshot = z.infer<typeof deltaProgressSnapshotSchema>;
 
@@ -190,7 +188,7 @@ export const deltaNoTurnFallbackSchema = z.object({
 export type DeltaNoTurnFallback = z.infer<typeof deltaNoTurnFallbackSchema>;
 
 function requireExtensionPresentation(
-  delta: { item: DeltaItemShape; presentation?: DeltaPresentation },
+  delta: { item: DeltaItem; presentation?: DeltaPresentation },
   ctx: z.RefinementCtx,
 ): void {
   if (delta.item.type === "extension" && delta.presentation === undefined) {
@@ -234,7 +232,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("item.open"),
       key: deltaItemKeySchema,
-      item: deltaItemShapeSchema,
+      item: deltaItemSchema,
       presentation: deltaPresentationSchema.optional(),
       attach: deltaAttachSchema.optional(),
       providerTurnId: providerTurnIdSchema.optional(),
@@ -251,7 +249,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
       exitCode: z.number().optional(),
       aggregatedOutput: z.string().optional(),
       approvalStatus: z.literal("denied").optional(),
-      item: deltaItemShapeSchema,
+      item: deltaItemSchema,
       presentation: deltaPresentationSchema.optional(),
       providerTurnId: providerTurnIdSchema.optional(),
       noTurnFallback: deltaNoTurnFallbackSchema.optional(),
@@ -404,3 +402,26 @@ export const threadDeltaNotificationParamsSchema = z
 export type ThreadDeltaNotificationParams = z.infer<
   typeof threadDeltaNotificationParamsSchema
 >;
+
+// oxlint-disable anti-slop/no-shape-in-symbol-names
+export {
+  deltaBackgroundTaskSchema as deltaBackgroundTaskShapeSchema,
+  deltaDelegationSchema as deltaDelegationShapeSchema,
+  deltaExtensionSchema as deltaExtensionShapeSchema,
+  deltaFileReadSchema as deltaFileReadShapeSchema,
+  deltaItemSchema as deltaItemShapeSchema,
+  deltaPlanStepsSchema as deltaPlanStepsShapeSchema,
+  deltaSearchSchema as deltaSearchShapeSchema,
+};
+
+export type {
+  DeltaBackgroundTask as DeltaBackgroundTaskShape,
+  DeltaDelegation as DeltaDelegationShape,
+  DeltaExtension as DeltaExtensionShape,
+  DeltaFileRead as DeltaFileReadShape,
+  DeltaItem as DeltaItemShape,
+  DeltaItemType as DeltaItemShapeType,
+  DeltaPlanSteps as DeltaPlanStepsShape,
+  DeltaSearch as DeltaSearchShape,
+};
+// oxlint-enable anti-slop/no-shape-in-symbol-names

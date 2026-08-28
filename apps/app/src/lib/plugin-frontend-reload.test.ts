@@ -57,7 +57,7 @@ function candidate(
   };
 }
 
-function pluginModule(sectionTitle: string): Record<string, unknown> {
+function pluginModule(sectionTitle: string) {
   return {
     default: definePluginApp((app) => {
       app.slots.homepageSection({
@@ -69,10 +69,17 @@ function pluginModule(sectionTitle: string): Record<string, unknown> {
   };
 }
 
-function contentScriptModule(
-  setup: Parameters<typeof definePluginApp>[0],
-): Record<string, unknown> {
+function contentScriptModule(setup: Parameters<typeof definePluginApp>[0]) {
   return { default: definePluginApp(setup) };
+}
+
+type TestPluginModule = ReturnType<typeof pluginModule>;
+type TestThreadStatusSetter = (
+  threadId: string | number,
+  status: PluginComposerThreadRowStatus | { icon: string; label: string },
+) => void;
+interface CssGate {
+  release: (() => void) | null;
 }
 
 afterEach(() => {
@@ -101,7 +108,7 @@ function MountedHomepageSections() {
 
 interface TestReconcileDeps extends PluginFrontendReconcileDeps {
   fetchCandidates: Mock<() => Promise<PluginFrontendCandidate[]>>;
-  importModule: Mock<(url: string) => Promise<unknown>>;
+  importModule: Mock<(url: string) => Promise<TestPluginModule>>;
   removeRegistrations: Mock<typeof removePluginSlotRegistrations>;
   setRegistrations: Mock<typeof setPluginSlotRegistrations>;
 }
@@ -111,9 +118,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
-    ),
+    importModule: vi.fn(async (_url: string) => pluginModule("hello")),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),
@@ -122,7 +127,10 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
-    mountTimeoutMs: undefined as number | undefined,
+    mountTimeoutMs:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as
+        | number
+        | undefined,
   };
 }
 
@@ -170,7 +178,7 @@ describe("reconcilePluginFrontends", () => {
   it("waits for the stylesheet before publishing registrations", async () => {
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([candidate("hello", "aaa")]);
-    const cssGate: { release: (() => void) | null } = { release: null };
+    const cssGate: CssGate = { release: null };
     vi.mocked(deps.applyCss).mockImplementation(
       () =>
         new Promise<void>((resolve) => {
@@ -616,9 +624,10 @@ describe("reconcilePluginFrontends", () => {
         app.contentScripts.register({
           id: "thread-status",
           mount({ experimental_setThreadRowStatus }) {
-            const setStatus = experimental_setThreadRowStatus as
-              | ((threadId: unknown, status: unknown) => void)
-              | undefined;
+            const setStatus =
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ experimental_setThreadRowStatus as
+                | TestThreadStatusSetter
+                | undefined;
             setStatus?.(42, {
               icon: "AiContentGenerator01",
               label: "Invalid number id",

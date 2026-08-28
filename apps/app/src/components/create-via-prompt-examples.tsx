@@ -26,7 +26,7 @@ interface KindConfig {
   examples: readonly Example[];
 }
 
-const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
+const CONFIG = {
   skill: {
     prefix: CREATE_SKILL_PROMPT,
     examples: [
@@ -59,7 +59,7 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
       prompt: archetypePrompt(archetype),
     })),
   },
-};
+} satisfies Record<CreateViaPromptKind, KindConfig>;
 
 interface CreateExample {
   label: string;
@@ -68,16 +68,23 @@ interface CreateExample {
   prompt: string;
 }
 
-export function getCreateExamples(kind: CreateViaPromptKind): {
+interface CreateExamplesResult {
   examples: CreateExample[];
-} {
+}
+
+export function getCreateExamples(
+  kind: CreateViaPromptKind,
+): CreateExamplesResult {
   const config = CONFIG[kind];
   return {
     examples: config.examples.map((example) => ({
       label: example.label,
       icon: example.icon,
       description: example.description,
-      prompt: example.prompt ?? `${config.prefix}${example.description}.`,
+      prompt:
+        "prompt" in example
+          ? example.prompt
+          : `${config.prefix}${example.description}.`,
     })),
   };
 }

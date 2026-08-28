@@ -12,12 +12,12 @@ const variants: readonly PillVariant[] = [
   "emphasis",
 ];
 
-const VARIANT_CONTENT: Record<PillVariant, string> = {
+const VARIANT_CONTENT = {
   secondary: "managed",
   destructive: "failed",
   outline: "manager",
   emphasis: "active",
-};
+} satisfies Record<PillVariant, string>;
 
 export function Overview() {
   return (

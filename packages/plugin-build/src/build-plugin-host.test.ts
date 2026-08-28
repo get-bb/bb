@@ -11,8 +11,41 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { jsonObjectSchema, jsonValueSchema } from "@bb/domain";
 import { buildPluginHost } from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
+
+interface HostBuildMetadata {
+  pluginId: string;
+  pluginVersion: string;
+  builtWith: { bbVersion: string };
+  artifactDigest: string;
+}
+
+interface BuiltHostEntry {
+  default: {
+    experimental_apiVersion: number;
+    experimental_signals: { changed: { payload: object } };
+    handlers: { echo: (input: string) => string };
+  };
+}
+
+const stringJsonValueSchema = jsonValueSchema.refine(
+  (value): value is string => value === String(value),
+);
+
+function parseHostBuildMetadata(serialized: string): HostBuildMetadata {
+  const value = jsonObjectSchema.parse(JSON.parse(serialized));
+  const builtWith = jsonObjectSchema.parse(value.builtWith);
+  return {
+    pluginId: stringJsonValueSchema.parse(value.pluginId),
+    pluginVersion: stringJsonValueSchema.parse(value.pluginVersion),
+    builtWith: {
+      bbVersion: stringJsonValueSchema.parse(builtWith.bbVersion),
+    },
+    artifactDigest: stringJsonValueSchema.parse(value.artifactDigest),
+  };
+}
 
 function testToolchain() {
   return resolvePluginBuildToolchain(join(process.cwd(), ".unused-toolchain"));
@@ -79,12 +112,9 @@ describe("plugin host build", () => {
     );
     const bytes = await readFile(result.jsPath);
     const bundle = bytes.toString("utf8");
-    const metadata = JSON.parse(await readFile(result.metaPath, "utf8")) as {
-      pluginId: string;
-      pluginVersion: string;
-      builtWith: { bbVersion: string };
-      artifactDigest: string;
-    };
+    const metadata = parseHostBuildMetadata(
+      await readFile(result.metaPath, "utf8"),
+    );
 
     expect(bundle).not.toMatch(/from\s+["']@get-bb\/plugin-sdk/u);
     expect(metadata).toMatchObject({
@@ -97,13 +127,7 @@ describe("plugin host build", () => {
       createHash("sha256").update(bytes).digest("hex"),
     );
 
-    const builtEntry = (await import(result.jsPath)) as {
-      default: {
-        experimental_apiVersion: number;
-        experimental_signals: { changed: { payload: unknown } };
-        handlers: { echo: (input: string) => string };
-      };
-    };
+    const builtEntry: BuiltHostEntry = await import(result.jsPath);
     expect(builtEntry.default.experimental_apiVersion).toBe(1);
     expect(builtEntry.default.experimental_signals).toHaveProperty("changed");
     expect(builtEntry.default.handlers.echo("from-artifact")).toBe(

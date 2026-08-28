@@ -1,4 +1,4 @@
-import type { ProvisioningTranscriptEntry } from "@bb/domain";
+import { jsonObjectSchema, type ProvisioningTranscriptEntry } from "@bb/domain";
 import type {
   EventProjectionOperationMessage,
   EventProjectionProvisioningMetadata,
@@ -19,26 +19,32 @@ export function readProvisioningTranscript(
     if (!text) continue;
 
     if (entry.type === "step") {
-      result.push({
+      const resultEntry: EventProjectionProvisioningTranscriptEntry = {
         type: "step",
         key,
         text,
         status: entry.status ?? "started",
-        ...(entry.startedAt !== undefined
-          ? { startedAt: entry.startedAt }
-          : {}),
-        ...(entry.metadata ? { metadata: entry.metadata } : {}),
-      });
+      };
+      if (entry.startedAt !== undefined)
+        resultEntry.startedAt = entry.startedAt;
+      if (entry.metadata) {
+        const metadata = jsonObjectSchema.safeParse(entry.metadata);
+        if (metadata.success) resultEntry.metadata = metadata.data;
+      }
+      result.push(resultEntry);
     } else if (entry.type === "output") {
-      result.push({
+      const resultEntry: EventProjectionProvisioningTranscriptEntry = {
         type: "output",
         key,
         text,
-        ...(entry.startedAt !== undefined
-          ? { startedAt: entry.startedAt }
-          : {}),
-        ...(entry.metadata ? { metadata: entry.metadata } : {}),
-      });
+      };
+      if (entry.startedAt !== undefined)
+        resultEntry.startedAt = entry.startedAt;
+      if (entry.metadata) {
+        const metadata = jsonObjectSchema.safeParse(entry.metadata);
+        if (metadata.success) resultEntry.metadata = metadata.data;
+      }
+      result.push(resultEntry);
     }
   }
 
@@ -92,26 +98,24 @@ export function mergeProvisioningMetadata(
     return existing ? { ...existing } : undefined;
   }
   if (!existing) {
-    return {
-      ...incoming,
-      ...(incoming.transcript
-        ? {
-            transcript: mergeProvisioningTranscript(
-              undefined,
-              incoming.transcript,
-            ),
-          }
-        : {}),
-    };
+    const result = { ...incoming };
+    if (incoming.transcript) {
+      result.transcript = mergeProvisioningTranscript(
+        undefined,
+        incoming.transcript,
+      );
+    }
+    return result;
   }
 
   const transcript = mergeProvisioningTranscript(
     existing.transcript,
     incoming.transcript,
   );
-  return {
+  const result: EventProjectionProvisioningMetadata = {
     environmentId: incoming.environmentId ?? existing.environmentId,
     provisioningId: incoming.provisioningId,
-    ...(transcript ? { transcript } : {}),
   };
+  if (transcript) result.transcript = transcript;
+  return result;
 }

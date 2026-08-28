@@ -7,6 +7,7 @@ import {
   useRealtime,
   useRpc,
   type PluginNavPanelProps,
+  type JsonValue,
 } from "@get-bb/plugin-sdk/app";
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
@@ -72,17 +73,23 @@ interface AutomationSignal {
   kind: "automations-changed" | "automation-runs-changed";
 }
 
-function asSignal(payload: unknown): AutomationSignal | null {
-  if (payload === null || typeof payload !== "object") return null;
-  const record = payload as { projectId?: unknown; kind?: unknown };
+function asSignal(payload: JsonValue): AutomationSignal | null {
   if (
-    typeof record.projectId !== "string" ||
-    (record.kind !== "automations-changed" &&
-      record.kind !== "automation-runs-changed")
+    payload === null ||
+    Array.isArray(payload) ||
+    typeof payload !== "object"
   ) {
     return null;
   }
-  return { projectId: record.projectId, kind: record.kind };
+  const projectId = payload["projectId"];
+  const kind = payload["kind"];
+  if (
+    typeof projectId !== "string" ||
+    (kind !== "automations-changed" && kind !== "automation-runs-changed")
+  ) {
+    return null;
+  }
+  return { projectId, kind };
 }
 
 function useOverview(): {

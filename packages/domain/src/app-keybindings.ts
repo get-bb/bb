@@ -117,7 +117,7 @@ export interface AppShortcutInput {
   shiftKey: boolean;
 }
 
-const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
+const SHIFTED_KEY_BASES = {
   "~": "`",
   "!": "1",
   "@": "2",
@@ -139,7 +139,7 @@ const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "<": ",",
   ">": ".",
   "?": "/",
-};
+} satisfies Readonly<Record<string, string>>;
 
 function baseKeyFromCode(code: string): string | null {
   if (/^Key[A-Z]$/u.test(code)) return code.slice(3).toLowerCase();
@@ -151,6 +151,12 @@ function isAsciiAlphanumeric(value: string): boolean {
   return /^[a-z0-9]$/iu.test(value);
 }
 
+function isShiftedKeyBase(
+  value: string,
+): value is keyof typeof SHIFTED_KEY_BASES {
+  return Object.hasOwn(SHIFTED_KEY_BASES, value);
+}
+
 export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
@@ -159,9 +165,10 @@ export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
     const fromCode = baseKeyFromCode(input.code);
     if (fromCode !== null) return fromCode;
   }
-  return input.shiftKey
-    ? (SHIFTED_KEY_BASES[input.key] ?? input.key)
-    : input.key;
+  if (input.shiftKey && isShiftedKeyBase(input.key)) {
+    return SHIFTED_KEY_BASES[input.key];
+  }
+  return input.key;
 }
 
 export function isMacKeyboardPlatform(platform: string): boolean {

@@ -1,10 +1,17 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { JsonValue } from "@bb/domain";
 import {
   CLAUDE_CODE_ACTIVE_CATALOG_DATA,
   CLAUDE_XHIGH_CAPABLE_REASONING_EFFORT_DATA,
   DEFAULT_CLAUDE_CODE_MODEL,
 } from "./src/model-catalog-data.js";
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
+
+interface DerivedProviderOptions extends Readonly<Record<string, JsonValue>> {
+  memoryEnabled: boolean;
+  providerSubagentsEnabled: boolean;
+  workflowsEnabled: boolean;
+}
 
 export default function plugin(bb: BbPluginApi) {
   bb.settings.define({
@@ -81,14 +88,15 @@ export default function plugin(bb: BbPluginApi) {
       })),
     },
     deriveProviderOptions(context) {
-      return {
+      const options = {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
         workflowsEnabled: context.settings.workflowsDisabled !== true,
-        ...(context.promptMode === "plan"
-          ? { claudeCodePermissionMode: "plan" }
-          : {}),
-      };
+      } satisfies DerivedProviderOptions;
+      if (context.promptMode === "plan") {
+        return { ...options, claudeCodePermissionMode: "plan" };
+      }
+      return options;
     },
   });
 }

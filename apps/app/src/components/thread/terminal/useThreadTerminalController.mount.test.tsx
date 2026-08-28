@@ -11,10 +11,6 @@ import {
   type ThreadTerminalControllerArgs,
 } from "./useThreadTerminalController";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { terminals: { list: vi.fn() } },
-}));
-
 const session: TerminalSession = {
   id: "term_1",
   threadId: "thr_1",
@@ -51,7 +47,7 @@ function controllerArgs(
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("shouldMountTerminalViewForPanel", () => {
@@ -89,7 +85,7 @@ describe("shouldMountTerminalViewForPanel", () => {
 
 describe("useThreadTerminalController terminal view mounting", () => {
   it("does not mount a persisted-open terminal the panel never showed", () => {
-    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
+    vi.spyOn(sdk.terminals, "list").mockResolvedValue({ sessions: [session] });
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(
       () =>
@@ -104,7 +100,7 @@ describe("useThreadTerminalController terminal view mounting", () => {
   });
 
   it("keeps the view mounted across a compact close and unmounts once persisted state closes", async () => {
-    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [session] });
+    vi.spyOn(sdk.terminals, "list").mockResolvedValue({ sessions: [session] });
     const { wrapper } = createQueryClientTestHarness();
     const { result, rerender } = renderHook(
       (visibility: PanelVisibility) =>

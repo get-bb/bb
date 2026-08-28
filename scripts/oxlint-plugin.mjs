@@ -20,6 +20,7 @@ function isSemanticComment(commentText) {
       directive,
     ) ||
     /^(?:prettier|oxfmt)-ignore\b/.test(directive) ||
+    /^SAFETY:\s/.test(directive) ||
     /^@vite-ignore\b/.test(directive) ||
     /^webpack(?:ChunkName|Mode|Prefetch|Preload|Exports|FetchPriority)\b/.test(
       directive,

@@ -1,5 +1,10 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, turnScope, type JsonObject } from "@bb/domain";
+import {
+  threadScope,
+  turnScope,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -172,7 +177,22 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
   },
 };
 
-const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+const PROVIDER_INSTALLATION_EVENTS: JsonValue[] = [
+  {
+    type: "started",
+    provider: "codex",
+    command: "npm install -g @openai/codex@latest",
+  },
+  {
+    type: "completed",
+    provider: "codex",
+    exitCode: 0,
+    signal: null,
+    success: true,
+  },
+];
+
+const ONLINE_RPC_RESPONSE_RESULT_FIXTURES = {
   "plugin.host.call": { output: { ok: true } },
   "plugin.host.cancel": { cancelled: true },
   "plugin.host.dispose": { disposed: true },
@@ -391,20 +411,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     versionUnsupported: false,
   },
   "provider.installation.run": {
-    events: [
-      {
-        type: "started",
-        provider: "codex",
-        command: "npm install -g @openai/codex@latest",
-      },
-      {
-        type: "completed",
-        provider: "codex",
-        exitCode: 0,
-        signal: null,
-        success: true,
-      },
-    ],
+    events: PROVIDER_INSTALLATION_EVENTS,
   },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
@@ -436,9 +443,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       mergeable: "MERGEABLE",
     },
   },
-};
+} satisfies OnlineRpcResponseResultFixtures;
 
-const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
+const SETTLED_RESPONSE_RESULT_FIXTURES = {
   "thread.rewind.discard": {},
   "thread.rewind.prepare": {
     providerThreadId: "provider-thread-rewind",
@@ -491,7 +498,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     merged: true,
   },
   "workspace.pull_request_action": {},
-};
+} satisfies SettledResponseResultFixtures;
 
 const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
   outcome: "available",
@@ -630,7 +637,7 @@ function terminalDataBase64(byteLength: number): string {
   return Buffer.alloc(byteLength, "a").toString("base64");
 }
 
-const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS = {
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -677,7 +684,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
-};
+} satisfies Record<string, string>;
 
 describe("host-daemon local schemas", () => {
   it("parses workspace open target routes", () => {
@@ -1249,14 +1256,18 @@ describe("host-daemon command schemas", () => {
       includeDirectories: true,
     });
 
+    interface NativeRootFixture {
+      path: string;
+      recursive: boolean;
+      ancestors: boolean;
+      namePrefix: string;
+    }
+    type NativeRootFixtureGroups = Record<string, NativeRootFixture[]>;
+
     const root = (
       path: string,
-      options: Partial<{
-        recursive: boolean;
-        ancestors: boolean;
-        namePrefix: string;
-      }> = {},
-    ) => ({
+      options: Partial<Omit<NativeRootFixture, "path">> = {},
+    ): NativeRootFixture => ({
       path,
       recursive: false,
       ancestors: false,
@@ -1285,7 +1296,7 @@ describe("host-daemon command schemas", () => {
                 recursive: false,
                 ancestors: false,
                 namePrefix: "one:",
-                shape: "skills",
+                ["shape"]: "skills",
               },
             ],
             commands: [],
@@ -1299,7 +1310,9 @@ describe("host-daemon command schemas", () => {
         skills: {
           project: [{ path: ".amp/skills", recursive: true, ancestors: true }],
         },
-        resolved: { skills: [{ namePrefix: "one:", shape: "skills" }] },
+        resolved: {
+          skills: [{ namePrefix: "one:", ["shape"]: "skills" }],
+        },
       },
     });
 
@@ -1327,7 +1340,7 @@ describe("host-daemon command schemas", () => {
         nativeSkillRoots: { user: [".pi/agent/skills"], project: [] },
       }),
     ).toThrow();
-    const withRoots = (skills: Record<string, unknown>) => ({
+    const withRoots = (skills: NativeRootFixtureGroups) => ({
       type: "host.list_commands",
       providerId: "pi",
       cwd: "/tmp/workspace",
@@ -2110,7 +2123,7 @@ describe("host-daemon command schemas", () => {
       turnSubmitCommand,
     );
 
-    const withoutBridgeLaunch: Record<string, unknown> = {
+    const withoutBridgeLaunch = {
       ...threadStartRoundTrip,
     };
     delete withoutBridgeLaunch.bridgeLaunch;

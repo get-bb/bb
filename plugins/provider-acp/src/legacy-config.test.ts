@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { readLegacyCustomAcpAgents } from "./legacy-config.js";
 
@@ -12,7 +13,7 @@ afterEach(async () => {
   );
 });
 
-async function dataDir(config?: unknown): Promise<string> {
+async function dataDir(config?: JsonValue): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "bb-acp-legacy-"));
   dirs.push(dir);
   if (config !== undefined) {

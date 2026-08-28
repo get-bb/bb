@@ -24,6 +24,11 @@ export type Post = {
   blocks: PostBlock[];
 };
 
+interface ParsedFrontMatter {
+  fields: Record<string, string>;
+  body: string;
+}
+
 export function isRenderableHref(href: string): boolean {
   return (
     href.startsWith("https://") ||
@@ -45,10 +50,7 @@ function formatDate(iso: string): string {
   }).format(new Date(`${iso}T00:00:00Z`));
 }
 
-function parseFrontMatter(source: string): {
-  fields: Record<string, string>;
-  body: string;
-} {
+function parseFrontMatter(source: string): ParsedFrontMatter {
   if (!source.startsWith("---\n")) {
     throw new Error("Post must start with --- front matter");
   }

@@ -160,6 +160,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on fork"
   });
   const forked = await harness.waitForResponse(1);
   expect(forked.error).toBeUndefined();
+  // SAFETY: The successful fork response contract guarantees this result shape.
   const forkedProviderThreadId = (forked.result as { providerThreadId: string })
     .providerThreadId;
 

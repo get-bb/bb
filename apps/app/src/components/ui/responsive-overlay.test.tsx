@@ -259,9 +259,12 @@ describe("PersistentResponsiveDrawerShell", () => {
 
     expect(content?.getAttribute("aria-hidden")).toBe("false");
     expect(appTree.getAttribute("aria-hidden")).toBeNull();
-    fireEvent.transitionEnd(content as HTMLElement, {
-      propertyName: "transform",
-    });
+    fireEvent.transitionEnd(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ content as HTMLElement,
+      {
+        propertyName: "transform",
+      },
+    );
     expect(onContentAnimationEnd).toHaveBeenLastCalledWith(true);
   });
 
@@ -279,7 +282,7 @@ describe("PersistentResponsiveDrawerShell", () => {
     );
 
     fireEvent.click(
-      document.querySelector<HTMLElement>(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ document.querySelector<HTMLElement>(
         "[data-persistent-drawer-backdrop]",
       ) as HTMLElement,
     );
@@ -469,7 +472,7 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(requestAnimationFrame).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(input);
     fireEvent.click(
-      document.querySelector<HTMLElement>(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ document.querySelector<HTMLElement>(
         "[data-persistent-drawer-backdrop]",
       ) as HTMLElement,
     );
@@ -491,12 +494,14 @@ describe("PersistentResponsiveDrawerShell", () => {
       </PersistentResponsiveDrawerShell>,
     );
 
-    const content = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-content]",
-    ) as HTMLElement;
-    const handle = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-handle]",
-    ) as HTMLElement;
+    const content =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ document.querySelector<HTMLElement>(
+        "[data-persistent-drawer-content]",
+      ) as HTMLElement;
+    const handle =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ document.querySelector<HTMLElement>(
+        "[data-persistent-drawer-handle]",
+      ) as HTMLElement;
     const readHeight = vi.fn(() => 400);
     Object.defineProperty(content, "clientHeight", {
       configurable: true,

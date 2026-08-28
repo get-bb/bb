@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SystemConfigResponse } from "@bb/server-contract";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
@@ -11,30 +14,76 @@ import {
   markRouteContentPainted,
   resetRouteContentPaintForTest,
 } from "@/lib/route-content-paint";
-
-const mocks = vi.hoisted(() => ({
-  bootPluginFrontends: vi.fn(async () => {}),
-  systemConfigData: undefined as unknown,
-}));
-
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
-  bootPluginFrontends: mocks.bootPluginFrontends,
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({ data: mocks.systemConfigData }),
-}));
+import * as pluginFrontendLazy from "@/lib/plugin-frontend-lazy";
+import * as systemQueries from "@/hooks/queries/system-queries";
 
 import {
   PLUGIN_FRONTEND_SETTLE_FLOOR_MS,
   usePluginFrontendBoot,
 } from "./usePluginFrontendBoot";
 
+const mocks = {
+  bootPluginFrontends: vi.spyOn(pluginFrontendLazy, "bootPluginFrontends"),
+  useSystemConfig: vi.spyOn(systemQueries, "useSystemConfig"),
+};
+let systemConfigData: SystemConfigResponse | undefined;
+
+function queryResult(
+  data: SystemConfigResponse | undefined,
+): UseQueryResult<SystemConfigResponse, Error> {
+  const common = {
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle" as const,
+    isEnabled: true,
+    isError: false,
+    isFetching: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isPaused: false,
+    isStale: false,
+    refetch: async () => queryResult(data),
+  } as const;
+  if (data === undefined) {
+    return {
+      ...common,
+      data: undefined,
+      isFetched: false,
+      isFetchedAfterMount: false,
+      isInitialLoading: true,
+      isLoading: true,
+      isPending: true,
+      isSuccess: false,
+      promise: new Promise<SystemConfigResponse>(() => {}),
+      status: "pending" as const,
+    };
+  }
+  return {
+    ...common,
+    data,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isInitialLoading: false,
+    isLoading: false,
+    isPending: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    status: "success" as const,
+  };
+}
+
 const flushMicrotasks = () => act(async () => {});
 
 beforeEach(() => {
   vi.useFakeTimers();
-  mocks.systemConfigData = { generalSettings: {} };
+  systemConfigData = makeSystemConfig();
+  mocks.useSystemConfig.mockImplementation(() => queryResult(systemConfigData));
   resetRouteContentPaintForTest();
   window.history.replaceState(null, "", "/");
 });
@@ -43,6 +92,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   mocks.bootPluginFrontends.mockClear();
+  mocks.useSystemConfig.mockClear();
   resetPluginFrontendBootStateForTest();
 });
 
@@ -81,7 +131,7 @@ describe("usePluginFrontendBoot", () => {
   });
 
   it("does nothing until system config resolves", async () => {
-    mocks.systemConfigData = undefined;
+    systemConfigData = undefined;
     renderHook(() => usePluginFrontendBoot());
     await act(async () => {
       markRouteContentPainted();
@@ -91,7 +141,7 @@ describe("usePluginFrontendBoot", () => {
   });
 
   it("settles after the floor even when system config never resolves", () => {
-    mocks.systemConfigData = undefined;
+    systemConfigData = undefined;
     const { result } = renderHook(() => {
       usePluginFrontendBoot();
       return usePluginFrontendsSettled();

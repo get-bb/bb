@@ -2,16 +2,27 @@ import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
 import {
   mobilePairingPayload,
   type MobilePairingPayload,
+  type ListAccountServersResult,
 } from "@bb/connect-client";
-import type { ShareHostResolver } from "./hosts.js";
+import type { ShareHost, ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";
 import type { MobilePairingGate } from "./rpc.js";
-import { parseSharePort } from "./shares.js";
+import {
+  parseSharePort,
+  type ShareListing,
+  type ShareRemoval,
+} from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
 
 interface ParsedFlags {
   flags: Map<string, string | true>;
+}
+
+interface ConnectPairArgs {
+  code: string;
+  serverUrl?: string;
+  baseUrl?: string;
 }
 
 function parseFlags(argv: string[]): ParsedFlags {
@@ -104,7 +115,16 @@ function formatStatus(status: ConnectStatus): string {
   return lines.join("\n");
 }
 
-function asJson(value: unknown): string {
+type ConnectCliJsonValue =
+  | ConnectStatus
+  | MobilePairingPayload
+  | ListAccountServersResult
+  | ShareListing
+  | ShareListing[]
+  | ShareRemoval
+  | { host: ShareHost; shares: ShareListing[] };
+
+function asJson(value: ConnectCliJsonValue): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
@@ -384,11 +404,10 @@ export function registerConnectCli(args: {
         }
         const server = stringFlag(parsed, "server");
         const baseUrl = stringFlag(parsed, "base-url");
-        const status = await tunnel.pair({
-          code,
-          ...(server !== undefined ? { serverUrl: server } : {}),
-          ...(baseUrl !== undefined ? { baseUrl } : {}),
-        });
+        const pairArgs: ConnectPairArgs = { code };
+        if (server !== undefined) pairArgs.serverUrl = server;
+        if (baseUrl !== undefined) pairArgs.baseUrl = baseUrl;
+        const status = await tunnel.pair(pairArgs);
         if (parsed.flags.has("json")) {
           return { exitCode: 0, stdout: asJson(status) };
         }

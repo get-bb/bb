@@ -40,9 +40,14 @@ async function writeFileEnsuringDir(
   await writeFile(filePath, content, "utf8");
 }
 
+type TestPluginManifest = {
+  name?: string | number;
+  skills?: string | string[];
+};
+
 async function writePluginManifest(
   pluginRoot: string,
-  manifest: unknown,
+  manifest: TestPluginManifest,
 ): Promise<void> {
   await writeFileEnsuringDir(
     path.join(pluginRoot, ".codex-plugin", "plugin.json"),
@@ -71,11 +76,11 @@ async function resolveSkills(
 
 function homeRoots(home: string): CodexResolvedSkillRoot[] {
   return [
-    { path: path.join(home, "skills"), origin: "user", shape: "skills" },
+    { path: path.join(home, "skills"), origin: "user", ["shape"]: "skills" },
     {
       path: path.join(home, "skills", ".system"),
       origin: "user",
-      shape: "skills",
+      ["shape"]: "skills",
     },
   ];
 }
@@ -201,32 +206,32 @@ describe("resolveCodexNativeRoots", () => {
         path: path.join(pluginRoot, "SKILL.md"),
         origin: "user",
         namePrefix,
-        shape: "skill-file",
+        ["shape"]: "skill-file",
         fallbackName: "local-plugin",
       },
       {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix,
-        shape: "skills",
+        ["shape"]: "skills",
       },
       {
         path: path.join(pluginRoot, "linked-skill", "SKILL.md"),
         origin: "user",
         namePrefix,
-        shape: "skill-file",
+        ["shape"]: "skill-file",
       },
       {
         path: path.join(pluginRoot, "linked-skills"),
         origin: "user",
         namePrefix,
-        shape: "skills",
+        ["shape"]: "skills",
       },
       {
         path: path.join(pluginRoot, "single"),
         origin: "user",
         namePrefix,
-        shape: "skill",
+        ["shape"]: "skill",
       },
     ]);
   });
@@ -242,7 +247,7 @@ describe("resolveCodexNativeRoots", () => {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix: "dir-named:",
-        shape: "skills",
+        ["shape"]: "skills",
       },
     ]);
   });
@@ -363,7 +368,7 @@ describe("resolveCodexNativeRoots contract filtering", () => {
 
   it("drops only the roots of a plugin whose name cannot be a name prefix", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const plugins: [directory: string, manifest: Record<string, unknown>][] = [
+    const plugins: [directory: string, manifest: TestPluginManifest][] = [
       ["good-a", { name: "good-a" }],
       ["good-b", { name: "good-b" }],
       ["spaced", { name: "bad name" }],
@@ -388,7 +393,7 @@ describe("resolveCodexNativeRoots contract filtering", () => {
         ),
         origin: "user",
         namePrefix: "good-a:",
-        shape: "skills",
+        ["shape"]: "skills",
       },
       {
         path: path.join(
@@ -397,7 +402,7 @@ describe("resolveCodexNativeRoots contract filtering", () => {
         ),
         origin: "user",
         namePrefix: "good-b:",
-        shape: "skills",
+        ["shape"]: "skills",
       },
     ]);
     expect(warn).toHaveBeenCalledTimes(4);

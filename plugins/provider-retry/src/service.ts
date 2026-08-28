@@ -5,6 +5,7 @@ import {
   type ProviderRetryCandidate as RecoveryCandidate,
   type ProviderRetryInspection as RecoveryStatus,
 } from "./recovery.js";
+import { z } from "zod";
 
 export const RESET_BUFFER_MS = 15_000;
 const RESET_JITTER_MS = 30_000;
@@ -44,17 +45,16 @@ interface ScopeQueue {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage<T>(error: T): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function isHostUnavailableError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "host_unavailable"
-  );
+const hostUnavailableErrorSchema = z.object({
+  code: z.literal("host_unavailable"),
+});
+
+function isHostUnavailableError<T>(error: T): boolean {
+  return hostUnavailableErrorSchema.safeParse(error).success;
 }
 
 function isAutomaticCandidate(

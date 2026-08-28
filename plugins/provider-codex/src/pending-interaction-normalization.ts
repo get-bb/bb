@@ -4,23 +4,23 @@ import {
   type PendingInteractionRequestedPermissionProfile,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-const nullToUndefined = (value: unknown): unknown =>
-  value === null ? undefined : value;
+const nullableBooleanInputSchema = z
+  .boolean()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? undefined);
 
-const nullableBooleanInputSchema = z.preprocess(
-  nullToUndefined,
-  z.boolean().optional(),
-);
+const nullableStringArrayInputSchema = z
+  .array(z.string())
+  .nullable()
+  .optional()
+  .transform((value) => value ?? undefined);
 
-const nullableStringArrayInputSchema = z.preprocess(
-  nullToUndefined,
-  z.array(z.string()).optional(),
-);
-
-const nullableMacOsAccessInputSchema = z.preprocess(
-  nullToUndefined,
-  z.enum(["none", "read_only", "read_write"]).optional(),
-);
+const nullableMacOsAccessInputSchema = z
+  .enum(["none", "read_only", "read_write"])
+  .nullable()
+  .optional()
+  .transform((value) => value ?? undefined);
 
 const pendingInteractionPermissionNetworkInputSchema = z
   .object({
@@ -50,16 +50,13 @@ const pendingInteractionPermissionMacOsBundleIdsInputSchema = z
   }));
 
 const pendingInteractionPermissionMacOsAutomationInputSchema = z
-  .preprocess(
-    nullToUndefined,
-    z
-      .union([
-        z.literal("none"),
-        z.literal("all"),
-        pendingInteractionPermissionMacOsBundleIdsInputSchema,
-      ])
-      .optional(),
-  )
+  .union([
+    z.literal("none"),
+    z.literal("all"),
+    pendingInteractionPermissionMacOsBundleIdsInputSchema,
+  ])
+  .nullable()
+  .optional()
   .transform((value) => {
     if (value === undefined || value === "none" || value === "all") {
       return value ?? "none";
@@ -91,18 +88,13 @@ const pendingInteractionPermissionMacOsInputSchema = z
 
 const pendingInteractionRequestedPermissionProfileInputSchema = z
   .object({
-    network: z.preprocess(
-      nullToUndefined,
-      pendingInteractionPermissionNetworkInputSchema.optional(),
-    ),
-    fileSystem: z.preprocess(
-      nullToUndefined,
-      pendingInteractionPermissionFileSystemInputSchema.optional(),
-    ),
-    macos: z.preprocess(
-      nullToUndefined,
-      pendingInteractionPermissionMacOsInputSchema.optional(),
-    ),
+    network: pendingInteractionPermissionNetworkInputSchema
+      .nullable()
+      .optional(),
+    fileSystem: pendingInteractionPermissionFileSystemInputSchema
+      .nullable()
+      .optional(),
+    macos: pendingInteractionPermissionMacOsInputSchema.nullable().optional(),
   })
   .transform((value) => ({
     network: value.network ?? null,

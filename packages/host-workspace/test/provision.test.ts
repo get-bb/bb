@@ -601,7 +601,7 @@ describe("provisionWorkspace", () => {
       expect(branches).toContain("main");
 
       const diff = await ws.getDiff();
-      expect(typeof diff.diff).toBe("string");
+      expect(diff.diff).toBeTypeOf("string");
     });
   });
 

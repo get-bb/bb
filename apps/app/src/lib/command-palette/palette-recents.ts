@@ -1,15 +1,16 @@
+import { z } from "zod";
+
 const PALETTE_RECENTS_KEY = "bb.palette.recents";
 const PALETTE_RECENTS_LIMIT = 8;
+const paletteRecentsSchema = z.array(z.string());
 
 export function readPaletteRecents(): string[] {
   try {
     const stored = window.localStorage.getItem(PALETTE_RECENTS_KEY);
     if (stored === null) return [];
     const parsed: unknown = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is string => typeof entry === "string")
-      .slice(0, PALETTE_RECENTS_LIMIT);
+    const result = paletteRecentsSchema.safeParse(parsed);
+    return result.success ? result.data.slice(0, PALETTE_RECENTS_LIMIT) : [];
   } catch {
     return [];
   }

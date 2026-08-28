@@ -658,11 +658,28 @@ export async function removeServer(
   return { ok: true };
 }
 
-function rowsChanged(result: unknown): number {
-  if (result && typeof result === "object") {
-    const r = result as { meta?: { changes?: number }; changes?: number };
-    if (typeof r.meta?.changes === "number") return r.meta.changes;
-    if (typeof r.changes === "number") return r.changes;
+interface SqliteMutationResult {
+  changes?: number;
+  meta?: { changes?: number };
+}
+
+function rowsChanged<T>(result: T): number {
+  if (
+    result === null ||
+    Object.prototype.toString.call(result) !== "[object Object]"
+  ) {
+    return 0;
+  }
+  // SAFETY: The object-tag check above establishes an object; finite-number checks guard each returned field.
+  const parsed = result as SqliteMutationResult;
+  if (
+    parsed.meta?.changes !== undefined &&
+    Number.isFinite(parsed.meta.changes)
+  ) {
+    return parsed.meta.changes;
+  }
+  if (parsed.changes !== undefined && Number.isFinite(parsed.changes)) {
+    return parsed.changes;
   }
   return 0;
 }

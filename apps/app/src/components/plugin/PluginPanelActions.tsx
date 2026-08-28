@@ -37,8 +37,8 @@ export interface PluginPanelActionEntry {
   onSelect: () => void;
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function describeError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 interface PanelActionOpenPanelArgs {
@@ -90,9 +90,9 @@ function runPluginPanelAction({
     slot: "threadPanelAction",
     openPluginPanel,
   });
-  const warn = (error: unknown) => {
+  const warn = (cause: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(error)}`,
+      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(cause)}`,
     );
   };
   try {
@@ -123,9 +123,9 @@ function runPluginNewThreadPanelAction({
     slot: "experimental_newThreadPanelAction",
     openPluginPanel,
   });
-  const warn = (error: unknown) => {
+  const warn = (cause: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(error)}`,
+      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(cause)}`,
     );
   };
   try {

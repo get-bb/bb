@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "input-otp",
   "description": "BB ui \"input-otp\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "input-otp",
-    "lucide-react"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/input-otp.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/input-otp.tsx"
     }
+  ],
+  "dependencies": [
+    "input-otp",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

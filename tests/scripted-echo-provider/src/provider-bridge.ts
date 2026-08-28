@@ -94,6 +94,22 @@ export const scriptedEchoOptionsSchema = z
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
 
+const jsonRpcValueSchema = z.json();
+type JsonRpcValue = z.infer<typeof jsonRpcValueSchema>;
+type JsonRpcObject = { [key: string]: JsonRpcValue | undefined };
+type RequestParams = JsonRpcValue | undefined;
+const providerOptionsSchema = z.record(z.string(), jsonRpcValueSchema);
+type ProviderOptions = z.input<
+  typeof threadStartParamsSchema
+>["options"] extends infer Options
+  ? Options extends { providerOptions?: infer ProviderOptions }
+    ? ProviderOptions
+    : never
+  : never;
+type ProviderIdentityResult =
+  | { threadId: string }
+  | { providerThreadId: string; sessionRestorable?: boolean };
+
 const SCRIPTED_OPTIONS_ENV = "SCRIPTED_ECHO_OPTIONS";
 const SCRIPTED_RECORD_PATH_ENV = "SCRIPTED_ECHO_RECORD_PATH";
 const SCRIPTED_PROCESS_LOG_PATH_ENV = "SCRIPTED_ECHO_PROCESS_LOG_PATH";
@@ -125,7 +141,7 @@ try {
 }
 
 function scriptedOptionsFor(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: ProviderOptions | undefined,
 ): ScriptedEchoOptions {
   const fromCommand = providerOptions?.scripted;
   if (fromCommand === undefined) {
@@ -180,16 +196,19 @@ let discardFailed = false;
 let providerThreadCounter = 0;
 let outboundRequestCounter = 0;
 
-type OutboundMessage = { jsonrpc: "2.0" } & Record<string, unknown>;
+type OutboundMessage = JsonRpcObject & { jsonrpc: "2.0" };
 
 const io = createBridgeIo<OutboundMessage>();
 
-function notify(method: string, params: Record<string, unknown>): void {
+function notify(method: string, params: JsonRpcValue): void {
   io.send({ jsonrpc: "2.0", method, params });
 }
 
 function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
-  notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
+  notify(
+    THREAD_DELTA_NOTIFICATION_METHOD,
+    jsonRpcValueSchema.parse({ threadId, deltas }),
+  );
 }
 
 function emitRecoveryHint(
@@ -207,13 +226,15 @@ function emitRecoveryHint(
   });
 }
 
-function sendRequest(
-  method: string,
-  params: Record<string, unknown>,
-): JsonRpcId {
+function sendRequest(method: string, params: JsonRpcObject): JsonRpcId {
   outboundRequestCounter += 1;
   const id = `scripted-${outboundRequestCounter}`;
-  io.send({ jsonrpc: "2.0", id, method, params });
+  io.send({
+    jsonrpc: "2.0",
+    id,
+    method,
+    params: jsonRpcValueSchema.parse(params),
+  });
   return id;
 }
 
@@ -584,9 +605,8 @@ function beginTurn(args: {
         providerThreadId: session.providerThreadId,
         threadId: session.threadId,
         turnId: providerTurnId,
-        payload: approvalPayload(
-          plan.approvalKind,
-          `approval-${providerTurnId}`,
+        payload: jsonRpcValueSchema.parse(
+          approvalPayload(plan.approvalKind, `approval-${providerTurnId}`),
         ),
         providerNativeIds: true,
       },
@@ -606,13 +626,13 @@ function beginTurn(args: {
       jsonrpc: "2.0",
       id: requestId,
       method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
-      params: {
+      params: jsonRpcValueSchema.parse({
         providerThreadId: session.providerThreadId,
         threadId: session.threadId,
         turnId: providerTurnId,
         payload: userQuestionPayload(requestId),
         providerNativeIds: true,
-      },
+      }),
     });
     pendingReplies.set(requestId, {
       kind: "question",
@@ -647,7 +667,7 @@ function beginTurn(args: {
   );
 }
 
-function describeAnswer(result: unknown): string {
+function describeAnswer(result: RequestParams): string {
   const parsed = z
     .object({
       answers: z.record(
@@ -670,7 +690,7 @@ function describeAnswer(result: unknown): string {
     .join(", ");
 }
 
-function isAllowedDecision(result: unknown): boolean {
+function isAllowedDecision(result: RequestParams): boolean {
   const parsed = z.object({ decision: z.string() }).safeParse(result);
   return (
     parsed.success &&
@@ -685,8 +705,8 @@ const jsonRpcErrorSchema = z
 
 function handleResponse(
   id: JsonRpcId,
-  result: unknown,
-  error: unknown,
+  result: RequestParams,
+  error: RequestParams,
 ): boolean {
   const pending = pendingReplies.get(id);
   if (pending === undefined) {
@@ -782,13 +802,18 @@ function openSession(args: {
     options: args.options,
   };
   sessions.set(args.threadId, session);
-  notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+  const identity = {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
-    ...(args.options.sessionRestorable === undefined
-      ? {}
-      : { sessionRestorable: args.options.sessionRestorable }),
-  });
+  };
+  if (args.options.sessionRestorable !== undefined) {
+    notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+      ...identity,
+      sessionRestorable: args.options.sessionRestorable,
+    });
+  } else {
+    notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, identity);
+  }
   emitDeltas(args.threadId, [{ kind: "session.reset" }]);
   return session;
 }
@@ -800,16 +825,19 @@ function mintProviderThreadId(options: ScriptedEchoOptions): string {
     : `prov-${providerThreadCounter}`;
 }
 
-function identityResult(session: Session): Record<string, unknown> {
+function identityResult(session: Session): ProviderIdentityResult {
   if (session.options.answerStartWithoutIdentity === true) {
     return { threadId: session.threadId };
   }
-  return {
+  const identity = {
     providerThreadId: session.providerThreadId,
-    ...(session.options.sessionRestorable === undefined
-      ? {}
-      : { sessionRestorable: session.options.sessionRestorable }),
   };
+  return session.options.sessionRestorable === undefined
+    ? identity
+    : {
+        ...identity,
+        sessionRestorable: session.options.sessionRestorable,
+      };
 }
 
 function afterStartDelay(options: ScriptedEchoOptions, run: () => void): void {
@@ -820,16 +848,20 @@ function afterStartDelay(options: ScriptedEchoOptions, run: () => void): void {
   setTimeout(run, options.startDelayMs);
 }
 
-type RequestHandler = (id: JsonRpcId, params: unknown) => void;
+type RequestHandler = (id: JsonRpcId, params: RequestParams) => void;
 
-function invalidParams(id: JsonRpcId, method: string, issues: unknown): void {
+function invalidParams(
+  id: JsonRpcId,
+  method: string,
+  issues: z.ZodIssue[],
+): void {
   io.send({
     jsonrpc: "2.0",
     id,
     error: {
       code: BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
       message: `Invalid params for ${method}`,
-      data: issues,
+      data: jsonRpcValueSchema.parse(issues),
     },
   });
 }
@@ -851,7 +883,7 @@ const MODEL_LIST = {
   selectedOnlyModels: [],
 };
 
-const handlers: Record<string, RequestHandler> = {
+const handlers = {
   [BRIDGE_REQUEST_METHODS.initialize]: (id, params) => {
     const parsed = initializeParamsSchema.safeParse(params);
     if (!parsed.success) {
@@ -1215,9 +1247,9 @@ const handlers: Record<string, RequestHandler> = {
     io.sendResult(id, answer);
     setTimeout(notifyCleared, options.goalClearNotifyDelayMs);
   },
-};
+} satisfies Record<string, RequestHandler>;
 
-function recordRequest(method: string, params: unknown): void {
+function recordRequest(method: string, params: RequestParams): void {
   const recordPath = process.env[SCRIPTED_RECORD_PATH_ENV];
   if (recordPath === undefined || recordPath.length === 0) {
     return;
@@ -1280,13 +1312,13 @@ function applyScriptedMethodPolicy(
   return "continue";
 }
 
-function optionsForRequest(params: unknown): ScriptedEchoOptions {
+function optionsForRequest(params: RequestParams): ScriptedEchoOptions {
   const parsed = z
     .object({
       threadId: z.string().optional(),
       options: z
         .object({
-          providerOptions: z.record(z.string(), z.unknown()).optional(),
+          providerOptions: providerOptionsSchema.optional(),
         })
         .passthrough()
         .optional(),
@@ -1307,33 +1339,33 @@ function optionsForRequest(params: unknown): ScriptedEchoOptions {
 }
 
 export function handleLine(line: string): void {
-  let message: unknown;
+  let rawMessage: unknown;
   try {
-    message = JSON.parse(line);
+    rawMessage = JSON.parse(line);
   } catch {
     return;
   }
-  if (
-    typeof message !== "object" ||
-    message === null ||
-    Array.isArray(message)
-  ) {
+  const parsedMessage = z
+    .object({
+      id: z.union([z.string(), z.number()]).optional(),
+      method: z.string().optional(),
+      params: jsonRpcValueSchema.optional(),
+      result: jsonRpcValueSchema.optional(),
+      error: jsonRpcValueSchema.optional(),
+    })
+    .passthrough()
+    .safeParse(rawMessage);
+  if (!parsedMessage.success) {
     return;
   }
-  const { id, method, params, result, error } = message as {
-    id?: unknown;
-    method?: unknown;
-    params?: unknown;
-    result?: unknown;
-    error?: unknown;
-  };
-  if (typeof method !== "string") {
-    if (typeof id === "string" || typeof id === "number") {
+  const { id, method, params, result, error } = parsedMessage.data;
+  if (method === undefined) {
+    if (id !== undefined) {
       handleResponse(id, result, error);
     }
     return;
   }
-  if (typeof id !== "string" && typeof id !== "number") {
+  if (id === undefined) {
     return;
   }
   recordRequest(method, params);
@@ -1341,7 +1373,9 @@ export function handleLine(line: string): void {
   if (applyScriptedMethodPolicy(id, method, options) === "handled") {
     return;
   }
-  const handler = handlers[method];
+  const handler = Object.entries(handlers).find(
+    ([handlerMethod]) => handlerMethod === method,
+  )?.[1];
   if (handler === undefined) {
     io.sendError(
       id,

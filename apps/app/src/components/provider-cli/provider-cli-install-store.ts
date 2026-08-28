@@ -274,8 +274,8 @@ function runInstall(job: ProviderCliInstallJob): void {
         toastId: failureToastId,
       });
     })
-    .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
+    .catch((cause: unknown) => {
+      const message = cause instanceof Error ? cause.message : String(cause);
       installLogChunks.push(`\n${message}\n`);
       showProviderCliInstallFailureToast({
         jobKey,

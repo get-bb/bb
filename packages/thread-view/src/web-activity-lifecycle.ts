@@ -86,47 +86,56 @@ export function parseWebActivityLifecycleEvent(
   const callId = item.id;
   if (!callId) return null;
   const kind = decoded.type === "item/started" ? "begin" : "end";
-  const base = {
-    kind,
-    callId,
-    ...(parentToolCallId ? { parentToolCallId } : {}),
-  } as const;
+  const base: ItemActivityLifecycleBase = { kind, callId };
+  if (parentToolCallId) base.parentToolCallId = parentToolCallId;
 
   switch (item.type) {
-    case "webSearch":
-      return {
+    case "webSearch": {
+      const event: WebSearchLifecycleEvent = {
         ...base,
         itemKind: "web-search",
         queries: item.queries,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "webFetch":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "webFetch": {
+      const event: WebFetchLifecycleEvent = {
         ...base,
         itemKind: "web-fetch",
         url: item.url,
         prompt: item.prompt,
         pattern: item.pattern,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "imageView":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "imageView": {
+      const event: ImageViewLifecycleEvent = {
         ...base,
         itemKind: "image-view",
         path: item.path,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "fileRead":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "fileRead": {
+      const event: FileReadLifecycleEvent = {
         ...base,
         itemKind: "file-read",
         path: item.path,
         cmd: item.cmd ?? null,
         status: item.status,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "search":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "search": {
+      const event: SearchLifecycleEvent = {
         ...base,
         itemKind: "search",
         mode: item.mode,
@@ -134,19 +143,25 @@ export function parseWebActivityLifecycleEvent(
         path: item.path ?? null,
         cmd: item.cmd ?? null,
         status: item.status,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "planSteps":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "planSteps": {
+      const event: PlanStepsLifecycleEvent = {
         ...base,
         itemKind: "plan-steps",
         steps: item.steps,
         explanation: item.explanation ?? null,
         status: item.status,
-        ...(item.presentation ? { presentation: item.presentation } : {}),
       };
-    case "extension":
-      return {
+      if (item.presentation !== undefined)
+        event.presentation = item.presentation;
+      return event;
+    }
+    case "extension": {
+      const event: ExtensionLifecycleEvent = {
         ...base,
         itemKind: "extension",
         extensionKind: item.kind,
@@ -154,6 +169,8 @@ export function parseWebActivityLifecycleEvent(
         status: item.status,
         presentation: item.presentation,
       };
+      return event;
+    }
     default:
       return null;
   }

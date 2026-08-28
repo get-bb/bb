@@ -1,4 +1,5 @@
-import type { DeltaItemShape } from "@bb/provider-bridge-protocol";
+import type * as ProviderBridgeProtocol from "@bb/provider-bridge-protocol";
+import type { JsonObject } from "@bb/domain";
 import { basename } from "node:path";
 import { z } from "zod";
 import {
@@ -15,6 +16,10 @@ import {
   type AcpToolCallUpdateEvent,
   type AcpToolKind,
 } from "./wire.js";
+
+type DeltaItem = z.infer<
+  (typeof ProviderBridgeProtocol)["deltaItemShapeSchema"]
+>;
 
 export interface AcpToolIdentity {
   name?: string;
@@ -36,15 +41,15 @@ export interface AcpDialect {
   ): AcpClassifiedToolCall | undefined;
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
   normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
-  handleClientRequest?(
+  handleClientRequest?<RequestParams>(
     method: string,
-    params: unknown,
+    params: RequestParams,
   ): AcpClientRequestOutcome | undefined;
   maintenance?: AcpMaintenanceDialect;
 }
 
 export interface AcpClientRequestOutcome {
-  result: Record<string, unknown>;
+  result: JsonObject;
   delegation?: AcpDelegationReport;
 }
 
@@ -70,12 +75,14 @@ function grokToolIdentity(
   }
   const tool = meta.data["x.ai/tool"];
   const kind = acpToolKindSchema.safeParse(tool.kind);
-  return {
-    ...(tool.name !== undefined && tool.name.length > 0
-      ? { name: tool.name }
-      : {}),
-    ...(kind.success ? { kind: kind.data } : {}),
-  };
+  const identity: AcpToolIdentity = {};
+  if (tool.name !== undefined && tool.name.length > 0) {
+    identity.name = tool.name;
+  }
+  if (kind.success) {
+    identity.kind = kind.data;
+  }
+  return identity;
 }
 
 const GROK_SPAWN_SUBAGENT_TOOL = "spawn_subagent";
@@ -97,19 +104,17 @@ function grokClassifyToolCall(
   const input = parsed.success ? parsed.data : undefined;
   const label =
     input?.description ?? input?.prompt ?? event.title ?? "Subagent";
-  const shape: DeltaItemShape = {
+  const item: DeltaItem = {
     type: "delegation",
     childRef: event.toolCallId,
     label,
     background: false,
   };
   return {
-    item: shape,
+    item,
     presentation: delegationPresentation({
       label,
-      ...(input?.subagent_type === undefined
-        ? {}
-        : { detail: input.subagent_type }),
+      detail: input?.subagent_type,
     }),
   };
 }
@@ -144,21 +149,21 @@ function cursorClassifyToolCall(
     return undefined;
   }
   const label = event.title ?? "Subagent task";
-  const shape: DeltaItemShape = {
+  const item: DeltaItem = {
     type: "delegation",
     childRef: event.toolCallId,
     label,
     background: false,
   };
   return {
-    item: shape,
+    item,
     presentation: delegationPresentation({ label }),
   };
 }
 
-function cursorHandleClientRequest(
+function cursorHandleClientRequest<RequestParams>(
   method: string,
-  params: unknown,
+  params: RequestParams,
 ): AcpClientRequestOutcome | undefined {
   if (method !== CURSOR_TASK_METHOD) {
     return undefined;
@@ -172,14 +177,17 @@ function cursorHandleClientRequest(
   if (label === undefined) {
     return { result: {} };
   }
+  const delegation: AcpDelegationReport = {
+    toolCallId: task.toolCallId,
+    childRef: task.agentId ?? task.toolCallId,
+    label,
+  };
+  if (task.model !== undefined) {
+    delegation.detail = `model ${task.model}`;
+  }
   return {
     result: {},
-    delegation: {
-      toolCallId: task.toolCallId,
-      childRef: task.agentId ?? task.toolCallId,
-      label,
-      ...(task.model === undefined ? {} : { detail: `model ${task.model}` }),
-    },
+    delegation,
   };
 }
 
@@ -287,10 +295,14 @@ function ompCommandResult(
     (details.signal === undefined || details.signal === null);
   const exitCode =
     details.exitCode ?? (isCompletedForegroundBash ? 0 : undefined);
-  return {
-    ...(exitCode === undefined ? {} : { exitCode }),
-    ...(output.length === 0 ? {} : { output }),
-  };
+  const result: AcpCommandResult = {};
+  if (exitCode !== undefined) {
+    result.exitCode = exitCode;
+  }
+  if (output.length > 0) {
+    result.output = output;
+  }
+  return result;
 }
 
 export const OMP_ACP_DIALECT: AcpDialect = {
@@ -300,7 +312,6 @@ export const OMP_ACP_DIALECT: AcpDialect = {
 
 const openCodeCommandRawOutputSchema = z
   .object({
-    output: z.unknown().optional(),
     metadata: z
       .object({
         exit: z.number().int().nullable().optional(),
@@ -319,10 +330,10 @@ function normalizeOpenCodeCommandEvent(
     return event;
   }
   const rawOutput = parsed.data;
-  const output =
-    typeof rawOutput.output === "string"
-      ? rawOutput.output
-      : rawOutput.metadata?.output;
+  const parsedOutput = z.string().safeParse(rawOutput["output"]);
+  const output = parsedOutput.success
+    ? parsedOutput.data
+    : rawOutput.metadata?.output;
   const hasSharedOutput =
     rawOutput["stdout"] !== undefined ||
     rawOutput["stderr"] !== undefined ||
@@ -336,14 +347,14 @@ function normalizeOpenCodeCommandEvent(
   ) {
     return event;
   }
-  return {
-    ...event,
-    rawOutput: {
-      ...rawOutput,
-      ...(output === undefined || hasSharedOutput ? {} : { stdout: output }),
-      ...(exitCode === undefined || hasSharedExitCode ? {} : { exitCode }),
-    },
-  };
+  const normalizedOutput = { ...rawOutput };
+  if (output !== undefined && !hasSharedOutput) {
+    normalizedOutput.stdout = output;
+  }
+  if (exitCode !== undefined && !hasSharedExitCode) {
+    normalizedOutput.exitCode = exitCode;
+  }
+  return { ...event, rawOutput: normalizedOutput };
 }
 
 export const OPENCODE_ACP_DIALECT: AcpDialect = {
@@ -358,12 +369,12 @@ const DIALECTS_BY_ID: ReadonlyMap<string, AcpDialect> = new Map([
   [OPENCODE_ACP_DIALECT.id, OPENCODE_ACP_DIALECT],
 ]);
 
-const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
-  "cursor-agent": CURSOR_ACP_DIALECT.id,
-  grok: GROK_ACP_DIALECT.id,
-  omp: OMP_ACP_DIALECT.id,
-  opencode: OPENCODE_ACP_DIALECT.id,
-};
+const DIALECT_IDS_BY_COMMAND = new Map([
+  ["cursor-agent", CURSOR_ACP_DIALECT.id],
+  ["grok", GROK_ACP_DIALECT.id],
+  ["omp", OMP_ACP_DIALECT.id],
+  ["opencode", OPENCODE_ACP_DIALECT.id],
+]);
 
 export function resolveAcpDialect(launch: {
   dialectId?: string | undefined;
@@ -372,7 +383,7 @@ export function resolveAcpDialect(launch: {
   if (launch.dialectId !== undefined) {
     return DIALECTS_BY_ID.get(launch.dialectId) ?? GENERIC_ACP_DIALECT;
   }
-  const byCommand = DIALECT_IDS_BY_COMMAND[basename(launch.command)];
+  const byCommand = DIALECT_IDS_BY_COMMAND.get(basename(launch.command));
   return byCommand === undefined
     ? GENERIC_ACP_DIALECT
     : (DIALECTS_BY_ID.get(byCommand) ?? GENERIC_ACP_DIALECT);

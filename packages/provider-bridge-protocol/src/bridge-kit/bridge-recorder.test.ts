@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -9,6 +9,7 @@ import {
   createRecordingLineSplitter,
   type BridgeRecordingEntry,
 } from "./bridge-recorder.js";
+import { readBridgeRecordingLane } from "../testing/recording.js";
 
 let dir: string;
 
@@ -16,11 +17,11 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function readLane(scope: string, direction: string): BridgeRecordingEntry[] {
-  return readFileSync(join(dir, scope, `${direction}.ndjson`), "utf8")
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as BridgeRecordingEntry);
+function readLane(
+  scope: string,
+  direction: BridgeRecordingEntry["dir"],
+): BridgeRecordingEntry[] {
+  return readBridgeRecordingLane(join(dir, scope), direction);
 }
 
 describe("bridge recorder", () => {

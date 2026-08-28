@@ -19,7 +19,7 @@ function createStubFetch(
   calls: FetchCall[],
 ): typeof fetch {
   let index = 0;
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const stubFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       input instanceof Request
         ? input.url
@@ -39,7 +39,8 @@ function createStubFetch(
         headers: { "content-type": "application/json" },
       },
     );
-  }) as unknown as typeof fetch;
+  };
+  return stubFetch;
 }
 
 describe("createAppVersionService", () => {

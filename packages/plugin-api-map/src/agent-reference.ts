@@ -84,14 +84,15 @@ export function pluginSurfaceAgentClipboardContent(
 function copyWithEditingCommand(
   content: PluginSurfaceAgentClipboardContent,
 ): boolean {
+  const browserDocument = globalThis.document;
   if (
-    typeof document === "undefined" ||
-    document.body === null ||
-    typeof document.execCommand !== "function"
+    browserDocument === undefined ||
+    browserDocument.body === null ||
+    browserDocument.execCommand === undefined
   ) {
     return false;
   }
-  const textarea = document.createElement("textarea");
+  const textarea = browserDocument.createElement("textarea");
   textarea.value = content.text;
   textarea.readOnly = true;
   textarea.setAttribute("aria-hidden", "true");
@@ -102,7 +103,7 @@ function copyWithEditingCommand(
     position: "fixed",
     width: "1px",
   });
-  document.body.append(textarea);
+  browserDocument.body.append(textarea);
   let richClipboardHandled = false;
   const onCopy = (event: ClipboardEvent) => {
     if (event.clipboardData === null) return;
@@ -111,14 +112,14 @@ function copyWithEditingCommand(
     event.preventDefault();
     richClipboardHandled = true;
   };
-  document.addEventListener("copy", onCopy, { once: true });
+  browserDocument.addEventListener("copy", onCopy, { once: true });
   try {
     textarea.select();
-    return document.execCommand("copy") && richClipboardHandled;
+    return browserDocument.execCommand("copy") && richClipboardHandled;
   } catch {
     return false;
   } finally {
-    document.removeEventListener("copy", onCopy);
+    browserDocument.removeEventListener("copy", onCopy);
     textarea.remove();
   }
 }
@@ -127,14 +128,15 @@ export async function copyPluginSurfaceAgentReference(
   surface: PluginSurface,
 ): Promise<boolean> {
   const content = pluginSurfaceAgentClipboardContent(surface);
+  const browserNavigator = globalThis.navigator;
+  const clipboardItemConstructor = globalThis.ClipboardItem;
   if (
-    typeof navigator !== "undefined" &&
-    typeof navigator.clipboard?.write === "function" &&
-    typeof ClipboardItem !== "undefined"
+    browserNavigator?.clipboard?.write !== undefined &&
+    clipboardItemConstructor !== undefined
   ) {
     try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
+      await browserNavigator.clipboard.write([
+        new clipboardItemConstructor({
           "text/plain": new Blob([content.text], { type: "text/plain" }),
           "text/html": new Blob([content.html], { type: "text/html" }),
         }),

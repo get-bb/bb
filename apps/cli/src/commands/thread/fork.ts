@@ -8,6 +8,7 @@ import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
 import { outputJson, prependErrorContext } from "../helpers.js";
+import type { ThreadForkArgs } from "@bb/sdk";
 import {
   buildPromptInputs,
   collectOption,
@@ -116,28 +117,29 @@ export function registerForkCommand(
 
           let thread: Thread;
           try {
-            thread = await createCliBbSdk(getUrl()).threads.fork({
+            const forkArgs: ThreadForkArgs = {
               sourceThreadId,
               origin: "cli",
               workspace,
-              ...(input === undefined ? {} : { input }),
-              ...(sourceSeqEnd === undefined ? {} : { sourceSeqEnd }),
-              ...(opts.title === undefined ? {} : { title: opts.title }),
-              ...(permissionMode === undefined ? {} : { permissionMode }),
-              ...(visibility === undefined ? {} : { visibility }),
-              ...(opts.agentContextSeed === undefined
-                ? {}
-                : {
-                    agentContextSeed: [
-                      {
-                        type: "text",
-                        text: opts.agentContextSeed,
-                        mentions: [],
-                        visibility: "agent-only" as const,
-                      },
-                    ],
-                  }),
-            });
+            };
+            if (input !== undefined) forkArgs.input = input;
+            if (sourceSeqEnd !== undefined)
+              forkArgs.sourceSeqEnd = sourceSeqEnd;
+            if (opts.title !== undefined) forkArgs.title = opts.title;
+            if (permissionMode !== undefined)
+              forkArgs.permissionMode = permissionMode;
+            if (visibility !== undefined) forkArgs.visibility = visibility;
+            if (opts.agentContextSeed !== undefined) {
+              forkArgs.agentContextSeed = [
+                {
+                  type: "text",
+                  text: opts.agentContextSeed,
+                  mentions: [],
+                  visibility: "agent-only",
+                },
+              ];
+            }
+            thread = await createCliBbSdk(getUrl()).threads.fork(forkArgs);
           } catch (error: unknown) {
             throw prependErrorContext(
               `Failed to fork thread ${sourceThreadId}`,

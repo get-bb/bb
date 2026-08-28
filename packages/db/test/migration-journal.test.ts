@@ -30,6 +30,7 @@ interface Journal {
 }
 
 function readJournal(): Journal {
+  // SAFETY: The repository journal file follows the Journal contract checked by these tests.
   return JSON.parse(fs.readFileSync(journalPath, "utf-8")) as Journal;
 }
 
@@ -49,6 +50,7 @@ function snapshotPathFor(idx: number): string {
 }
 
 function readSnapshot(idx: number): MigrationSnapshot {
+  // SAFETY: Each repository snapshot file follows the MigrationSnapshot contract checked by these tests.
   return JSON.parse(
     fs.readFileSync(snapshotPathFor(idx), "utf-8"),
   ) as MigrationSnapshot;

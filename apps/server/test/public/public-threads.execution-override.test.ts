@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getThreadExecutionOverride } from "@bb/db";
+import type { UpdateThreadRequest } from "@bb/server-contract";
 import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -66,7 +67,11 @@ function seedProviderThread(
   return { host, session, thread };
 }
 
-function patchThread(harness: TestAppHarness, threadId: string, body: unknown) {
+function patchThread(
+  harness: TestAppHarness,
+  threadId: string,
+  body: UpdateThreadRequest,
+) {
   return harness.app.request(`/api/v1/threads/${threadId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

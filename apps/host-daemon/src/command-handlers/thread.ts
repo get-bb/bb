@@ -114,11 +114,14 @@ async function requireSupportedProviderCliForThreadStart({
         command.bridgeLaunch,
         options,
       );
-      return options.providerInstallationStatus({
+      const statusArgs: Parameters<
+        typeof options.providerInstallationStatus
+      >[0] = {
         providerId: command.providerId,
         bridgeLaunch,
-        ...(requirement !== undefined ? { requirement } : {}),
-      });
+      };
+      if (requirement !== undefined) statusArgs.requirement = requirement;
+      return options.providerInstallationStatus(statusArgs);
     },
   );
   if (!status.versionUnsupported) {
@@ -235,7 +238,7 @@ export async function startThread(
       targetThreadId: command.threadId,
       workspaceContext: command.workspaceContext,
     });
-    const result = await entry.runtime.startThread({
+    const startThreadArgs: Parameters<typeof entry.runtime.startThread>[0] = {
       bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -243,16 +246,17 @@ export async function startThread(
       providerId: command.providerId,
       clientRequestId: command.requestId,
       input: staged.input,
-      ...(staged.inputGroups !== undefined
-        ? { inputGroups: staged.inputGroups }
-        : {}),
       options: command.options,
       instructions: command.instructions,
       dynamicTools: command.dynamicTools,
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
-      ...(command.fork ? { fork: command.fork } : {}),
-    });
+    };
+    if (staged.inputGroups !== undefined) {
+      startThreadArgs.inputGroups = staged.inputGroups;
+    }
+    if (command.fork !== undefined) startThreadArgs.fork = command.fork;
+    const result = await entry.runtime.startThread(startThreadArgs);
     return result;
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);
@@ -341,16 +345,17 @@ async function runSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
 ): Promise<HostDaemonCommandResult<"turn.submit">> {
-  await entry.runtime.runTurn({
+  const runTurnArgs: Parameters<typeof entry.runtime.runTurn>[0] = {
     threadId: command.threadId,
     input: command.input,
-    ...(command.inputGroups !== undefined
-      ? { inputGroups: command.inputGroups }
-      : {}),
     clientRequestId: command.requestId,
     options: command.options,
     instructions: command.resumeContext.instructions,
-  });
+  };
+  if (command.inputGroups !== undefined) {
+    runTurnArgs.inputGroups = command.inputGroups;
+  }
+  await entry.runtime.runTurn(runTurnArgs);
   return { appliedAs: "new-turn" };
 }
 
@@ -362,17 +367,18 @@ async function steerSubmittedTurn(
   let targetTurnId = expectedTurnId;
   let activeTurnId: string | null = null;
   for (let attempt = 0; attempt < TURN_SUBMIT_STEER_ATTEMPTS; attempt += 1) {
-    const result = await entry.runtime.steerTurn({
+    const steerTurnArgs: Parameters<typeof entry.runtime.steerTurn>[0] = {
       threadId: command.threadId,
       expectedTurnId: targetTurnId,
       input: command.input,
-      ...(command.inputGroups !== undefined
-        ? { inputGroups: command.inputGroups }
-        : {}),
       clientRequestId: command.requestId,
       options: command.options,
       instructions: command.resumeContext.instructions,
-    });
+    };
+    if (command.inputGroups !== undefined) {
+      steerTurnArgs.inputGroups = command.inputGroups;
+    }
+    const result = await entry.runtime.steerTurn(steerTurnArgs);
 
     if (result.status === "steered") {
       return { appliedAs: "steer" };
@@ -459,13 +465,13 @@ export async function submitTurn(
     projectId: command.resumeContext.projectId,
     threadStorageRootPath: options.threadStorageRootPath,
   });
-  const stagedCommand = {
+  const stagedCommand: TurnSubmitCommand = {
     ...command,
     input: staged.input,
-    ...(staged.inputGroups !== undefined
-      ? { inputGroups: staged.inputGroups }
-      : {}),
   };
+  if (staged.inputGroups !== undefined) {
+    stagedCommand.inputGroups = staged.inputGroups;
+  }
   try {
     await resumeThreadRuntimeIfMissing({
       command: stagedCommand,

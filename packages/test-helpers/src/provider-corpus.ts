@@ -28,6 +28,9 @@ const corpusScopeKindCoversDomain: ThreadEventScopeKind extends z.infer<
   : false = true;
 void corpusScopeKindCoversDomain;
 
+const jsonValueSchema = z.json();
+const storedEventDataSchema = z.record(z.string(), z.json());
+
 export const PROVIDER_CORPUS_DIR_ENV = "BB_PROVIDER_CORPUS_DIR";
 
 const corpusPathSegmentSchema = z
@@ -159,8 +162,8 @@ function requireProviderCorpusDir(): string {
   return dir;
 }
 
-function readJsonFile(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+function readJsonFile(filePath: string): z.infer<typeof jsonValueSchema> {
+  return jsonValueSchema.parse(JSON.parse(fs.readFileSync(filePath, "utf8")));
 }
 
 export function listCorpusThreads(
@@ -240,15 +243,10 @@ export function decodeCorpusStoredEventRow(
   row: CorpusStoredEventRow,
 ): ThreadEventRow {
   const scope = toStoredEventScope(row);
-  const data: unknown = JSON.parse(row.data);
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error(
-      `Corpus event ${row.id} (#${row.sequence}, ${row.type}) has malformed data`,
-    );
-  }
+  const data = storedEventDataSchema.parse(JSON.parse(row.data));
   const event = parseStoredThreadEvent({
     type: row.type,
-    data: z.record(z.string(), z.unknown()).parse(data),
+    data,
     threadId: row.threadId,
     providerThreadId: row.providerThreadId,
     scope,

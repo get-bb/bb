@@ -4,10 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { getPullRequestGithubCheckStatus } from "@/lib/pull-request-display";
 import { GithubFaviconIcon } from "./GithubFaviconIcon";
 
-const PR_STATUS_ICON: Record<
-  PullRequestState,
-  { icon: IconName; className: string; title: string }
-> = {
+const PR_STATUS_ICON = {
   open: {
     icon: "GitPullRequestArrow",
     className: "text-success",
@@ -28,7 +25,10 @@ const PR_STATUS_ICON: Record<
     className: "text-muted-foreground",
     title: "Draft Pull Request",
   },
-};
+} satisfies Record<
+  PullRequestState,
+  { icon: IconName; className: string; title: string }
+>;
 
 const CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-9";
 const SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-4";

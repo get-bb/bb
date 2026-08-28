@@ -1,4 +1,8 @@
-import type { RenderProcessGoneDetails, WebContentsView } from "electron";
+import type {
+  RenderProcessGoneDetails,
+  WebContents,
+  WebContentsView,
+} from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
@@ -11,6 +15,7 @@ import {
   type DesktopBrowserHostWebContents,
   type DesktopBrowserHostWebContentsPayload,
   type DesktopBrowserHostWindow,
+  type DesktopBrowserViewRuntime,
 } from "../src/desktop-browser-view.js";
 
 function createDesktopBrowserViewManager(
@@ -20,6 +25,7 @@ function createDesktopBrowserViewManager(
     dispatchAppCommand: () => undefined,
     focusHostWebContents: () => undefined,
     resolveAppCommand: () => null,
+    runtime: electronMock.runtime satisfies DesktopBrowserViewRuntime,
     ...args,
   });
 }
@@ -162,13 +168,13 @@ interface FakeSessionEvent {
 type FakeSessionListener = (event: FakeSessionEvent) => void;
 
 type FakePermissionRequestHandler = (
-  webContents: unknown,
+  webContents: WebContents | null,
   permission: string,
   callback: (granted: boolean) => void,
 ) => void;
 
 type FakePermissionCheckHandler = (
-  webContents: unknown,
+  webContents: WebContents | null,
   permission: string,
 ) => boolean;
 
@@ -519,31 +525,35 @@ const electronMock = vi.hoisted(() => {
 
   const fakeSessions: FakeSession[] = [];
   const fakeViews: FakeWebContentsView[] = [];
+  const FakeWebContentsViewForRuntime = class extends FakeWebContentsView {
+    constructor() {
+      super();
+      fakeViews.push(this);
+    }
+  };
 
   return {
     fakeCapturedImage,
     fakeSessions,
     fakeViews,
-    FakeWebContentsView: class extends FakeWebContentsView {
-      constructor() {
-        super();
-        fakeViews.push(this);
-      }
-    },
-    session: {
+    FakeWebContentsView: FakeWebContentsViewForRuntime,
+    runtime: {
+      buildContextMenu() {
+        return { popup() {} };
+      },
+      createWebContentsView() {
+        // SAFETY: The fake implements the view methods used by the manager.
+        return new FakeWebContentsViewForRuntime() as never;
+      },
       fromPartition() {
         const fakeSession = new FakeSession();
         fakeSessions.push(fakeSession);
-        return fakeSession;
+        // SAFETY: The fake implements the session methods used by the manager.
+        return fakeSession as never;
       },
     },
   };
 });
-
-vi.mock("electron", () => ({
-  WebContentsView: electronMock.FakeWebContentsView,
-  session: electronMock.session,
-}));
 
 interface FakeHostWindowArgs {
   contentBounds: DesktopBrowserHostContentBounds;

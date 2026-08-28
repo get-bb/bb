@@ -1,17 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const toastMocks = vi.hoisted(() => ({
-  error: vi.fn(),
-  success: vi.fn(),
-}));
-
-vi.mock("@/components/ui/app-toast", () => ({
-  appToast: toastMocks,
-}));
-
+import { appToast } from "@/components/ui/app-toast";
 import { copyTextToClipboard, copyToClipboardWithToast } from "./clipboard";
+
+const toastMocks = {
+  error: vi.spyOn(appToast, "error"),
+  success: vi.spyOn(appToast, "success"),
+};
 
 function installClipboard(writeText: (text: string) => Promise<void>): void {
   Object.defineProperty(navigator, "clipboard", {
@@ -40,7 +36,6 @@ afterEach(() => {
   document.body.replaceChildren();
   toastMocks.error.mockReset();
   toastMocks.success.mockReset();
-  vi.restoreAllMocks();
   removeClipboard();
 });
 

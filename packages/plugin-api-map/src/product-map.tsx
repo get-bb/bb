@@ -55,7 +55,7 @@ export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
 export function annotationNeighbors(
   surfaces: readonly PluginSurface[],
   currentId: string,
-): { previous: PluginSurface | null; next: PluginSurface | null } {
+) {
   const currentIndex = surfaces.findIndex(
     (surface) => surface.id === currentId,
   );
@@ -169,12 +169,13 @@ export function spatialFixtureScale(
 }
 
 const useBrowserLayoutEffect =
-  typeof window === "undefined" ? useEffect : useLayoutEffect;
+  "window" in globalThis ? useLayoutEffect : useEffect;
 
-const FIXTURE_WIDTH_BANDS: Record<
-  string,
-  { min: number; max: number } | undefined
-> = {
+interface FixtureWidthBands {
+  [fixtureId: string]: { min: number; max: number } | undefined;
+}
+
+const FIXTURE_WIDTH_BANDS: FixtureWidthBands = {
   "app-shell": { min: 1260, max: 1440 },
   "command-palette": { min: 860, max: 1200 },
   composer: { min: 720, max: 768 },
@@ -193,10 +194,15 @@ function SpatialFixture({
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
   const cardReserveRef = useRef(0);
-  const [geometry, setGeometry] = useState({
+  const [geometry, setGeometry] = useState<{
+    scale: number;
+    height: number | null;
+    width: number | null;
+    offsetX: number;
+  }>({
     scale: 1,
-    height: null as number | null,
-    width: null as number | null,
+    height: null,
+    width: null,
     offsetX: 0,
   });
 
@@ -289,7 +295,9 @@ function SpatialFixture({
     };
     watchCard();
     const cardObserver = section ? new MutationObserver(watchCard) : null;
-    cardObserver?.observe(section as Node, { childList: true });
+    if (cardObserver && section) {
+      cardObserver.observe(section, { childList: true });
+    }
     return () => {
       observer.disconnect();
       cardObserver?.disconnect();
@@ -297,6 +305,9 @@ function SpatialFixture({
   }, []);
 
   const scaled = geometry.height !== null;
+  const chipCounterScaleStyle = {
+    [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(geometry.scale),
+  };
   return (
     <div
       ref={frameRef}
@@ -310,11 +321,9 @@ function SpatialFixture({
         className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
         style={
           {
+            ...chipCounterScaleStyle,
             minWidth: band?.min,
             maxWidth: band?.max,
-            [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(
-              geometry.scale,
-            ),
             ...(scaled
               ? {
                   transform: `scale(${geometry.scale})`,
@@ -323,7 +332,7 @@ function SpatialFixture({
                   marginRight: 0,
                 }
               : undefined),
-          } as CSSProperties
+          } satisfies CSSProperties
         }
       >
         {children}
@@ -419,10 +428,7 @@ function SlideTitle({ title }: { title: string }) {
   );
 }
 
-export function panCarets(
-  index: number,
-  slideCount: number,
-): { previous: boolean; next: boolean } {
+export function panCarets(index: number, slideCount: number) {
   return { previous: index > 0, next: index < slideCount - 1 };
 }
 
@@ -457,7 +463,7 @@ function PanButton({
 function useStageHeight(
   index: number,
   slideRefs: React.RefObject<Array<HTMLDivElement | null>>,
-): { height: number | null; animate: boolean } {
+) {
   const [height, setHeight] = useState<number | null>(null);
   const [animate, setAnimate] = useState(false);
   const mountedRef = useRef(false);

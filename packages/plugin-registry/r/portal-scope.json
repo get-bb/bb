@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "registry/lib/portal-scope.ts",
-      "content": "declare const __BB_PLUGIN_ID__: string | undefined;\n\nexport function usePortalScopeProps(): {\n  \"data-bb-portaled-overlay\": \"\";\n  \"data-bb-plugin-root\"?: \"\";\n  \"data-bb-plugin\"?: string;\n} {\n  const pluginId =\n    typeof __BB_PLUGIN_ID__ === \"string\" ? __BB_PLUGIN_ID__ : undefined;\n  return {\n    \"data-bb-portaled-overlay\": \"\",\n    \"data-bb-plugin-root\": \"\",\n    ...(pluginId !== undefined ? { \"data-bb-plugin\": pluginId } : {}),\n  };\n}\n",
+      "content": "declare const __BB_PLUGIN_ID__: string | undefined;\n\ninterface PortalScopeProps {\n  \"data-bb-portaled-overlay\": \"\";\n  \"data-bb-plugin-root\"?: \"\";\n  \"data-bb-plugin\"?: string;\n}\n\nfunction readPluginId(): string | undefined {\n  try {\n    return __BB_PLUGIN_ID__;\n  } catch {\n    return undefined;\n  }\n}\n\nexport function usePortalScopeProps(): PortalScopeProps {\n  const props: PortalScopeProps = {\n    \"data-bb-portaled-overlay\": \"\",\n    \"data-bb-plugin-root\": \"\",\n  };\n  const pluginId = readPluginId();\n  if (pluginId !== undefined) props[\"data-bb-plugin\"] = pluginId;\n  return props;\n}\n",
       "type": "registry:lib",
       "target": "lib/portal-scope.ts"
     }

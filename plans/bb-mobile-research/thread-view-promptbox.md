@@ -30,6 +30,7 @@
 Versions: react 19.2.4, react-dom 19.2.4, @tanstack/react-query 5.90.20, @tanstack/react-virtual 3.14.3, jotai 2.19.0 (+jotai-family 1.0.1), @tiptap/* 3.26.0, react-markdown 10.1.0, katex 0.16.47, mermaid 11.15.0, partysocket 1.1.16, react-router-dom 7.13.0, zod 4.3.6, @pierre/diffs 1.2.9.
 
 ## Key files
+
 - packages/thread-view/src/index.ts
 - packages/thread-view/src/build-thread-timeline.ts
 - packages/thread-view/src/timeline-view.ts
@@ -91,6 +92,7 @@ Versions: react 19.2.4, react-dom 19.2.4, @tanstack/react-query 5.90.20, @tansta
 - apps/app/src/views/thread-detail/ThreadDetailView.tsx
 
 ## Reuse verdicts
+
 - @bb/thread-view (packages/thread-view): **reusable-as-is** — Pure TS; deps only @bb/domain, @bb/server-contract, zod; only global used is Intl.NumberFormat (format-helpers.ts:76). Metro must resolve `exports.source` (./src/index.ts) and `.js`-suffixed imports of .ts files (NodeNext style).
 - @bb/server-contract + @bb/domain: **reusable-as-is** — zod 4 + hono/client only; no DOM/node imports found in src (grep hits are comments). Same Metro source-resolution caveat.
 - @bb/sdk/browser (createBrowserBbSdk): **reusable-as-is** — Uses global fetch and global WebSocket (transport-http.ts:18, realtime-client.ts:163); pass baseUrl explicitly. Uploads accept ArrayBuffer/Uint8Array (areas/projects.ts:118-128). Pulls @bb/templates/generated via areas/guide.ts (data-only). Do not import `@bb/sdk` root (node entry pulls @bb/config + ws).
@@ -114,6 +116,7 @@ Versions: react 19.2.4, react-dom 19.2.4, @tanstack/react-query 5.90.20, @tansta
 - components/tools/* (Skills/Plugins page): **not-reusable** — react-router matchPath, Tailwind, Radix; unrelated to tool-call rendering.
 
 ## Risks
+
 - Metro/Expo must consume workspace packages from TS source with `exports.source` and NodeNext `.js`→`.ts` import specifiers (packages/thread-view/src/index.ts, @bb/domain, @bb/server-contract); needs a custom resolver or a build step producing dist for RN.
 - Timeline has no virtualization on web (ThreadTimelineRows renders every row of the loaded window); RN must use FlatList/FlashList with recursive nested rows (delegation childRows, bundle/step summaries, lazy turn children) and stable keys — the AutoHeightContainer/sticky-bottom scroll behavior has no RN equivalent.
 - Streaming UX depends on WS-invalidate + HTTP delta refetch loop paced at 50–1000ms (realtime-cache-registry.ts:147-247); on mobile networks this polling cadence and background/foreground transitions (focusManager uses window events) need re-tuning with AppState and NetInfo.
@@ -124,6 +127,7 @@ Versions: react 19.2.4, react-dom 19.2.4, @tanstack/react-query 5.90.20, @tansta
 - Attachments/voice depend on browser File/MediaRecorder; server multipart endpoints (projects.attachments.upload, system/voice-transcription) are usable but require expo-file-system/expo-av adapters.
 
 ## Open questions
+
 - Should the RN app share a new headless package (query keys, cache owners, realtime registry, timeline controller, prompt policy) extracted from apps/app/src/hooks, or duplicate?
 - Does the server timeline endpoint accept a smaller `segmentLimit`/`includeNestedRows=false` profile suitable for mobile, and what is the default segment count (see threadTimelineQuerySchema)?
 - Is there an auth/session mechanism for non-same-origin clients (fetchWithAppSurface in lib/app-surface.ts; bb connect tunnel) that the RN client must replicate for HTTP + WS?

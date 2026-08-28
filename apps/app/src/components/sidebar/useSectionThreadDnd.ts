@@ -12,7 +12,9 @@ import type {
   DragEndEvent,
   DragOverEvent,
   DragStartEvent,
+  UniqueIdentifier,
 } from "@dnd-kit/core";
+import { z } from "zod";
 import type { ThreadListEntry } from "@bb/domain";
 import {
   usePinThread,
@@ -298,10 +300,19 @@ const PROJECTION_INPUT_EVENTS = [
   "keydown",
 ] as const;
 
+const sectionThreadIdSchema = z.string();
+
+function parseSectionThreadId(
+  value: UniqueIdentifier | undefined,
+): string | null {
+  const result = sectionThreadIdSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
 function getEventIds(event: DragOverEvent | DragEndEvent) {
   return {
-    activeId: typeof event.active.id === "string" ? event.active.id : null,
-    overId: typeof event.over?.id === "string" ? event.over.id : null,
+    activeId: parseSectionThreadId(event.active.id),
+    overId: parseSectionThreadId(event.over?.id),
   };
 }
 
@@ -328,20 +339,24 @@ export function useSectionThreadDnd({
   );
   const collisionDetection = useCallback<CollisionDetection>(
     (args) => {
-      if (
-        typeof args.active.id === "string" &&
-        topLevelSectionIds.has(args.active.id)
-      ) {
+      const activeId = parseSectionThreadId(args.active.id);
+      if (activeId !== null && topLevelSectionIds.has(activeId)) {
         return sidebarReorderCollisionDetection({
           ...args,
           droppableContainers: args.droppableContainers.filter(({ id }) =>
-            typeof id === "string" ? topLevelSectionIds.has(id) : false,
+            (() => {
+              const parsedId = parseSectionThreadId(id);
+              return parsedId !== null && topLevelSectionIds.has(parsedId);
+            })(),
           ),
         });
       }
       const collisions = sidebarReorderCollisionDetection(args);
       const nestedCollisions = collisions.filter(({ id }) =>
-        typeof id === "string" ? !topLevelSectionIds.has(id) : true,
+        (() => {
+          const parsedId = parseSectionThreadId(id);
+          return parsedId === null || !topLevelSectionIds.has(parsedId);
+        })(),
       );
       return nestedCollisions.length > 0 ? nestedCollisions : collisions;
     },
@@ -422,8 +437,7 @@ export function useSectionThreadDnd({
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      const activeId =
-        typeof event.active.id === "string" ? event.active.id : null;
+      const activeId = parseSectionThreadId(event.active.id);
       const thread = activeId
         ? (lookup.threadByItemId.get(activeId) ?? null)
         : null;

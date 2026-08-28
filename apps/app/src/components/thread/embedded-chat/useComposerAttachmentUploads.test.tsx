@@ -6,18 +6,14 @@ import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditi
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { sdk } from "@/lib/sdk";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   useComposerAttachmentUploads,
   useDraftAttachmentUploads,
 } from "./useComposerAttachmentUploads";
 
-const mocks = vi.hoisted(() => ({
-  upload: vi.fn(),
-}));
-
-vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({ mutateAsync: mocks.upload }),
-}));
+const upload = vi.spyOn(sdk.projects.attachments, "upload");
 
 function makeInlineEdit(editSessionId: number): InlineQueuedMessageEditState {
   return {
@@ -34,27 +30,37 @@ function makeInlineEdit(editSessionId: number): InlineQueuedMessageEditState {
   };
 }
 
+interface InlineEditRef {
+  current: InlineQueuedMessageEditState | null;
+}
+type InlineRenderHookProps = {
+  inline: InlineQueuedMessageEditState | null;
+};
+
 describe("useComposerAttachmentUploads", () => {
   beforeEach(() => {
-    mocks.upload.mockReset();
+    upload.mockReset();
   });
 
   it("keeps bottom and queued attachment operations independent", async () => {
     const bottomUpload = createDeferredPromise<never>();
     const inlineUpload = createDeferredPromise<never>();
-    mocks.upload
+    upload
       .mockReturnValueOnce(bottomUpload.promise)
       .mockReturnValueOnce(inlineUpload.promise);
     const inline = makeInlineEdit(1);
     const inlineRef = { current: inline };
-    const { result } = renderHook(() =>
-      useComposerAttachmentUploads({
-        projectId: "proj_1",
-        addDraftAttachment: vi.fn(),
-        inlineEditingQueuedMessage: inline,
-        inlineEditingQueuedMessageRef: inlineRef,
-        commitInlineQueuedMessage: vi.fn(),
-      }),
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useComposerAttachmentUploads({
+          projectId: "proj_1",
+          addDraftAttachment: vi.fn(),
+          inlineEditingQueuedMessage: inline,
+          inlineEditingQueuedMessageRef: inlineRef,
+          commitInlineQueuedMessage: vi.fn(),
+        }),
+      { wrapper },
     );
 
     let bottomPromise!: Promise<void>;
@@ -99,12 +105,14 @@ describe("useComposerAttachmentUploads", () => {
 
   it("does not leak a dismissed upload into a later queued edit", async () => {
     const oldUpload = createDeferredPromise<never>();
-    mocks.upload.mockReturnValueOnce(oldUpload.promise);
+    upload.mockReturnValueOnce(oldUpload.promise);
     const firstEdit = makeInlineEdit(1);
-    const inlineRef: { current: InlineQueuedMessageEditState | null } = {
+    const firstProps: InlineRenderHookProps = { inline: firstEdit };
+    const inlineRef: InlineEditRef = {
       current: firstEdit,
     };
     const commitInlineQueuedMessage = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
     const { result, rerender } = renderHook(
       ({ inline }: { inline: InlineQueuedMessageEditState | null }) =>
         useComposerAttachmentUploads({
@@ -115,9 +123,8 @@ describe("useComposerAttachmentUploads", () => {
           commitInlineQueuedMessage,
         }),
       {
-        initialProps: {
-          inline: firstEdit as InlineQueuedMessageEditState | null,
-        },
+        initialProps: firstProps,
+        wrapper,
       },
     );
 
@@ -150,7 +157,7 @@ describe("useComposerAttachmentUploads", () => {
   it("shows the server's reason when it refuses an upload", async () => {
     const message =
       "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.";
-    mocks.upload
+    upload
       .mockRejectedValueOnce(
         new BbHttpError({
           body: { code: "invalid_request", message },
@@ -160,11 +167,14 @@ describe("useComposerAttachmentUploads", () => {
         }),
       )
       .mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const { result } = renderHook(() =>
-      useDraftAttachmentUploads({
-        projectId: "proj_1",
-        target: { key: "bottom", addAttachment: vi.fn() },
-      }),
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useDraftAttachmentUploads({
+          projectId: "proj_1",
+          target: { key: "bottom", addAttachment: vi.fn() },
+        }),
+      { wrapper },
     );
 
     await act(async () => {
@@ -181,25 +191,29 @@ describe("useComposerAttachmentUploads", () => {
 
   it("does not leak a dismissed upload into a later independent draft", async () => {
     const oldUpload = createDeferredPromise<PromptDraftAttachment>();
-    mocks.upload.mockReturnValueOnce(oldUpload.promise);
+    upload.mockReturnValueOnce(oldUpload.promise);
     const addFirstAttachment = vi.fn();
     const addSecondAttachment = vi.fn();
+    type DraftTarget = {
+      key: string;
+      addAttachment: (attachment: PromptDraftAttachment) => void;
+    } | null;
+    type DraftRenderHookProps = { target: DraftTarget };
+    const firstTarget: DraftTarget = {
+      key: "edit-1",
+      addAttachment: addFirstAttachment,
+    };
+    const firstProps: DraftRenderHookProps = { target: firstTarget };
+    const { wrapper } = createQueryClientTestHarness();
     const { result, rerender } = renderHook(
-      ({ target }) =>
+      ({ target }: { target: DraftTarget }) =>
         useDraftAttachmentUploads({
           projectId: "proj_1",
           target,
         }),
       {
-        initialProps: {
-          target: {
-            key: "edit-1",
-            addAttachment: addFirstAttachment,
-          } as {
-            key: string;
-            addAttachment: (attachment: PromptDraftAttachment) => void;
-          } | null,
-        },
+        initialProps: firstProps,
+        wrapper,
       },
     );
 

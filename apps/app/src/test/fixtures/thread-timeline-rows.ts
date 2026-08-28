@@ -436,7 +436,7 @@ function baseRow({
   turnId = DEFAULT_TURN_ID,
 }: BaseRowArgs): TimelineRowBase {
   const rowSeq = rowSequence({ seq, sourceSeqStart });
-  return {
+  const row: TimelineRowBase = {
     id,
     threadId,
     turnId,
@@ -445,6 +445,7 @@ function baseRow({
     startedAt: startedAt ?? rowSeq,
     createdAt: createdAt ?? rowSeq,
   };
+  return row;
 }
 
 export function conversationRow({
@@ -594,7 +595,7 @@ export function toolRow({
     threadId,
     turnId,
   });
-  return {
+  const row: TimelineToolWorkRow = {
     ...base,
     kind: "work",
     workKind: "tool",
@@ -605,8 +606,11 @@ export function toolRow({
     output,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
     approvalStatus,
-    ...(presentation ? { presentation } : {}),
   };
+  if (presentation) {
+    row.presentation = presentation;
+  }
+  return row;
 }
 
 export function fileReadRow({
@@ -635,7 +639,7 @@ export function fileReadRow({
     threadId,
     turnId,
   });
-  return {
+  const row: TimelineFileReadWorkRow = {
     ...base,
     kind: "work",
     workKind: "file-read",
@@ -644,8 +648,11 @@ export function fileReadRow({
     path,
     cmd,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
-    ...(presentation ? { presentation } : {}),
   };
+  if (presentation) {
+    row.presentation = presentation;
+  }
+  return row;
 }
 
 export function searchRow({
@@ -676,7 +683,7 @@ export function searchRow({
     threadId,
     turnId,
   });
-  return {
+  const row: TimelineSearchWorkRow = {
     ...base,
     kind: "work",
     workKind: "search",
@@ -687,8 +694,11 @@ export function searchRow({
     path,
     cmd,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
-    ...(presentation ? { presentation } : {}),
   };
+  if (presentation) {
+    row.presentation = presentation;
+  }
+  return row;
 }
 
 export const ECHO_RECEIPT_PRESENTATION: TimelineRowPresentation = {
@@ -723,7 +733,7 @@ export function extensionRow({
     threadId,
     turnId,
   });
-  return {
+  const row: TimelineExtensionWorkRow = {
     ...base,
     kind: "work",
     workKind: "extension",
@@ -734,6 +744,7 @@ export function extensionRow({
     presentation,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
   };
+  return row;
 }
 
 export function planStepsRow({
@@ -764,7 +775,7 @@ export function planStepsRow({
     threadId,
     turnId,
   });
-  return {
+  const row: TimelinePlanStepsWorkRow = {
     ...base,
     kind: "work",
     workKind: "plan-steps",
@@ -773,8 +784,11 @@ export function planStepsRow({
     steps,
     explanation,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
-    ...(presentation ? { presentation } : {}),
   };
+  if (presentation) {
+    row.presentation = presentation;
+  }
+  return row;
 }
 
 function fileChangeFromArgs({

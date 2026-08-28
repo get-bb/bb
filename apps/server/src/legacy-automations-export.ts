@@ -1,19 +1,25 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { DbConnection } from "@bb/db";
 import { resolveContainedPath } from "@bb/process-utils";
 
+const { existsSync, mkdirSync, readFileSync, writeFileSync } =
+  process.getBuiltinModule("node:fs");
+
 interface LegacyAutomationsExportLogger {
   error(fields: { err: unknown }, message: string): void;
-  info(fields: Record<string, unknown>, message: string): void;
+  info(fields: LegacyAutomationsExportInfo, message: string): void;
 }
 
-interface SqliteCountRow {
-  count: number;
+interface LegacyAutomationsExportInfo {
+  automationCount: number;
+  importPath: string;
+  runCount: number;
+  scriptCount: number;
 }
 
 const sqliteBooleanSchema = z.union([z.boolean(), z.number().int()]);
+const sqliteCountRowSchema = z.object({ count: z.number().int() }).strict();
 
 const automationRowSchema = z
   .object({
@@ -75,21 +81,23 @@ const executionSchema = z.union([
 ]);
 
 function tableExists(db: DbConnection, tableName: string): boolean {
-  const row = db.$client
-    .prepare(
-      `SELECT COUNT(*) AS count
+  const row = sqliteCountRowSchema.safeParse(
+    db.$client
+      .prepare(
+        `SELECT COUNT(*) AS count
        FROM sqlite_master
        WHERE type = 'table' AND name = ?`,
-    )
-    .get(tableName) as SqliteCountRow | undefined;
-  return (row?.count ?? 0) > 0;
+      )
+      .get(tableName),
+  );
+  return row.success && row.data.count > 0;
 }
 
 function tableRowCount(db: DbConnection, tableName: string): number {
-  const row = db.$client
-    .prepare(`SELECT COUNT(*) AS count FROM ${tableName}`)
-    .get() as SqliteCountRow | undefined;
-  return row?.count ?? 0;
+  const row = sqliteCountRowSchema.safeParse(
+    db.$client.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get(),
+  );
+  return row.success ? row.data.count : 0;
 }
 
 function toBoolean(value: z.infer<typeof sqliteBooleanSchema>): boolean {
@@ -124,7 +132,9 @@ function readLegacyAutomationScripts(args: {
     try {
       content = readFileSync(scriptPath, "utf8");
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      if (!(err instanceof Error && "code" in err && err.code === "ENOENT")) {
+        throw err;
+      }
       args.logger.error(
         { err },
         `Legacy automation ${automation.id} references missing script ${scriptPath}; exporting without script content`,

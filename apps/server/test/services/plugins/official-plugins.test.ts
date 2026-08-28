@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   createConnection,
   getInstalledPluginRegistration,
   migrate,
   type DbConnection,
 } from "@bb/db";
-import type { Logger } from "@bb/logger";
 import { derivePluginId } from "@bb/domain";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -25,8 +25,9 @@ import {
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import type { ServerLogger } from "../../../src/types.js";
 
-const logger = testLogger as unknown as Logger;
+const logger: ServerLogger = testLogger;
 const testDir = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = resolve(
   testDir,
@@ -36,10 +37,16 @@ const fixtureRoot = resolve(
   "plugins",
   "bb-plugin-builtin-fixture",
 );
-const globals = globalThis as Record<string, unknown>;
+const builtinFixtureLoadCountSchema = z.number().int().nonnegative().optional();
+declare global {
+  var __builtinFixtureLoads: number | undefined;
+}
+const globals = globalThis;
 
 function loadCount(): number {
-  return (globals.__builtinFixtureLoads as number | undefined) ?? 0;
+  return (
+    builtinFixtureLoadCountSchema.parse(globals.__builtinFixtureLoads) ?? 0
+  );
 }
 
 function officialEntry(
@@ -210,9 +217,12 @@ describe("store-installed official plugins", () => {
     await service.installOfficialPlugin("fixture");
     await service.stop();
 
-    const packageJson = JSON.parse(
-      await readFile(join(mutableRoot, "package.json"), "utf8"),
-    ) as { version: string };
+    const packageJson = z
+      .object({ version: z.string() })
+      .passthrough()
+      .parse(
+        JSON.parse(await readFile(join(mutableRoot, "package.json"), "utf8")),
+      );
     await writeFile(
       join(mutableRoot, "package.json"),
       JSON.stringify({ ...packageJson, version: "0.2.0" }),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { turnScope } from "@bb/domain";
+import type { JsonObject } from "@bb/domain";
 import {
   threadTimelineResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -89,7 +90,7 @@ function seedV3Thread(harness: TestAppHarness): string {
   const seed = (
     scope: typeof turnOne,
     type: "turn/started" | "item/completed" | "turn/completed",
-    data: Record<string, unknown>,
+    data: JsonObject,
   ) => {
     sequence += 1;
     seedEvent(harness.deps, { ...scope, sequence, type, data });

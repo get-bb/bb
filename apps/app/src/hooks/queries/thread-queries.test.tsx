@@ -11,6 +11,7 @@ import type {
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
+import * as realtimeSubscription from "@/hooks/useRealtimeSubscription";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
@@ -35,31 +36,6 @@ import {
   useThreadStorageLocation,
   useThreadTimeline,
 } from "./thread-queries";
-
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return {
-    ...actual,
-    getThreadHostFilePreview: vi.fn(),
-  };
-});
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: {
-      get: vi.fn(),
-      list: vi.fn(),
-      queuedMessages: { list: vi.fn() },
-      storageLocation: vi.fn(),
-      timeline: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: vi.fn(),
-  useThreadListRealtimeSubscription: vi.fn(),
-}));
 
 const THREAD_WITH_INCLUDES = {
   id: "thread-1",
@@ -126,7 +102,7 @@ function makeSidebarNavigation(
 }
 
 function mockMatchMedia(matching: readonly string[]) {
-  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+  vi.stubGlobal("matchMedia", (query: string) => ({
     matches: matching.includes(query),
     media: query,
     onchange: null,
@@ -142,9 +118,24 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
+  vi.spyOn(sdk.threads, "get");
+  vi.spyOn(sdk.threads, "list");
+  vi.spyOn(sdk.threads.queuedMessages, "list");
+  vi.spyOn(sdk.threads, "storageLocation");
+  vi.spyOn(sdk.threads, "timeline");
+  vi.spyOn(api, "getThreadHostFilePreview");
+  vi.spyOn(
+    realtimeSubscription,
+    "useThreadDetailRealtimeSubscription",
+  ).mockImplementation(() => {});
+  vi.spyOn(
+    realtimeSubscription,
+    "useThreadListRealtimeSubscription",
+  ).mockImplementation(() => {});
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_WITH_INCLUDES);
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);

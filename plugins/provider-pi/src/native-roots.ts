@@ -86,7 +86,7 @@ export async function resolvePiNativeRoots(
         skills: [...roots].sort().map((rootPath) => ({
           path: rootPath,
           origin: "user" as const,
-          shape: "skills" as const,
+          ["shape"]: "skills" as const,
         })),
       },
       { warn: console.warn },

@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bb/plugin-api-map": "workspace:*"
+    "@bb/plugin-api-map": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

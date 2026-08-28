@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk";
 
 const READONLY_GIT_TOP_LEVEL_OPTIONS = new Set([
   "--no-optional-locks",
@@ -186,7 +187,10 @@ const READONLY_GIT_DIFF_SAFETY_OPTIONS = [
 ] as const;
 const READONLY_GIT_DIFF_SAFETY_SUBCOMMANDS = new Set(["diff", "show", "log"]);
 
-const bashToolInputSchema = z.object({ command: z.string() }).passthrough();
+const bashToolInputSchema = z
+  .object({ command: z.string() })
+  .catchall(z.json());
+type ReadonlyBashToolInput = z.infer<typeof bashToolInputSchema>;
 
 interface ReadonlyBashCommand {
   needsNoOptionalGitLocks: boolean;
@@ -382,9 +386,9 @@ function parseReadonlyBashCommand(command: string): ReadonlyBashCommand | null {
   };
 }
 
-export function buildReadonlyBashUpdatedInput(
-  input: unknown,
-): Record<string, unknown> | null {
+export function buildReadonlyBashUpdatedInput<TInput>(
+  input: TInput,
+): ReadonlyBashToolInput | null {
   const parsed = bashToolInputSchema.safeParse(input);
   if (!parsed.success) {
     return null;

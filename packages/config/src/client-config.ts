@@ -22,6 +22,7 @@ const clientConfigFileSchema = z
   .strict();
 
 export type ClientConfig = z.infer<typeof clientConfigFileSchema>;
+type ClientConfigFileInput = z.input<typeof clientConfigFileSchema>;
 
 interface ClientSshHostKey {
   hostId: string;
@@ -40,7 +41,9 @@ export function normalizeClientServerOrigin(value: string): string {
   }
 }
 
-export function parseClientConfig(rawConfig: unknown): ClientConfig {
+export function parseClientConfig(
+  rawConfig: ClientConfigFileInput,
+): ClientConfig {
   const parsed = clientConfigFileSchema.parse(rawConfig);
   const config: ClientConfig = { servers: {} };
   for (const [rawOrigin, serverConfig] of Object.entries(parsed.servers)) {

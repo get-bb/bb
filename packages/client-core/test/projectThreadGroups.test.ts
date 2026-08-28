@@ -35,6 +35,7 @@ function getItemAlphaLabel(item: ProjectThreadItem): string {
   }
 }
 
+// SAFETY: The comparator reads the complete ThreadListEntry title contract.
 const compareAlphaDescending = ((left, right) =>
   (right.title ?? right.titleFallback ?? "").localeCompare(
     left.title ?? left.titleFallback ?? "",
@@ -888,13 +889,15 @@ describe("resolveSidebarProjectId", () => {
     const all = [root, child, ...grandchildren];
     const lookups: string[] = [];
     const threadById = new Map(all.map((thread) => [thread.id, thread]));
-    const spyingMap: ReadonlyMap<string, ThreadListEntry> = {
-      ...threadById,
-      get: (id: string) => {
+    class SpyingThreadMap extends Map<string, ThreadListEntry> {
+      override get(id: string): ThreadListEntry | undefined {
         lookups.push(id);
-        return threadById.get(id);
-      },
-    } as unknown as ReadonlyMap<string, ThreadListEntry>;
+        return super.get(id);
+      }
+    }
+    const spyingMap: ReadonlyMap<string, ThreadListEntry> = new SpyingThreadMap(
+      threadById,
+    );
     const resolve = createSidebarProjectIdResolver(spyingMap);
 
     expect(all.map(resolve)).toEqual(Array(all.length).fill("proj_a"));

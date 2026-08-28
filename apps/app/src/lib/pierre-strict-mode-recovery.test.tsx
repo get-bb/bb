@@ -14,7 +14,7 @@ interface TestPierreOptions {
     node: HTMLElement,
     instance: TestPierreInstance,
     phase: PostRenderPhase,
-  ): unknown;
+  ): void;
 }
 
 describe("Pierre Strict Mode recovery", () => {

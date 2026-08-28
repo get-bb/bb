@@ -7,25 +7,26 @@ interface CopyToClipboardOptions {
 }
 
 function copyWithEditingCommand(text: string): boolean {
+  const documentValue = globalThis.document;
   if (
-    typeof document === "undefined" ||
-    document.body === null ||
-    typeof document.execCommand !== "function"
+    documentValue === undefined ||
+    documentValue.body === null ||
+    !("execCommand" in documentValue)
   ) {
     return false;
   }
 
   const activeElement =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
+    documentValue.activeElement instanceof HTMLElement
+      ? documentValue.activeElement
       : null;
-  const selection = document.getSelection();
+  const selection = documentValue.getSelection();
   const selectedRanges = selection
     ? Array.from({ length: selection.rangeCount }, (_, index) =>
         selection.getRangeAt(index).cloneRange(),
       )
     : [];
-  const textarea = document.createElement("textarea");
+  const textarea = documentValue.createElement("textarea");
   textarea.value = text;
   textarea.readOnly = true;
   textarea.setAttribute("aria-hidden", "true");
@@ -40,14 +41,14 @@ function copyWithEditingCommand(text: string): boolean {
     top: "0",
     width: "1px",
   });
-  document.body.append(textarea);
+  documentValue.body.append(textarea);
 
   let copied = false;
   try {
     textarea.focus({ preventScroll: true });
     textarea.select();
     textarea.setSelectionRange(0, textarea.value.length);
-    copied = document.execCommand("copy");
+    copied = documentValue.execCommand("copy");
   } catch {
     copied = false;
   } finally {
@@ -66,12 +67,10 @@ function copyWithEditingCommand(text: string): boolean {
 }
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {
-  if (
-    typeof navigator !== "undefined" &&
-    typeof navigator.clipboard?.writeText === "function"
-  ) {
+  const navigatorValue = globalThis.navigator;
+  if (navigatorValue?.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigatorValue.clipboard.writeText(text);
       return true;
     } catch {}
   }

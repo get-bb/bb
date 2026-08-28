@@ -20,29 +20,24 @@ export const SWEEP_INTERVAL_MS = 10_000;
 const hostListSchema = z.array(
   z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
 );
+type AgentThreadsSdk = Pick<
+  BbPluginApi["sdk"]["threads"],
+  "get" | "send" | "spawn"
+>;
 type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
-    hosts: { list(): Promise<unknown> };
-    threads: {
-      get(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
-      ): Promise<unknown>;
-      send(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
-      ): Promise<unknown>;
-      spawn(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
-      ): Promise<unknown>;
-    };
+    hosts: { list(): Promise<ReadonlyArray<{ status: string }>> };
+    threads: AgentThreadsSdk;
   };
 };
+type FailureHandler = Parameters<typeof executeAgentRun>[2]["onFailure"];
 
 function buildScheduleFailureHandler(
   db: Db,
   args: {
     run: AutomationRunRow;
   },
-): (error: unknown) => void {
+): FailureHandler {
   return (error) => {
     closeAutomationRun(db, {
       runId: args.run.id,
@@ -121,7 +116,7 @@ async function processDueAutomation(
       execution,
       onFailure,
       serverUrl: args.serverUrl,
-    }).catch((error: unknown) => {
+    }).catch((error) => {
       bb.log.error(
         `Detached script automation ${args.automation.id} failed unexpectedly: ${
           error instanceof Error ? error.message : String(error)
@@ -132,9 +127,7 @@ async function processDueAutomation(
 }
 
 async function hasConnectedHost(
-  bb: Pick<BbPluginApi, "log"> & {
-    sdk: { hosts: { list(): Promise<unknown> } };
-  },
+  bb: Pick<SweepApi, "log" | "sdk">,
 ): Promise<boolean> {
   try {
     return hostListSchema

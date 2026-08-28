@@ -135,20 +135,21 @@ async function toWorkspaceOpenTarget(
 function toCliWorkspaceOpenTarget(
   definition: LaunchAdapter,
 ): WorkspaceOpenTarget {
-  return {
+  const target: WorkspaceOpenTarget = {
     id: definition.id,
     label: definition.label,
     kind: definition.kind,
     icon: definition.icon,
     capabilities: definition.capabilities,
-    ...(definition.macos.openMode !== "default-app" &&
-    definition.macos.remoteSshOpenCommand !== undefined
-      ? {
-          remoteSshCapabilities:
-            definition.macos.remoteSshOpenCommand.capabilities,
-        }
-      : {}),
   };
+  if (
+    definition.macos.openMode !== "default-app" &&
+    definition.macos.remoteSshOpenCommand !== undefined
+  ) {
+    target.remoteSshCapabilities =
+      definition.macos.remoteSshOpenCommand.capabilities;
+  }
+  return target;
 }
 
 async function toGenericMacApplicationOpenTarget(
@@ -510,10 +511,8 @@ export function createWorkspaceOpenTargetRuntime(
   options: WorkspaceOpenTargetRuntimeOptions = {},
 ): WorkspaceOpenTargetRuntime {
   const homeDirectory = os.homedir();
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...(options.shellPath !== undefined ? { PATH: options.shellPath } : {}),
-  };
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (options.shellPath !== undefined) env.PATH = options.shellPath;
   return {
     applicationDirectories: [
       "/Applications",
@@ -1107,11 +1106,12 @@ async function resolveMacCommandExecutable(
       ? await isServiceExecutableAvailable(candidate.executable, runtime)
       : await isExecutableAvailable(candidate.executable, runtime);
     if (available) {
-      return {
+      const resolved: ResolvedMacCommandExecutable = {
         file: candidate.executable,
         argsPrefix: [],
-        ...(serviceExecutable ? {} : { env: runtime.env }),
       };
+      if (!serviceExecutable) resolved.env = runtime.env;
+      return resolved;
     }
     if (candidate.bundledExecutable !== undefined) {
       const resolved = await resolveMacBundledExecutable(

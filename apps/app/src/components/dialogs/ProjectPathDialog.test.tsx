@@ -2,19 +2,17 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as remotePathBrowser from "./RemotePathBrowser";
 import { ProjectPathDialog } from "./ProjectPathDialog";
 
-vi.mock("@/components/dialogs/RemotePathBrowser", () => ({
-  RemotePathBrowser: ({
+vi.spyOn(remotePathBrowser, "RemotePathBrowser").mockImplementation(
+  ({
     hostId,
     allowCreateFolder,
     onDirectoryChange,
-  }: {
-    hostId: string;
-    allowCreateFolder: boolean;
-    onDirectoryChange: (directory: string) => void;
-  }) => (
+  }: ComponentProps<typeof remotePathBrowser.RemotePathBrowser>) => (
     <button
       type="button"
       data-allow-create-folder={String(allowCreateFolder)}
@@ -31,7 +29,7 @@ vi.mock("@/components/dialogs/RemotePathBrowser", () => ({
       Choose folder on {hostId}
     </button>
   ),
-}));
+);
 
 function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
   return {

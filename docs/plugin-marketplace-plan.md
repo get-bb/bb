@@ -18,11 +18,11 @@ Status: draft for review. Related: issue #1097 (collection manifest), PR #636
 
 ## Layer model
 
-| Layer | File / surface | Role |
-| --- | --- | --- |
-| Collection manifest | `.bb/plugins.json` in a repository | Bare index of nested plugins for direct installs and local discovery (issue #1097) |
-| Marketplace manifest | `marketplace.json`, hosted | Catalog with store branding; entries point at npm or git sources |
-| Install pipeline | existing server services | Validates the real package manifest; records source intent and exact resolution |
+| Layer                | File / surface                     | Role                                                                               |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
+| Collection manifest  | `.bb/plugins.json` in a repository | Bare index of nested plugins for direct installs and local discovery (issue #1097) |
+| Marketplace manifest | `marketplace.json`, hosted         | Catalog with store branding; entries point at npm or git sources                   |
+| Install pipeline     | existing server services           | Validates the real package manifest; records source intent and exact resolution    |
 
 The layers compose: CI can generate a marketplace manifest from a repository's
 collection manifest by pinning a ref and pointing each entry at its subdir.
@@ -63,7 +63,9 @@ collection manifest by pinning a ref and pointing each entry at its subdir.
       "description": "Sidebar for agent status.",
       "icon": { "url": "https://plugins.getbb.dev/icons/agent-sidebar.png" },
       "author": { "name": "BB Team", "github": "get-bb" },
-      "source": { "npm": { "package": "bb-plugin-agent-sidebar", "range": "^1.0.0" } }
+      "source": {
+        "npm": { "package": "bb-plugin-agent-sidebar", "range": "^1.0.0" }
+      }
     }
   ]
 }
@@ -257,7 +259,7 @@ get-bb/marketplace/
   and check source liveness (`git ls-remote`, npm registry lookup).
 - CI runs the build on every PR. Merge to main publishes `marketplace.json`
   and the icon files to getbb.app: `https://getbb.app/marketplace/v1/
-  marketplace.json` and `/marketplace/v1/icons/<id>.svg`, served with ETags so
+marketplace.json` and `/marketplace/v1/icons/<id>.svg`, served with ETags so
   the app's conditional refresh works. Entry icons reference the local files
   relatively, which the relative-URL rule already supports.
 
@@ -279,6 +281,7 @@ get-bb/marketplace/
 
   Serving through the worker (rather than a public R2 custom domain) keeps
   the catalog on the getbb.app origin and keeps header control in one place.
+
 - The schema is the cross-repo contract. This repo publishes it at the
   `$schema` URL (and the icon validator as a small package); the registry CI
   consumes it. Nothing else couples the repos.

@@ -457,10 +457,7 @@ function truncateOutputToMaxBytes(
   value: string,
   maxBytes: number | undefined,
 ): TruncatedOutput {
-  if (
-    typeof maxBytes !== "number" ||
-    Buffer.byteLength(value, "utf8") <= maxBytes
-  ) {
+  if (maxBytes === undefined || Buffer.byteLength(value, "utf8") <= maxBytes) {
     return { value, truncated: false };
   }
   return { value: truncateToMaxBytes(value, maxBytes), truncated: true };
@@ -495,7 +492,7 @@ function buildDiffOutputGitOptions(
   cwd: string,
   maxBytes: number | undefined,
 ): RunGitOptions {
-  if (typeof maxBytes !== "number") {
+  if (maxBytes === undefined) {
     return { cwd };
   }
   return {
@@ -2663,22 +2660,41 @@ function formatPatchSection(lines: string[]): string {
   return `${body.join("\n")}\n${isBinary ? "\n" : ""}`;
 }
 
-const NAME_STATUS_LETTERS = new Set(["A", "M", "D", "R", "C", "T"]);
+function isNameStatusLetter(
+  value: string,
+): value is RawDiffFileStat["statusLetter"] {
+  switch (value) {
+    case "A":
+    case "M":
+    case "D":
+    case "R":
+    case "C":
+    case "T":
+      return true;
+    default:
+      return false;
+  }
+}
 
 function normalizeNameStatusLetter(
   status: string,
 ): RawDiffFileStat["statusLetter"] {
   const letter = status[0] ?? "";
-  if (NAME_STATUS_LETTERS.has(letter)) {
-    return letter as RawDiffFileStat["statusLetter"];
+  if (isNameStatusLetter(letter)) {
+    return letter;
   }
   return "M";
+}
+
+interface TruncatedPatch {
+  patch: string;
+  truncated: boolean;
 }
 
 function truncatePatchToMaxBytes(
   patch: string,
   maxBytes: number,
-): { patch: string; truncated: boolean } {
+): TruncatedPatch {
   if (maxBytes <= 0) {
     return { patch, truncated: false };
   }

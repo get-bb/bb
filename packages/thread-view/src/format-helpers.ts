@@ -1,3 +1,6 @@
+import type { JsonObject } from "@bb/domain";
+import { z } from "zod";
+
 export function getMessageStartedAt(message: {
   createdAt: number;
   startedAt?: number;
@@ -6,15 +9,15 @@ export function getMessageStartedAt(message: {
 }
 
 function getNonEmptyStringField(
-  record: Record<string, unknown> | null,
+  record: JsonObject | null,
   key: string,
 ): string | undefined {
-  const value = record?.[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  const value = z.string().min(1).safeParse(record?.[key]);
+  return value.success ? value.data : undefined;
 }
 
 export function getFirstStringField(
-  record: Record<string, unknown> | null,
+  record: JsonObject | null,
   keys: readonly string[],
 ): string | undefined {
   for (const key of keys) {

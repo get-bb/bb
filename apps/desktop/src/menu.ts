@@ -1,9 +1,4 @@
-import {
-  app,
-  Menu,
-  type BaseWindow,
-  type MenuItemConstructorOptions,
-} from "electron";
+import type { BaseWindow, Menu, MenuItemConstructorOptions } from "electron";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
 
@@ -20,16 +15,13 @@ const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 const SERVER_MENU_LABEL = "Server";
 const SERVER_MENU_ITEM_ID = "bb-server-menu";
 export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
-export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
-  ConnectServerSyncSkipReason,
-  string
-> = {
+export const CONNECT_SERVERS_SKIPPED_MENU_LABELS = {
   "no-credential": "No Connect servers — sign in to bb Connect",
   "not-paired": "No Connect servers — Connect not paired on This Mac",
   "plugin-disabled": "No Connect servers — Connect plugin disabled",
   unauthorized: "No Connect servers — sign in to bb Connect again",
   unavailable: "No Connect servers — could not reach bb Connect",
-};
+} satisfies Record<ConnectServerSyncSkipReason, string>;
 
 interface ApplicationMenuServerItem {
   checked: boolean;
@@ -38,6 +30,7 @@ interface ApplicationMenuServerItem {
 }
 
 export interface InstallApplicationMenuArgs {
+  applicationName: string;
   accelerators: ApplicationMenuAccelerators;
   isMac: boolean;
   openAbout(): void;
@@ -48,6 +41,7 @@ export interface InstallApplicationMenuArgs {
     browserWindow: BaseWindow | undefined,
     ignoreCache: boolean,
   ): void;
+  sendActionToFirstResponder(action: string): void;
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
@@ -57,6 +51,11 @@ export interface InstallApplicationMenuArgs {
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
   connectServersSkipReason: ConnectServerSyncSkipReason | null;
+}
+
+export interface ApplicationMenuRuntime {
+  buildFromTemplate(template: MenuItemConstructorOptions[]): Menu;
+  setApplicationMenu(menu: Menu): void;
 }
 
 function createServerDaemonLogsMenuItems(
@@ -113,10 +112,10 @@ export function buildApplicationMenuTemplate(
 ): MenuItemConstructorOptions[] {
   return [
     {
-      label: app.name,
+      label: args.applicationName,
       submenu: [
         {
-          label: `About ${app.name}`,
+          label: `About ${args.applicationName}`,
           click() {
             args.openAbout();
           },
@@ -173,7 +172,7 @@ export function buildApplicationMenuTemplate(
           click(_menuItem, browserWindow) {
             if (browserWindow === null) {
               if (args.isMac) {
-                Menu.sendActionToFirstResponder("performClose:");
+                args.sendActionToFirstResponder("performClose:");
               }
               return;
             }
@@ -247,8 +246,11 @@ export function buildApplicationMenuTemplate(
   ];
 }
 
-export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
-  const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
+export function installApplicationMenu(
+  args: InstallApplicationMenuArgs,
+  runtime: ApplicationMenuRuntime,
+): void {
+  const menu = runtime.buildFromTemplate(buildApplicationMenuTemplate(args));
   const onServerMenuWillShow = args.onServerMenuWillShow;
   if (onServerMenuWillShow !== undefined) {
     menu
@@ -257,5 +259,5 @@ export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
         onServerMenuWillShow();
       });
   }
-  Menu.setApplicationMenu(menu);
+  runtime.setApplicationMenu(menu);
 }

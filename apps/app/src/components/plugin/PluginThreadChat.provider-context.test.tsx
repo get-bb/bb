@@ -10,6 +10,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginTimelineRendererProps } from "@get-bb/plugin-sdk";
 import { sdk } from "@/lib/sdk";
+import * as hostDaemon from "@/hooks/useHostDaemon";
+import * as realtimeSubscription from "@/hooks/useRealtimeSubscription";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { toolRow } from "@/test/fixtures/thread-timeline-rows";
@@ -24,31 +26,49 @@ import {
 } from "@/components/plugin/PluginSlotMount";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...mod,
-    sdk: {
-      ...mod.sdk,
-      providers: { ...mod.sdk.providers, list: vi.fn() },
-      threads: { ...mod.sdk.threads, get: vi.fn(), timeline: vi.fn() },
-    },
-  };
+const getThread = vi.spyOn(sdk.threads, "get");
+const getTimeline = vi.spyOn(sdk.threads, "timeline");
+const listProviders = vi.spyOn(sdk.providers, "list");
+vi.spyOn(
+  realtimeSubscription,
+  "useThreadDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useThreadListRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useEnvironmentDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useProjectDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useProjectListRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useEnvironmentListRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useHostListRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(
+  realtimeSubscription,
+  "useSystemRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(hostDaemon, "useHostDaemon").mockReturnValue({
+  localDaemonHostId: null,
+  localHostId: null,
+  hasDaemon: false,
+  supportsNativeFolderPicker: false,
+  platform: null,
+  isLocalDaemonHost: () => true,
 });
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: vi.fn(),
-  useThreadListRealtimeSubscription: vi.fn(),
-  useEnvironmentDetailRealtimeSubscription: vi.fn(),
-  useProjectDetailRealtimeSubscription: vi.fn(),
-  useProjectListRealtimeSubscription: vi.fn(),
-  useEnvironmentListRealtimeSubscription: vi.fn(),
-  useHostListRealtimeSubscription: vi.fn(),
-  useSystemRealtimeSubscription: vi.fn(),
-}));
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
-  useLocalHostDaemonAccess: () => ({ isLocalDaemonHost: () => true }),
-}));
 
 const THREAD_B = {
   id: "thr_b",
@@ -149,9 +169,15 @@ afterEach(() => {
   resetAllCrashedPluginSlotsForTest();
 });
 beforeEach(() => {
-  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_B as never);
-  vi.mocked(sdk.threads.timeline).mockResolvedValue(TIMELINE_B as never);
-  vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS as never);
+  getThread.mockResolvedValue(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ THREAD_B as never,
+  );
+  getTimeline.mockResolvedValue(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ TIMELINE_B as never,
+  );
+  listProviders.mockResolvedValue(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ PROVIDERS as never,
+  );
 });
 
 describe("PluginThreadChat provider context", () => {

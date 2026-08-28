@@ -29,21 +29,39 @@ async function bundle(input: string): Promise<string> {
 
 const PATTERN_MODIFIER = /\(\?(?:[ims]+|[ims]*-[ims]+):/;
 
+interface RegExpLike {
+  flags: string;
+  test: (input: string) => boolean;
+}
+
+interface BundleExports {
+  toRegExp: (pattern: string) => RegExpLike;
+}
+
+interface BundleModule {
+  exports: BundleExports;
+}
+
+interface ProbeSelf {
+  addEventListener: (type: string) => void;
+}
+
+interface ProbeGlobals {
+  self?: ProbeSelf;
+  postMessage?: () => void;
+}
+
 function evaluateOnSafariSixteen(
   code: string,
-  globals: Record<string, unknown>,
-): Record<string, unknown> {
+  globals: ProbeGlobals,
+): BundleExports {
   const context = vm.createContext({ ...globals });
   const IntrinsicRegExp: RegExpConstructor = vm.runInContext("RegExp", context);
-  function SafariSixteenRegExp(
-    this: unknown,
-    pattern: string | RegExp,
-    flags?: string,
-  ) {
+  function SafariSixteenRegExp(pattern: string | RegExp, flags?: string) {
     if (flags?.includes("v")) {
       throw new SyntaxError("Invalid flags supplied to RegExp constructor.");
     }
-    if (typeof pattern === "string" && PATTERN_MODIFIER.test(pattern)) {
+    if (!(pattern instanceof RegExp) && PATTERN_MODIFIER.test(pattern)) {
       throw new SyntaxError(
         "Invalid regular expression: invalid group specifier name",
       );
@@ -54,24 +72,17 @@ function evaluateOnSafariSixteen(
   }
   SafariSixteenRegExp.prototype = IntrinsicRegExp.prototype;
   context.RegExp = SafariSixteenRegExp;
-  const module: { exports: Record<string, unknown> } = { exports: {} };
+  const module: BundleModule = {
+    exports: {
+      toRegExp: () => {
+        throw new Error("bundle did not export toRegExp");
+      },
+    },
+  };
   context.module = module;
   context.exports = module.exports;
   vm.runInContext(code, context, { filename: "bundle.cjs" });
   return module.exports;
-}
-
-function isRegExpLike(
-  value: unknown,
-): value is { flags: string; test: (input: string) => boolean } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "flags" in value &&
-    typeof value.flags === "string" &&
-    "test" in value &&
-    typeof value.test === "function"
-  );
 }
 
 describe("regex engine feature probes survive the app bundler", () => {
@@ -79,13 +90,7 @@ describe("regex engine feature probes survive the app bundler", () => {
     const code = await bundle("oniguruma-to-es");
 
     const { toRegExp } = evaluateOnSafariSixteen(code, {});
-    if (typeof toRegExp !== "function") {
-      throw new Error("bundle did not export toRegExp");
-    }
-    const compiled: unknown = toRegExp("[a-c]+");
-    if (!isRegExpLike(compiled)) {
-      throw new Error("toRegExp did not return a RegExp");
-    }
+    const compiled = toRegExp("[a-c]+");
 
     expect(compiled.flags).not.toContain("v");
     expect(compiled.test("abc")).toBe(true);

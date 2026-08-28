@@ -20,7 +20,7 @@ function questionHasOptions(
 
 export function createInitialFormState(
   questions: readonly PendingInteractionUserQuestionQuestion[],
-): QuestionFormState {
+) {
   const state: QuestionFormState = {};
   for (const question of questions) {
     state[question.id] = {

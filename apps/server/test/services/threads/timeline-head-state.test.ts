@@ -4,7 +4,7 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
+import type { ClientTurnRequestId } from "@bb/domain";
 import {
   createConnection,
   createProject,
@@ -13,8 +13,9 @@ import {
   migrate,
   noopNotifier,
   upsertHost,
+  type DbConnection,
 } from "@bb/db";
-import type { DbConnection } from "@bb/db";
+import type { Thread } from "@bb/domain";
 import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "provider-root";
@@ -29,7 +30,7 @@ const execution = {
 const requestId = (value: number): ClientTurnRequestId =>
   encodeClientTurnRequestIdNumber({ value });
 
-function setup(): { db: DbConnection; thread: Thread } {
+function setup() {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {

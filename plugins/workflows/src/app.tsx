@@ -38,6 +38,8 @@ import {
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
+import { z } from "zod";
+import type { JsonValue } from "./types.js";
 import {
   WORKFLOW_RUNS_REALTIME_CHANNEL,
   workflowRunsSignalThreadId,
@@ -65,6 +67,26 @@ interface SharedWorkflowView {
   progress: WorkflowProgressSnapshot;
 }
 
+interface WorkflowRunHookResult {
+  state: RunLoadState;
+  refresh: () => Promise<void>;
+}
+
+interface ActiveWorkflowRunsHookResult {
+  state: ActiveRunsLoadState;
+  setRuns: (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => void;
+}
+
+interface RunRequestState {
+  requestKey: string;
+  state: RunLoadState;
+}
+
+interface ActiveRunsRequestState {
+  requestKey: string;
+  state: ActiveRunsLoadState;
+}
+
 const ACTIVE_POLL_INTERVAL_MS = 1_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
 const WORKFLOW_CARD_ROW_HEIGHT = 32;
@@ -77,12 +99,19 @@ const WORKFLOW_HEADER_BUTTON_CLASS =
 const WORKFLOW_OPEN_BUTTON_CLASS =
   "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const panelParamsSchema = z.object({ runId: z.string() }).strict();
 
-function requireRunId(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+function requireRunId(value: string): string | null {
   const runId = value.trim();
   return /^wfr_[0-9a-f-]+$/i.test(runId) ? runId : null;
 }
@@ -94,12 +123,13 @@ function directiveRunId(
   return requireRunId(attributes.run);
 }
 
-function panelRunId(params: unknown): string | null | undefined {
+function panelRunId(params: JsonValue | null): string | null | undefined {
   if (params === null) return null;
-  if (!isRecord(params) || Object.keys(params).some((key) => key !== "runId")) {
+  const parsed = panelParamsSchema.safeParse(params);
+  if (!parsed.success) {
     return undefined;
   }
-  return requireRunId(params.runId) ?? undefined;
+  return requireRunId(parsed.data.runId) ?? undefined;
 }
 
 function isRunActive(run: WorkflowRunView): boolean {
@@ -181,14 +211,14 @@ function formatDuration(startedAt: number | null, finishedAt: number | null) {
 }
 
 function WorkflowDuration({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    setElapsed(Date.now() - startedAt);
     const interval = window.setInterval(() => {
-      setElapsed(Date.now() - startedAt);
+      setNow(Date.now());
     }, 1_000);
     return () => window.clearInterval(interval);
-  }, [startedAt]);
+  }, []);
+  const elapsed = Math.max(0, now - startedAt);
   if (elapsed <= 1_000) return null;
   return <>{formatDuration(0, elapsed)}</>;
 }
@@ -224,8 +254,9 @@ function WorkflowDetailScroll({
   useEffect(() => {
     updateOverflow();
     const element = scrollRef.current;
-    if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(updateOverflow);
+    const ResizeObserverConstructor = globalThis.ResizeObserver;
+    if (element === null || ResizeObserverConstructor === undefined) return;
+    const observer = new ResizeObserverConstructor(updateOverflow);
     observer.observe(element);
     return () => observer.disconnect();
   }, [contentKey, updateOverflow]);
@@ -338,9 +369,13 @@ function buildSharedWorkflowView(run: WorkflowRunView): SharedWorkflowView {
 function useWorkflowRun(
   threadId: string,
   runId: string | null,
-): { state: RunLoadState; refresh: () => Promise<void> } {
+): WorkflowRunHookResult {
   const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<RunLoadState>({ status: "loading" });
+  const requestKey = `${threadId}\u0000${runId ?? ""}`;
+  const [requestState, setRequestState] = useState<RunRequestState>({
+    requestKey,
+    state: { status: "loading" },
+  });
   const requestSequence = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -348,28 +383,46 @@ function useWorkflowRun(
     try {
       const result = await rpc.call("workflowRunView", { threadId, runId });
       if (sequence === requestSequence.current) {
-        setState({ status: "ready", run: result.run, refreshError: null });
+        setRequestState({
+          requestKey,
+          state: { status: "ready", run: result.run, refreshError: null },
+        });
       }
     } catch (error) {
       if (sequence === requestSequence.current) {
         const message = error instanceof Error ? error.message : String(error);
-        setState((current) =>
-          current.status === "ready" && current.run !== null
-            ? { ...current, refreshError: message }
-            : { status: "error", message },
-        );
+        setRequestState((current) => {
+          const currentState =
+            current.requestKey === requestKey
+              ? current.state
+              : { status: "loading" as const };
+          return {
+            requestKey,
+            state:
+              currentState.status === "ready" && currentState.run !== null
+                ? { ...currentState, refreshError: message }
+                : { status: "error", message },
+          };
+        });
       }
     }
-  }, [rpc, runId, threadId]);
+  }, [requestKey, rpc, runId, threadId]);
 
   useEffect(() => {
-    setState({ status: "loading" });
-    void refresh();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refresh();
+    });
     return () => {
+      cancelled = true;
       requestSequence.current += 1;
     };
   }, [refresh]);
 
+  const state =
+    requestState.requestKey === requestKey
+      ? requestState.state
+      : { status: "loading" as const };
   const shouldPoll =
     state.status === "error" ||
     (state.status === "ready" && state.run !== null && isRunActive(state.run));
@@ -444,13 +497,14 @@ function useVisibleActivePolling(
   }, [enabled, refresh]);
 }
 
-function useActiveWorkflowRuns(threadId: string): {
-  state: ActiveRunsLoadState;
-  setRuns: (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => void;
-} {
+function useActiveWorkflowRuns(threadId: string): ActiveWorkflowRunsHookResult {
   const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<ActiveRunsLoadState>({
-    status: "loading",
+  const requestKey = threadId;
+  const [requestState, setRequestState] = useState<ActiveRunsRequestState>({
+    requestKey,
+    state: {
+      status: "loading",
+    },
   });
   const requestSequence = useRef(0);
 
@@ -459,25 +513,43 @@ function useActiveWorkflowRuns(threadId: string): {
     try {
       const result = await rpc.call("workflowActiveRuns", { threadId });
       if (sequence === requestSequence.current) {
-        setState({ status: "ready", runs: result.runs });
+        setRequestState({
+          requestKey,
+          state: { status: "ready", runs: result.runs },
+        });
       }
     } catch {
-      if (sequence === requestSequence.current) setState({ status: "error" });
+      if (sequence === requestSequence.current) {
+        setRequestState({ requestKey, state: { status: "error" } });
+      }
     }
-  }, [rpc, threadId]);
+  }, [requestKey, rpc, threadId]);
 
   useEffect(() => {
-    setState({ status: "loading" });
-    void refresh();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refresh();
+    });
     return () => {
+      cancelled = true;
       requestSequence.current += 1;
     };
   }, [refresh]);
 
   useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (workflowRunsSignalThreadId(payload) === threadId) void refresh();
+    const parsedPayload = jsonValueSchema.safeParse(payload);
+    if (
+      parsedPayload.success &&
+      workflowRunsSignalThreadId(parsedPayload.data) === threadId
+    ) {
+      void refresh();
+    }
   });
 
+  const state =
+    requestState.requestKey === requestKey
+      ? requestState.state
+      : { status: "loading" as const };
   const shouldPoll =
     state.status === "error" ||
     (state.status === "ready" && state.runs.some(isRunActive));
@@ -485,13 +557,20 @@ function useActiveWorkflowRuns(threadId: string): {
 
   const setRuns = useCallback(
     (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => {
-      setState((current) =>
-        current.status === "ready"
-          ? { status: "ready", runs: update(current.runs) }
-          : current,
-      );
+      setRequestState((current) => {
+        if (
+          current.requestKey !== requestKey ||
+          current.state.status !== "ready"
+        ) {
+          return current;
+        }
+        return {
+          requestKey,
+          state: { status: "ready", runs: update(current.state.runs) },
+        };
+      });
     },
-    [],
+    [requestKey],
   );
 
   return { state, setRuns };

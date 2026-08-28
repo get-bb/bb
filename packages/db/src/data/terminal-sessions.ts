@@ -157,13 +157,14 @@ function mutationValues(
     case "disconnect":
       return { daemonSessionId: null, status: "disconnected", updatedAt: now };
     case "exit":
-      return {
+      const values: Partial<typeof terminalSessions.$inferInsert> = {
         closeReason: update.closeReason,
         daemonSessionId: null,
-        ...(update.exitCode === undefined ? {} : { exitCode: update.exitCode }),
         status: "exited",
         updatedAt: now,
       };
+      if (update.exitCode !== undefined) values.exitCode = update.exitCode;
+      return values;
     case "running":
       return {
         closeReason: null,

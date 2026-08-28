@@ -9,28 +9,13 @@ export type ThreadListCacheData =
   | ThreadListEntry[]
   | InfiniteData<ThreadListEntry[]>;
 
-function isThreadListEntryArray(value: unknown): value is ThreadListEntry[] {
-  return Array.isArray(value);
-}
-
-function isInfiniteThreadListData(
-  value: unknown,
-): value is InfiniteData<ThreadListEntry[]> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pages" in value &&
-    Array.isArray((value as { pages: unknown }).pages)
-  );
-}
-
 export function* iterateThreadListCacheEntries(
   data: ThreadListCacheData | undefined,
 ): Iterable<ThreadListEntry> {
   if (!data) {
     return;
   }
-  if (isThreadListEntryArray(data)) {
+  if (Array.isArray(data)) {
     for (const entry of data) {
       yield entry;
     }
@@ -43,18 +28,14 @@ export function* iterateThreadListCacheEntries(
   }
 }
 
-function mapThreadListCacheData<T extends ThreadListCacheData>(
-  data: T,
+function mapThreadListCacheData(
+  data: ThreadListCacheData,
   mapper: (list: ThreadListEntry[]) => ThreadListEntry[],
-): T {
-  if (isThreadListEntryArray(data)) {
-    return mapper(data) as T;
+): ThreadListCacheData {
+  if (Array.isArray(data)) {
+    return mapper(data);
   }
-  return { ...data, pages: data.pages.map(mapper) } as T;
-}
-
-function isThreadListCacheData(value: unknown): value is ThreadListCacheData {
-  return isThreadListEntryArray(value) || isInfiniteThreadListData(value);
+  return { ...data, pages: data.pages.map(mapper) };
 }
 
 interface CachedThreadList {
@@ -77,10 +58,13 @@ export function getCachedThreadLists(
   options: ThreadListCacheQueryOptions,
 ): CachedThreadList[] {
   const result: CachedThreadList[] = [];
-  for (const [queryKey, data] of queryClient.getQueriesData({
+  for (const [
+    queryKey,
+    data,
+  ] of queryClient.getQueriesData<ThreadListCacheData>({
     queryKey: options.queryKey,
   })) {
-    if (!isThreadListCacheData(data)) {
+    if (data === undefined) {
       continue;
     }
     result.push({ queryKey, data });

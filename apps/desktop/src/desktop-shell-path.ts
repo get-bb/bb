@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 const MACOS_LOGIN_SHELL = "/bin/zsh";
 const SHELL_PATH_COMMAND = 'printf "%s" "$PATH"';
@@ -56,19 +56,26 @@ interface ShellPathUpdatedResult {
 
 function defaultSpawnLoginShellPath(
   args: SpawnLoginShellPathArgs,
-): ShellPathSpawnResult {
-  const result = spawnSync(args.command, args.args, {
-    encoding: "utf8",
-    timeout: args.timeoutMs,
+): Promise<ShellPathSpawnResult> {
+  return new Promise((resolve) => {
+    execFile(
+      args.command,
+      args.args,
+      { encoding: "utf8", timeout: args.timeoutMs },
+      (error, stdout, stderr) => {
+        const hasExitStatus = error !== null && Number.isInteger(error.code);
+        const shellPathResult: ShellPathSpawnResult = {
+          signal: error?.signal ?? null,
+          status:
+            error === null ? 0 : hasExitStatus ? Number(error.code) : null,
+          stderr: stderr.toString(),
+          stdout: stdout.toString(),
+        };
+        if (error !== null && !hasExitStatus) shellPathResult.error = error;
+        resolve(shellPathResult);
+      },
+    );
   });
-
-  return {
-    ...(result.error === undefined ? {} : { error: result.error }),
-    signal: result.signal,
-    status: result.status,
-    stderr: result.stderr,
-    stdout: result.stdout,
-  };
 }
 
 function warnShellPathFallback(
@@ -81,26 +88,54 @@ function warnShellPathFallback(
 }
 
 export function ensurePackagedUserShellPath(
+  args: EnsurePackagedUserShellPathArgs & {
+    spawnLoginShellPath: SpawnLoginShellPath;
+  },
+): EnsurePackagedUserShellPathResult;
+export function ensurePackagedUserShellPath(
+  args: Omit<EnsurePackagedUserShellPathArgs, "spawnLoginShellPath">,
+): Promise<EnsurePackagedUserShellPathResult>;
+export function ensurePackagedUserShellPath(
   args: EnsurePackagedUserShellPathArgs,
-): EnsurePackagedUserShellPathResult {
+):
+  | EnsurePackagedUserShellPathResult
+  | Promise<EnsurePackagedUserShellPathResult> {
+  const hasInjectedSpawn = args.spawnLoginShellPath !== undefined;
   if (args.platform !== "darwin" && args.platform !== "linux") {
-    return { kind: "skipped", reason: "unsupported-platform" };
+    const result: ShellPathSkippedResult = {
+      kind: "skipped",
+      reason: "unsupported-platform",
+    };
+    return hasInjectedSpawn ? result : Promise.resolve(result);
   }
   if (!args.isPackaged) {
-    return { kind: "skipped", reason: "not-packaged" };
+    const result: ShellPathSkippedResult = {
+      kind: "skipped",
+      reason: "not-packaged",
+    };
+    return hasInjectedSpawn ? result : Promise.resolve(result);
   }
 
-  const spawnLoginShellPath =
-    args.spawnLoginShellPath ?? defaultSpawnLoginShellPath;
-  const result = spawnLoginShellPath({
+  const spawnArgs = {
     args: ["-ilc", SHELL_PATH_COMMAND],
     command:
       args.platform === "darwin"
         ? MACOS_LOGIN_SHELL
         : (args.env.SHELL ?? "/bin/bash"),
     timeoutMs: SHELL_PATH_TIMEOUT_MS,
-  });
+  };
+  if (args.spawnLoginShellPath !== undefined) {
+    return finishShellPathUpdate(args, args.spawnLoginShellPath(spawnArgs));
+  }
+  return defaultSpawnLoginShellPath(spawnArgs).then((result) =>
+    finishShellPathUpdate(args, result),
+  );
+}
 
+function finishShellPathUpdate(
+  args: EnsurePackagedUserShellPathArgs,
+  result: ShellPathSpawnResult,
+): EnsurePackagedUserShellPathResult {
   if (result.error !== undefined) {
     warnShellPathFallback(args, result.error.message);
     return { kind: "unchanged", reason: "shell-error" };

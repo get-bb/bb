@@ -46,8 +46,8 @@ export function useCodeTheme(): PluginCodeThemeState {
       .then((data) => {
         if (!cancelled) setTheme(data);
       })
-      .catch((error: unknown) => {
-        console.error(`Failed to resolve the code theme "${name}"`, error);
+      .catch((cause: unknown) => {
+        console.error(`Failed to resolve the code theme "${name}"`, cause);
       });
     return () => {
       cancelled = true;

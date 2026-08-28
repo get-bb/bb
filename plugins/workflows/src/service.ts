@@ -56,6 +56,7 @@ import {
 } from "./settings.js";
 import { workflowReferenceToSourceInput } from "./source-resolution.js";
 import type {
+  JsonObject,
   JsonSchema,
   JsonValue,
   NestedWorkflowContext,
@@ -66,26 +67,28 @@ import type {
 import { parseStoredAgentOptions } from "./validation.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 
+const reasoningLevelSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+]);
+const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 const executionValuesSchema = z.object({
   model: z.string().min(1),
-  reasoningLevel: z.enum([
-    "none",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "ultracode",
-    "max",
-    "ultra",
-  ]),
-  permissionMode: z.enum(["accept-edits", "auto", "full"]),
+  reasoningLevel: reasoningLevelSchema,
+  permissionMode: permissionModeSchema,
 });
 
 const selectedExecutionSchema = z.object({
   providerId: z.string().min(1),
   model: z.string().min(1),
-  reasoningLevel: executionValuesSchema.shape.reasoningLevel,
-  permissionMode: executionValuesSchema.shape.permissionMode,
+  reasoningLevel: reasoningLevelSchema,
+  permissionMode: permissionModeSchema,
 });
 type ResolvedSelection = z.infer<typeof selectedExecutionSchema>;
 
@@ -99,31 +102,64 @@ const NOTIFICATION_RETRY_MAX_MS = 60 * 60 * 1_000;
 const PROVIDER_RETRY_DELAYS_MS = [1_000, 4_000] as const;
 const RETENTION_SWEEP_RUNS = 20;
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+interface WorkflowErrorDetails {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  status?: number;
+  statusCode?: number;
 }
 
-export function isRetryableProviderFailure(error: unknown): boolean {
-  if (typeof error === "object" && error !== null) {
-    const candidate = error as Record<string, unknown>;
-    if (candidate.retryable === true) return true;
-    const status = candidate.status ?? candidate.statusCode;
-    if (
-      typeof status === "number" &&
-      [429, 500, 502, 503, 504, 529].includes(status)
-    ) {
-      return true;
-    }
-    if (
-      typeof candidate.code === "string" &&
-      /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)$/.test(
-        candidate.code,
-      )
-    ) {
-      return true;
-    }
+const workflowErrorDetailsSchema: z.ZodType<WorkflowErrorDetails> = z
+  .object({
+    code: z.string().optional(),
+    message: z.string().optional(),
+    retryable: z.boolean().optional(),
+    status: z.number().optional(),
+    statusCode: z.number().optional(),
+  })
+  .passthrough();
+
+interface NormalizedWorkflowError extends WorkflowErrorDetails {
+  message: string;
+}
+
+function normalizeWorkflowError<T>(value: T): NormalizedWorkflowError {
+  const parsed = workflowErrorDetailsSchema.safeParse(value);
+  if (parsed.success) {
+    return {
+      ...parsed.data,
+      message:
+        value instanceof Error
+          ? value.message
+          : (parsed.data.message ?? String(value)),
+    };
   }
-  const detail = message(error).toLowerCase();
+  return {
+    message: value instanceof Error ? value.message : String(value),
+  };
+}
+
+function message<T>(error: T): string {
+  return normalizeWorkflowError(error).message;
+}
+
+export function isRetryableProviderFailure<T>(error: T): boolean {
+  const candidate = normalizeWorkflowError(error);
+  if (candidate.retryable === true) return true;
+  const status = candidate.status ?? candidate.statusCode;
+  if ([429, 500, 502, 503, 504, 529].includes(status ?? -1)) {
+    return true;
+  }
+  if (
+    candidate.code !== undefined &&
+    /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)$/.test(
+      candidate.code,
+    )
+  ) {
+    return true;
+  }
+  const detail = candidate.message.toLowerCase();
   return [
     /provider[^\n]*(?:overload|capacity|busy|temporar|unavailable|rate.?limit)/,
     /(?:rate.?limit|too many requests)/,
@@ -173,9 +209,38 @@ export function formatWorkflowNotification(
   );
 }
 
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+type BoundedJsonValue = JsonValue | boolean;
+
+function isObjectValue(value: BoundedJsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isStringJsonValue(value: BoundedJsonValue): value is string {
+  return String(value) === value;
+}
+
+function isNumberJsonValue(value: BoundedJsonValue): value is number {
+  return Object.prototype.toString.call(value) === "[object Number]";
+}
+
+function isStringPropertyKey(key: PropertyKey): key is string {
+  return String(key) === key;
+}
+
 function parseJson(text: string, path: string): JsonValue {
   try {
-    return JSON.parse(text) as JsonValue;
+    return jsonValueSchema.parse(JSON.parse(text));
   } catch (error) {
     throw new Error(`${path} is corrupt: ${message(error)}`);
   }
@@ -188,14 +253,14 @@ function normalizeWholeOutputJsonFence(text: string): string {
 }
 
 function assertBoundedJson(
-  value: unknown,
+  value: BoundedJsonValue,
   path: string,
   limits: { bytes: number; nodes: number; depth: number },
 ): void {
   const ancestors = new Set<object>();
   let nodes = 0;
 
-  function visit(current: unknown, depth: number): void {
+  function visit(current: BoundedJsonValue, depth: number): void {
     nodes += 1;
     if (nodes > limits.nodes) {
       throw new Error(`${path} exceeds the ${limits.nodes} node limit`);
@@ -205,18 +270,19 @@ function assertBoundedJson(
     }
     if (
       current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
+      isStringJsonValue(current) ||
+      current === true ||
+      current === false
     ) {
       return;
     }
-    if (typeof current === "number") {
+    if (isNumberJsonValue(current)) {
       if (!Number.isFinite(current)) {
         throw new Error(`${path} contains a non-finite number`);
       }
       return;
     }
-    if (typeof current !== "object") {
+    if (!Array.isArray(current) && !isObjectValue(current)) {
       throw new Error(`${path} contains a non-JSON value`);
     }
     if (ancestors.has(current)) {
@@ -241,7 +307,7 @@ function assertBoundedJson(
         throw new Error(`${path} contains an object with an unsafe prototype`);
       }
       for (const key of Reflect.ownKeys(current)) {
-        if (typeof key !== "string") {
+        if (!isStringPropertyKey(key)) {
           throw new Error(`${path} contains a symbol-keyed property`);
         }
         const descriptor = Object.getOwnPropertyDescriptor(current, key);
@@ -290,9 +356,7 @@ function validateValue(
   }
 }
 
-function resultToolParameters(
-  outputSchema: JsonSchema,
-): Record<string, unknown> {
+function resultToolParameters(outputSchema: JsonSchema): JsonObject {
   return {
     type: "object",
     properties: { value: outputSchema },
@@ -301,17 +365,22 @@ function resultToolParameters(
   };
 }
 
+interface StructuredValueResolution {
+  value: JsonValue;
+  validation: ReturnType<typeof validateValue>;
+}
+
 function resolveStructuredValue(
   schema: JsonSchema,
   value: JsonValue,
-): { value: JsonValue; validation: ReturnType<typeof validateValue> } {
+): StructuredValueResolution {
   const validation = validateValue(schema, value);
-  if (validation.valid || typeof value !== "string") {
+  if (validation.valid || !isStringJsonValue(value)) {
     return { value, validation };
   }
   let unwrapped: JsonValue;
   try {
-    unwrapped = JSON.parse(value) as JsonValue;
+    unwrapped = jsonValueSchema.parse(JSON.parse(value));
   } catch {
     return { value, validation };
   }
@@ -374,7 +443,7 @@ export interface WorkflowService {
     value: JsonValue,
   ): Promise<{ ok: true } | { ok: false; terminal: boolean; error: string }>;
   agentConfiguration(threadId: string): {
-    resultParameters: Record<string, unknown> | null;
+    resultParameters: JsonObject | null;
     terminal: boolean;
     instructions: string | null;
   } | null;
@@ -653,9 +722,7 @@ export function createWorkflowService(
         `Reasoning level ${JSON.stringify(requested.reasoningLevel)} is not supported by ${requested.provider}/${requested.model}`,
       );
     }
-    const permissionMode = executionValuesSchema.shape.permissionMode.parse(
-      run.originPermissionMode,
-    );
+    const permissionMode = permissionModeSchema.parse(run.originPermissionMode);
     if (!provider.capabilities.permissionModes.includes(permissionMode)) {
       throw new Error(
         `Permission mode ${JSON.stringify(run.originPermissionMode)} is not supported by provider ${requested.provider}`,
@@ -1379,9 +1446,8 @@ export function createWorkflowService(
     }
   }
 
-  function isMissingThread(error: unknown): boolean {
-    if (typeof error !== "object" || error === null) return false;
-    const candidate = error as { status?: unknown; code?: unknown };
+  function isMissingThread<T>(error: T): boolean {
+    const candidate = normalizeWorkflowError(error);
     return candidate.status === 404 || candidate.code === "thread_not_found";
   }
 

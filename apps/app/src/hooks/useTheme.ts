@@ -31,17 +31,23 @@ function getThemePreference(): ThemePreference {
 }
 
 function applyThemeClass(theme: Theme): void {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  const browserDocument = globalThis.document;
+  if (browserDocument === undefined) return;
+  browserDocument.documentElement.classList.toggle("dark", theme === "dark");
   syncThemeColorMeta();
 }
 
 function syncThemeColorMeta(): void {
-  const meta = document.querySelector<HTMLMetaElement>(
+  const browserDocument = globalThis.document;
+  const browserWindow = globalThis.window;
+  if (browserDocument === undefined || browserWindow === undefined) return;
+  const meta = browserDocument.querySelector<HTMLMetaElement>(
     'meta[name="theme-color"]',
   );
-  if (!meta || !document.body) return;
-  const background = window.getComputedStyle(document.body).backgroundColor;
+  if (!meta || !browserDocument.body) return;
+  const background = browserWindow.getComputedStyle(
+    browserDocument.body,
+  ).backgroundColor;
   if (!background || background === "rgba(0, 0, 0, 0)") return;
   meta.content = background;
 }
@@ -91,7 +97,7 @@ function emitTheme() {
 }
 
 function ensureThemeObserver() {
-  if (initialized || typeof window === "undefined") return;
+  if (initialized || globalThis.window === undefined) return;
   initialized = true;
   currentThemePreference = getThemePreference();
   currentTheme = getPreferredTheme();
@@ -117,7 +123,7 @@ export function usePreferredTheme(): Theme {
   return React.useSyncExternalStore(
     subscribePreferredTheme,
     () => {
-      if (typeof window === "undefined") return "light";
+      if (globalThis.window === undefined) return "light";
       currentTheme = getPreferredTheme();
       return currentTheme;
     },

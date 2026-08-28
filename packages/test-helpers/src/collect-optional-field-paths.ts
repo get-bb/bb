@@ -27,9 +27,9 @@ export function collectOptionalFieldPaths(schemas: ZodSchemaMap): string[] {
   function walk(schema: ZodSchema, prefix: string): void {
     const unwrapped = unwrapSchema(schema);
     if (unwrapped instanceof z.ZodObject) {
-      const shape = unwrapped.shape;
-      for (const key in shape) {
-        const value = shape[key];
+      const objectFields = unwrapped["shape"];
+      for (const key in objectFields) {
+        const value = objectFields[key];
         const path = `${prefix}.${key}`;
         if (
           value instanceof z.ZodOptional ||

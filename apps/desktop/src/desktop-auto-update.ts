@@ -107,7 +107,7 @@ function createBaseInfo(
   };
 }
 
-function formatErrorMessage(error: unknown): string {
+function formatErrorMessage<ErrorInput>(error: ErrorInput): string {
   return error instanceof Error
     ? (error.stack ?? error.message)
     : String(error);
@@ -286,7 +286,7 @@ export function createDesktopAutoUpdateService(
       return;
     }
     void downloadInFlight
-      .catch((error: unknown) => {
+      .catch((error) => {
         updateInfo({
           ...currentInfo,
           downloadState: "failed",

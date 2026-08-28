@@ -10,26 +10,37 @@ interface ResolveBbAppVersionArgs {
   fromDir: string;
 }
 
-interface BbAppPackageJson {
+interface BbAppPackageJson extends ParsedJsonObject {
   name: string;
   version: string;
 }
 
-function isBbAppPackageJson(value: unknown): value is BbAppPackageJson {
+interface ParsedJsonObject {
+  readonly [key: string]:
+    | string
+    | number
+    | boolean
+    | null
+    | ParsedJsonObject
+    | readonly ParsedJsonObject[];
+}
+
+function isBbAppPackageJson(
+  value: ParsedJsonObject | null,
+): value is BbAppPackageJson {
+  if (!(value instanceof Object) || Array.isArray(value)) return false;
+  const name = Object.getOwnPropertyDescriptor(value, "name")?.value;
+  const version = Object.getOwnPropertyDescriptor(value, "version")?.value;
   return (
-    typeof value === "object" &&
-    value !== null &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "version" in value &&
-    typeof value.version === "string" &&
-    value.version.length > 0
+    name === String(name) && version === String(version) && version.length > 0
   );
 }
 
 function readBbAppVersionAt(packageJsonPath: string): string | null {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    const parsed: ParsedJsonObject | null = JSON.parse(
+      readFileSync(packageJsonPath, "utf8"),
+    );
     if (!isBbAppPackageJson(parsed) || parsed.name !== "bb-app") {
       return null;
     }

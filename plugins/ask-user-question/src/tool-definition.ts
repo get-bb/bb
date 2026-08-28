@@ -29,7 +29,7 @@ export function buildTimeoutMessage(elapsedMs: number): string {
   return `No response after ${Math.round(elapsedMs / 1000)}s — the user may be away from keyboard. Proceed using your best judgment based on the context so far; you can re-ask this question later if it's still relevant.`;
 }
 
-export const TOOL_INPUT_JSON_SCHEMA: Record<string, unknown> = {
+export const TOOL_INPUT_JSON_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: {

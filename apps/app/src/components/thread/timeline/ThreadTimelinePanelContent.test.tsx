@@ -2,31 +2,41 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import * as ConversationModule from "@/components/ui/conversation.js";
+import * as ThreadQueriesModule from "@/hooks/queries/thread-queries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
+import * as ThreadTimelineSurfaceModule from "./ThreadTimelineSurface.js";
+import * as ThreadTimelineControllerModule from "./useThreadTimelineController.js";
 import { ThreadTimelinePanelContent } from "./ThreadTimelinePanelContent.js";
 import type { UseThreadTimelineControllerResult } from "./useThreadTimelineController.js";
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   activeBackgroundAgentCount: 0,
-  displayStatus: "idle" as ThreadRuntimeDisplayStatus,
+  displayStatus:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ "idle" as ThreadRuntimeDisplayStatus,
   threadStatus: "idle",
-}));
+};
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThread: () => ({
-    data: {
-      activeBackgroundAgentCount: mocks.activeBackgroundAgentCount,
-      runtime: { displayStatus: mocks.displayStatus },
-      status: mocks.threadStatus,
-    },
-    error: null,
-  }),
-}));
+/* SAFETY: This fake returns only the query fields that the component reads. */
+vi.spyOn(ThreadQueriesModule, "useThread").mockImplementation(
+  () =>
+    ({
+      data: {
+        activeBackgroundAgentCount: mocks.activeBackgroundAgentCount,
+        runtime: { displayStatus: mocks.displayStatus },
+        status: mocks.threadStatus,
+      },
+      error: null,
+    }) as ReturnType<typeof ThreadQueriesModule.useThread>,
+);
 
-vi.mock("./ThreadTimelineSurface.js", () => ({
-  ThreadTimelineSurface: ({
+vi.spyOn(
+  ThreadTimelineSurfaceModule,
+  "ThreadTimelineSurface",
+).mockImplementation(
+  ({
     ongoingIndicatorLabel,
     showOngoingIndicator,
   }: {
@@ -39,32 +49,16 @@ vi.mock("./ThreadTimelineSurface.js", () => ({
       ) : null}
     </div>
   ),
-}));
+);
 
-vi.mock("./useThreadTimelineController.js", () => ({
-  useThreadTimelineController: () => ({
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    contextWindowUsage: undefined,
-    goal: null,
-    modelFallback: null,
-    hasOlderTimelineRows: false,
-    isLoadingOlderTimelineRows: false,
-    loadOlderTimelineRows: vi.fn(),
-    pendingTodos: null,
-    timelineError: null,
-    timelineLoading: false,
-    timelineRows: [],
-  }),
-}));
+vi.spyOn(
+  ThreadTimelineControllerModule,
+  "useThreadTimelineController",
+).mockImplementation(() => baseTimeline());
 
-vi.mock("@/components/ui/conversation.js", () => ({
-  ConversationTimeline: ({ children }: { children?: ReactNode }) => (
-    <div>{children}</div>
-  ),
-}));
+vi.spyOn(ConversationModule, "ConversationTimeline").mockImplementation(
+  ({ children }: { children: ReactNode }) => <div>{children}</div>,
+);
 
 function workflowRow(): TimelineWorkflowWorkRow {
   return {

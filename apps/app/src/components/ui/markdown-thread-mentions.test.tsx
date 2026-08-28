@@ -23,20 +23,12 @@ import { setPreferredTheme } from "@/hooks/useTheme";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...actual,
-    sdk: {
-      ...actual.sdk,
-      threads: {
-        ...actual.sdk.threads,
-        get: vi.fn(() => Promise.reject(new Error("Thread not found"))),
-        resolveMentions: vi.fn(async () => []),
-      },
-    },
-  };
-});
+const getThreadSpy = vi
+  .spyOn(sdk.threads, "get")
+  .mockRejectedValue(new Error("Thread not found"));
+const resolveMentionsSpy = vi
+  .spyOn(sdk.threads, "resolveMentions")
+  .mockResolvedValue([]);
 
 function markdownTree(node: ReactNode) {
   return (
@@ -165,7 +157,8 @@ const ACTIVE_MESSAGE_DIRECTIVES: MarkdownMessageDirectives = {
 
 afterEach(() => {
   cleanup();
-  vi.resetAllMocks();
+  getThreadSpy.mockReset().mockRejectedValue(new Error("Thread not found"));
+  resolveMentionsSpy.mockReset().mockResolvedValue([]);
   setPreferredTheme("system");
 });
 

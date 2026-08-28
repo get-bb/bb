@@ -5,7 +5,12 @@ import {
   experimental_presentationTitle as presentationTitle,
   experimental_toolPresentation as toolPresentation,
   experimental_withTitle as withTitle,
+  jsonValueSchema,
+  type JsonObject,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
+
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
 export function commandPresentation(args: {
   command: string;
@@ -76,9 +81,7 @@ interface ToolPresentationSpec {
   titleField?: string;
 }
 
-const BUILTIN_TOOL_PRESENTATIONS: Readonly<
-  Record<string, ToolPresentationSpec>
-> = {
+const BUILTIN_TOOL_PRESENTATIONS = {
   TodoWrite: {
     label: { pending: "Updating todos", completed: "Updated todos" },
     glyph: "ListTodo",
@@ -199,34 +202,44 @@ const BUILTIN_TOOL_PRESENTATIONS: Readonly<
     glyph: "Terminal",
     suppress: true,
   },
-};
+} satisfies Readonly<Record<string, ToolPresentationSpec>>;
 
 function titleFromArgs(
-  args: unknown,
+  args: JsonObject | undefined,
   field: string | undefined,
 ): string | undefined {
-  if (field === undefined || args === null || typeof args !== "object") {
+  if (field === undefined || args === undefined) {
     return undefined;
   }
-  const value = (args as Record<string, unknown>)[field];
-  return typeof value === "string" ? presentationTitle(value) : undefined;
+  const value = args[field];
+  const parsedValue = z.string().safeParse(value);
+  return parsedValue.success ? presentationTitle(parsedValue.data) : undefined;
 }
 
-export function builtinToolPresentation(
+export function builtinToolPresentation<TInput>(
   tool: string,
-  args: unknown,
+  args: TInput,
 ): DeltaPresentation {
-  const spec = BUILTIN_TOOL_PRESENTATIONS[tool];
+  const spec: ToolPresentationSpec | undefined = Object.entries(
+    BUILTIN_TOOL_PRESENTATIONS,
+  ).find(([name]) => name === tool)?.[1];
   if (spec === undefined) {
     return toolPresentation(tool);
   }
+  const parsedArgs = jsonObjectSchema.safeParse(args);
+  const presentation: DeltaPresentation = {
+    label: spec.label,
+    icon: { glyph: spec.glyph },
+  };
+  if (spec.suppress === true) {
+    presentation.suppress = true;
+  }
   return withTitle(
-    {
-      label: spec.label,
-      icon: { glyph: spec.glyph },
-      ...(spec.suppress === true ? { suppress: true } : {}),
-    },
-    titleFromArgs(args, spec.titleField),
+    presentation,
+    titleFromArgs(
+      parsedArgs.success ? parsedArgs.data : undefined,
+      spec.titleField,
+    ),
   );
 }
 

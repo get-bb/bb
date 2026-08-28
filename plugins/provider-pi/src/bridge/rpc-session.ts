@@ -1,7 +1,14 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  jsonValueSchema,
+  type DynamicTool,
+  type JsonObject,
+  type JsonValue,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { z } from "zod";
 import {
   NO_REQUEST_TIMEOUT,
   PiRpcChild,
@@ -27,22 +34,25 @@ export interface PiRpcSessionOptions {
   noSession?: boolean;
 }
 
-export interface DynamicToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: unknown;
-}
+export type DynamicToolDefinition = DynamicTool;
 
 export type ToolCallForwarder = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: JsonObject,
 ) => Promise<
   Parameters<typeof buildBridgeToolCallContent>[0] & { isError?: boolean }
 >;
 
-export type PiRpcEvent = Record<string, unknown> & { type: string };
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+
+const piRpcEventSchema = z
+  .object({ type: z.string() })
+  .catchall(jsonValueSchema);
+
+export type PiRpcEvent = z.infer<typeof piRpcEventSchema>;
+
 type PiSessionEventHandler = (event: PiRpcEvent) => void;
-type PiSessionDoneHandler = (error?: unknown) => void;
+type PiSessionDoneHandler = (error?: Error) => void;
 
 type PiInputQueue = "followUp" | "steering";
 
@@ -59,7 +69,7 @@ interface TrackedInputConsumption {
 }
 
 export interface PiPromptRunOutcome {
-  error?: unknown;
+  error?: Error;
 }
 
 export interface PiInputDispatch {
@@ -72,9 +82,101 @@ interface PendingRunSettlement {
 }
 
 interface ChannelReply {
-  resolve: (result: unknown) => void;
+  resolve: (result: JsonValue | undefined) => void;
   reject: (error: Error) => void;
 }
+
+interface PromptFiles {
+  args: string[];
+  paths: string[];
+}
+
+interface Deferred {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+
+type PiPromptCommand = JsonObject & {
+  type: "prompt";
+  message: string;
+  images?: JsonObject[];
+  streamingBehavior: "followUp" | "steer";
+};
+
+interface PiChannelRequest extends JsonObject {
+  method: string;
+}
+
+const piChannelMessageSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("ready") }),
+  z.object({
+    kind: z.literal("agent-end-leaf"),
+    leafId: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((leafId) => leafId ?? null),
+  }),
+  z.object({
+    kind: z.literal("tool-call"),
+    id: jsonValueSchema,
+    toolName: z.string(),
+    arguments: jsonObjectSchema.catch({}),
+  }),
+  z.object({
+    kind: z.literal("reply"),
+    id: jsonValueSchema,
+    error: z.string().optional().catch(undefined),
+    result: jsonValueSchema.optional(),
+  }),
+]);
+
+type PiChannelMessage = z.infer<typeof piChannelMessageSchema>;
+
+const piRpcModelSchema = z
+  .object({
+    provider: z.string().optional(),
+    id: z.string().optional(),
+    contextWindow: z.number().optional(),
+  })
+  .catchall(jsonValueSchema);
+
+const piRpcSessionStateSchema = z
+  .object({
+    model: piRpcModelSchema.optional(),
+    thinkingLevel: z.string().optional(),
+    isStreaming: z.boolean().default(false),
+    isCompacting: z.boolean().default(false),
+    sessionFile: z.string().optional(),
+  })
+  .catchall(jsonValueSchema);
+
+export type PiRpcSessionState = z.infer<typeof piRpcSessionStateSchema>;
+
+const piRunMessageSchema = z
+  .object({
+    role: z.string().optional(),
+    stopReason: z.string().optional(),
+    errorMessage: z.string().optional(),
+  })
+  .catchall(jsonValueSchema);
+
+const piRunMessagesSchema = z.array(piRunMessageSchema);
+const stringArraySchema = z.array(z.string());
+
+const piLeafResponseSchema = z.object({
+  leafId: z.string().optional(),
+});
+
+const piSessionStatsSchema = z.object({
+  contextUsage: z
+    .object({
+      tokens: z.number().nullable().optional(),
+      contextWindow: z.number().optional(),
+    })
+    .optional(),
+});
 
 const PI_TRANSIENT_AUTH_RETRY_DELAY_MS = 250;
 const PI_TRANSIENT_AUTH_MAX_RETRIES = 8;
@@ -112,14 +214,6 @@ export async function runPiTransientAuthConstruction(args: {
   }
 }
 
-export interface PiRpcSessionState {
-  model?: { provider?: string; id?: string; contextWindow?: number };
-  thinkingLevel?: string;
-  isStreaming: boolean;
-  isCompacting: boolean;
-  sessionFile?: string;
-}
-
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
   private isProcessing = false;
@@ -128,10 +222,10 @@ export class PiRpcSession {
   private lastCompactionEndDelivery: Promise<void> = Promise.resolve();
   private deliveryChain: Promise<void> = Promise.resolve();
   private readonly pendingInputConsumptions: PendingInputConsumption[] = [];
-  private lastObservedQueues: Record<PiInputQueue, string[]> = {
-    followUp: [],
-    steering: [],
-  };
+  private lastObservedQueues = {
+    followUp: emptyStringArray(),
+    steering: emptyStringArray(),
+  } satisfies Record<PiInputQueue, string[]>;
   private autoRetryInProgress = false;
   private terminalSteerSettlement: Promise<void> | null = null;
   private readonly pendingRunSettlements: PendingRunSettlement[] = [];
@@ -230,18 +324,29 @@ export class PiRpcSession {
     }
 
     this.ready = createDeferred();
+    const shellEnvOverrides = { ...this.options.shellEnvOverrides };
+    shellEnvOverrides.PI_BB_TOOLS_FILE = toolsFilePath;
     const child = new PiRpcChild({
       cwd: this.options.cwd,
-      env: buildPiChildEnv({
-        ...(this.options.shellEnvOverrides ?? {}),
-        PI_BB_TOOLS_FILE: toolsFilePath,
-      }),
+      env: buildPiChildEnv(shellEnvOverrides),
       args,
       onEvent: (event) => {
-        if (child === this.child) this.handleEvent(event);
+        if (child !== this.child) {
+          return;
+        }
+        const parsed = piRpcEventSchema.safeParse(event);
+        if (parsed.success) {
+          this.handleEvent(parsed.data);
+        }
       },
       onChannelMessage: (message) => {
-        if (child === this.child) this.handleChannelMessage(message);
+        if (child !== this.child) {
+          return;
+        }
+        const parsed = piChannelMessageSchema.safeParse(message);
+        if (parsed.success) {
+          this.handleChannelMessage(parsed.data);
+        }
       },
       onExit: (info) => {
         for (const file of scratchFiles) rmSync(file, { force: true });
@@ -309,7 +414,11 @@ export class PiRpcSession {
       { type: "get_state" },
       timeoutMs,
     );
-    const state = (data ?? {}) as PiRpcSessionState;
+    const parsed = piRpcSessionStateSchema.safeParse(data ?? {});
+    if (!parsed.success) {
+      throw new Error("Pi returned invalid session state");
+    }
+    const state = parsed.data;
     this.liveModel = state.model;
     return state;
   }
@@ -326,14 +435,17 @@ export class PiRpcSession {
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
       this.pendingRunSettlements.push({ resolve });
     });
+    const command: PiPromptCommand = {
+      type: "prompt",
+      message: text,
+      streamingBehavior: "followUp",
+    };
+    if (images && images.length > 0) {
+      command.images = images.map(toJsonImageContent);
+    }
     const settled = this.dispatchWithTransientAuthRetry(
       child,
-      {
-        type: "prompt",
-        message: text,
-        ...(images && images.length > 0 ? { images } : {}),
-        streamingBehavior: "followUp",
-      },
+      command,
       NO_REQUEST_TIMEOUT,
     ).then(
       async (): Promise<PiPromptRunOutcome | null> => {
@@ -345,16 +457,18 @@ export class PiRpcSession {
         const outcome = await settlement;
         return outcome;
       },
-      (error: unknown): PiPromptRunOutcome | null => {
+      (error): PiPromptRunOutcome | null => {
+        const normalizedError =
+          error instanceof Error ? error : new Error(String(error));
         this.isProcessing = false;
         this.dropRunSettlement(settlement);
         const queued = tracked.pending.queuedText !== null;
-        this.rejectPendingInputConsumption(tracked.pending, asError(error));
+        this.rejectPendingInputConsumption(tracked.pending, normalizedError);
         this.rejectPendingInputConsumptions(
           "Pi prompt failed before input was consumed",
         );
-        this.onDone(error);
-        return queued ? null : { error };
+        this.onDone(normalizedError);
+        return queued ? null : { error: normalizedError };
       },
     );
     return { consumed: tracked.promise, settled };
@@ -363,16 +477,21 @@ export class PiRpcSession {
   async steer(text: string, images?: ImageContent[]): Promise<void> {
     const child = this.requireChild();
     const tracked = this.trackPendingInputConsumption("steering");
+    const command: PiPromptCommand = {
+      type: "prompt",
+      message: text,
+      streamingBehavior: "steer",
+    };
+    if (images && images.length > 0) {
+      command.images = images.map(toJsonImageContent);
+    }
     try {
-      await this.dispatchWithTransientAuthRetry(child, {
-        type: "prompt",
-        message: text,
-        ...(images && images.length > 0 ? { images } : {}),
-        streamingBehavior: "steer",
-      });
+      await this.dispatchWithTransientAuthRetry(child, command);
     } catch (error) {
-      this.rejectPendingInputConsumption(tracked.pending, asError(error));
-      this.onDone(error);
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.rejectPendingInputConsumption(tracked.pending, normalizedError);
+      this.onDone(normalizedError);
       throw error;
     }
     if (tracked.pending.queuedText === null) {
@@ -380,7 +499,7 @@ export class PiRpcSession {
       return;
     }
     void tracked.promise.catch((error) => {
-      this.onDone(error);
+      this.onDone(error instanceof Error ? error : new Error(String(error)));
     });
   }
 
@@ -462,16 +581,17 @@ export class PiRpcSession {
     );
     try {
       await session.start();
-      await session.channelRequest({
+      const request: PiChannelRequest = {
         method: "fork",
         sourceFile: args.sourceFile,
         targetFile: args.targetFile,
         cwd: args.cwd,
         sessionDir: args.sessionDir,
-        ...(args.checkpointId === undefined
-          ? {}
-          : { checkpointId: args.checkpointId }),
-      });
+      };
+      if (args.checkpointId !== undefined) {
+        request.checkpointId = args.checkpointId;
+      }
+      await session.channelRequest(request);
     } finally {
       session.kill();
     }
@@ -484,7 +604,7 @@ export class PiRpcSession {
     return this.child;
   }
 
-  private writePromptFiles(): { args: string[]; paths: string[] } {
+  private writePromptFiles(): PromptFiles {
     const args: string[] = [];
     const paths: string[] = [];
     const stamp = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -505,7 +625,7 @@ export class PiRpcSession {
 
   private async dispatchWithTransientAuthRetry(
     child: PiRpcChild,
-    command: Record<string, unknown>,
+    command: PiPromptCommand,
     timeoutMs?: number,
   ): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
@@ -528,11 +648,7 @@ export class PiRpcSession {
     }
   }
 
-  private handleEvent(raw: Record<string, unknown>): void {
-    if (typeof raw.type !== "string") {
-      return;
-    }
-    const event = raw as PiRpcEvent;
+  private handleEvent(event: PiRpcEvent): void {
     this.trackProcessingState(event);
     this.observeInputConsumption(event);
     this.observeTerminalSteerSettlement(event);
@@ -542,12 +658,11 @@ export class PiRpcSession {
         if (leafId !== null) {
           this.lastKnownLeafId = leafId;
         }
-        this.onEvent({
-          ...event,
-          ...(this.lastKnownLeafId === null
-            ? {}
-            : { providerCheckpointId: this.lastKnownLeafId }),
-        });
+        const deliveredEvent: PiRpcEvent = { ...event };
+        if (this.lastKnownLeafId !== null) {
+          deliveredEvent.providerCheckpointId = this.lastKnownLeafId;
+        }
+        this.onEvent(deliveredEvent);
         this.settleRun(event);
       });
       return;
@@ -582,14 +697,14 @@ export class PiRpcSession {
     if (!pending) {
       return;
     }
-    const messages = Array.isArray(event.messages) ? event.messages : [];
-    const last = messages[messages.length - 1] as
-      | { role?: string; stopReason?: string; errorMessage?: string }
-      | undefined;
+    const parsedMessages = piRunMessagesSchema.safeParse(event.messages);
+    const last = parsedMessages.success
+      ? parsedMessages.data.at(-1)
+      : undefined;
     if (
       last?.role === "assistant" &&
       last.stopReason === "error" &&
-      typeof last.errorMessage === "string"
+      last.errorMessage !== undefined
     ) {
       pending.resolve({ error: new Error(last.errorMessage) });
       return;
@@ -609,11 +724,10 @@ export class PiRpcSession {
     if (!child || child.exited) {
       return;
     }
-    const data = (await this.channelRequest({ method: "leaf" }, timeoutMs)) as
-      | { leafId?: string | null }
-      | undefined;
-    if (data && typeof data.leafId === "string") {
-      this.lastKnownLeafId = data.leafId;
+    const data = await this.channelRequest({ method: "leaf" }, timeoutMs);
+    const parsed = piLeafResponseSchema.safeParse(data);
+    if (parsed.success && parsed.data.leafId !== undefined) {
+      this.lastKnownLeafId = parsed.data.leafId;
     }
   }
 
@@ -643,45 +757,36 @@ export class PiRpcSession {
     if (!child || child.exited) {
       return;
     }
-    const data = (await child.requestOk({ type: "get_session_stats" })) as
-      | {
-          contextUsage?: { tokens?: number | null; contextWindow?: number };
-        }
-      | undefined;
-    const usage = data?.contextUsage;
-    if (usage && typeof usage.contextWindow === "number") {
+    const data = await child.requestOk({ type: "get_session_stats" });
+    const parsed = piSessionStatsSchema.safeParse(data);
+    const usage = parsed.success ? parsed.data.contextUsage : undefined;
+    if (usage?.contextWindow !== undefined) {
       this.lastContextUsage = {
-        tokens: typeof usage.tokens === "number" ? usage.tokens : null,
+        tokens: usage.tokens ?? null,
         contextWindow: usage.contextWindow,
       };
     }
   }
 
-  private handleChannelMessage(message: Record<string, unknown>): void {
+  private handleChannelMessage(message: PiChannelMessage): void {
     const child = this.child;
     if (message.kind === "ready") {
       this.ready.resolve();
       return;
     }
     if (message.kind === "agent-end-leaf") {
-      const leafId = typeof message.leafId === "string" ? message.leafId : null;
       const waiter = this.agentEndLeafWaiter;
       if (waiter) {
         this.agentEndLeafWaiter = null;
-        waiter(leafId);
+        waiter(message.leafId);
       } else {
-        this.agentEndLeafReports.push(leafId);
+        this.agentEndLeafReports.push(message.leafId);
       }
       return;
     }
     if (message.kind === "tool-call" && child) {
       const id = String(message.id);
-      const toolName = String(message.toolName);
-      const toolArgs =
-        typeof message.arguments === "object" && message.arguments !== null
-          ? (message.arguments as Record<string, unknown>)
-          : {};
-      void this.forwardToolCall(toolName, toolArgs).then(
+      void this.forwardToolCall(message.toolName, message.arguments).then(
         (result) => {
           child.sendChannel({
             kind: "tool-result",
@@ -690,7 +795,7 @@ export class PiRpcSession {
             isError: result.isError === true,
           });
         },
-        (error: unknown) => {
+        (error) => {
           child.sendChannel({
             kind: "tool-result",
             id,
@@ -712,7 +817,7 @@ export class PiRpcSession {
         return;
       }
       this.channelReplies.delete(String(message.id));
-      if (typeof message.error === "string") {
+      if (message.error !== undefined) {
         reply.reject(new Error(message.error));
       } else {
         reply.resolve(message.result);
@@ -721,13 +826,13 @@ export class PiRpcSession {
   }
 
   private channelRequest(
-    request: Record<string, unknown>,
+    request: PiChannelRequest,
     timeoutMs = CHANNEL_REQUEST_TIMEOUT_MS,
-  ): Promise<unknown> {
+  ): Promise<JsonValue | undefined> {
     const child = this.requireChild();
     this.nextChannelRequestId += 1;
     const id = `cr-${this.nextChannelRequestId}`;
-    return new Promise<unknown>((resolve, reject) => {
+    return new Promise<JsonValue | undefined>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.channelReplies.delete(id);
         reject(
@@ -883,8 +988,8 @@ export class PiRpcSession {
     const settlement = child
       .request({ type: "get_state" })
       .then((response) => {
-        const state = (response.data ?? {}) as Partial<PiRpcSessionState>;
-        return state.isStreaming === true;
+        const parsed = piRpcSessionStateSchema.safeParse(response.data ?? {});
+        return parsed.success && parsed.data.isStreaming;
       })
       .catch(() => false)
       .then((streaming) => {
@@ -945,11 +1050,7 @@ export class PiRpcSession {
   }
 }
 
-function createDeferred(): {
-  promise: Promise<void>;
-  resolve: () => void;
-  reject: (error: Error) => void;
-} {
+function createDeferred(): Deferred {
   let resolve: () => void = () => undefined;
   let reject: (error: Error) => void = () => undefined;
   const promise = new Promise<void>((res, rej) => {
@@ -960,14 +1061,17 @@ function createDeferred(): {
   return { promise, resolve, reject };
 }
 
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
+function emptyStringArray(): string[] {
+  return [];
 }
 
-function toStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
+function toJsonImageContent(image: ImageContent): JsonObject {
+  return { type: image.type, data: image.data, mimeType: image.mimeType };
+}
+
+function toStringArray(value: JsonValue | undefined): string[] {
+  const parsed = stringArraySchema.safeParse(value);
+  return parsed.success ? parsed.data : [];
 }
 
 function listMultisetDifference(

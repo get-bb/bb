@@ -4,10 +4,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NewTabActions } from "./NewTabFileSearch";
 
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandShortcut: () => null,
-}));
-
 afterEach(cleanup);
 
 describe("NewTabActions", () => {

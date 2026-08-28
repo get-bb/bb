@@ -230,12 +230,14 @@ describe("pi model list", () => {
       },
     ]);
 
-    const assistant = (provider: string | undefined, model: string) => ({
-      role: "assistant" as const,
-      content: [],
-      ...(provider === undefined ? {} : { provider }),
-      model,
-    });
+    const assistant = (provider: string | undefined, model: string) => {
+      const base = {
+        role: "assistant" as const,
+        content: [],
+        model,
+      };
+      return provider === undefined ? base : { ...base, provider };
+    };
 
     expect(
       resolveContextWindow(

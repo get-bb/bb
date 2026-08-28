@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -16,7 +17,7 @@ interface RecordedRequest {
   init: RequestInit | undefined;
 }
 
-function installPlanFor(url: string): unknown {
+function installPlanFor(url: string) {
   const params = new URL(url, "https://bb.test").searchParams;
   const entryId = params.get("entryId") ?? "";
   const marketplace = params.get("marketplace") ?? "bb-community";
@@ -44,7 +45,7 @@ function installPlanFor(url: string): unknown {
   };
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -91,7 +92,7 @@ afterEach(() => {
 });
 
 function stubFetch(
-  installBody: unknown = INSTALLED_PLUGIN_RESPONSE,
+  installBody: JsonValue = INSTALLED_PLUGIN_RESPONSE,
   installStatus = 200,
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
@@ -135,7 +136,10 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog();
     const source = "https://github.com/acme/bb-plugin-usage";
-    const input = screen.getByLabelText("Plugin source") as HTMLInputElement;
+    const input =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByLabelText(
+        "Plugin source",
+      ) as HTMLInputElement;
 
     expect(input.placeholder).toBe("https://github.com/owner/bb-plugin-name");
     expect(screen.getByText(/GitHub repository URL/)).toBeTruthy();
@@ -157,9 +161,13 @@ describe("AddPluginDialog", () => {
     renderDialog();
 
     expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
-    const install = screen.getByRole("button", {
-      name: /install plugin/i,
-    }) as HTMLButtonElement;
+    const install =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByRole(
+        "button",
+        {
+          name: /install plugin/i,
+        },
+      ) as HTMLButtonElement;
     expect(install.disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {

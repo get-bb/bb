@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { convertLegacyStoredThreadEvent } from "./legacy-thread-events.js";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "./json-value.js";
 import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
@@ -37,11 +42,11 @@ interface ThreadEventRowBase {
 
 interface ThreadEventRowInput extends ThreadEventRowBase {
   type: ThreadEventType;
-  data: Record<string, unknown>;
+  data: JsonObject;
 }
 
 interface StoredThreadEventParseArgs {
-  data: Record<string, unknown>;
+  data: object;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
   threadId: string;
@@ -76,7 +81,7 @@ const threadEventRowInputSchema = z.object({
   threadId: z.string(),
   seq: z.number(),
   type: threadEventTypeSchema,
-  data: z.record(z.string(), z.unknown()),
+  data: jsonObjectSchema,
   createdAt: z.number(),
 });
 
@@ -97,8 +102,10 @@ const storedTurnRequestEventDataSchema = turnRequestEventDataSchema.extend({
 
 function parseStoredTurnRequestEventData(
   args: StoredThreadEventParseArgs,
-): StoredThreadEventParseArgs["data"] {
-  return storedTurnRequestEventDataSchema.parse(args.data);
+): JsonObject {
+  return jsonObjectSchema.parse(
+    storedTurnRequestEventDataSchema.parse(args.data),
+  );
 }
 
 function toStoredThreadEventData<TEvent extends ThreadEvent>(
@@ -108,9 +115,7 @@ function toStoredThreadEventData<TEvent extends ThreadEvent>(
   return data;
 }
 
-function omitStoredScopeFields(
-  data: Record<string, unknown>,
-): Record<string, unknown> {
+function omitStoredScopeFields(data: JsonObject): JsonObject {
   const { scope: _scope, turnId: _turnId, ...rest } = data;
   return rest;
 }
@@ -131,15 +136,19 @@ export function parseStoredThreadEvent(
     ? parseStoredTurnRequestEventData({ ...args, data: stored.data })
     : stored.data;
 
-  return threadEventSchema.parse({
+  const event = {
     ...omitStoredScopeFields(eventData),
-    ...(args.providerThreadId != null
-      ? { providerThreadId: args.providerThreadId }
-      : {}),
     scope,
     threadId: args.threadId,
     type: stored.type,
-  });
+  };
+  if (args.providerThreadId != null) {
+    return threadEventSchema.parse({
+      ...event,
+      providerThreadId: args.providerThreadId,
+    });
+  }
+  return threadEventSchema.parse(event);
 }
 
 export function buildThreadEventRow(
@@ -186,7 +195,7 @@ function parseThreadEventRowInput(row: ThreadEventRowInput): ThreadEventRow {
   });
 }
 
-export function parseThreadEventRow(value: unknown): ThreadEventRow {
+export function parseThreadEventRow(value: JsonValue): ThreadEventRow {
   const row = threadEventRowInputSchema.parse(value);
   return parseThreadEventRowInput(row);
 }

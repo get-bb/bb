@@ -1,9 +1,11 @@
-import { ApiError } from "../../errors.js";
+import { jsonObjectSchema, type JsonObject } from "@bb/domain";
 import type {
   RegistrySkill,
   RegistrySkillDetail,
   RegistrySkillFile,
 } from "@bb/server-contract";
+import { z } from "zod";
+import { ApiError } from "../../errors.js";
 
 export const SKILLS_BASE_URL = "https://www.skills.sh";
 const DEFAULT_PAGE_SIZE = 24;
@@ -32,14 +34,43 @@ interface SkillsApiSkill {
   url: string;
 }
 
+const skillsApiSkillSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  source: z.string(),
+  installs: z.number(),
+  installUrl: z.string().nullable(),
+  url: z.string(),
+});
+
+const publicSkillLdJsonSchema = z.object({
+  "@type": z.literal("SoftwareApplication"),
+  url: z.string(),
+  name: z.string(),
+  interactionStatistic: z.object({
+    userInteractionCount: z.number(),
+  }),
+  description: z.string().nullable().catch(null),
+});
+
+const registryDetailFilesSchema = z
+  .array(
+    z.object({
+      path: z.string().min(1),
+      contents: z.string().max(REGISTRY_DETAIL_FILE_SIZE_LIMIT),
+    }),
+  )
+  .max(REGISTRY_DETAIL_FILE_LIMIT);
+
 export interface SkillsApiPage {
   skills: SkillsApiSkill[];
   total: number;
   hasMore: boolean;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+export function isRecord<T>(value: T): value is T & JsonObject {
+  return jsonObjectSchema.safeParse(value).success;
 }
 
 function decodeHtml(value: string): string {
@@ -192,80 +223,51 @@ export function parsePublicDetailSkill(
     /<script type="application\/ld\+json">(?<json>[\s\S]*?)<\/script>/gu,
   );
   for (const match of scripts) {
-    let body: unknown;
     try {
-      body = JSON.parse(match.groups?.json ?? "null");
+      const parsed = publicSkillLdJsonSchema.safeParse(
+        JSON.parse(match.groups?.json ?? "null"),
+      );
+      if (!parsed.success || parsed.data.url !== registrySkillUrl(id)) {
+        continue;
+      }
+      const body = parsed.data;
+      const detail = parsePublicDetail(html);
+      return {
+        id,
+        source,
+        skillId,
+        name: body.name,
+        installs: body.interactionStatistic.userInteractionCount,
+        stars: null,
+        installUrl: null,
+        url: registrySkillUrl(id),
+        topic: detail.topic,
+        summary:
+          detail.summary ??
+          (body.description === null ? null : body.description.slice(0, 280)),
+      };
     } catch {
       continue;
     }
-    if (
-      !isRecord(body) ||
-      body["@type"] !== "SoftwareApplication" ||
-      body.url !== registrySkillUrl(id) ||
-      typeof body.name !== "string" ||
-      !isRecord(body.interactionStatistic) ||
-      typeof body.interactionStatistic.userInteractionCount !== "number"
-    ) {
-      continue;
-    }
-    const detail = parsePublicDetail(html);
-    return {
-      id,
-      source,
-      skillId,
-      name: body.name,
-      installs: body.interactionStatistic.userInteractionCount,
-      stars: null,
-      installUrl: null,
-      url: registrySkillUrl(id),
-      topic: detail.topic,
-      summary:
-        detail.summary ??
-        (typeof body.description === "string"
-          ? body.description.slice(0, 280)
-          : null),
-    };
   }
   return null;
 }
 
-export function isApiSkill(value: unknown): value is SkillsApiSkill {
-  if (typeof value !== "object" || value === null) return false;
-  const skill = value as Record<string, unknown>;
-  return (
-    typeof skill.id === "string" &&
-    typeof skill.slug === "string" &&
-    typeof skill.name === "string" &&
-    typeof skill.source === "string" &&
-    typeof skill.installs === "number" &&
-    (skill.installUrl === null || typeof skill.installUrl === "string") &&
-    typeof skill.url === "string"
-  );
+export function isApiSkill<T>(value: T): value is T & SkillsApiSkill {
+  return skillsApiSkillSchema.safeParse(value).success;
 }
 
-export function parseRegistryDetailFiles(
-  value: unknown,
+export function parseRegistryDetailFiles<T>(
+  value: T,
 ): RegistrySkillFile[] | null {
-  if (!Array.isArray(value) || value.length > REGISTRY_DETAIL_FILE_LIMIT) {
-    return null;
-  }
+  const parsed = registryDetailFilesSchema.safeParse(value);
+  if (!parsed.success) return null;
   let totalSize = 0;
-  const files: RegistrySkillFile[] = [];
-  for (const file of value) {
-    if (
-      !isRecord(file) ||
-      typeof file.path !== "string" ||
-      file.path.length === 0 ||
-      typeof file.contents !== "string" ||
-      file.contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT
-    ) {
-      return null;
-    }
+  for (const file of parsed.data) {
     totalSize += file.contents.length;
     if (totalSize > REGISTRY_DETAIL_TOTAL_SIZE_LIMIT) return null;
-    files.push({ path: file.path, contents: file.contents });
   }
-  return files;
+  return parsed.data;
 }
 
 export function hasLoadableSkillContent(detail: RegistrySkillDetail): boolean {
@@ -298,10 +300,7 @@ export function githubRepoForSource(source: string): string | null {
   return `${owner}/${repo}`;
 }
 
-export function parseRegistrySkillId(id: string): {
-  source: string;
-  skillId: string;
-} {
+export function parseRegistrySkillId(id: string) {
   const separatorIndex = id.lastIndexOf("/");
   const source = id.slice(0, separatorIndex);
   const skillId = id.slice(separatorIndex + 1);

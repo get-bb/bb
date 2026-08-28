@@ -1,8 +1,51 @@
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { getCall, getRunRequired, migrations } from "./data.js";
 import plugin from "./server.js";
 import { createWorkflowService } from "./service.js";
+import type { JsonObject, JsonSchema, JsonValue } from "./types.js";
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
+const workflowRunResponseSchema = z.object({ runId: z.string() });
+const workflowStartResponseSchema = workflowRunResponseSchema.extend({
+  previewDirective: z.string(),
+});
+const workflowStatusSchema = jsonObjectSchema;
+const workflowListEntrySchema = jsonObjectSchema;
+const workflowHistoryRecordSchema = jsonObjectSchema;
+const boundedStatusSchema = z.object({
+  originProvider: z.string(),
+  originProviderTruncated: z.boolean(),
+  originModel: z.string(),
+  originModelTruncated: z.boolean(),
+  phase: z.string(),
+  phaseTruncated: z.boolean(),
+  resultAvailable: z.boolean(),
+  resultOmitted: z.boolean(),
+});
+const boundedListEntrySchema = z.object({
+  id: z.string(),
+  phase: z.string(),
+  phaseTruncated: z.boolean(),
+});
+const sdkThreadInputSchema = z.object({ threadId: z.string() });
 
 async function eventually(
   assertion: () => void | Promise<void>,
@@ -25,7 +68,7 @@ const STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS = 30_000;
 async function workflowStatus(
   harness: ReturnType<typeof createFakePluginHost>["harness"],
   runId: string,
-): Promise<Record<string, unknown>> {
+): Promise<JsonObject> {
   const result = await harness.runCli(["status", runId], {
     threadId: "thread-test",
     projectId: "project-test",
@@ -33,7 +76,7 @@ async function workflowStatus(
   if (result.exitCode !== 0 || result.stdout === undefined) {
     throw new Error(result.stderr ?? `Could not inspect workflow ${runId}`);
   }
-  return JSON.parse(result.stdout) as Record<string, unknown>;
+  return workflowStatusSchema.parse(JSON.parse(result.stdout));
 }
 
 describe("workflows plugin", () => {
@@ -95,6 +138,7 @@ describe("workflows plugin", () => {
         sdk: {
           threads: {
             get: async () =>
+              // SAFETY: The fake SDK returns only the fields that this test exercises.
               ({
                 id: "thread-test",
                 environmentId: "environment-1",
@@ -109,6 +153,7 @@ describe("workflows plugin", () => {
             }),
             spawn: async () => {
               childCount += 1;
+              // SAFETY: The fake SDK returns the child identifier required by the workflow service.
               return { id: `child-${childCount}` } as never;
             },
             send: async () => ({ ok: true }),
@@ -170,11 +215,9 @@ describe("workflows plugin", () => {
       const startedText = await harness.callAgentTool("bb_workflow_run", {
         source,
       });
-      expect(typeof startedText).toBe("string");
-      const started = JSON.parse(startedText as string) as {
-        runId: string;
-        previewDirective: string;
-      };
+      const started = workflowStartResponseSchema.parse(
+        JSON.parse(z.string().parse(startedText)),
+      );
       expect(started.previewDirective).toBe(
         `::workflow-preview{run="${started.runId}"}`,
       );
@@ -337,11 +380,10 @@ describe("workflows plugin", () => {
         ),
       ).resolves.toBe(JSON.stringify({ accepted: true }, null, 2));
       expect(
-        harness.sdk
-          .callsTo("threads.stop")
-          .some(
-            ([input]) => (input as { threadId: string }).threadId === "child-1",
-          ),
+        harness.sdk.callsTo("threads.stop").some(([input]) => {
+          const parsed = sdkThreadInputSchema.safeParse(input);
+          return parsed.success && parsed.data.threadId === "child-1";
+        }),
       ).toBe(true);
       await expect(
         harness.callAgentTool(
@@ -366,7 +408,7 @@ describe("workflows plugin", () => {
       });
 
       await harness.emitThreadEvent("thread.idle", {
-        thread: { id: "child-1" } as never,
+        thread: makeThreadResponse({ id: "child-1" }),
         lastAssistantText: "done",
       });
       await eventually(() => {
@@ -406,9 +448,9 @@ describe("workflows plugin", () => {
         projectId: "project-test",
       });
       expect(listResult).toMatchObject({ exitCode: 0 });
-      const listed = JSON.parse(listResult.stdout!) as Array<
-        Record<string, unknown>
-      >;
+      const listed = z
+        .array(workflowListEntrySchema)
+        .parse(JSON.parse(listResult.stdout!));
       expect(listed).toHaveLength(1);
       expect(listed[0]).toMatchObject({
         id: started.runId,
@@ -425,7 +467,7 @@ describe("workflows plugin", () => {
       const records = historyResult
         .stdout!.trimEnd()
         .split("\n")
-        .map((line) => JSON.parse(line)) as Array<Record<string, unknown>>;
+        .map((line) => workflowHistoryRecordSchema.parse(JSON.parse(line)));
       expect(records).toHaveLength(3);
       expect(records[0]).toMatchObject({
         type: "run",
@@ -456,7 +498,10 @@ describe("workflows plugin", () => {
       const oversizedPhase = "🌌".repeat(500_000);
       const oversizedProvider = "🛰".repeat(500_000);
       const oversizedModel = "🚀".repeat(500_000);
-      let deeplyNestedResult: unknown = Array.from({ length: 1_200 }, () => 0);
+      let deeplyNestedResult: JsonValue = Array.from(
+        { length: 1_200 },
+        () => 0,
+      );
       for (let depth = 0; depth < 128; depth += 1) {
         deeplyNestedResult = [deeplyNestedResult];
       }
@@ -485,16 +530,9 @@ describe("workflows plugin", () => {
       expect(Buffer.byteLength(boundedStatus.stdout!, "utf8")).toBeLessThan(
         24 * 1_024,
       );
-      const boundedStatusValue = JSON.parse(boundedStatus.stdout!) as {
-        originProvider: string;
-        originProviderTruncated: boolean;
-        originModel: string;
-        originModelTruncated: boolean;
-        phase: string;
-        phaseTruncated: boolean;
-        resultAvailable: boolean;
-        resultOmitted: boolean;
-      };
+      const boundedStatusValue = boundedStatusSchema.parse(
+        JSON.parse(boundedStatus.stdout!),
+      );
       expect(boundedStatusValue).toMatchObject({
         phaseTruncated: true,
         originProviderTruncated: true,
@@ -520,11 +558,9 @@ describe("workflows plugin", () => {
       expect(Buffer.byteLength(boundedList.stdout!, "utf8")).toBeLessThan(
         4 * 1_024,
       );
-      const boundedListValue = JSON.parse(boundedList.stdout!) as Array<{
-        id: string;
-        phase: string;
-        phaseTruncated: boolean;
-      }>;
+      const boundedListValue = z
+        .array(boundedListEntrySchema)
+        .parse(JSON.parse(boundedList.stdout!));
       expect(boundedListValue).toMatchObject([
         { id: started.runId, phaseTruncated: true },
       ]);
@@ -542,7 +578,9 @@ describe("workflows plugin", () => {
       const failedText = await harness.callAgentTool("bb_workflow_run", {
         source,
       });
-      const failed = JSON.parse(failedText as string) as { runId: string };
+      const failed = workflowRunResponseSchema.parse(
+        JSON.parse(z.string().parse(failedText)),
+      );
       await eventually(() => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(2);
       });
@@ -561,7 +599,8 @@ describe("workflows plugin", () => {
             .callsTo("threads.stop")
             .filter(
               ([args]) =>
-                (args as { threadId?: string }).threadId === "child-2",
+                sdkThreadInputSchema.safeParse(args).success &&
+                sdkThreadInputSchema.parse(args).threadId === "child-2",
             ).length,
         ).toBeGreaterThanOrEqual(1);
         expect(harness.sdk.callsTo("threads.send")).toHaveLength(2);
@@ -575,9 +614,9 @@ describe("workflows plugin", () => {
       const sharedBudgetText = await harness.callAgentTool("bb_workflow_run", {
         source,
       });
-      const sharedBudget = JSON.parse(sharedBudgetText as string) as {
-        runId: string;
-      };
+      const sharedBudget = workflowRunResponseSchema.parse(
+        JSON.parse(z.string().parse(sharedBudgetText)),
+      );
       await eventually(() => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(3);
       });
@@ -589,15 +628,16 @@ describe("workflows plugin", () => {
         ),
       ).resolves.toMatchObject({ isError: true });
       await harness.emitThreadEvent("thread.idle", {
-        thread: { id: "child-3" } as never,
+        thread: makeThreadResponse({ id: "child-3" }),
         lastAssistantText: null,
       });
       await eventually(() => {
         const correctionCalls = harness.sdk
           .callsTo("threads.send")
-          .filter(
-            ([args]) => (args as { threadId?: string }).threadId === "child-3",
-          );
+          .filter(([args]) => {
+            const parsed = sdkThreadInputSchema.safeParse(args);
+            return parsed.success && parsed.data.threadId === "child-3";
+          });
         expect(correctionCalls).toHaveLength(1);
         expect(correctionCalls[0]?.[0]).toMatchObject({
           threadId: "child-3",
@@ -605,7 +645,7 @@ describe("workflows plugin", () => {
         });
       });
       await harness.emitThreadEvent("thread.idle", {
-        thread: { id: "child-3" } as never,
+        thread: makeThreadResponse({ id: "child-3" }),
         lastAssistantText: "still not JSON",
       });
       await eventually(() => {
@@ -614,7 +654,8 @@ describe("workflows plugin", () => {
             .callsTo("threads.stop")
             .filter(
               ([args]) =>
-                (args as { threadId?: string }).threadId === "child-3",
+                sdkThreadInputSchema.safeParse(args).success &&
+                sdkThreadInputSchema.parse(args).threadId === "child-3",
             ),
         ).toHaveLength(1);
       });
@@ -626,13 +667,15 @@ describe("workflows plugin", () => {
       const idleOnlyText = await harness.callAgentTool("bb_workflow_run", {
         source,
       });
-      const idleOnly = JSON.parse(idleOnlyText as string) as { runId: string };
+      const idleOnly = workflowRunResponseSchema.parse(
+        JSON.parse(z.string().parse(idleOnlyText)),
+      );
       await eventually(() => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(4);
       });
       for (let failure = 1; failure <= 2; failure += 1) {
         await harness.emitThreadEvent("thread.idle", {
-          thread: { id: "child-4" } as never,
+          thread: makeThreadResponse({ id: "child-4" }),
           lastAssistantText: null,
         });
         await eventually(() => {
@@ -641,13 +684,14 @@ describe("workflows plugin", () => {
               .callsTo("threads.send")
               .filter(
                 ([args]) =>
-                  (args as { threadId?: string }).threadId === "child-4",
+                  sdkThreadInputSchema.safeParse(args).success &&
+                  sdkThreadInputSchema.parse(args).threadId === "child-4",
               ),
           ).toHaveLength(failure);
         });
       }
       await harness.emitThreadEvent("thread.idle", {
-        thread: { id: "child-4" } as never,
+        thread: makeThreadResponse({ id: "child-4" }),
         lastAssistantText: null,
       });
       await eventually(() => {
@@ -656,7 +700,8 @@ describe("workflows plugin", () => {
             .callsTo("threads.stop")
             .filter(
               ([args]) =>
-                (args as { threadId?: string }).threadId === "child-4",
+                sdkThreadInputSchema.safeParse(args).success &&
+                sdkThreadInputSchema.parse(args).threadId === "child-4",
             ).length,
         ).toBeGreaterThanOrEqual(1);
       });
@@ -677,7 +722,9 @@ describe("workflows plugin", () => {
       const nullRunText = await harness.callAgentTool("bb_workflow_run", {
         source: nullSource,
       });
-      const nullRun = JSON.parse(nullRunText as string) as { runId: string };
+      const nullRun = workflowRunResponseSchema.parse(
+        JSON.parse(z.string().parse(nullRunText)),
+      );
       await eventually(() => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(5);
       });
@@ -694,7 +741,8 @@ describe("workflows plugin", () => {
             .callsTo("threads.send")
             .filter(
               ([args]) =>
-                (args as { threadId?: string }).threadId === "thread-test",
+                sdkThreadInputSchema.safeParse(args).success &&
+                sdkThreadInputSchema.parse(args).threadId === "thread-test",
             ).length,
         ).toBeGreaterThanOrEqual(5);
       });
@@ -739,10 +787,10 @@ describe("workflows plugin", () => {
         content: [{ text: expect.stringContaining("byte limit") }],
       });
 
-      let deepSchema: object = { type: "null" };
-      for (let depth = 0; depth < 40; depth += 1) {
-        deepSchema = { allOf: [deepSchema] };
-      }
+      const deepSchema = Array.from({ length: 40 }).reduce<JsonSchema>(
+        (schema) => ({ allOf: [schema] }),
+        { type: "null" },
+      );
       const deepSource = `export const meta = ${JSON.stringify({
         name: "deep-schema",
         description: "Deep schema test",
@@ -778,12 +826,13 @@ describe("workflows plugin", () => {
       resumedFromRunId: null,
     };
 
-    const cyclic: { self?: unknown } = {};
+    const cyclic: JsonObject = {};
     cyclic.self = cyclic;
+    await expect(service.start({ ...base, args: cyclic })).rejects.toThrow(
+      "contains a cyclic value",
+    );
     await expect(
-      service.start({ ...base, args: cyclic as never }),
-    ).rejects.toThrow("contains a cyclic value");
-    await expect(
+      // SAFETY: This test intentionally passes a non-JSON host value to verify rejection.
       service.start({ ...base, args: new Date() as never }),
     ).rejects.toThrow("unsafe prototype");
   });
@@ -812,6 +861,12 @@ function availableModel(model: string) {
   };
 }
 
+interface MutableExecutionOptions {
+  model: string;
+  reasoningLevel: "medium" | "high";
+  permissionMode: "accept-edits" | "auto";
+}
+
 describe("workflow resume cache integration", () => {
   const hosts: Array<ReturnType<typeof createFakePluginHost>["harness"]> = [];
 
@@ -822,10 +877,10 @@ describe("workflow resume cache integration", () => {
 
   function setup() {
     let childCount = 0;
-    const execution = {
+    const execution: MutableExecutionOptions = {
       model: "model-a",
-      reasoningLevel: "medium" as "medium" | "high",
-      permissionMode: "accept-edits" as "accept-edits" | "auto",
+      reasoningLevel: "medium",
+      permissionMode: "accept-edits",
     };
     let activeModels = [availableModel("model-a"), availableModel("model-b")];
     let selectedOnlyModels = [availableModel("retired-model")];
@@ -834,6 +889,7 @@ describe("workflow resume cache integration", () => {
       sdk: {
         threads: {
           get: async ({ threadId }) =>
+            // SAFETY: The fake SDK returns only the fields that this test exercises.
             ({
               id: threadId,
               environmentId: "environment-1",
@@ -847,6 +903,7 @@ describe("workflow resume cache integration", () => {
           }),
           spawn: async () => {
             childCount += 1;
+            // SAFETY: The fake SDK returns the child identifier required by the workflow service.
             return { id: `cache-child-${childCount}` } as never;
           },
           send: async () => ({ ok: true }),
@@ -973,9 +1030,8 @@ describe("workflow resume cache integration", () => {
       JSON.stringify({ answer: "not-a-number" }),
     );
     expect(invalid).toMatchObject({ ok: false, terminal: false });
-    expect((invalid as { error: string }).error).toContain(
-      "JSON-encoded string",
-    );
+    if (invalid.ok) throw new Error("Expected an invalid structured result");
+    expect(invalid.error).toContain("JSON-encoded string");
 
     await expect(
       test.service.submitStructuredResult(

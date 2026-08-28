@@ -3,6 +3,7 @@ import type {
   SystemProviderStatesResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
+import type { HostDaemonRetryableOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -12,6 +13,11 @@ import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
+
+type ProviderHealthCommand = Extract<
+  HostDaemonRetryableOnlineRpcCommand,
+  { type: "provider.health" }
+>;
 
 function unknownProviderState(
   provider: ProviderInfo,
@@ -51,15 +57,16 @@ async function getProviderState(
   }
 
   try {
+    const command: ProviderHealthCommand = {
+      type: "provider.health",
+      providerId: args.provider.id,
+      bridgeLaunch,
+    };
+    if (args.cwd !== undefined) command.cwd = args.cwd;
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: args.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "provider.health",
-        providerId: args.provider.id,
-        bridgeLaunch,
-        ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
-      },
+      command,
     });
     if (!result.supported) {
       return unknownProviderState(
@@ -91,12 +98,10 @@ export async function getProviderStates(
       : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
   const providers = await listSystemProviderInfos(deps, { hostId });
   return {
-    providers: await mapProviderMaintenanceRequests(providers, (provider) =>
-      getProviderState(deps, {
-        hostId,
-        provider,
-        ...(cwd === undefined ? {} : { cwd }),
-      }),
-    ),
+    providers: await mapProviderMaintenanceRequests(providers, (provider) => {
+      if (cwd === undefined)
+        return getProviderState(deps, { hostId, provider });
+      return getProviderState(deps, { hostId, provider, cwd });
+    }),
   };
 }

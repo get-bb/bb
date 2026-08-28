@@ -772,9 +772,10 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain("Reload the plugin.");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
-    const about = container.querySelector(
-      '[data-resource-detail-section="overview"]',
-    ) as HTMLElement;
+    const about =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-resource-detail-section="overview"]',
+      ) as HTMLElement;
     expect(
       alert.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -1046,7 +1047,9 @@ describe("PluginDetail capability inventory", () => {
       '[data-resource-detail-section="includes"]',
     );
     expect(includes).not.toBeNull();
-    const inventory = within(includes as HTMLElement);
+    const inventory = within(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ includes as HTMLElement,
+    );
     const table = includes?.querySelector("table");
     expect(table).not.toBeNull();
 
@@ -1081,13 +1084,16 @@ describe("PluginDetail capability inventory", () => {
     fireEvent.pointerMove(commandGlyph);
     expect((await screen.findByRole("tooltip")).textContent).toBe("Command");
 
-    const [services, schedules] = Array.from(
-      container.querySelectorAll('[data-resource-detail-section="activity"]'),
-    ) as HTMLElement[];
+    const [services, schedules] =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ Array.from(
+        container.querySelectorAll('[data-resource-detail-section="activity"]'),
+      ) as HTMLElement[];
     expect(schedules).toBeTruthy();
     expect(container.textContent).not.toContain("Health");
 
-    const serviceSection = within(services as HTMLElement);
+    const serviceSection = within(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ services as HTMLElement,
+    );
     const serviceTable = serviceSection.getByRole("table", {
       name: "Background services",
     });
@@ -1110,7 +1116,9 @@ describe("PluginDetail capability inventory", () => {
     expect(
       serviceTableQueries.getByText("Restarting").getAttribute("class"),
     ).toContain("animate-shine");
-    const scheduleTable = within(schedules as HTMLElement);
+    const scheduleTable = within(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ schedules as HTMLElement,
+    );
     expect(scheduleTable.getByText("Scheduled jobs")).toBeTruthy();
     expect(scheduleTable.getByText("daily-cleanup")).toBeTruthy();
     expect(scheduleTable.getByText("in-progress")).toBeTruthy();

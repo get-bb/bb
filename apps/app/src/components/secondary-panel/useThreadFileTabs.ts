@@ -226,13 +226,7 @@ function openRequestForFileSearchSelection(
   };
 }
 
-function setPrunedSecondaryTabs({
-  activeTabId,
-  tabs,
-}: PruneSecondaryTabsArgs): {
-  activeTabId: string | null;
-  tabs: readonly FixedPanelTab[];
-} {
+function setPrunedSecondaryTabs({ activeTabId, tabs }: PruneSecondaryTabsArgs) {
   return {
     activeTabId: getActiveTabIdAfterPrune(tabs, activeTabId),
     tabs,
@@ -422,16 +416,20 @@ export function useThreadFileTabs({
       behavior: OpenResolvedTabBehavior,
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
-      const openerTab = createFileOpenerTabForRequest({
-        fileOpeners,
-        preference: fileOpenerPreference,
-        projectHostId,
-        projectId,
-        request,
-        resolvedEnvironmentId,
-        threadId: resolvedFileOwnerThreadId,
-        ...(viewer !== undefined ? { viewer } : {}),
-      });
+      const openerRequest: Parameters<typeof createFileOpenerTabForRequest>[0] =
+        {
+          fileOpeners,
+          preference: fileOpenerPreference,
+          projectHostId,
+          projectId,
+          request,
+          resolvedEnvironmentId,
+          threadId: resolvedFileOwnerThreadId,
+        };
+      if (viewer !== undefined) {
+        openerRequest.viewer = viewer;
+      }
+      const openerTab = createFileOpenerTabForRequest(openerRequest);
       const tab =
         openerTab ??
         createTabForOpenRequest({

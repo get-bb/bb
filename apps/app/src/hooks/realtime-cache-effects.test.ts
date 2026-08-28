@@ -7,6 +7,7 @@ import {
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
 } from "@bb/domain";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   archivedThreadsListQueryKey,
@@ -77,6 +78,22 @@ interface CachedSidebarNavigationFixture {
   personalProject: CachedSidebarNavigationProjectFixture;
   projects: CachedSidebarNavigationProjectFixture[];
 }
+
+interface ThreadSearchFixture {
+  active: {
+    results: { id: string; status: string }[];
+    total: number;
+  };
+  archived: {
+    results: { id: string; status: string }[];
+    total: number;
+  };
+}
+
+type ThreadTimelineFetchFixture = Pick<
+  ThreadTimelineResponse,
+  "rows" | "timelinePage"
+>;
 
 interface FakeVisibility extends RealtimeCacheEffectsVisibility {
   setVisible: (visible: boolean) => void;
@@ -514,7 +531,7 @@ describe("createRealtimeCacheEffects", () => {
       query: "needle",
     });
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
+    const resolveFetches: Array<(value: ThreadSearchFixture) => void> = [];
     const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return new Promise((resolve) => {
@@ -593,7 +610,7 @@ describe("createRealtimeCacheEffects", () => {
     };
     queryClient.setQueryData(threadSearchKey, idleResponse);
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
+    const resolveFetches: Array<(value: ThreadSearchFixture) => void> = [];
     const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return new Promise((resolve) => {
@@ -1260,7 +1277,7 @@ describe("createRealtimeCacheEffects", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
+    const resolveFetches: Array<(value: null) => void> = [];
     const workStatusQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return new Promise((resolve) => {
@@ -1469,8 +1486,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1501,8 +1518,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1537,8 +1554,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1623,8 +1640,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1702,7 +1719,8 @@ describe("createRealtimeCacheEffects", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
+    const resolveFetches: Array<(value: ThreadTimelineFetchFixture) => void> =
+      [];
     const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return new Promise((resolve) => {
@@ -1742,8 +1760,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1758,8 +1776,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1774,7 +1792,8 @@ describe("createRealtimeCacheEffects", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
+    const resolveFetches: Array<(value: ThreadTimelineFetchFixture) => void> =
+      [];
     const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return new Promise((resolve) => {
@@ -1822,8 +1841,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -1965,8 +1984,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },
@@ -2421,8 +2440,8 @@ describe("createRealtimeCacheEffects", () => {
       rows: [],
       timelinePage: {
         kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
         hasOlderRows: false,
         olderCursor: null,
       },

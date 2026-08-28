@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -41,7 +42,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
   };
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -103,8 +104,9 @@ describe("UpdatePluginDialog", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/once this bb meets/i)).toBeNull();
     expect(
-      (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
-        .disabled,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByRole("button", { name: "Update" }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -229,8 +231,9 @@ describe("UpdatePluginDialog", () => {
 
     await vi.waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
-          .disabled,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          screen.getByRole("button", { name: "Update" }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false);
     });
     expect(screen.getByText("Update Linear to 1.7.0?")).toBeTruthy();

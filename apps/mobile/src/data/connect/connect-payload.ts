@@ -3,6 +3,8 @@ import {
   parseMobilePairingPayload,
   serverUrlForHandle,
 } from "@bb/connect-client";
+import { jsonObjectSchema, type JsonObject, type JsonValue } from "@bb/domain";
+import { z } from "zod";
 
 export const DEFAULT_CONNECT_APEX_URL = "https://getbb.app";
 
@@ -23,10 +25,11 @@ function isValidConnectCode(code: string): boolean {
   return CODE_PATTERN.test(code);
 }
 
-function httpOrigin(value: unknown): string | null {
-  if (typeof value !== "string" || value.trim().length === 0) return null;
+function httpOrigin(value: JsonValue | undefined): string | null {
+  const parsedValue = z.string().safeParse(value);
+  if (!parsedValue.success || parsedValue.data.trim().length === 0) return null;
   try {
-    const url = new URL(value.trim());
+    const url = new URL(parsedValue.data.trim());
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     return url.origin;
   } catch {
@@ -34,22 +37,27 @@ function httpOrigin(value: unknown): string | null {
   }
 }
 
-function epochMs(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
+function epochMs(value: JsonValue | undefined): number | null {
+  const numberValue = z.number().safeParse(value);
+  if (
+    numberValue.success &&
+    Number.isFinite(numberValue.data) &&
+    numberValue.data > 0
+  ) {
+    return numberValue.data;
   }
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
+  const stringValue = z.string().safeParse(value);
+  if (stringValue.success) {
+    const parsed = Date.parse(stringValue.data);
     return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
 }
 
-function fromRecord(
-  record: Record<string, unknown>,
-): ConnectPairingInput | null {
-  if (typeof record.code !== "string") return null;
-  const code = normalizeConnectCode(record.code);
+function fromRecord(record: JsonObject): ConnectPairingInput | null {
+  const parsedCode = z.string().safeParse(record.code);
+  if (!parsedCode.success) return null;
+  const code = normalizeConnectCode(parsedCode.data);
   if (!isValidConnectCode(code)) return null;
   return {
     code,
@@ -77,9 +85,8 @@ export function parseConnectPairingPayload(
       };
     }
     try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (typeof parsed !== "object" || parsed === null) return null;
-      return fromRecord(parsed as Record<string, unknown>);
+      const parsed = jsonObjectSchema.safeParse(JSON.parse(trimmed));
+      return parsed.success ? fromRecord(parsed.data) : null;
     } catch {
       return null;
     }
@@ -94,12 +101,14 @@ export function parseConnectPairingPayload(
     const params = url.searchParams;
     const code = params.get("code");
     if (code === null) return null;
-    return fromRecord({
-      code,
-      serverUrl: params.get("serverUrl") ?? params.get("server") ?? undefined,
-      apex: params.get("apex") ?? params.get("apexUrl") ?? undefined,
-      expiresAt: params.get("expiresAt") ?? undefined,
-    });
+    const record: JsonObject = { code };
+    const serverUrl = params.get("serverUrl") ?? params.get("server");
+    const apex = params.get("apex") ?? params.get("apexUrl");
+    const expiresAt = params.get("expiresAt");
+    if (serverUrl !== null) record.serverUrl = serverUrl;
+    if (apex !== null) record.apex = apex;
+    if (expiresAt !== null) record.expiresAt = expiresAt;
+    return fromRecord(record);
   }
   const code = normalizeConnectCode(trimmed);
   return isValidConnectCode(code)

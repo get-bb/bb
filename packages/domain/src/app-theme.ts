@@ -44,7 +44,7 @@ export const builtInThemes: readonly BuiltInThemeMeta[] = [
 export const BUILTIN_THEME_IDS = builtInThemeIdSchema.options;
 
 export function isBuiltInThemeId(id: string): id is BuiltInThemeId {
-  return (BUILTIN_THEME_IDS as readonly string[]).includes(id);
+  return builtInThemeIdSchema.safeParse(id).success;
 }
 
 export const customThemeNameSchema = z

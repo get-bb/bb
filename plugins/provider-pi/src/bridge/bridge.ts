@@ -67,6 +67,7 @@ import {
 import {
   PiRpcSession,
   type PiRpcSessionOptions,
+  type PiRpcEvent,
   type ToolCallForwarder,
 } from "./rpc-session.js";
 import {
@@ -126,9 +127,50 @@ const piCommandSchema = z.discriminatedUnion("method", [
 
 type PiCommand = z.infer<typeof piCommandSchema>;
 
-const piCommandMethodValues = piCommandSchema.options.map(
-  (option) => option.shape.method.value,
-);
+const bridgeMessageSchema = z.record(z.string(), z.json());
+const sessionHeaderSchema = z
+  .object({ type: z.literal("session"), cwd: z.string() })
+  .passthrough();
+type BridgeMessage = z.infer<typeof bridgeMessageSchema>;
+type PiSessionDoneHandler = ConstructorParameters<typeof PiRpcSession>[3];
+type PiSessionDoneInput = Parameters<PiSessionDoneHandler>[0];
+const piSessionErrorSchema = z.union([z.instanceof(Error), z.string()]);
+
+interface BridgeEventParams {
+  threadId: string;
+  contextLost?: boolean;
+  contextWindowUsage?: ThreadEventContextWindowUsage;
+  deltas?: readonly ThreadDelta[];
+  error?: string;
+  message?: string | PiRpcEvent;
+  providerThreadId?: string;
+  reason?: string;
+  sessionRestorable?: boolean;
+  status?: "completed" | "failed";
+}
+
+interface PromptSettledPayload {
+  threadId: string;
+  status: "completed" | "failed";
+  error?: string;
+}
+
+const piCommandMethodValues = [
+  "initialize",
+  "model/list",
+  "provider/health",
+  "provider/usage",
+  "provider/installation/status",
+  "provider/installation/run",
+  "thread/start",
+  "thread/resume",
+  "thread/fork",
+  "turn/start",
+  "turn/steer",
+  "thread/stop",
+  "thread/discard",
+  "skills/configure",
+] as const;
 
 type DecodedPiBridgeRequest =
   | { kind: "request"; request: PiCommand & { id: string | number } }
@@ -141,7 +183,7 @@ type DecodedPiBridgeRequest =
     }
   | { kind: "ignored" };
 
-function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
+function decodePiJsonRpcRequest(raw: BridgeMessage): DecodedPiBridgeRequest {
   const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) {
     return { kind: "ignored" };
@@ -157,7 +199,7 @@ function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
     };
   }
   if (
-    !(piCommandMethodValues as readonly string[]).includes(envelope.data.method)
+    !piCommandMethodValues.some((method) => method === envelope.data.method)
   ) {
     return {
       kind: "unknown-method",
@@ -178,7 +220,7 @@ function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
 interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: BridgeEventParams;
 }
 
 interface CurrentThreadSessionArgs {
@@ -313,7 +355,7 @@ function sendThreadDeltas(
 function emitForSession(
   threadId: string,
   method: string,
-  params: Record<string, unknown>,
+  params: BridgeEventParams,
 ): void {
   sendThreadDeltas(
     threadId,
@@ -405,7 +447,7 @@ function getCurrentThreadSession(
 
 function createOnPiEvent(
   args: CurrentThreadSessionArgs,
-): (event: Record<string, unknown>) => void {
+): (event: PiRpcEvent) => void {
   return (event) => {
     const threadSession = getCurrentThreadSession(args);
     if (!threadSession) return;
@@ -419,10 +461,18 @@ function createOnPiEvent(
   };
 }
 
+function formatPiSessionError(error: PiSessionDoneInput): string {
+  const parsed = piSessionErrorSchema.safeParse(error);
+  if (parsed.success) {
+    return parsed.data instanceof Error ? parsed.data.message : parsed.data;
+  }
+  return String(error);
+}
+
 function createOnSessionDone(
   args: CurrentThreadSessionArgs,
-): (error?: unknown) => void {
-  return (error?: unknown) => {
+): PiSessionDoneHandler {
+  return (error) => {
     if (error) {
       reportSessionError({ ...args, error });
       return;
@@ -434,13 +484,11 @@ function createOnSessionDone(
     void closeThreadSession({
       message: "Pi session ended while tool call was pending",
       threadId: args.threadId,
-    }).catch((shutdownError: unknown) => {
+    }).catch((shutdownError) => {
       sendSessionScopedError(
         args.threadId,
         threadSession.providerThreadId,
-        shutdownError instanceof Error
-          ? shutdownError.message
-          : String(shutdownError),
+        formatPiSessionError(shutdownError),
       );
     });
   };
@@ -461,22 +509,25 @@ function reportPromptSettled(args: {
       : args.error instanceof Error
         ? args.error.message
         : String(args.error);
-  emitForSession(args.threadId, "pi/prompt/settled", {
+  const payload: PromptSettledPayload = {
     threadId: args.threadId,
     status: errorMessage === undefined ? "completed" : "failed",
-    ...(errorMessage !== undefined ? { error: errorMessage } : {}),
-  });
+  };
+  if (errorMessage !== undefined) {
+    payload.error = errorMessage;
+  }
+  emitForSession(args.threadId, "pi/prompt/settled", payload);
 }
 
 function reportSessionError(
-  args: CurrentThreadSessionArgs & { error: unknown },
+  args: CurrentThreadSessionArgs & { error: PiSessionDoneInput },
 ): void {
   const threadSession = getCurrentThreadSession(args);
   if (!threadSession) return;
   emitSessionError(
     threadSession,
     args.threadId,
-    args.error instanceof Error ? args.error.message : String(args.error),
+    formatPiSessionError(args.error),
   );
 }
 
@@ -689,7 +740,7 @@ async function resolvePiModel(
     );
   }
   const match = served[0];
-  if (!match || typeof match.provider !== "string") {
+  if (!match) {
     throw new Error(`Failed to resolve Pi model "${modelStr}"`);
   }
   return { provider: match.provider, id: modelStr };
@@ -700,11 +751,8 @@ async function buildSessionOptions(args: {
   providerThreadId: string;
   threadId: string;
 }): Promise<PiRpcSessionOptions> {
-  return {
+  const sessionOptions: PiRpcSessionOptions = {
     cwd: args.params.cwd,
-    ...(args.params.model
-      ? { model: await resolvePiModel(args.params.model, args.params.cwd) }
-      : {}),
     sessionFilePath: resolvePiSessionFilePath({
       env: process.env,
       threadId: args.providerThreadId,
@@ -713,19 +761,29 @@ async function buildSessionOptions(args: {
     systemPrompt: args.params.baseInstructions,
     appendSystemPrompt: args.params.appendSystemPrompt,
     shellEnvOverrides: args.params.shellEnvOverrides,
-    ...(args.params.additionalSkillPaths
-      ? { additionalSkillPaths: [...args.params.additionalSkillPaths] }
-      : {}),
-    ...(args.params.thinkingLevel
-      ? { thinkingLevel: args.params.thinkingLevel }
-      : {}),
-    ...(args.params.dynamicTools && args.params.dynamicTools.length > 0
-      ? { dynamicTools: args.params.dynamicTools }
-      : {}),
     scratchDir: requireScratchDir(),
     extensionPath: requireExtensionPath(),
     recordThreadId: args.threadId,
   };
+  if (args.params.model !== undefined) {
+    sessionOptions.model = await resolvePiModel(
+      args.params.model,
+      args.params.cwd,
+    );
+  }
+  if (args.params.additionalSkillPaths !== undefined) {
+    sessionOptions.additionalSkillPaths = [...args.params.additionalSkillPaths];
+  }
+  if (args.params.thinkingLevel !== undefined) {
+    sessionOptions.thinkingLevel = args.params.thinkingLevel;
+  }
+  if (
+    args.params.dynamicTools !== undefined &&
+    args.params.dynamicTools.length > 0
+  ) {
+    sessionOptions.dynamicTools = args.params.dynamicTools;
+  }
+  return sessionOptions;
 }
 
 async function constructPiThreadSession(
@@ -758,16 +816,14 @@ async function constructPiThreadSession(
   try {
     await session.start();
     const liveModel = session.getLiveModel();
-    if (
-      liveModel &&
-      typeof liveModel.id === "string" &&
-      typeof liveModel.provider === "string"
-    ) {
+    if (liveModel?.id !== undefined && liveModel.provider !== undefined) {
+      const modelInput = z.array(z.string()).safeParse(liveModel.input);
       contextWindows.learn([
         {
           id: liveModel.id,
           provider: liveModel.provider,
           contextWindow: liveModel.contextWindow,
+          input: modelInput.success ? modelInput.data : undefined,
         },
       ]);
     }
@@ -871,10 +927,8 @@ function persistedSessionCwd(providerThreadId: string): string | null {
     return null;
   }
   try {
-    const header = JSON.parse(firstLine) as { type?: unknown; cwd?: unknown };
-    return header.type === "session" && typeof header.cwd === "string"
-      ? header.cwd
-      : null;
+    const header = sessionHeaderSchema.safeParse(JSON.parse(firstLine));
+    return header.success ? header.data.cwd : null;
   } catch {
     return null;
   }
@@ -904,18 +958,19 @@ async function handleThreadFork(
     recursive: true,
   });
   try {
-    await PiRpcSession.forkSessionFile({
+    const forkArgs: Parameters<typeof PiRpcSession.forkSessionFile>[0] = {
       sourceFile: sourceSessionFile,
       targetFile: targetSessionFile,
       cwd: params.cwd,
       sessionDir: resolvePiBridgeSessionDir({ env: process.env }),
-      ...(params.sourceProviderCheckpointId === undefined
-        ? {}
-        : { checkpointId: params.sourceProviderCheckpointId }),
       extensionPath: requireExtensionPath(),
       scratchDir: requireScratchDir(),
       recordThreadId: params.threadId,
-    });
+    };
+    if (params.sourceProviderCheckpointId !== undefined) {
+      forkArgs.checkpointId = params.sourceProviderCheckpointId;
+    }
+    await PiRpcSession.forkSessionFile(forkArgs);
   } catch (error) {
     rmSync(targetSessionFile, { force: true });
     sendError(
@@ -947,11 +1002,14 @@ function startPiPrompt(
     if (outcome === null) {
       return;
     }
-    reportPromptSettled({
-      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+    const settledArgs: Parameters<typeof reportPromptSettled>[0] = {
       sessionSerial: threadSession.sessionSerial,
       threadId,
-    });
+    };
+    if (outcome.error !== undefined) {
+      settledArgs.error = outcome.error;
+    }
+    reportPromptSettled(settledArgs);
   });
   return dispatch.consumed;
 }
@@ -966,7 +1024,7 @@ function startPiCompaction(
         sessionSerial: threadSession.sessionSerial,
         threadId,
       }),
-    (error: unknown) =>
+    (error) =>
       reportPromptSettled({
         error,
         sessionSerial: threadSession.sessionSerial,
@@ -1010,13 +1068,18 @@ async function reconcileTurnOptions(
   if (!modelChanged && !thinkingLevelChanged) {
     return threadSession;
   }
-  const replacement = await rebuildThreadSession(threadId, threadSession, {
-    ...construction,
-    ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
-    ...(turnOptions.thinkingLevel === undefined
-      ? {}
-      : { thinkingLevel: turnOptions.thinkingLevel }),
-  });
+  const nextConstruction = { ...construction };
+  if (turnOptions.model !== undefined) {
+    nextConstruction.model = turnOptions.model;
+  }
+  if (turnOptions.thinkingLevel !== undefined) {
+    nextConstruction.thinkingLevel = turnOptions.thinkingLevel;
+  }
+  const replacement = await rebuildThreadSession(
+    threadId,
+    threadSession,
+    nextConstruction,
+  );
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({
@@ -1165,19 +1228,12 @@ function extractInput(input: TurnStartParams["input"]): ExtractedInput {
   const chunks: string[] = [];
   const images: ImageContent[] = [];
   for (const item of input) {
-    if (!item || typeof item !== "object") continue;
-    const typed = item as {
-      type?: string;
-      text?: string;
-      path?: string;
-      mimeType?: string;
-    };
-    if (typed.type === "text" && typeof typed.text === "string") {
-      chunks.push(typed.text);
-    } else if (typed.type === "localImage" && typeof typed.path === "string") {
+    if (item.type === "text") {
+      chunks.push(item.text);
+    } else if (item.type === "localImage") {
       try {
-        const data = readFileSync(typed.path).toString("base64");
-        const mimeType = typed.mimeType ?? mimeTypeFromExtension(typed.path);
+        const data = readFileSync(item.path).toString("base64");
+        const mimeType = mimeTypeFromExtension(item.path);
         images.push({ type: "image", data, mimeType });
       } catch {}
     }
@@ -1185,7 +1241,7 @@ function extractInput(input: TurnStartParams["input"]): ExtractedInput {
   return { text: chunks.length > 0 ? chunks.join("\n") : undefined, images };
 }
 
-function handleParsedMessage(parsed: unknown): void {
+function handleParsedMessage(parsed: BridgeMessage): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
   if (response && handleToolCallResponse(response)) {
     return;
@@ -1213,7 +1269,14 @@ function handleParsedMessage(parsed: unknown): void {
   runBridgeRequest({ request: decoded.request, handleRequest, sendError });
 }
 
-export const handleLine = createBridgeLineHandler({ handleParsedMessage });
+export const handleLine = createBridgeLineHandler({
+  handleParsedMessage: (message) => {
+    const parsed = bridgeMessageSchema.safeParse(message);
+    if (parsed.success) {
+      handleParsedMessage(parsed.data);
+    }
+  },
+});
 
 /** @internal Test inspection: where this process writes its scratch files. */
 export function experimental_scratchDirForTests(): string {

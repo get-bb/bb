@@ -1,10 +1,16 @@
 import type { JsonValue } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import type { AppFixedTabDestination } from "@/lib/app-fixed-tab-navigation";
 import type { AppFixedTabReference } from "@/lib/app-navigation-host";
 
 type GitDiffFixedTabTarget =
   | { kind: "file"; path: string }
   | { kind: "commit"; sha: string };
+
+const gitDiffFixedTabTargetSchema = z.union([
+  z.object({ kind: z.literal("file"), path: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal("commit"), sha: z.string().min(1) }).strict(),
+]);
 
 export const GIT_DIFF_FIXED_TAB_REFERENCE: AppFixedTabReference = {
   ownerId: "core:git-diff",
@@ -14,31 +20,8 @@ export const GIT_DIFF_FIXED_TAB_REFERENCE: AppFixedTabReference = {
 function normalizeGitDiffFixedTabTarget(
   value: JsonValue,
 ): GitDiffFixedTabTarget | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const keys = Object.keys(value);
-  if (
-    value.kind === "file" &&
-    keys.length === 2 &&
-    keys.includes("kind") &&
-    keys.includes("path") &&
-    typeof value.path === "string" &&
-    value.path.length > 0
-  ) {
-    return { kind: value.kind, path: value.path };
-  }
-  if (
-    value.kind === "commit" &&
-    keys.length === 2 &&
-    keys.includes("kind") &&
-    keys.includes("sha") &&
-    typeof value.sha === "string" &&
-    value.sha.length > 0
-  ) {
-    return { kind: value.kind, sha: value.sha };
-  }
-  return null;
+  const parsed = gitDiffFixedTabTargetSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function createGitDiffFixedTabDestination({

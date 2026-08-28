@@ -30,7 +30,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
-import type { Logger } from "@bb/logger";
+import { z } from "zod";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
@@ -49,14 +49,38 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import type { ServerLogger } from "../../../src/types.js";
 
-const logger = testLogger as unknown as Logger;
+const logger: ServerLogger = testLogger;
 const run = promisify(execFile);
 
+const packageNameSchema = z
+  .object({ name: z.string().optional() })
+  .passthrough();
+const pluginManifestSchema = z
+  .object({ dependencies: z.record(z.string(), z.string()) })
+  .passthrough();
+const packageJsonSchema = z.record(z.string(), z.json());
+
+interface PluginFixturePackageJson {
+  name: string;
+  version: string;
+  devDependencies?: Record<string, string>;
+  engines?: { bb?: string; bbPluginSdk?: string };
+  bb: {
+    name: string;
+    description: string;
+    branding: { icon: string };
+    server: string;
+    app?: string;
+    host?: string;
+  };
+}
+
 async function linkScaffoldDependencies(targetDir: string): Promise<void> {
-  const manifest = JSON.parse(
-    await readFile(join(targetDir, "package.json"), "utf8"),
-  ) as { dependencies: Record<string, string> };
+  const manifest = pluginManifestSchema.parse(
+    JSON.parse(await readFile(join(targetDir, "package.json"), "utf8")),
+  );
   const testDir = dirname(fileURLToPath(import.meta.url));
   const appRequire = createRequire(
     join(testDir, "..", "..", "..", "..", "app", "package.json"),
@@ -66,9 +90,9 @@ async function linkScaffoldDependencies(targetDir: string): Promise<void> {
     while (true) {
       const candidate = join(packageRoot, "package.json");
       if (existsSync(candidate)) {
-        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
-          name?: string;
-        };
+        const parsed = packageNameSchema.parse(
+          JSON.parse(readFileSync(candidate, "utf8")),
+        );
         if (parsed.name === name) break;
       }
       const parent = dirname(packageRoot);
@@ -81,6 +105,15 @@ async function linkScaffoldDependencies(targetDir: string): Promise<void> {
     await mkdir(dirname(linkPath), { recursive: true });
     await symlink(packageRoot, linkPath, "dir");
   }
+}
+
+function tcpAddress(server: Server): AddressInfo {
+  const address = server.address();
+  if (address === null) {
+    throw new Error("test server has no address");
+  }
+  // SAFETY: The test server listens on a TCP address, so Node returns AddressInfo here.
+  return address as AddressInfo;
 }
 
 async function hasBinary(command: string): Promise<boolean> {
@@ -110,34 +143,29 @@ async function writePluginFixture(
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
-  await writeFile(
-    join(rootDir, "package.json"),
-    JSON.stringify({
-      name: options.name,
-      version: options.version ?? "0.1.0",
-      ...(options.devDependencies === undefined
-        ? {}
-        : { devDependencies: options.devDependencies }),
-      ...(options.engines || options.pluginSdkRange
-        ? {
-            engines: {
-              ...(options.engines ? { bb: options.engines } : {}),
-              ...(options.pluginSdkRange
-                ? { bbPluginSdk: options.pluginSdkRange }
-                : {}),
-            },
-          }
-        : {}),
-      bb: {
-        name: "Install fixture",
-        description: "Plugin installation fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(options.appSource === undefined ? {} : { app: "./app.tsx" }),
-        ...(options.hostSource === undefined ? {} : { host: "./host.ts" }),
-      },
-    }),
-  );
+  const packageJson: PluginFixturePackageJson = {
+    name: options.name,
+    version: options.version ?? "0.1.0",
+    bb: {
+      name: "Install fixture",
+      description: "Plugin installation fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
+  };
+  if (options.devDependencies !== undefined) {
+    packageJson.devDependencies = options.devDependencies;
+  }
+  if (options.engines || options.pluginSdkRange) {
+    packageJson.engines = {};
+    if (options.engines) packageJson.engines.bb = options.engines;
+    if (options.pluginSdkRange) {
+      packageJson.engines.bbPluginSdk = options.pluginSdkRange;
+    }
+  }
+  if (options.appSource !== undefined) packageJson.bb.app = "./app.tsx";
+  if (options.hostSource !== undefined) packageJson.bb.host = "./host.ts";
+  await writeFile(join(rootDir, "package.json"), JSON.stringify(packageJson));
   await writeFile(
     join(rootDir, "server.ts"),
     `export default function plugin(bb: any) { bb.log.info("loaded"); }`,
@@ -342,7 +370,7 @@ describe("plugin install sources", () => {
   });
 
   it("keeps script-policy npm config out of git/npm children", async () => {
-    const overrides: Record<string, string> = {
+    const overrides = {
       npm_config_allow_scripts: "@github/keytar,node-pty",
       npm_config_ignore_scripts: "false",
       NPM_CONFIG_FOREGROUND_SCRIPTS: "true",
@@ -1212,13 +1240,13 @@ describe("plugin install flows", () => {
         const repoDir = join(workDir, "repo-with-deps");
         await writePluginFixture(repoDir, { name: "bb-plugin-withdeps" });
         const manifestPath = join(repoDir, "package.json");
-        const manifest: unknown = JSON.parse(
-          await readFile(manifestPath, "utf8"),
+        const manifest = packageJsonSchema.parse(
+          JSON.parse(await readFile(manifestPath, "utf8")),
         );
         await writeFile(
           manifestPath,
           JSON.stringify({
-            ...(manifest as Record<string, unknown>),
+            ...manifest,
             dependencies: { "bb-test-greeter": `file:${depDir}` },
           }),
         );
@@ -1668,7 +1696,7 @@ describe("plugin install flows", () => {
               return;
             }
             if (decodeURIComponent(url) === `/${name}`) {
-              const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+              const origin = `http://127.0.0.1:${tcpAddress(server).port}`;
               response.writeHead(200, { "content-type": "application/json" });
               response.end(
                 JSON.stringify({
@@ -1696,7 +1724,7 @@ describe("plugin install flows", () => {
           });
           server.listen(0, "127.0.0.1", () => resolvePromise(server));
         });
-        const port = (registry.address() as AddressInfo).port;
+        const port = tcpAddress(registry).port;
         const previousCache = process.env.npm_config_cache;
         const previousPackageLock = process.env.npm_config_package_lock;
         const previousUserConfig = process.env.NPM_CONFIG_USERCONFIG;

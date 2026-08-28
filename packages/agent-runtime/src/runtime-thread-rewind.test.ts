@@ -6,6 +6,7 @@ import type { ThreadEvent } from "@bb/domain";
 import {
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
+  type CreateScriptedEchoRuntimeArgs,
   fullRuntimeOptions,
   type ScriptedEchoLaunchScript,
 } from "./test/runtime-test-harness.js";
@@ -26,21 +27,25 @@ function createRewindRuntime(args: {
   const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
   temporaryDirectories.push(workspacePath);
   const record = createScriptedEchoRequestRecord();
-  const runtime = createScriptedEchoRuntime({
-    runtime: {
-      workspacePath,
-      env: record.env,
-      onEvent: args.onEvent ?? (() => undefined),
-      ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-    },
-    ...(args.scripted !== undefined
-      ? { launch: { scripted: args.scripted } }
-      : {}),
-  });
+  const runtimeOptions: CreateScriptedEchoRuntimeArgs["runtime"] = {
+    workspacePath,
+    env: record.env,
+    onEvent: args.onEvent ?? (() => undefined),
+    onToolCall: async () => ({
+      contentItems: [{ type: "inputText", text: "ok" }],
+      success: true,
+    }),
+  };
+  const runtimeArgs: CreateScriptedEchoRuntimeArgs = {
+    runtime: runtimeOptions,
+  };
+  if (args.onStderr !== undefined) {
+    runtimeArgs.runtime.onStderr = args.onStderr;
+  }
+  if (args.scripted !== undefined) {
+    runtimeArgs.launch = { scripted: args.scripted };
+  }
+  const runtime = createScriptedEchoRuntime(runtimeArgs);
   return { record, runtime };
 }
 

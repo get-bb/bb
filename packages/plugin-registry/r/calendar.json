@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "calendar",
   "description": "BB ui \"calendar\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "lucide-react",
-    "react-day-picker"
-  ],
-  "registryDependencies": [
-    "@bb/button",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/calendar.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/calendar.tsx"
     }
+  ],
+  "dependencies": [
+    "lucide-react",
+    "react-day-picker"
+  ],
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/utils"
   ]
 }

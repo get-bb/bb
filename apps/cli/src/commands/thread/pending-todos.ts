@@ -1,7 +1,6 @@
 import type {
   ThreadTimelinePendingTodos,
   ThreadTimelinePendingTodoItem,
-  ThreadTimelinePendingTodoItemStatus,
 } from "@bb/domain";
 import type { BbSdk } from "@bb/sdk";
 
@@ -24,17 +23,29 @@ export async function fetchThreadPendingTodos(
   }
 }
 
-const STATUS_BULLET: Record<ThreadTimelinePendingTodoItemStatus, string> = {
+type TodoStatusBulletMap = {
+  in_progress: string;
+  pending: string;
+  completed: string;
+};
+
+const STATUS_BULLET = {
   in_progress: "[>]",
   pending: "[ ]",
   completed: "[x]",
+} satisfies TodoStatusBulletMap;
+
+type TodoStatusRankMap = {
+  in_progress: number;
+  pending: number;
+  completed: number;
 };
 
-const STATUS_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
+const STATUS_RANK = {
   in_progress: 0,
   pending: 1,
   completed: 2,
-};
+} satisfies TodoStatusRankMap;
 
 interface TodoCounts {
   completed: number;

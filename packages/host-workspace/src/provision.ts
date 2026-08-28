@@ -48,7 +48,6 @@ import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js
 type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
 
 export interface DestroyWorkspaceArgs {
-  /** Teardown script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   onProgress?: ProvisionProgressCallback;
 }
@@ -113,6 +112,16 @@ interface ValidatePersonalWorkspaceTargetPathArgs {
 }
 
 const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
+
+function buildGitProcessOptions(
+  shellPath: string | undefined,
+): GitProcessOptions {
+  const options: GitProcessOptions = {};
+  if (shellPath !== undefined) {
+    options.shellPath = shellPath;
+  }
+  return options;
+}
 
 export interface HostWorkspace {
   readonly path: string;
@@ -183,9 +192,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     this.managed = opts.managed;
     this.isGitRepo = opts.isGitRepo;
     this.isWorktree = opts.isWorktree;
-    this.gitProcessOptions = {
-      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-    };
+    this.gitProcessOptions = buildGitProcessOptions(opts.shellPath);
     this.ws = new Workspace(opts.path, this.gitProcessOptions);
     this.destroyFn = opts.destroyFn;
   }
@@ -642,12 +649,12 @@ async function provisionUnmanaged(
         `Unmanaged workspace path does not exist: ${opts.path}`,
       );
     }
-    isGitRepo = await detectGitRepo(opts.path, {
-      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-    });
+    isGitRepo = await detectGitRepo(
+      opts.path,
+      buildGitProcessOptions(opts.shellPath),
+    );
   }
-  const gitProcessOptions =
-    opts.shellPath === undefined ? {} : { shellPath: opts.shellPath };
+  const gitProcessOptions = buildGitProcessOptions(opts.shellPath);
   const isWorktree = isGitRepo
     ? await detectWorktree(opts.path, gitProcessOptions)
     : false;
@@ -684,17 +691,19 @@ async function provisionWorktree(
     isGitRepo: true,
     isWorktree: true,
     shellPath: opts.shellPath,
-    destroyFn: (args) =>
-      removeWorktree({
+    destroyFn: (args) => {
+      const removeArgs: Parameters<typeof removeWorktree>[0] = {
         path: wsPath,
         timeoutMs: args.timeoutMs,
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
-        ...(args.onProgress !== undefined
-          ? { onProgress: args.onProgress }
-          : {}),
-      }),
+      };
+      if (args.onProgress !== undefined) {
+        removeArgs.onProgress = args.onProgress;
+      }
+      return removeWorktree(removeArgs);
+    },
   });
 }
 
@@ -714,20 +723,15 @@ async function provisionPersonalWorkspace(
     throw error;
   }
 
+  const gitProcessOptions = buildGitProcessOptions(opts.shellPath);
   const detectedGitRepo = targetExisted
-    ? await detectGitRepo(targetPath, {
-        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-      })
+    ? await detectGitRepo(targetPath, gitProcessOptions)
     : false;
   const isGitRepo = detectedGitRepo
-    ? await hasContainedPersonalGitMetadata(targetPath, {
-        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-      })
+    ? await hasContainedPersonalGitMetadata(targetPath, gitProcessOptions)
     : false;
   const isWorktree = isGitRepo
-    ? await detectWorktree(targetPath, {
-        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-      })
+    ? await detectWorktree(targetPath, gitProcessOptions)
     : false;
 
   return new ProvisionedHostWorkspace({
@@ -775,17 +779,19 @@ async function reconnectManagedWorktree(
 ): Promise<HostWorkspace> {
   return reconnectManaged(
     opts.path,
-    (args) =>
-      removeWorktree({
+    (args) => {
+      const removeArgs: Parameters<typeof removeWorktree>[0] = {
         path: opts.path,
         timeoutMs: args.timeoutMs,
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
-        ...(args.onProgress !== undefined
-          ? { onProgress: args.onProgress }
-          : {}),
-      }),
+      };
+      if (args.onProgress !== undefined) {
+        removeArgs.onProgress = args.onProgress;
+      }
+      return removeWorktree(removeArgs);
+    },
     opts.shellPath,
     opts.signal,
   );

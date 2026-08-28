@@ -114,7 +114,7 @@ export function TimelineSelectionMenu({
   const portalScopeProps = usePortalScopeProps();
 
   useEffect(() => {
-    if (!open || typeof window === "undefined") return;
+    if (!open) return;
     const dismiss = () => onDismiss();
     window.addEventListener("scroll", dismiss, true);
     window.addEventListener("resize", dismiss);

@@ -43,7 +43,7 @@ const execution = {
 
 type EventInput = Parameters<typeof insertEvents>[2][number];
 
-function setup(): { db: DbConnection; thread: Thread } {
+function setup() {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {

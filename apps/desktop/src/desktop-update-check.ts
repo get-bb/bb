@@ -1,4 +1,5 @@
 import semver from "semver";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   bbDesktopVersionFeedSchema,
   type BbDesktopInfo,
@@ -86,7 +87,7 @@ function createBaseInfo(
   };
 }
 
-function formatErrorMessage(error: unknown): string {
+function formatErrorMessage(error: Error | string): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -105,21 +106,21 @@ function areDesktopInfoValuesEqual(
   );
 }
 
-function parseJsonPayload(payloadText: string): unknown {
-  return JSON.parse(payloadText);
+function parseJsonPayload(payloadText: string): JsonValue {
+  return jsonValueSchema.parse(JSON.parse(payloadText));
 }
 
 export function parseDesktopVersionFeed(
   args: ParseDesktopVersionFeedArgs,
 ): DesktopVersionFeedParseResult {
-  let payload: unknown;
+  let payload: JsonValue;
   try {
     payload = parseJsonPayload(args.payloadText);
   } catch (error) {
     return {
       kind: "malformed",
       reason: `The desktop version feed was not valid JSON: ${formatErrorMessage(
-        error,
+        error instanceof Error ? error : String(error),
       )}`,
     };
   }
@@ -246,7 +247,7 @@ export function createDesktopUpdateService(
         return applyFailure({
           checkedAt,
           message: `Desktop update check network failure; preserving session state, and update prompts stay disabled without a valid prior feed: ${formatErrorMessage(
-            error,
+            error instanceof Error ? error : String(error),
           )}`,
         });
       }

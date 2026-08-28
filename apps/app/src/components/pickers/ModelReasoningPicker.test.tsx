@@ -13,8 +13,10 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
+import * as appCommandProvider from "@/components/commands/AppCommandProvider";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -38,29 +40,27 @@ const commandHandlers = vi.hoisted(
   () => new Map<string, CapturedCommandHandler>(),
 );
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { executionOptions: vi.fn() } },
-}));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandContext: () => undefined,
-  useAppCommandHandler: (command: string, handler: CapturedCommandHandler) => {
-    commandHandlers.set(command, handler);
+vi.spyOn(appCommandProvider, "useAppCommandContext").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(appCommandProvider, "useAppCommandHandler").mockImplementation(
+  (command, handler) => {
+    commandHandlers.set(command, () => handler({ target: null }));
   },
-  useIndexedAppCommandHandlers: (
-    commands: readonly string[],
-    handler: (
-      index: number,
-      invocation: { target: EventTarget | null },
-    ) => boolean,
-  ) => {
+);
+vi.spyOn(appCommandProvider, "useIndexedAppCommandHandlers").mockImplementation(
+  (commands, handler) => {
     commands.forEach((command, index) => {
       commandHandlers.set(command, (invocation) => handler(index, invocation));
     });
   },
-  useAppCommandShortcut: () => null,
-  useIsAppCommandModifierHeld: () => false,
-}));
+);
+vi.spyOn(appCommandProvider, "useAppCommandShortcut").mockReturnValue(null);
+vi.spyOn(appCommandProvider, "useIsAppCommandModifierHeld").mockReturnValue(
+  false,
+);
+
+const executionOptionsSpy = vi.spyOn(sdk.system, "executionOptions");
 
 const providerOptions: readonly ProviderPickerOption[] = [
   { value: "codex", label: "Codex", brandPrefix: "GPT-" },
@@ -240,6 +240,12 @@ function renderPicker({
 
   return { onSelectedProviderChange, onModelChange, onReasoningChange };
 }
+
+beforeEach(() => {
+  executionOptionsSpy.mockImplementation(async () =>
+    executionOptions({ models: [] }),
+  );
+});
 
 afterEach(() => {
   cleanup();
@@ -430,9 +436,10 @@ describe("ModelReasoningPicker", () => {
     });
 
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
-    const nextSearch = screen.getByPlaceholderText(
-      "Search models",
-    ) as HTMLInputElement;
+    const nextSearch =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByPlaceholderText(
+        "Search models",
+      ) as HTMLInputElement;
     expect(nextSearch.value).toBe("");
     fireEvent.keyDown(nextSearch, { key: "Enter" });
     expect(onModelChange).not.toHaveBeenCalled();
@@ -632,9 +639,10 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(trigger);
     act(() => frames.shift()?.(0));
     act(() => frames.shift()?.(16));
-    const search = screen.getByPlaceholderText(
-      "Search models",
-    ) as HTMLInputElement;
+    const search =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByPlaceholderText(
+        "Search models",
+      ) as HTMLInputElement;
     fireEvent.change(search, { target: { value: "o4" } });
     expect(search.value).toBe("o4");
 
@@ -642,13 +650,18 @@ describe("ModelReasoningPicker", () => {
     const drawer = document.querySelector<HTMLElement>(
       "[data-persistent-drawer-content]",
     );
-    fireEvent.transitionEnd(drawer as HTMLElement, {
-      propertyName: "transform",
-    });
+    fireEvent.transitionEnd(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ drawer as HTMLElement,
+      {
+        propertyName: "transform",
+      },
+    );
     fireEvent.click(trigger);
 
     expect(
-      (screen.getByPlaceholderText("Search models") as HTMLInputElement).value,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByPlaceholderText("Search models") as HTMLInputElement
+      ).value,
     ).toBe("");
     expect(screen.getByText("o4-mini")).not.toBeNull();
   });

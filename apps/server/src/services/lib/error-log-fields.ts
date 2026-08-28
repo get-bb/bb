@@ -8,47 +8,46 @@ interface ProductionErrorLogFields {
   errorStatus?: number;
 }
 
-type LoggableError = unknown;
-type RuntimeErrorLogFields = { err: LoggableError } | ProductionErrorLogFields;
+type RuntimeErrorLogFields = { err: unknown } | ProductionErrorLogFields;
 
 export function productionErrorLogFields(
-  error: LoggableError,
+  cause: unknown,
 ): ProductionErrorLogFields {
-  if (error instanceof ApiError) {
+  if (cause instanceof ApiError) {
     return {
-      errorCode: error.body.code,
-      errorMessage: error.body.message,
-      errorName: error.name,
-      errorStatus: error.status,
+      errorCode: cause.body.code,
+      errorMessage: cause.body.message,
+      errorName: cause.name,
+      errorStatus: cause.status,
     };
   }
 
-  if (error instanceof Error) {
+  if (cause instanceof Error) {
     return {
-      errorMessage: error.message,
-      errorName: error.name,
+      errorMessage: cause.message,
+      errorName: cause.name,
     };
   }
 
   return {
-    errorMessage: String(error),
+    errorMessage: String(cause),
     errorName: "NonError",
   };
 }
 
 export function runtimeErrorLogFields(
   config: Pick<ServerRuntimeConfig, "isDevelopment">,
-  error: LoggableError,
+  cause: unknown,
 ): RuntimeErrorLogFields {
   return config.isDevelopment
-    ? { err: error }
-    : productionErrorLogFields(error);
+    ? { err: cause }
+    : productionErrorLogFields(cause);
 }
 
-export function isCommandTimeoutError(error: LoggableError): boolean {
-  return error instanceof ApiError && error.body.code === "command_timeout";
+export function isCommandTimeoutError(cause: unknown): boolean {
+  return cause instanceof ApiError && cause.body.code === "command_timeout";
 }
 
-export function isHostUnavailableError(error: LoggableError): boolean {
-  return error instanceof ApiError && error.body.code === "host_unavailable";
+export function isHostUnavailableError(cause: unknown): boolean {
+  return cause instanceof ApiError && cause.body.code === "host_unavailable";
 }

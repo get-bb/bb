@@ -12,10 +12,14 @@ export type AccountServersState =
   | { status: "ready"; servers: AccountServerWithUrl[]; selfHandle: string }
   | { status: "error"; failure: EnrollmentFailure };
 
-export function useAccountServers(credential: ConnectCredential | null): {
+export interface UseAccountServersResult {
   state: AccountServersState;
   reload: () => void;
-} {
+}
+
+export function useAccountServers(
+  credential: ConnectCredential | null,
+): UseAccountServersResult {
   const [nonce, setNonce] = useState(0);
   const serverUrl = credential?.serverUrl ?? null;
   const handle = credential?.handle ?? null;
@@ -45,11 +49,11 @@ export function useAccountServers(credential: ConnectCredential | null): {
           },
         });
       })
-      .catch((error: unknown) => {
+      .catch((cause: unknown) => {
         if (cancelled) return;
         setSettled({
           key: requestKey,
-          state: { status: "error", failure: describeEnrollmentError(error) },
+          state: { status: "error", failure: describeEnrollmentError(cause) },
         });
       });
     return () => {

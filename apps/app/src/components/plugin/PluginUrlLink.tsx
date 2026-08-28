@@ -23,9 +23,11 @@ function shouldHandleUrlClick(
 }
 
 function isCurrentAppRoute(href: string): boolean {
+  const browserWindow = globalThis.window;
   return (
-    typeof window !== "undefined" &&
-    resolveRouteHref({ currentOrigin: window.location.origin, href }) !== null
+    browserWindow !== undefined &&
+    resolveRouteHref({ currentOrigin: browserWindow.location.origin, href }) !==
+      null
   );
 }
 

@@ -16,12 +16,11 @@ import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurren
 
 const PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS = 70_000;
 
-function canOmitProviderInstallationStatusError(error: unknown): boolean {
+function canOmitProviderInstallationStatusError(error: Error): boolean {
+  if (isHostUnavailableApiError(error)) return false;
   if (error instanceof ZodError) return true;
   return (
-    error instanceof ApiError &&
-    !isHostUnavailableApiError(error) &&
-    (error.status === 502 || error.status === 504)
+    error instanceof ApiError && (error.status === 502 || error.status === 504)
   );
 }
 
@@ -73,6 +72,9 @@ export async function getProviderInstallations(
         });
         return [provider.id, { displayName: provider.displayName, ...status }];
       } catch (error) {
+        if (!(error instanceof Error)) {
+          throw error;
+        }
         if (!canOmitProviderInstallationStatusError(error)) {
           throw error;
         }

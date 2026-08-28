@@ -182,10 +182,14 @@ const BROWSE_ROUTES = [
   ["plugins", TOOLS_PLUGIN_BROWSE_ROUTE_PATH],
 ] as const;
 
-const ROOT_ROUTE_ALIASES: Record<ToolsSectionId, readonly string[]> = {
-  skills: ["/skills"],
-  plugins: [],
-};
+function routeAliases(...aliases: string[]): readonly string[] {
+  return aliases;
+}
+
+const ROOT_ROUTE_ALIASES = {
+  skills: routeAliases("/skills"),
+  plugins: routeAliases(),
+} satisfies Record<ToolsSectionId, readonly string[]>;
 
 export function resolveToolsBreadcrumbs(
   pathname: string,

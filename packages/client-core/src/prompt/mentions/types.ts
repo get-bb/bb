@@ -69,15 +69,16 @@ export interface ProviderCommandSuggestion {
 export function toProviderCommandSuggestion(
   command: ProviderCommand,
 ): ProviderCommandSuggestion {
-  return {
+  const suggestion: ProviderCommandSuggestion = {
     kind: "command",
     name: command.name,
     source: command.source,
     origin: command.origin,
     description: command.description,
     argumentHint: command.argumentHint,
-    ...(command.pluginId !== undefined ? { pluginId: command.pluginId } : {}),
   };
+  if (command.pluginId !== undefined) suggestion.pluginId = command.pluginId;
+  return suggestion;
 }
 
 export type ComposerCommandSuggestion = ProviderCommandSuggestion;

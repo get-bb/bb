@@ -20,9 +20,9 @@ function loadRehypeKatex(): Promise<RehypeKatex> {
         for (const listener of listeners) listener();
         return katexModule.default;
       },
-      (error: unknown) => {
+      (cause: unknown) => {
         rehypeKatexImportPromise = null;
-        throw error;
+        throw cause;
       },
     );
   }

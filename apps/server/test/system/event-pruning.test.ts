@@ -1,5 +1,10 @@
 import { getThread, listEvents } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import {
+  turnScope,
+  type ThreadEventContextWindowUsage,
+  type ThreadEventTokenUsageBreakdown,
+  type JsonObject,
+} from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
@@ -39,9 +44,19 @@ interface CreateContextWindowUsageDataArgs {
   usedTokens: number | null;
 }
 
-function createTokenUsageData(
-  args: CreateTokenUsageDataArgs,
-): Record<string, unknown> {
+interface TokenUsageData extends JsonObject {
+  tokenUsage: {
+    total: ThreadEventTokenUsageBreakdown;
+    last: ThreadEventTokenUsageBreakdown;
+    modelContextWindow: number | null;
+  };
+}
+
+interface ContextWindowUsageData extends JsonObject {
+  contextWindowUsage: ThreadEventContextWindowUsage;
+}
+
+function createTokenUsageData(args: CreateTokenUsageDataArgs): TokenUsageData {
   return {
     tokenUsage: {
       total: {
@@ -65,7 +80,7 @@ function createTokenUsageData(
 
 function createContextWindowUsageData(
   args: CreateContextWindowUsageDataArgs,
-): Record<string, unknown> {
+): ContextWindowUsageData {
   return {
     contextWindowUsage: {
       usedTokens: args.usedTokens,

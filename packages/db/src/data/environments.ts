@@ -272,12 +272,13 @@ export function recordEnvironmentCurrentBranch(
   id: string,
   input: RecordEnvironmentCurrentBranchInput,
 ) {
-  return updateEnvironmentMetadataRecord(db, notifier, id, {
+  const metadata: EnvironmentMetadataUpdateColumns = {
     branchName: input.branchName,
-    ...(input.defaultBranch !== undefined
-      ? { defaultBranch: input.defaultBranch }
-      : {}),
-  });
+  };
+  if (input.defaultBranch !== undefined) {
+    metadata.defaultBranch = input.defaultBranch;
+  }
+  return updateEnvironmentMetadataRecord(db, notifier, id, metadata);
 }
 
 export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {
@@ -291,17 +292,18 @@ export function recordProvisionedEnvironmentWorkspace(
   id: string,
   input: RecordProvisionedEnvironmentWorkspaceInput,
 ) {
-  return updateEnvironmentMetadataRecord(db, notifier, id, {
+  const metadata: EnvironmentMetadataUpdateColumns = {
     path: input.path,
     isGitRepo: input.isGitRepo,
     isWorktree: input.isWorktree,
     branchName: input.branchName,
     defaultBranch: input.defaultBranch,
-    ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
-    ...(input.mergeBaseBranch !== undefined
-      ? { mergeBaseBranch: input.mergeBaseBranch }
-      : {}),
-  });
+  };
+  if (input.baseBranch !== undefined) metadata.baseBranch = input.baseBranch;
+  if (input.mergeBaseBranch !== undefined) {
+    metadata.mergeBaseBranch = input.mergeBaseBranch;
+  }
+  return updateEnvironmentMetadataRecord(db, notifier, id, metadata);
 }
 
 export interface ListStaleDestroyingManagedEnvironmentsArgs {

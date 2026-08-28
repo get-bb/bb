@@ -7,29 +7,22 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useCommandSuggestions } from "./useCommandSuggestions";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    projects: {
-      commands: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useProjectDetailRealtimeSubscription: vi.fn(),
-}));
+let commandsMock: ReturnType<typeof vi.spyOn>;
 
 function mockPointer(coarse: boolean) {
-  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-    matches: coarse && query === POINTER_COARSE_QUERY,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  }));
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string): MediaQueryList => ({
+      matches: coarse && query === POINTER_COARSE_QUERY,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
 }
 
 const BASE_ARGS = {
@@ -42,11 +35,14 @@ const BASE_ARGS = {
 };
 
 beforeEach(() => {
-  vi.mocked(sdk.projects.commands).mockResolvedValue({ commands: [] });
+  commandsMock = vi
+    .spyOn(sdk.projects, "commands")
+    .mockResolvedValue({ commands: [] });
 });
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(window, "matchMedia");
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
@@ -61,13 +57,13 @@ describe("useCommandSuggestions catalog prefetch", () => {
         useCommandSuggestions({ ...BASE_ARGS, ...props }),
       { wrapper, initialProps: { composerFocused: false } },
     );
-    expect(sdk.projects.commands).not.toHaveBeenCalled();
+    expect(commandsMock).not.toHaveBeenCalled();
 
     rerender({ composerFocused: true });
     await waitFor(() => {
-      expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+      expect(commandsMock).toHaveBeenCalledTimes(1);
     });
-    expect(vi.mocked(sdk.projects.commands).mock.calls[0]?.[0]).toEqual({
+    expect(commandsMock.mock.calls[0]?.[0]).toEqual({
       projectId: "project-1",
       provider: "codex",
       environmentId: "env-1",
@@ -86,7 +82,7 @@ describe("useCommandSuggestions catalog prefetch", () => {
       { wrapper },
     );
 
-    expect(sdk.projects.commands).not.toHaveBeenCalled();
+    expect(commandsMock).not.toHaveBeenCalled();
   });
 
   it("still fetches on the first trigger without any focus signal", async () => {
@@ -98,7 +94,7 @@ describe("useCommandSuggestions catalog prefetch", () => {
     });
 
     await waitFor(() => {
-      expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+      expect(commandsMock).toHaveBeenCalledTimes(1);
     });
   });
 });

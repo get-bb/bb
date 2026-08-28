@@ -1,7 +1,5 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   createConnection,
   createProject,
@@ -231,40 +229,51 @@ export function buildAllRouteTimelinePages(
   }
 }
 
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
 export type JsonValue =
   | null
   | boolean
   | number
   | string
   | JsonValue[]
-  | { [key: string]: JsonValue };
+  | JsonObject;
 
-export function normalizeJson(value: unknown): JsonValue {
-  if (value === null || value === undefined) {
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+export function normalizeJson<Value>(value: Value | undefined): JsonValue {
+  if (value == null) {
     return null;
   }
+  return normalizeParsedJson(jsonValueSchema.parse(value));
+}
+
+function normalizeParsedJson(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
-    return value.map((entry) => normalizeJson(entry));
+    return value.map((entry) => normalizeParsedJson(entry));
   }
-  if (typeof value === "object") {
-    const record = z.record(z.string(), z.unknown()).parse(value);
-    const sorted: { [key: string]: JsonValue } = {};
-    for (const key of Object.keys(record).sort()) {
-      const entry = record[key];
+  if (isJsonObject(value)) {
+    const sorted: JsonObject = {};
+    for (const key of Object.keys(value).sort()) {
+      const entry = value[key];
       if (entry !== undefined) {
-        sorted[key] = normalizeJson(entry);
+        sorted[key] = normalizeParsedJson(entry);
       }
     }
     return sorted;
   }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  throw new Error(`Cannot normalize a ${typeof value} for a snapshot`);
+  return value;
 }
 
 export interface JsonDiff {
@@ -277,13 +286,11 @@ function escapePointerSegment(segment: string): string {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
-function isJsonObject(
-  value: JsonValue | undefined,
-): value is { [key: string]: JsonValue } {
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return (
     value !== undefined &&
     value !== null &&
-    typeof value === "object" &&
+    value instanceof Object &&
     !Array.isArray(value)
   );
 }
@@ -325,36 +332,186 @@ export function unifiedJsonDiff(
   label: string,
   maxLines = 200,
 ): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-corpus-diff-"));
-  try {
-    const expectedPath = path.join(dir, "expected.json");
-    const actualPath = path.join(dir, "actual.json");
-    fs.writeFileSync(expectedPath, `${JSON.stringify(expected, null, 2)}\n`);
-    fs.writeFileSync(actualPath, `${JSON.stringify(actual, null, 2)}\n`);
-    const result = spawnSync(
-      "diff",
-      [
-        "-u",
-        "--label",
-        `${label} (snapshot)`,
-        "--label",
-        `${label} (current)`,
-        expectedPath,
-        actualPath,
-      ],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-    );
-    if (result.error) {
-      return `(diff unavailable: ${result.error.message})`;
-    }
-    const lines = result.stdout.split("\n");
-    if (lines.length <= maxLines) {
-      return result.stdout;
-    }
-    return `${lines.slice(0, maxLines).join("\n")}\n… ${lines.length - maxLines} more diff lines`;
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+  const expectedLines = diffLines(JSON.stringify(expected, null, 2));
+  const actualLines = diffLines(JSON.stringify(actual, null, 2));
+  if (expectedLines.join("\n") === actualLines.join("\n")) {
+    return "";
   }
+
+  const operations = buildDiffOperations(expectedLines, actualLines);
+  const hunks = buildDiffHunks(operations);
+  const lines = [
+    `--- ${label} (snapshot)`,
+    `+++ ${label} (current)`,
+    ...hunks.flatMap((hunk) => [
+      `@@ -${hunk.oldStart},${hunk.oldLength} +${hunk.newStart},${hunk.newLength} @@`,
+      ...hunk.operations.map((operation) => {
+        if (operation.kind === "equal") return ` ${operation.line}`;
+        if (operation.kind === "delete") return `-${operation.line}`;
+        return `+${operation.line}`;
+      }),
+    ]),
+  ];
+  if (lines.length + 1 <= maxLines) {
+    return `${lines.join("\n")}\n`;
+  }
+  return `${lines.slice(0, maxLines).join("\n")}\n… ${lines.length + 1 - maxLines} more diff lines`;
+}
+
+type DiffOperation =
+  | { kind: "delete"; line: string }
+  | { kind: "equal"; line: string }
+  | { kind: "insert"; line: string };
+
+interface DiffHunk {
+  newLength: number;
+  newStart: number;
+  oldLength: number;
+  oldStart: number;
+  operations: DiffOperation[];
+}
+
+function diffLines(value: string): string[] {
+  return `${value}\n`.split("\n").slice(0, -1);
+}
+
+function buildDiffOperations(
+  oldLines: readonly string[],
+  newLines: readonly string[],
+): DiffOperation[] {
+  const maxEditDistance = oldLines.length + newLines.length;
+  const trace: Map<number, number>[] = [];
+  let frontier = new Map([[1, 0]]);
+
+  for (
+    let editDistance = 0;
+    editDistance <= maxEditDistance;
+    editDistance += 1
+  ) {
+    trace.push(new Map(frontier));
+    const nextFrontier = new Map<number, number>();
+    for (
+      let diagonal = -editDistance;
+      diagonal <= editDistance;
+      diagonal += 2
+    ) {
+      const down =
+        diagonal === -editDistance ||
+        (diagonal !== editDistance &&
+          (frontier.get(diagonal - 1) ?? 0) <
+            (frontier.get(diagonal + 1) ?? 0));
+      let oldIndex = down
+        ? (frontier.get(diagonal + 1) ?? 0)
+        : (frontier.get(diagonal - 1) ?? 0) + 1;
+      let newIndex = oldIndex - diagonal;
+
+      while (
+        oldIndex < oldLines.length &&
+        newIndex < newLines.length &&
+        oldLines[oldIndex] === newLines[newIndex]
+      ) {
+        oldIndex += 1;
+        newIndex += 1;
+      }
+      nextFrontier.set(diagonal, oldIndex);
+
+      if (oldIndex >= oldLines.length && newIndex >= newLines.length) {
+        return backtrackDiffOperations(
+          trace,
+          oldLines,
+          newLines,
+          editDistance,
+          oldIndex,
+          newIndex,
+        );
+      }
+    }
+    frontier = nextFrontier;
+  }
+
+  throw new Error("Could not build a unified JSON diff");
+}
+
+function backtrackDiffOperations(
+  trace: readonly Map<number, number>[],
+  oldLines: readonly string[],
+  newLines: readonly string[],
+  editDistance: number,
+  oldIndex: number,
+  newIndex: number,
+): DiffOperation[] {
+  const operations: DiffOperation[] = [];
+  for (let distance = editDistance; distance >= 0; distance -= 1) {
+    const diagonal = oldIndex - newIndex;
+    const frontier = trace[distance];
+    const down =
+      diagonal === -distance ||
+      (diagonal !== distance &&
+        (frontier?.get(diagonal - 1) ?? 0) <
+          (frontier?.get(diagonal + 1) ?? 0));
+    const previousDiagonal = down ? diagonal + 1 : diagonal - 1;
+    const previousOldIndex =
+      distance === 0 ? 0 : (frontier?.get(previousDiagonal) ?? 0);
+    const previousNewIndex =
+      distance === 0 ? 0 : previousOldIndex - previousDiagonal;
+
+    while (oldIndex > previousOldIndex && newIndex > previousNewIndex) {
+      operations.push({ kind: "equal", line: oldLines[oldIndex - 1] ?? "" });
+      oldIndex -= 1;
+      newIndex -= 1;
+    }
+
+    if (distance === 0) break;
+    if (oldIndex === previousOldIndex) {
+      operations.push({ kind: "insert", line: newLines[newIndex - 1] ?? "" });
+      newIndex -= 1;
+    } else {
+      operations.push({ kind: "delete", line: oldLines[oldIndex - 1] ?? "" });
+      oldIndex -= 1;
+    }
+  }
+  return operations.reverse();
+}
+
+function buildDiffHunks(operations: readonly DiffOperation[]): DiffHunk[] {
+  const changedIndexes = operations.flatMap((operation, index) =>
+    operation.kind === "equal" ? [] : [index],
+  );
+  const hunks: DiffHunk[] = [];
+  let changedIndex = 0;
+  while (changedIndex < changedIndexes.length) {
+    const firstChange = changedIndexes[changedIndex] ?? 0;
+    let start = Math.max(0, firstChange - 3);
+    let end = Math.min(operations.length, firstChange + 4);
+    changedIndex += 1;
+    while (changedIndex < changedIndexes.length) {
+      const nextChange = changedIndexes[changedIndex] ?? operations.length;
+      if (nextChange > end + 3) break;
+      end = Math.min(operations.length, nextChange + 4);
+      changedIndex += 1;
+    }
+    const oldBefore = operations
+      .slice(0, start)
+      .filter((operation) => operation.kind !== "insert").length;
+    const newBefore = operations
+      .slice(0, start)
+      .filter((operation) => operation.kind !== "delete").length;
+    const hunkOperations = operations.slice(start, end);
+    const oldLength = hunkOperations.filter(
+      (operation) => operation.kind !== "insert",
+    ).length;
+    const newLength = hunkOperations.filter(
+      (operation) => operation.kind !== "delete",
+    ).length;
+    hunks.push({
+      newLength,
+      newStart: newLength === 0 ? newBefore : newBefore + 1,
+      oldLength,
+      oldStart: oldLength === 0 ? oldBefore : oldBefore + 1,
+      operations: hunkOperations,
+    });
+  }
+  return hunks;
 }
 
 const allowlistScopeSchema = z.union([

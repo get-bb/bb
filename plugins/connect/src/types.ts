@@ -4,16 +4,16 @@ export type ConnectStateName =
   | "connected"
   | "reconnecting";
 
-interface ConnectShareStatus {
+type ConnectShareStatus = {
   hostId: string;
   hostName: string;
   port: number;
   createdAt: number;
   url: string;
   unavailableReason?: string;
-}
+};
 
-export interface ConnectStatus {
+export type ConnectStatus = {
   state: ConnectStateName;
   paired: boolean;
   handle: string | null;
@@ -25,7 +25,7 @@ export interface ConnectStatus {
   remoteClients: number;
   lastRemoteActivityAt: number | null;
   shares: ConnectShareStatus[];
-}
+};
 
 export const CONNECT_REALTIME_CHANNEL = "connect";
 

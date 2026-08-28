@@ -24,6 +24,11 @@ export interface RecordedCellReplay {
   stalls: readonly string[];
 }
 
+interface TurnCounts {
+  started: number;
+  completed: number;
+}
+
 function result(
   id: string,
   title: string,
@@ -34,10 +39,7 @@ function result(
     : { id, title, status: "fail", detail };
 }
 
-function countTurns(events: readonly ThreadEvent[]): {
-  started: number;
-  completed: number;
-} {
+function countTurns(events: readonly ThreadEvent[]): TurnCounts {
   let started = 0;
   let completed = 0;
   for (const event of events) {

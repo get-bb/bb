@@ -3,7 +3,10 @@ import { DEFAULTS } from "@bb/config/defaults";
 import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
-import type { SystemConfigResponse } from "@bb/server-contract";
+import {
+  systemConfigResponseSchema,
+  type SystemConfigResponse,
+} from "@bb/server-contract";
 import { apiClient } from "./api-server";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
 import { getBbDesktopInfo } from "./bb-desktop";
@@ -86,7 +89,12 @@ async function loadSystemConfig(): Promise<SystemConfigResponse> {
       return unavailableSystemConfig;
     }
     markSystemConfigLoadSucceeded();
-    return (await res.json()) as SystemConfigResponse;
+    const parsed = systemConfigResponseSchema.safeParse(await res.json());
+    if (!parsed.success) {
+      markSystemConfigLoadFailed();
+      return unavailableSystemConfig;
+    }
+    return parsed.data;
   } catch {
     markSystemConfigLoadFailed();
     return unavailableSystemConfig;
@@ -220,7 +228,7 @@ export const localHostDaemonAccessStateAtom = atom<
   const config = await get(systemConfigAtom);
   return resolveLocalHostDaemonAccess({
     configuredPorts: config.localHelperPorts,
-    hostname: typeof window === "undefined" ? null : window.location.hostname,
+    hostname: globalThis.window?.location.hostname ?? null,
     isDesktop: getBbDesktopInfo() !== null,
     permissions: getBrowserLocalNetworkPermissionQuery(),
     sessionAccessGranted,
@@ -237,7 +245,7 @@ export const requestLocalHostDaemonAccessAtom = atom(
 
     const connection = await fetchLocalHostConnection(
       config.localHelperPorts,
-      typeof window === "undefined" ? null : window.location.origin,
+      globalThis.window?.location.origin ?? null,
     );
     if (connection !== null) {
       set(localHostDaemonSessionAccessGrantedAtom, true);
@@ -254,8 +262,7 @@ const localHostConnectionAtom = atom<Promise<LocalHostDaemonConnection | null>>(
     const ports = await get(localHostDaemonProbePortsAtom);
     if (ports.length === 0) return null;
     return fetchLocalHostConnectionWithRetry({
-      browserOrigin:
-        typeof window === "undefined" ? null : window.location.origin,
+      browserOrigin: globalThis.window?.location.origin ?? null,
       ports,
       retryDelaysMs: LOCAL_HOST_STATUS_RETRY_DELAYS_MS,
     });

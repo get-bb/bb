@@ -352,7 +352,9 @@ function appendMarkedTextContent({
       content.push({ type: "hardBreak" });
     }
     if (part.length > 0) {
-      content.push({ type: "text", text: part, ...(marks ? { marks } : {}) });
+      const textNode: JSONContent = { type: "text", text: part };
+      if (marks) textNode.marks = marks;
+      content.push(textNode);
     }
   }
 }
@@ -396,14 +398,15 @@ function promptEditorInlineMarkdownContentFromValue(
         : null;
     const marks = marksAt(cursor);
     if (mention) {
-      content.push({
+      const mentionNode: JSONContent = {
         type: "mention",
         attrs: {
           resource: mention.resource,
           serializedText: value.text.slice(mention.start, mention.end),
         } satisfies PromptEditorMentionAttrs,
-        ...(marks ? { marks } : {}),
-      });
+      };
+      if (marks) mentionNode.marks = marks;
+      content.push(mentionNode);
       cursor = mention.end;
       mentionIndex += 1;
       continue;
@@ -831,7 +834,7 @@ function mentionAttrsFromNode(
 
 function markdownDelimitersForMarks(
   marks: readonly ProseMirrorNode["marks"][number][],
-): { open: string; close: string } {
+) {
   const names = new Set(marks.map((mark) => mark.type.name));
   if (names.has("code")) {
     return { open: "`", close: "`" };
@@ -873,7 +876,7 @@ function serializePromptEditorNode(
     docFrom: number,
     docTo: number,
     kind: PromptEditorOffsetSegment["kind"],
-  ): { end: number; start: number } => {
+  ) => {
     const { open, close } = markdownDelimitersForMarks(marks);
     const key = `${open}\0${close}`;
     if (activeInlineDelimiters?.key !== key) {
@@ -1005,7 +1008,7 @@ function serializePromptEditorNode(
     depth: number,
   ) => {
     let itemNumber =
-      ordered && typeof listNode.attrs.start === "number"
+      ordered && Number.isFinite(listNode.attrs.start)
         ? listNode.attrs.start
         : 1;
     let itemPosition = listPosition + 1;
@@ -1061,7 +1064,7 @@ function serializePromptEditorNode(
 
     if (node.type.name === "heading") {
       appendBlockBoundary(false);
-      const level = typeof node.attrs.level === "number" ? node.attrs.level : 1;
+      const level = Number.isFinite(node.attrs.level) ? node.attrs.level : 1;
       const clampedLevel = Math.min(Math.max(level, 1), 6);
       text += `${"#".repeat(clampedLevel)} `;
       appendChildren(node, nodePosition);

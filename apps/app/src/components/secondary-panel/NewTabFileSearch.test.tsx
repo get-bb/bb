@@ -1,35 +1,36 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import * as fileSearchSuggestions from "@/hooks/useFileSearchSuggestions";
+import * as recentItems from "./threadRecentItems";
 import { NewTabFileSearch } from "./NewTabFileSearch";
 
-vi.mock("@/hooks/useFileSearchSuggestions", () => ({
-  useFileSearchSuggestions: () => ({
+const useFileSearchSuggestions = vi.spyOn(
+  fileSearchSuggestions,
+  "useFileSearchSuggestions",
+);
+const useThreadRecentItems = vi.spyOn(recentItems, "useThreadRecentItems");
+
+beforeEach(() => {
+  useFileSearchSuggestions.mockReturnValue({
     suggestions: [],
     isLoading: false,
     fileSearchError: false,
     isDebouncing: false,
     isUnavailable: false,
-  }),
-}));
-
-vi.mock("./threadRecentItems", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./threadRecentItems")>();
-  return {
-    ...actual,
-    useThreadRecentItems: () => [],
-  };
+  });
+  useThreadRecentItems.mockReturnValue([]);
 });
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 function mockPointerCoarse(matches: boolean) {
-  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+  vi.stubGlobal("matchMedia", (query: string) => ({
     matches: query === POINTER_COARSE_QUERY && matches,
     media: query,
     onchange: null,

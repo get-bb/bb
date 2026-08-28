@@ -3,23 +3,17 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Thread } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as threadActionsProvider from "./ThreadActionsProvider";
 import { ThreadArchiveQuickAction } from "./ThreadActionsMenu";
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   archiveThreadAndChildren: vi.fn(),
   unarchiveThread: vi.fn(),
-}));
-
-vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    archiveThreadAndChildren: mocks.archiveThreadAndChildren,
-    unarchiveThread: mocks.unarchiveThread,
-  }),
-}));
+};
 
 function createThread(overrides: Partial<Thread> = {}): Thread {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     id: "thr_test",
     archivedAt: null,
     ...overrides,
@@ -30,6 +24,19 @@ afterEach(() => {
   cleanup();
   mocks.archiveThreadAndChildren.mockReset();
   mocks.unarchiveThread.mockReset();
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.spyOn(threadActionsProvider, "useThreadActions").mockReturnValue({
+    archiveThreadAndChildren: mocks.archiveThreadAndChildren,
+    renameThread: vi.fn(),
+    requestDelete: vi.fn(),
+    requestRename: vi.fn(),
+    togglePin: vi.fn(),
+    toggleRead: vi.fn(),
+    unarchiveThread: mocks.unarchiveThread,
+  });
 });
 
 describe("ThreadArchiveQuickAction", () => {

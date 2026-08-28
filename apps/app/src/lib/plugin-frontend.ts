@@ -20,8 +20,10 @@ import * as clsx from "clsx";
 import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
+import { z } from "zod";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type {
+  PluginComposerThreadRowStatus,
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
   PluginSdkApp,
@@ -49,16 +51,27 @@ import {
   clearPluginThreadRowStatusesByOwner,
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
+import {
+  pluginListResponseSchema,
+  type PluginListResponse,
+} from "@bb/server-contract";
 
-interface PluginFrontendBundle {
-  jsUrl: string;
-  cssUrl: string | null;
-  jsBytes: number;
-  hash: string;
-  sdkMajor: number;
-  sdkVersion: string;
-  compatible: boolean;
-}
+const pluginFrontendModuleSchema = z
+  .object({ default: z.unknown().optional() })
+  .passthrough();
+const pluginThreadIdSchema = z.string().trim().min(1);
+
+type PluginFrontendModule = z.infer<typeof pluginFrontendModuleSchema>;
+type PluginFrontendImportResult = PluginFrontendModule | undefined;
+type PluginThreadIdInput = string | number | boolean | null | undefined;
+type PluginThreadStatusInput =
+  | PluginComposerThreadRowStatus
+  | null
+  | { readonly [key: string]: string | undefined };
+
+type PluginFrontendBundle = NonNullable<
+  PluginListResponse["plugins"][number]["app"]["bundle"]
+>;
 
 export interface PluginFrontendCandidate {
   pluginId: string;
@@ -69,7 +82,7 @@ type PluginFrontendRecord =
   | {
       pluginId: string;
       status: "loaded";
-      module: Record<string, unknown>;
+      module: PluginFrontendModule;
     }
   | { pluginId: string; status: "failed"; error: string }
   | {
@@ -114,7 +127,7 @@ export type PluginFrontendDiagnostic =
     };
 
 interface PluginFrontendLoaderDeps {
-  importModule: (url: string) => Promise<unknown>;
+  importModule: (url: string) => Promise<PluginFrontendImportResult>;
   injectCss: (pluginId: string, url: string) => void;
   warn: (message: string) => void;
 }
@@ -150,13 +163,14 @@ async function loadOneBundle(
   try {
     if (bundle.cssUrl !== null) deps.injectCss(pluginId, bundle.cssUrl);
     const mod = await deps.importModule(bundle.jsUrl);
-    if (typeof mod !== "object" || mod === null) {
+    const parsed = pluginFrontendModuleSchema.safeParse(mod);
+    if (!parsed.success) {
       throw new Error("bundle did not evaluate to a module namespace");
     }
     return {
       pluginId,
       status: "loaded",
-      module: mod as Record<string, unknown>,
+      module: parsed.data,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -197,7 +211,8 @@ interface BbPluginRuntime {
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
 
 export function installPluginRuntime(): void {
-  const host = globalThis as RuntimeHost;
+  const host =
+    /* SAFETY: globalThis owns the optional plugin runtime slot. */ globalThis as RuntimeHost;
   if (host.__bbPluginRuntime !== undefined) return;
   host.__bbPluginRuntime = {
     react,
@@ -227,67 +242,28 @@ export function installPluginRuntime(): void {
   };
 }
 
-function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
-  if (typeof value !== "object" || value === null) return false;
-  const bundle = value as Record<string, unknown>;
-  return (
-    typeof bundle.jsUrl === "string" &&
-    (bundle.cssUrl === null || typeof bundle.cssUrl === "string") &&
-    typeof bundle.jsBytes === "number" &&
-    typeof bundle.hash === "string" &&
-    typeof bundle.sdkMajor === "number" &&
-    typeof bundle.sdkVersion === "string" &&
-    typeof bundle.compatible === "boolean"
-  );
-}
-
 async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   const response = await fetch("/api/v1/plugins");
   if (!response.ok) return [];
-  const body = (await response.json()) as { plugins?: unknown };
-  if (!Array.isArray(body.plugins)) return [];
+  const parsed = pluginListResponseSchema.safeParse(await response.json());
+  if (!parsed.success) return [];
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
-  for (const entry of body.plugins) {
-    const typed = entry as {
-      id?: unknown;
-      name?: unknown;
-      icon?: unknown;
-      status?: unknown;
-      logoUrl?: unknown;
-      logoDarkUrl?: unknown;
-      iconUrl?: unknown;
-      icons?: unknown;
-      app?: { bundle?: unknown };
-    } | null;
-    if (typeof typed?.id !== "string") continue;
-    const logoUrl = typeof typed.logoUrl === "string" ? typed.logoUrl : null;
-    const logoDarkUrl =
-      typeof typed.logoDarkUrl === "string" ? typed.logoDarkUrl : null;
-    const compactIconUrl =
-      typeof typed.iconUrl === "string" ? typed.iconUrl : null;
-    const icon = typeof typed.icon === "string" ? typed.icon : null;
-    const displayName = typeof typed.name === "string" ? typed.name : null;
-    const icons = new Map<string, string>();
-    if (typeof typed.icons === "object" && typed.icons !== null) {
-      for (const [name, url] of Object.entries(typed.icons)) {
-        if (typeof url === "string") icons.set(name, url);
-      }
-    }
-    logoUrls.set(typed.id, {
-      displayName,
-      icon,
-      compactIconUrl,
-      logoUrl,
-      logoDarkUrl,
-      icons,
+  for (const entry of parsed.data.plugins) {
+    logoUrls.set(entry.id, {
+      displayName: entry.name,
+      icon: entry.icon,
+      compactIconUrl: entry.iconUrl,
+      logoUrl: entry.logoUrl,
+      logoDarkUrl: entry.logoDarkUrl,
+      icons: new Map(Object.entries(entry.icons)),
     });
-    if (typed.status !== "running") {
+    if (entry.status !== "running") {
       continue;
     }
-    const bundle = typed.app?.bundle;
-    if (!isFrontendBundle(bundle)) continue;
-    candidates.push({ pluginId: typed.id, bundle });
+    const bundle = entry.app.bundle;
+    if (bundle === null) continue;
+    candidates.push({ pluginId: entry.id, bundle });
   }
   setPluginLogoUrls(logoUrls);
   return candidates;
@@ -353,7 +329,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
-  importModule: (url: string) => Promise<unknown>;
+  importModule: (url: string) => Promise<PluginFrontendImportResult>;
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
@@ -396,8 +372,8 @@ class ContentScriptMountError extends Error {
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function publishDiagnostic(
@@ -492,18 +468,12 @@ async function mountWithTimeout(
           generation,
           signal: controller.signal,
           experimental_setThreadRowStatus: (
-            threadId: unknown,
-            status: unknown,
+            threadId: PluginThreadIdInput,
+            status: PluginThreadStatusInput,
           ) => {
             if (controller.signal.aborted) return;
-            if (typeof threadId !== "string") {
-              deps.warn(
-                `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
-              );
-              return;
-            }
-            const normalizedThreadId = threadId.trim();
-            if (normalizedThreadId.length === 0) {
+            const parsedThreadId = pluginThreadIdSchema.safeParse(threadId);
+            if (!parsedThreadId.success) {
               deps.warn(
                 `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
               );
@@ -515,7 +485,7 @@ async function mountWithTimeout(
             );
             if (normalizedStatus === undefined) return;
             setPluginThreadRowStatus(
-              normalizedThreadId,
+              parsedThreadId.data,
               pluginId,
               normalizedStatus,
               statusOwner,
@@ -542,12 +512,6 @@ async function mountWithTimeout(
   });
   try {
     const disposer = await Promise.race([mountPromise, timeoutPromise]);
-    if (disposer !== undefined && typeof disposer !== "function") {
-      throw new ContentScriptMountError(
-        registration.id,
-        "mount must return a cleanup function, a promise of one, or nothing",
-      );
-    }
     return disposer ?? null;
   } catch (error) {
     if (error instanceof ContentScriptMountError) throw error;
@@ -557,7 +521,7 @@ async function mountWithTimeout(
     if (timedOut) {
       void mountPromise
         .then(async (lateDisposer) => {
-          if (typeof lateDisposer === "function") {
+          if (lateDisposer !== undefined) {
             await callDisposer(pluginId, registration.id, lateDisposer, deps);
           }
         })
@@ -846,7 +810,7 @@ export async function disposePluginFrontends(
 export function createPluginFrontendReconcileScheduler(args: {
   run: () => Promise<void>;
   debounceMs?: number;
-}): { schedule: () => void } {
+}) {
   const debounceMs = args.debounceMs ?? 250;
   let inFlight = false;
   let queued = false;
@@ -929,12 +893,18 @@ interface PluginFrontendPageLifecycleDeps {
   teardown: () => void;
 }
 
+interface PluginFrontendPageLifecycleEvent {
+  persisted: boolean;
+}
+
+interface PluginFrontendPageLifecycle {
+  onPageHide: (event: PluginFrontendPageLifecycleEvent) => void;
+  onPageShow: (event: PluginFrontendPageLifecycleEvent) => void;
+}
+
 export function createPluginFrontendPageLifecycle(
   deps: PluginFrontendPageLifecycleDeps,
-): {
-  onPageHide: (event: { persisted: boolean }) => void;
-  onPageShow: (event: { persisted: boolean }) => void;
-} {
+): PluginFrontendPageLifecycle {
   return {
     onPageHide(event) {
       if (event.persisted) return;
@@ -977,9 +947,9 @@ export function bootPluginFrontends(): Promise<void> {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
-  })().catch((error: unknown) => {
+  })().catch((cause: unknown) => {
     console.warn(
-      `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
+      `plugin frontend boot failed: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   });
   return bootPromise;

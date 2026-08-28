@@ -117,13 +117,18 @@ export function streamProviderInstallation(args: {
         command: args.plan.displayCommand,
       });
       try {
-        child = (
-          args.processSpawner ?? createPtyProviderInstallationProcessSpawner()
-        ).spawn({
+        const spawnArgs: Parameters<
+          ProviderInstallationProcessSpawner["spawn"]
+        >[0] = {
           command: args.plan.command,
           args: [...args.plan.args],
-          ...(args.env === undefined ? {} : { env: args.env }),
-        });
+        };
+        if (args.env !== undefined) {
+          spawnArgs.env = args.env;
+        }
+        child = (
+          args.processSpawner ?? createPtyProviderInstallationProcessSpawner()
+        ).spawn(spawnArgs);
       } catch (error) {
         write({
           type: "error",

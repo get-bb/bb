@@ -1,5 +1,6 @@
 import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   checkItemOpensBeforeDelta,
   checkPresentationIconsDeclared,
@@ -36,9 +37,7 @@ describe("handshake", () => {
       futureCapability: { anything: true },
     });
     expect(parsed.sessionRestore).toBe(true);
-    expect((parsed as Record<string, unknown>).futureCapability).toStrictEqual({
-      anything: true,
-    });
+    expect(parsed.futureCapability).toStrictEqual({ anything: true });
   });
 });
 
@@ -450,22 +449,62 @@ describe("conformance turn/settles-without-activity", () => {
     settlesZeroWork: boolean;
   }
 
-  function promptText(input: unknown): string {
-    const first = Array.isArray(input) ? input[0] : undefined;
-    return first !== null &&
-      typeof first === "object" &&
-      "text" in first &&
-      typeof first.text === "string"
-      ? first.text
-      : "";
+  const stubPromptInputSchema = z.array(
+    z.object({
+      type: z.literal("text"),
+      text: z.string(),
+      mentions: z.array(z.string()),
+    }),
+  );
+  const stubRequestSchema = z.object({
+    id: z.number().optional(),
+    method: z.string().optional(),
+    params: z
+      .object({
+        threadId: z.string().optional(),
+        clientRequestId: z.string().optional(),
+        input: stubPromptInputSchema.optional(),
+      })
+      .optional(),
+  });
+  type StubPromptInput = z.infer<typeof stubPromptInputSchema>;
+  type StubRequest = z.infer<typeof stubRequestSchema>;
+  type StubItem = { type: "agentMessage"; text: string };
+  type StubDelta =
+    | { kind: "input.accepted"; clientRequestId: string }
+    | { kind: "turn.boundary"; status: "completed"; claimIfIdle?: boolean }
+    | { kind: "turn.open" }
+    | { kind: "item.open"; key: { providerItemId: string }; item: StubItem }
+    | {
+        kind: "item.close";
+        key: { providerItemId: string };
+        status: "completed";
+        item: StubItem;
+      };
+  interface StubResponseResult {
+    providerThreadId?: string;
+    protocolVersion?: number;
+    capabilities?: Record<string, boolean>;
+  }
+  interface StubOutboxMessage {
+    jsonrpc: "2.0";
+    id?: number;
+    method?: string;
+    params?: { threadId: string; deltas: StubDelta[] };
+    result?: StubResponseResult;
+    error?: { code: number; message: string };
+  }
+
+  function promptText(input: StubPromptInput | undefined): string {
+    return input?.[0]?.text ?? "";
   }
 
   function createStubBridge(options: StubBridgeOptions) {
-    const outbox: unknown[] = [];
+    const outbox: StubOutboxMessage[] = [];
     const providerThreadId = "p_stub_1";
     let turnCounter = 0;
 
-    const emit = (threadId: string, deltas: unknown[]): void => {
+    const emit = (threadId: string, deltas: StubDelta[]): void => {
       outbox.push({
         jsonrpc: "2.0",
         method: THREAD_DELTA_NOTIFICATION_METHOD,
@@ -475,11 +514,11 @@ describe("conformance turn/settles-without-activity", () => {
 
     const runTurn = (
       threadId: string,
-      clientRequestId: unknown,
+      clientRequestId: string,
       zeroWork: boolean,
     ): void => {
       turnCounter += 1;
-      const accepted = { kind: "input.accepted", clientRequestId };
+      const accepted: StubDelta = { kind: "input.accepted", clientRequestId };
       if (zeroWork) {
         if (!options.settlesZeroWork) {
           return;
@@ -491,7 +530,7 @@ describe("conformance turn/settles-without-activity", () => {
         return;
       }
       const key = { providerItemId: `item_${turnCounter}` };
-      const item = { type: "agentMessage", text: "hi" };
+      const item: StubItem = { type: "agentMessage", text: "hi" };
       emit(threadId, [
         accepted,
         { kind: "turn.open" },
@@ -502,51 +541,48 @@ describe("conformance turn/settles-without-activity", () => {
     };
 
     const handleLine = (line: string): void => {
-      let request: {
-        id?: number;
-        method?: string;
-        params?: Record<string, unknown>;
-      };
       try {
-        request = JSON.parse(line) as typeof request;
+        const parsed = stubRequestSchema.safeParse(JSON.parse(line));
+        if (!parsed.success) return;
+        const request: StubRequest = parsed.data;
+        const { id, method, params } = request;
+        if (id === undefined || method === undefined) return;
+        const respond = (result: StubResponseResult): void => {
+          outbox.push({ jsonrpc: "2.0", id, result });
+        };
+        switch (method) {
+          case "initialize":
+            respond({
+              protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+              capabilities: {},
+            });
+            return;
+          case "thread/start":
+          case "thread/resume":
+            respond({ providerThreadId });
+            return;
+          case "turn/start": {
+            const threadId = params?.threadId ?? "";
+            runTurn(
+              threadId,
+              params?.clientRequestId ?? "",
+              promptText(params?.input) === "/clear",
+            );
+            respond({});
+            return;
+          }
+          case "thread/stop":
+            respond({});
+            return;
+          default:
+            outbox.push({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32601, message: `unknown method ${method}` },
+            });
+        }
       } catch {
         return;
-      }
-      const { id, method, params } = request;
-      if (id === undefined || method === undefined) return;
-      const respond = (result: unknown): void => {
-        outbox.push({ jsonrpc: "2.0", id, result });
-      };
-      switch (method) {
-        case "initialize":
-          respond({
-            protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-            capabilities: {},
-          });
-          return;
-        case "thread/start":
-        case "thread/resume":
-          respond({ providerThreadId });
-          return;
-        case "turn/start": {
-          const threadId = String(params?.threadId ?? "");
-          runTurn(
-            threadId,
-            params?.clientRequestId,
-            promptText(params?.input) === "/clear",
-          );
-          respond({});
-          return;
-        }
-        case "thread/stop":
-          respond({});
-          return;
-        default:
-          outbox.push({
-            jsonrpc: "2.0",
-            id,
-            error: { code: -32601, message: `unknown method ${method}` },
-          });
       }
     };
 

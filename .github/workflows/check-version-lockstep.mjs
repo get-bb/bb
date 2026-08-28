@@ -10,10 +10,11 @@ function readPackageVersion(packagePath) {
   );
 
   if (
-    typeof packageJson !== "object" ||
     packageJson === null ||
     Array.isArray(packageJson) ||
-    typeof packageJson.version !== "string"
+    Object.prototype.toString.call(packageJson) !== "[object Object]" ||
+    !Object.hasOwn(packageJson, "version") ||
+    Object.prototype.toString.call(packageJson.version) !== "[object String]"
   ) {
     throw new Error(`Missing string version field in ${packagePath}.`);
   }

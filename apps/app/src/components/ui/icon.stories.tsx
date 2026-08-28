@@ -12,7 +12,7 @@ export default {
   title: "ui/Icon",
 };
 
-const USAGE: Partial<Record<IconName, string>> = {
+const USAGE = {
   AlertCircle: "Dialog warning state",
   AlertTriangle: "“Project folder not found” indicator on sidebar project rows",
   AlignLeft: "Left-aligned menu",
@@ -104,9 +104,13 @@ const USAGE: Partial<Record<IconName, string>> = {
   Zap: "Fast-mode indicator in model picker trigger, Fast-mode toggle row",
   ZoomIn: "Mermaid diagram dialog zoom in",
   ZoomOut: "Mermaid diagram dialog zoom out",
-};
+} satisfies Partial<Record<IconName, string>>;
 
 const NAMES: readonly IconName[] = [...ICON_NAMES].sort();
+
+function hasUsage(name: IconName): name is keyof typeof USAGE {
+  return name in USAGE;
+}
 
 function ExpandCollapseControl({
   icon,
@@ -167,7 +171,11 @@ export function Overview() {
   return (
     <StoryCard labelWidth="280px">
       {NAMES.map((name) => (
-        <StoryRow key={name} label={name} hint={USAGE[name] ?? null}>
+        <StoryRow
+          key={name}
+          label={name}
+          hint={hasUsage(name) ? USAGE[name] : null}
+        >
           <Icon name={name} className="size-5" />
         </StoryRow>
       ))}

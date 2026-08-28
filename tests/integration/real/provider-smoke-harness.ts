@@ -127,10 +127,7 @@ const resolvedExecutionOptionsPromises = new Map<
   Promise<RealProviderExecutionOptions>
 >();
 
-const FAST_EXECUTION_BY_PROVIDER: Record<
-  RealProviderId,
-  RealProviderExecutionTemplate
-> = {
+const FAST_EXECUTION_BY_PROVIDER = {
   codex: {
     reasoningLevel: "low",
     serviceTier: "fast",
@@ -141,7 +138,7 @@ const FAST_EXECUTION_BY_PROVIDER: Record<
   pi: {
     reasoningLevel: "low",
   },
-};
+} satisfies Record<RealProviderId, RealProviderExecutionTemplate>;
 
 export function countTurnEvents(
   events: ThreadEventRow[],
@@ -440,7 +437,7 @@ async function assertProviderPrerequisitesUncached(
 
 const execFile = promisify(execFileCb);
 
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+function isErrnoException(error: Error): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
@@ -448,7 +445,9 @@ async function assertCliInstalled(command: string): Promise<void> {
   try {
     await execFile(command, ["--help"]);
   } catch (error) {
-    if (isErrnoException(error) && error.code === "ENOENT") {
+    const caughtError =
+      error instanceof Error ? error : new Error(String(error));
+    if (isErrnoException(caughtError) && caughtError.code === "ENOENT") {
       throw new Error(`${command} CLI is not installed or not on PATH`);
     }
   }

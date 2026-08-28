@@ -44,29 +44,17 @@ function labelWithSuffix(base: string, ordinal: number): string {
   return `${stem}${suffix}`;
 }
 
-function affectedRows(result: unknown): number {
-  if (typeof result === "object" && result !== null) {
-    if ("changes" in result && typeof result.changes === "number") {
-      return result.changes;
-    }
-    if (
-      "meta" in result &&
-      typeof result.meta === "object" &&
-      result.meta !== null &&
-      "changes" in result.meta &&
-      typeof result.meta.changes === "number"
-    ) {
-      return result.meta.changes;
-    }
-  }
-  throw new Error("machine label update did not report affected rows");
+type MachineUpdateResult = { changes: number } | { meta: { changes: number } };
+
+function affectedRows(result: MachineUpdateResult): number {
+  return "changes" in result ? result.changes : result.meta.changes;
 }
 
 interface MachineLabelAssignmentHooks {
   beforeAttach?: (candidate: string) => Promise<void>;
 }
 
-function isLabelCollision(error: unknown): boolean {
+function isLabelCollision(error: Error): boolean {
   return error instanceof Error && /unique constraint/iu.test(error.message);
 }
 
@@ -106,10 +94,29 @@ export async function assignMachineLabel(
         )
         .run();
     } catch (error) {
-      if (isLabelCollision(error)) continue;
+      if (error instanceof Error && isLabelCollision(error)) continue;
       throw error;
     }
-    if (affectedRows(updateResult) === 1) return candidate;
+    const updateResultObject = Object(updateResult);
+    const directChanges =
+      "changes" in updateResultObject ? updateResultObject.changes : undefined;
+    const meta =
+      "meta" in updateResultObject && updateResultObject.meta instanceof Object
+        ? updateResultObject.meta
+        : null;
+    const metaChanges =
+      meta !== null && "changes" in meta ? meta.changes : undefined;
+    const parsedUpdateResult: MachineUpdateResult | null = Number.isInteger(
+      directChanges,
+    )
+      ? { changes: Number(directChanges) }
+      : Number.isInteger(metaChanges)
+        ? { meta: { changes: Number(metaChanges) } }
+        : null;
+    if (parsedUpdateResult === null) {
+      throw new Error("machine label update did not report affected rows");
+    }
+    if (affectedRows(parsedUpdateResult) === 1) return candidate;
 
     const current = await db
       .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
@@ -153,10 +160,10 @@ export async function handleAssignMachineLabel(
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const body: unknown = await request.json().catch(() => null);
   if (
-    typeof body !== "object" ||
-    body === null ||
+    !(body instanceof Object) ||
+    Array.isArray(body) ||
     !("desiredName" in body) ||
-    typeof body.desiredName !== "string"
+    String(body.desiredName) !== body.desiredName
   ) {
     return jsonError("invalid_request", 400);
   }

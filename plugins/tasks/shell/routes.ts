@@ -73,10 +73,12 @@ export function useTasksNavigation(): TasksNavigation {
   return useMemo(
     () => ({
       go: (route, options) => {
-        navigate.toPluginPanel(PANEL_PATH, {
-          subPath: tasksRouteToSubPath(route),
-          ...(options?.replace ? { replace: true } : {}),
-        });
+        const subPath = tasksRouteToSubPath(route);
+        if (options?.replace) {
+          navigate.toPluginPanel(PANEL_PATH, { replace: true, subPath });
+          return;
+        }
+        navigate.toPluginPanel(PANEL_PATH, { subPath });
       },
     }),
     [navigate],

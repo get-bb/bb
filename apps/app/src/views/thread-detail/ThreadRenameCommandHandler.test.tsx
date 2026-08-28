@@ -2,17 +2,18 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { Thread } from "@bb/domain";
-import { defaultAppSettings } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import * as threadActionsProvider from "@/components/thread/ThreadActionsProvider";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
-const mocks = vi.hoisted(() => ({
-  requestRename: vi.fn(),
-}));
+const requestRename = vi.fn();
 
-const testState = vi.hoisted(() => ({
+const testState = {
   keybindings: [
     {
       command: "thread.rename" as const,
@@ -28,24 +29,17 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
     },
   ],
-}));
+};
 
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  useThreadActions: () => ({ requestRename: mocks.requestRename }),
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: defaultAppSettings,
-      keybindings: testState.keybindings,
-    },
-  }),
-}));
-
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
+vi.spyOn(threadActionsProvider, "useThreadActions").mockReturnValue({
+  archiveThreadAndChildren: vi.fn(),
+  renameThread: vi.fn(),
+  requestDelete: vi.fn(),
+  requestRename,
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+  unarchiveThread: vi.fn(),
+});
 
 function makeThread(id: string, title: string): Thread {
   return {
@@ -129,26 +123,38 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+function renderHandlers(focusedThreadId: string | null) {
+  const { queryClient, wrapper } = createQueryClientTestHarness();
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      keybindings: testState.keybindings,
+      defaultKeybindings: testState.keybindings,
+    }),
+  );
+  return render(<SplitRenameHandlers focusedThreadId={focusedThreadId} />, {
+    wrapper,
+  });
+}
+
 describe("ThreadRenameCommandHandler", () => {
   it("routes rename to the focused pane's thread as focus changes", () => {
-    const view = render(
-      <SplitRenameHandlers focusedThreadId={firstThread.id} />,
-    );
+    const view = renderHandlers(firstThread.id);
 
     pressRenameShortcut();
-    expect(mocks.requestRename.mock.calls).toEqual([[firstThread]]);
+    expect(requestRename.mock.calls).toEqual([[firstThread]]);
 
-    mocks.requestRename.mockClear();
+    requestRename.mockClear();
     view.rerender(<SplitRenameHandlers focusedThreadId={secondThread.id} />);
     pressRenameShortcut();
-    expect(mocks.requestRename.mock.calls).toEqual([[secondThread]]);
+    expect(requestRename.mock.calls).toEqual([[secondThread]]);
   });
 
   it("does not request rename when no pane is focused", () => {
-    render(<SplitRenameHandlers focusedThreadId={null} />);
+    renderHandlers(null);
 
     pressRenameShortcut();
 
-    expect(mocks.requestRename).not.toHaveBeenCalled();
+    expect(requestRename).not.toHaveBeenCalled();
   });
 });

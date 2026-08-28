@@ -88,6 +88,29 @@ type SubscribeStatus = "idle" | "submitting" | "success" | "error";
 
 export const SUBSCRIBE_EMAIL_ID = "subscribe-email";
 
+interface SubscribeErrorResponse {
+  error?: string;
+}
+
+function isObjectValue<Value>(
+  value: Value,
+): value is Value & { error?: Value } {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function isStringValue<Value>(value: Value): value is Value & string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function parseSubscribeErrorResponse<Value>(
+  value: Value,
+): SubscribeErrorResponse | null {
+  if (!isObjectValue(value)) return null;
+  const error = value.error;
+  if (error === undefined) return {};
+  return isStringValue(error) ? { error } : null;
+}
+
 export function focusSubscribeEmail() {
   document.getElementById(SUBSCRIBE_EMAIL_ID)?.focus();
 }
@@ -118,10 +141,14 @@ export function EmailSignup({ placement }: { placement: CtaPlacement }) {
         method: "POST",
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        setError(body.error ?? "Something went wrong. Try again.");
+        const parsedBody = parseSubscribeErrorResponse(
+          await response.json().catch(() => null),
+        );
+        setError(
+          parsedBody?.error !== undefined
+            ? parsedBody.error
+            : "Something went wrong. Try again.",
+        );
         setStatus("error");
         return;
       }

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   captureTrustedRemoteAddress,
   getTrustedRemoteAddress,
@@ -55,14 +56,16 @@ describe("request context", () => {
       context.json({ surface: resolveRequestAppSurface(context) }),
     );
 
-    const surfaceFor = async (header: string | undefined): Promise<unknown> => {
+    const surfaceFor = async (header: string | undefined): Promise<string> => {
       const response = await app.request(
         "/",
         header === undefined
           ? undefined
           : { headers: { "x-bb-app-surface": header } },
       );
-      const body = (await response.json()) as { surface: string };
+      const body = z
+        .object({ surface: z.string() })
+        .parse(await response.json());
       return body.surface;
     };
 

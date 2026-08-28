@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import {
   mkdir,
   mkdtemp,
@@ -9,11 +8,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+import { delimiter, join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { installServerRegistrySkill } from "../../src/services/skills/registry-skill-install.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
@@ -22,33 +18,45 @@ import {
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
 } from "../../src/services/skills/registry-skill-provenance.js";
 
-afterEach(() => {
-  spawnMock.mockReset();
+const originalPath = process.env.PATH;
+const fakeBinPaths: string[] = [];
+
+afterEach(async () => {
+  if (originalPath === undefined) {
+    delete process.env.PATH;
+  } else {
+    process.env.PATH = originalPath;
+  }
+  await Promise.all(
+    fakeBinPaths
+      .splice(0)
+      .map((fakeBinPath) => rm(fakeBinPath, { recursive: true, force: true })),
+  );
 });
 
-function stubDownloadedSkill(skillId: string, body?: string): void {
-  spawnMock.mockImplementation(
-    (_command: string, _args: string[], options: { cwd: string }) => {
-      const child = new EventEmitter() as EventEmitter & {
-        kill: ReturnType<typeof vi.fn>;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      child.kill = vi.fn();
-      child.stderr = new EventEmitter();
-      child.stdout = new EventEmitter();
-      void (async () => {
-        const skillDirectory = join(options.cwd, ".agents", "skills", skillId);
-        await mkdir(skillDirectory, { recursive: true });
-        await writeFile(
-          join(skillDirectory, "SKILL.md"),
-          body ?? `---\nname: ${skillId}\ndescription: Test skill.\n---\n`,
-        );
-        child.emit("close", 0);
-      })();
-      return child;
-    },
+async function stubDownloadedSkill(
+  skillId: string,
+  body?: string,
+): Promise<string> {
+  const fakeBinPath = await mkdtemp(join(tmpdir(), "bb-registry-install-bin-"));
+  fakeBinPaths.push(fakeBinPath);
+  const executableName = process.platform === "win32" ? "npx.cmd" : "npx";
+  const skillBody =
+    body ?? `---\nname: ${skillId}\ndescription: Test skill.\n---\n`;
+  await writeFile(
+    join(fakeBinPath, executableName),
+    `#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const skillDirectory = join(process.cwd(), ".agents", "skills", ${JSON.stringify(skillId)});
+await mkdir(skillDirectory, { recursive: true });
+await writeFile(join(skillDirectory, "SKILL.md"), ${JSON.stringify(skillBody)});
+await writeFile(${JSON.stringify(join(fakeBinPath, "invoked"))}, "yes");
+`,
+    { mode: 0o755 },
   );
+  process.env.PATH = `${fakeBinPath}${delimiter}${process.env.PATH ?? ""}`;
+  return fakeBinPath;
 }
 
 async function writeUntaggedSkill(args: {
@@ -69,7 +77,7 @@ describe("installServerRegistrySkill", () => {
   it("atomically persists the exact registry entry provenance", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-registry-install-test-"));
     try {
-      stubDownloadedSkill("find-skills");
+      await stubDownloadedSkill("find-skills");
 
       const result = await installServerRegistrySkill({
         dataDir,
@@ -102,7 +110,7 @@ describe("installServerRegistrySkill", () => {
         dataDir,
         skillId: "find-skills",
       });
-      stubDownloadedSkill("find-skills");
+      await stubDownloadedSkill("find-skills");
 
       const result = await installServerRegistrySkill({
         dataDir,
@@ -131,7 +139,7 @@ describe("installServerRegistrySkill", () => {
         skillId: "find-skills",
         body: `---\nname: find-skills\ndescription: Manual skill.\n---\nKeep my local instructions.\n`,
       });
-      stubDownloadedSkill("find-skills");
+      await stubDownloadedSkill("find-skills");
 
       await expect(
         installServerRegistrySkill({
@@ -163,8 +171,7 @@ describe("installServerRegistrySkill", () => {
       const outsidePath = join(dataDir, "outside.txt");
       await writeFile(outsidePath, "outside\n");
       await symlink(outsidePath, join(skillDirectory, "outside-link"));
-      stubDownloadedSkill("find-skills");
-
+      await stubDownloadedSkill("find-skills");
       await expect(
         installServerRegistrySkill({
           dataDir,
@@ -187,6 +194,7 @@ describe("installServerRegistrySkill", () => {
       join(tmpdir(), "bb-registry-traversal-test-"),
     );
     try {
+      const fakeBinPath = await stubDownloadedSkill("find-skills");
       await expect(
         installServerRegistrySkill({
           dataDir,
@@ -198,7 +206,7 @@ describe("installServerRegistrySkill", () => {
         status: 400,
         body: { code: "invalid_registry_skill" },
       });
-      expect(spawnMock).not.toHaveBeenCalled();
+      await expect(stat(join(fakeBinPath, "invoked"))).rejects.toThrow();
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }
@@ -209,7 +217,7 @@ describe("installServerRegistrySkill", () => {
       join(tmpdir(), "bb-registry-malformed-test-"),
     );
     try {
-      stubDownloadedSkill(
+      await stubDownloadedSkill(
         "find-skills",
         `---\nname: a-different-skill\ndescription: Test skill.\n---\n`,
       );

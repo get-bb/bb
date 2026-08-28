@@ -88,12 +88,16 @@ export function registerInternalSessionRoutes(
         context,
         payload.connectMachineId,
       );
-      upsertHost(deps.db, deps.hub, {
-        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
+      const hostInput = {
         id: daemon.hostId,
         name: payload.hostName,
         type: daemon.hostType,
-      });
+      };
+      if (connectMachineId === undefined) {
+        upsertHost(deps.db, deps.hub, hostInput);
+      } else {
+        upsertHost(deps.db, deps.hub, { ...hostInput, connectMachineId });
+      }
       updateHost(deps.db, deps.hub, daemon.hostId, {
         lastRejectedProtocolVersion: null,
       });

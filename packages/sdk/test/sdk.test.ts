@@ -67,7 +67,8 @@ function makeTerminalSession(overrides: Record<string, JsonValue> = {}) {
 }
 
 function bodyText(init: RequestInit | undefined): string | undefined {
-  return typeof init?.body === "string" ? init.body : undefined;
+  const result = z.string().safeParse(init?.body);
+  return result.success ? result.data : undefined;
 }
 
 function jsonResponse(args: QueuedJsonResponse): Response {
@@ -137,7 +138,7 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    expect(typeof sdk.subscribe).toBe("function");
+    expect(sdk.subscribe).toBeInstanceOf(Function);
     expect("on" in sdk).toBe(false);
   });
 

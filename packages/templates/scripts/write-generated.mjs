@@ -1,14 +1,13 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-/**
- * Write a generated file only when its content changed, so file watchers and
- * mtimes stay quiet on no-op regeneration. The write is atomic (temp file +
- * rename) so a concurrent reader never sees a half-written module.
- */
+function isFileNotFoundError(cause) {
+  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
+}
+
 export async function writeGeneratedFile(filePath, content) {
   const current = await readFile(filePath, "utf8").catch((error) => {
-    if (error && typeof error === "object" && error.code === "ENOENT") {
+    if (isFileNotFoundError(error)) {
       return null;
     }
     throw error;
@@ -24,7 +23,7 @@ export async function writeGeneratedFile(filePath, content) {
     await rename(temporaryPath, filePath);
   } catch (error) {
     await unlink(temporaryPath).catch((unlinkError) => {
-      if (unlinkError && unlinkError.code === "ENOENT") return;
+      if (isFileNotFoundError(unlinkError)) return;
       throw unlinkError;
     });
     throw error;

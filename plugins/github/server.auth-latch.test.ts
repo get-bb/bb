@@ -107,6 +107,7 @@ describe("github plugin gh auth probe (#1758)", () => {
   it("re-probes gh after a transient auth-status failure instead of latching", async () => {
     writeFileSync(offlineFlag, "");
     const { harness } = await loadWithSyncServiceOnce();
+    // SAFETY: The status RPC contract returns the fields asserted in this test.
     const before = (await harness.callRpc("status")) as {
       ghOk: boolean;
       ghState: string;
@@ -117,6 +118,7 @@ describe("github plugin gh auth probe (#1758)", () => {
 
     rmSync(offlineFlag);
 
+    // SAFETY: The status RPC contract returns the fields asserted in this test.
     const after = (await harness.callRpc("status")) as {
       ghOk: boolean;
       ghState: string;
@@ -138,6 +140,7 @@ describe("github plugin gh auth probe (#1758)", () => {
     const { harness } = await loadWithSyncServiceOnce();
     expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
     expect(harness.needsConfigurationMessages[0]).toContain("gh auth login");
+    // SAFETY: The status RPC contract returns the field asserted in this test.
     const status = (await harness.callRpc("status")) as { ghState: string };
     expect(status.ghState).toBe("needs_configuration");
   });
@@ -145,6 +148,7 @@ describe("github plugin gh auth probe (#1758)", () => {
   it("control: with gh working from the start the plugin never reports needs-configuration", async () => {
     const { harness } = await loadWithSyncServiceOnce();
     expect(harness.needsConfigurationMessages).toEqual([]);
+    // SAFETY: The status RPC contract returns the field asserted in this test.
     const status = (await harness.callRpc("status")) as { ghOk: boolean };
     expect(status.ghOk).toBe(true);
   });
@@ -153,6 +157,7 @@ describe("github plugin gh auth probe (#1758)", () => {
     writeFileSync(badSecondaryFlag, "");
     const { harness } = await loadWithSyncServiceOnce();
     expect(harness.needsConfigurationMessages).toEqual([]);
+    // SAFETY: The status RPC contract returns the field asserted in this test.
     const status = (await harness.callRpc("status")) as { ghState: string };
     expect(status.ghState).toBe("ready");
     const statusCalls = ghCalls().filter((call) =>
@@ -177,6 +182,7 @@ describe("github plugin gh auth probe (#1758)", () => {
     rmSync(offlineFlag);
     writeFileSync(slowStatusFlag, "");
     const callsBefore = ghCalls().length;
+    // SAFETY: Both status RPC results use the ghState field asserted in this test.
     const [a, b] = (await Promise.all([
       harness.callRpc("status"),
       harness.callRpc("status"),
@@ -208,6 +214,7 @@ describe("github plugin gh auth probe (#1758)", () => {
     );
 
     rmSync(apiDownFlag);
+    // SAFETY: The refresh RPC contract returns the repos field asserted in this test.
     const result = (await harness.callRpc("refresh")) as { repos: number };
     expect(result.repos).toBe(2);
     expect(await bb.storage.kv.get("sync-cursor")).toBeDefined();

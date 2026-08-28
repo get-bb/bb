@@ -4,10 +4,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 type PluginBannerTone = "destructive" | "warning";
 
-const TONE_ICON: Record<PluginBannerTone, string> = {
+const TONE_ICON = {
   destructive: "text-destructive",
   warning: "text-warning",
-};
+} satisfies Record<PluginBannerTone, string>;
 
 export function PluginBannerBar({
   tone,

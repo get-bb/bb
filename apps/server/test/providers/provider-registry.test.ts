@@ -34,14 +34,16 @@ function registerProvider(
   pluginId: string,
   installRank?: { bundledIndex: number | null; installedAt: number },
 ): { dispose(): void } {
-  return registry.register({
+  const registration = {
     ...minimalProviderRegistration({
       pluginId,
       info: { ...CURSOR_LIKE_INFO, id },
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
     }),
-    ...(installRank === undefined ? {} : { installRank }),
-  });
+  };
+  return registry.register(
+    installRank === undefined ? registration : { ...registration, installRank },
+  );
 }
 
 describe("provider registry policy accessors", () => {
@@ -188,9 +190,10 @@ describe("provider registry ordering", () => {
   });
 
   it("lets the user's providerOrder lead and reads a default only when registered", () => {
+    const defaultProviderId: string | null = "ghost";
     const preferences = {
       providerOrder: ["acp-cursor", "ghost", "pi"],
-      defaultProviderId: "ghost" as string | null,
+      defaultProviderId,
     };
     const registry = createProviderRegistryService({
       readUserProviderPreferences: () => preferences,

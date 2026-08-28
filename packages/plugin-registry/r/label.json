@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "label",
   "description": "BB ui \"label\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-label"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/label.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/label.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-label"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

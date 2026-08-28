@@ -33,6 +33,33 @@ export interface PluginBuildToolchain {
   tailwindCssDir: string;
 }
 
+type JsonValue =
+  | boolean
+  | number
+  | string
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue | undefined };
+type JsonObject = { [key: string]: JsonValue | undefined };
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function parseJsonObject(raw: string): JsonObject | null {
+  const parsed: JsonValue = JSON.parse(raw);
+  return isJsonObject(parsed) ? parsed : null;
+}
+
+function stringProperty(object: JsonObject, key: string): string | undefined {
+  const value = object[key];
+  return value !== null &&
+    value !== undefined &&
+    Object.getPrototypeOf(value) === String.prototype
+    ? String(value)
+    : undefined;
+}
+
 function pinKey(): string {
   return Object.entries(PLUGIN_TOOLCHAIN_PINS)
     .map(([name, version]) => `${name}@${version}`)
@@ -56,12 +83,8 @@ function packageDir(require: NodeRequire, name: string): string | null {
     const manifest = join(dir, "package.json");
     if (existsSync(manifest)) {
       try {
-        const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
-        if (
-          typeof parsed === "object" &&
-          parsed !== null &&
-          (parsed as { name?: unknown }).name === name
-        ) {
+        const parsed = parseJsonObject(readFileSync(manifest, "utf8"));
+        if (parsed !== null && stringProperty(parsed, "name") === name) {
           return dir;
         }
       } catch {
@@ -79,14 +102,10 @@ function readVersion(require: NodeRequire, name: string): string | null {
   const dir = packageDir(require, name);
   if (dir === null) return null;
   try {
-    const parsed: unknown = JSON.parse(
+    const parsed = parseJsonObject(
       readFileSync(join(dir, "package.json"), "utf8"),
     );
-    const version =
-      typeof parsed === "object" && parsed !== null
-        ? (parsed as { version?: unknown }).version
-        : undefined;
-    return typeof version === "string" ? version : null;
+    return parsed === null ? null : (stringProperty(parsed, "version") ?? null);
   } catch {
     return null;
   }
@@ -117,12 +136,8 @@ function resolveLocalToolchain(): PluginBuildToolchain | null {
 async function isInstalled(dir: string): Promise<boolean> {
   try {
     const raw = await readFile(join(dir, ".bb-toolchain.json"), "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as { pins?: unknown }).pins !== pinKey()
-    ) {
+    const parsed = parseJsonObject(raw);
+    if (parsed === null || stringProperty(parsed, "pins") !== pinKey()) {
       return false;
     }
   } catch {

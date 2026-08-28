@@ -3,19 +3,17 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSettingsNavState } from "./settings-nav";
+import * as hostDaemon from "@/hooks/useHostDaemon";
 
-const mocks = vi.hoisted(() => ({
-  accessState: "unavailable",
-}));
-
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({ hasDaemon: false }),
-  useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
-}));
+const realUseLocalHostDaemonAccess = hostDaemon.useLocalHostDaemonAccess;
+type SettingsNavTestState = {
+  accessState: ReturnType<typeof realUseLocalHostDaemonAccess>["accessState"];
+};
+const mocks: SettingsNavTestState = { accessState: "unavailable" };
 
 function wrapperFor(path: string) {
   const { wrapper: QueryWrapper } = createQueryClientTestHarness();
@@ -32,6 +30,14 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   mocks.accessState = "unavailable";
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.spyOn(hostDaemon, "useLocalHostDaemonAccess").mockImplementation(() => ({
+    ...realUseLocalHostDaemonAccess(),
+    accessState: mocks.accessState,
+  }));
 });
 
 describe("useSettingsNavState", () => {

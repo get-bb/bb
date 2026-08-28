@@ -46,8 +46,6 @@ function writeNotFound(response) {
 function createDesktopVersionFeed(platform, version) {
   return {
     schemaVersion: 1,
-    // The app rejects a feed whose channel is not its own, so a nightly
-    // packaged build must be smoked against a nightly feed.
     channel: releaseChannel,
     platform,
     version,
@@ -78,12 +76,22 @@ function renderSmokePage(expectedDesktopPlatform, expectedDesktopVersion) {
   let ok = false;
   let reason = "";
   try {
-    if (typeof window.bbDesktop !== "object" || window.bbDesktop === null) {
+    const desktop = window.bbDesktop;
+    const desktopObject = Object(desktop);
+    if (
+      desktop === null ||
+      desktop === undefined ||
+      Object.prototype.toString.call(desktop) !== "[object Object]"
+    ) {
       reason = "missing window.bbDesktop";
-    } else if (typeof window.bbDesktop.getInfo !== "function") {
+    } else if (
+      Object.prototype.toString.call(desktopObject.getInfo) !==
+      "[object Function]"
+    ) {
       reason = "missing window.bbDesktop.getInfo";
     } else {
-      const info = await window.bbDesktop.getInfo();
+      const getInfo = desktopObject.getInfo;
+      const info = await getInfo.call(desktopObject);
       const expectedPlatform = ${JSON.stringify(expectedDesktopPlatform)};
       const expectedVersion = ${JSON.stringify(expectedDesktopVersion)};
       ok =
@@ -104,21 +112,35 @@ function renderSmokePage(expectedDesktopPlatform, expectedDesktopVersion) {
 </script>`;
 }
 
+function parseNonEmptyString(value, errorMessage) {
+  if (Object.prototype.toString.call(value) !== "[object String]") {
+    throw new Error(errorMessage);
+  }
+  const parsed = String(value);
+  if (parsed.length === 0) {
+    throw new Error(errorMessage);
+  }
+  return parsed;
+}
+
 async function readDesktopPackageVersion() {
   const packageJsonText = await readFile(
     join(desktopPackageRoot, "package.json"),
     "utf8",
   );
   const packageJson = JSON.parse(packageJsonText);
+  const packageObject = Object(packageJson);
   if (
-    typeof packageJson !== "object" ||
     packageJson === null ||
-    typeof packageJson.version !== "string" ||
-    packageJson.version.length === 0
+    packageObject !== packageJson ||
+    !Object.hasOwn(packageObject, "version")
   ) {
     throw new Error("apps/desktop/package.json must define a version");
   }
-  return packageJson.version;
+  return parseNonEmptyString(
+    packageObject.version,
+    "apps/desktop/package.json must define a version",
+  );
 }
 
 async function startSmokeServer({
@@ -197,7 +219,15 @@ async function startSmokeServer({
     server.listen(0, "127.0.0.1", resolvePromise);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  const addressObject = Object(address);
+  if (
+    Object.prototype.toString.call(address) !== "[object Object]" ||
+    !Object.hasOwn(addressObject, "port")
+  ) {
+    throw new Error("Expected desktop smoke server to listen on a TCP port");
+  }
+  const port = Number(addressObject.port);
+  if (!Number.isInteger(port) || port <= 0) {
     throw new Error("Expected desktop smoke server to listen on a TCP port");
   }
 
@@ -213,7 +243,7 @@ async function startSmokeServer({
         });
       });
     },
-    port: address.port,
+    port,
     preloadReady,
   };
 }
@@ -383,9 +413,6 @@ async function smokePackagedApp() {
   const childEnv = {
     ...process.env,
     BB_DATA_DIR: dataDir,
-    // The smoke server answers the bb probe, so a packaged build treats it as a
-    // foreign bb and asks before attaching. No one is here to click, so opt out
-    // and keep exercising the real attach path.
     BB_DESKTOP_ATTACH_WITHOUT_PROMPT: "1",
     BB_DESKTOP_OPEN_DEVTOOLS: "0",
     BB_DESKTOP_VERSION_FEED_URL: `${serverUrl}/desktop-version.json`,

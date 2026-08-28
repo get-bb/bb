@@ -1,6 +1,7 @@
 import type { NativeThemeTokens } from "./theme.native";
 
 export type CssVarName = `--${string}`;
+export type ThemeVars = Record<CssVarName, string>;
 
 export function tokenKeyToCssVar(key: string): CssVarName {
   const kebab = key
@@ -10,10 +11,8 @@ export function tokenKeyToCssVar(key: string): CssVarName {
   return `--${kebab}`;
 }
 
-export function buildThemeVars(
-  tokens: NativeThemeTokens,
-): Record<CssVarName, string> {
-  const vars: Record<CssVarName, string> = {};
+export function buildThemeVars(tokens: NativeThemeTokens) {
+  const vars: ThemeVars = {};
   for (const [key, value] of Object.entries(tokens)) {
     vars[tokenKeyToCssVar(key)] = value;
   }

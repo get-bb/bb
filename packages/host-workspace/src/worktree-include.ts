@@ -2,7 +2,7 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { WORKTREE_INCLUDE_FILE_NAME } from "@bb/domain";
-import { runGit, WorkspaceError } from "./git.js";
+import { runGit, WorkspaceError, type RunGitOptions } from "./git.js";
 
 interface CopyWorktreeIncludeFilesArgs {
   sourcePath: string;
@@ -30,12 +30,8 @@ function hasPattern(contents: string): boolean {
     .some((line) => line.length > 0 && !line.startsWith("#"));
 }
 
-function isMissingFileError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
+function isMissingFileError(error: Error): boolean {
+  return "code" in error && error.code === "ENOENT";
 }
 
 async function readIncludeFile(sourcePath: string): Promise<string | null> {
@@ -45,7 +41,7 @@ async function readIncludeFile(sourcePath: string): Promise<string | null> {
       "utf8",
     );
   } catch (error) {
-    if (isMissingFileError(error)) {
+    if (error instanceof Error && isMissingFileError(error)) {
       return null;
     }
     throw error;
@@ -65,11 +61,11 @@ async function listMatchingFiles(
       `--exclude-from=${WORKTREE_INCLUDE_FILE_NAME}`,
       "-z",
     ],
-    {
-      cwd: sourcePath,
-      ...(shellPath !== undefined ? { shellPath } : {}),
-      signal,
-    },
+    (() => {
+      const options: RunGitOptions = { cwd: sourcePath, signal };
+      if (shellPath !== undefined) options.shellPath = shellPath;
+      return options;
+    })(),
   );
   return result.stdout.split("\0").filter(Boolean);
 }
@@ -79,7 +75,7 @@ async function pathPresent(targetPath: string): Promise<boolean> {
     await fs.lstat(targetPath);
     return true;
   } catch (error) {
-    if (isMissingFileError(error)) {
+    if (error instanceof Error && isMissingFileError(error)) {
       return false;
     }
     throw error;
@@ -128,7 +124,9 @@ export async function copyWorktreeIncludeFiles(
     return {
       ran: true,
       copied: [],
-      skipped: [`${args.targetPath}: ${describeError(error)}`],
+      skipped: [
+        `${args.targetPath}: ${describeError(error instanceof Error ? error : String(error))}`,
+      ],
     };
   }
 
@@ -157,13 +155,15 @@ export async function copyWorktreeIncludeFiles(
       await fs.copyFile(sourceFile, targetFile, fsConstants.COPYFILE_EXCL);
       copied.push(relativePath);
     } catch (error) {
-      skipped.push(`${relativePath}: ${describeError(error)}`);
+      skipped.push(
+        `${relativePath}: ${describeError(error instanceof Error ? error : String(error))}`,
+      );
     }
   }
 
   return { ran: true, copied, skipped };
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function describeError(error: Error | string): string {
+  return error instanceof Error ? error.message : error;
 }

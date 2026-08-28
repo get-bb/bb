@@ -7,6 +7,25 @@ interface SplitListEditorContext {
   };
 }
 
+function commandProps(args: {
+  state: EditorState;
+  tr: Transaction;
+  editor: SplitListEditorContext;
+  dispatch: (transaction?: Transaction) => void;
+}) {
+  // SAFETY: The list commands read only state, transaction, dispatch, and editor.extensionManager.
+  return {
+    state: args.state,
+    tr: args.tr,
+    dispatch: args.dispatch,
+    editor: args.editor as Editor,
+    commands: null as never,
+    can: null as never,
+    chain: null as never,
+    view: null as never,
+  };
+}
+
 export function createSplitPromptListItemTransaction(args: {
   state: EditorState;
   editor: SplitListEditorContext;
@@ -16,18 +35,16 @@ export function createSplitPromptListItemTransaction(args: {
 
   const transaction = args.state.tr;
   let nextTransaction: Transaction | null = null;
-  const didSplit = commands.splitListItem(listItemType)({
-    state: args.state,
-    tr: transaction,
-    dispatch: () => {
-      nextTransaction = transaction;
-    },
-    editor: args.editor as Editor,
-    commands: null as never,
-    can: null as never,
-    chain: null as never,
-    view: null as never,
-  });
+  const didSplit = commands.splitListItem(listItemType)(
+    commandProps({
+      state: args.state,
+      tr: transaction,
+      dispatch: () => {
+        nextTransaction = transaction;
+      },
+      editor: args.editor,
+    }),
+  );
 
   return didSplit && transaction.docChanged
     ? (nextTransaction ?? transaction)
@@ -41,23 +58,22 @@ function createLiftPromptListItemTransaction(args: {
   const listItemType = args.state.schema.nodes.listItem;
   if (!listItemType) return null;
 
-  let nextTransaction: Transaction | null = null;
-  const didLift = commands.liftListItem(listItemType)({
-    state: args.state,
-    tr: args.state.tr,
-    dispatch: (transaction?: Transaction) => {
-      nextTransaction = transaction ?? args.state.tr;
-    },
-    editor: args.editor as Editor,
-    commands: null as never,
-    can: null as never,
-    chain: null as never,
-    view: null as never,
-  });
+  let nextTransaction = args.state.tr;
+  let didDispatch = false;
+  const didLift = commands.liftListItem(listItemType)(
+    commandProps({
+      state: args.state,
+      tr: args.state.tr,
+      dispatch: (transaction?: Transaction) => {
+        didDispatch = true;
+        nextTransaction = transaction ?? args.state.tr;
+      },
+      editor: args.editor,
+    }),
+  );
 
-  const dispatchedTransaction = nextTransaction as Transaction | null;
-  return didLift && dispatchedTransaction?.docChanged
-    ? dispatchedTransaction
+  return didLift && didDispatch && nextTransaction.docChanged
+    ? nextTransaction
     : null;
 }
 

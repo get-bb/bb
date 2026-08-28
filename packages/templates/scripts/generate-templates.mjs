@@ -1,11 +1,3 @@
-// Generates src/generated/templates.generated.ts from src/templates/*.md.
-//
-// The output is NOT committed: turbo runs this as
-// `@bb/templates#generate:templates` before any task that resolves
-// @bb/templates sources (see the `topo` task in turbo.json). Run it by hand
-// only for a one-off look at the output:
-//
-//   node packages/templates/scripts/generate-templates.mjs
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,32 +17,35 @@ const outputPath = path.join(
 );
 
 function asNonEmptyString(value) {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  if (Object.prototype.toString.call(value) !== "[object String]") {
+    return undefined;
+  }
+  const trimmed = String(value).trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function asStringRecord(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (
+    Object.prototype.toString.call(value) !== "[object Object]" ||
+    Array.isArray(value)
+  ) {
     return {};
   }
 
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, rawValue]) => {
       const normalized = asNonEmptyString(rawValue);
-      // Strip trailing ? from key for the runtime record (optionality is a type-level concern)
       const cleanKey = key.replace(/\?$/u, "");
       return normalized ? [[cleanKey, normalized]] : [];
     }),
   );
 }
 
-/**
- * Parse the variables field from frontmatter, preserving optionality info.
- * Returns an array of { name, description, optional } objects.
- */
 function parseVariables(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (
+    Object.prototype.toString.call(value) !== "[object Object]" ||
+    Array.isArray(value)
+  ) {
     return [];
   }
 
@@ -75,15 +70,9 @@ function toTemplateId(fileName) {
     .join("");
 }
 
-/**
- * Extract variable references from a template body.
- * Returns the set of variable names referenced (excluding partial references).
- */
 function extractBodyReferences(body) {
   const references = new Set();
 
-  // Match {{variableName}}, {{{variableName}}}, and {{#if variableName}}
-  // but NOT {{> partialName}}, {{/if}}, {{else}}
   const pattern = /\{\{\{?(?:#if\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\}?\}\}/gu;
   let match;
   while ((match = pattern.exec(body)) !== null) {
@@ -93,16 +82,11 @@ function extractBodyReferences(body) {
   return references;
 }
 
-/**
- * Validate that body references match declared variables.
- * Errors on undeclared references, warns on unreferenced declarations.
- */
 function validateVariables(templateId, declaredVars, body) {
   const declaredNames = new Set(declaredVars.map((v) => v.name));
   const bodyRefs = extractBodyReferences(body);
   const errors = [];
 
-  // Check for body references not declared in frontmatter
   for (const ref of bodyRefs) {
     if (!declaredNames.has(ref)) {
       errors.push(
@@ -111,7 +95,6 @@ function validateVariables(templateId, declaredVars, body) {
     }
   }
 
-  // Warn for declared variables not referenced in body
   for (const name of declaredNames) {
     if (!bodyRefs.has(name)) {
       console.warn(
@@ -153,7 +136,6 @@ for (const fileName of fileNames) {
 
   allVariableInfo.push({ id, variables: variablesParsed });
 
-  // Validate body references against declared variables
   const errors = validateVariables(id, variablesParsed, body);
   validationErrors.push(...errors);
 }
@@ -165,7 +147,6 @@ if (validationErrors.length > 0) {
   process.exit(1);
 }
 
-// Generate TemplateVariables interface
 function generateTemplateVariablesInterface(variableInfos) {
   const lines = [];
   lines.push("export interface TemplateVariables {");

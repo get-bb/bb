@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { z } from "zod";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
 import { action } from "../action.js";
 import {
@@ -41,6 +42,10 @@ interface StatusCommandOptions {
 type ResolveServerUrl = () => string;
 type ResolveStatusContext = () => ContextSnapshot;
 
+const systemConfigDataDirSchema = z.object({
+  dataDir: z.string().optional(),
+});
+
 export function registerStatusCommand(
   program: Command,
   getUrl: ResolveServerUrl,
@@ -68,9 +73,11 @@ export function registerStatusCommand(
         try {
           const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
           if (response.ok) {
-            const config = (await response.json()) as { dataDir?: unknown };
-            if (typeof config.dataDir === "string") {
-              payload.dataDir = config.dataDir;
+            const config = systemConfigDataDirSchema.safeParse(
+              await response.json(),
+            );
+            if (config.success && config.data.dataDir !== undefined) {
+              payload.dataDir = config.data.dataDir;
               serverAvailable = true;
             }
           }

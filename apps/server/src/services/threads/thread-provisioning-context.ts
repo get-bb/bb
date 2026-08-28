@@ -423,23 +423,23 @@ export function resolvePreparedEnvironmentMetadata(
 export function createReprovisioningContext(
   args: CreateReprovisioningContextArgs,
 ): ThreadProvisionEnvironmentProvisioningContext {
-  return {
-    request: {
-      branchSlug: null,
-      environmentIntent: {
-        type: "reuse",
-        environmentId: args.environmentId,
-      },
-      clientRequestId: args.clientRequestId,
-      execution: args.execution,
-      fork: null,
-      input: args.input,
-      ...(args.inputGroups !== undefined
-        ? { inputGroups: args.inputGroups }
-        : {}),
-      titleProvided: true,
-      seedWithoutRun: false,
+  const request: ThreadProvisionOperationPayload = {
+    branchSlug: null,
+    environmentIntent: {
+      type: "reuse",
+      environmentId: args.environmentId,
     },
+    clientRequestId: args.clientRequestId,
+    execution: args.execution,
+    fork: null,
+    input: args.input,
+    titleProvided: true,
+    seedWithoutRun: false,
+  };
+  if (args.inputGroups !== undefined) request.inputGroups = args.inputGroups;
+
+  return {
+    request,
     state: {
       environmentId: args.environmentId,
       provisionEventSequence: args.provisionEventSequence,

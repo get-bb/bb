@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   RouteNavigationProvider,
   useRouteNavigate,
@@ -20,33 +20,6 @@ import {
   useThreadActions,
   type ThreadActionsContextValue,
 } from "./ThreadActionsProvider";
-
-vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
-  ThreadDeleteDialog: () => null,
-}));
-
-vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
-  ThreadRenameDialog: () => null,
-}));
-
-vi.mock("@/hooks/mutations/thread-state-mutations", () => {
-  const mutationResult = { isPending: false, mutate: vi.fn() };
-  const mutation = () => mutationResult;
-  return {
-    useArchiveThreadAndChildren: mutation,
-    useDeleteThread: mutation,
-    useMarkThreadRead: mutation,
-    useMarkThreadUnread: mutation,
-    usePinThread: mutation,
-    useUnarchiveThread: mutation,
-    useUnpinThread: mutation,
-    useUpdateThread: mutation,
-  };
-});
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { archiveAll: vi.fn(), childSummary: vi.fn() } },
-}));
 
 afterEach(() => {
   cleanup();

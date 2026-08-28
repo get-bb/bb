@@ -1,4 +1,8 @@
-import { providerRawEventSchema } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  providerRawEventSchema,
+} from "@bb/domain";
 import type { ProviderRawEvent } from "@bb/domain";
 import {
   COMPACTION_PRESENTATION,
@@ -17,7 +21,7 @@ import type {
   ThreadEventTurnStatus,
 } from "@bb/domain";
 import type {
-  DeltaItemShape,
+  DeltaFileChange,
   DeltaNoTurnFallback,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
@@ -135,32 +139,34 @@ function mergeAcpToolCallEvents(
     return update;
   }
   const { rawKind: startedRawKind, ...startedRest } = started;
-  const kindFields =
-    update.kind !== undefined
-      ? {
-          kind: update.kind,
-          ...(update.rawKind !== undefined ? { rawKind: update.rawKind } : {}),
-        }
-      : startedRawKind !== undefined
-        ? { rawKind: startedRawKind }
-        : {};
-  return {
+  const kindFields: Partial<Pick<AcpToolCallUpdateEvent, "kind" | "rawKind">> =
+    {};
+  if (update.kind !== undefined) {
+    kindFields.kind = update.kind;
+    if (update.rawKind !== undefined) {
+      kindFields.rawKind = update.rawKind;
+    }
+  } else if (startedRawKind !== undefined) {
+    kindFields.rawKind = startedRawKind;
+  }
+  const merged: AcpToolCallUpdateEvent = {
     ...startedRest,
     ...kindFields,
-    ...(update.title !== undefined ? { title: update.title } : {}),
-    ...(update.name !== undefined ? { name: update.name } : {}),
-    ...(update.status !== undefined ? { status: update.status } : {}),
-    ...(update.content !== undefined ? { content: update.content } : {}),
-    ...(update.locations !== undefined ? { locations: update.locations } : {}),
-    ...(update.rawInput !== undefined ? { rawInput: update.rawInput } : {}),
-    ...(update.rawOutput !== undefined ? { rawOutput: update.rawOutput } : {}),
   };
+  if (update.title !== undefined) merged.title = update.title;
+  if (update.name !== undefined) merged.name = update.name;
+  if (update.status !== undefined) merged.status = update.status;
+  if (update.content !== undefined) merged.content = update.content;
+  if (update.locations !== undefined) merged.locations = update.locations;
+  if (update.rawInput !== undefined) merged.rawInput = update.rawInput;
+  if (update.rawOutput !== undefined) merged.rawOutput = update.rawOutput;
+  return merged;
 }
 
 interface AcpOpenToolCall {
   event: AcpToolCallUpdateEvent;
   clientFileWrites?: Extract<AcpToolCallContent, { type: "diff" }>[];
-  openedType: DeltaItemShape["type"];
+  openedType: AcpClassifiedToolCall["item"]["type"];
   permissionTitle?: string;
   delegation?: AcpDelegationReport;
 }
@@ -202,14 +208,18 @@ export function createAcpDeltaTranslator(
     if (identity === undefined) {
       return event;
     }
+    const identityFields: Partial<
+      Pick<AcpToolCallUpdateEvent, "kind" | "name">
+    > = {};
+    if (event.kind === undefined && identity.kind !== undefined) {
+      identityFields.kind = identity.kind;
+    }
+    if (event.name === undefined && identity.name !== undefined) {
+      identityFields.name = identity.name;
+    }
     return {
       ...event,
-      ...(event.kind === undefined && identity.kind !== undefined
-        ? { kind: identity.kind }
-        : {}),
-      ...(event.name === undefined && identity.name !== undefined
-        ? { name: identity.name }
-        : {}),
+      ...identityFields,
     };
   }
 
@@ -283,9 +293,9 @@ export function createAcpDeltaTranslator(
       callKey(context, event.toolCallId),
     );
     if (injected === undefined) {
-      const dialectShape = dialect.classifyToolCall?.(event);
-      if (dialectShape !== undefined) {
-        return dialectShape;
+      const dialectClassification = dialect.classifyToolCall?.(event);
+      if (dialectClassification !== undefined) {
+        return dialectClassification;
       }
     }
     return classifyAcpToolCall(event, injected, pathOptions);
@@ -311,7 +321,7 @@ export function createAcpDeltaTranslator(
       ...event,
       content: [
         ...(event.content ?? []).filter(
-          (entry) =>
+          (entry: AcpToolCallContent) =>
             entry.type !== "diff" ||
             !paths.has(resolveAcpToolCallPath(entry.path, pathOptions)),
         ),
@@ -365,9 +375,11 @@ export function createAcpDeltaTranslator(
     const diff: Extract<AcpToolCallContent, { type: "diff" }> = {
       type: "diff",
       path: write.path,
-      ...(oldText === undefined ? {} : { oldText }),
       newText: write.content,
     };
+    if (oldText !== undefined) {
+      diff.oldText = oldText;
+    }
     const clientFileWrites = [
       ...(matching.open.clientFileWrites ?? []).filter(
         (entry) =>
@@ -388,15 +400,18 @@ export function createAcpDeltaTranslator(
     if (parsed.success) {
       return parsed.data;
     }
-    return {
+    const fallback: ProviderRawEvent = {
       jsonrpc: "2.0",
-      ...(rawEvent.id !== undefined ? { id: rawEvent.id } : {}),
       method: rawEvent.method,
       params: {
         serializationError:
           "Provider raw event params were not JSON-serializable.",
       },
     };
+    if (rawEvent.id !== undefined) {
+      fallback.id = rawEvent.id;
+    }
+    return fallback;
   }
 
   function noTurnFallbackFor(rawEvent: JsonRpcMessage): DeltaNoTurnFallback {
@@ -410,13 +425,19 @@ export function createAcpDeltaTranslator(
     context: AcpDeltaTranslationContext | undefined,
     update: AcpSessionUpdate,
   ): JsonRpcMessage {
+    const params = jsonObjectSchema.parse(
+      JSON.parse(
+        JSON.stringify(
+          context?.threadId
+            ? { threadId: context.threadId, update }
+            : { update },
+        ),
+      ),
+    );
     return {
       jsonrpc: "2.0",
       method: ACP_UPDATE_METHOD,
-      params: {
-        ...(context?.threadId ? { threadId: context.threadId } : {}),
-        update,
-      },
+      params,
     };
   }
 
@@ -480,16 +501,17 @@ export function createAcpDeltaTranslator(
     if (report === undefined || classified.item.type !== "delegation") {
       return classified;
     }
+    const presentationArgs =
+      report.detail === undefined
+        ? { label: report.label }
+        : { label: report.label, detail: report.detail };
     return {
       item: {
         ...classified.item,
         childRef: report.childRef,
         label: report.label,
       },
-      presentation: delegationPresentation({
-        label: report.label,
-        ...(report.detail === undefined ? {} : { detail: report.detail }),
-      }),
+      presentation: delegationPresentation(presentationArgs),
     };
   }
 
@@ -522,6 +544,13 @@ export function createAcpDeltaTranslator(
       classified.item.type === "command"
         ? commandCloseFields(args.event, args.status)
         : genericCloseFields(args.event);
+    const fallbackFields: Pick<
+      Extract<ThreadDelta, { kind: "item.close" }>,
+      "noTurnFallback"
+    > = {};
+    if (args.noTurnFallback !== undefined) {
+      fallbackFields.noTurnFallback = args.noTurnFallback;
+    }
     return {
       kind: "item.close",
       key: {
@@ -531,7 +560,7 @@ export function createAcpDeltaTranslator(
       ...closeFields,
       item: classified.item,
       presentation: classified.presentation,
-      ...(args.noTurnFallback ? { noTurnFallback: args.noTurnFallback } : {}),
+      ...fallbackFields,
     };
   }
 
@@ -547,12 +576,18 @@ export function createAcpDeltaTranslator(
       dialect.commandResult?.(normalizedEvent) ??
       extractAcpCommandResult(normalizedEvent);
     const exitCode = result.exitCode ?? (status === "failed" ? 1 : undefined);
-    return {
-      ...(result.output === undefined
-        ? {}
-        : { aggregatedOutput: result.output, resultText: result.output }),
-      ...(exitCode === undefined ? {} : { exitCode }),
-    };
+    const fields: Pick<
+      Extract<ThreadDelta, { kind: "item.close" }>,
+      "aggregatedOutput" | "exitCode" | "resultText"
+    > = {};
+    if (result.output !== undefined) {
+      fields.aggregatedOutput = result.output;
+      fields.resultText = result.output;
+    }
+    if (exitCode !== undefined) {
+      fields.exitCode = exitCode;
+    }
+    return fields;
   }
 
   function genericCloseFields(
@@ -707,19 +742,20 @@ export function createAcpDeltaTranslator(
           ];
         }
         const mergedType = classifyCall(context, merged).item.type;
-        mergedToolCalls.set(key, {
+        const mergedOpen: AcpOpenToolCall = {
           event: merged,
           openedType: open?.openedType ?? mergedType,
-          ...(open?.permissionTitle === undefined
-            ? {}
-            : { permissionTitle: open.permissionTitle }),
-          ...(open?.delegation === undefined
-            ? {}
-            : { delegation: open.delegation }),
-          ...(open?.clientFileWrites === undefined
-            ? {}
-            : { clientFileWrites: open.clientFileWrites }),
-        });
+        };
+        if (open?.permissionTitle !== undefined) {
+          mergedOpen.permissionTitle = open.permissionTitle;
+        }
+        if (open?.delegation !== undefined) {
+          mergedOpen.delegation = open.delegation;
+        }
+        if (open?.clientFileWrites !== undefined) {
+          mergedOpen.clientFileWrites = open.clientFileWrites;
+        }
+        mergedToolCalls.set(key, mergedOpen);
         if (
           event.status === "in_progress" &&
           mergedType === "command" &&
@@ -763,12 +799,13 @@ export function createAcpDeltaTranslator(
           return suppressedUnhandled(rawEvent);
         }
         const steps: ThreadEventPlanStep[] = parsed.data.entries.map(
-          (entry) => ({
-            step: entry.content,
-            ...(entry.status
-              ? { status: ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS[entry.status] }
-              : {}),
-          }),
+          (entry) => {
+            const step: ThreadEventPlanStep = { step: entry.content };
+            if (entry.status) {
+              step.status = ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS[entry.status];
+            }
+            return step;
+          },
         );
         return [
           {
@@ -828,16 +865,17 @@ export function createAcpDeltaTranslator(
     context: AcpDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
     const status = turnStatusForStopReason(stopReason);
+    const boundary: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
+      kind: "turn.boundary",
+      status,
+      claimIfIdle: true,
+    };
+    if (status === "failed") {
+      boundary.error = { message: `Agent stopped the turn: ${stopReason}` };
+    }
     return [
       ...flushOpenTurnWork(context, itemStatusForTurnStatus(status)),
-      {
-        kind: "turn.boundary",
-        status,
-        ...(status === "failed"
-          ? { error: { message: `Agent stopped the turn: ${stopReason}` } }
-          : {}),
-        claimIfIdle: true,
-      },
+      boundary,
     ];
   }
 
@@ -912,19 +950,19 @@ export function createAcpDeltaTranslator(
           return [];
         }
         const status = params.data.status;
-        return [
-          ...flushOpenTurnWork(context, status),
-          ...(status === "completed"
-            ? ([{ kind: "context.compacted" }] as ThreadDelta[])
-            : []),
-          {
-            kind: "turn.boundary",
-            status,
-            ...(status === "failed"
-              ? { error: { message: params.data.error } }
-              : {}),
-          },
-        ];
+        const deltas = flushOpenTurnWork(context, status);
+        if (status === "completed") {
+          deltas.push({ kind: "context.compacted" });
+        }
+        const boundary: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
+          kind: "turn.boundary",
+          status,
+        };
+        if (status === "failed") {
+          boundary.error = { message: params.data.error };
+        }
+        deltas.push(boundary);
+        return deltas;
       }
 
       case ACP_UPDATE_METHOD: {
@@ -950,8 +988,24 @@ export function createAcpDeltaTranslator(
         const rawEvent: JsonRpcMessage = {
           jsonrpc: "2.0",
           method: ACP_FS_WRITE_METHOD,
-          params: params.data,
         };
+        const parsedRawParams = jsonValueSchema.safeParse(params.data);
+        if (parsedRawParams.success) {
+          rawEvent.params = parsedRawParams.data;
+        } else {
+          rawEvent.params = {
+            serializationError:
+              "Provider raw event params were not JSON-serializable.",
+          };
+        }
+        const change: DeltaFileChange = {
+          path: params.data.path,
+          kind: params.data.kind,
+          newText: params.data.content,
+        };
+        if (params.data.oldText !== undefined) {
+          change.oldText = params.data.oldText;
+        }
         return [
           {
             kind: "item.close",
@@ -959,16 +1013,7 @@ export function createAcpDeltaTranslator(
             status: "completed",
             item: {
               type: "fileChange",
-              changes: [
-                {
-                  path: params.data.path,
-                  kind: params.data.kind,
-                  ...(params.data.oldText === undefined
-                    ? {}
-                    : { oldText: params.data.oldText }),
-                  newText: params.data.content,
-                },
-              ],
+              changes: [change],
             },
             presentation: fileChangePresentation({
               verb: params.data.kind,
@@ -986,22 +1031,36 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        return [
-          {
-            kind: "provider.warning",
-            summary: params.data.summary,
-            ...(params.data.details ? { details: params.data.details } : {}),
-            vouchedTurn: true,
-          },
-        ];
+        const warning: Extract<ThreadDelta, { kind: "provider.warning" }> = {
+          kind: "provider.warning",
+          summary: params.data.summary,
+          vouchedTurn: true,
+        };
+        if (params.data.details) {
+          warning.details = params.data.details;
+        }
+        return [warning];
       }
 
       default:
-        return unhandledDeltas({
+        const rawEvent: JsonRpcMessage = {
           jsonrpc: "2.0",
           method: envelope.data.method,
-          ...(envelope.data.params ? { params: envelope.data.params } : {}),
-        });
+        };
+        if (envelope.data.params !== undefined) {
+          const parsedRawParams = jsonValueSchema.safeParse(
+            envelope.data.params,
+          );
+          if (parsedRawParams.success) {
+            rawEvent.params = parsedRawParams.data;
+          } else {
+            rawEvent.params = {
+              serializationError:
+                "Provider raw event params were not JSON-serializable.",
+            };
+          }
+        }
+        return unhandledDeltas(rawEvent);
     }
   }
 
@@ -1034,34 +1093,38 @@ export function createAcpDeltaTranslator(
       (toolCall.kind !== "other" || open.event.kind === undefined)
         ? toolCall.kind
         : undefined;
-    const merged = mergeAcpToolCallEvents(open.event, {
+    const permissionUpdate: AcpToolCallUpdateEvent = {
       sessionUpdate: "tool_call_update",
       toolCallId: open.event.toolCallId,
-      ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
-      ...(kind !== undefined ? { kind } : {}),
-      ...(kind === "other" && toolCall.rawKind !== undefined
-        ? { rawKind: toolCall.rawKind }
-        : {}),
-      ...(toolCall.locations !== undefined
-        ? { locations: toolCall.locations }
-        : {}),
-      ...(toolCall.rawInput !== undefined
-        ? { rawInput: toolCall.rawInput }
-        : {}),
-      ...(toolCall.rawOutput !== undefined
-        ? { rawOutput: toolCall.rawOutput }
-        : {}),
-    });
+    };
+    if (toolCall.title !== undefined) {
+      permissionUpdate.title = toolCall.title;
+    }
+    if (kind !== undefined) {
+      permissionUpdate.kind = kind;
+    }
+    if (kind === "other" && toolCall.rawKind !== undefined) {
+      permissionUpdate.rawKind = toolCall.rawKind;
+    }
+    if (toolCall.locations !== undefined) {
+      permissionUpdate.locations = toolCall.locations;
+    }
+    if (toolCall.rawInput !== undefined) {
+      permissionUpdate.rawInput = toolCall.rawInput;
+    }
+    if (toolCall.rawOutput !== undefined) {
+      permissionUpdate.rawOutput = toolCall.rawOutput;
+    }
+    const merged = mergeAcpToolCallEvents(open.event, permissionUpdate);
     if (classifyCall(context, merged).item.type === open.openedType) {
       mergedToolCalls.set(boundKey, { ...open, event: merged });
       return { toolCallId: merged.toolCallId, event: merged };
     }
-    mergedToolCalls.set(boundKey, {
-      ...open,
-      ...(toolCall.title === undefined
-        ? {}
-        : { permissionTitle: toolCall.title }),
-    });
+    const updatedOpen: AcpOpenToolCall = { ...open };
+    if (toolCall.title !== undefined) {
+      updatedOpen.permissionTitle = toolCall.title;
+    }
+    mergedToolCalls.set(boundKey, updatedOpen);
     return { toolCallId: open.event.toolCallId, event: merged };
   }
 
@@ -1079,21 +1142,22 @@ export function createAcpDeltaTranslator(
     if (classified.item.type !== "delegation") {
       return [];
     }
-    const item: DeltaItemShape = {
+    const item = {
       ...classified.item,
       childRef: report.childRef,
       label: report.label,
     };
     mergedToolCalls.set(key, { ...open, delegation: report });
+    const presentationArgs =
+      report.detail === undefined
+        ? { label: report.label }
+        : { label: report.label, detail: report.detail };
     return [
       {
         kind: "item.open",
         key: { providerItemId: report.toolCallId },
         item,
-        presentation: delegationPresentation({
-          label: report.label,
-          ...(report.detail === undefined ? {} : { detail: report.detail }),
-        }),
+        presentation: delegationPresentation(presentationArgs),
       },
     ];
   }

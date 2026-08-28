@@ -34,6 +34,7 @@ import {
   LOCAL_WORKFLOW_TASK_TYPE,
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
+  jsonObjectSchema,
   parseStoredThreadEvent,
   systemThreadInterruptedReasonSchema,
 } from "@bb/domain";
@@ -499,10 +500,6 @@ function resolveDaemonTurnStartDisposition(
   });
 }
 
-function isStoredEventPayload(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function extractVisiblePromptText(input: readonly PromptInput[]): string {
   return input
     .filter((part) => part.visibility !== "agent-only")
@@ -601,18 +598,13 @@ function listThreadSearchSegmentsForThreadEvent(args: {
 }
 
 function parseDaemonThreadEvent(input: AppendDaemonEventInput): ThreadEvent | null {
-  let data: unknown;
   try {
-    data = JSON.parse(input.data);
-  } catch {
-    return null;
-  }
-  if (!isStoredEventPayload(data)) {
-    return null;
-  }
-  try {
+    const parsedData = jsonObjectSchema.safeParse(JSON.parse(input.data));
+    if (!parsedData.success) {
+      return null;
+    }
     return parseStoredThreadEvent({
-      data,
+      data: parsedData.data,
       providerThreadId: input.providerThreadId,
       scope: input.scope,
       threadId: input.threadId,
@@ -919,10 +911,7 @@ export function appendStoredThreadEvent(
   return sequence;
 }
 
-export function getHighWaterMarks(
-  db: DbQueryConnection,
-  threadIds?: string[],
-): Record<string, number> {
+export function getHighWaterMarks(db: DbQueryConnection, threadIds?: string[]) {
   const result: Record<string, number> = {};
 
   if (threadIds && threadIds.length > 0) {
@@ -1579,7 +1568,7 @@ export interface ScopedItemRef {
 }
 
 export function scopedItemRefKey(ref: ScopedItemRef): string {
-  return `${ref.scopeKind} ${ref.turnId ?? ""} ${ref.itemId}`;
+  return `${ref.scopeKind}\0${ref.turnId ?? ""}\0${ref.itemId}`;
 }
 
 function dedupeScopedItemRefs(
@@ -2689,7 +2678,7 @@ export function getStoredTimelineWindowEventDataBytes(
 function getStoredTimelineWindowEventDataBytesPreflight(
   db: DbConnection,
   args: GetStoredTimelineWindowEventDataBytesArgs,
-): { dataBytes: number; isComplete: boolean } {
+) {
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
   const boundedWindow = db
     .select({ data: sql<string>`${data}`.as("data") })

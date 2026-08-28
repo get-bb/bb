@@ -1,6 +1,7 @@
 import { ConnectListError } from "@bb/connect-client";
 import { toRecord } from "@bb/core-ui";
 import { BbHttpError } from "@bb/sdk/browser";
+import { z } from "zod";
 
 export type AuthErrorKind = "auth-required" | "network" | "http" | "unknown";
 
@@ -9,38 +10,40 @@ interface ResponseLike {
   headers: { get(name: string): string | null };
 }
 
-function isResponseLike(value: unknown): value is ResponseLike {
-  const record = toRecord(value);
-  if (!record || typeof record.status !== "number") return false;
+function isResponseLike(cause: unknown): cause is ResponseLike {
+  const record = toRecord(cause);
+  if (!record || !z.number().safeParse(record.status).success) return false;
   const headers = toRecord(record.headers);
-  return typeof headers?.get === "function";
+  return headers?.get instanceof Function;
 }
 
 function isAuthStatus(status: number): boolean {
   return status === 401 || status === 403;
 }
 
-export function mapAuthError(input: unknown): AuthErrorKind {
-  if (input instanceof ConnectListError) {
-    return input.code === "unauthorized" ? "auth-required" : "network";
+export function mapAuthError(cause: unknown): AuthErrorKind {
+  if (cause instanceof ConnectListError) {
+    return cause.code === "unauthorized" ? "auth-required" : "network";
   }
-  if (input instanceof BbHttpError) {
-    return isAuthStatus(input.status) ? "auth-required" : "http";
+  if (cause instanceof BbHttpError) {
+    return isAuthStatus(cause.status) ? "auth-required" : "http";
   }
-  if (isResponseLike(input)) {
-    if (isAuthStatus(input.status)) return "auth-required";
-    return input.status >= 400 ? "http" : "unknown";
+  if (isResponseLike(cause)) {
+    if (isAuthStatus(cause.status)) return "auth-required";
+    return cause.status >= 400 ? "http" : "unknown";
   }
-  const record = toRecord(input);
+  const record = toRecord(cause);
   if (record) {
-    if (typeof record.status === "number" && isAuthStatus(record.status)) {
+    const status = z.number().safeParse(record.status);
+    if (status.success && isAuthStatus(status.data)) {
       return "auth-required";
     }
     if (record.name === "AbortError" || record.name === "TimeoutError") {
       return "network";
     }
-    if (typeof record.message === "string") {
-      const message = record.message.toLowerCase();
+    const parsedMessage = z.string().safeParse(record.message);
+    if (parsedMessage.success) {
+      const message = parsedMessage.data.toLowerCase();
       if (
         message.includes("network request failed") ||
         message.includes("failed to fetch") ||

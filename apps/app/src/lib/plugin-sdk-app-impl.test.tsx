@@ -20,13 +20,18 @@ describe("plugin SDK deprecated aliases", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const runtime = pluginSdkAppImplementation;
-      const alias = Reflect.get(runtime, "experimental_UrlLink");
-      expect(typeof alias).toBe("function");
-      expect(Reflect.get(runtime, "experimental_UrlLink")).toBe(alias);
+      const alias = Object.getOwnPropertyDescriptor(
+        runtime,
+        "experimental_UrlLink",
+      )?.value;
+      expect(alias).toBeTypeOf("function");
+      expect(
+        Object.getOwnPropertyDescriptor(runtime, "experimental_UrlLink")?.value,
+      ).toBe(alias);
       expect(warn).not.toHaveBeenCalled();
       expect(Object.keys(runtime)).not.toContain("experimental_UrlLink");
 
-      const LegacyUrlLink = alias as typeof runtime.UrlLink;
+      const LegacyUrlLink = alias;
       const view = render(
         <MemoryRouter>
           <AppNavigationHostProvider capabilities={{ openUrl: () => true }}>
@@ -67,12 +72,15 @@ describe("plugin SDK deprecated aliases", () => {
     const results: unknown[] = [];
     function Probe() {
       const navigate = pluginSdkAppImplementation.useBbNavigate();
-      const legacyOpenUrl = Reflect.get(navigate, "experimental_openUrl");
+      const legacyOpenUrl = Object.getOwnPropertyDescriptor(
+        navigate,
+        "experimental_openUrl",
+      )?.value;
       return (
         <button
           type="button"
           onClick={() => {
-            if (typeof legacyOpenUrl !== "function") {
+            if (!(legacyOpenUrl instanceof Function)) {
               results.push("missing");
               return;
             }

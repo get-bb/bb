@@ -7,6 +7,7 @@ import type {
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { z } from "zod";
 import {
   ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
@@ -48,7 +49,8 @@ function extractThreadIdFromThreadScopedQueryKey(
   }
 
   const threadId = queryKey[1];
-  return typeof threadId === "string" ? threadId : undefined;
+  const parsedThreadId = z.string().safeParse(threadId);
+  return parsedThreadId.success ? parsedThreadId.data : undefined;
 }
 
 function resolveThreadScopedPlaceholder<TData>(

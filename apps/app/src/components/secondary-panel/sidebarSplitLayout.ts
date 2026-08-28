@@ -814,13 +814,10 @@ function getFixedPanelTabsLastUsedAt(
   if (storedValue === null) return null;
   try {
     const parsed: unknown = JSON.parse(storedValue);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const lastUsedAt = Reflect.get(parsed, "lastUsedAt");
-    return typeof lastUsedAt === "number" &&
-      Number.isInteger(lastUsedAt) &&
-      lastUsedAt >= 0
-      ? lastUsedAt
-      : null;
+    const stored = z
+      .object({ lastUsedAt: z.number().int().nonnegative() })
+      .safeParse(parsed);
+    return stored.success ? stored.data.lastUsedAt : null;
   } catch {
     return null;
   }

@@ -8,6 +8,11 @@ import {
   screen,
 } from "@testing-library/react";
 import { BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH } from "@bb/desktop-contract";
+import {
+  QueryClient,
+  QueryClientProvider,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserFindInPageRequest,
@@ -15,13 +20,15 @@ import type {
   BbDesktopBrowserState,
   BbDesktopBrowserStopFindInPageRequest,
 } from "@bb/desktop-contract";
-import { defaultAppSettings } from "@bb/domain";
+import type { SystemConfigResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBbDesktopApi,
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { BrowserTabContent } from "./BrowserTabContent";
 
 const FIND_KEYBINDING = {
@@ -41,14 +48,45 @@ const FIND_KEYBINDING = {
   },
 };
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: defaultAppSettings,
-      keybindings: [FIND_KEYBINDING],
-    },
-  }),
-}));
+function queryResult<T>(data: T): UseQueryResult<T, Error> {
+  const common = {
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle" as const,
+    isEnabled: true,
+    isError: false,
+    isFetching: false,
+    isLoadingError: false,
+    isPaused: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: async () => queryResult(data),
+  } as const;
+  return {
+    ...common,
+    data,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isInitialLoading: false,
+    isLoading: false,
+    isPending: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    status: "success" as const,
+  };
+}
+
+vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(() =>
+  queryResult<SystemConfigResponse>(
+    makeSystemConfig({ keybindings: [FIND_KEYBINDING] }),
+  ),
+);
 
 const desktopInfo = {
   lastCheckedAt: null,
@@ -134,20 +172,23 @@ function browserState(
 
 function renderBrowser(harness: FindHarness, initialUrl: string) {
   window.bbDesktop = createBbDesktopApi(desktopInfo, harness.api);
+  const queryClient = new QueryClient();
   return render(
-    <AppCommandProvider>
-      <BrowserTabContent
-        tabId="browser:test"
-        initialUrl={initialUrl}
-        addressFocusRequest={null}
-        canShowNativeBrowserView={true}
-        visibilityCoordinator={null}
-        environmentId={null}
-        threadId="thread-1"
-        onUpdate={() => {}}
-      />
-      <button type="button">Outside browser</button>
-    </AppCommandProvider>,
+    <QueryClientProvider client={queryClient}>
+      <AppCommandProvider>
+        <BrowserTabContent
+          tabId="browser:test"
+          initialUrl={initialUrl}
+          addressFocusRequest={null}
+          canShowNativeBrowserView={true}
+          visibilityCoordinator={null}
+          environmentId={null}
+          threadId="thread-1"
+          onUpdate={() => {}}
+        />
+        <button type="button">Outside browser</button>
+      </AppCommandProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -162,7 +203,6 @@ function findInput(): HTMLInputElement {
 describe("BrowserTabContent find in page", () => {
   afterEach(() => {
     cleanup();
-    vi.restoreAllMocks();
     window.localStorage.clear();
     delete window.bbDesktop;
   });

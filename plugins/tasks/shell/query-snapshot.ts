@@ -59,9 +59,9 @@ export function readQuerySnapshot<T>(
   }
 }
 
-export function writeQuerySnapshot(
+export function writeQuerySnapshot<T>(
   name: string,
-  value: unknown,
+  value: T,
   revision: number,
 ): void {
   pruneOtherSnapshotVersions();

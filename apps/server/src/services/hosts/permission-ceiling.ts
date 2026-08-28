@@ -11,11 +11,17 @@ interface ClampPermissionModeToHostArgs {
   providerId?: string;
 }
 
+interface ClampPermissionModeArgs {
+  ceiling: PermissionMode;
+  permissionMode: PermissionMode;
+  permissionModes?: readonly PermissionMode[];
+}
+
 class HostPermissionCeilingConflictError extends ApiError {}
 
-export function isHostPermissionCeilingConflictError(
-  error: unknown,
-): error is HostPermissionCeilingConflictError {
+export function isHostPermissionCeilingConflictError<ErrorInput>(
+  error: ErrorInput,
+): error is ErrorInput & HostPermissionCeilingConflictError {
   return error instanceof HostPermissionCeilingConflictError;
 }
 
@@ -43,11 +49,14 @@ export function clampPermissionModeToHost(
   const supported = args.providerId
     ? deps.providerRegistry.getSupportedPermissionModes(args.providerId)
     : null;
-  const clamped = clampPermissionModeToCeiling({
+  const clampArgs: ClampPermissionModeArgs = {
     ceiling,
     permissionMode: args.permissionMode,
-    ...(supported ? { permissionModes: supported } : {}),
-  });
+  };
+  if (supported !== null) {
+    clampArgs.permissionModes = supported;
+  }
+  const clamped = clampPermissionModeToCeiling(clampArgs);
   if (clamped === null) {
     throw new HostPermissionCeilingConflictError(
       400,

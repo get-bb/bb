@@ -222,12 +222,21 @@ const threadEventScopeDefinitionByType = {
   },
 } as const satisfies ThreadEventScopePolicyDefinitionByType;
 
+const localThreadEventTypeSchema = z
+  .string()
+  .refine((value): value is ThreadEventType =>
+    Object.hasOwn(threadEventScopeDefinitionByType, value),
+  );
+
 function getThreadEventScopePolicyDefinitionEntries(): ThreadEventScopePolicyDefinitionEntry[] {
   return Object.entries(threadEventScopeDefinitionByType).map(
-    ([type, definition]) => ({
-      type: type as ThreadEventType,
-      definition,
-    }),
+    ([type, definition]) => {
+      const parsedType = localThreadEventTypeSchema.safeParse(type);
+      if (!parsedType.success) {
+        throw new Error(`Unknown thread event type: ${type}`);
+      }
+      return { type: parsedType.data, definition };
+    },
   );
 }
 
@@ -239,15 +248,17 @@ function getThreadEventTypesForScopePolicy(
     .map((entry) => entry.type);
 }
 
-function buildThreadEventScopePolicyByType(): ThreadEventScopePolicyByType {
+function buildThreadEventScopePolicyByType() {
   const policies: Partial<ThreadEventScopePolicyByType> = {};
   for (const entry of getThreadEventScopePolicyDefinitionEntries()) {
     policies[entry.type] = entry.definition.policy;
   }
-  return policies as ThreadEventScopePolicyByType;
+  return z
+    .record(localThreadEventTypeSchema, threadEventScopePolicySchema)
+    .parse(policies);
 }
 
-function buildThreadScopeRationaleByType(): ThreadScopeRationaleByType {
+function buildThreadScopeRationaleByType() {
   const rationales: ThreadScopeRationaleByType = {};
   for (const entry of getThreadEventScopePolicyDefinitionEntries()) {
     if (entry.definition.rationale) {

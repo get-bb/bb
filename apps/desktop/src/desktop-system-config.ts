@@ -18,9 +18,7 @@ interface DesktopSystemConfig {
   keybindings: AppKeybindings;
 }
 
-export function parseDesktopSystemConfig(
-  payload: unknown,
-): DesktopSystemConfig {
+export function parseDesktopSystemConfig<T>(payload: T): DesktopSystemConfig {
   const parsed = desktopSystemConfigSchema.parse(payload);
   const keybindings: AppKeybinding[] = [];
   for (const binding of parsed.keybindings) {

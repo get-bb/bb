@@ -4,8 +4,8 @@ import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 
 interface DaemonAuthContext {
-  get(key: string): unknown;
-  set(key: string, value: unknown): void;
+  get(key: string): AuthenticatedDaemon | undefined;
+  set(key: string, value: AuthenticatedDaemon): void;
 }
 
 interface AuthenticatedDaemon {
@@ -22,7 +22,9 @@ const authenticatedDaemonSchema = z
   })
   .strict();
 
-function isAuthenticatedDaemon(value: unknown): value is AuthenticatedDaemon {
+function isAuthenticatedDaemon(
+  value: AuthenticatedDaemon | undefined,
+): value is AuthenticatedDaemon {
   return authenticatedDaemonSchema.safeParse(value).success;
 }
 

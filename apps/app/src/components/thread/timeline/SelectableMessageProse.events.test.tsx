@@ -13,6 +13,58 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+class SelectionFixture implements Selection {
+  readonly anchorNode: Node;
+  readonly anchorOffset = 0;
+  readonly direction = "forward";
+  readonly focusNode: Node;
+  readonly focusOffset = 0;
+  readonly isCollapsed = false;
+  readonly rangeCount = 1;
+  readonly type = "Range";
+
+  constructor(
+    private readonly range: Range,
+    anchorNode: Node,
+    focusNode: Node,
+    private readonly text: string,
+  ) {
+    this.anchorNode = anchorNode;
+    this.focusNode = focusNode;
+  }
+
+  addRange(_range: Range): void {}
+  collapse(_node: Node | null, _offset?: number): void {}
+  collapseToEnd(): void {}
+  collapseToStart(): void {}
+  containsNode(_node: Node, _allowPartialContainment?: boolean): boolean {
+    return false;
+  }
+  deleteFromDocument(): void {}
+  empty(): void {}
+  extend(_node: Node, _offset?: number): void {}
+  getComposedRanges(_options?: GetComposedRangesOptions): StaticRange[] {
+    return [];
+  }
+  getRangeAt(_index: number): Range {
+    return this.range;
+  }
+  modify(_alter?: string, _direction?: string, _granularity?: string): void {}
+  removeAllRanges(): void {}
+  removeRange(_range: Range): void {}
+  selectAllChildren(_node: Node): void {}
+  setBaseAndExtent(
+    _anchorNode: Node,
+    _anchorOffset: number,
+    _focusNode: Node,
+    _focusOffset: number,
+  ): void {}
+  setPosition(_node: Node | null, _offset?: number): void {}
+  toString(): string {
+    return this.text;
+  }
+}
+
 function makeWindowSelection({
   commonAncestorContainer,
   focusNode,
@@ -27,24 +79,29 @@ function makeWindowSelection({
   text: string;
 }): Selection {
   const rect = new DOMRect(10, 20, 30, 8);
-  const range = {
-    commonAncestorContainer: commonAncestorContainer ?? node,
-    getBoundingClientRect: () => rect,
-    getClientRects: () => ({
+  const range = document.createRange();
+  const endNode = focusNode ?? node;
+  const endOffset = focusNode
+    ? 0
+    : node.nodeType === Node.TEXT_NODE
+      ? (node.textContent?.length ?? 0)
+      : node.childNodes.length;
+  range.setStart(node, 0);
+  range.setEnd(endNode, endOffset);
+  Object.defineProperty(range, "commonAncestorContainer", {
+    value: commonAncestorContainer ?? range.commonAncestorContainer,
+  });
+  vi.spyOn(range, "getBoundingClientRect").mockReturnValue(rect);
+  Object.defineProperty(range, "getClientRects", {
+    value: () => ({
       length: 1,
       item: (index: number) => (index === 0 ? rect : null),
     }),
-    intersectsNode: intersectsNode ?? (() => true),
-  } as unknown as Range;
-  return {
-    anchorNode: node,
-    commonAncestorContainer: commonAncestorContainer ?? node,
-    focusNode: focusNode ?? node,
-    getRangeAt: () => range,
-    isCollapsed: false,
-    rangeCount: 1,
-    toString: () => text,
-  } as unknown as Selection;
+  });
+  vi.spyOn(range, "intersectsNode").mockImplementation(
+    intersectsNode ?? (() => true),
+  );
+  return new SelectionFixture(range, node, focusNode ?? node, text);
 }
 
 function mockWindowSelection(args: Parameters<typeof makeWindowSelection>[0]) {
@@ -68,11 +125,20 @@ const SHARED_DOCUMENT_EVENT_TYPES = [
 ];
 
 function countSharedListenerCalls(spy: {
-  mock: { calls: readonly unknown[][] };
+  mock: {
+    calls: readonly (readonly [
+      string,
+      ...(
+        | EventListenerOrEventListenerObject
+        | boolean
+        | AddEventListenerOptions
+        | undefined
+      )[],
+    ])[];
+  };
 }): number {
-  return spy.mock.calls.filter(
-    ([type]) =>
-      typeof type === "string" && SHARED_DOCUMENT_EVENT_TYPES.includes(type),
+  return spy.mock.calls.filter(([type]) =>
+    SHARED_DOCUMENT_EVENT_TYPES.includes(type),
   ).length;
 }
 

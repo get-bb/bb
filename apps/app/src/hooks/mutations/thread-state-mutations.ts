@@ -68,12 +68,13 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     UpdateThreadMutationRequest,
     ThreadListMutationTransaction | undefined
   >({
-    meta: {
-      errorMessage: options?.errorMessage ?? "Failed to update thread.",
-      ...(options?.lifecycleOperation
-        ? { lifecycleOperation: options.lifecycleOperation }
-        : {}),
-    },
+    meta:
+      options?.lifecycleOperation === undefined
+        ? { errorMessage: options?.errorMessage ?? "Failed to update thread." }
+        : {
+            errorMessage: options?.errorMessage ?? "Failed to update thread.",
+            lifecycleOperation: options.lifecycleOperation,
+          },
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       sdk.threads.update({ threadId: id, ...request }),
     onMutate: ({

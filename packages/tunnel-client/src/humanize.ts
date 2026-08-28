@@ -1,5 +1,20 @@
+function readTransportErrorCode(error: Error): string | undefined {
+  if (!("code" in error)) return undefined;
+  const code = error.code;
+  if (
+    code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN" ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNRESET"
+  ) {
+    return code;
+  }
+  return undefined;
+}
+
 export function humanizeTransportError(error: Error, host: string): string {
-  const code = (error as NodeJS.ErrnoException).code;
+  const code = readTransportErrorCode(error);
   let reason: string;
   if (code === "ECONNREFUSED") reason = "connection refused";
   else if (code === "ENOTFOUND" || code === "EAI_AGAIN")

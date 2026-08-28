@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "icon-extended",
   "description": "BB ui \"icon-extended\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@hugeicons/core-free-icons",
-    "@hugeicons/react"
-  ],
-  "registryDependencies": [
-    "@bb/icon-registry"
-  ],
   "files": [
     {
       "path": "registry/components/ui/icon-extended.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/icon-extended.tsx"
     }
+  ],
+  "dependencies": [
+    "@hugeicons/core-free-icons",
+    "@hugeicons/react"
+  ],
+  "registryDependencies": [
+    "@bb/icon-registry"
   ]
 }

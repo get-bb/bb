@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { requestOriginHttp } from "../src/session.js";
 
@@ -11,6 +12,12 @@ interface SeenRequest {
 let server: Server;
 let origin: string;
 const seen: SeenRequest[] = [];
+
+function isAddressInfo(
+  address: ReturnType<Server["address"]>,
+): address is AddressInfo {
+  return address !== null && "port" in Object(address);
+}
 
 async function readBody(response: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -39,7 +46,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  if (!isAddressInfo(address)) {
     throw new Error("test server has no port");
   }
   origin = `http://127.0.0.1:${address.port}`;

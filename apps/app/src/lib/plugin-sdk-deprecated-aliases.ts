@@ -8,27 +8,22 @@ function warnDeprecatedMember(oldName: string, newName: string): void {
   console.warn(`${oldName} is deprecated; use ${newName}. Removed in bb 0.42`);
 }
 
-const componentAliases = new Map<string, ComponentType<never>>();
-
 export function installDeprecatedAliases<T extends object>(
   target: T,
   aliases: Readonly<Record<string, keyof T & string>>,
 ): T {
   for (const [oldName, newName] of Object.entries(aliases)) {
+    /* SAFETY: Alias declarations map each old component name to a component member on the target. */
+    const Member = target[newName] as ComponentType<never>;
+    function DeprecatedMember(props: Record<string, never>) {
+      warnDeprecatedMember(oldName, newName);
+      /* SAFETY: React supplies the aliased component's props at runtime. */
+      return createElement(Member, props as never);
+    }
     Object.defineProperty(target, oldName, {
       configurable: true,
       enumerable: false,
-      get() {
-        const existing = componentAliases.get(oldName);
-        if (existing !== undefined) return existing;
-        const Member = target[newName] as ComponentType<never>;
-        function DeprecatedMember(props: Record<string, unknown>) {
-          warnDeprecatedMember(oldName, newName);
-          return createElement(Member, props as never);
-        }
-        componentAliases.set(oldName, DeprecatedMember);
-        return DeprecatedMember;
-      },
+      value: DeprecatedMember,
     });
   }
   return target;

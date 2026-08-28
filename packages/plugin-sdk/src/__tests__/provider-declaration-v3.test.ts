@@ -25,6 +25,10 @@ function declaration(
   };
 }
 
+function malformedDeclaration<T>(overrides: T): PluginProviderDeclaration {
+  return Object.assign(declaration(), overrides);
+}
+
 describe("provider declaration target-state fields", () => {
   it("carries strings, option descriptors and extension kinds through validation", () => {
     const goalSchema = z.object({ objective: z.string() });
@@ -86,17 +90,17 @@ describe("provider declaration target-state fields", () => {
   it("rejects incomplete strings, duplicate option ids, and malformed extension kinds", () => {
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({
+        malformedDeclaration({
           strings: {
             signInHint: "Sign in",
             expiredHint: "Expired",
-          } as PluginProviderDeclaration["strings"],
+          },
         }),
       ),
     ).toThrow(/strings\.installUrl/u);
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({
+        malformedDeclaration({
           serviceTiers: [
             { id: "fast", label: "Fast" },
             { id: "fast", label: "Also fast" },
@@ -109,7 +113,7 @@ describe("provider declaration target-state fields", () => {
     ).toThrow(/non-empty array/u);
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({
+        malformedDeclaration({
           extensionKinds: { Goal: { item: z.object({}) } },
         }),
       ),
@@ -128,9 +132,9 @@ describe("provider declaration target-state fields", () => {
     ).toThrow(/item schema, a state schema, or both/u);
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({
+        malformedDeclaration({
           extensionKinds: {
-            goal: { item: { parse: () => ({}) } as never },
+            goal: { item: { parse: () => ({}) } },
           },
         }),
       ),
@@ -182,8 +186,8 @@ describe("provider declaration target-state fields", () => {
 
   it("keeps well-formed skill roots and defaults the side that is absent", () => {
     const normalized = validatePluginProviderDeclaration(
-      declaration({
-        experimental_nativeSkillRoots: { user: [".agents/skills"] } as never,
+      malformedDeclaration({
+        experimental_nativeSkillRoots: { user: [".agents/skills"] },
       }),
     );
 
@@ -275,7 +279,7 @@ describe("provider declaration target-state fields", () => {
     ).toThrow(/ending in ':'/u);
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({ experimental_resolvesNativeRoots: "yes" as never }),
+        malformedDeclaration({ experimental_resolvesNativeRoots: "yes" }),
       ),
     ).toThrow(/experimental_resolvesNativeRoots must be a boolean/u);
   });
@@ -283,10 +287,10 @@ describe("provider declaration target-state fields", () => {
   it("refuses the removed host-absolute side", () => {
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({
+        malformedDeclaration({
           experimental_nativeSkillRoots: {
             absolute: ["/home/dev/.pi/agent/skills"],
-          } as never,
+          },
         }),
       ),
     ).toThrow(/experimental_nativeSkillRoots Unrecognized key: "absolute"/u);
@@ -294,7 +298,7 @@ describe("provider declaration target-state fields", () => {
   it("rejects a model catalog scope outside the two it has", () => {
     expect(() =>
       validatePluginProviderDeclaration(
-        declaration({ models: { scope: "user" as never } }),
+        malformedDeclaration({ models: { scope: "user" } }),
       ),
     ).toThrow(/models\.scope must be one of host, workspace/u);
   });

@@ -1,5 +1,9 @@
 import { getThread } from "@bb/db";
-import { threadOpenResponseSchema } from "@bb/server-contract";
+import {
+  threadOpenResponseSchema,
+  type ThreadOpenRequest,
+  type ThreadPaneActionRequest,
+} from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
@@ -10,10 +14,13 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
+type InvalidThreadOpenRequest = { file: null; split: "diagonal" };
+type ThreadOpenTestRequest = ThreadOpenRequest | InvalidThreadOpenRequest;
+
 async function postOpen(
   harness: TestAppHarness,
   threadId: string,
-  body: unknown,
+  body: ThreadOpenTestRequest,
 ): Promise<Response> {
   return harness.app.request(`/api/v1/threads/${threadId}/open`, {
     method: "POST",
@@ -25,7 +32,7 @@ async function postOpen(
 async function postPaneAction(
   harness: TestAppHarness,
   threadId: string,
-  body: unknown,
+  body: ThreadPaneActionRequest,
 ): Promise<Response> {
   return harness.app.request(`/api/v1/threads/${threadId}/pane-action`, {
     method: "POST",

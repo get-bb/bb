@@ -11,6 +11,9 @@ import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type AppCommandId } from "@bb/domain";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   AppCommandProvider,
   useAppCommandContext,
@@ -20,7 +23,8 @@ import {
 } from "./AppCommandProvider";
 
 const testState = vi.hoisted(() => ({
-  calls: [] as string[],
+  calls:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as string[],
   showKeyboardHints: true,
   keybindings: [
     {
@@ -198,22 +202,6 @@ const testState = vi.hoisted(() => ({
   ],
 }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: {
-        ...defaultAppSettings,
-        showKeyboardHints: testState.showKeyboardHints,
-      },
-      keybindings: testState.keybindings,
-    },
-  }),
-}));
-
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
-
 interface HandlerProps {
   command?: AppCommandId;
   enabled?: boolean;
@@ -275,10 +263,22 @@ function ModifierState() {
 }
 
 function renderProvider(children: ReactNode) {
+  const { queryClient, wrapper } = createQueryClientTestHarness();
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      generalSettings: {
+        ...defaultAppSettings,
+        showKeyboardHints: testState.showKeyboardHints,
+      },
+      keybindings: testState.keybindings,
+    }),
+  );
   return render(
     <MemoryRouter>
       <AppCommandProvider>{children}</AppCommandProvider>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 

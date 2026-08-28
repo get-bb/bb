@@ -90,7 +90,7 @@ export class PendingRpcRegistry<TKey extends PendingRpcKey, TResult> {
     for (const entry of [...this.entries.values()]) {
       if (!matches(entry.key)) continue;
       this.clear(entry);
-      const failure = typeof error === "function" ? error(entry.key) : error;
+      const failure = error instanceof Error ? error : error(entry.key);
       this.options.onFail?.(entry.key, failure);
       entry.reject(failure);
       failed += 1;

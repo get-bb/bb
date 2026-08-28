@@ -45,12 +45,12 @@ const ROLLUP_SIGNALS: readonly RollupSignal[] = [
   "unreadError",
 ];
 
-const ROLLUP_SIGNAL_LABEL: Record<RollupSignal, string> = {
+const ROLLUP_SIGNAL_LABEL = {
   working: "Working",
   unreadDone: "Unread success",
   needsUser: "Input needed",
   unreadError: "Failed",
-};
+} satisfies Record<RollupSignal, string>;
 
 const HIDDEN_ROLLUP_COMBOS: readonly (readonly RollupSignal[])[] =
   ROLLUP_SIGNALS.flatMap((_, index, signals) => {

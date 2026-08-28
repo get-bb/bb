@@ -1,8 +1,7 @@
-import { watch } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { CronExpressionParser } from "cron-parser";
+import { z } from "zod";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
@@ -10,6 +9,8 @@ import {
   formatPluginThemeId,
   isNamespacedGlyph,
   isPluginOwnedIconPath,
+  jsonObjectSchema,
+  type JsonObject,
   type DeclaredCodeTheme,
   type DynamicTool,
   type JsonValue,
@@ -131,6 +132,10 @@ import type {
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
 } from "./plugin-service-internal.js";
+
+const { watch } = process.getBuiltinModule("node:fs");
+const { readFile, rm } = process.getBuiltinModule("node:fs/promises");
+
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -138,6 +143,14 @@ export type {
   PluginThreadEventEmitter,
   PluginWireLookup,
 } from "./plugin-service-internal.js";
+
+type PluginSettingsUpdateValues = JsonObject;
+type PluginRuntimeUncaughtExceptionHandler = ReturnType<
+  typeof createPluginRuntime
+>["handleUncaughtException"];
+type PluginRpcInvocationInput = Parameters<
+  StandardSchemaV1["~standard"]["validate"]
+>[0];
 
 export interface PluginSkillRootContribution {
   pluginId: string;
@@ -161,7 +174,7 @@ export interface PluginService {
   bindSdk(args: { baseUrl: string }): void;
   start(): Promise<void>;
   stop(): Promise<void>;
-  handleUncaughtException(error: unknown): boolean;
+  handleUncaughtException: PluginRuntimeUncaughtExceptionHandler;
   list(): PluginListEntry[];
   listThemes(): PluginThemeMeta[];
   readThemeCss(themeId: string): Promise<string | null>;
@@ -236,7 +249,7 @@ export interface PluginService {
   getSettings(id: string): Promise<PluginSettingsView | undefined>;
   updateSettings(
     id: string,
-    values: Record<string, unknown>,
+    values: PluginSettingsUpdateValues,
   ): Promise<PluginSettingsView | undefined>;
   getHttpRoute(
     id: string,
@@ -253,7 +266,7 @@ export interface PluginService {
     id: string,
     method: string,
     handler: PluginRpcHandler,
-    input: unknown,
+    input: PluginRpcInvocationInput,
   ): Promise<
     { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
   >;
@@ -344,11 +357,12 @@ function normalizeRpcIssuePath(
   if (path === undefined) return undefined;
   const segments = Array.isArray(path) ? path : [path];
   const normalized = segments.map((segment) => {
-    const key =
-      typeof segment === "object" && segment !== null
-        ? Reflect.get(segment, "key")
-        : segment;
-    return typeof key === "number" ? key : String(key);
+    const objectSegment = z
+      .object({ key: z.union([z.string(), z.number(), z.symbol()]) })
+      .safeParse(segment);
+    const key = objectSegment.success ? objectSegment.data.key : segment;
+    const numberKey = z.number().safeParse(key);
+    return numberKey.success ? numberKey.data : String(key);
   });
   return normalized.length > 0 ? normalized : undefined;
 }
@@ -358,10 +372,9 @@ function normalizeRpcIssues(
 ): PluginRpcValidationIssue[] {
   return issues.map((issue) => {
     const path = normalizeRpcIssuePath(issue.path);
-    return {
-      message: issue.message,
-      ...(path !== undefined ? { path } : {}),
-    };
+    const normalized: PluginRpcValidationIssue = { message: issue.message };
+    if (path !== undefined) normalized.path = path;
+    return normalized;
   });
 }
 
@@ -370,23 +383,25 @@ function rpcBoundaryFailure(
   message: string,
   issues?: PluginRpcValidationIssue[],
 ): PluginRpcBoundaryError {
-  return new PluginRpcBoundaryError({
-    code,
-    message,
-    ...(issues !== undefined ? { issues } : {}),
-  });
+  const rpcError: PluginRpcError = { code, message };
+  if (issues !== undefined) rpcError.issues = issues;
+  return new PluginRpcBoundaryError(rpcError);
 }
+
+type PluginBoundaryValue = Parameters<
+  StandardSchemaV1["~standard"]["validate"]
+>[0];
 
 async function validateRpcValue(
   schema: StandardSchemaV1,
-  value: unknown,
+  value: PluginBoundaryValue,
   phase: "input" | "output",
-): Promise<unknown> {
+): Promise<PluginBoundaryValue> {
   let result: StandardSchemaV1Result<unknown>;
   try {
     result = await schema["~standard"].validate(value);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
     throw rpcBoundaryFailure(
       phase === "input" ? "invalid_input" : "invalid_output",
       `rpc ${phase} validator failed: ${detail}`,
@@ -404,30 +419,29 @@ async function validateRpcValue(
   return result.value;
 }
 
-function normalizeRpcJsonResult(value: unknown): JsonValue {
+function normalizeRpcJsonResult(value: PluginBoundaryValue): JsonValue {
   const ancestors = new Set<object>();
 
-  function visit(current: unknown, path: string): JsonValue {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
-      return current;
-    }
-    if (typeof current === "number") {
-      if (!Number.isFinite(current)) {
+  function visit(current: PluginBoundaryValue, path: string): JsonValue {
+    const stringValue = z.string().safeParse(current);
+    if (stringValue.success) return stringValue.data;
+    const booleanValue = z.boolean().safeParse(current);
+    if (booleanValue.success) return booleanValue.data;
+    if (current === null) return current;
+    const numberValue = z.number().safeParse(current);
+    if (numberValue.success) {
+      if (!Number.isFinite(numberValue.data)) {
         throw rpcBoundaryFailure(
           "non_json_result",
           `rpc result at ${path} contains a non-finite number`,
         );
       }
-      return current;
+      return numberValue.data;
     }
-    if (typeof current !== "object") {
+    if (current === undefined) {
       throw rpcBoundaryFailure(
         "non_json_result",
-        `rpc result at ${path} is not a JSON value (${typeof current})`,
+        `rpc result at ${path} is not a JSON value (undefined)`,
       );
     }
     if (ancestors.has(current)) {
@@ -441,17 +455,14 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       if (Array.isArray(current)) {
         return current.map((item, index) => visit(item, `${path}[${index}]`));
       }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw rpcBoundaryFailure(
           "non_json_result",
           `rpc result at ${path} must be a plain JSON object`,
         );
       }
-      const symbolKey = Reflect.ownKeys(current).find(
-        (key) => typeof key === "symbol",
-      );
-      if (symbolKey !== undefined) {
+      if (Object.getOwnPropertySymbols(current).length > 0) {
         throw rpcBoundaryFailure(
           "non_json_result",
           `rpc result at ${path} contains a symbol key`,
@@ -470,94 +481,100 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
   return visit(value, "$result");
 }
 
+const agentToolContentPartSchema = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }).passthrough(),
+  z
+    .object({
+      type: z.literal("image"),
+      data: z.string(),
+      mimeType: z.string(),
+    })
+    .passthrough(),
+]);
+
+const agentToolResultSchema = z
+  .object({
+    content: z.array(agentToolContentPartSchema),
+    isError: z.unknown().optional(),
+  })
+  .passthrough();
+
 function normalizeAgentToolResult(
   name: string,
-  result: unknown,
+  result: PluginBoundaryValue,
 ): ToolCallResponse {
-  if (typeof result === "string") {
+  const textResult = z.string().safeParse(result);
+  if (textResult.success) {
     return {
       success: true,
-      contentItems: [{ type: "inputText", text: result }],
+      contentItems: [{ type: "inputText", text: textResult.data }],
     };
   }
-  if (
-    result !== null &&
-    typeof result === "object" &&
-    Array.isArray((result as { content?: unknown }).content)
-  ) {
-    const { content, isError } = result as {
-      content: unknown[];
-      isError?: unknown;
-    };
-    const contentItems = content.map((part, index) => {
-      const typed = part as {
-        type?: unknown;
-        text?: unknown;
-        data?: unknown;
-        mimeType?: unknown;
+  const structuredResult = agentToolResultSchema.safeParse(result);
+  if (structuredResult.success) {
+    const contentItems = structuredResult.data.content.map((part) => {
+      if (part.type === "text") {
+        return { type: "inputText" as const, text: part.text };
+      }
+      return {
+        type: "inputImage" as const,
+        imageUrl: `data:${part.mimeType};base64,${part.data}`,
       };
-      if (typed?.type === "text" && typeof typed.text === "string") {
-        return { type: "inputText" as const, text: typed.text };
-      }
-      if (
-        typed?.type === "image" &&
-        typeof typed.data === "string" &&
-        typeof typed.mimeType === "string"
-      ) {
-        return {
-          type: "inputImage" as const,
-          imageUrl: `data:${typed.mimeType};base64,${typed.data}`,
-        };
-      }
-      throw new Error(
-        `content[${index}] must be { type: "text", text } or { type: "image", data, mimeType }`,
-      );
     });
-    return { success: isError !== true, contentItems };
+    return {
+      success: structuredResult.data.isError !== true,
+      contentItems,
+    };
   }
   throw new Error(
     `tool "${name}" execute() must return a string or { content: [...], isError? }`,
   );
 }
 
+const mentionSearchItemsSchema = z.array(
+  z
+    .object({
+      id: z.string().min(1),
+      title: z.string().refine((value) => value.trim().length > 0),
+      subtitle: z.string().optional(),
+      icon: z.string().optional(),
+    })
+    .passthrough(),
+);
+
+const mentionResolveResultSchema = z
+  .object({ context: z.string() })
+  .passthrough();
+
+const pluginCliResultSchema = z
+  .object({
+    exitCode: z.number(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
+  })
+  .passthrough();
+
 function normalizeMentionSearchItems(
   providerId: string,
-  result: unknown,
+  result: PluginBoundaryValue,
 ): PluginMentionSearchItem[] {
-  if (!Array.isArray(result)) {
+  const parsed = mentionSearchItemsSchema.safeParse(result);
+  if (!parsed.success) {
     throw new Error(
       `mention provider "${providerId}" search() must return an array of items`,
     );
   }
-  return result.map((item, index) => {
-    const typed = item as {
-      id?: unknown;
-      title?: unknown;
-      subtitle?: unknown;
-      icon?: unknown;
-    } | null;
-    if (
-      typeof typed?.id !== "string" ||
-      typed.id.length === 0 ||
-      typeof typed.title !== "string" ||
-      typed.title.trim().length === 0 ||
-      (typed.subtitle !== undefined && typeof typed.subtitle !== "string") ||
-      (typed.icon !== undefined && typeof typed.icon !== "string")
-    ) {
-      throw new Error(
-        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon? }`,
-      );
-    }
+  return parsed.data.map((item) => {
     return {
-      itemId: `${providerId}:${typed.id}`,
-      title: typed.title,
+      itemId: `${providerId}:${item.id}`,
+      title: item.title,
       subtitle:
-        typeof typed.subtitle === "string" && typed.subtitle.trim().length > 0
-          ? typed.subtitle
+        item.subtitle !== undefined && item.subtitle.trim().length > 0
+          ? item.subtitle
           : null,
       icon:
-        typeof typed.icon === "string" && typed.icon.trim().length > 0
-          ? typed.icon
+        item.icon !== undefined && item.icon.trim().length > 0
+          ? item.icon
           : null,
     };
   });
@@ -565,24 +582,25 @@ function normalizeMentionSearchItems(
 
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];
-  toolParameterOverrides: Map<string, Record<string, unknown>>;
+  toolParameterOverrides: Map<string, JsonObject>;
   skillIds: string[];
   instructions: string | null;
 }
 
 function normalizePluginAgentToolParameters(args: {
   index: number;
-  value: unknown;
-}): Record<string, unknown> {
+  value: PluginBoundaryValue;
+}): JsonObject {
   const { index, value } = args;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = z.record(z.string(), z.unknown()).safeParse(value);
+  if (!parsedValue.success) {
     throw new Error(
       `configure() output.tools[${index}].parameters must be a JSON-schema object`,
     );
   }
   let serialized: string;
   try {
-    serialized = JSON.stringify(value);
+    serialized = JSON.stringify(parsedValue.data);
   } catch {
     throw new Error(
       `configure() output.tools[${index}].parameters is not JSON-serializable`,
@@ -601,7 +619,13 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
   }
-  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  const parsedParameters = jsonObjectSchema.safeParse(JSON.parse(serialized));
+  if (!parsedParameters.success) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  const parameters = parsedParameters.data;
   if (parameters.type !== "object") {
     throw new Error(
       `configure() output.tools[${index}].parameters must have root type "object"`,
@@ -614,59 +638,47 @@ function normalizePluginAgentToolParameters(args: {
   return parameters;
 }
 
+interface NormalizedPluginAgentToolSelections {
+  toolIds: string[];
+  parameterOverrides: Map<string, JsonObject>;
+}
+
 function normalizePluginAgentToolSelections(args: {
   knownIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
-}): {
-  toolIds: string[];
-  parameterOverrides: Map<string, Record<string, unknown>>;
-} {
-  if (!Array.isArray(args.value)) {
+  value: PluginBoundaryValue;
+}): NormalizedPluginAgentToolSelections {
+  const objectSelectionSchema = z
+    .object({ name: z.string(), parameters: z.unknown() })
+    .strict();
+  const parsedValue = z
+    .array(z.union([z.string(), objectSelectionSchema]))
+    .safeParse(args.value);
+  if (!parsedValue.success) {
     throw new Error("configure() output.tools must be an array");
   }
-  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+  if (parsedValue.data.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
     throw new Error(
       `configure() output.tools exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
     );
   }
   const toolIds: string[] = [];
-  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const parameterOverrides = new Map<string, JsonObject>();
   const seen = new Set<string>();
-  for (let index = 0; index < args.value.length; index += 1) {
-    const entry = args.value[index];
-    let name: unknown;
-    let parameters: Record<string, unknown> | null = null;
-    if (typeof entry === "string") {
-      name = entry;
-    } else if (
-      typeof entry === "object" &&
-      entry !== null &&
-      !Array.isArray(entry)
-    ) {
-      const typed = entry as Record<string, unknown>;
-      const unknownKeys = Object.keys(typed)
-        .filter((key) => !["name", "parameters"].includes(key))
-        .sort();
-      if (unknownKeys.length > 0) {
-        throw new Error(
-          `configure() output.tools[${index}] contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
-        );
-      }
-      name = typed.name;
+  for (let index = 0; index < parsedValue.data.length; index += 1) {
+    const entry = parsedValue.data[index];
+    const stringEntry = z.string().safeParse(entry);
+    let name: string;
+    let parameters: JsonObject | null = null;
+    if (stringEntry.success) {
+      name = stringEntry.data;
+    } else {
+      const objectEntry = objectSelectionSchema.parse(entry);
+      name = objectEntry.name;
       parameters = normalizePluginAgentToolParameters({
         index,
-        value: typed.parameters,
+        value: objectEntry.parameters,
       });
-    } else {
-      throw new Error(
-        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
-      );
-    }
-    if (typeof name !== "string" || name.length === 0) {
-      throw new Error(
-        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
-      );
     }
     if (seen.has(name)) {
       throw new Error(
@@ -688,21 +700,22 @@ function normalizePluginAgentToolSelections(args: {
 function normalizePluginAgentSelectionIds(args: {
   knownIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
+  value: PluginBoundaryValue;
 }): string[] {
-  if (!Array.isArray(args.value)) {
+  const parsedValue = z.string().array().safeParse(args.value);
+  if (!parsedValue.success) {
     throw new Error("configure() output.skills must be an array");
   }
-  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+  if (parsedValue.data.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
     throw new Error(
       `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
     );
   }
   const selected: string[] = [];
   const seen = new Set<string>();
-  for (let index = 0; index < args.value.length; index += 1) {
-    const id = args.value[index];
-    if (typeof id !== "string" || id.length === 0) {
+  for (let index = 0; index < parsedValue.data.length; index += 1) {
+    const id = parsedValue.data[index];
+    if (id.length === 0) {
       throw new Error(
         `configure() output.skills[${index}] must be a non-empty string`,
       );
@@ -727,40 +740,30 @@ function normalizePluginAgentConfiguration(args: {
   knownSkillIds: ReadonlySet<string>;
   knownToolIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
+  value: PluginBoundaryValue;
 }): NormalizedPluginAgentConfiguration {
-  if (
-    typeof args.value !== "object" ||
-    args.value === null ||
-    Array.isArray(args.value)
-  ) {
+  const parsedValue = z
+    .object({
+      tools: z.array(
+        z.union([
+          z.string(),
+          z.object({ name: z.string(), parameters: z.unknown() }).strict(),
+        ]),
+      ),
+      skills: z.string().array(),
+      instructions: z.string().optional(),
+    })
+    .strict()
+    .safeParse(args.value);
+  if (!parsedValue.success) {
     throw new Error(
       "configure() must return { tools: string[], skills: string[], instructions?: string }",
     );
   }
-  const output = args.value as Record<string, unknown>;
-  const unknownKeys = Object.keys(output)
-    .filter((key) => !["tools", "skills", "instructions"].includes(key))
-    .sort();
-  if (unknownKeys.length > 0) {
-    throw new Error(
-      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
-    );
-  }
-  if (
-    output.instructions !== undefined &&
-    typeof output.instructions !== "string"
-  ) {
-    throw new Error("configure() output.instructions must be a string");
-  }
-  const instructions =
-    typeof output.instructions === "string" &&
-    output.instructions.trim().length > 0
-      ? output.instructions.slice(
-          0,
-          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
-        )
-      : null;
+  const output = parsedValue.data;
+  const instructions = output.instructions?.trim()
+    ? output.instructions.slice(0, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS)
+    : null;
   const toolSelections = normalizePluginAgentToolSelections({
     knownIds: args.knownToolIds,
     pluginId: args.pluginId,
@@ -939,23 +942,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       !isNamespacedGlyph(brandingIcon)
         ? brandingIcon
         : GENERIC_AGENT_TOOL_GLYPH);
-    return {
+    const presentation: ThreadEventItemPresentation = {
       label: declared?.label ?? {
         pending: `Running ${record.name}`,
         completed: `Ran ${record.name}`,
       },
       icon: { glyph },
-      ...(declared?.suppress === undefined
-        ? {}
-        : { suppress: declared.suppress }),
-      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
     };
+    if (declared?.suppress !== undefined)
+      presentation.suppress = declared.suppress;
+    if (declared?.tint !== undefined) presentation.tint = declared.tint;
+    return presentation;
   }
 
   function toAgentDynamicTool(
     pluginId: string,
     record: PluginAgentToolRecord,
-    inputSchema: unknown = record.inputSchema,
+    inputSchema: PluginBoundaryValue = record.inputSchema,
   ): DynamicTool {
     return {
       name: record.name,
@@ -1074,25 +1077,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             detail: row.lastFailureDetail,
           }
         : undefined;
-    return {
-      ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
-      ...(persisted?.outcome === "unavailable"
-        ? { detail: persisted.detail }
-        : {}),
-      ...(row.availableCompatibleVersion === null
-        ? {}
-        : { availableVersion: row.availableCompatibleVersion }),
-      ...(row.newestIncompatibleVersion === null
-        ? {}
-        : { blockedVersion: row.newestIncompatibleVersion }),
-      ...(persisted?.blocked === undefined
-        ? {}
-        : { blockedReasons: persisted.blocked.reasons }),
-      ...(row.lastUpdateCheckAt === null
-        ? {}
-        : { lastCheckAt: row.lastUpdateCheckAt }),
-      ...(failure === undefined ? {} : { lastFailure: failure }),
-    };
+    const updateState: PluginListEntry["updateState"] = {};
+    if (persisted !== undefined) updateState.outcome = persisted.outcome;
+    if (persisted?.outcome === "unavailable")
+      updateState.detail = persisted.detail;
+    if (row.availableCompatibleVersion !== null) {
+      updateState.availableVersion = row.availableCompatibleVersion;
+    }
+    if (row.newestIncompatibleVersion !== null) {
+      updateState.blockedVersion = row.newestIncompatibleVersion;
+    }
+    if (persisted?.blocked !== undefined) {
+      updateState.blockedReasons = persisted.blocked.reasons;
+    }
+    if (row.lastUpdateCheckAt !== null)
+      updateState.lastCheckAt = row.lastUpdateCheckAt;
+    if (failure !== undefined) updateState.lastFailure = failure;
+    return updateState;
   }
 
   function capabilitySummary(
@@ -1152,18 +1153,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
-        return {
+        const entry: PluginListEntry = {
           id: row.id,
           source: row.source,
           rootDir: row.rootDir,
           version: row.version,
           provenance: row.provenance,
-          ...(row.catalogEntryId === null
-            ? {}
-            : { catalogEntryId: row.catalogEntryId }),
-          ...(row.catalogMarketplaceName === null
-            ? {}
-            : { catalogMarketplaceName: row.catalogMarketplaceName }),
           publisherLabel: pluginPublisherLabel({
             sourceKind: row.sourceKind,
             provenance: row.provenance,
@@ -1245,6 +1240,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ].map(([name, asset]) => [name, asset.url]),
           ),
         };
+        if (row.catalogEntryId !== null)
+          entry.catalogEntryId = row.catalogEntryId;
+        if (row.catalogMarketplaceName !== null) {
+          entry.catalogMarketplaceName = row.catalogMarketplaceName;
+        }
+        return entry;
       });
   }
 
@@ -1477,19 +1478,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             entryId: entry.entryId,
           },
           expectedPluginId: entry.pluginId,
-          ...(entry.npmRegistry === undefined
-            ? {}
-            : { npmRegistry: entry.npmRegistry }),
-          ...(entry.expectedGitCommit === undefined
-            ? {}
-            : { expectedGitCommit: entry.expectedGitCommit }),
-          ...(entry.expectedNpmVersion === undefined
-            ? {}
-            : { expectedNpmVersion: entry.expectedNpmVersion }),
-          ...(entry.expectedNpmIntegrity === undefined
-            ? {}
-            : { expectedNpmIntegrity: entry.expectedNpmIntegrity }),
         };
+        if (entry.npmRegistry !== undefined)
+          context.npmRegistry = entry.npmRegistry;
+        if (entry.expectedGitCommit !== undefined) {
+          context.expectedGitCommit = entry.expectedGitCommit;
+        }
+        if (entry.expectedNpmVersion !== undefined) {
+          context.expectedNpmVersion = entry.expectedNpmVersion;
+        }
+        if (entry.expectedNpmIntegrity !== undefined) {
+          context.expectedNpmIntegrity = entry.expectedNpmIntegrity;
+        }
         if (parsed.kind === "git") {
           return installGitSource(
             parsed,
@@ -1813,6 +1813,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           input,
           "input",
         );
+        // SAFETY: The handler input schema validated parsedInput before invocation.
         const result = await handler.handler(parsedInput as never);
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
@@ -1875,16 +1876,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `cli ${registration.name}`,
         async () => {
           const result = await registration.run(argv, ctx);
-          if (typeof result?.exitCode !== "number") {
+          const parsedResult = pluginCliResultSchema.safeParse(result);
+          if (!parsedResult.success) {
             throw new Error(
               "cli run() must return { exitCode: number, stdout?, stderr? }",
             );
           }
           return enforcePluginCliOutputLimit(
             {
-              exitCode: result.exitCode,
-              stdout: typeof result.stdout === "string" ? result.stdout : "",
-              stderr: typeof result.stderr === "string" ? result.stderr : "",
+              exitCode: parsedResult.data.exitCode,
+              stdout: parsedResult.data.stdout ?? "",
+              stderr: parsedResult.data.stderr ?? "",
             },
             argv.includes("--json"),
           );
@@ -2169,13 +2171,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           } finally {
             if (timer !== undefined) clearTimeout(timer);
           }
-          const context = (result as { context?: unknown } | null)?.context;
-          if (typeof context !== "string" || context.trim().length === 0) {
+          const parsedResult = mentionResolveResultSchema.safeParse(result);
+          if (
+            !parsedResult.success ||
+            parsedResult.data.context.trim().length === 0
+          ) {
             throw new Error(
               `mention provider "${providerId}" resolve() must return { context: string }`,
             );
           }
-          return context;
+          return parsedResult.data.context;
         },
       );
       if (outcome.ok) return { ok: true, context: outcome.value };

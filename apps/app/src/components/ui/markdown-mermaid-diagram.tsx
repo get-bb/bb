@@ -11,6 +11,7 @@ import {
   type Ref,
 } from "react";
 import type { MermaidConfig } from "mermaid";
+import { z } from "zod";
 import {
   Dialog,
   DialogContent,
@@ -183,6 +184,12 @@ interface MermaidGestureEventData {
 interface GetMermaidGestureEventDataArgs {
   event: Event;
 }
+
+const mermaidGestureEventDataSchema = z.object({
+  clientX: z.number(),
+  clientY: z.number(),
+  scale: z.number(),
+});
 
 interface ShouldHandleMermaidWheelZoomArgs {
   zoomDelta: number;
@@ -468,22 +475,16 @@ export function getMermaidWheelZoomDelta({
 export function getMermaidGestureEventData({
   event,
 }: GetMermaidGestureEventDataArgs): MermaidGestureEventData | null {
-  if (
-    !("clientX" in event) ||
-    typeof event.clientX !== "number" ||
-    !("clientY" in event) ||
-    typeof event.clientY !== "number" ||
-    !("scale" in event) ||
-    typeof event.scale !== "number"
-  ) {
+  if (!("clientX" in event) || !("clientY" in event) || !("scale" in event)) {
     return null;
   }
 
-  return {
+  const parsed = mermaidGestureEventDataSchema.safeParse({
     clientX: event.clientX,
     clientY: event.clientY,
     scale: event.scale,
-  };
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 export function shouldHandleMermaidWheelZoom({

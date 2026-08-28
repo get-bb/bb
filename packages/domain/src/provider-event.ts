@@ -14,7 +14,11 @@ import {
   turnRequestEventDataSchema,
   turnRequestRejectedEventDataSchema,
 } from "./thread-events.js";
-import { jsonValueSchema } from "./json-value.js";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "./json-value.js";
 import {
   threadEventScopeSchema,
   validateThreadEventScope,
@@ -463,6 +467,7 @@ export const CORE_ITEM_KINDS = [
   "delegation",
 ] as const satisfies readonly Exclude<ThreadEventItemType, "extension">[];
 export type CoreItemKind = (typeof CORE_ITEM_KINDS)[number];
+const coreItemKindSet = new Set<string>(CORE_ITEM_KINDS);
 
 type CoreItemKindsAreExhaustive =
   Exclude<ThreadEventItemType, "extension"> extends CoreItemKind
@@ -474,7 +479,7 @@ const coreItemKindsAreExhaustive: CoreItemKindsAreExhaustive = true;
 void coreItemKindsAreExhaustive;
 
 export function isCoreItemKind(value: string): value is CoreItemKind {
-  return (CORE_ITEM_KINDS as readonly string[]).includes(value);
+  return coreItemKindSet.has(value);
 }
 
 const unscopedProviderEventSchema = z.discriminatedUnion("type", [
@@ -712,9 +717,42 @@ export type ProviderUnhandledEvent = Extract<
   ProviderEvent,
   { type: "provider/unhandled" }
 >;
-const providerEventTypeValues = unscopedProviderEventSchema.options.map(
-  (option) => option.shape.type.value,
-);
+const providerEventTypeValues = [
+  "thread/started",
+  "thread/identity",
+  "turn/started",
+  "turn/completed",
+  "turn/input/accepted",
+  "thread/name/updated",
+  "thread/compacted",
+  "thread/context/cleared",
+  "thread/goal/updated",
+  "thread/goal/cleared",
+  "item/started",
+  "item/completed",
+  "item/agentMessage/delta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+  "item/plan/delta",
+  "item/mcpToolCall/progress",
+  "item/toolCall/progress",
+  "item/backgroundTask/progress",
+  "item/backgroundTask/completed",
+  "item/delegation/progress",
+  "item/delegation/completed",
+  "thread/tokenUsage/updated",
+  "thread/contextWindowUsage/updated",
+  "turn/plan/updated",
+  "turn/diff/updated",
+  "provider/error",
+  "provider/rateLimits/updated",
+  "thread/extensionState/updated",
+  "provider/warning",
+  "provider/modelFallback",
+  "provider/unhandled",
+] as const;
 
 const unscopedSystemEventSchema = z.discriminatedUnion("type", [
   z
@@ -800,18 +838,24 @@ const systemEventSchema = unscopedSystemEventSchema.and(scopedEventDataSchema);
 
 const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
 
-function isEventPropertyBag(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isEventPropertyBag(value: JsonValue): value is JsonObject {
+  return (
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
 }
 
 const rejectLegacyClientRequestSequenceSchema = z
   .unknown()
   .superRefine((value, ctx) => {
-    if (!isEventPropertyBag(value)) {
+    const parsed = jsonValueSchema.safeParse(value);
+    if (!parsed.success || !isEventPropertyBag(parsed.data)) {
       return;
     }
+    const propertyBag = parsed.data;
 
-    if (Object.hasOwn(value, legacyClientRequestKey)) {
+    if (Object.hasOwn(propertyBag, legacyClientRequestKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "legacy request sequence field is no longer accepted",
@@ -819,7 +863,7 @@ const rejectLegacyClientRequestSequenceSchema = z
       });
     }
 
-    const item = value.item;
+    const item = propertyBag.item;
     if (
       isEventPropertyBag(item) &&
       item.type === "userMessage" &&

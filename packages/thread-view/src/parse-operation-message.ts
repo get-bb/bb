@@ -30,6 +30,7 @@ import type {
   EventProjectionUserQuestionLifecycleMessage,
   EventProjectionOperationMessage,
   EventProjectionOwnershipChangeThreadOperationMetadata,
+  EventProjectionProvisioningMetadata,
   EventProjectionThreadOperationMetadata,
   EventProjectionThreadOperationKind,
   EventProjectionThreadOperationStatus,
@@ -102,11 +103,15 @@ function createThreadOperationMetadata(
       metadata: parsedMetadata?.success ? parsedMetadata.data : null,
     };
   }
-  return {
+  const result: Extract<
+    EventProjectionThreadOperationMetadata,
+    { operation: "other" }
+  > = {
     ...base,
-    operation,
-    ...(decoded.metadata ? { metadata: decoded.metadata } : {}),
+    operation: "other",
   };
+  if (decoded.metadata) result.metadata = decoded.metadata;
+  return result;
 }
 
 function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
@@ -513,15 +518,16 @@ export function parseOperationMessage(
     }
     const transcript = readProvisioningTranscript(decoded.entries);
     const operationStatus = provisioningOperationStatus(status);
+    const provisioning: EventProjectionProvisioningMetadata = {
+      environmentId,
+      provisioningId,
+    };
+    if (transcript) provisioning.transcript = transcript;
     return op(decoded, meta, "thread-provisioning", {
       opType: "thread-provisioning",
       title: provisioningTitleForStatus(operationStatus),
       status: operationStatus,
-      provisioning: {
-        environmentId,
-        provisioningId,
-        ...(transcript ? { transcript } : {}),
-      },
+      provisioning,
     });
   }
 
@@ -540,10 +546,7 @@ export function parseOperationMessage(
     const threadOperation = createThreadOperationMetadata(decoded);
     const title = threadOperationTitle(threadOperation, threadName);
 
-    const branch =
-      typeof decoded.metadata?.branch === "string"
-        ? decoded.metadata.branch
-        : undefined;
+    const branch = decoded.metadata?.branch;
     const messageDetail = decoded.message.trim();
     const detailParts = [
       messageDetail.length > 0 && messageDetail !== title

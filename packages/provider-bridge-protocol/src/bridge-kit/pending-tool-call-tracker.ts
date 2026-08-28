@@ -13,15 +13,17 @@ export interface BridgeToolCallResult {
   isError?: boolean;
 }
 
+interface BridgeToolCallScope {}
+
 interface PendingToolCall {
   resolve: (value: BridgeToolCallResult) => void;
-  scope: object;
+  scope: BridgeToolCallScope;
 }
 
 export interface ForwardBridgeToolCallArgs {
-  arguments: Record<string, unknown>;
+  arguments: BridgeToolCallRequest["params"]["arguments"];
   providerThreadId: string;
-  scope: object;
+  scope: BridgeToolCallScope;
   threadId: string;
   toolName: string;
 }
@@ -31,7 +33,10 @@ export interface PendingToolCallTracker {
     args: ForwardBridgeToolCallArgs,
   ) => Promise<BridgeToolCallResult>;
   handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
-  resolvePendingToolCalls: (scope: object, message: string) => void;
+  resolvePendingToolCalls: (
+    scope: BridgeToolCallScope,
+    message: string,
+  ) => void;
 }
 
 export function createPendingToolCallTracker(options: {

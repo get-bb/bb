@@ -105,13 +105,6 @@ interface ApiKeyVerificationResult {
   metadata: MachineCredentialMetadata;
 }
 
-function parseCredentialMetadata(
-  raw: unknown,
-): MachineCredentialMetadata | null {
-  const parsed = machineCredentialMetadataSchema.safeParse(raw);
-  return parsed.success ? parsed.data : null;
-}
-
 async function readOrCreateAuthSecret(dataDir: string): Promise<string> {
   return readOrCreateSecretFile({
     bytes: 32,
@@ -201,8 +194,10 @@ export async function createMachineAuthService(
       return null;
     }
 
-    const metadata = parseCredentialMetadata(result.key.metadata);
-    if (!metadata) {
+    const parsedMetadata = machineCredentialMetadataSchema.safeParse(
+      result.key.metadata,
+    );
+    if (!parsedMetadata.success) {
       args.logger.warn(
         { configId: verifyArgs.configId, keyId: result.key.id },
         "Machine auth key metadata is missing required fields",
@@ -212,7 +207,7 @@ export async function createMachineAuthService(
 
     return {
       keyId: result.key.id,
-      metadata,
+      metadata: parsedMetadata.data,
     };
   }
 

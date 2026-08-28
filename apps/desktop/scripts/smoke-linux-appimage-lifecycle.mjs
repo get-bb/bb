@@ -17,6 +17,18 @@ const outputFlushTimeoutMs = 2_000;
 const pollIntervalMs = 100;
 const maxCapturedOutputCharacters = 20_000;
 
+function isStringValue(value) {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isRecordValue(value) {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function hasNodeErrorCode(cause, code) {
+  return cause instanceof Error && "code" in cause && cause.code === code;
+}
+
 function appendOutput(chunks, chunk) {
   chunks.push(String(chunk));
   let totalLength = chunks.reduce((total, value) => total + value.length, 0);
@@ -78,7 +90,7 @@ async function allocateTcpPort() {
     server.listen(0, "127.0.0.1", resolvePromise);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  if (address === null || !isRecordValue(address)) {
     throw new Error("Expected an ephemeral TCP listener");
   }
   await new Promise((resolvePromise, rejectPromise) => {
@@ -149,13 +161,10 @@ async function readProcess(pid) {
     };
   } catch (error) {
     if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      (error.code === "EACCES" ||
-        error.code === "ENOENT" ||
-        error.code === "EPERM" ||
-        error.code === "ESRCH")
+      hasNodeErrorCode(error, "EACCES") ||
+      hasNodeErrorCode(error, "ENOENT") ||
+      hasNodeErrorCode(error, "EPERM") ||
+      hasNodeErrorCode(error, "ESRCH")
     ) {
       return null;
     }
@@ -194,12 +203,7 @@ async function killProcessesExecutingFromMount(mountPath) {
     try {
       process.kill(processInfo.pid, "SIGKILL");
     } catch (error) {
-      if (
-        typeof error !== "object" ||
-        error === null ||
-        !("code" in error) ||
-        error.code !== "ESRCH"
-      ) {
+      if (!hasNodeErrorCode(error, "ESRCH")) {
         throw error;
       }
     }
@@ -219,24 +223,22 @@ async function readOwnedRuntime(userDataDir) {
     const raw = await readFile(join(userDataDir, "owned-runtime.json"), "utf8");
     const parsed = JSON.parse(raw);
     if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof parsed.bridgePath === "string" &&
+      isRecordValue(parsed) &&
+      isStringValue(parsed.bridgePath) &&
       parsed.bridgePath.length > 0 &&
       Number.isInteger(parsed.pid) &&
       parsed.pid > 0 &&
-      typeof parsed.serverUrl === "string" &&
+      isStringValue(parsed.serverUrl) &&
       parsed.serverUrl.length > 0
     ) {
-      return parsed;
+      return {
+        bridgePath: parsed.bridgePath,
+        pid: parsed.pid,
+        serverUrl: parsed.serverUrl,
+      };
     }
   } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    if (hasNodeErrorCode(error, "ENOENT")) {
       return null;
     }
     throw error;
@@ -298,12 +300,7 @@ async function unmount(path) {
         if (!(await isMounted(path))) {
           return;
         }
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "ENOENT"
-        ) {
+        if (hasNodeErrorCode(error, "ENOENT")) {
           break;
         }
       }
@@ -390,12 +387,7 @@ async function killIsolatedProcesses({ dataDir, userDataDir }) {
       try {
         process.kill(pid, "SIGKILL");
       } catch (error) {
-        if (
-          typeof error !== "object" ||
-          error === null ||
-          !("code" in error) ||
-          error.code !== "ESRCH"
-        ) {
+        if (!hasNodeErrorCode(error, "ESRCH")) {
           throw error;
         }
       }
@@ -515,9 +507,6 @@ async function smokeLinuxAppImageLifecycle() {
       throw new Error("Expected both AppImage FUSE mounts to be active");
     }
 
-    // The GUI is an anchored group of its own. The runtime supervisor starts a
-    // separate session, so killing this exact group models an unclean desktop
-    // crash without touching the owned server/daemon/watcher tree.
     process.kill(-child.pid, "SIGKILL");
     await waitForChildExit(child, exitTimeoutMs);
     await killProcessesExecutingFromMount(guiMount);

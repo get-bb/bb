@@ -1,5 +1,10 @@
 import { DemoWorld } from "./demo-world.js";
 
+function parseWebSocketText(data: MessageEvent["data"]): string | null {
+  if (Object.prototype.toString.call(data) !== "[object String]") return null;
+  return String(data);
+}
+
 export class DemoStateDO {
   private readonly world = new DemoWorld();
   private readonly sockets = new Set<WebSocket>();
@@ -36,8 +41,9 @@ export class DemoStateDO {
     server.addEventListener("close", () => this.sockets.delete(server));
     server.addEventListener("error", () => this.sockets.delete(server));
     server.addEventListener("message", (event) => {
-      if (typeof event.data !== "string") return;
-      const reply = this.world.socketReply(event.data);
+      const message = parseWebSocketText(event.data);
+      if (message === null) return;
+      const reply = this.world.socketReply(message);
       if (reply !== null) server.send(reply);
     });
     return new Response(null, { status: 101, webSocket: client });

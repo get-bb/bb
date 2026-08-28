@@ -4,6 +4,7 @@ import {
   DOWNLOAD_MACOS_VERSION_FEED_URL,
 } from "./site";
 import type { CtaPlacement } from "./site";
+import { z } from "zod";
 
 const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/capture/?ip=0";
 const DOWNLOAD_EVENT_NAME = "landing_download_macos_clicked";
@@ -14,6 +15,16 @@ const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
 const MAX_EMAIL_LENGTH = 254;
 const MACOS_INSTALLER_EXTENSION = ".dmg";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface MacosReleaseFeed {
+  files: Array<{ url: string }>;
+}
+
+const macosReleaseFeedSchema = z.object({
+  files: z.array(z.object({ url: z.string() })),
+});
+
+const subscribePayloadSchema = z.object({ email: z.string() });
 
 type DownloadPlacement = CtaPlacement | "direct";
 
@@ -44,6 +55,10 @@ type PostHogCapturePayload = {
   timestamp: string;
 };
 
+interface JsonResponseBody {
+  [key: string]: string | boolean;
+}
+
 type TrackDownloadClickArgs = {
   postHogKey: string | undefined;
   request: Request;
@@ -67,7 +82,7 @@ export async function handleDownloadMacos(
   return redirectResponse(location);
 }
 
-function jsonResponse(body: object, status: number): Response {
+function jsonResponse(body: JsonResponseBody, status: number): Response {
   return new Response(JSON.stringify(body), {
     headers: {
       "Cache-Control": "no-store",
@@ -117,24 +132,24 @@ export async function handleSubscribe(
 }
 
 async function readEmail(request: Request): Promise<string | null> {
-  let payload: unknown;
   try {
-    payload = await request.json();
+    const payload = parseSubscribePayload(await request.json());
+    if (payload === null) {
+      return null;
+    }
+    const email = payload.email.trim();
+    if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) {
+      return null;
+    }
+    return email;
   } catch {
     return null;
   }
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-  const value = (payload as { email?: unknown }).email;
-  if (typeof value !== "string") {
-    return null;
-  }
-  const email = value.trim();
-  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) {
-    return null;
-  }
-  return email;
+}
+
+function parseSubscribePayload<T>(value: T): { email: string } | null {
+  const result = subscribePayloadSchema.safeParse(value);
+  return result.success ? result.data : null;
 }
 
 async function isAlreadySubscribed(response: Response): Promise<boolean> {
@@ -164,7 +179,11 @@ async function resolveMacosDownloadUrl(): Promise<string> {
       return DOWNLOAD_MACOS_FALLBACK_URL;
     }
 
-    const assetName = findMacosInstallerAssetName(await response.json());
+    const parsedFeed = parseMacosReleaseFeed(await response.json());
+    if (parsedFeed === null) {
+      return DOWNLOAD_MACOS_FALLBACK_URL;
+    }
+    const assetName = findMacosInstallerAssetName(parsedFeed);
     if (!assetName) {
       return DOWNLOAD_MACOS_FALLBACK_URL;
     }
@@ -175,20 +194,18 @@ async function resolveMacosDownloadUrl(): Promise<string> {
   }
 }
 
-function findMacosInstallerAssetName(feed: unknown): string | null {
-  if (!isRecord(feed) || !Array.isArray(feed.files)) {
-    return null;
-  }
-
+function findMacosInstallerAssetName(feed: MacosReleaseFeed): string | null {
   for (const file of feed.files) {
-    if (!isRecord(file) || typeof file.url !== "string") {
-      continue;
-    }
     if (isMacosInstallerAssetName(file.url)) {
       return file.url;
     }
   }
   return null;
+}
+
+function parseMacosReleaseFeed<T>(value: T): MacosReleaseFeed | null {
+  const result = macosReleaseFeedSchema.safeParse(value);
+  return result.success ? result.data : null;
 }
 
 function isMacosInstallerAssetName(value: string): boolean {
@@ -198,10 +215,6 @@ function isMacosInstallerAssetName(value: string): boolean {
     !value.includes("/") &&
     !value.includes("\\")
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {

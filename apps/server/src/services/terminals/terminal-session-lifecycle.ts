@@ -679,16 +679,19 @@ export class TerminalSessionLifecycle {
       title: args.title,
     });
     const requestId = randomUUID();
-    const openMessage: HostDaemonServerWsMessage = {
+    const openMessage: Extract<
+      HostDaemonServerWsMessage,
+      { type: "terminal.open" }
+    > = {
       type: "terminal.open",
       requestId,
       terminalId: startingSession.id,
-      ...(args.threadId !== null ? { threadId: args.threadId } : {}),
       target: launchTarget.daemonTarget,
       cols: args.payload.cols,
       rows: args.payload.rows,
       start,
     };
+    if (args.threadId !== null) openMessage.threadId = args.threadId;
 
     const pendingOpenKey = terminalRpcKey(
       daemonSession.id,

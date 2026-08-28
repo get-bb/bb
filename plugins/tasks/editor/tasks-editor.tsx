@@ -36,10 +36,6 @@ const EDITOR_CSS = `
   overflow-wrap: break-word; -webkit-font-smoothing: antialiased;
 }
 .bb-tasks-editor[data-variant="comment"] .tiptap { font-size: 13px; line-height: 1.55; }
-/* Doc variant: let the ProseMirror surface fill the wrapper's min-height so
-   the whole area is editable. Otherwise a short document (e.g. a single block
-   image) leaves a non-editable dead zone below it that swallows clicks, and a
-   lone image atom offers no text caret — the description looks unfocusable. */
 .bb-tasks-editor[data-variant="doc"] { display: flex; flex-direction: column; }
 .bb-tasks-editor[data-variant="doc"] .bb-tasks-editor-surface { display: flex; flex: 1 1 auto; flex-direction: column; }
 .bb-tasks-editor[data-variant="doc"] .bb-tasks-editor-surface .tiptap { flex: 1 1 auto; }
@@ -437,6 +433,7 @@ export function TasksEditor({
       );
     }
     editor.on("update", () => {
+      // SAFETY: The Markdown extension returns a string for getMarkdown().
       const markdown = editor.storage.markdown.getMarkdown() as string;
       lastMarkdownRef.current = markdown;
       changeRef.current(markdown);

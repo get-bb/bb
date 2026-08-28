@@ -52,23 +52,21 @@ function logSlowCommandWait(
   if (args.durationMs < SLOW_HOST_COMMAND_WAIT_LOG_THRESHOLD_MS) {
     return;
   }
-  deps.logger.debug(
-    {
-      commandType: args.commandType,
-      completed: args.completed,
-      durationMs: roundDurationMs(args.durationMs),
-      ...(args.errorCode ? { errorCode: args.errorCode } : {}),
-      ...(args.errorName ? { errorName: args.errorName } : {}),
-      hostId: args.hostId,
-      outcome: args.outcome,
-      ...(args.status !== undefined ? { status: args.status } : {}),
-    },
-    "Slow live host command wait",
-  );
+  const fields = {
+    commandType: args.commandType,
+    completed: args.completed,
+    durationMs: roundDurationMs(args.durationMs),
+    hostId: args.hostId,
+    outcome: args.outcome,
+  };
+  if (args.errorCode) Object.assign(fields, { errorCode: args.errorCode });
+  if (args.errorName) Object.assign(fields, { errorName: args.errorName });
+  if (args.status !== undefined) Object.assign(fields, { status: args.status });
+  deps.logger.debug(fields, "Slow live host command wait");
 }
 
 function classifySlowCommandWaitFailure(
-  error: unknown,
+  error: Error | null,
 ): SlowCommandWaitFailureLogFields {
   if (error instanceof ApiError) {
     const errorCode = error.body.code;
@@ -100,7 +98,7 @@ function classifySlowCommandWaitFailure(
     };
   }
 
-  if (error instanceof Error) {
+  if (error !== null) {
     return {
       errorName: error.name,
       outcome: "unknown_error",
@@ -134,25 +132,28 @@ export async function runLiveCommandAndWait(
     });
   } catch (error) {
     completed = false;
-    failureLogFields = classifySlowCommandWaitFailure(error);
+    failureLogFields = classifySlowCommandWaitFailure(
+      error instanceof Error ? error : null,
+    );
     logOutcome = failureLogFields.outcome;
     throw error;
   } finally {
-    logSlowCommandWait(deps, {
+    const logArgs = {
       commandType: args.command.type,
       completed,
       durationMs: performance.now() - startedAt,
-      ...(failureLogFields?.errorCode
-        ? { errorCode: failureLogFields.errorCode }
-        : {}),
-      ...(failureLogFields?.errorName
-        ? { errorName: failureLogFields.errorName }
-        : {}),
       hostId: args.hostId,
       outcome: logOutcome,
-      ...(failureLogFields?.status !== undefined
-        ? { status: failureLogFields.status }
-        : {}),
-    });
+    };
+    if (failureLogFields?.errorCode) {
+      Object.assign(logArgs, { errorCode: failureLogFields.errorCode });
+    }
+    if (failureLogFields?.errorName) {
+      Object.assign(logArgs, { errorName: failureLogFields.errorName });
+    }
+    if (failureLogFields?.status !== undefined) {
+      Object.assign(logArgs, { status: failureLogFields.status });
+    }
+    logSlowCommandWait(deps, logArgs);
   }
 }

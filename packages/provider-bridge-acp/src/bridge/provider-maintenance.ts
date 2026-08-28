@@ -301,9 +301,12 @@ const cursorPlanResponseSchema = z
   })
   .passthrough();
 
+type CursorUsagePayload = z.input<typeof cursorUsageResponseSchema>;
+type CursorPlanPayload = z.input<typeof cursorPlanResponseSchema>;
+
 function normalizeUsage(
-  rawUsage: unknown,
-  rawPlan: unknown,
+  rawUsage: CursorUsagePayload,
+  rawPlan: CursorPlanPayload,
   accountEmail: string | null = null,
 ): ProviderUsage {
   const usage = cursorUsageResponseSchema.safeParse(rawUsage);

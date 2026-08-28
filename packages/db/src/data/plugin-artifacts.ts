@@ -51,15 +51,12 @@ export function createPluginArtifact(
 ): PluginArtifactRow {
   if (
     (artifact.sourceKind === "npm" &&
-      (typeof artifact.npmResolvedVersion !== "string" ||
-        artifact.npmResolvedVersion.length === 0 ||
-        typeof artifact.integrity !== "string" ||
+      (artifact.npmResolvedVersion.length === 0 ||
+        artifact.integrity === null ||
         artifact.gitResolvedCommit !== null ||
         artifact.gitCheckoutRoot !== null)) ||
     (artifact.sourceKind === "git" &&
-      (typeof artifact.gitResolvedCommit !== "string" ||
-        artifact.gitResolvedCommit.length === 0 ||
-        typeof artifact.gitCheckoutRoot !== "string" ||
+      (artifact.gitResolvedCommit.length === 0 ||
         artifact.gitCheckoutRoot.length === 0 ||
         artifact.npmResolvedVersion !== null))
   ) {
@@ -72,7 +69,9 @@ export function createPluginArtifact(
     .values({ ...artifact, createdAt: now, updatedAt: now })
     .run();
   const row = getPluginArtifact(db, artifact.id);
-  if (!row) throw new Error(`plugin artifact missing after insert: ${artifact.id}`);
+  if (!row) {
+    throw new Error(`plugin artifact missing after insert: ${artifact.id}`);
+  }
   return row;
 }
 

@@ -11,10 +11,10 @@ const normalizedToolCallRequestSchema = z.object({
   providerNativeIds: z.boolean().optional(),
 });
 
-export function decodeNormalizedProviderToolCallRequest(
+export function decodeNormalizedProviderToolCallRequest<TParams>(
   requestId: string | number,
   method: string,
-  params: unknown,
+  params: TParams,
 ): DecodedToolCallRequest | null {
   if (method !== "item/tool/call") {
     return null;
@@ -25,15 +25,18 @@ export function decodeNormalizedProviderToolCallRequest(
     return null;
   }
 
-  return {
+  const result: DecodedToolCallRequest = {
     requestId,
     providerThreadId: parsed.data.providerThreadId,
     turnId: parsed.data.turnId,
     callId: parsed.data.callId,
     tool: parsed.data.tool,
-    ...(parsed.data.arguments !== undefined
-      ? { arguments: parsed.data.arguments }
-      : {}),
-    ...(parsed.data.threadId ? { threadId: parsed.data.threadId } : {}),
   };
+  if (parsed.data.arguments !== undefined) {
+    result.arguments = parsed.data.arguments;
+  }
+  if (parsed.data.threadId !== undefined) {
+    result.threadId = parsed.data.threadId;
+  }
+  return result;
 }

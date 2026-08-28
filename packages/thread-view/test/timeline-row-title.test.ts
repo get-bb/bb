@@ -59,11 +59,11 @@ interface ParentChangeSystemRowArgs {
   threadId?: string;
 }
 
-const PARENT_CHANGE_VERB: Record<TimelineParentChange["action"], string> = {
+const PARENT_CHANGE_VERB = {
   assign: "assigned to",
   release: "released from",
   transfer: "transferred to",
-};
+} satisfies Record<TimelineParentChange["action"], string>;
 
 function parentChangeFlatTitle(
   parentChange: TimelineParentChange,
@@ -355,9 +355,9 @@ function parentChangeSystemRow({
   threadId,
 }: ParentChangeSystemRowArgs): TimelineSystemRow {
   const base = baseRow(`system-parent-${parentChange.action}`);
+  if (threadId !== undefined) base.threadId = threadId;
   return {
     ...base,
-    ...(threadId !== undefined ? { threadId } : {}),
     kind: "system",
     systemKind: "operation",
     operationKind: "parent-change",

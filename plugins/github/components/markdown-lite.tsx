@@ -199,6 +199,7 @@ function tableAlignmentClass(alignment: TableAlignment): string {
   }
 }
 
+const HEADING_TAGS = ["h1", "h2", "h3"] as const;
 const HEADING_CLASSES = [
   "text-lg font-semibold",
   "text-base font-semibold",
@@ -244,11 +245,8 @@ export function Markdown({
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = Math.min(heading[1].length, 3);
-      const Tag = `h${heading[1].length <= 3 ? heading[1].length : 4}` as
-        | "h1"
-        | "h2"
-        | "h3"
-        | "h4";
+      const Tag =
+        heading[1].length <= 3 ? HEADING_TAGS[heading[1].length - 1] : "h4";
       blocks.push(
         <Tag key={key++} className={HEADING_CLASSES[level - 1]}>
           {renderInline(heading[2])}

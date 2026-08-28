@@ -642,11 +642,8 @@ function getTextRelevanceBonus(text: string, query: string): number {
 
 function getTextValues<T>(item: T, getText: FuzzyTextGetter<T>): string[] {
   const text = getText(item);
-  if (typeof text === "string") {
-    return text.length > 0 ? [text] : [];
-  }
-
-  return text.filter((value) => value.length > 0);
+  const values = Array.isArray(text) ? text : [text];
+  return values.filter((value) => value.length > 0);
 }
 
 function getTextCandidates<T>(

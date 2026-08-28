@@ -39,6 +39,81 @@ import type {
   StandardSchemaV1,
 } from "../rpc-contract.js";
 
+type HostPolicyInput = {} | null | undefined;
+
+const hostPolicyStringSchema = z.string();
+const hostPolicyBooleanSchema = z.boolean();
+const hostPolicyNumberSchema = z.number();
+// oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type
+type HostPolicyRecord = Record<string, JsonValue | object | undefined>;
+type HostPolicyJsonRecord = Readonly<Record<string, JsonValue>>;
+const hostPolicyArrayInputSchema = z.array(z.custom<HostPolicyInput>());
+type HostPolicyArray = z.infer<typeof hostPolicyArrayInputSchema>;
+const hostPolicyArraySchema = z.custom<HostPolicyArray>(
+  (value) => hostPolicyArrayInputSchema.safeParse(value).success,
+);
+
+function parseHostPolicyString<T>(value: T): string | undefined {
+  const parsed = hostPolicyStringSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseHostPolicyBoolean<T>(value: T): boolean | undefined {
+  const parsed = hostPolicyBooleanSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function requireHostPolicyBoolean(
+  value: HostPolicyInput,
+  message: string,
+): boolean {
+  const parsed = parseHostPolicyBoolean(value);
+  if (parsed === undefined) throw new Error(message);
+  return parsed;
+}
+
+function parseHostPolicyNumber<T>(value: T): number | undefined {
+  const parsed = hostPolicyNumberSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  return Object.prototype.toString.call(value) === "[object Number]"
+    ? Number(value)
+    : undefined;
+}
+
+function parseHostPolicyRecord<T>(value: T): HostPolicyRecord | undefined {
+  if (
+    value === null ||
+    Object(value) !== value ||
+    Array.isArray(value) ||
+    parseHostPolicyFunction(value)
+  ) {
+    return undefined;
+  }
+  // SAFETY: Object and array/function checks establish the runtime record shape.
+  return value as HostPolicyRecord;
+}
+
+function parseHostPolicyJsonRecord<T>(
+  value: T,
+): HostPolicyJsonRecord | undefined {
+  if (
+    value === null ||
+    Object(value) !== value ||
+    Array.isArray(value) ||
+    parseHostPolicyFunction(value)
+  ) {
+    return undefined;
+  }
+  // SAFETY: Object and array/function checks establish the runtime JSON record shape.
+  return value as HostPolicyJsonRecord;
+}
+
+function parseHostPolicyFunction<T>(value: T): Function | undefined {
+  const kind = Object.prototype.toString.call(value);
+  // SAFETY: The function tag establishes that this value is callable.
+  return kind.endsWith("Function]") ? (value as Function) : undefined;
+}
+
 /**
  * Shared registration policy for the real plugin host and the in-process fake.
  *
@@ -168,9 +243,9 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
  * plugin's registered schema. Plugin source is not type-safe at runtime, so
  * both the production and fake hosts must enforce this boundary identically.
  */
-export function registerSettingDescriptors(
+export function registerSettingDescriptors<T>(
   target: PluginSettingDescriptors,
-  added: Record<string, unknown>,
+  added: Record<string, T>,
 ): PluginSettingDescriptors {
   const validated: PluginSettingDescriptors = {};
   for (const [key, raw] of Object.entries(added)) {
@@ -207,9 +282,9 @@ export function registerSettingDescriptors(
 }
 
 /** Validate a settings update. `null` means unset. */
-export function validateSettingsUpdate(
+export function validateSettingsUpdate<T>(
   descriptors: PluginSettingDescriptors,
-  values: Record<string, unknown>,
+  values: Record<string, T>,
 ): string[] {
   const errors: string[] = [];
   for (const [key, value] of Object.entries(values)) {
@@ -220,16 +295,20 @@ export function validateSettingsUpdate(
     }
     if (value === null) continue;
     if (descriptor.type === "boolean") {
-      if (typeof value !== "boolean") {
+      if (parseHostPolicyBoolean(value) === undefined) {
         errors.push(`setting "${key}" expects a boolean`);
       }
       continue;
     }
-    if (typeof value !== "string") {
+    const stringValue = parseHostPolicyString(value);
+    if (stringValue === undefined) {
       errors.push(`setting "${key}" expects a string`);
       continue;
     }
-    if (descriptor.type === "select" && !descriptor.options.includes(value)) {
+    if (
+      descriptor.type === "select" &&
+      !descriptor.options.includes(stringValue)
+    ) {
       errors.push(
         `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
       );
@@ -250,35 +329,39 @@ const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
   "@",
 ] as const satisfies readonly PluginMentionTrigger[];
 
-export function isPluginMentionTrigger(
-  value: unknown,
-): value is PluginMentionTrigger {
+export function isPluginMentionTrigger<T>(
+  value: T,
+): value is PluginMentionTrigger & T {
+  const parsed = parseHostPolicyString(value);
   return (
-    typeof value === "string" &&
-    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
+    parsed !== undefined &&
+    PLUGIN_MENTION_TRIGGER_VALUES.some((trigger) => trigger === parsed)
   );
 }
 
-export function normalizeMentionProviderTriggers(
+export function normalizeMentionProviderTriggers<T>(
   providerId: string,
-  triggers: unknown,
+  triggers: T,
 ): readonly PluginMentionTrigger[] {
   if (triggers === undefined) {
     return DEFAULT_PLUGIN_MENTION_TRIGGERS;
   }
-  if (!Array.isArray(triggers)) {
+  const parsedTriggers = z
+    .array(z.custom<HostPolicyInput>())
+    .safeParse(triggers);
+  if (!parsedTriggers.success) {
     throw new Error(
       `mention provider "${providerId}" triggers must be an array`,
     );
   }
-  if (triggers.length === 0) {
+  if (parsedTriggers.data.length === 0) {
     throw new Error(
       `mention provider "${providerId}" triggers must include at least one trigger`,
     );
   }
   const seen = new Set<PluginMentionTrigger>();
   const normalized: PluginMentionTrigger[] = [];
-  for (const trigger of triggers) {
+  for (const trigger of parsedTriggers.data) {
     if (!isPluginMentionTrigger(trigger)) {
       throw new Error(
         `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid; use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
@@ -322,56 +405,62 @@ export const PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES = [
 /** Plugin-relative path rules shared by provider icon assets and bridge
  * entries — the manifest entry-path escape rules, minus the rootDir resolve
  * (the SDK has no rootDir): relative, no ".." segments, no backslashes. */
-function validateProviderRelativePath(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+function validateProviderRelativePath(
+  value: HostPolicyInput,
+  label: string,
+): string {
+  const parsed = parseHostPolicyString(value);
+  if (parsed === undefined || parsed.trim().length === 0) {
     throw new Error(`provider ${label} must be a non-blank relative path`);
   }
-  if (value.includes("\\")) {
+  if (parsed.includes("\\")) {
     throw new Error(
-      `provider ${label} must use "/" separators, got ${JSON.stringify(value)}`,
+      `provider ${label} must use "/" separators, got ${JSON.stringify(parsed)}`,
     );
   }
-  if (value.startsWith("/")) {
+  if (parsed.startsWith("/")) {
     throw new Error(
-      `provider ${label} must be relative, got ${JSON.stringify(value)}`,
+      `provider ${label} must be relative, got ${JSON.stringify(parsed)}`,
     );
   }
-  if (value.split("/").some((segment) => segment === "..")) {
+  if (parsed.split("/").some((segment) => segment === "..")) {
     throw new Error(
-      `provider ${label} must not escape the plugin directory, got ${JSON.stringify(value)}`,
+      `provider ${label} must not escape the plugin directory, got ${JSON.stringify(parsed)}`,
     );
   }
-  return value;
+  return parsed;
 }
 
 function validateProviderLiteralArray<T extends string>(args: {
   providerId: string;
   field: string;
-  value: unknown;
+  value: HostPolicyInput;
   allowed: readonly T[];
   requireNonEmpty: boolean;
 }): readonly T[] {
   const { providerId, field, value, allowed, requireNonEmpty } = args;
-  if (!Array.isArray(value)) {
+  const parsedValue = z.array(z.custom<HostPolicyInput>()).safeParse(value);
+  if (!parsedValue.success) {
     throw new Error(`provider "${providerId}" ${field} must be an array`);
   }
-  if (requireNonEmpty && value.length === 0) {
+  if (requireNonEmpty && parsedValue.data.length === 0) {
     throw new Error(
       `provider "${providerId}" ${field} must include at least one entry`,
     );
   }
   const seen = new Set<T>();
   const normalized: T[] = [];
-  for (const entry of value) {
-    if (
-      typeof entry !== "string" ||
-      !(allowed as readonly string[]).includes(entry)
-    ) {
+  for (const entry of parsedValue.data) {
+    const parsedEntry = parseHostPolicyString(entry);
+    const literal =
+      parsedEntry === undefined
+        ? undefined
+        : allowed.find((candidate) => candidate === parsedEntry);
+    if (literal === undefined) {
       throw new Error(
         `provider "${providerId}" ${field} entry ${JSON.stringify(entry)} is invalid; use one of ${allowed.join(", ")}`,
       );
     }
-    const literal = entry as T;
     if (seen.has(literal)) {
       throw new Error(
         `provider "${providerId}" ${field} entry ${JSON.stringify(entry)} is duplicated`,
@@ -389,47 +478,58 @@ function normalizeProviderBridgeOptions(
   label = "experimental_bridgeOptions",
 ): Readonly<Record<string, JsonValue>> {
   const active = new Set<object>();
-  function visit(current: unknown, path: string): JsonValue {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
-      return current;
-    }
-    if (typeof current === "number") {
-      if (!Number.isFinite(current)) {
+  function visit(current: HostPolicyInput, path: string): JsonValue {
+    if (current === null) return current;
+    const parsedString = parseHostPolicyString(current);
+    if (parsedString !== undefined) return parsedString;
+    const parsedBoolean = parseHostPolicyBoolean(current);
+    if (parsedBoolean !== undefined) return parsedBoolean;
+    const parsedNumber = parseHostPolicyNumber(current);
+    if (parsedNumber !== undefined) {
+      if (!Number.isFinite(parsedNumber)) {
         throw new Error(
           `provider "${providerId}" ${label}${path} must be finite JSON`,
         );
       }
-      return current;
+      return parsedNumber;
     }
-    if (typeof current !== "object") {
+    const parsedArray = hostPolicyArraySchema.safeParse(current);
+    const parsedRecord = parseHostPolicyRecord(current);
+    if (!parsedArray.success && parsedRecord === undefined) {
       throw new Error(`provider "${providerId}" ${label}${path} must be JSON`);
     }
-    if (active.has(current)) {
+    const container = parsedArray.success ? parsedArray.data : parsedRecord;
+    if (container === undefined) {
+      throw new Error(`provider "${providerId}" ${label}${path} must be JSON`);
+    }
+    if (active.has(container)) {
       throw new Error(
         `provider "${providerId}" experimental_bridgeOptions must not contain cycles`,
       );
     }
-    active.add(current);
+    active.add(container);
     try {
-      if (Array.isArray(current)) {
-        const normalized = current.map((entry, index) =>
+      if (parsedArray.success) {
+        const normalized = parsedArray.data.map((entry, index) =>
           visit(entry, `${path}[${index}]`),
         );
         Object.freeze(normalized);
         return normalized;
       }
-      const prototype = Object.getPrototypeOf(current);
+      const objectValue = parsedRecord;
+      if (objectValue === undefined) {
+        throw new Error(
+          `provider "${providerId}" ${label}${path} must be JSON`,
+        );
+      }
+      const prototype = Object.getPrototypeOf(objectValue);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error(
           `provider "${providerId}" ${label}${path} must contain only plain JSON objects`,
         );
       }
       const normalized: Record<string, JsonValue> = Object.fromEntries(
-        Object.entries(current).map(([key, entry]) => [
+        Object.entries(objectValue).map(([key, entry]) => [
           key,
           visit(entry, `${path}.${key}`),
         ]),
@@ -437,27 +537,24 @@ function normalizeProviderBridgeOptions(
       Object.freeze(normalized);
       return normalized;
     } finally {
-      active.delete(current);
+      active.delete(container);
     }
   }
 
   const normalized = visit(value, "");
-  if (
-    normalized === null ||
-    Array.isArray(normalized) ||
-    typeof normalized !== "object"
-  ) {
+  const normalizedRecord = parseHostPolicyJsonRecord(normalized);
+  if (normalizedRecord === undefined) {
     throw new Error(`provider "${providerId}" ${label} must be an object`);
   }
   if (
-    Buffer.byteLength(JSON.stringify(normalized), "utf8") >
+    Buffer.byteLength(JSON.stringify(normalizedRecord), "utf8") >
     PLUGIN_PROVIDER_BRIDGE_OPTIONS_MAX_BYTES
   ) {
     throw new Error(
       `provider "${providerId}" ${label} exceeds ${PLUGIN_PROVIDER_BRIDGE_OPTIONS_MAX_BYTES} bytes`,
     );
   }
-  return normalized;
+  return normalizedRecord;
 }
 
 const PROVIDER_STRING_MAX_CHARS = 512;
@@ -467,31 +564,30 @@ const PROVIDER_EXTENSION_KINDS_MAX = 32;
 function requireNonBlankString(args: {
   providerId: string;
   field: string;
-  value: unknown;
+  value: HostPolicyInput;
 }): string {
   const { providerId, field, value } = args;
+  const parsed = parseHostPolicyString(value);
   if (
-    typeof value !== "string" ||
-    value.trim().length === 0 ||
-    value.length > PROVIDER_STRING_MAX_CHARS
+    parsed === undefined ||
+    parsed.trim().length === 0 ||
+    parsed.length > PROVIDER_STRING_MAX_CHARS
   ) {
     throw new Error(
       `provider "${providerId}" ${field} must be a non-blank string of at most ${PROVIDER_STRING_MAX_CHARS} characters`,
     );
   }
-  return value;
+  return parsed;
 }
 
 function validateProviderStrings(
   providerId: string,
-  value: unknown,
+  value: HostPolicyInput,
 ): PluginProviderStrings {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const record = parseHostPolicyRecord(value);
+  if (record === undefined) {
     throw new Error(`provider "${providerId}" strings must be an object`);
   }
-  const record: Record<string, unknown> = Object.fromEntries(
-    Object.entries(value),
-  );
   const required = (field: "signInHint" | "expiredHint" | "installUrl") =>
     requireNonBlankString({
       providerId,
@@ -509,14 +605,12 @@ function validateProviderStrings(
   let iconTint: PluginProviderStrings["iconTint"];
   if (record.iconTint !== undefined) {
     const tint = record.iconTint;
-    if (typeof tint !== "object" || tint === null || Array.isArray(tint)) {
+    const tintRecord = parseHostPolicyRecord(tint);
+    if (tintRecord === undefined) {
       throw new Error(
         `provider "${providerId}" strings.iconTint must be { light, dark }`,
       );
     }
-    const tintRecord: Record<string, unknown> = Object.fromEntries(
-      Object.entries(tint),
-    );
     iconTint = Object.freeze({
       light: requireNonBlankString({
         providerId,
@@ -532,38 +626,38 @@ function validateProviderStrings(
   }
   const brandPrefix = optional("brandPrefix");
   const planModeCopy = optional("planModeCopy");
-  return Object.freeze({
+  const result: PluginProviderStrings = {
     signInHint: required("signInHint"),
     expiredHint: required("expiredHint"),
     installUrl: required("installUrl"),
-    ...(brandPrefix === undefined ? {} : { brandPrefix }),
-    ...(planModeCopy === undefined ? {} : { planModeCopy }),
-    ...(iconTint === undefined ? {} : { iconTint }),
-  });
+  };
+  if (brandPrefix !== undefined) result.brandPrefix = brandPrefix;
+  if (planModeCopy !== undefined) result.planModeCopy = planModeCopy;
+  if (iconTint !== undefined) result.iconTint = iconTint;
+  return Object.freeze(result);
 }
 
 function validateProviderOptionDescriptors(args: {
   providerId: string;
   field: string;
-  value: unknown;
+  value: HostPolicyInput;
 }): readonly PluginProviderOptionDescriptor[] {
   const { providerId, field, value } = args;
-  if (!Array.isArray(value) || value.length === 0) {
+  const parsedValue = z.array(z.custom<HostPolicyInput>()).safeParse(value);
+  if (!parsedValue.success || parsedValue.data.length === 0) {
     throw new Error(
       `provider "${providerId}" ${field} must be a non-empty array of { id, label, description? }`,
     );
   }
   const seen = new Set<string>();
-  const normalized = value.map(
+  const normalized = parsedValue.data.map(
     (entry, index): PluginProviderOptionDescriptor => {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      const record = parseHostPolicyRecord(entry);
+      if (record === undefined) {
         throw new Error(
           `provider "${providerId}" ${field}[${index}] must be { id, label, description? }`,
         );
       }
-      const record: Record<string, unknown> = Object.fromEntries(
-        Object.entries(entry),
-      );
       const id = requireNonBlankString({
         providerId,
         field: `${field}[${index}].id`,
@@ -588,11 +682,9 @@ function validateProviderOptionDescriptors(args: {
               field: `${field}[${index}].description`,
               value: record.description,
             });
-      return Object.freeze({
-        id,
-        label,
-        ...(description === undefined ? {} : { description }),
-      });
+      const result: PluginProviderOptionDescriptor = { id, label };
+      if (description !== undefined) result.description = description;
+      return Object.freeze(result);
     },
   );
   return Object.freeze(normalized);
@@ -600,14 +692,15 @@ function validateProviderOptionDescriptors(args: {
 
 function validateProviderExtensionKinds(
   providerId: string,
-  value: unknown,
+  value: HostPolicyInput,
 ): Readonly<Record<string, PluginProviderExtensionKindDeclaration>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = parseHostPolicyRecord(value);
+  if (parsedValue === undefined) {
     throw new Error(
       `provider "${providerId}" extensionKinds must be an object keyed by kind name`,
     );
   }
-  const entries = Object.entries(value);
+  const entries = Object.entries(parsedValue);
   if (entries.length > PROVIDER_EXTENSION_KINDS_MAX) {
     throw new Error(
       `provider "${providerId}" extensionKinds declares more than ${PROVIDER_EXTENSION_KINDS_MAX} kinds`,
@@ -620,17 +713,14 @@ function validateProviderExtensionKinds(
         `provider "${providerId}" extensionKinds name ${JSON.stringify(name)} must match ${PROVIDER_EXTENSION_KIND_NAME_PATTERN}`,
       );
     }
-    if (
-      typeof declaration !== "object" ||
-      declaration === null ||
-      Array.isArray(declaration)
-    ) {
+    const parsedDeclaration = parseHostPolicyRecord(declaration);
+    if (parsedDeclaration === undefined) {
       throw new Error(
         `provider "${providerId}" extensionKinds.${name} must be { item?, state? }`,
       );
     }
-    const item = Reflect.get(declaration, "item");
-    const state = Reflect.get(declaration, "state");
+    const item = parsedDeclaration.item;
+    const state = parsedDeclaration.state;
     if (item === undefined && state === undefined) {
       throw new Error(
         `provider "${providerId}" extensionKinds.${name} must declare an item schema, a state schema, or both`,
@@ -646,10 +736,10 @@ function validateProviderExtensionKinds(
         `provider "${providerId}" extensionKinds.${name}.state must be a Standard Schema v1 validator`,
       );
     }
-    normalized[name] = Object.freeze({
-      ...(item === undefined ? {} : { item }),
-      ...(state === undefined ? {} : { state }),
-    });
+    const normalizedDeclaration: PluginProviderExtensionKindDeclaration = {};
+    if (item !== undefined) normalizedDeclaration.item = item;
+    if (state !== undefined) normalizedDeclaration.state = state;
+    normalized[name] = Object.freeze(normalizedDeclaration);
   }
   return Object.freeze(normalized);
 }
@@ -660,37 +750,44 @@ const PROVIDER_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 
 function validateProviderEnvPassthrough(
   providerId: string,
-  value: unknown,
+  value: HostPolicyInput,
 ): readonly string[] {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = parseHostPolicyRecord(value);
+  if (parsedValue === undefined) {
     throw new Error(
       `provider "${providerId}" env must be { passthrough: [...] }`,
     );
   }
-  const passthrough = Reflect.get(value, "passthrough");
-  if (!Array.isArray(passthrough)) {
+  const parsedPassthrough = z
+    .array(z.custom<HostPolicyInput>())
+    .safeParse(parsedValue.passthrough);
+  if (!parsedPassthrough.success) {
     throw new Error(
       `provider "${providerId}" env.passthrough must be an array of variable names`,
     );
   }
-  if (passthrough.length > PROVIDER_ENV_PASSTHROUGH_MAX) {
+  if (parsedPassthrough.data.length > PROVIDER_ENV_PASSTHROUGH_MAX) {
     throw new Error(
       `provider "${providerId}" env.passthrough names more than ${PROVIDER_ENV_PASSTHROUGH_MAX} variables`,
     );
   }
   const seen = new Set<string>();
-  for (const name of passthrough) {
-    if (typeof name !== "string" || !PROVIDER_ENV_NAME_PATTERN.test(name)) {
+  for (const name of parsedPassthrough.data) {
+    const parsedName = parseHostPolicyString(name);
+    if (
+      parsedName === undefined ||
+      !PROVIDER_ENV_NAME_PATTERN.test(parsedName)
+    ) {
       throw new Error(
         `provider "${providerId}" env.passthrough entries must match ${PROVIDER_ENV_NAME_PATTERN}`,
       );
     }
-    if (seen.has(name)) {
+    if (seen.has(parsedName)) {
       throw new Error(
-        `provider "${providerId}" env.passthrough repeats ${JSON.stringify(name)}`,
+        `provider "${providerId}" env.passthrough repeats ${JSON.stringify(parsedName)}`,
       );
     }
-    seen.add(name);
+    seen.add(parsedName);
   }
   return Object.freeze([...seen]);
 }
@@ -706,7 +803,7 @@ function validateProviderEnvPassthrough(
 function validateProviderNativeRoots(
   providerId: string,
   field: "experimental_nativeSkillRoots" | "experimental_nativeCommandRoots",
-  value: unknown,
+  value: HostPolicyInput,
 ): ProviderNativeRoots {
   const input = providerNativeRootsInputSchema.safeParse(value);
   if (!input.success) {
@@ -725,12 +822,14 @@ function validateProviderNativeRoots(
       `provider "${providerId}" ${field}${where} ${issue?.message ?? "is invalid"}`,
     );
   }
-  return Object.freeze({
+  const frozen = Object.freeze({
     user: Object.freeze(wire.data.user.map((root) => Object.freeze(root))),
     project: Object.freeze(
       wire.data.project.map((root) => Object.freeze(root)),
     ),
-  }) as ProviderNativeRoots;
+  });
+  // SAFETY: providerNativeRootsSchema validates the root fields before freezing.
+  return frozen as ProviderNativeRoots;
 }
 
 const PROVIDER_MODEL_CATALOG_SCOPES = [
@@ -745,20 +844,21 @@ const PROVIDER_MODEL_CATALOG_SCOPES = [
  */
 function validateProviderModelCatalogScope(
   providerId: string,
-  value: unknown,
+  value: HostPolicyInput,
 ): PluginProviderModelCatalogScope {
   if (value === undefined) {
     return "workspace";
   }
+  const parsed = parseHostPolicyString(value);
   if (
-    typeof value !== "string" ||
-    !(PROVIDER_MODEL_CATALOG_SCOPES as readonly string[]).includes(value)
+    parsed === undefined ||
+    !PROVIDER_MODEL_CATALOG_SCOPES.some((scope) => scope === parsed)
   ) {
     throw new Error(
       `provider "${providerId}" models.scope must be one of ${PROVIDER_MODEL_CATALOG_SCOPES.join(", ")}`,
     );
   }
-  return value as PluginProviderModelCatalogScope;
+  return parsed === "host" ? "host" : "workspace";
 }
 
 /**
@@ -767,36 +867,38 @@ function validateProviderModelCatalogScope(
  */
 function validateProviderFallbackModels(
   providerId: string,
-  value: unknown,
+  value: HostPolicyInput,
 ): readonly PluginProviderFallbackModel[] | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = parseHostPolicyRecord(value);
+  if (parsedValue === undefined) {
     throw new Error(`provider "${providerId}" models must be an object`);
   }
-  const fallback = Reflect.get(value, "fallback");
+  const fallback = parsedValue.fallback;
   if (fallback === undefined) {
     return undefined;
   }
-  if (!Array.isArray(fallback)) {
+  const parsedFallback = z
+    .array(z.custom<HostPolicyInput>())
+    .safeParse(fallback);
+  if (!parsedFallback.success) {
     throw new Error(
       `provider "${providerId}" models.fallback must be an array`,
     );
   }
-  if (fallback.length > PROVIDER_FALLBACK_MODELS_MAX) {
+  if (parsedFallback.data.length > PROVIDER_FALLBACK_MODELS_MAX) {
     throw new Error(
       `provider "${providerId}" models.fallback lists more than ${PROVIDER_FALLBACK_MODELS_MAX} models`,
     );
   }
   const seen = new Set<string>();
   let defaults = 0;
-  const normalized = fallback.map(
+  const normalized = parsedFallback.data.map(
     (entry, index): PluginProviderFallbackModel => {
       const field = `models.fallback[${index}]`;
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      const record = parseHostPolicyRecord(entry);
+      if (record === undefined) {
         throw new Error(`provider "${providerId}" ${field} must be an object`);
       }
-      const record: Record<string, unknown> = Object.fromEntries(
-        Object.entries(entry),
-      );
       const id = requireNonBlankString({
         providerId,
         field: `${field}.id`,
@@ -830,27 +932,26 @@ function validateProviderFallbackModels(
           effort,
           effortIndex,
         ): PluginProviderFallbackModel["supportedReasoningEfforts"][number] => {
-          if (
-            typeof effort !== "object" ||
-            effort === null ||
-            Array.isArray(effort)
-          ) {
+          const effortRecord = parseHostPolicyRecord(effort);
+          if (effortRecord === undefined) {
             throw new Error(
               `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}] must be { reasoningEffort, description }`,
             );
           }
-          const reasoningEffort = Reflect.get(effort, "reasoningEffort");
-          if (
-            typeof reasoningEffort !== "string" ||
-            !(
-              PLUGIN_PROVIDER_REASONING_LEVEL_VALUES as readonly string[]
-            ).includes(reasoningEffort)
-          ) {
+          const reasoningEffort = parseHostPolicyString(
+            effortRecord.reasoningEffort,
+          );
+          const level =
+            reasoningEffort === undefined
+              ? undefined
+              : PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.find(
+                  (candidate) => candidate === reasoningEffort,
+                );
+          if (level === undefined) {
             throw new Error(
               `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}].reasoningEffort must be one of ${PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.join(", ")}`,
             );
           }
-          const level = reasoningEffort as PluginProviderReasoningLevel;
           if (levels.has(level)) {
             throw new Error(
               `provider "${providerId}" ${field}.supportedReasoningEfforts repeats ${JSON.stringify(level)}`,
@@ -862,34 +963,41 @@ function validateProviderFallbackModels(
             description: requireNonBlankString({
               providerId,
               field: `${field}.supportedReasoningEfforts[${effortIndex}].description`,
-              value: Reflect.get(effort, "description"),
+              value: effortRecord.description,
             }),
           });
         },
       );
       const defaultReasoningEffort = record.defaultReasoningEffort;
       if (
-        typeof defaultReasoningEffort !== "string" ||
-        !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
+        parseHostPolicyString(defaultReasoningEffort) === undefined ||
+        !levels.has(
+          PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.find(
+            (candidate) => candidate === defaultReasoningEffort,
+          ) ?? "none",
+        )
       ) {
         throw new Error(
           `provider "${providerId}" ${field}.defaultReasoningEffort must be one of its supportedReasoningEfforts`,
         );
       }
-      if (typeof record.isDefault !== "boolean") {
+      const isDefault = parseHostPolicyBoolean(record.isDefault);
+      if (isDefault === undefined) {
         throw new Error(
           `provider "${providerId}" ${field}.isDefault must be a boolean`,
         );
       }
-      if (record.isDefault) defaults += 1;
+      if (isDefault) defaults += 1;
       return Object.freeze({
         id,
         displayName,
         description,
         supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
         defaultReasoningEffort:
-          defaultReasoningEffort as PluginProviderReasoningLevel,
-        isDefault: record.isDefault,
+          PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.find(
+            (candidate) => candidate === defaultReasoningEffort,
+          ) ?? "none",
+        isDefault,
       });
     },
   );
@@ -961,40 +1069,43 @@ export const SERVER_DIRECT_AI_SERVICE_IDS: readonly string[] = Object.freeze([
 export function validatePluginAiServiceDeclaration(
   declaration: PluginAiServiceDeclaration,
 ): PluginAiServiceDeclaration {
-  if (typeof declaration !== "object" || declaration === null) {
+  const parsedDeclaration = parseHostPolicyRecord(declaration);
+  if (parsedDeclaration === undefined) {
     throw new Error("AI service declaration must be an object");
   }
-  const id = declaration.id;
-  if (typeof id !== "string" || !PROVIDER_ID_PATTERN.test(id)) {
+  const id = parseHostPolicyString(parsedDeclaration.id);
+  if (id === undefined || !PROVIDER_ID_PATTERN.test(id)) {
     throw new Error(
       `invalid AI service id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
     );
   }
   const displayName =
-    typeof declaration.displayName === "string"
-      ? declaration.displayName.trim()
-      : "";
+    parseHostPolicyString(parsedDeclaration.displayName)?.trim() ?? "";
   if (displayName.length === 0 || displayName.length > 64) {
     throw new Error(`AI service "${id}" displayName must be 1-64 characters`);
   }
-  const kinds = declaration.kinds;
-  if (!Array.isArray(kinds) || kinds.length === 0) {
+  const parsedKinds = z
+    .array(z.custom<HostPolicyInput>())
+    .safeParse(parsedDeclaration.kinds);
+  if (!parsedKinds.success || parsedKinds.data.length === 0) {
     throw new Error(`AI service "${id}" must declare at least one kind`);
   }
   const seen = new Set<PluginAiServiceKind>();
-  for (const kind of kinds) {
-    if (
-      typeof kind !== "string" ||
-      !AI_SERVICE_KINDS.has(kind as PluginAiServiceKind)
-    ) {
+  for (const kind of parsedKinds.data) {
+    const parsedKind = parseHostPolicyString(kind);
+    const serviceKind =
+      parsedKind === undefined
+        ? undefined
+        : [...AI_SERVICE_KINDS].find((candidate) => candidate === parsedKind);
+    if (serviceKind === undefined) {
       throw new Error(
         `AI service "${id}" kind ${JSON.stringify(kind)} is not one of: ${[...AI_SERVICE_KINDS].join(", ")}`,
       );
     }
-    if (seen.has(kind as PluginAiServiceKind)) {
+    if (seen.has(serviceKind)) {
       throw new Error(`AI service "${id}" declares kind "${kind}" twice`);
     }
-    seen.add(kind as PluginAiServiceKind);
+    seen.add(serviceKind);
   }
   return Object.freeze({
     id,
@@ -1097,6 +1208,16 @@ export type NormalizedPluginProviderDeclaration = Omit<
   };
 };
 
+type MutableNormalizedPluginProviderDeclaration = {
+  -readonly [
+    Key in keyof NormalizedPluginProviderDeclaration
+  ]: NormalizedPluginProviderDeclaration[Key];
+};
+type MutableNormalizedPluginProviderModels = {
+  scope: PluginProviderModelCatalogScope;
+  fallback?: readonly PluginProviderFallbackModel[];
+};
+
 /**
  * Declaration fields SDK 0.4.16 renamed when they stabilized (S2). A plugin
  * built against an SDK before 0.4.16 still passes the old key; a validator
@@ -1175,11 +1296,12 @@ function rejectStaleExperimentalFields(args: {
 export function validatePluginProviderDeclaration(
   declaration: PluginProviderDeclaration,
 ): NormalizedPluginProviderDeclaration {
-  if (typeof declaration !== "object" || declaration === null) {
+  const parsedDeclaration = parseHostPolicyRecord(declaration);
+  if (parsedDeclaration === undefined) {
     throw new Error("provider declaration must be an object");
   }
-  const id = declaration.id;
-  if (typeof id !== "string" || !PROVIDER_ID_PATTERN.test(id)) {
+  const id = parseHostPolicyString(parsedDeclaration.id);
+  if (id === undefined || !PROVIDER_ID_PATTERN.test(id)) {
     throw new Error(
       `invalid provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
     );
@@ -1190,25 +1312,24 @@ export function validatePluginProviderDeclaration(
   // `experimental_visibility` check for a `maintenance.health` it never saw).
   rejectStaleExperimentalFields({
     providerId: id,
-    value: declaration,
+    value: parsedDeclaration,
     scope: "",
     read: READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS,
     renamed: RENAMED_PROVIDER_DECLARATION_FIELDS,
     verb: "renamed",
   });
-  const family = declaration.family;
+  const familyValue = parsedDeclaration.family;
+  const family = parseHostPolicyString(familyValue);
   if (
-    family !== undefined &&
-    (typeof family !== "string" || !PROVIDER_ID_PATTERN.test(family))
+    familyValue !== undefined &&
+    (family === undefined || !PROVIDER_ID_PATTERN.test(family))
   ) {
     throw new Error(
       `provider "${id}" family must use the provider id grammar (2-64 lowercase letters, digits, and "-")`,
     );
   }
   const displayName =
-    typeof declaration.displayName === "string"
-      ? declaration.displayName.trim()
-      : "";
+    parseHostPolicyString(parsedDeclaration.displayName)?.trim() ?? "";
   if (
     displayName.length === 0 ||
     displayName.length > PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS
@@ -1218,11 +1339,10 @@ export function validatePluginProviderDeclaration(
     );
   }
   let icon: string | undefined;
-  if (declaration.icon !== undefined) {
-    if (
-      typeof declaration.icon !== "string" ||
-      declaration.icon.trim() === ""
-    ) {
+  const iconValue = parsedDeclaration.icon;
+  if (iconValue !== undefined) {
+    const parsedIcon = parseHostPolicyString(iconValue);
+    if (parsedIcon === undefined || parsedIcon.trim() === "") {
       throw new Error(
         `provider "${id}" icon must be a non-blank string — a named host glyph ("Zap"), a plugin-relative path ("./icons/agent.svg"), or a declared icon ("<pluginId>/<name>")`,
       );
@@ -1234,20 +1354,20 @@ export function validatePluginProviderDeclaration(
     // the manifest; `bb.branding.icon` itself refuses this form); anything
     // else names a host glyph. A path-shaped value that is neither would
     // otherwise be read as a glyph name that resolves to nothing.
-    if (isPluginOwnedIconPath(declaration.icon)) {
-      icon = validateProviderRelativePath(declaration.icon, `"${id}" icon`);
-    } else if (isNamespacedGlyph(declaration.icon)) {
-      icon = declaration.icon;
-    } else if (/[/\\]/u.test(declaration.icon)) {
+    if (isPluginOwnedIconPath(parsedIcon)) {
+      icon = validateProviderRelativePath(parsedIcon, `"${id}" icon`);
+    } else if (isNamespacedGlyph(parsedIcon)) {
+      icon = parsedIcon;
+    } else if (/[/\\]/u.test(parsedIcon)) {
       throw new Error(
         `provider "${id}" icon looks like a path but does not start with "./" — use "./icons/agent.svg" for a plugin file, "<pluginId>/<name>" for a declared icon, or a bare host glyph name like "Zap"`,
       );
     } else {
-      icon = declaration.icon;
+      icon = parsedIcon;
     }
   }
-  const capabilities = declaration.capabilities;
-  if (typeof capabilities !== "object" || capabilities === null) {
+  const capabilities = parseHostPolicyRecord(parsedDeclaration.capabilities);
+  if (capabilities === undefined) {
     throw new Error(`provider "${id}" capabilities must be an object`);
   }
   rejectStaleExperimentalFields({
@@ -1261,20 +1381,41 @@ export function validatePluginProviderDeclaration(
   // Maintenance support: an omitted object or key means the bridge does not
   // implement that request. Filled here once, then an explicit boolean
   // everywhere inside bb.
-  const maintenance = declaration.maintenance ?? {};
-  if (typeof maintenance !== "object" || maintenance === null) {
+  const maintenance =
+    parsedDeclaration.maintenance === undefined
+      ? {}
+      : parseHostPolicyRecord(parsedDeclaration.maintenance);
+  if (maintenance === undefined) {
     throw new Error(`provider "${id}" maintenance must be an object`);
   }
   for (const key of ["health", "usage", "installation"] as const) {
     const value = maintenance[key];
-    if (value !== undefined && typeof value !== "boolean") {
+    if (value !== undefined && parseHostPolicyBoolean(value) === undefined) {
       throw new Error(`provider "${id}" maintenance.${key} must be a boolean`);
     }
   }
   const normalizedMaintenance = Object.freeze({
-    health: maintenance.health ?? false,
-    usage: maintenance.usage ?? false,
-    installation: maintenance.installation ?? false,
+    health:
+      maintenance.health === undefined
+        ? false
+        : requireHostPolicyBoolean(
+            maintenance.health,
+            `provider "${id}" maintenance.health must be a boolean`,
+          ),
+    usage:
+      maintenance.usage === undefined
+        ? false
+        : requireHostPolicyBoolean(
+            maintenance.usage,
+            `provider "${id}" maintenance.usage must be a boolean`,
+          ),
+    installation:
+      maintenance.installation === undefined
+        ? false
+        : requireHostPolicyBoolean(
+            maintenance.installation,
+            `provider "${id}" maintenance.installation must be a boolean`,
+          ),
   });
   const booleanCapabilityFields = [
     "supportsServiceTier",
@@ -1284,26 +1425,43 @@ export function validatePluginProviderDeclaration(
     "supportsThreadRename",
   ] as const;
   for (const field of booleanCapabilityFields) {
-    if (typeof capabilities[field] !== "boolean") {
+    if (parseHostPolicyBoolean(capabilities[field]) === undefined) {
       throw new Error(
         `provider "${id}" capabilities.${field} must be a boolean`,
       );
     }
   }
-  if (
-    !(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)
-  ) {
+  const fork = parseHostPolicyString(capabilities.fork);
+  const normalizedFork = PROVIDER_FORK_VALUES.find(
+    (candidate) => candidate === fork,
+  );
+  if (fork === undefined || normalizedFork === undefined) {
     throw new Error(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
-    supportsServiceTier: capabilities.supportsServiceTier,
-    supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
-    fork: capabilities.fork,
-    supportsManualCompaction: capabilities.supportsManualCompaction,
-    supportsThreadArchive: capabilities.supportsThreadArchive,
-    supportsThreadRename: capabilities.supportsThreadRename,
+    supportsServiceTier: requireHostPolicyBoolean(
+      capabilities.supportsServiceTier,
+      `provider "${id}" capabilities.supportsServiceTier must be a boolean`,
+    ),
+    supportsNativeUserQuestion: requireHostPolicyBoolean(
+      capabilities.supportsNativeUserQuestion,
+      `provider "${id}" capabilities.supportsNativeUserQuestion must be a boolean`,
+    ),
+    fork: normalizedFork,
+    supportsManualCompaction: requireHostPolicyBoolean(
+      capabilities.supportsManualCompaction,
+      `provider "${id}" capabilities.supportsManualCompaction must be a boolean`,
+    ),
+    supportsThreadArchive: requireHostPolicyBoolean(
+      capabilities.supportsThreadArchive,
+      `provider "${id}" capabilities.supportsThreadArchive must be a boolean`,
+    ),
+    supportsThreadRename: requireHostPolicyBoolean(
+      capabilities.supportsThreadRename,
+      `provider "${id}" capabilities.supportsThreadRename must be a boolean`,
+    ),
     permissionModes: validateProviderLiteralArray({
       providerId: id,
       field: "capabilities.permissionModes",
@@ -1322,7 +1480,7 @@ export function validatePluginProviderDeclaration(
   const composerActions = validateProviderLiteralArray({
     providerId: id,
     field: "composerActions",
-    value: declaration.composerActions,
+    value: parsedDeclaration.composerActions,
     allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
     requireNonEmpty: false,
   });
@@ -1333,7 +1491,7 @@ export function validatePluginProviderDeclaration(
           id,
           declaration.experimental_bridgeOptions,
         );
-  const visibility = declaration.experimental_visibility ?? "always";
+  const visibility = parsedDeclaration.experimental_visibility ?? "always";
   if (visibility !== "always" && visibility !== "installed") {
     throw new Error(
       `provider "${id}" experimental_visibility must be "always" or "installed"`,
@@ -1347,33 +1505,33 @@ export function validatePluginProviderDeclaration(
   // Target-state declaration fields: validated and carried when present so
   // WS2a can project them, never silently dropped.
   const strings =
-    declaration.strings === undefined
+    parsedDeclaration.strings === undefined
       ? undefined
-      : validateProviderStrings(id, declaration.strings);
+      : validateProviderStrings(id, parsedDeclaration.strings);
   const serviceTiers =
-    declaration.serviceTiers === undefined
+    parsedDeclaration.serviceTiers === undefined
       ? undefined
       : validateProviderOptionDescriptors({
           providerId: id,
           field: "serviceTiers",
-          value: declaration.serviceTiers,
+          value: parsedDeclaration.serviceTiers,
         });
   const reasoningLevels =
-    declaration.reasoningLevels === undefined
+    parsedDeclaration.reasoningLevels === undefined
       ? undefined
       : validateProviderOptionDescriptors({
           providerId: id,
           field: "reasoningLevels",
-          value: declaration.reasoningLevels,
+          value: parsedDeclaration.reasoningLevels,
         });
   const extensionKinds =
-    declaration.extensionKinds === undefined
+    parsedDeclaration.extensionKinds === undefined
       ? undefined
-      : validateProviderExtensionKinds(id, declaration.extensionKinds);
+      : validateProviderExtensionKinds(id, parsedDeclaration.extensionKinds);
   const fallbackModels =
-    declaration.models === undefined
+    parsedDeclaration.models === undefined
       ? undefined
-      : validateProviderFallbackModels(id, declaration.models);
+      : validateProviderFallbackModels(id, parsedDeclaration.models);
   // Filled in at the boundary rather than left absent: every consumer reads
   // one value, and the default is a decision this validator owns.
   const modelCatalogScope = validateProviderModelCatalogScope(
@@ -1381,29 +1539,30 @@ export function validatePluginProviderDeclaration(
     declaration.models?.scope,
   );
   const envPassthrough =
-    declaration.env === undefined
+    parsedDeclaration.env === undefined
       ? undefined
-      : validateProviderEnvPassthrough(id, declaration.env);
+      : validateProviderEnvPassthrough(id, parsedDeclaration.env);
   const nativeSkillRoots =
-    declaration.experimental_nativeSkillRoots === undefined
+    parsedDeclaration.experimental_nativeSkillRoots === undefined
       ? undefined
       : validateProviderNativeRoots(
           id,
           "experimental_nativeSkillRoots",
-          declaration.experimental_nativeSkillRoots,
+          parsedDeclaration.experimental_nativeSkillRoots,
         );
   const nativeCommandRoots =
-    declaration.experimental_nativeCommandRoots === undefined
+    parsedDeclaration.experimental_nativeCommandRoots === undefined
       ? undefined
       : validateProviderNativeRoots(
           id,
           "experimental_nativeCommandRoots",
-          declaration.experimental_nativeCommandRoots,
+          parsedDeclaration.experimental_nativeCommandRoots,
         );
   const resolvesNativeRoots = declaration.experimental_resolvesNativeRoots;
+  const parsedResolvesNativeRoots = parseHostPolicyBoolean(resolvesNativeRoots);
   if (
     resolvesNativeRoots !== undefined &&
-    typeof resolvesNativeRoots !== "boolean"
+    parsedResolvesNativeRoots === undefined
   ) {
     throw new Error(
       `provider "${id}" experimental_resolvesNativeRoots must be a boolean`,
@@ -1412,48 +1571,49 @@ export function validatePluginProviderDeclaration(
   const deriveProviderOptions = declaration.deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
-    typeof deriveProviderOptions !== "function"
+    parseHostPolicyFunction(deriveProviderOptions) === undefined
   ) {
     throw new Error(
       `provider "${id}" deriveProviderOptions must be a function (context) => providerOptions`,
     );
   }
-  return Object.freeze({
+  const models: MutableNormalizedPluginProviderModels = {
+    scope: modelCatalogScope,
+  };
+  if (fallbackModels !== undefined) models.fallback = fallbackModels;
+  const normalized: MutableNormalizedPluginProviderDeclaration = {
     id,
     displayName,
-    ...(family === undefined ? {} : { family: family }),
-    ...(icon === undefined ? {} : { icon }),
-    ...(bridgeOptions === undefined
-      ? {}
-      : { experimental_bridgeOptions: bridgeOptions }),
     experimental_visibility: visibility,
     maintenance: normalizedMaintenance,
     capabilities: normalizedCapabilities,
     composerActions,
-    ...(strings === undefined ? {} : { strings: strings }),
-    ...(serviceTiers === undefined ? {} : { serviceTiers: serviceTiers }),
-    ...(reasoningLevels === undefined
-      ? {}
-      : { reasoningLevels: reasoningLevels }),
-    ...(extensionKinds === undefined ? {} : { extensionKinds: extensionKinds }),
-    models: Object.freeze({
-      ...(fallbackModels === undefined ? {} : { fallback: fallbackModels }),
-      scope: modelCatalogScope,
-    }),
-    ...(envPassthrough === undefined
-      ? {}
-      : { env: Object.freeze({ passthrough: envPassthrough }) }),
-    ...(nativeSkillRoots === undefined
-      ? {}
-      : { experimental_nativeSkillRoots: nativeSkillRoots }),
-    ...(nativeCommandRoots === undefined
-      ? {}
-      : { experimental_nativeCommandRoots: nativeCommandRoots }),
-    experimental_resolvesNativeRoots: resolvesNativeRoots ?? false,
-    ...(deriveProviderOptions === undefined
-      ? {}
-      : { deriveProviderOptions: deriveProviderOptions }),
-  });
+    models: Object.freeze(models),
+    experimental_resolvesNativeRoots: parsedResolvesNativeRoots ?? false,
+  };
+  if (family !== undefined) normalized.family = family;
+  if (icon !== undefined) normalized.icon = icon;
+  if (bridgeOptions !== undefined) {
+    normalized.experimental_bridgeOptions = bridgeOptions;
+  }
+  if (strings !== undefined) normalized.strings = strings;
+  if (serviceTiers !== undefined) normalized.serviceTiers = serviceTiers;
+  if (reasoningLevels !== undefined)
+    normalized.reasoningLevels = reasoningLevels;
+  if (extensionKinds !== undefined) normalized.extensionKinds = extensionKinds;
+  if (envPassthrough !== undefined) {
+    normalized.env = Object.freeze({ passthrough: envPassthrough });
+  }
+  if (nativeSkillRoots !== undefined) {
+    normalized.experimental_nativeSkillRoots = nativeSkillRoots;
+  }
+  if (nativeCommandRoots !== undefined) {
+    normalized.experimental_nativeCommandRoots = nativeCommandRoots;
+  }
+  if (deriveProviderOptions !== undefined) {
+    normalized.deriveProviderOptions = deriveProviderOptions;
+  }
+  return Object.freeze(normalized);
 }
 
 /**
@@ -1479,29 +1639,30 @@ export function deriveValidatedProviderOptions(args: {
   );
 }
 
-export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
-  if (typeof value !== "object" || value === null) return false;
-  const standard = Reflect.get(value, "~standard");
+export function isStandardSchema<T>(value: T): value is StandardSchemaV1 & T {
+  const parsedValue = parseHostPolicyRecord(value);
+  if (parsedValue === undefined) return false;
+  const standard = parseHostPolicyRecord(parsedValue["~standard"]);
+  if (standard === undefined) return false;
   return (
-    typeof standard === "object" &&
-    standard !== null &&
-    Reflect.get(standard, "version") === 1 &&
-    typeof Reflect.get(standard, "vendor") === "string" &&
-    typeof Reflect.get(standard, "validate") === "function"
+    parseHostPolicyNumber(standard.version) === 1 &&
+    parseHostPolicyString(standard.vendor) !== undefined &&
+    parseHostPolicyFunction(standard.validate) !== undefined
   );
 }
 
-export function readRpcMethodContract(
+export function readRpcMethodContract<T>(
   method: string,
-  value: unknown,
+  value: T,
 ): PluginRpcMethodContract {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const parsedValue = parseHostPolicyRecord(value);
+  if (parsedValue === undefined) {
     throw new Error(
       `rpc method "${method}" contract must provide input and output Standard Schemas`,
     );
   }
-  const input = Reflect.get(value, "input");
-  const output = Reflect.get(value, "output");
+  const input = parsedValue.input;
+  const output = parsedValue.output;
   if (!isStandardSchema(input)) {
     throw new Error(
       `rpc method "${method}" input must be a Standard Schema v1 validator`,
@@ -1517,11 +1678,11 @@ export function readRpcMethodContract(
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
-export function isZodSchemaLike(value: unknown): boolean {
+export function isZodSchemaLike<T>(value: T): boolean {
+  const parsedValue = parseHostPolicyRecord(value);
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { safeParse?: unknown }).safeParse === "function"
+    parsedValue !== undefined &&
+    parseHostPolicyFunction(parsedValue.safeParse) !== undefined
   );
 }
 
@@ -1555,8 +1716,8 @@ const SCHEMA_MAP_KEYWORDS = [
   "properties",
 ] as const;
 
-function isJsonSchemaObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isJsonSchemaObject<T>(value: T): value is HostPolicyRecord & T {
+  return parseHostPolicyRecord(value) !== undefined;
 }
 
 function decodeJsonPointerToken(token: string): string {
@@ -1564,10 +1725,10 @@ function decodeJsonPointerToken(token: string): string {
 }
 
 function resolveLocalJsonSchemaReference(
-  document: Record<string, unknown>,
-  anchors: ReadonlyMap<string, Record<string, unknown>>,
+  document: HostPolicyRecord,
+  anchors: ReadonlyMap<string, HostPolicyRecord>,
   reference: string,
-): unknown {
+): HostPolicyInput {
   if (!reference.startsWith("#")) return undefined;
   let pointer: string;
   try {
@@ -1578,7 +1739,7 @@ function resolveLocalJsonSchemaReference(
   if (pointer.length === 0) return document;
   if (!pointer.startsWith("/")) return anchors.get(pointer);
 
-  let current: unknown = document;
+  let current: HostPolicyInput = document;
   for (const encodedToken of pointer.slice(1).split("/")) {
     const token = decodeJsonPointerToken(encodedToken);
     if (Array.isArray(current)) {
@@ -1595,8 +1756,8 @@ function resolveLocalJsonSchemaReference(
 }
 
 function forEachJsonSchemaChild(
-  schema: Record<string, unknown>,
-  visit: (child: unknown) => void,
+  schema: HostPolicyRecord,
+  visit: (child: HostPolicyInput) => void,
 ): void {
   for (const keyword of SINGLE_SCHEMA_KEYWORDS) {
     const child = schema[keyword];
@@ -1629,26 +1790,28 @@ function forEachJsonSchemaChild(
  * Some providers reject the complete tool list when any one schema contains a
  * recursive `$ref`, so this is a shared production/fake-host boundary rule.
  */
-export function assertNoRecursiveJsonSchemaReferences(
-  schema: unknown,
+export function assertNoRecursiveJsonSchemaReferences<T>(
+  schema: T,
   subject: string,
 ): void {
   if (!isJsonSchemaObject(schema)) return;
   const document = schema;
-  const anchors = new Map<string, Record<string, unknown>>();
+  const anchors = new Map<string, HostPolicyRecord>();
   const indexed = new Set<object>();
 
-  function indexAnchors(candidate: unknown): void {
+  function indexAnchors(candidate: HostPolicyInput): void {
     if (!isJsonSchemaObject(candidate) || indexed.has(candidate)) return;
     indexed.add(candidate);
     for (const keyword of ["$anchor", "$dynamicAnchor"] as const) {
       const anchor = candidate[keyword];
-      if (typeof anchor === "string") anchors.set(anchor, candidate);
+      const parsedAnchor = parseHostPolicyString(anchor);
+      if (parsedAnchor !== undefined) anchors.set(parsedAnchor, candidate);
     }
     for (const keyword of ["$id", "id"] as const) {
       const id = candidate[keyword];
-      if (typeof id === "string" && /^#[^/]+$/.test(id)) {
-        anchors.set(id.slice(1), candidate);
+      const parsedId = parseHostPolicyString(id);
+      if (parsedId !== undefined && /^#[^/]+$/.test(parsedId)) {
+        anchors.set(parsedId.slice(1), candidate);
       }
     }
     forEachJsonSchemaChild(candidate, indexAnchors);
@@ -1660,10 +1823,13 @@ export function assertNoRecursiveJsonSchemaReferences(
   const visiting = new Set<object>();
 
   function visit(
-    candidate: unknown,
+    candidate: HostPolicyInput,
     viaReference?: { keyword: string; value: string },
   ): void {
-    if (typeof candidate === "boolean" || !isJsonSchemaObject(candidate)) {
+    if (
+      parseHostPolicyBoolean(candidate) !== undefined ||
+      !isJsonSchemaObject(candidate)
+    ) {
       return;
     }
     if (visiting.has(candidate)) {
@@ -1676,14 +1842,15 @@ export function assertNoRecursiveJsonSchemaReferences(
     visiting.add(candidate);
     for (const keyword of ["$ref", "$recursiveRef", "$dynamicRef"] as const) {
       const reference = candidate[keyword];
-      if (typeof reference === "string" && reference.startsWith("#")) {
+      const parsedReference = parseHostPolicyString(reference);
+      if (parsedReference !== undefined && parsedReference.startsWith("#")) {
         const target = resolveLocalJsonSchemaReference(
           document,
           anchors,
-          reference,
+          parsedReference,
         );
         if (target !== undefined) {
-          visit(target, { keyword, value: reference });
+          visit(target, { keyword, value: parsedReference });
         }
       }
     }
@@ -1720,9 +1887,9 @@ const RENAMED_AGENT_TOOL_FIELDS: ReadonlyMap<string, string> = new Map([
  * a registration built against an older SDK fails a plugin's own unit test
  * with the message bb would give it.
  */
-export function rejectStaleAgentToolFields(
+export function rejectStaleAgentToolFields<T extends object>(
   toolName: string,
-  tool: object,
+  tool: T,
 ): void {
   const unknownKeys: string[] = [];
   for (const key of Object.keys(tool).sort()) {
@@ -1749,34 +1916,31 @@ export function rejectStaleAgentToolFields(
  * in a plugin unit test registers in bb, and one bb rejects is rejected
  * with the same message.
  */
-export function parsePluginAgentToolPresentation(
+export function parsePluginAgentToolPresentation<T>(
   toolName: string,
-  value: unknown,
+  value: T,
 ): PluginAgentToolPresentation | null {
   if (value === undefined) {
     return null;
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  const declared = parseHostPolicyRecord(value);
+  if (declared === undefined) {
     throw new Error(`tool "${toolName}" presentation must be an object`);
   }
-  const declared = value as Record<string, unknown>;
   const presentation: PluginAgentToolPresentation = {};
   if (declared.label !== undefined) {
-    const label = declared.label;
+    const label = parseHostPolicyRecord(declared.label);
+    const pending = parseHostPolicyString(label?.pending);
+    const completed = parseHostPolicyString(label?.completed);
     if (
-      typeof label !== "object" ||
-      label === null ||
-      typeof (label as { pending?: unknown }).pending !== "string" ||
-      typeof (label as { completed?: unknown }).completed !== "string"
+      label === undefined ||
+      pending === undefined ||
+      completed === undefined
     ) {
       throw new Error(
         `tool "${toolName}" presentation.label must provide pending and completed strings`,
       );
     }
-    const { pending, completed } = label as {
-      pending: string;
-      completed: string;
-    };
     if (
       pending.trim().length === 0 ||
       completed.trim().length === 0 ||
@@ -1790,60 +1954,53 @@ export function parsePluginAgentToolPresentation(
     presentation.label = { pending, completed };
   }
   if (declared.icon !== undefined) {
-    const icon = declared.icon;
-    if (
-      typeof icon !== "object" ||
-      icon === null ||
-      typeof (icon as { glyph?: unknown }).glyph !== "string" ||
-      (icon as { glyph: string }).glyph.trim().length === 0
-    ) {
+    const icon = parseHostPolicyRecord(declared.icon);
+    const glyph = parseHostPolicyString(icon?.glyph);
+    if (glyph === undefined || glyph.trim().length === 0) {
       throw new Error(
         `tool "${toolName}" presentation.icon must be { glyph: string }`,
       );
     }
-    presentation.icon = { glyph: (icon as { glyph: string }).glyph };
+    presentation.icon = { glyph };
   }
   if (declared.suppress !== undefined) {
-    if (typeof declared.suppress !== "boolean") {
+    const suppress = parseHostPolicyBoolean(declared.suppress);
+    if (suppress === undefined) {
       throw new Error(
         `tool "${toolName}" presentation.suppress must be a boolean`,
       );
     }
-    presentation.suppress = declared.suppress;
+    presentation.suppress = suppress;
   }
   if (declared.tint !== undefined) {
-    const tint = declared.tint;
-    if (
-      typeof tint !== "object" ||
-      tint === null ||
-      typeof (tint as { light?: unknown }).light !== "string" ||
-      typeof (tint as { dark?: unknown }).dark !== "string"
-    ) {
+    const tint = parseHostPolicyRecord(declared.tint);
+    const light = parseHostPolicyString(tint?.light);
+    const dark = parseHostPolicyString(tint?.dark);
+    if (light === undefined || dark === undefined) {
       throw new Error(
         `tool "${toolName}" presentation.tint must provide light and dark strings`,
       );
     }
-    presentation.tint = {
-      light: (tint as { light: string }).light,
-      dark: (tint as { dark: string }).dark,
-    };
+    presentation.tint = { light, dark };
   }
   return presentation;
 }
 
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
-export function summarizeParseIssues(error: unknown): string {
-  const issues = (
-    error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
-  )?.issues;
-  if (Array.isArray(issues) && issues.length > 0) {
-    return issues
+export function summarizeParseIssues<T>(error: T): string {
+  const errorRecord = parseHostPolicyRecord(error);
+  const parsedIssues = z
+    .array(z.custom<HostPolicyInput>())
+    .safeParse(errorRecord?.issues);
+  if (parsedIssues.success && parsedIssues.data.length > 0) {
+    return parsedIssues.data
       .map((issue) => {
-        const path =
-          Array.isArray(issue.path) && issue.path.length > 0
-            ? issue.path.join(".")
-            : "(input)";
-        return `${path}: ${issue.message ?? "invalid"}`;
+        const issueRecord = parseHostPolicyRecord(issue);
+        const path = z
+          .array(z.custom<PropertyKey>())
+          .safeParse(issueRecord?.path);
+        const message = parseHostPolicyString(issueRecord?.message);
+        return `${path.success && path.data.length > 0 ? path.data.join(".") : "(input)"}: ${message ?? "invalid"}`;
       })
       .join("; ");
   }
@@ -1892,7 +2049,7 @@ export function enforcePluginCliOutputLimit(
  * The body streams through: a foreign `body` stream is piped chunk by chunk
  * with cancellation forwarded to the source, so no full-size buffer is made.
  */
-export function adoptHttpRouteResponse(value: unknown): Response {
+export function adoptHttpRouteResponse<T>(value: T): Response {
   if (value instanceof Response) return value;
   if (!isResponseLike(value)) {
     throw new Error("http route handler must return a Response");
@@ -1902,7 +2059,7 @@ export function adoptHttpRouteResponse(value: unknown): Response {
     status === 101 || status === 204 || status === 205 || status === 304;
   const init: ResponseInit = {
     status,
-    statusText: typeof value.statusText === "string" ? value.statusText : "",
+    statusText: parseHostPolicyString(value.statusText) ?? "",
     headers: new Headers(value.headers),
   };
   if (isNullBodyStatus || value.body === null) {
@@ -1940,24 +2097,23 @@ function adoptBodyStream(value: Response): ReadableStream<Uint8Array> {
 }
 
 function isReadableStreamLike(
-  value: unknown,
+  value: HostPolicyInput,
 ): value is ReadableStream<Uint8Array> {
+  const parsedValue = parseHostPolicyRecord(value);
   return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as ReadableStream).getReader === "function"
+    parsedValue !== undefined &&
+    parseHostPolicyFunction(parsedValue.getReader) !== undefined
   );
 }
 
-function isResponseLike(value: unknown): value is Response {
-  if (value === null || typeof value !== "object") return false;
-  const candidate = value as Partial<Response>;
+function isResponseLike<T>(value: T): value is Response & T {
+  const candidate = parseHostPolicyRecord(value);
+  if (candidate === undefined) return false;
   return (
-    typeof candidate.status === "number" &&
-    typeof candidate.headers === "object" &&
-    candidate.headers !== null &&
-    typeof candidate.arrayBuffer === "function" &&
-    typeof candidate.clone === "function"
+    parseHostPolicyNumber(candidate.status) !== undefined &&
+    parseHostPolicyRecord(candidate.headers) !== undefined &&
+    parseHostPolicyFunction(candidate.arrayBuffer) !== undefined &&
+    parseHostPolicyFunction(candidate.clone) !== undefined
   );
 }
 

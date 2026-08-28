@@ -4,17 +4,17 @@ import type {
   SkillSummary,
 } from "@bb/server-contract";
 
-const SKILL_ROOT_LABELS: Record<
-  Exclude<SkillScope, "provider-user" | "provider-project">,
-  string
-> = {
+const SKILL_ROOT_LABELS = {
   "bb-builtin": "Built-in",
   "bb-user": "bb · user",
   "bb-project": "bb · project",
   "shared-user": "Shared · user",
   "shared-project": "Shared · project",
   plugin: "Plugin",
-};
+} satisfies Record<
+  Exclude<SkillScope, "provider-user" | "provider-project">,
+  string
+>;
 
 export function skillScopeLabel(
   skill: Pick<SkillSummary, "scope" | "provider">,

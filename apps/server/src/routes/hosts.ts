@@ -35,6 +35,11 @@ import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
 
+interface BrowseDirectoryCommand {
+  type: "host.browse_directory";
+  path?: string;
+}
+
 function providerCliInstallEventsToNdjson(events: readonly unknown[]): string {
   return events.map((event) => `${JSON.stringify(event)}\n`).join("");
 }
@@ -204,13 +209,16 @@ export function registerHostRoutes(
   get(routes.directory, async (context, query) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
+    const command: BrowseDirectoryCommand = {
+      type: "host.browse_directory",
+    };
+    if (query.path) {
+      command.path = query.path;
+    }
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.browse_directory",
-        ...(query.path ? { path: query.path } : {}),
-      },
+      command,
     });
     return context.json(result);
   });

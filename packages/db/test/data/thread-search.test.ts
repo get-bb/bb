@@ -79,12 +79,13 @@ function dropThreadSearchSchema(db: ReturnType<typeof createConnection>): void {
 }
 
 function textInput(text: string, visibility?: "agent-only"): PromptInput {
-  return {
+  const input: PromptInput = {
     type: "text",
     text,
     mentions: [],
-    ...(visibility ? { visibility } : {}),
   };
+  if (visibility) input.visibility = visibility;
+  return input;
 }
 
 function turnRequestData(input: PromptInput[]) {

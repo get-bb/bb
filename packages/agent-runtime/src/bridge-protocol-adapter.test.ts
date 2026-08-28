@@ -1,10 +1,11 @@
-import type { ThreadEvent } from "@bb/domain";
+import type { JsonObject, JsonValue, ThreadEvent } from "@bb/domain";
+import type { BridgeCapabilities } from "@bb/provider-bridge-protocol";
 import { describe, expect, it } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
 
-function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
-  return createBridgeProtocolAdapter({
+function makeAdapter(staticProviderOptions?: JsonObject) {
+  const adapterOptions = {
     id: "fake-bridge",
     capabilities: {
       supportsThreadArchive: false,
@@ -15,13 +16,16 @@ function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
       permissionModes: ["full"],
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },
-    ...(staticProviderOptions === undefined ? {} : { staticProviderOptions }),
-  });
+  } satisfies Parameters<typeof createBridgeProtocolAdapter>[0];
+  if (staticProviderOptions !== undefined) {
+    Object.assign(adapterOptions, { staticProviderOptions });
+  }
+  return createBridgeProtocolAdapter(adapterOptions);
 }
 
 function completeHandshake(
   adapter: ReturnType<typeof makeAdapter>,
-  capabilities: Record<string, unknown>,
+  capabilities: Partial<BridgeCapabilities>,
 ): void {
   const requests = adapter.buildPostInitializeRequests();
   expect(requests).toHaveLength(1);
@@ -290,10 +294,8 @@ describe("options mapping", () => {
         },
       },
     });
-    const options = (plan as { params: { options: Record<string, unknown> } })
-      .params.options;
-    expect(options).not.toHaveProperty("memoryEnabled");
-    expect(options).not.toHaveProperty("skillRoots");
+    expect(plan).not.toHaveProperty("params.options.memoryEnabled");
+    expect(plan).not.toHaveProperty("params.options.skillRoots");
   });
 });
 
@@ -406,9 +408,9 @@ describe("translateEvent", () => {
       providerThreadId: "p_2",
       details: "model change required a session rebuild",
     });
-    expect((events[0] as { summary?: string }).summary).toContain(
-      "context was lost",
-    );
+    expect(events[0]).toMatchObject({
+      summary: expect.stringContaining("context was lost"),
+    });
   });
 });
 
@@ -524,7 +526,7 @@ describe("inbound request decoding", () => {
 function feedDeltas(
   adapter: ReturnType<typeof makeAdapter>,
   threadId: string,
-  deltas: unknown[],
+  deltas: JsonValue[],
 ): ThreadEvent[] {
   return adapter.translateEvent({
     jsonrpc: "2.0",

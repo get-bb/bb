@@ -28,6 +28,10 @@ const desktopInfo = {
   version: "0.0.0-test",
 } as const;
 
+interface FakeMobileWindow {
+  ReactNativeWebView: { postMessage: () => void };
+}
+
 describe("app surface request metadata", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -59,9 +63,9 @@ describe("app surface request metadata", () => {
   });
 
   it("marks requests from the bb mobile shell as mobile", () => {
-    const fakeWindow: Record<string, unknown> = {
+    const fakeWindow = {
       ReactNativeWebView: { postMessage: () => {} },
-    };
+    } satisfies FakeMobileWindow;
     // eslint-disable-next-line no-new-func
     new Function("window", buildBridgeInjectionScript(mobileHandshake))(
       fakeWindow,

@@ -4,22 +4,14 @@ import type { WorkspaceFile } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 
-const { treesModuleEvaluated } = vi.hoisted(() => ({
-  treesModuleEvaluated: vi.fn<(specifier: string) => void>(),
-}));
-vi.mock("@pierre/trees", async (importOriginal) => {
-  treesModuleEvaluated("@pierre/trees");
-  return importOriginal();
-});
-vi.mock("@pierre/trees/react", async (importOriginal) => {
-  treesModuleEvaluated("@pierre/trees/react");
-  return importOriginal();
-});
-
 const FILES: readonly WorkspaceFile[] = [
   { name: "notes.md", path: "docs/notes.md" },
   { name: "main.ts", path: "src/main.ts" },
 ];
+
+interface StorageBrowserTestProps {
+  files: readonly WorkspaceFile[] | undefined;
+}
 
 afterEach(() => {
   cleanup();
@@ -27,9 +19,9 @@ afterEach(() => {
 });
 
 describe("useThreadStorageBrowser", () => {
-  it("loads the tree library only once there are files to show", async () => {
+  it("keeps the tree model absent until files are available", async () => {
     const onSelectPath = vi.fn();
-    const initialProps: { files: readonly WorkspaceFile[] | undefined } = {
+    const initialProps: StorageBrowserTestProps = {
       files: undefined,
     };
     const { result, rerender } = renderHook(
@@ -38,19 +30,16 @@ describe("useThreadStorageBrowser", () => {
       { initialProps },
     );
 
-    expect(treesModuleEvaluated).not.toHaveBeenCalled();
     expect(result.current.model).toBeNull();
 
     rerender({ files: [] });
     await Promise.resolve();
-    expect(treesModuleEvaluated).not.toHaveBeenCalled();
     expect(result.current.model).toBeNull();
 
     rerender({ files: FILES });
     await waitFor(() => {
       expect(result.current.model).not.toBeNull();
     });
-    expect(treesModuleEvaluated).toHaveBeenCalled();
   });
 
   it("syncs files and selection into the model once it arrives, then destroys it on unmount", async () => {

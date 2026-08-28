@@ -118,17 +118,22 @@ async function runAppImageBridgeSupervisor(
   const supervisorPid = process.pid;
   let terminationSignal: NodeJS.Signals | null = null;
   let killTimer: ReturnType<typeof setTimeout> | null = null;
+  const readProcessErrorCode = (cause: unknown): string | null => {
+    if (!(cause instanceof Error)) {
+      return null;
+    }
+    const code = Object.getOwnPropertyDescriptor(cause, "code")?.value;
+    if (code === "ENOENT" || code === "ESRCH") {
+      return code;
+    }
+    return null;
+  };
   const signalBridgeGroup = (signal: NodeJS.Signals | 0): boolean => {
     try {
       process.kill(-supervisorPid, signal);
       return true;
     } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "ESRCH"
-      ) {
+      if (readProcessErrorCode(error) === "ESRCH") {
         return false;
       }
       throw error;
@@ -152,12 +157,8 @@ async function runAppImageBridgeSupervisor(
           return true;
         }
       } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          (error.code === "ENOENT" || error.code === "ESRCH")
-        ) {
+        const errorCode = readProcessErrorCode(error);
+        if (errorCode === "ENOENT" || errorCode === "ESRCH") {
           continue;
         }
         throw error;

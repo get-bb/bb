@@ -1,4 +1,5 @@
 import ReconnectingWebSocket from "partysocket/ws";
+import { z } from "zod";
 import {
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
@@ -34,6 +35,14 @@ export type WebSocketConnectedEvent =
     };
 type ConnectedCallback = (event: WebSocketConnectedEvent) => void;
 type ConnectionStateCallback = () => void;
+interface ManagedWebSocket {
+  onclose: ((event: CloseEvent) => void) | null;
+  onmessage: ((event: MessageEvent) => void) | null;
+  onopen: (() => void) | null;
+  readyState: number;
+  close: () => void;
+  send: (data: string) => void;
+}
 export type WebSocketConnectionState =
   | "connecting"
   | "connected"
@@ -42,23 +51,69 @@ export type WebSocketConnectionState =
 export const REALTIME_PING_INTERVAL_MS = 25_000;
 export const REALTIME_PONG_TIMEOUT_MS = 5_000;
 
+const websocketTextDataSchema = z.string();
+
 export interface WebSocketManagerBrowserEvents {
   subscribeToVisibility: (listener: () => void) => () => void;
   isDocumentVisible: () => boolean;
   subscribeToOnline: (listener: () => void) => () => void;
 }
 
+export interface WebSocketManagerDependencies {
+  createSocket: (url: string) => ManagedWebSocket;
+  buildWebSocketUrl: typeof buildDevWebSocketUrl;
+}
+
+const defaultWebSocketManagerDependencies: WebSocketManagerDependencies = {
+  createSocket: (url) => {
+    const socket = new ReconnectingWebSocket(url, undefined, {
+      minReconnectionDelay: 1000,
+      maxReconnectionDelay: 30000,
+      reconnectionDelayGrowFactor: 1.5,
+      connectionTimeout: 10000,
+      maxRetries: Infinity,
+    });
+    return {
+      get onclose() {
+        return socket.onclose ?? null;
+      },
+      set onclose(handler: ((event: CloseEvent) => void) | null) {
+        socket.onclose = handler;
+      },
+      get onmessage() {
+        return socket.onmessage ?? null;
+      },
+      set onmessage(handler: ((event: MessageEvent) => void) | null) {
+        socket.onmessage = handler;
+      },
+      get onopen() {
+        return socket.onopen === null ? null : () => {};
+      },
+      set onopen(handler: (() => void) | null) {
+        socket.onopen = handler === null ? null : () => handler();
+      },
+      get readyState() {
+        return socket.readyState;
+      },
+      close: () => socket.close(),
+      send: (data: string) => socket.send(data),
+    };
+  },
+  buildWebSocketUrl: buildDevWebSocketUrl,
+};
+
 function createDefaultBrowserEvents(): WebSocketManagerBrowserEvents {
   return {
     subscribeToVisibility: subscribeToDocumentVisibility,
     isDocumentVisible,
     subscribeToOnline: (listener) => {
-      if (typeof window === "undefined") {
+      const browserWindow = globalThis.window;
+      if (browserWindow === undefined) {
         return () => {};
       }
-      window.addEventListener("online", listener);
+      browserWindow.addEventListener("online", listener);
       return () => {
-        window.removeEventListener("online", listener);
+        browserWindow.removeEventListener("online", listener);
       };
     },
   };
@@ -70,7 +125,7 @@ interface ActiveSubscription {
 }
 
 export class WebSocketManager {
-  private socket: ReconnectingWebSocket | null = null;
+  private socket: ManagedWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
@@ -82,30 +137,29 @@ export class WebSocketManager {
   private hasConnected = false;
   private connectionState: WebSocketConnectionState = "connecting";
   private readonly browserEvents: WebSocketManagerBrowserEvents;
+  private readonly dependencies: WebSocketManagerDependencies;
   private unsubscribeBrowserEvents: (() => void) | null = null;
   private lastServerActivityAt = 0;
   private disconnectedAt: number | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(browserEvents?: WebSocketManagerBrowserEvents) {
+  constructor(
+    browserEvents?: WebSocketManagerBrowserEvents,
+    dependencies: WebSocketManagerDependencies = defaultWebSocketManagerDependencies,
+  ) {
     this.browserEvents = browserEvents ?? createDefaultBrowserEvents();
+    this.dependencies = dependencies;
   }
 
   connect(): void {
     if (this.socket) return;
 
     const url =
-      buildDevWebSocketUrl({ path: "/ws" }) ??
+      this.dependencies.buildWebSocketUrl({ path: "/ws" }) ??
       `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 
-    const socket = new ReconnectingWebSocket(url, undefined, {
-      minReconnectionDelay: 1000,
-      maxReconnectionDelay: 30000,
-      reconnectionDelayGrowFactor: 1.5,
-      connectionTimeout: 10000,
-      maxRetries: Infinity,
-    });
+    const socket = this.dependencies.createSocket(url);
     this.socket = socket;
 
     socket.onopen = () => {
@@ -128,9 +182,10 @@ export class WebSocketManager {
     };
 
     socket.onmessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") return;
+      const messageData = websocketTextDataSchema.safeParse(event.data);
+      if (!messageData.success) return;
       this.noteServerActivity();
-      this.handleIncomingMessage(event.data);
+      this.handleIncomingMessage(messageData.data);
     };
 
     socket.onclose = () => {
@@ -443,10 +498,8 @@ export class WebSocketManager {
 
 function createOrReuse(): WebSocketManager {
   if (import.meta.hot?.data) {
-    const existing = import.meta.hot.data.wsManager as
-      | WebSocketManager
-      | undefined;
-    if (existing) return existing;
+    const existing = import.meta.hot.data.wsManager;
+    if (existing instanceof WebSocketManager) return existing;
     const instance = new WebSocketManager();
     import.meta.hot.data.wsManager = instance;
     return instance;

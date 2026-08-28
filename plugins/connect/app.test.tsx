@@ -67,6 +67,7 @@ describe("connect settings section", () => {
       },
     );
 
+    // SAFETY: Testing Library returns the anchor element requested by its link role.
     const link = (await slot.findByRole("link", {
       name: "Get a connect code",
     })) as HTMLAnchorElement;
@@ -123,6 +124,7 @@ describe("connect settings section", () => {
       target: { value: "K7QP-2M4" },
     });
     expect(
+      // SAFETY: Testing Library returns the button element requested by its button role.
       (slot.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
@@ -411,6 +413,7 @@ describe("connect settings section", () => {
     await slot.findByText("K7QP-2M4X");
     slot.getByRole("button", { name: "Copy pairing code" });
     slot.getByText(/Code expires in 9:5\d/);
+    // SAFETY: Testing Library returns the image element requested by its img role.
     const qr = (await slot.findByRole("img", {
       name: "QR code to pair the bb mobile app",
     })) as HTMLImageElement;
@@ -477,6 +480,7 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText(/reached its machine limit/);
+    // SAFETY: Testing Library returns the anchor element requested by its link role.
     const link = slot.getByRole("link", {
       name: "Revoke a device you no longer use",
     }) as HTMLAnchorElement;

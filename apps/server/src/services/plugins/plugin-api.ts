@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
@@ -14,6 +13,8 @@ import {
 import {
   PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  jsonObjectSchema,
+  jsonValueSchema,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -57,6 +58,7 @@ import type {
   PluginUi,
   StandardSchemaV1,
   PluginRpcContract,
+  PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
@@ -94,7 +96,10 @@ import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
+import type {
+  PluginHostArtifactSnapshot,
+  PluginHostCallResult,
+} from "./plugin-service-internal.js";
 import { readPluginSettingsValues } from "./plugin-settings.js";
 
 const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
@@ -102,6 +107,7 @@ const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
 function migrationStatementHash(statement: string): string {
   return createHash("sha256").update(statement).digest("hex");
 }
+const { mkdirSync } = process.getBuiltinModule("node:fs");
 
 export type {
   BbPluginApi,
@@ -124,8 +130,8 @@ class PluginContextStaleError extends Error {
   }
 }
 
-export function isNeedsConfigurationError(error: unknown): error is Error {
-  return error instanceof Error && error.name === "NeedsConfigurationError";
+export function isNeedsConfigurationError(cause: unknown): cause is Error {
+  return cause instanceof Error && cause.name === "NeedsConfigurationError";
 }
 
 type PluginThreadEventHandlers = {
@@ -142,20 +148,32 @@ export interface PluginHttpRouteRecord {
 export interface PluginRpcHandler {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: never) => unknown;
+  handler: PluginRpcHandlers<PluginRpcContract>[string];
 }
+
+type PluginAgentToolValue = z.output<z.ZodType>;
+type PluginAgentToolRegistration = Parameters<PluginAgents["registerTool"]>[0];
+type PluginSignalPayload = Parameters<PluginRealtime["publish"]>[1];
+type PluginHostCallInput = Parameters<
+  PluginRpcHandlers<PluginRpcContract>[string]
+>[0];
+
+type PluginAgentToolParseResult =
+  | { ok: true; value: PluginAgentToolValue }
+  | { ok: false; error: string };
+
+const pluginRecordSchema = z.object({}).passthrough();
+const pluginFunctionSchema = z.function();
 
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
   presentation: PluginAgentToolPresentation | null;
   instructions: string | null;
-  inputSchema: unknown;
-  parse(
-    input: unknown,
-  ): { ok: true; value: unknown } | { ok: false; error: string };
+  inputSchema: JsonValue;
+  parse(input: PluginAgentToolValue): PluginAgentToolParseResult;
   execute(
-    params: unknown,
+    params: PluginAgentToolValue,
     ctx: PluginAgentToolContext,
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
@@ -172,6 +190,22 @@ interface PluginMentionProviderRecord {
   resolve: (
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
+}
+
+interface StagedRegistrationEntry<TNormalized, TBinding> {
+  declaration: TNormalized;
+  binding: TBinding;
+  disposer: { dispose(): void } | null;
+  disposed: boolean;
+}
+
+interface StagedRegistrations<
+  TDeclaration,
+  TNormalized extends { id: string },
+> {
+  register(declaration: TDeclaration): { dispose(): void };
+  flush(): void;
+  values(): TNormalized[];
 }
 
 export interface PluginBackgroundServiceRecord {
@@ -254,23 +288,25 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
       ...sdk.threads,
       fork(args: ThreadForkArgs) {
         const origin = args.origin ?? "plugin";
-        return sdk.threads.fork({
+        const forkArgs = {
           ...args,
           origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
-        });
+        };
+        if (origin === "plugin") {
+          forkArgs.originPluginId = args.originPluginId ?? pluginId;
+        }
+        return sdk.threads.fork(forkArgs);
       },
       spawn(args: ThreadSpawnArgs) {
         const origin = args.origin ?? "plugin";
-        return sdk.threads.spawn({
+        const spawnArgs = {
           ...args,
           origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
-        });
+        };
+        if (origin === "plugin") {
+          spawnArgs.originPluginId = args.originPluginId ?? pluginId;
+        }
+        return sdk.threads.spawn(spawnArgs);
       },
     },
   };
@@ -292,19 +328,10 @@ function createStagedRegistrations<
   assertLive: () => void;
   isActivated: () => boolean;
   disposeHooks: Array<() => void | Promise<void>>;
-}): {
-  register(declaration: TDeclaration): { dispose(): void };
-  flush(): void;
-  values(): TNormalized[];
-} {
+}): StagedRegistrations<TDeclaration, TNormalized> {
   const entries = new Map<
     string,
-    {
-      declaration: TNormalized;
-      binding: TBinding;
-      disposer: { dispose(): void } | null;
-      disposed: boolean;
-    }
+    StagedRegistrationEntry<TNormalized, TBinding>
   >();
   return {
     register(declaration) {
@@ -314,10 +341,10 @@ function createStagedRegistrations<
       if (entries.has(normalized.id)) {
         throw new Error(options.alreadyRegisteredMessage(normalized.id));
       }
-      const entry = {
+      const entry: StagedRegistrationEntry<TNormalized, TBinding> = {
         declaration: normalized,
         binding,
-        disposer: null as { dispose(): void } | null,
+        disposer: null,
         disposed: false,
       };
       if (options.isActivated()) {
@@ -360,7 +387,7 @@ export function createPluginApi(options: {
   dataDir: string;
   getSdk: () => BbSdk | undefined;
   getLoopbackBaseUrl: () => string | undefined;
-  publishSignal: (channel: string, payload: unknown) => void;
+  publishSignal: (channel: string, payload: PluginSignalPayload) => void;
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
@@ -388,10 +415,10 @@ export function createPluginApi(options: {
   callPluginHost: (args: {
     contract: PluginRpcContract;
     method: string;
-    input: unknown;
+    input: PluginHostCallInput;
     hostId: string;
     signal?: AbortSignal;
-  }) => Promise<unknown>;
+  }) => Promise<PluginHostCallResult>;
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
   };
@@ -484,14 +511,17 @@ export function createPluginApi(options: {
     requestOptions?: Parameters<PluginUi["requestInput"]>[1],
   ) {
     assertLive();
-    if (!request || typeof request !== "object") {
+    if (!pluginRecordSchema.safeParse(request).success) {
       throw new Error("ui.requestInput requires an options object");
     }
-    if (typeof request.threadId !== "string" || request.threadId.length === 0) {
+    if (
+      !z.string().safeParse(request.threadId).success ||
+      request.threadId.length === 0
+    ) {
       throw new Error("ui.requestInput threadId must be a non-empty string");
     }
     if (
-      typeof request.rendererId !== "string" ||
+      !z.string().safeParse(request.rendererId).success ||
       !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
     ) {
       throw new Error(
@@ -499,7 +529,7 @@ export function createPluginApi(options: {
       );
     }
     if (
-      typeof request.title !== "string" ||
+      !z.string().safeParse(request.title).success ||
       request.title.trim().length === 0 ||
       request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
     ) {
@@ -516,7 +546,7 @@ export function createPluginApi(options: {
       ) {
         throw new Error("ui.requestInput payload exceeds 64 KiB");
       }
-      payload = JSON.parse(json) as JsonValue;
+      payload = jsonValueSchema.parse(JSON.parse(json));
     } catch (error) {
       if (error instanceof Error && error.message.includes("64 KiB"))
         throw error;
@@ -609,10 +639,9 @@ export function createPluginApi(options: {
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -657,12 +686,13 @@ export function createPluginApi(options: {
       assertLive();
       const validated = registerSettingDescriptors(
         settingsRecord.descriptors,
-        descriptors as Record<string, unknown>,
+        descriptors,
       );
       type Values = PluginSettingsValues<typeof descriptors>;
       return {
         async get() {
           assertLive();
+          // SAFETY: The validated descriptors determine the exact settings value shape.
           return (await readPluginSettingsValues({
             db,
             dataDir,
@@ -672,6 +702,7 @@ export function createPluginApi(options: {
         },
         onChange(listener) {
           assertLive();
+          // SAFETY: The listener receives the same validated descriptor values as the settings handle.
           settingsRecord.listeners.push(listener as PluginSettingsListener);
         },
       };
@@ -687,12 +718,12 @@ export function createPluginApi(options: {
           `invalid http method "${String(method)}" — use one of: ${[...PLUGIN_HTTP_METHODS].join(", ")}`,
         );
       }
-      if (typeof path !== "string" || !path.startsWith("/")) {
+      if (!z.string().safeParse(path).success || !path.startsWith("/")) {
         throw new Error(
           `http route path must be a string starting with "/", got ${JSON.stringify(path)}`,
         );
       }
-      if (typeof handler !== "function") {
+      if (!pluginFunctionSchema.safeParse(handler).success) {
         throw new Error(
           `http route handler for ${normalizedMethod} ${path} must be a function`,
         );
@@ -719,21 +750,12 @@ export function createPluginApi(options: {
   const rpc: PluginRpc = {
     register(contract, handlers) {
       assertLive();
-      if (
-        typeof contract !== "object" ||
-        contract === null ||
-        Array.isArray(contract)
-      ) {
+      if (!pluginRecordSchema.safeParse(contract).success) {
         throw new Error("rpc.register contract must be an object");
       }
-      if (
-        typeof handlers !== "object" ||
-        handlers === null ||
-        Array.isArray(handlers)
-      ) {
+      if (!pluginRecordSchema.safeParse(handlers).success) {
         throw new Error("rpc.register handlers must be an object");
       }
-
       const pending: Array<[string, PluginRpcHandler]> = [];
       const contractEntries = Object.entries(contract);
       const contractNames = new Set(contractEntries.map(([name]) => name));
@@ -751,8 +773,9 @@ export function createPluginApi(options: {
           );
         }
         const methodContract = readRpcMethodContract(name, methodContractValue);
-        const handler = Reflect.get(handlers, name);
-        if (typeof handler !== "function") {
+        // SAFETY: The contract name set contains every handler key before this lookup.
+        const handler = handlers[name as keyof typeof handlers];
+        if (!pluginFunctionSchema.safeParse(handler).success) {
           throw new Error(
             `rpc method "${name}" must provide a handler function`,
           );
@@ -765,7 +788,8 @@ export function createPluginApi(options: {
           {
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
-            handler: handler as (input: never) => unknown,
+            // SAFETY: The contract name and handler key come from the same validated registration.
+            handler: handler as PluginRpcHandler["handler"],
           },
         ]);
       }
@@ -778,10 +802,10 @@ export function createPluginApi(options: {
   const realtime: PluginRealtime = {
     publish(channel, payload) {
       assertLive();
-      if (typeof channel !== "string" || channel.length === 0) {
+      if (!z.string().safeParse(channel).success || channel.length === 0) {
         throw new Error("realtime channel must be a non-empty string");
       }
-      let normalized: unknown = null;
+      let normalized: JsonValue = null;
       if (payload !== undefined) {
         let json: string | undefined;
         try {
@@ -794,7 +818,7 @@ export function createPluginApi(options: {
             `realtime payload for channel "${channel}" is not JSON-serializable`,
           );
         }
-        normalized = JSON.parse(json);
+        normalized = jsonValueSchema.parse(JSON.parse(json));
       }
       publishSignal(channel, normalized);
     },
@@ -803,7 +827,10 @@ export function createPluginApi(options: {
   const background: PluginBackground = {
     service(name, service) {
       assertLive();
-      if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+      if (
+        !z.string().safeParse(name).success ||
+        !BACKGROUND_NAME_PATTERN.test(name)
+      ) {
         throw new Error(
           `invalid service name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
         );
@@ -811,7 +838,10 @@ export function createPluginApi(options: {
       if (backgroundServices.some((record) => record.name === name)) {
         throw new Error(`background service "${name}" is already registered`);
       }
-      if (typeof service?.start !== "function") {
+      if (
+        !pluginRecordSchema.safeParse(service).success ||
+        !pluginFunctionSchema.safeParse(service.start).success
+      ) {
         throw new Error(
           `background service "${name}" must provide a start(signal) function`,
         );
@@ -820,13 +850,19 @@ export function createPluginApi(options: {
     },
     schedule(name, cron, fn) {
       assertLive();
-      if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+      if (
+        !z.string().safeParse(name).success ||
+        !BACKGROUND_NAME_PATTERN.test(name)
+      ) {
         throw new Error(
           `invalid schedule name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
         );
       }
       if (schedules.some((record) => record.name === name)) {
         throw new Error(`schedule "${name}" is already registered`);
+      }
+      if (!pluginFunctionSchema.safeParse(fn).success) {
+        throw new Error(`schedule "${name}" must provide a function`);
       }
       try {
         CronExpressionParser.parse(String(cron));
@@ -836,9 +872,6 @@ export function createPluginApi(options: {
             error instanceof Error ? error.message : String(error)
           }`,
         );
-      }
-      if (typeof fn !== "function") {
-        throw new Error(`schedule "${name}" must provide a function`);
       }
       schedules.push({ name, cron: String(cron), fn });
     },
@@ -875,7 +908,7 @@ export function createPluginApi(options: {
       if (agentConfigurationProvider !== null) {
         throw new Error("agent configuration is already registered");
       }
-      if (typeof provider !== "function") {
+      if (!pluginFunctionSchema.safeParse(provider).success) {
         throw new Error(
           "configure requires a provider function (context) => ({ tools, skills, instructions? })",
         );
@@ -887,27 +920,23 @@ export function createPluginApi(options: {
       if (instructionProvider !== null) {
         throw new Error("agent instructions are already registered");
       }
-      if (typeof provider !== "function") {
+      if (!pluginFunctionSchema.safeParse(provider).success) {
         throw new Error(
           "contributeInstructions requires a provider function (ctx) => string | null",
         );
       }
       instructionProvider = provider;
     },
-    registerTool(tool: {
-      name: string;
-      description: string;
-      instructions?: string;
-      presentation?: PluginAgentToolPresentation;
-      parameters: unknown;
-      execute(
-        params: never,
-        ctx: PluginAgentToolContext,
-      ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
-    }) {
+    registerTool(tool: PluginAgentToolRegistration) {
       assertLive();
-      const name = tool?.name;
-      if (typeof name !== "string" || !AGENT_TOOL_NAME_PATTERN.test(name)) {
+      if (!pluginRecordSchema.safeParse(tool).success) {
+        throw new Error("agents.registerTool requires an options object");
+      }
+      const name = tool.name;
+      if (
+        !z.string().safeParse(name).success ||
+        !AGENT_TOOL_NAME_PATTERN.test(name)
+      ) {
         throw new Error(
           `invalid tool name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
         );
@@ -919,19 +948,19 @@ export function createPluginApi(options: {
       }
       rejectStaleAgentToolFields(name, tool);
       if (
-        typeof tool.description !== "string" ||
+        !z.string().safeParse(tool.description).success ||
         tool.description.trim().length === 0
       ) {
         throw new Error(`tool "${name}" must provide a description`);
       }
       if (
         tool.instructions !== undefined &&
-        typeof tool.instructions !== "string"
+        !z.string().safeParse(tool.instructions).success
       ) {
         throw new Error(`tool "${name}" instructions must be a string`);
       }
       if (
-        typeof tool.instructions === "string" &&
+        tool.instructions !== undefined &&
         tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
       ) {
         throw new Error(
@@ -952,19 +981,23 @@ export function createPluginApi(options: {
           throw new Error(agentToolIconRefusalMessage(name, problem));
         }
       }
-      if (typeof tool.execute !== "function") {
+      const parameters = tool.parameters;
+      let inputSchema: JsonValue;
+      let parse: PluginAgentToolRecord["parse"];
+      if (!pluginFunctionSchema.safeParse(tool.execute).success) {
         throw new Error(
           `tool "${name}" must provide an execute(params, ctx) function`,
         );
       }
-      const parameters: unknown = tool.parameters;
-      let inputSchema: unknown;
-      let parse: PluginAgentToolRecord["parse"];
-      if (isZodSchemaLike(parameters)) {
+      const zodParameters = z
+        .custom<z.ZodType>((value) => isZodSchemaLike(value))
+        .safeParse(parameters);
+      if (zodParameters.success) {
+        const schema = zodParameters.data;
         try {
-          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
-            io: "input",
-          });
+          inputSchema = jsonObjectSchema.parse(
+            JSON.parse(JSON.stringify(z.toJSONSchema(schema, { io: "input" }))),
+          );
         } catch (error) {
           throw new Error(
             `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${
@@ -973,27 +1006,29 @@ export function createPluginApi(options: {
           );
         }
         parse = (input) => {
-          const result = (parameters as z.ZodType).safeParse(input);
+          const result = schema.safeParse(input);
           if (result.success) return { ok: true, value: result.data };
           return { ok: false, error: summarizeParseIssues(result.error) };
         };
-      } else if (
-        typeof parameters === "object" &&
-        parameters !== null &&
-        !Array.isArray(parameters)
-      ) {
+      } else {
+        const jsonSchema = z
+          .record(z.string(), z.custom<PluginAgentToolValue>())
+          .safeParse(parameters);
+        if (!jsonSchema.success) {
+          throw new Error(
+            `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
+          );
+        }
         try {
-          inputSchema = JSON.parse(JSON.stringify(parameters));
+          inputSchema = jsonObjectSchema.parse(
+            JSON.parse(JSON.stringify(jsonSchema.data)),
+          );
         } catch {
           throw new Error(
             `tool "${name}" parameters JSON schema is not JSON-serializable`,
           );
         }
         parse = (input) => ({ ok: true, value: input });
-      } else {
-        throw new Error(
-          `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
-        );
       }
       assertNoRecursiveJsonSchemaReferences(
         inputSchema,
@@ -1019,12 +1054,7 @@ export function createPluginApi(options: {
             : null,
         inputSchema,
         parse,
-        execute: (
-          tool.execute as (
-            params: unknown,
-            ctx: PluginAgentToolContext,
-          ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
-        ).bind(tool),
+        execute: tool.execute.bind(tool),
       };
       agentTools.push(record);
     },
@@ -1044,8 +1074,16 @@ export function createPluginApi(options: {
     requestInput,
     registerMentionProvider(provider) {
       assertLive();
-      const id = provider?.id;
-      if (typeof id !== "string" || !MENTION_PROVIDER_ID_PATTERN.test(id)) {
+      if (!pluginRecordSchema.safeParse(provider).success) {
+        throw new Error(
+          "ui.registerMentionProvider requires an options object",
+        );
+      }
+      const id = provider.id;
+      if (
+        !z.string().safeParse(id).success ||
+        !MENTION_PROVIDER_ID_PATTERN.test(id)
+      ) {
         throw new Error(
           `invalid mention provider id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
         );
@@ -1054,17 +1092,17 @@ export function createPluginApi(options: {
         throw new Error(`mention provider "${id}" is already registered`);
       }
       if (
-        typeof provider.label !== "string" ||
+        !z.string().safeParse(provider.label).success ||
         provider.label.trim().length === 0
       ) {
         throw new Error(`mention provider "${id}" must provide a label`);
       }
-      if (typeof provider.search !== "function") {
+      if (!pluginFunctionSchema.safeParse(provider.search).success) {
         throw new Error(
           `mention provider "${id}" must provide a search({ query, projectId, threadId }) function`,
         );
       }
-      if (typeof provider.resolve !== "function") {
+      if (!pluginFunctionSchema.safeParse(provider.resolve).success) {
         throw new Error(
           `mention provider "${id}" must provide a resolve(itemId) function`,
         );
@@ -1083,31 +1121,48 @@ export function createPluginApi(options: {
   const cli: PluginCli = {
     register(registration) {
       assertLive();
+      if (!pluginRecordSchema.safeParse(registration).success) {
+        throw new Error("cli.register requires an options object");
+      }
       if (cliRecord.registration !== null) {
         throw new Error("cli command is already registered");
       }
-      const name = registration?.name;
-      if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
+      const name = registration.name;
+      if (
+        !z.string().safeParse(name).success ||
+        !CLI_COMMAND_NAME_PATTERN.test(name)
+      ) {
         throw new Error(
           `invalid cli command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
         );
       }
       if (
-        typeof registration.summary !== "string" ||
+        !z.string().safeParse(registration.summary).success ||
         registration.summary.trim().length === 0
       ) {
         throw new Error(`cli command "${name}" must provide a summary`);
       }
       const commands = registration.commands ?? [];
-      if (!Array.isArray(commands)) {
+      if (
+        !z.array(z.custom<PluginAgentToolValue>()).safeParse(commands).success
+      ) {
         throw new Error(`cli command "${name}" commands must be an array`);
       }
       const validatedCommands = commands.map((command, index) => {
         if (
-          typeof command?.name !== "string" ||
+          !pluginRecordSchema.safeParse(command).success ||
+          !z.string().safeParse(command.name).success ||
+          !z.string().safeParse(command.summary).success ||
+          !z.string().safeParse(command.usage).success
+        ) {
+          throw new Error(
+            `cli command "${name}" commands[${index}] must be { name: [a-z0-9-]+, summary, usage }`,
+          );
+        }
+        if (
           !CLI_COMMAND_NAME_PATTERN.test(command.name) ||
-          typeof command.summary !== "string" ||
-          typeof command.usage !== "string"
+          command.summary.trim().length === 0 ||
+          command.usage.trim().length === 0
         ) {
           throw new Error(
             `cli command "${name}" commands[${index}] must be { name: [a-z0-9-]+, summary, usage }`,
@@ -1119,7 +1174,7 @@ export function createPluginApi(options: {
           usage: command.usage,
         };
       });
-      if (typeof registration.run !== "function") {
+      if (!pluginFunctionSchema.safeParse(registration.run).success) {
         throw new Error(
           `cli command "${name}" must provide a run(argv, ctx) function`,
         );
@@ -1136,10 +1191,10 @@ export function createPluginApi(options: {
   const status: PluginStatusApi = {
     needsConfiguration(message) {
       assertLive();
-      const normalized =
-        typeof message === "string" && message.length > 0
-          ? message
-          : "needs configuration";
+      if (!z.string().safeParse(message).success) {
+        throw new Error("status.needsConfiguration message must be a string");
+      }
+      const normalized = message.length > 0 ? message : "needs configuration";
       if (activated) reportNeedsConfiguration(normalized);
       else pendingNeedsConfiguration = normalized;
     },
@@ -1174,30 +1229,32 @@ export function createPluginApi(options: {
               "host plugin calls are unavailable during factory registration; call from a handler, service, or timer",
             );
           }
-          if (typeof method !== "string" || contract[method] === undefined) {
+          if (contract[method] === undefined) {
             throw new Error(`unknown host rpc method "${String(method)}"`);
           }
-          if (
-            typeof callOptions !== "object" ||
-            callOptions === null ||
-            typeof callOptions.hostId !== "string" ||
-            callOptions.hostId.length === 0
-          ) {
+          const parsedCallOptions = z
+            .object({
+              hostId: z.string().min(1),
+              signal: z.custom<AbortSignal>().optional(),
+            })
+            .safeParse(callOptions);
+          if (!parsedCallOptions.success) {
             throw new Error(`host rpc method "${method}" requires a host id`);
           }
-          return callPluginHost({
+          const callArgs: Parameters<typeof callPluginHost>[0] = {
             contract,
             method,
             input,
-            hostId: callOptions.hostId,
-            ...(callOptions.signal === undefined
-              ? {}
-              : { signal: callOptions.signal }),
-          });
+            hostId: parsedCallOptions.data.hostId,
+          };
+          if (parsedCallOptions.data.signal !== undefined) {
+            callArgs.signal = parsedCallOptions.data.signal;
+          }
+          return callPluginHost(callArgs);
         },
         experimental_onWorkerExit(handler) {
           assertLive();
-          if (typeof handler !== "function") {
+          if (!pluginFunctionSchema.safeParse(handler).success) {
             throw new Error("host worker exit subscription requires a handler");
           }
           hostWorkerExitHandlers.push(handler);
@@ -1211,21 +1268,22 @@ export function createPluginApi(options: {
         },
         experimental_onSignal(signal, handler) {
           assertLive();
-          const descriptor = experimental_signals?.[signal];
+          const parsedSignal = z.string().min(1).safeParse(signal);
+          if (!parsedSignal.success) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          const descriptor = experimental_signals?.[parsedSignal.data];
           if (
-            typeof signal !== "string" ||
-            signal.length === 0 ||
-            typeof descriptor !== "object" ||
-            descriptor === null ||
+            descriptor === undefined ||
             !isStandardSchema(descriptor.payload)
           ) {
             throw new Error(`unknown host signal "${String(signal)}"`);
           }
-          if (typeof handler !== "function") {
+          if (!pluginFunctionSchema.safeParse(handler).success) {
             throw new Error("host signal subscription requires a handler");
           }
           const record: PluginHostSignalHandler = {
-            signal,
+            signal: parsedSignal.data,
             payloadSchema: descriptor.payload,
             handler,
           };

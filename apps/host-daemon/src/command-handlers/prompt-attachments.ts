@@ -80,8 +80,8 @@ function attachmentFilename(attachment: AttachmentPromptInput): string {
   return sanitized.length > 0 ? sanitized : "attachment";
 }
 
-function attachmentFetchErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function attachmentFetchErrorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function attachmentSizeLimitBytes(attachment: AttachmentPromptInput): number {

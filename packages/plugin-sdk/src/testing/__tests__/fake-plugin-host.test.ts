@@ -14,6 +14,10 @@ import {
 } from "../../internal/host-policy.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
+interface CyclicValue {
+  self?: CyclicValue;
+}
+
 describe("ui.requestInput", () => {
   it("settles a blocking request through the harness", async () => {
     const { bb, harness } = createFakePluginHost();
@@ -95,9 +99,10 @@ describe("host control plane", () => {
       },
     };
     const { bb, harness } = createFakePluginHost({
-      experimental_callHostRpc: ({ input }) => ({
-        pong: String(Reflect.get(Object(input), "value")),
-      }),
+      experimental_callHostRpc: ({ input }) => {
+        const parsedInput = z.object({ value: z.string() }).parse(input);
+        return { pong: parsedInput.value };
+      },
     });
     const client = bb.hosts.experimental_client({
       contract,
@@ -366,10 +371,7 @@ describe("rpc", () => {
         input: z.object({ value: z.string().min(1) }),
         output: z.object({ value: z.string() }),
       },
-      badOutput: {
-        input: z.null(),
-        output: z.custom<unknown>((value) => typeof value === "string"),
-      },
+      badOutput: { input: z.null(), output: z.any().pipe(z.string()) },
       throws: { input: z.null(), output: z.null() },
       cyclic: { input: z.null(), output: z.any() },
       nonFinite: { input: z.null(), output: z.any() },
@@ -384,7 +386,7 @@ describe("rpc", () => {
         throw new Error("boom");
       },
       cyclic: () => {
-        const value: { self?: unknown } = {};
+        const value: CyclicValue = {};
         value.self = value;
         return value;
       },
@@ -475,18 +477,21 @@ describe("http", () => {
         status: 201,
         headers: { "content-type": "application/json", "x-foreign": "yes" },
       });
-      return {
+      const foreign = {
         status: real.status,
         statusText: real.statusText,
         headers: real.headers,
         body: real.body,
         arrayBuffer: () => real.arrayBuffer(),
         clone: () => real.clone(),
-      } as unknown as Response;
+      };
+      // SAFETY: The route adapter validates this structural response at its invocation boundary.
+      return foreign as Response;
     });
     bb.http.route(
       "GET",
       "/not-a-response",
+      // SAFETY: The malformed value must reach the route adapter to verify its error response.
       () => ({ status: 200 }) as Response,
     );
 
@@ -686,6 +691,7 @@ describe("thread events", () => {
   it("rejects unknown events at registration", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
+      // SAFETY: The invalid event name must reach runtime validation to verify its error.
       bb.events.on("thread.unknown" as "thread.idle", () => {}),
     ).toThrow('unknown event "thread.unknown"');
   });
@@ -1179,8 +1185,14 @@ describe("dispose", () => {
 describe("realtime and status", () => {
   it("normalizes published payloads and records needs-configuration", () => {
     const { bb, harness } = createFakePluginHost();
+    type BoundaryPayload = { at: Date } | { boom: bigint } | undefined;
+    // SAFETY: This test calls the runtime boundary with values that static plugin types reject.
+    const publishAtBoundary = bb.realtime.publish as (
+      channel: string,
+      payload: BoundaryPayload,
+    ) => void;
     bb.realtime.publish("notes-changed", undefined);
-    bb.realtime.publish("notes-changed", { at: new Date(0) });
+    publishAtBoundary("notes-changed", { at: new Date(0) });
     expect(harness.realtimeSignals).toEqual([
       { channel: "notes-changed", payload: null },
       {
@@ -1188,7 +1200,7 @@ describe("realtime and status", () => {
         payload: { at: "1970-01-01T00:00:00.000Z" },
       },
     ]);
-    expect(() => bb.realtime.publish("bad", { boom: 1n })).toThrow(
+    expect(() => publishAtBoundary("bad", { boom: 1n })).toThrow(
       "not JSON-serializable",
     );
 
@@ -1202,9 +1214,10 @@ describe("realtime and status", () => {
 });
 
 describe("providers.register", () => {
-  function agentDeclaration(
-    overrides: Record<string, unknown> = {},
+  function agentDeclaration<Overrides extends object = Record<string, never>>(
+    overrides?: Overrides,
   ): Parameters<BbPluginApi["providers"]["register"]>[0] {
+    // SAFETY: The valid defaults provide the registration contract, and tests replace fields with malformed JSON values.
     return {
       id: "my-agent",
       displayName: "My Agent",
@@ -1269,7 +1282,7 @@ describe("providers.register", () => {
       register(
         agentDeclaration({
           maintenance: {
-            usage: "yes" as unknown as boolean,
+            usage: "yes",
             installation: false,
           },
         }),

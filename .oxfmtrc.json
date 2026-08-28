@@ -20,6 +20,8 @@
     "packages/templates/src/generated/",
     "packages/plugin-sdk/bundled-types/",
     "packages/plugin-build/src/generated/",
+    "packages/plugin-registry/r/",
+    "tools/oxlint/anti-slop/",
     "packages/db/drizzle/meta/",
     "apps/mobile/assets/terminal/",
     "*.snapshot.json",
@@ -27,6 +29,7 @@
     "apps/mobile/android/",
     "apps/mobile/.expo/",
     "apps/mobile/expo-env.d.ts",
+    "apps/web/src/routeTree.gen.ts",
     "apps/mobile/build-output/",
     "packages/templates/src/templates/"
   ]

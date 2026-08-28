@@ -25,18 +25,7 @@ export const customInstructionsRpcContract = defineRpcContract({
   },
 });
 
-function parseInstructionsInput(input: unknown): string {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new Error("expected { instructions: string }");
-  }
-  const entries = Object.entries(input);
-  if (entries.length !== 1 || entries[0]?.[0] !== "instructions") {
-    throw new Error('expected exactly one field: "instructions"');
-  }
-  const instructions = entries[0][1];
-  if (typeof instructions !== "string") {
-    throw new Error('"instructions" must be a string');
-  }
+function parseInstructionsInput(instructions: string): string {
   if (instructions.length > MAX_CUSTOM_INSTRUCTIONS_LENGTH) {
     throw new Error(
       `"instructions" must be at most ${MAX_CUSTOM_INSTRUCTIONS_LENGTH} characters`,
@@ -102,9 +91,7 @@ export default async function plugin(bb: BbPluginApi) {
         };
       }
       if (command === "set") {
-        const instructions = parseInstructionsInput({
-          instructions: rest.join(" "),
-        });
+        const instructions = parseInstructionsInput(rest.join(" "));
         await bb.storage.kv.set(STORAGE_KEY, instructions);
         customInstructions = instructions;
         return {

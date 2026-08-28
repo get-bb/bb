@@ -9,19 +9,10 @@ const legacyConfigSchema = z
   .object({ customAcpAgents: z.array(z.unknown()).optional() })
   .passthrough();
 
+const legacyConfigEntrySchema = z.object({}).passthrough();
+
 function legacyConfigPath(dataDir: string): string {
   return join(dataDir, "config.json");
-}
-
-function withoutLegacyLogo(entry: unknown): unknown {
-  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-    return entry;
-  }
-  if (!Object.hasOwn(entry, "logo")) {
-    return entry;
-  }
-  const { logo: _logo, ...rest } = entry as Record<string, unknown>;
-  return rest;
 }
 
 export async function readLegacyCustomAcpAgents(
@@ -32,7 +23,8 @@ export async function readLegacyCustomAcpAgents(
   try {
     raw = await readFile(path, "utf8");
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
+    const code =
+      error instanceof Error && "code" in error ? error.code : undefined;
     return code === "ENOENT"
       ? { entries: [] }
       : { entries: [], problem: `could not read ${path}: ${String(error)}` };
@@ -50,8 +42,16 @@ export async function readLegacyCustomAcpAgents(
   if (!config.success) {
     return { entries: [], problem: `${path} is not a bb config file` };
   }
+  const entries = (config.data.customAcpAgents ?? []).map((entry) => {
+    const parsedEntry = legacyConfigEntrySchema.safeParse(entry);
+    if (!parsedEntry.success || !Object.hasOwn(parsedEntry.data, "logo")) {
+      return entry;
+    }
+    const { logo: _logo, ...rest } = parsedEntry.data;
+    return rest;
+  });
   return {
-    entries: (config.data.customAcpAgents ?? []).map(withoutLegacyLogo),
+    entries,
   };
 }
 

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useProjects } from "./data.js";
 import {
@@ -21,6 +28,65 @@ import { Icon } from "@bb/shared-ui/icon";
 import { TasksRefreshProvider } from "./refresh.js";
 
 const BOARD_MIN_WIDTH = 448;
+
+interface LastBrowseRouteStoreEntry {
+  route: TasksRoute | null;
+  listeners: Set<() => void>;
+}
+
+const lastBrowseRouteStore = new Map<string, LastBrowseRouteStoreEntry>();
+
+function subscribeToLastBrowseRoute(
+  key: string,
+  listener: () => void,
+): () => void {
+  const entry =
+    lastBrowseRouteStore.get(key) ??
+    ({
+      route: null,
+      listeners: new Set<() => void>(),
+    } satisfies LastBrowseRouteStoreEntry);
+  lastBrowseRouteStore.set(key, entry);
+  entry.listeners.add(listener);
+  return () => entry.listeners.delete(listener);
+}
+
+function getLastBrowseRoute(key: string): TasksRoute | null {
+  return lastBrowseRouteStore.get(key)?.route ?? null;
+}
+
+function setLastBrowseRoute(key: string, route: TasksRoute): void {
+  const entry =
+    lastBrowseRouteStore.get(key) ??
+    ({
+      route: null,
+      listeners: new Set<() => void>(),
+    } satisfies LastBrowseRouteStoreEntry);
+  if (entry.route === route) return;
+  entry.route = route;
+  lastBrowseRouteStore.set(key, entry);
+  for (const listener of entry.listeners) listener();
+}
+
+function useLastBrowseRoute(
+  key: string,
+  route: ResolvedTasksRoute,
+): TasksRoute | null {
+  const lastBrowseRoute = useSyncExternalStore(
+    (listener) => subscribeToLastBrowseRoute(key, listener),
+    () => getLastBrowseRoute(key),
+    () => null,
+  );
+  useEffect(() => {
+    if (route.kind !== "task") setLastBrowseRoute(key, route);
+  }, [key, route]);
+  useEffect(() => {
+    return () => {
+      lastBrowseRouteStore.delete(key);
+    };
+  }, [key]);
+  return lastBrowseRoute;
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -91,7 +157,10 @@ function resolveRoute(route: TasksRoute): ResolvedTasksRoute {
 }
 
 function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
-  const route = resolveRoute(parseTasksRoute(subPath));
+  const route = useMemo(
+    () => resolveRoute(parseTasksRoute(subPath)),
+    [subPath],
+  );
   const tasksNavigation = useTasksNavigation();
   const navigation = useMemo<TasksNavigation>(
     () => ({
@@ -111,7 +180,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   const [boardUsable, setBoardUsable] = useState(true);
   useEffect(() => {
     const main = mainRef.current;
-    if (!main || typeof ResizeObserver === "undefined") return;
+    if (!main || !("ResizeObserver" in globalThis)) return;
     const update = () => {
       const mainWidth = main.clientWidth;
       setBoardUsable(!(mainWidth > 0 && mainWidth < BOARD_MIN_WIDTH));
@@ -123,26 +192,30 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   }, []);
   const projects = useProjects();
 
-  const lastBrowseRouteRef = useRef<TasksRoute | null>(null);
-  useEffect(() => {
-    if (route.kind !== "task") lastBrowseRouteRef.current = route;
-  }, [subPath]);
-  const backFromTask = () =>
-    navigation.go(lastBrowseRouteRef.current ?? { kind: "all" });
+  const routeHistoryKey = useId();
+  const lastBrowseRoute = useLastBrowseRoute(routeHistoryKey, route);
+  const pagerScope =
+    lastBrowseRoute === null
+      ? null
+      : {
+          projectId:
+            lastBrowseRoute.kind === "project"
+              ? lastBrowseRoute.projectId
+              : null,
+        };
+  const backFromTask = () => navigation.go(lastBrowseRoute ?? { kind: "all" });
   const onTaskRoute = route.kind === "task";
-  const backRef = useRef(backFromTask);
-  backRef.current = backFromTask;
   useEffect(() => {
     if (!onTaskRoute) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (isEditableTarget(event.target)) return;
       if (hasOpenOverlay()) return;
-      backRef.current();
+      navigation.go(lastBrowseRoute ?? { kind: "all" });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onTaskRoute]);
+  }, [lastBrowseRoute, navigation, onTaskRoute]);
 
   const noProjects = projects.data !== undefined && projects.data.length === 0;
   const newTaskProjectId = route.kind === "project" ? route.projectId : null;
@@ -167,16 +240,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
         <TasksTopbar
           route={route}
           projects={projects.data}
-          pagerScope={
-            lastBrowseRouteRef.current === null
-              ? null
-              : {
-                  projectId:
-                    lastBrowseRouteRef.current.kind === "project"
-                      ? lastBrowseRouteRef.current.projectId
-                      : null,
-                }
-          }
+          pagerScope={pagerScope}
           onNavigate={navigation.go}
           onNewTask={() => setNewTaskOpen(true)}
           onBack={backFromTask}

@@ -7,7 +7,10 @@ export type LocalHostDaemonAccessState =
   | "unavailable"
   | "unsupported";
 
-type LocalNetworkPermissionName = "loopback-network" | "local-network-access";
+type LocalNetworkPermissionName =
+  | PermissionName
+  | "loopback-network"
+  | "local-network-access";
 
 export interface LocalNetworkPermissionQuery {
   query(descriptor: {
@@ -29,15 +32,24 @@ const LOCAL_NETWORK_PERMISSION_NAMES: readonly LocalNetworkPermissionName[] = [
 ];
 
 export function getBrowserLocalNetworkPermissionQuery(): LocalNetworkPermissionQuery | null {
+  const browserNavigator = globalThis.navigator;
   if (
-    typeof navigator === "undefined" ||
-    !("permissions" in navigator) ||
-    navigator.permissions === undefined
+    !browserNavigator ||
+    !("permissions" in browserNavigator) ||
+    browserNavigator.permissions === undefined
   ) {
     return null;
   }
 
-  return navigator.permissions as unknown as LocalNetworkPermissionQuery;
+  const browserPermissions = browserNavigator.permissions;
+  return {
+    query: async ({ name }) => {
+      const descriptor: PermissionDescriptor = { name: "geolocation" };
+      Object.defineProperty(descriptor, "name", { value: name });
+      const result = await browserPermissions.query(descriptor);
+      return { state: result.state };
+    },
+  };
 }
 
 async function queryLoopbackPermissionState(

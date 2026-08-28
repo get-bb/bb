@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
+  type FakeSdkOverrides,
 } from "@get-bb/plugin-sdk/testing";
 import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
@@ -26,7 +27,9 @@ function timelineResult(rows: SideChatTimelineRowLike[]) {
   return { rows };
 }
 
-async function loadPlugin(sdkThreads: Record<string, unknown>) {
+async function loadPlugin(
+  sdkThreads: NonNullable<FakeSdkOverrides["threads"]>,
+) {
   const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
     sdk: { threads: sdkThreads },
@@ -53,7 +56,7 @@ describe("createSideChat rpc", () => {
   it("does not read the source timeline to decide whether to include the anchor", async () => {
     const timeline = vi.fn();
     const fork = vi.fn(
-      async (_args: { agentContextSeed?: Array<{ text: string }> }) =>
+      async (_args: { agentContextSeed?: readonly object[] }) =>
         makeThreadResponse({ id: "thr_fork" }),
     );
     const { harness } = await loadPlugin({ timeline, fork });
@@ -65,9 +68,9 @@ describe("createSideChat rpc", () => {
     });
 
     expect(timeline).not.toHaveBeenCalled();
-    expect(fork.mock.calls[0]?.[0].agentContextSeed?.[0]?.text).toBe(
-      `${REPLY_SEED_PREFIX}latest answer`,
-    );
+    expect(fork.mock.calls[0]?.[0]).toMatchObject({
+      agentContextSeed: [{ text: `${REPLY_SEED_PREFIX}latest answer` }],
+    });
   });
 
   it("forks hidden+isolated with a seed when the anchor is an earlier message", async () => {
@@ -310,7 +313,7 @@ describe("empty-fork sweep", () => {
           createdAt: old,
         }),
     );
-    const list = vi.fn(async ({ offset }: { offset?: number }) =>
+    const list = vi.fn(async ({ offset }: { offset?: number } = {}) =>
       offset === 0 ? firstPage : [],
     );
     const { harness } = await loadPlugin({
@@ -325,7 +328,7 @@ describe("empty-fork sweep", () => {
 
     await harness.runSchedule("empty-fork-cleanup");
 
-    expect(list.mock.calls.map(([args]) => args.offset)).toEqual([0, 1]);
+    expect(list.mock.calls.map(([args]) => args?.offset)).toEqual([0, 1]);
   });
 
   it("keeps an old empty-timeline fork that has queued-but-unsent input", async () => {

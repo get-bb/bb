@@ -7,14 +7,14 @@ import type {
 import type { IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const STATUS_COLORS: Record<TaskStatus, string> = {
+const STATUS_COLORS = {
   backlog: "var(--muted-foreground)",
   todo: "var(--muted-foreground)",
   in_progress: "var(--attention)",
   in_review: "var(--timeline-accent)",
   done: "var(--success)",
   canceled: "var(--muted-foreground)",
-};
+} satisfies Record<TaskStatus, string>;
 
 export function StatusIcon({
   status,
@@ -150,10 +150,7 @@ export function PriorityIcon({
   );
 }
 
-export const THREAD_STATUS_META: Record<
-  TaskThread["liveStatus"],
-  { label: string; dotClassName: string; textClassName: string }
-> = {
+export const THREAD_STATUS_META = {
   starting: {
     label: "Starting",
     dotClassName: "bg-attention animate-pulse",
@@ -179,12 +176,12 @@ export const THREAD_STATUS_META: Record<
     dotClassName: "bg-destructive",
     textClassName: "text-destructive",
   },
-};
+} satisfies Record<
+  TaskThread["liveStatus"],
+  { label: string; dotClassName: string; textClassName: string }
+>;
 
-export const PR_STATE_META: Record<
-  TaskPullRequest["state"],
-  { label: string; icon: IconName; textClassName: string }
-> = {
+export const PR_STATE_META = {
   open: {
     label: "Open",
     icon: "GitPullRequestArrow",
@@ -205,7 +202,10 @@ export const PR_STATE_META: Record<
     icon: "GitPullRequestClosed",
     textClassName: "text-destructive",
   },
-};
+} satisfies Record<
+  TaskPullRequest["state"],
+  { label: string; icon: IconName; textClassName: string }
+>;
 
 export function isActiveThread(thread: TaskThread): boolean {
   return thread.liveStatus === "starting" || thread.liveStatus === "working";
@@ -229,9 +229,15 @@ export function formatDueDate(dueDate: string): string {
   const parsed = new Date(`${dueDate}T00:00:00`);
   if (Number.isNaN(parsed.valueOf())) return dueDate;
   const sameYear = parsed.getFullYear() === new Date().getFullYear();
+  if (sameYear) {
+    return parsed.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  }
   return parsed.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    ...(sameYear ? {} : { year: "numeric" }),
+    year: "numeric",
   });
 }

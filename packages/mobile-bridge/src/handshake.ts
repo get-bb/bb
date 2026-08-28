@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { MOBILE_BRIDGE_VERSION } from "./version.js";
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
 export const safeAreaInsetsSchema = z
   .object({
     top: z.number().nonnegative(),
@@ -39,7 +47,7 @@ export const nativeShellHandshakeSchema = z
 export type NativeShellHandshake = z.infer<typeof nativeShellHandshakeSchema>;
 
 export function parseNativeShellHandshake(
-  value: unknown,
+  value: JsonValue | undefined,
 ): NativeShellHandshake | null {
   const parsed = nativeShellHandshakeSchema.safeParse(value);
   return parsed.success ? parsed.data : null;

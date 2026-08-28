@@ -3,6 +3,14 @@ import type { Attachment } from "../../shared/contract.js";
 import { formatFileSize } from "../activity/time.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { z } from "zod";
+
+const pluginTokenResponseSchema = z.object({ token: z.string() });
+const attachmentUploadResponseSchema = z.object({
+  attachmentId: z.string(),
+  url: z.string(),
+});
+const attachmentErrorResponseSchema = z.object({ error: z.json() });
 
 export function attachmentDownloadUrl(attachmentId: string): string {
   return `/api/v1/plugins/tasks/http/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
@@ -17,15 +25,13 @@ function pluginToken(): Promise<string> {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    const json: unknown = await response.json().catch(() => null);
-    const token =
-      json && typeof json === "object" && "token" in json
-        ? (json as { token: unknown }).token
-        : undefined;
-    if (!response.ok || typeof token !== "string") {
+    const parsed = pluginTokenResponseSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+    if (!response.ok || !parsed.success) {
       throw new Error(`failed to fetch plugin token (HTTP ${response.status})`);
     }
-    return token;
+    return parsed.data.token;
   })();
   tokenPromise.catch(() => {
     tokenPromise = null;
@@ -53,16 +59,19 @@ export async function uploadAttachment(
       body: file,
     },
   );
-  const json: unknown = await response.json().catch(() => null);
+  const json = await response.json().catch(() => null);
   if (!response.ok) {
-    const message =
-      json && typeof json === "object" && "error" in json
-        ? String((json as { error: unknown }).error)
-        : `upload failed (HTTP ${response.status})`;
+    const parsedError = attachmentErrorResponseSchema.safeParse(json);
+    const message = parsedError.success
+      ? String(parsedError.data.error)
+      : `upload failed (HTTP ${response.status})`;
     throw new Error(message);
   }
-  const result = json as { attachmentId: string; url: string };
-  return { attachmentId: result.attachmentId, url: result.url };
+  const result = attachmentUploadResponseSchema.safeParse(json);
+  if (!result.success) {
+    throw new Error(`upload failed (HTTP ${response.status})`);
+  }
+  return result.data;
 }
 
 export function Lightbox({

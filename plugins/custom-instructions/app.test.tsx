@@ -7,6 +7,13 @@ const app = await loadPluginApp(() => import("./app"));
 
 afterEach(cleanup);
 
+function textArea(element: HTMLElement): HTMLTextAreaElement {
+  if (!(element instanceof HTMLTextAreaElement)) {
+    throw new Error("Expected a textarea");
+  }
+  return element;
+}
+
 describe("custom instructions settings", () => {
   it("uses the plugin page header instead of declaring a second title", () => {
     expect(app.settingsSections[0]?.title).toBeUndefined();
@@ -22,17 +29,21 @@ describe("custom instructions settings", () => {
             instructions: "Use concise answers.",
             maxLength: 4096,
           }),
-          saveInstructions: (input) => ({
-            instructions: (input as { instructions: string }).instructions,
-            maxLength: 4096,
-          }),
+          saveInstructions: (input) => {
+            // SAFETY: The RPC test seam supplies the saveInstructions contract.
+            const saveInput = input as { instructions: string };
+            return {
+              instructions: saveInput.instructions,
+              maxLength: 4096,
+            };
+          },
         },
       },
     );
 
-    const textarea = (await slot.findByLabelText(
-      "Custom instructions",
-    )) as HTMLTextAreaElement;
+    const textarea = textArea(
+      await slot.findByLabelText("Custom instructions"),
+    );
     await waitFor(() => expect(textarea.value).toBe("Use concise answers."));
 
     expect(slot.queryByRole("button", { name: "Save" })).toBeNull();
@@ -55,6 +66,7 @@ describe("custom instructions settings", () => {
       slot.rpcCalls.some(
         (call) =>
           call.method === "saveInstructions" &&
+          // SAFETY: The RPC test seam records the saveInstructions input contract.
           (call.input as { instructions?: unknown }).instructions ===
             "Always run",
       ),
@@ -77,9 +89,9 @@ describe("custom instructions settings", () => {
         },
       },
     );
-    const textarea = (await slot.findByLabelText(
-      "Custom instructions",
-    )) as HTMLTextAreaElement;
+    const textarea = textArea(
+      await slot.findByLabelText("Custom instructions"),
+    );
     fireEvent.change(textarea, { target: { value: "Keep this draft" } });
 
     await slot.findByRole("alert");

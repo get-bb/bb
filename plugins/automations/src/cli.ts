@@ -48,6 +48,14 @@ interface ParsedArgs {
   flags: Map<string, string | true>;
 }
 
+type CliJsonOutput =
+  | string
+  | number
+  | boolean
+  | null
+  | CliJsonOutput[]
+  | { [key: string]: CliJsonOutput | undefined };
+
 function parseArgs(argv: string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
   const positionals: string[] = [];
@@ -91,7 +99,7 @@ function requireFlag(args: ParsedArgs, name: string): string {
   return value;
 }
 
-function optionalJson(args: ParsedArgs, value: unknown): string | null {
+function optionalJson(args: ParsedArgs, value: CliJsonOutput): string | null {
   return boolFlag(args, "json") ? `${JSON.stringify(value, null, 2)}\n` : null;
 }
 
@@ -220,18 +228,18 @@ function parseScriptInterpreter(
   );
 }
 
-const INTERPRETER_BY_EXTENSION: Record<string, AutomationScriptInterpreter> = {
-  ".sh": "bash",
-  ".bash": "bash",
-  ".js": "node",
-  ".mjs": "node",
-  ".py": "python3",
-};
+const INTERPRETER_BY_EXTENSION = new Map<string, AutomationScriptInterpreter>([
+  [".sh", "bash"],
+  [".bash", "bash"],
+  [".js", "node"],
+  [".mjs", "node"],
+  [".py", "python3"],
+]);
 
 function inferInterpreterFromPath(
   filePath: string,
 ): AutomationScriptInterpreter | undefined {
-  return INTERPRETER_BY_EXTENSION[extname(filePath).toLowerCase()];
+  return INTERPRETER_BY_EXTENSION.get(extname(filePath).toLowerCase());
 }
 
 function parseTimeoutMs(value: string | undefined): number | undefined {
@@ -401,10 +409,8 @@ async function loadScriptFileSource(
     path = resolve(ctx.cwd, scriptFile);
   }
   const hostId = await resolveScriptFileHostId(bb, ctx, hostOverride);
-  const file = await bb.sdk.files.read({
-    ...(hostId !== undefined ? { hostId } : {}),
-    path,
-  });
+  const fileRequest = hostId === undefined ? { path } : { hostId, path };
+  const file = await bb.sdk.files.read(fileRequest);
   if (file.contentEncoding !== "utf8") {
     throw new Error(`--script-file is not UTF-8 text: ${path}`);
   }
@@ -413,6 +419,11 @@ async function loadScriptFileSource(
 
 type BuiltExecution = {
   execution: ResolvedCreateAutomationInput["execution"];
+  scriptSource?: ScriptFileSource;
+};
+
+type BuiltUpdateRequest = {
+  request: UpdateAutomationInput;
   scriptSource?: ScriptFileSource;
 };
 
@@ -460,29 +471,32 @@ async function buildExecution(
     const serviceTier = flag(args, "service-tier");
     const parsedServiceTier =
       serviceTier === undefined ? undefined : parseServiceTier(serviceTier);
-    return {
-      execution: {
-        mode: "agent",
-        prompt,
-        providerId: provider,
-        model,
-        reasoningLevel:
-          reasoning === undefined ? "medium" : parseReasoningLevel(reasoning),
-        ...(parsedServiceTier === null || parsedServiceTier === undefined
-          ? {}
-          : { serviceTier: parsedServiceTier }),
-        permissionMode: await resolvePermissionMode(
-          bb,
-          provider,
-          parsePermissionMode(flag(args, "permission-mode")),
-          providerRoutingForEnvironment(environment),
-        ),
-        environment,
-        ...(flag(args, "target-thread")
-          ? { targetThreadId: flag(args, "target-thread") }
-          : {}),
-      },
+    const execution: Extract<
+      ResolvedCreateAutomationInput["execution"],
+      { mode: "agent" }
+    > = {
+      mode: "agent",
+      prompt,
+      providerId: provider,
+      model,
+      reasoningLevel:
+        reasoning === undefined ? "medium" : parseReasoningLevel(reasoning),
+      permissionMode: await resolvePermissionMode(
+        bb,
+        provider,
+        parsePermissionMode(flag(args, "permission-mode")),
+        providerRoutingForEnvironment(environment),
+      ),
+      environment,
     };
+    if (parsedServiceTier !== null && parsedServiceTier !== undefined) {
+      execution.serviceTier = parsedServiceTier;
+    }
+    const targetThreadId = flag(args, "target-thread");
+    if (targetThreadId !== undefined) {
+      execution.targetThreadId = targetThreadId;
+    }
+    return { execution };
   }
   if (
     args.flags.has("provider") ||
@@ -509,17 +523,20 @@ async function buildExecution(
   const interpreter =
     explicitInterpreter ??
     (scriptSource ? inferInterpreterFromPath(scriptSource.path) : undefined);
-  return {
-    execution: {
-      mode: "script",
-      script: content,
-      ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
-      ...(interpreter ? { interpreter } : {}),
-      timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
-      ...(env ? { env } : {}),
-    },
-    ...(scriptSource ? { scriptSource } : {}),
+  const execution: Extract<
+    ResolvedCreateAutomationInput["execution"],
+    { mode: "script" }
+  > = {
+    mode: "script",
+    script: content,
+    timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   };
+  if (scriptSource !== undefined) execution.scriptFile = scriptSource.path;
+  if (interpreter !== undefined) execution.interpreter = interpreter;
+  if (env !== undefined) execution.env = env;
+  const built: BuiltExecution = { execution };
+  if (scriptSource !== undefined) built.scriptSource = scriptSource;
+  return built;
 }
 
 const COMPLETE_EXECUTION_FLAG_NAMES = [
@@ -633,7 +650,9 @@ async function buildUpdateRequest(
       "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent update flags.",
     );
   }
-  return { request, ...(scriptSource ? { scriptSource } : {}) };
+  const result: BuiltUpdateRequest = { request };
+  if (scriptSource !== undefined) result.scriptSource = scriptSource;
+  return result;
 }
 
 function formatTimestamp(value: number | null): string {
@@ -930,8 +949,10 @@ export function registerAutomationCli(args: {
             trigger: buildTrigger(parsed),
             execution,
             origin: ctx.threadId ? "agent" : "human",
-            ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
           };
+          if (ctx.threadId !== undefined) {
+            request.createdByThreadId = ctx.threadId;
+          }
           const created = await service.create(request);
           const json = optionalJson(parsed, created);
           return {
@@ -993,13 +1014,14 @@ export function registerAutomationCli(args: {
         if (command === "run") {
           const automationId = parsed.positionals[0];
           if (!automationId) throw new Error("Missing automationId.");
-          const result = await service.run({
+          const runRequest = {
             projectId: requireFlag(parsed, "project"),
             automationId,
-            ...(flag(parsed, "idempotency-key")
-              ? { idempotencyKey: flag(parsed, "idempotency-key") }
-              : {}),
-          });
+          };
+          const idempotencyKey = flag(parsed, "idempotency-key");
+          const result = await service.run(
+            idempotencyKey ? { ...runRequest, idempotencyKey } : runRequest,
+          );
           const json = optionalJson(parsed, result);
           const threadLine = result.run.threadId
             ? `Thread: ${result.run.threadId}\n`

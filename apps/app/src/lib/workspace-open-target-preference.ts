@@ -17,10 +17,14 @@ export type WorkspaceOpenTargetCapability =
   keyof WorkspaceOpenTargetCapabilities;
 export type WorkspaceOpenTargetContextKind = "local" | "remote-ssh";
 
-const RENAMED_WORKSPACE_OPEN_TARGET_IDS: Record<
-  string,
-  WorkspaceOpenTargetId | undefined
-> = { windsurf: "devin-desktop" };
+function getRenamedWorkspaceOpenTargetId(
+  targetId: WorkspaceOpenTargetId,
+): WorkspaceOpenTargetId | undefined {
+  if (targetId === "windsurf") {
+    return "devin-desktop";
+  }
+  return undefined;
+}
 
 const NATIVE_VIEWABLE_FILE_EXTENSIONS = new Set([
   ".avif",
@@ -308,7 +312,7 @@ function useOverrideUnknownOpenTargetPreference(
     const renamedTargetId =
       preferredTargetId === null
         ? undefined
-        : RENAMED_WORKSPACE_OPEN_TARGET_IDS[preferredTargetId];
+        : getRenamedWorkspaceOpenTargetId(preferredTargetId);
     if (
       renamedTargetId !== undefined &&
       targets?.some((target) => target.id === renamedTargetId)

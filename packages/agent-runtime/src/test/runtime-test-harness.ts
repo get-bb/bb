@@ -2,12 +2,18 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { JsonObject, ProviderRecoveryKind } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type ProviderRecoveryKind,
+} from "@bb/domain";
+import { z } from "zod";
 import { createAgentRuntime } from "../runtime.js";
 import type {
   AgentRuntime,
   AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
+  AgentRuntimeShellEnvironment,
   AgentRuntimeOptions,
 } from "../types.js";
 export {
@@ -85,6 +91,10 @@ export function createScriptedEchoLaunch(
   options: CreateScriptedEchoLaunchOptions = {},
 ): AgentRuntimeBridgeLaunch {
   const pluginId = options.pluginId ?? "provider-scripted-echo";
+  const providerOptions: JsonObject = { ...options.providerOptions };
+  if (options.scripted !== undefined) {
+    providerOptions.scripted = scriptToJson(options.scripted);
+  }
   return {
     pluginId,
     dataDir: mkdtempSync(join(tmpdir(), `bb-${pluginId}-data-`)),
@@ -102,23 +112,18 @@ export function createScriptedEchoLaunch(
       fork: "checkpoint",
       ...options.capabilities,
     },
-    providerOptions: {
-      ...options.providerOptions,
-      ...(options.scripted === undefined
-        ? {}
-        : { scripted: scriptToJson(options.scripted) }),
-    },
+    providerOptions,
     envPassthrough: [],
   };
 }
 
 function scriptToJson(script: ScriptedEchoLaunchScript): JsonObject {
-  return JSON.parse(JSON.stringify(script)) as JsonObject;
+  return jsonObjectSchema.parse(JSON.parse(JSON.stringify(script)));
 }
 
 export function scriptedEchoProcessEnv(
   script: ScriptedEchoLaunchScript,
-): Record<string, string> {
+): AgentRuntimeShellEnvironment {
   return { SCRIPTED_ECHO_OPTIONS: JSON.stringify(script) };
 }
 
@@ -135,7 +140,7 @@ type LaunchBearingMethod =
   | "providerInstallationStatus"
   | "providerInstallationRun";
 
-type WithDefaultBridgeLaunch<TMethod extends (args: never) => unknown> = (
+type WithDefaultBridgeLaunch<TMethod extends (args: never) => object> = (
   args: Omit<Parameters<TMethod>[0], "bridgeLaunch"> & {
     bridgeLaunch?: AgentRuntimeBridgeLaunch;
   },
@@ -183,13 +188,14 @@ export interface CreateScriptedEchoRuntimeArgs {
 export function createScriptedEchoRuntime(
   args: CreateScriptedEchoRuntimeArgs,
 ): LaunchBoundAgentRuntime {
-  const runtime = createAgentRuntime({
+  const runtimeOptions: AgentRuntimeOptions = {
     onToolCall: async () => ({ contentItems: [], success: true }),
-    ...(args.launch?.modulePath === undefined
-      ? { bridgeBundleDir: prebuiltTestBridgeDir }
-      : {}),
     ...args.runtime,
-  });
+  };
+  if (args.launch?.modulePath === undefined) {
+    runtimeOptions.bridgeBundleDir = prebuiltTestBridgeDir;
+  }
+  const runtime = createAgentRuntime(runtimeOptions);
   return withBridgeLaunch(runtime, createScriptedEchoLaunch(args.launch));
 }
 
@@ -221,8 +227,13 @@ export function createScriptedEchoProcessLog(): ScriptedEchoProcessLog {
 
 export interface RecordedBridgeRequest {
   method: string;
-  params: Record<string, unknown> | null;
+  params: JsonObject | null;
 }
+
+const recordedBridgeRequestSchema = z.object({
+  method: z.string(),
+  params: jsonObjectSchema.nullable(),
+});
 
 export interface ScriptedEchoRequestRecord {
   env: Record<string, string>;
@@ -246,7 +257,7 @@ export function createScriptedEchoRequestRecord(): ScriptedEchoRequestRecord {
     return raw
       .split("\n")
       .filter((line) => line.length > 0)
-      .map((line) => JSON.parse(line) as RecordedBridgeRequest);
+      .map((line) => recordedBridgeRequestSchema.parse(JSON.parse(line)));
   };
   return {
     env: { SCRIPTED_ECHO_RECORD_PATH: path },

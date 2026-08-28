@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import piPlugin from "./server.js";
 
@@ -24,9 +25,11 @@ describe("the pi plugin's environment passthrough", () => {
 function rootPaths(
   side: readonly (string | { readonly path: string })[] | undefined,
 ): string[] {
-  return (side ?? []).map((root) =>
-    typeof root === "string" ? root : root.path,
-  );
+  const nativeRootSchema = z.union([
+    z.string(),
+    z.object({ path: z.string() }).transform((root) => root.path),
+  ]);
+  return z.array(nativeRootSchema).parse(side ?? []);
 }
 
 describe("the pi plugin's skill roots", () => {

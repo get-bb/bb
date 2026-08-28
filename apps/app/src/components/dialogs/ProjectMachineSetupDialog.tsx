@@ -159,14 +159,21 @@ function ProjectMachineSetupDialogContent({
           return;
         }
       }
-      submit({
-        projectId: target.projectId,
-        request: {
-          type: "clone",
-          hostId: target.hostId,
-          ...(customClonePath !== null ? { targetPath: customClonePath } : {}),
-        },
-      });
+      if (customClonePath !== null) {
+        submit({
+          projectId: target.projectId,
+          request: {
+            type: "clone",
+            hostId: target.hostId,
+            targetPath: customClonePath,
+          },
+        });
+      } else {
+        submit({
+          projectId: target.projectId,
+          request: { type: "clone", hostId: target.hostId },
+        });
+      }
       return;
     }
 

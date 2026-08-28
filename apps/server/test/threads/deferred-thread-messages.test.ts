@@ -43,6 +43,8 @@ import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 type TestHarness = Awaited<ReturnType<typeof createTestAppHarness>>;
 
+type WarningFields = Record<string, string | number | boolean | null>;
+
 function listTurnRequests(
   db: DbConnection,
   threadId: string,
@@ -86,12 +88,15 @@ function seedBlockedThread(
 ) {
   const { host, session } = seedHostSession(harness.deps, { id: args.hostId });
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
-  const environment = seedEnvironment(harness.deps, {
+  const environmentArgs: Parameters<typeof seedEnvironment>[1] = {
     hostId: host.id,
     projectId: project.id,
     path: `/tmp/${args.hostId}`,
-    ...(args.environmentStatus ? { status: args.environmentStatus } : {}),
-  });
+  };
+  if (args.environmentStatus !== undefined) {
+    environmentArgs.status = args.environmentStatus;
+  }
+  const environment = seedEnvironment(harness.deps, environmentArgs);
   const thread = seedThread(harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
@@ -166,7 +171,7 @@ function recordServerWarnings(harness: TestHarness): string[] {
   const previous = harness.deps.logger;
   harness.deps.logger = {
     ...previous,
-    warn(_fields: unknown, message?: string): void {
+    warn(_fields: WarningFields, message?: string): void {
       messages.push(message ?? "");
     },
   };

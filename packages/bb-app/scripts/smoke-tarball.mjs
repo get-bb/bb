@@ -12,20 +12,15 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
 const PLUGIN_LOAD_TIMEOUT_MS = 60_000;
 const PLUGIN_LOAD_INTERVAL_MS = 1_000;
 const HOST_PLUGIN_WORKER_TIMEOUT_MS = 60_000;
-// Auto-installed, default-enabled builtins (apps/server/src/services/plugins/
-// builtin-registry.ts). Each must reach "running" in the packed tarball —
-// bundles that pass health checks can still fail to load (0.0.31 shipped with
-// every builtin unable to resolve @get-bb/plugin-sdk at import time).
 const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "automations",
-  // Providers whose bridge ships as a plugin artifact: if the plugin does not
-  // load, its provider disappears from the install entirely.
   "provider-acp",
   "provider-claude-code",
   "provider-codex",
@@ -37,18 +32,28 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "provider-retry",
   "secrets",
 ];
-// The smoke drives every bridge as a canonical Provider Bridge Protocol
-// client, which is the only dialect the bridges still speak. Mirrors
-// PROVIDER_BRIDGE_PROTOCOL_VERSION (packages/provider-bridge-protocol/src/
-// version.ts); this script imports nothing from the workspace so it can run
-// against a packed tarball.
 const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
-// A canonical turn/start carries a client request id (`creq_` + ten
-// Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
 const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
+const recordSchema = z.record(z.string(), z.unknown());
+const tcpAddressSchema = z.object({ port: z.number() });
+const npmPackEntrySchema = z
+  .object({
+    filename: z.string(),
+    files: z.array(z.object({ path: z.string() })),
+  })
+  .passthrough();
+const npmPackOutputSchema = z.array(npmPackEntrySchema).length(1);
+const jsonRpcOutputSchema = z
+  .object({
+    error: z.object({ message: z.string() }).passthrough().optional(),
+    id: z.union([z.string(), z.number()]).optional(),
+    result: z.unknown().optional(),
+  })
+  .passthrough();
+const modelListResultSchema = z.object({ models: z.array(z.unknown()) });
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
@@ -89,7 +94,7 @@ function collectProcessOutput(childProcess) {
 }
 
 function isRecord(value) {
-  return typeof value === "object" && value !== null;
+  return recordSchema.safeParse(value).success;
 }
 
 function waitForProcessExit(childProcess) {
@@ -147,12 +152,13 @@ function reserveFreePort() {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      if (address === null || typeof address === "string") {
+      const parsedAddress = tcpAddressSchema.safeParse(address);
+      if (!parsedAddress.success) {
         server.close();
         reject(new Error("Expected TCP server address with a port"));
         return;
       }
-      resolvePromise({ port: address.port, server });
+      resolvePromise({ port: parsedAddress.data.port, server });
     });
   });
 }
@@ -160,8 +166,6 @@ function reserveFreePort() {
 async function getFreePorts(count) {
   const reservations = [];
   try {
-    // Keep every listener open until the whole set is allocated. Closing each
-    // one immediately lets the OS hand the same port to the next request.
     for (let index = 0; index < count; index += 1) {
       reservations.push(await reserveFreePort());
     }
@@ -200,9 +204,7 @@ async function waitForHttp({ label, processRef, url }) {
       if (response.ok) {
         return;
       }
-    } catch {
-      // Retry until timeout.
-    }
+    } catch {}
     await delay(HTTP_WAIT_INTERVAL_MS);
   }
   throw new Error(
@@ -271,9 +273,6 @@ async function stopManagedProcess(processRef) {
 }
 
 function createInstalledBinInvocation(binDir, bin, args) {
-  // The tarball is installed once below. Run its npm-created bin links
-  // directly so package resolution and installation cannot consume a
-  // managed process's readiness budget before that process even starts.
   return {
     args,
     command: join(binDir, bin),
@@ -281,9 +280,6 @@ function createInstalledBinInvocation(binDir, bin, args) {
 }
 
 async function smokeNpxEntrypoint(tarballPath) {
-  // Keep one real invocation through the package's advertised npx path. Once
-  // npx dispatches the bin, the installed-package smokes below cover the same
-  // launcher without repeatedly charging npm startup to readiness budgets.
   await runCommand({
     args: ["--yes", "--package", tarballPath, "--", "bb-app", "--help"],
     command: "npx",
@@ -297,8 +293,6 @@ async function packTarball() {
   if (liveChunk === undefined) {
     throw new Error("Built bb-app has no CLI chunk to exercise");
   }
-  // Model a Turbo cache restore over existing output: a dead hashed chunk can
-  // remain beside the current generation immediately before source npm pack.
   const staleChunkName = "chunk-SLOP-CACHE-STALE.js";
   const staleChunk = join(chunkDir, staleChunkName);
   await copyFile(join(chunkDir, liveChunk), staleChunk);
@@ -308,20 +302,11 @@ async function packTarball() {
       command: "npm",
       label: "npm pack",
     });
-    const packed = JSON.parse(stdout);
-    if (!Array.isArray(packed) || packed.length !== 1) {
+    const packed = npmPackOutputSchema.safeParse(JSON.parse(stdout));
+    if (!packed.success) {
       throw new Error(`Unexpected npm pack output: ${stdout}`);
     }
-    const [entry] = packed;
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      !("filename" in entry) ||
-      typeof entry.filename !== "string" ||
-      !Array.isArray(entry.files)
-    ) {
-      throw new Error(`Unexpected npm pack entry: ${stdout}`);
-    }
+    const [entry] = packed.data;
     const staleChunkPath = `host-daemon/dist/bb-chunks/${staleChunkName}`;
     if (entry.files.some((file) => file.path === staleChunkPath)) {
       throw new Error(`npm pack included stale CLI chunk ${staleChunkPath}`);
@@ -369,8 +354,18 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
         return;
       }
 
-      if (isRecord(parsed) && parsed.id === id) {
-        settle(resolvePromise, parsed);
+      const parsedMessage = jsonRpcOutputSchema.safeParse(parsed);
+      if (!parsedMessage.success) {
+        settle(
+          reject,
+          new Error(
+            `${label} emitted invalid JSON-RPC output: ${trimmed}\n${formatProcessOutput(output)}`,
+          ),
+        );
+        return;
+      }
+      if (parsedMessage.data.id === id) {
+        settle(resolvePromise, parsedMessage.data);
       }
     };
     const onData = (chunk) => {
@@ -406,11 +401,6 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   });
 }
 
-/**
- * Bridges are never spawned directly: the runtime runs the packed bootstrap
- * and hands it the bridge module plus the plugin scope. Driving it the same
- * way here is what makes this a smoke of the real launch path.
- */
 function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
   const dataDir = join(tempRoot, "bridge-data", pluginId);
   mkdirSync(dataDir, { recursive: true });
@@ -469,20 +459,15 @@ async function smokeBridgeModelList({
     );
   }
 
-  if (
-    "result" in modelListResponse &&
-    isRecord(modelListResponse.result) &&
-    Array.isArray(modelListResponse.result.models)
-  ) {
+  if (modelListResultSchema.safeParse(modelListResponse.result).success) {
     return;
   }
 
+  const error = modelListResponse.error;
   const unavailableProviderMessage =
-    "error" in modelListResponse &&
-    isRecord(modelListResponse.error) &&
-    typeof modelListResponse.error.message === "string" &&
+    error !== undefined &&
     /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex|pi) CLI/iu.test(
-      modelListResponse.error.message,
+      error.message,
     );
   if (!allowUnavailableProvider || !unavailableProviderMessage) {
     throw new Error(
@@ -493,12 +478,6 @@ async function smokeBridgeModelList({
 
 async function smokeProviderBridgeBundles(packageDir) {
   await smokeBridgeModelList({
-    // Claude Code ships its bridge as a plugin artifact (graduation wave 5),
-    // so the packed bundle to smoke is the one `bb plugin build` produced for
-    // the builtin plugin, not a daemon-side file. The bridge intentionally
-    // relies on the host's Claude CLI for account-scoped discovery; CI does
-    // not install that binary, so its explicit unavailable-provider response
-    // is a valid smoke outcome.
     allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
@@ -514,9 +493,6 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "Claude Code host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
-    // Pi ships its bridge as a plugin artifact too (WS4 L6); the `pi` CLI is
-    // user-installed, so its explicit unavailable-provider response is a
-    // valid smoke outcome on a runner without it.
     allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
@@ -532,10 +508,6 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "Pi host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
-    // ACP ships its bridge as a plugin artifact (graduation wave 5). With no
-    // launch spec in the provider options it serves its synthetic "Agent
-    // default" model rather than spawning an agent, which is the whole point
-    // of the smoke: the packed artifact runs standalone.
     bridgePath: join(
       packageDir,
       "server",
@@ -550,11 +522,6 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "ACP host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
-    // Codex ships its bridge as a plugin artifact (graduation wave 5), so the
-    // packed bundle to smoke is the one `bb plugin build` produced for the
-    // builtin plugin, not a daemon-side file. The bridge spawns the host's
-    // `codex app-server` for model discovery; CI does not install the Codex
-    // CLI, so its explicit missing-CLI response is a valid smoke outcome.
     allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
@@ -571,10 +538,6 @@ async function smokeProviderBridgeBundles(packageDir) {
   });
 }
 
-// The daemon forks bb-plugin-host-worker.mjs (a sibling of daemon-bundle.mjs)
-// for every plugin `bb.host` entry. The published package must ship it, and
-// it must load a packed builtin host artifact and report ready over IPC;
-// otherwise every host plugin call fails with "host plugin worker exited (1)".
 async function smokePluginHostWorkerBundle(packageDir) {
   const workerPath = join(
     packageDir,
@@ -704,12 +667,6 @@ function sendBridgeRequest(childProcess, id, method, params) {
   );
 }
 
-/**
- * The semantic deltas a `thread/delta` notification batches, or [] for
- * anything else. Bridge-protocol v2 carries no finished timeline events on
- * this wire — the runtime's assembler builds those — so the smoke asserts
- * against the delta grammar directly.
- */
 function threadDeltas(message) {
   if (
     !isRecord(message) ||
@@ -722,7 +679,6 @@ function threadDeltas(message) {
   return message.params.deltas.filter(isRecord);
 }
 
-/** The full permission policy a canonical request carries in `options`. */
 const SMOKE_EXECUTION_OPTIONS = {
   permissionMode: "full",
   permissionScope: "full",
@@ -857,16 +813,17 @@ async function smokeInstalledRepack(installedPackageDir) {
     cwd: installedPackageDir,
     label: "repack installed bb-app",
   });
-  const [packed] = JSON.parse(stdout);
-  if (!Array.isArray(packed?.files)) throw new Error("Invalid npm pack output");
+  const parsedPacked = npmPackOutputSchema.safeParse(JSON.parse(stdout));
+  if (!parsedPacked.success) throw new Error("Invalid npm pack output");
+  const [packed] = parsedPacked.data;
   const chunkPrefix = "host-daemon/dist/bb-chunks/";
   const liveChunks = readdirSync(join(installedPackageDir, chunkPrefix))
     .filter((name) => name.endsWith(".js"))
     .map((name) => `${chunkPrefix}${name}`)
     .sort();
-  const repackedChunks = packed?.files
-    ?.map((file) => file.path)
-    .filter((path) => typeof path === "string" && path.startsWith(chunkPrefix))
+  const repackedChunks = packed.files
+    .map((file) => file.path)
+    .filter((path) => path.startsWith(chunkPrefix))
     .sort();
   if (
     liveChunks.length === 0 ||
@@ -879,8 +836,6 @@ async function smokeInstalledRepack(installedPackageDir) {
 async function smokeBuiltinPluginsRunning({ binDir, cliEnv }) {
   const deadline = Date.now() + PLUGIN_LOAD_TIMEOUT_MS;
   let lastSummary = "no plugin list output yet";
-  // Plugins load after the HTTP server starts listening, so poll until every
-  // expected builtin settles into "running".
   while (Date.now() <= deadline) {
     const stdout = await runCommand({
       ...createInstalledBinInvocation(binDir, "bb", [
@@ -893,12 +848,6 @@ async function smokeBuiltinPluginsRunning({ binDir, cliEnv }) {
     });
     const plugins = JSON.parse(stdout).plugins ?? [];
     const byId = new Map(plugins.map((plugin) => [plugin.id, plugin]));
-    // The server reports an enabled plugin that `loadAll` has not reached yet
-    // as status "error" with the detail "not loaded" (it has no runtime
-    // status at all). Plugins load one at a time after the server starts
-    // listening, so a poll that lands mid-load sees that transient state for
-    // every plugin still queued; only a plugin whose load actually failed
-    // carries the failure as its detail.
     const errored = plugins.filter(
       (plugin) =>
         plugin.status === "error" && plugin.statusDetail !== "not loaded",
@@ -967,9 +916,6 @@ async function smokeFullStack(binDir, sdkDir) {
       label: "bb cli status",
     });
     await smokeBuiltinPluginsRunning({ binDir, cliEnv });
-    // Keep Awake reconciles even its default disabled state, so reaching this
-    // log proves the packed daemon found its companion worker, downloaded the
-    // plugin artifact, and started the worker for a host RPC call.
     await waitForHostPluginWorker({
       pluginId: "keep-awake",
       processRef: stack,
@@ -1075,9 +1021,6 @@ async function smokeDaemonJoin(binDir) {
       BB_SERVER_URL: serverUrl,
     };
     await smokeBuiltinPluginsRunning({ binDir, cliEnv });
-    // Both daemons joined a server in a different process and data directory.
-    // Ready workers on both prove host-plugin artifacts and calls fan out to
-    // enrolled machines instead of assuming server-local paths.
     await Promise.all(
       daemons.map((daemon) =>
         waitForHostPluginWorker({

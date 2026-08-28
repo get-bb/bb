@@ -34,9 +34,11 @@ export type {
 } from "./server-connection-support.js";
 
 interface InvalidServerMessageArgs {
-  data: unknown;
+  data: ServerWebSocketMessageData;
   error: Error;
 }
+
+type ServerWebSocketMessageData = string | Buffer | Buffer[] | ArrayBuffer;
 
 const invalidHostRpcRequestEnvelopeSchema = z
   .object({
@@ -117,7 +119,7 @@ function isTerminalDaemonLifecycleMessage(
 }
 
 function summarizeServerMessagePayload(
-  data: unknown,
+  data: ServerWebSocketMessageData,
 ): ServerMessagePayloadSummary {
   const text = decodeWebSocketMessageData(data);
   return {
@@ -416,16 +418,19 @@ export class ServerConnection {
         maxReconnectionDelay: DEFAULT_MAX_RECONNECTION_DELAY,
         reconnectionDelayGrowFactor: DEFAULT_RECONNECTION_DELAY_GROW_FACTOR,
         connectionTimeout: DEFAULT_CONNECTION_TIMEOUT_MS,
-        headers: {
-          authorization: buildHostDaemonWebSocketAuthorizationHeader(
-            this.options.hostKey,
-          ),
-          ...(this.options.machineCredential !== undefined
+        headers:
+          this.options.machineCredential === undefined
             ? {
-                "x-bb-connect-machine": this.options.machineCredential,
+                authorization: buildHostDaemonWebSocketAuthorizationHeader(
+                  this.options.hostKey,
+                ),
               }
-            : {}),
-        },
+            : {
+                authorization: buildHostDaemonWebSocketAuthorizationHeader(
+                  this.options.hostKey,
+                ),
+                "x-bb-connect-machine": this.options.machineCredential,
+              },
         maxRetries: Number.POSITIVE_INFINITY,
         protocols: buildHostDaemonWebSocketProtocols(),
       },
@@ -447,7 +452,7 @@ export class ServerConnection {
         );
       }, this.startupTimeoutMs);
 
-      const fail = (error: unknown) => {
+      const fail = (error: Error) => {
         if (settled) {
           return;
         }
@@ -485,7 +490,7 @@ export class ServerConnection {
 
         void handleOpen().catch((error) => {
           if (!settled) {
-            fail(error);
+            fail(normalizeCaughtError(error));
             return;
           }
           this.options.logger.error(
@@ -545,7 +550,7 @@ export class ServerConnection {
     }
   }
 
-  private handleWebSocketMessage(data: unknown): void {
+  private handleWebSocketMessage(data: ServerWebSocketMessageData): void {
     const text = decodeWebSocketMessageData(data);
     let decoded: unknown;
     try {

@@ -14,8 +14,8 @@ export class AppErrorBoundary extends Component<
 > {
   override state: AppErrorBoundaryState = { error: null };
 
-  static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
-    return { error: error instanceof Error ? error : new Error(String(error)) };
+  static getDerivedStateFromError(cause: unknown): AppErrorBoundaryState {
+    return { error: cause instanceof Error ? cause : new Error(String(cause)) };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {

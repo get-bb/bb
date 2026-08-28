@@ -3,14 +3,38 @@ import type {
   PluginSettingDescriptor,
   PluginSettingsResponse,
 } from "@bb/server-contract";
+import type { JsonObject } from "@bb/domain";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
 import { useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 import { createPluginsClient } from "./plugin-client";
 import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
 
 type FetchLike = typeof fetch;
 
 type PluginProvenance = InstalledPlugin["provenance"];
+const EPOCH_NUMBER_KIND = "number";
+const EPOCH_STRING_KIND = "string";
+interface ParsedEpochNumber {
+  kind: typeof EPOCH_NUMBER_KIND;
+  value: number;
+}
+
+interface ParsedEpochString {
+  kind: typeof EPOCH_STRING_KIND;
+  value: string;
+}
+
+const epochValueSchema = z.union([
+  z.number().transform((value): ParsedEpochNumber => ({
+    kind: EPOCH_NUMBER_KIND,
+    value,
+  })),
+  z.string().transform((value): ParsedEpochString => ({
+    kind: EPOCH_STRING_KIND,
+    value,
+  })),
+]);
 
 interface PluginUpdateFailure {
   version: string;
@@ -64,12 +88,15 @@ export interface PluginListResult {
 export function toEpochMs(
   value: number | string | null | undefined,
 ): number | null {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
+  const parsedValue = epochValueSchema.safeParse(value).data;
+  if (parsedValue === undefined) {
+    return null;
   }
-  return null;
+  if (parsedValue.kind === EPOCH_NUMBER_KIND) {
+    return Number.isFinite(parsedValue.value) ? parsedValue.value : null;
+  }
+  const parsedDate = Date.parse(parsedValue.value);
+  return Number.isNaN(parsedDate) ? null : parsedDate;
 }
 
 export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
@@ -160,7 +187,7 @@ async function fetchPluginSettingsView(
 export async function updatePluginSettings(
   fetchImpl: FetchLike,
   pluginId: string,
-  values: Record<string, unknown>,
+  values: JsonObject,
 ): Promise<PluginSettingsView> {
   const request = pluginSettingsUpdateRequestSchema.parse({ values });
   const result = await createPluginsClient(fetchImpl).updateSettings({

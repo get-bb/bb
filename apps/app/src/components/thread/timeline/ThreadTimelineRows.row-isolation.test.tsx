@@ -4,23 +4,29 @@ import { createElement, type ComponentProps } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
+import * as conversationMessageContent from "./ConversationMessageContent.js";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
-const renderedMessageTexts = vi.hoisted(() => [] as string[]);
+const renderedMessageTexts = vi.hoisted(
+  () =>
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as string[],
+);
 
-vi.mock("./ConversationMessageContent.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./ConversationMessageContent.js")>();
-  const Actual = actual.ConversationMessageContent;
-  return {
-    ...actual,
-    ConversationMessageContent: (props: ComponentProps<typeof Actual>) => {
+const actualConversationMessageContent =
+  conversationMessageContent.ConversationMessageContent;
+
+beforeEach(() => {
+  vi.spyOn(
+    conversationMessageContent,
+    "ConversationMessageContent",
+  ).mockImplementation(
+    (props: ComponentProps<typeof actualConversationMessageContent>) => {
       renderedMessageTexts.push(props.text);
-      return createElement(Actual, props);
+      return createElement(actualConversationMessageContent, props);
     },
-  };
+  );
 });
 
 function assistantRow(index: number) {
@@ -37,6 +43,7 @@ function assistantRow(index: number) {
 afterEach(() => {
   cleanup();
   renderedMessageTexts.length = 0;
+  vi.restoreAllMocks();
 });
 
 describe("ThreadTimelineRows row isolation", () => {

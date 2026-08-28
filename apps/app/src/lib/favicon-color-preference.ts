@@ -24,7 +24,7 @@ export const FAVICON_COLOR_SERVER_SYNCED_STORAGE_KEY =
 const FAVICON_BADGES = ["none", "unread"] as const;
 type FaviconBadge = (typeof FAVICON_BADGES)[number];
 
-export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
+export const FAVICON_COLOR_VALUES = {
   red: "#e5484d",
   orange: "#f76b15",
   yellow: "#ffba18",
@@ -33,7 +33,7 @@ export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   blue: "#0090ff",
   purple: "#8e4ec6",
   pink: "#d6409f",
-};
+} satisfies Record<FaviconColor, string>;
 
 function readCachedFaviconColor(): FaviconColorPreference {
   try {
@@ -309,7 +309,7 @@ async function applyFaviconState(state: FaviconRenderState): Promise<void> {
 let initialized = false;
 
 export function initializeFavicon(): void {
-  if (initialized || typeof window === "undefined") return;
+  if (initialized || globalThis.window === undefined) return;
   initialized = true;
   const store = getDefaultStore();
   const apply = () => {

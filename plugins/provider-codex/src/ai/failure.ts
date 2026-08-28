@@ -16,11 +16,13 @@ export class AiServiceFailure extends Error {
   }
 }
 
-export function toAiServiceFailure(error: unknown): {
+interface AiServiceFailureResult {
   ok: false;
   code: ExperimentalAiServiceErrorCode;
   message: string;
-} {
+}
+
+export function toAiServiceFailure<T>(error: T): AiServiceFailureResult {
   if (error instanceof AiServiceFailure) {
     console.error(`codex ai service: ${error.detailCode}: ${error.message}`);
     return { ok: false, code: error.code, message: error.message };

@@ -2,80 +2,100 @@ import type {
   ComposerCustomization,
   PluginComposerThreadRowStatus,
 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 type RejectionReporter = (reason: string) => void;
 
+const objectSchema = z.object({}).passthrough();
+const stringSchema = z.string();
+const booleanSchema = z.boolean();
+const functionSchema = z.function();
+const toneSchema = z.enum(["default", "running", "success", "error"]);
+const scopeSchema = z.enum([
+  "thread",
+  "queued-message",
+  "side-chat",
+  "new-thread",
+]);
+
+type RuntimeObject = z.output<typeof objectSchema>;
+
+function parseObject<Value>(value: Value): RuntimeObject | null {
+  const parsed = objectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * Parse the runtime value handed to
  * `PluginContentScriptContext.experimental_setThreadRowStatus`. `undefined`
  * means the value was rejected; `null` remains the explicit clear operation.
  */
-export function normalizePluginThreadRowStatus(
-  value: unknown,
+export function normalizePluginThreadRowStatus<Value>(
+  value: Value,
   onRejected: RejectionReporter,
 ): PluginComposerThreadRowStatus | null | undefined {
   const kind = "contentScript.experimental_setThreadRowStatus";
   if (value === null) return null;
-  if (typeof value !== "object" || Array.isArray(value)) {
+  const status = parseObject(value);
+  if (status === null) {
     onRejected(`${kind}: status must be null or a non-array object`);
     return undefined;
   }
 
-  const status = value as Record<string, unknown>;
   const icon = status.icon;
-  if (typeof icon !== "string" || icon.trim() === "") {
+  const parsedIcon = stringSchema.safeParse(icon);
+  if (!parsedIcon.success || parsedIcon.data.trim() === "") {
     onRejected(`${kind}: "icon" must be a non-blank string`);
     return undefined;
   }
   const label = status.label;
-  if (typeof label !== "string" || label.trim() === "") {
+  const parsedLabel = stringSchema.safeParse(label);
+  if (!parsedLabel.success || parsedLabel.data.trim() === "") {
     onRejected(`${kind}: "label" must be a non-blank string`);
     return undefined;
   }
   const tone = status.tone;
-  if (
-    tone !== undefined &&
-    tone !== "default" &&
-    tone !== "running" &&
-    tone !== "success" &&
-    tone !== "error"
-  ) {
+  const parsedTone = toneSchema.safeParse(tone);
+  if (tone !== undefined && !parsedTone.success) {
     onRejected(
       `${kind}: "tone" must be "default", "running", "success", or "error" when set`,
     );
     return undefined;
   }
 
-  return {
-    icon: icon.trim(),
-    label: label.trim(),
-    ...(tone !== undefined ? { tone } : {}),
+  const normalized: PluginComposerThreadRowStatus = {
+    icon: parsedIcon.data.trim(),
+    label: parsedLabel.data.trim(),
   };
+  if (parsedTone.success) normalized.tone = parsedTone.data;
+  return normalized;
 }
 
-export function requireSlotId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
+export function requireSlotId<Value>(kind: string, value: Value): string {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success || !PLUGIN_SLOT_ID_PATTERN.test(parsed.data)) {
     throw new Error(
       `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
     );
   }
-  return value;
+  return parsed.data;
 }
 
 /**
  * Provider ids follow the same character rules as slot ids, but they name a
  * provider the host knows (`codex`, `acp-cursor`), not a per-plugin slot.
  */
-export function requireProviderId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
+export function requireProviderId<Value>(kind: string, value: Value): string {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success || !PLUGIN_SLOT_ID_PATTERN.test(parsed.data)) {
     throw new Error(
       `${kind}: "providerId" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
     );
   }
-  return value;
+  return parsed.data;
 }
 
 /**
@@ -88,70 +108,85 @@ export function requireProviderId(kind: string, value: unknown): string {
 export const PLUGIN_TIMELINE_RENDERER_KIND_PATTERN =
   /^(tool|[a-z0-9-]+\/[a-z0-9-]+)$/u;
 
-export function requireTimelineRendererKind(
+export function requireTimelineRendererKind<Value>(
   kind: string,
-  value: unknown,
+  value: Value,
 ): string {
+  const parsed = stringSchema.safeParse(value);
   if (
-    typeof value !== "string" ||
-    !PLUGIN_TIMELINE_RENDERER_KIND_PATTERN.test(value)
+    !parsed.success ||
+    !PLUGIN_TIMELINE_RENDERER_KIND_PATTERN.test(parsed.data)
   ) {
     throw new Error(
       `${kind}: "kind" must be "tool" or "<pluginId>/<name>" (lowercase letters, digits, "-"), got ${JSON.stringify(value)}`,
     );
   }
-  return value;
+  return parsed.data;
 }
 
-export function requireMessageDirectiveId(
+export function requireMessageDirectiveId<Value>(
   kind: string,
-  value: unknown,
+  value: Value,
 ): string {
+  const parsed = stringSchema.safeParse(value);
   if (
-    typeof value !== "string" ||
-    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
+    !parsed.success ||
+    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(parsed.data)
   ) {
     throw new Error(
       `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
     );
   }
-  return value;
+  return parsed.data;
 }
 
-export function requireNonEmptyString(
+export function requireNonEmptyString<Value>(
   kind: string,
   field: string,
-  value: unknown,
+  value: Value,
 ): string {
-  if (typeof value !== "string" || value.length === 0) {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success || parsed.data.length === 0) {
     throw new Error(`${kind}: "${field}" must be a non-empty string`);
   }
-  return value;
+  return parsed.data;
 }
 
-export function requireOptionalString(
+export function requireOptionalString<Value>(
   kind: string,
   field: string,
-  value: unknown,
+  value: Value,
 ): string | undefined {
-  if (value !== undefined && typeof value !== "string") {
+  const parsed = stringSchema.safeParse(value);
+  if (value !== undefined && !parsed.success) {
     throw new Error(`${kind}: "${field}" must be a string when set`);
   }
-  return value;
+  return parsed.success ? parsed.data : undefined;
 }
 
-export function requireComponent<T>(kind: string, value: unknown): T {
-  if (typeof value !== "function") {
+export function requireComponent<T, Value = RuntimeObject[keyof RuntimeObject]>(
+  kind: string,
+  value: Value,
+): T {
+  const parsed = functionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error(`${kind}: "component" must be a React component function`);
   }
-  return value as T;
+  /* SAFETY: The function schema verifies that the value is callable, and the caller supplies its declared component contract. */
+  return value as T & Value;
 }
 
-function requireFunction<T>(kind: string, field: string, value: unknown): T {
-  if (typeof value !== "function") {
+function requireFunction<T, Value = RuntimeObject[keyof RuntimeObject]>(
+  kind: string,
+  field: string,
+  value: Value,
+): T {
+  const parsed = functionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error(`${kind}: "${field}" must be a function`);
   }
-  return value as T;
+  /* SAFETY: The function schema verifies that the value is callable, and the caller supplies its declared function contract. */
+  return value as T & Value;
 }
 
 export function requireUniqueId(
@@ -165,11 +200,11 @@ export function requireUniqueId(
   seen.add(id);
 }
 
-function parseContributionArray<T extends { id: string }>(
+function parseContributionArray<T extends { id: string }, Value>(
   kind: string,
-  value: unknown,
+  value: Value,
   onRejected: RejectionReporter,
-  parse: (entryKind: string, value: unknown) => T,
+  parse: (entryKind: string, value: Value) => T,
 ): readonly T[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
@@ -193,46 +228,51 @@ function parseContributionArray<T extends { id: string }>(
 
 function parseRegions(
   kind: string,
-  registration: Record<string, unknown>,
+  registration: RuntimeObject,
   onRejected: RejectionReporter,
 ): Pick<
   ComposerCustomization,
   "actions" | "banners" | "plusMenu" | "richText"
 > {
   const actions = parseContributionArray<
-    NonNullable<ComposerCustomization["actions"]>[number]
+    NonNullable<ComposerCustomization["actions"]>[number],
+    RuntimeObject["actions"]
   >(`${kind}.actions`, registration.actions, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
+    const entry = parseObject(value);
     return {
       id: requireSlotId(entryKind, entry?.id),
       component: requireComponent(entryKind, entry?.component),
     };
   });
   const banners = parseContributionArray<
-    NonNullable<ComposerCustomization["banners"]>[number]
+    NonNullable<ComposerCustomization["banners"]>[number],
+    RuntimeObject["banners"]
   >(`${kind}.banners`, registration.banners, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
+    const entry = parseObject(value);
     const id = requireSlotId(entryKind, entry?.id);
     const chrome = entry?.chrome;
-    if (chrome !== undefined && chrome !== "card" && chrome !== "bare") {
+    const parsedChrome = z.enum(["card", "bare"]).safeParse(chrome);
+    if (chrome !== undefined && !parsedChrome.success) {
       throw new Error(
         `${entryKind}: "chrome" must be "card" or "bare" when set`,
       );
     }
-    return {
+    const banner: NonNullable<ComposerCustomization["banners"]>[number] = {
       id,
-      ...(chrome !== undefined ? { chrome } : {}),
       component: requireComponent(entryKind, entry?.component),
     };
+    if (parsedChrome.success) banner.chrome = parsedChrome.data;
+    return banner;
   });
   const plusMenu = parseContributionArray<
-    NonNullable<ComposerCustomization["plusMenu"]>[number]
+    NonNullable<ComposerCustomization["plusMenu"]>[number],
+    RuntimeObject["plusMenu"]
   >(
     `${kind}.plusMenu`,
     registration.plusMenu,
     onRejected,
     (entryKind, value) => {
-      const entry = value as Record<string, unknown> | null;
+      const entry = parseObject(value);
       const id = requireSlotId(entryKind, entry?.id);
       const icon = requireOptionalString(entryKind, "icon", entry?.icon);
       const description = requireOptionalString(
@@ -241,52 +281,56 @@ function parseRegions(
         entry?.description,
       );
       const disabled = entry?.disabled;
+      const parsedDisabledBoolean = booleanSchema.safeParse(disabled);
+      const parsedDisabledFunction = functionSchema.safeParse(disabled);
       if (
         disabled !== undefined &&
-        typeof disabled !== "boolean" &&
-        typeof disabled !== "function"
+        !parsedDisabledBoolean.success &&
+        !parsedDisabledFunction.success
       ) {
         throw new Error(
           `${entryKind}: "disabled" must be a boolean or function when set`,
         );
       }
-      return {
+      const plusMenuItem: NonNullable<
+        ComposerCustomization["plusMenu"]
+      >[number] = {
         id,
         label: requireNonEmptyString(entryKind, "label", entry?.label),
-        ...(icon !== undefined ? { icon } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(disabled !== undefined
-          ? {
-              disabled: disabled as NonNullable<
-                NonNullable<
-                  ComposerCustomization["plusMenu"]
-                >[number]["disabled"]
-              >,
-            }
-          : {}),
         run: requireFunction<
           NonNullable<ComposerCustomization["plusMenu"]>[number]["run"]
         >(entryKind, "run", entry?.run),
       };
+      if (icon !== undefined) plusMenuItem.icon = icon;
+      if (description !== undefined) plusMenuItem.description = description;
+      if (parsedDisabledBoolean.success) {
+        plusMenuItem.disabled = parsedDisabledBoolean.data;
+      } else if (parsedDisabledFunction.success) {
+        plusMenuItem.disabled = requireFunction<
+          NonNullable<ComposerCustomization["plusMenu"]>[number]["disabled"]
+        >(entryKind, "disabled", disabled);
+      }
+      return plusMenuItem;
     },
   );
 
   let richText: ComposerCustomization["richText"];
   if (registration.richText !== undefined) {
-    const raw = registration.richText as Record<string, unknown> | null;
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    const raw = parseObject(registration.richText);
+    if (raw === null) {
       onRejected(`${kind}.richText: must be an object when set`);
     } else {
       const effects = parseContributionArray<
         NonNullable<
           NonNullable<ComposerCustomization["richText"]>["effects"]
-        >[number]
+        >[number],
+        RuntimeObject["effects"]
       >(
         `${kind}.richText.effects`,
         raw.effects,
         onRejected,
         (entryKind, value) => {
-          const entry = value as Record<string, unknown> | null;
+          const entry = parseObject(value);
           return {
             id: requireSlotId(entryKind, entry?.id),
             match: requireFunction<
@@ -303,69 +347,78 @@ function parseRegions(
         },
       );
       const onDraftChange = raw.onDraftChange;
-      if (onDraftChange !== undefined && typeof onDraftChange !== "function") {
+      const parsedOnDraftChange = functionSchema.safeParse(onDraftChange);
+      if (onDraftChange !== undefined && !parsedOnDraftChange.success) {
         onRejected(
           `${kind}.richText: "onDraftChange" must be a function when set`,
         );
       }
-      richText = {
-        ...(effects !== undefined ? { effects } : {}),
-        ...(typeof onDraftChange === "function"
-          ? {
-              onDraftChange: onDraftChange as NonNullable<
-                ComposerCustomization["richText"]
-              >["onDraftChange"],
-            }
-          : {}),
-      };
+      const parsedRichText: NonNullable<ComposerCustomization["richText"]> = {};
+      if (effects !== undefined) parsedRichText.effects = effects;
+      if (parsedOnDraftChange.success) {
+        parsedRichText.onDraftChange = requireFunction<
+          NonNullable<ComposerCustomization["richText"]>["onDraftChange"]
+        >(kind, "onDraftChange", onDraftChange);
+      }
+      richText = parsedRichText;
     }
   }
 
-  return {
-    ...(actions !== undefined ? { actions } : {}),
-    ...(banners !== undefined ? { banners } : {}),
-    ...(plusMenu !== undefined ? { plusMenu } : {}),
-    ...(richText !== undefined ? { richText } : {}),
-  };
+  const regions: Pick<
+    ComposerCustomization,
+    "actions" | "banners" | "plusMenu" | "richText"
+  > = {};
+  if (actions !== undefined) regions.actions = actions;
+  if (banners !== undefined) regions.banners = banners;
+  if (plusMenu !== undefined) regions.plusMenu = plusMenu;
+  if (richText !== undefined) regions.richText = richText;
+  return regions;
 }
 
 /**
  * Validate one registration while isolating composer customization failures.
  * The host and test harness inject their own rejection reporters.
  */
-export function collectComposerCustomization(
-  registration: unknown,
+export function collectComposerCustomization<Value>(
+  registration: Value,
   seenIds: Set<string>,
   onRejected: RejectionReporter,
 ): ComposerCustomization | null {
   const kind = "composer.customize";
   try {
-    const raw = registration as Record<string, unknown> | null;
+    const raw = parseObject(registration);
     const id = requireSlotId(kind, raw?.id);
     const scopes = raw?.scopes;
+    let parsedScopes: NonNullable<ComposerCustomization["scopes"]> | undefined;
     if (scopes !== undefined) {
       if (!Array.isArray(scopes)) {
         throw new Error(`${kind}: "scopes" must be an array when set`);
       }
+      const validScopes: NonNullable<
+        ComposerCustomization["scopes"]
+      >[number][] = [];
       for (const scope of scopes) {
-        if (
-          scope !== "thread" &&
-          scope !== "queued-message" &&
-          scope !== "side-chat" &&
-          scope !== "new-thread"
-        ) {
+        const parsedScope = scopeSchema.safeParse(scope);
+        if (!parsedScope.success) {
           throw new Error(
             `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
           );
         }
+        validScopes.push(parsedScope.data);
       }
+      parsedScopes = validScopes;
     }
     requireUniqueId(kind, seenIds, id);
-    return {
+    const customization: ComposerCustomization = {
       id,
-      ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
-      ...parseRegions(`${kind}(${id})`, raw ?? {}, onRejected),
+      ...parseRegions(
+        `${kind}(${id})`,
+        raw ?? objectSchema.parse({}),
+        onRejected,
+      ),
     };
+    if (parsedScopes !== undefined) customization.scopes = parsedScopes;
+    return customization;
   } catch (error) {
     onRejected(error instanceof Error ? error.message : String(error));
     return null;

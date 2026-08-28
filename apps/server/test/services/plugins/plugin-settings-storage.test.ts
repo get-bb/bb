@@ -13,13 +13,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   createConnection,
   getPluginSettingsValues,
   migrate,
   type DbConnection,
 } from "@bb/db";
-import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -30,7 +30,74 @@ import { PluginSettingsValidationError } from "../../../src/services/plugins/plu
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+type ConfigurableSettingsValues = {
+  apiKey: string | undefined;
+  autoSync: boolean | undefined;
+  mode: "fast" | "slow" | undefined;
+  note: string | undefined;
+  teamKey: string | undefined;
+};
+
+interface ConfigurableTestState {
+  changes: Array<{
+    next: ConfigurableSettingsValues;
+    prev: ConfigurableSettingsValues;
+  }>;
+  initial: ConfigurableSettingsValues;
+  settings: { get(): Promise<ConfigurableSettingsValues> };
+}
+
+interface ChattyTestState {
+  final: {
+    open: boolean;
+    prepare(sql: string): { get(): { one: number } };
+  };
+  handles: ChattyDatabaseHandle[];
+  reopened: ChattyDatabaseHandle[];
+}
+
+interface ChattyDatabaseHandle {
+  close(): void;
+  open: boolean;
+  prepare(sql: string): { get(): { count: number } | { one: number } };
+}
+
+interface SqlerTestState {
+  db: {
+    prepare(sql: string): { get(): { count: number } };
+  };
+  journalMode: string;
+}
+
+declare global {
+  var __chatty: ChattyTestState;
+  var __configurable: ConfigurableTestState;
+  var __healthyLoads: number | undefined;
+  var __needsKeyLoads: number | undefined;
+  var __sqler: SqlerTestState;
+}
+
+const pluginSettingsValueSchema = z.union([
+  z.boolean(),
+  z.string(),
+  z.object({ set: z.boolean() }),
+]);
+const pluginSettingsResponseSchema = z.object({
+  ok: z.boolean(),
+  schema: z.record(
+    z.string(),
+    z.object({
+      label: z.string(),
+      secret: z.literal(true).optional(),
+      type: z.string(),
+    }),
+  ),
+  values: z.record(z.string(), pluginSettingsValueSchema),
+});
+const pluginSettingsValuesResponseSchema = z.object({
+  values: z.record(z.string(), pluginSettingsValueSchema),
+});
+const pluginSettingsErrorResponseSchema = z.object({ error: z.string() });
 
 async function countOpenFdsFor(file: string): Promise<number> {
   let count = 0;
@@ -89,7 +156,7 @@ describe("plugin settings + storage", () => {
           systemBroadcasts.push([...kinds]);
         },
       },
-      logger,
+      logger: testLogger,
       dataDir,
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,
@@ -126,15 +193,8 @@ describe("plugin settings + storage", () => {
       expect(entry.status).toBe("running");
     }
 
-    function state(): {
-      initial: Record<string, unknown>;
-      changes: Array<{
-        next: Record<string, unknown>;
-        prev: Record<string, unknown>;
-      }>;
-      settings: { get(): Promise<Record<string, unknown>> };
-    } {
-      return (globalThis as Record<string, unknown>).__configurable as never;
+    function state(): ConfigurableTestState {
+      return globalThis.__configurable;
     }
 
     it("get() is load-safe and applies typed defaults", async () => {
@@ -255,11 +315,7 @@ describe("plugin settings + storage", () => {
 
       const got = await app.request("/plugins/configurable/settings");
       expect(got.status).toBe(200);
-      const body = (await got.json()) as {
-        ok: boolean;
-        schema: Record<string, { type: string; secret?: true }>;
-        values: Record<string, unknown>;
-      };
+      const body = pluginSettingsResponseSchema.parse(await got.json());
       expect(body.ok).toBe(true);
       expect(body.schema.apiKey).toEqual({
         type: "string",
@@ -277,7 +333,9 @@ describe("plugin settings + storage", () => {
         }),
       });
       expect(put.status).toBe(200);
-      const putBody = (await put.json()) as { values: Record<string, unknown> };
+      const putBody = pluginSettingsValuesResponseSchema.parse(
+        await put.json(),
+      );
       expect(putBody.values.apiKey).toEqual({ set: true });
       expect(JSON.stringify(putBody)).not.toContain("wire-secret");
 
@@ -287,9 +345,9 @@ describe("plugin settings + storage", () => {
         body: JSON.stringify({ values: { bogus: 1 } }),
       });
       expect(badKey.status).toBe(400);
-      expect(((await badKey.json()) as { error: string }).error).toContain(
-        "bogus",
-      );
+      expect(
+        pluginSettingsErrorResponseSchema.parse(await badKey.json()).error,
+      ).toContain("bogus");
 
       const badBody = await app.request("/plugins/configurable/settings", {
         method: "PUT",
@@ -371,7 +429,7 @@ describe("plugin settings + storage", () => {
       };
       journalMode: string;
     } {
-      return (globalThis as Record<string, unknown>).__sqler as never;
+      return globalThis.__sqler;
     }
 
     it("vends a WAL handle, applies migrations once, and closes handles on reload", async () => {
@@ -488,11 +546,7 @@ describe("plugin settings + storage", () => {
       const entry = await service.installPath(rootDir);
       expect(entry.status).toBe("running");
 
-      const state = (globalThis as Record<string, unknown>).__chatty as {
-        handles: unknown[];
-        reopened: unknown[];
-        final: { open: boolean; prepare(sql: string): { get(): unknown } };
-      };
+      const state = globalThis.__chatty;
       expect(state.handles).toHaveLength(CALLS);
       expect(new Set(state.handles).size).toBe(1);
       expect(
@@ -525,16 +579,15 @@ describe("plugin settings + storage", () => {
         }
       `,
     });
-    const globals = globalThis as Record<string, unknown>;
-    delete globals.__needsKeyLoads;
+    delete globalThis.__needsKeyLoads;
     await service.installPath(rootDir);
     expect(service.list().find((p) => p.id === "needs-key")?.status).toBe(
       "needs-configuration",
     );
-    expect(globals.__needsKeyLoads).toBe(1);
+    expect(globalThis.__needsKeyLoads).toBe(1);
 
     await service.updateSettings("needs-key", { apiKey: "shhh" });
-    expect(globals.__needsKeyLoads).toBe(2);
+    expect(globalThis.__needsKeyLoads).toBe(2);
     expect(service.list().find((p) => p.id === "needs-key")?.status).toBe(
       "running",
     );
@@ -553,11 +606,10 @@ describe("plugin settings + storage", () => {
         }
       `,
     });
-    const globals = globalThis as Record<string, unknown>;
-    delete globals.__healthyLoads;
+    delete globalThis.__healthyLoads;
     await service.installPath(rootDir);
     await service.updateSettings("healthy", { note: "hi" });
-    expect(globals.__healthyLoads).toBe(1);
+    expect(globalThis.__healthyLoads).toBe(1);
     expect(service.list().find((p) => p.id === "healthy")?.status).toBe(
       "running",
     );

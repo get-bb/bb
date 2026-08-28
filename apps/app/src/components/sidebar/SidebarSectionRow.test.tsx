@@ -37,7 +37,9 @@ describe("SidebarSectionRow", () => {
     });
     const icon = result.container.querySelector('[data-icon="ListView"]');
     const label = screen.getByText("Nested work");
-    const row = label.parentElement?.parentElement as HTMLElement | null;
+    const row =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ label
+        .parentElement?.parentElement as HTMLElement | null;
 
     expect(icon).toBeNull();
     expect(

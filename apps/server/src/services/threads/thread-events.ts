@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   appendStoredThreadEventsInTransaction,
   createEventId,
@@ -18,6 +17,7 @@ import {
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
   isStandaloneBuiltinCompactCommand,
+  jsonObjectSchema,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
@@ -59,7 +59,7 @@ interface ThreadEventTransactionDeps {
   hub: DbNotifier;
 }
 
-interface ClientTurnRequestedEventArgs {
+export interface ClientTurnRequestedEventArgs {
   continuationOfRequestId?: ClientTurnRequestId;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
@@ -141,7 +141,15 @@ interface AppendThreadInterruptedEventArgs {
   threadId: string;
 }
 
-const storedEventPayloadSchema = z.record(z.string(), z.unknown());
+interface SystemErrorEventDataInput {
+  code: string;
+  detail?: string;
+  message: string;
+  reconnectAttempt?: number;
+  reconnectTotal?: number;
+}
+
+const storedEventPayloadSchema = jsonObjectSchema;
 
 const LEGACY_THREAD_START_TARGET = {
   kind: "thread-start",
@@ -231,26 +239,25 @@ function buildClientTurnRequestedEventData(
   args: ClientTurnRequestedEventArgs,
   requestId: ClientTurnRequestId,
 ): TurnRequestEventData {
-  return {
+  const data: TurnRequestEventData = {
     ...buildClientTurnBaseEventData(args),
     requestId,
-    ...(args.continuationOfRequestId !== undefined
-      ? { continuationOfRequestId: args.continuationOfRequestId }
-      : {}),
     senderThreadId: args.senderThreadId,
-    ...(args.systemMessageKind !== undefined
-      ? { systemMessageKind: args.systemMessageKind }
-      : {}),
-    ...(args.systemMessageSubject !== undefined
-      ? { systemMessageSubject: args.systemMessageSubject }
-      : {}),
     input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
     target: args.target,
     execution: args.execution,
   };
+  if (args.continuationOfRequestId !== undefined) {
+    data.continuationOfRequestId = args.continuationOfRequestId;
+  }
+  if (args.systemMessageKind !== undefined) {
+    data.systemMessageKind = args.systemMessageKind;
+  }
+  if (args.systemMessageSubject !== undefined) {
+    data.systemMessageSubject = args.systemMessageSubject;
+  }
+  if (args.inputGroups !== undefined) data.inputGroups = args.inputGroups;
+  return data;
 }
 
 type AppendClientTurnEvent = (args: AppendThreadEventArgs) => number;
@@ -625,25 +632,26 @@ export function parseStoredTurnRequestEvent(
   }
 
   if (event.type === "client/turn/requested") {
-    return {
+    const requestEventData: TurnRequestEventData = {
       direction: event.direction,
       requestId: event.requestId,
-      ...(event.continuationOfRequestId !== undefined
-        ? { continuationOfRequestId: event.continuationOfRequestId }
-        : {}),
       source: event.source,
       initiator: event.initiator,
       senderThreadId: event.senderThreadId,
       systemMessageKind: event.systemMessageKind,
       systemMessageSubject: event.systemMessageSubject,
       input: event.input,
-      ...(event.inputGroups !== undefined
-        ? { inputGroups: event.inputGroups }
-        : {}),
       target: event.target,
       request: event.request,
       execution: event.execution,
     };
+    if (event.continuationOfRequestId !== undefined) {
+      requestEventData.continuationOfRequestId = event.continuationOfRequestId;
+    }
+    if (event.inputGroups !== undefined) {
+      requestEventData.inputGroups = event.inputGroups;
+    }
+    return requestEventData;
   }
 
   if (row.type === "client/thread/start" || row.type === "client/turn/start") {
@@ -761,15 +769,16 @@ export function buildSystemErrorEventData(
   >,
 ): SystemErrorEventData {
   const reconnectProgress = resolveReconnectProgress(args);
-  return systemErrorEventDataSchema.parse({
+  const data: SystemErrorEventDataInput = {
     code: args.code,
     message: args.message,
-    ...(args.detail ? { detail: args.detail } : {}),
-    ...(reconnectProgress
-      ? { reconnectAttempt: reconnectProgress.attempt }
-      : {}),
-    ...(reconnectProgress ? { reconnectTotal: reconnectProgress.total } : {}),
-  });
+  };
+  if (args.detail) data.detail = args.detail;
+  if (reconnectProgress) {
+    data.reconnectAttempt = reconnectProgress.attempt;
+    data.reconnectTotal = reconnectProgress.total;
+  }
+  return systemErrorEventDataSchema.parse(data);
 }
 
 export function appendThreadInterruptedEventInTransaction(

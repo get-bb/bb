@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { acpProviderDeclaration } from "../declaration.js";
 import { KNOWN_ACP_AGENTS } from "../known-agents.js";
@@ -101,7 +102,11 @@ describe("known agent declarations", () => {
       expect(side).toHaveLength(4);
       expect(
         side.every(
-          (root) => typeof root === "object" && root.recursive === true,
+          (root) =>
+            z
+              .object({ recursive: z.literal(true) })
+              .passthrough()
+              .safeParse(root).success,
         ),
       ).toBe(true);
     }

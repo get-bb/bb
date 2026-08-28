@@ -1,4 +1,4 @@
-import { lazy, useMemo } from "react";
+import { lazy, useMemo, type ComponentType } from "react";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
 import { useAtomValue } from "jotai";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -21,7 +21,20 @@ const ToolsView = lazy(() =>
   import("./ToolsView").then((m) => ({ default: m.ToolsView })),
 );
 
-export default function SplitWorkspaceRoute() {
+interface SplitWorkspaceRouteDependencies {
+  ToolsView: ComponentType<{ pluginId?: string }>;
+}
+
+const defaultSplitWorkspaceRouteDependencies: SplitWorkspaceRouteDependencies =
+  {
+    ToolsView,
+  };
+
+export default function SplitWorkspaceRoute({
+  dependencies = defaultSplitWorkspaceRouteDependencies,
+}: {
+  dependencies?: SplitWorkspaceRouteDependencies;
+} = {}) {
   const location = useLocation();
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
@@ -81,7 +94,7 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <ToolsView pluginId={routeContent.pluginId} />;
+    return <dependencies.ToolsView pluginId={routeContent.pluginId} />;
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }

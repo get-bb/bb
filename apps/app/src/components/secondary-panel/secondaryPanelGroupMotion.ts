@@ -4,7 +4,12 @@ import {
   getResizeHandleElementsForGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { animate, motionValue } from "motion";
+import {
+  animate,
+  motionValue,
+  type MotionValue,
+  type ValueAnimationTransition,
+} from "motion";
 import { PANEL_SPRING_TRANSITION } from "@/lib/panel-motion";
 
 export const SECONDARY_PANEL_BOUNDARY_SAFE_WIDTH_PX = 80;
@@ -21,6 +26,19 @@ export type SecondaryPanelGroupMotion = {
   stop: () => void;
 };
 
+export interface SecondaryPanelGroupMotionDependencies {
+  animate: (
+    value: MotionValue<number>,
+    target: number,
+    options: ValueAnimationTransition<number>,
+  ) => { stop: () => void };
+}
+
+const defaultSecondaryPanelGroupMotionDependencies: SecondaryPanelGroupMotionDependencies =
+  {
+    animate,
+  };
+
 type PanelGroupElements = {
   boundaries: HTMLElement[];
   groupWidth: number;
@@ -30,7 +48,6 @@ type PanelGroupElements = {
 function findGroupElements(
   group: ImperativePanelGroupHandle,
 ): PanelGroupElements | null {
-  if (typeof group.getId !== "function") return null;
   const groupId = group.getId();
   const groupElement = getPanelGroupElement(groupId);
   if (groupElement === null) return null;
@@ -71,7 +88,9 @@ function renderPanelGroup(
   for (const boundary of boundaries) boundary.style.opacity = opacity;
 }
 
-export function createSecondaryPanelGroupMotion(): SecondaryPanelGroupMotion {
+export function createSecondaryPanelGroupMotion(
+  dependencies = defaultSecondaryPanelGroupMotionDependencies,
+): SecondaryPanelGroupMotion {
   const secondarySize = motionValue(0);
   let elements: PanelGroupElements | null = null;
   let revision = 0;
@@ -110,7 +129,7 @@ export function createSecondaryPanelGroupMotion(): SecondaryPanelGroupMotion {
       }
 
       const currentRevision = ++revision;
-      animate(secondarySize, targetSize, {
+      dependencies.animate(secondarySize, targetSize, {
         ...PANEL_SPRING_TRANSITION,
         onComplete: () => {
           if (revision !== currentRevision || elements === null) return;

@@ -3,12 +3,12 @@ const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";
 const ICON_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
-const CONTENT_TYPES: Record<string, string> = {
+const CONTENT_TYPES = {
   json: "application/json; charset=utf-8",
   svg: "image/svg+xml",
   png: "image/png",
   webp: "image/webp",
-};
+} satisfies Record<string, string>;
 
 export function marketplaceObjectKey(pathname: string): string | null {
   if (!pathname.startsWith(MARKETPLACE_PATH_PREFIX)) return null;
@@ -29,7 +29,18 @@ export function marketplaceObjectKey(pathname: string): string | null {
 
 function contentTypeFor(key: string): string {
   const extension = key.split(".").at(-1)?.toLowerCase() ?? "";
-  return CONTENT_TYPES[extension] ?? "application/octet-stream";
+  switch (extension) {
+    case "json":
+      return CONTENT_TYPES.json;
+    case "svg":
+      return CONTENT_TYPES.svg;
+    case "png":
+      return CONTENT_TYPES.png;
+    case "webp":
+      return CONTENT_TYPES.webp;
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function notFound(reason: string): Response {

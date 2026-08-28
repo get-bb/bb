@@ -71,14 +71,16 @@ export function writeCachedSidebarBootstrap(
   replay = bounded;
   const alreadyScheduled = pendingWrite !== null;
   pendingWrite = bounded;
-  if (alreadyScheduled || typeof window === "undefined") return;
-  if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(flushPendingWrite, {
+  const browserWindow = globalThis.window;
+  if (alreadyScheduled || browserWindow === undefined) return;
+  const requestIdleCallback = browserWindow.requestIdleCallback;
+  if (requestIdleCallback !== undefined) {
+    requestIdleCallback.call(browserWindow, flushPendingWrite, {
       timeout: SIDEBAR_BOOTSTRAP_WRITE_IDLE_TIMEOUT_MS,
     });
     return;
   }
-  window.setTimeout(
+  browserWindow.setTimeout(
     flushPendingWrite,
     SIDEBAR_BOOTSTRAP_WRITE_FALLBACK_DELAY_MS,
   );

@@ -6,20 +6,22 @@ import {
   type Mutation,
   type QueryClientConfig,
 } from "@tanstack/react-query";
+import { z } from "zod";
 
 const TRANSIENT_READ_RETRY_COUNT = 2;
 export const TRANSIENT_READ_RETRY_DELAY_MS = 250;
 const DEFAULT_QUERY_STALE_TIME_MS = 2000;
 
-export function isTransientReadError(error: unknown): boolean {
-  if (error instanceof BbHttpError) return false;
-  const record = toRecord(error);
+export function isTransientReadError(cause: unknown): boolean {
+  if (cause instanceof BbHttpError) return false;
+  const record = toRecord(cause);
   if (!record) return false;
   if (record.name === "AbortError" || record.name === "TimeoutError") {
     return true;
   }
-  if (typeof record.message !== "string") return false;
-  const message = record.message.replace(/\s+/g, " ").trim().toLowerCase();
+  const parsedMessage = z.string().safeParse(record.message);
+  if (!parsedMessage.success) return false;
+  const message = parsedMessage.data.replace(/\s+/g, " ").trim().toLowerCase();
   return (
     message.includes("failed to fetch") ||
     message.includes("load failed") ||
@@ -33,16 +35,16 @@ export function isTransientReadError(error: unknown): boolean {
 
 export function shouldRetryTransientReadQuery(
   failureCount: number,
-  error: unknown,
+  cause: unknown,
 ): boolean {
   if (failureCount >= TRANSIENT_READ_RETRY_COUNT) return false;
-  return isTransientReadError(error);
+  return isTransientReadError(cause);
 }
 
 export interface CreateProfileQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
   onMutationError?: (
-    error: unknown,
+    cause: unknown,
     mutation: Mutation<unknown, unknown, unknown, unknown>,
   ) => void;
 }

@@ -50,8 +50,10 @@ describe("PDF file opener", () => {
 
     const frame = await waitFor(() => {
       const element = slot.container.querySelector("iframe");
-      expect(element).toBeTruthy();
-      return element as HTMLIFrameElement;
+      if (!(element instanceof HTMLIFrameElement)) {
+        throw new Error("Expected the PDF preview iframe");
+      }
+      return element;
     });
 
     expect(fetch).toHaveBeenCalledWith(

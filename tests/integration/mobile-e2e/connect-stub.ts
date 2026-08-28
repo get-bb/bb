@@ -7,6 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
+import { z } from "zod";
 
 const DEFAULT_GATE_PORT = 42998;
 const DEFAULT_CONTROL_PORT = 42997;
@@ -19,6 +20,9 @@ const DESKTOP_SESSION_COOKIE = "__Secure-bb-connect.desktop_session";
 const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
 const GATE_AUTH_HEADER = "x-bb-gate-auth";
 const GATE_MACHINE_ID_HEADER = "x-bb-gate-machine-id";
+const redeemBodySchema = z
+  .object({ code: z.string().optional() })
+  .passthrough();
 
 function readPort(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -298,7 +302,7 @@ function parseCookie(header: string | undefined, name: string): string | null {
   return null;
 }
 
-function json(res: http.ServerResponse, status: number, body: unknown): void {
+function json<T>(res: http.ServerResponse, status: number, body: T): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
 }
@@ -364,11 +368,10 @@ async function handleRedeemMachine(
     return json(res, 405, { error: "method_not_allowed" });
   let code = "";
   try {
-    const body: unknown = JSON.parse((await readBody(req)) || "{}");
-    if (typeof body === "object" && body !== null && "code" in body) {
-      const raw = (body as { code?: unknown }).code;
-      code = typeof raw === "string" ? raw.trim().toUpperCase() : "";
-    }
+    const body = redeemBodySchema.safeParse(
+      JSON.parse((await readBody(req)) || "{}"),
+    );
+    if (body.success) code = body.data.code?.trim().toUpperCase() ?? "";
   } catch {
     return json(res, 400, { error: "invalid-json" });
   }
@@ -655,7 +658,7 @@ function main(): void {
     const server = https.createServer(
       { key: tls.key, cert: tls.cert },
       (req, res) => {
-        handleRequest(req, res).catch((error: unknown) => {
+        handleRequest(req, res).catch((error) => {
           process.stderr.write(
             `connect-stub: handler error ${String(error)}\n`,
           );

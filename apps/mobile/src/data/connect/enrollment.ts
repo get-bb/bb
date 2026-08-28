@@ -24,9 +24,9 @@ export interface EnrollmentFailure {
   message: string;
 }
 
-export function describeEnrollmentError(error: unknown): EnrollmentFailure {
-  if (error instanceof ConnectMachineRedeemError) {
-    switch (error.code) {
+export function describeEnrollmentError(cause: unknown): EnrollmentFailure {
+  if (cause instanceof ConnectMachineRedeemError) {
+    switch (cause.code) {
       case "invalid_code":
         return {
           code: "invalid_code",
@@ -59,18 +59,18 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
         return {
           code: "network",
           title: "Could not reach bb connect",
-          message: `Check your connection and try again. (${error.message})`,
+          message: `Check your connection and try again. (${cause.message})`,
         };
       case "invalid_response":
         return {
           code: "invalid_response",
           title: "Unexpected answer from bb connect",
-          message: error.message,
+          message: cause.message,
         };
     }
   }
-  if (error instanceof ConnectListError) {
-    if (error.code === "unauthorized") {
+  if (cause instanceof ConnectListError) {
+    if (cause.code === "unauthorized") {
       return {
         code: "unauthorized",
         title: "Device not authorized",
@@ -81,11 +81,11 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
     return {
       code: "network",
       title: "Could not reach bb connect",
-      message: `Check your connection and try again. (${error.message})`,
+      message: `Check your connection and try again. (${cause.message})`,
     };
   }
-  const kind = mapAuthError(error);
-  const detail = error instanceof Error ? error.message : String(error);
+  const kind = mapAuthError(cause);
+  const detail = cause instanceof Error ? cause.message : String(cause);
   if (kind === "network") {
     return {
       code: "network",

@@ -454,7 +454,12 @@ export function NewTaskDialog({
           ) : null}
           <Select
             value={status}
-            onValueChange={(value) => setStatus(value as TaskStatus)}
+            onValueChange={(value) => {
+              const nextStatus = TASK_STATUSES.find((item) => item === value);
+              if (nextStatus !== undefined) {
+                setStatus(nextStatus);
+              }
+            }}
           >
             <SelectTrigger aria-label="Status" className={CHIP_TRIGGER}>
               <SelectValue />
@@ -469,7 +474,14 @@ export function NewTaskDialog({
           </Select>
           <Select
             value={priority}
-            onValueChange={(value) => setPriority(value as TaskPriority)}
+            onValueChange={(value) => {
+              const nextPriority = TASK_PRIORITIES.find(
+                (item) => item === value,
+              );
+              if (nextPriority !== undefined) {
+                setPriority(nextPriority);
+              }
+            }}
           >
             <SelectTrigger aria-label="Priority" className={CHIP_TRIGGER}>
               <SelectValue />

@@ -3,6 +3,8 @@ import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
 } from "@bb/client-core";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import { z } from "zod";
 import { pluginContributionsQueryKey } from "./query-keys";
 
 interface PluginMentionProviderContribution {
@@ -20,39 +22,44 @@ const EMPTY_CONTRIBUTIONS: PluginContributions = {
   mentionProviders: [],
 };
 
+const pluginMentionProviderSchema = z.object({
+  pluginId: z.string(),
+  id: z.string(),
+  label: z.string(),
+  triggers: z.array(z.string()).optional(),
+});
+
 function toMentionProviderContribution(
-  value: unknown,
+  value: JsonValue,
 ): PluginMentionProviderContribution | null {
-  if (typeof value !== "object" || value === null) return null;
-  const provider = value as Record<string, unknown>;
-  const triggers = normalizePluginMentionTriggers(provider.triggers);
+  const parsed = pluginMentionProviderSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const triggers = normalizePluginMentionTriggers(parsed.data.triggers);
   if (triggers === null) return null;
-  if (
-    typeof provider.pluginId !== "string" ||
-    typeof provider.id !== "string" ||
-    typeof provider.label !== "string"
-  ) {
-    return null;
-  }
   return {
-    pluginId: provider.pluginId,
-    id: provider.id,
-    label: provider.label,
+    pluginId: parsed.data.pluginId,
+    id: parsed.data.id,
+    label: parsed.data.label,
     triggers,
   };
 }
+
+const pluginContributionsResponseSchema = z.object({
+  mentionProviders: z.array(jsonValueSchema).optional(),
+});
 
 async function fetchPluginContributions(
   signal: AbortSignal,
 ): Promise<PluginContributions> {
   const response = await fetch("/api/v1/plugins/contributions", { signal });
   if (!response.ok) return EMPTY_CONTRIBUTIONS;
-  const body = (await response.json()) as {
-    mentionProviders?: unknown;
-  };
+  const parsed = pluginContributionsResponseSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) return EMPTY_CONTRIBUTIONS;
   return {
-    mentionProviders: Array.isArray(body.mentionProviders)
-      ? body.mentionProviders
+    mentionProviders: parsed.data.mentionProviders
+      ? parsed.data.mentionProviders
           .map(toMentionProviderContribution)
           .filter(
             (provider): provider is PluginMentionProviderContribution =>
@@ -83,30 +90,30 @@ export interface PluginMentionSearchGroup {
   items: PluginMentionSearchItem[];
 }
 
-function isMentionSearchItem(value: unknown): value is PluginMentionSearchItem {
-  if (typeof value !== "object" || value === null) return false;
-  const item = value as Record<string, unknown>;
-  return (
-    typeof item.itemId === "string" &&
-    typeof item.title === "string" &&
-    (item.subtitle === null || typeof item.subtitle === "string") &&
-    (item.icon === null || typeof item.icon === "string")
-  );
+const pluginMentionSearchItemSchema = z.object({
+  itemId: z.string(),
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  icon: z.string().nullable(),
+});
+
+const pluginMentionSearchGroupSchema = z.object({
+  pluginId: z.string(),
+  providerId: z.string(),
+  label: z.string(),
+  items: z.array(pluginMentionSearchItemSchema),
+});
+
+function parseMentionSearchGroup(
+  value: JsonValue,
+): PluginMentionSearchGroup | null {
+  const parsed = pluginMentionSearchGroupSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
-function isMentionSearchGroup(
-  value: unknown,
-): value is PluginMentionSearchGroup {
-  if (typeof value !== "object" || value === null) return false;
-  const group = value as Record<string, unknown>;
-  return (
-    typeof group.pluginId === "string" &&
-    typeof group.providerId === "string" &&
-    typeof group.label === "string" &&
-    Array.isArray(group.items) &&
-    group.items.every(isMentionSearchItem)
-  );
-}
+const pluginMentionSearchResponseSchema = z.object({
+  groups: z.array(jsonValueSchema).optional(),
+});
 
 interface PluginMentionSearchArgs {
   trigger: PluginMentionTrigger;
@@ -130,9 +137,13 @@ async function fetchPluginMentionSearch(
     { signal },
   );
   if (!response.ok) return [];
-  const body = (await response.json()) as { groups?: unknown };
-  return Array.isArray(body.groups)
-    ? body.groups.filter(isMentionSearchGroup)
+  const parsed = pluginMentionSearchResponseSchema.safeParse(
+    await response.json(),
+  );
+  return parsed.success && parsed.data.groups
+    ? parsed.data.groups
+        .map(parseMentionSearchGroup)
+        .filter((group): group is PluginMentionSearchGroup => group !== null)
     : [];
 }
 

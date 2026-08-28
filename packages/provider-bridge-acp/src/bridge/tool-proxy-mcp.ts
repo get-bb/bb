@@ -1,5 +1,9 @@
-import { dynamicToolSchema } from "@bb/domain";
-import type { DynamicTool } from "@bb/domain";
+import {
+  dynamicToolSchema,
+  jsonObjectSchema,
+  jsonValueSchema,
+} from "@bb/domain";
+import type { DynamicTool, JsonObject, JsonValue } from "@bb/domain";
 import { buildBridgeToolCallContent as experimental_buildBridgeToolCallContent } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
@@ -43,7 +47,7 @@ type BridgeRequestPayload =
   | { kind: "initialized"; toolCount: number }
   | {
       kind: "toolCall";
-      arguments: Record<string, unknown>;
+      arguments: JsonObject;
       callId: string;
       tool: string;
     };
@@ -73,11 +77,14 @@ const bridgeToolCallResponseSchema = z.union([
 ]);
 type BridgeToolCallResponse = z.infer<typeof bridgeToolCallResponseSchema>;
 
-interface JsonRpcMessage {
-  id?: string | number;
-  method?: string;
-  params?: unknown;
-}
+const jsonRpcMessageSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    method: z.string().optional(),
+    params: jsonValueSchema.optional(),
+  })
+  .passthrough();
+type JsonRpcMessage = z.infer<typeof jsonRpcMessageSchema>;
 
 interface McpServerEnvironment {
   host: string;
@@ -122,8 +129,7 @@ function readEnvironment(): McpServerEnvironment {
   if (!host || !token || !threadId || !toolsJson) {
     throw new Error("Missing ACP dynamic tool MCP server environment");
   }
-  const parsedTools = JSON.parse(toolsJson) as unknown;
-  const tools = dynamicToolSchema.array().parse(parsedTools);
+  const tools = dynamicToolSchema.array().parse(JSON.parse(toolsJson));
   const rawProgressInterval = process.env[ENV_PROGRESS_INTERVAL_MS];
   const progressIntervalMs =
     rawProgressInterval !== undefined && Number(rawProgressInterval) > 0
@@ -139,11 +145,11 @@ function readEnvironment(): McpServerEnvironment {
   };
 }
 
-function writeJson(message: unknown): void {
+function writeJson(message: JsonValue): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
-function writeResult(id: string | number, result: unknown): void {
+function writeResult(id: string | number, result: JsonValue): void {
   writeJson({ jsonrpc: "2.0", id, result });
 }
 
@@ -195,15 +201,17 @@ function callBridge(
   });
 }
 
-function objectParams(params: unknown): Record<string, unknown> {
-  return params && typeof params === "object" && !Array.isArray(params)
-    ? (params as Record<string, unknown>)
-    : {};
+function objectParams(params: JsonValue | undefined): JsonObject {
+  const parsed = jsonObjectSchema.safeParse(params);
+  return parsed.success ? parsed.data : {};
 }
 
-function readProgressToken(params: unknown): string | number | null {
+function readProgressToken(
+  params: JsonValue | undefined,
+): string | number | null {
   const meta = objectParams(objectParams(params)._meta).progressToken;
-  return typeof meta === "string" || typeof meta === "number" ? meta : null;
+  const parsed = z.union([z.string(), z.number()]).safeParse(meta);
+  return parsed.success ? parsed.data : null;
 }
 
 function startProgressHeartbeat(args: {
@@ -233,10 +241,10 @@ async function handleRequest(
   switch (message.method) {
     case "initialize":
       writeResult(message.id, {
-        protocolVersion:
-          typeof objectParams(message.params).protocolVersion === "string"
-            ? objectParams(message.params).protocolVersion
-            : "2024-11-05",
+        protocolVersion: z
+          .string()
+          .catch("2024-11-05")
+          .parse(objectParams(message.params).protocolVersion),
         capabilities: { tools: {} },
         serverInfo: { name: ACP_BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
       });
@@ -257,26 +265,24 @@ async function handleRequest(
         tools: env.tools.map((tool) => ({
           name: tool.name,
           description: tool.description,
-          inputSchema: tool.inputSchema,
+          inputSchema: jsonValueSchema.parse(tool.inputSchema),
         })),
       });
       return;
 
     case "tools/call": {
       const params = objectParams(message.params);
-      const name = typeof params.name === "string" ? params.name : "";
+      const name = z.string().catch("").parse(params.name);
       const tool = env.tools.find((candidate) => candidate.name === name);
       if (!tool) {
         writeError(message.id, -32602, `Unknown tool: ${name}`);
         return;
       }
       const rawArguments = params.arguments;
-      const toolArguments =
-        rawArguments &&
-        typeof rawArguments === "object" &&
-        !Array.isArray(rawArguments)
-          ? (rawArguments as Record<string, unknown>)
-          : {};
+      const parsedToolArguments = jsonObjectSchema.safeParse(rawArguments);
+      const toolArguments = parsedToolArguments.success
+        ? parsedToolArguments.data
+        : {};
       const progressToken = readProgressToken(message.params);
       const stopHeartbeat =
         progressToken === null
@@ -300,10 +306,11 @@ async function handleRequest(
           });
           return;
         }
-        writeResult(message.id, {
+        const toolResult: JsonObject = {
           content: experimental_buildBridgeToolCallContent(result),
-          ...(result.isError ? { isError: true } : {}),
-        });
+        };
+        if (result.isError) toolResult.isError = true;
+        writeResult(message.id, toolResult);
       } catch (error) {
         stopHeartbeat();
         writeResult(message.id, {
@@ -336,12 +343,11 @@ export function runAcpDynamicToolMcpServer(): void {
     if (!trimmed) {
       return;
     }
-    let message: JsonRpcMessage;
     try {
-      message = JSON.parse(trimmed) as JsonRpcMessage;
+      const message = jsonRpcMessageSchema.parse(JSON.parse(trimmed));
+      void handleRequest(env, message);
     } catch {
       return;
     }
-    void handleRequest(env, message);
   });
 }

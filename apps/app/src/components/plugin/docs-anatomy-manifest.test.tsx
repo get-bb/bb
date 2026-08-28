@@ -25,42 +25,62 @@ import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
-const manifest = JSON.parse(
-  readFileSync(
-    resolve(REPO_ROOT, "packages/plugin-api-map/src/anatomy-manifest.json"),
-    "utf8",
-  ),
-) as {
-  appSidebar: string[];
-  sidebarFooter: string[];
-  messageActionBar: string[];
-  surfaceFixtures: Record<
-    string,
-    {
-      responsiveStrategy: "scale-together";
-      sources: Array<{ path: string; anchors: string[] }>;
-    }
-  >;
-};
+type AppSidebarSection =
+  | "top-reserve"
+  | "primary-actions"
+  | "plugin-nav"
+  | "thread-list"
+  | "footer";
+type SidebarFooterItem = "settings" | "plugin-footer-actions" | "bug-report";
+type MessageActionBarItem =
+  | "copy"
+  | "edit"
+  | "add-to-chat"
+  | "send-to-main-thread"
+  | "fork"
+  | "plugin-actions";
+
+const manifest =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ JSON.parse(
+    readFileSync(
+      resolve(REPO_ROOT, "packages/plugin-api-map/src/anatomy-manifest.json"),
+      "utf8",
+    ),
+  ) as {
+    appSidebar: AppSidebarSection[];
+    sidebarFooter: SidebarFooterItem[];
+    messageActionBar: MessageActionBarItem[];
+    surfaceFixtures: Record<
+      string,
+      {
+        responsiveStrategy: "scale-together";
+        sources: Array<{ path: string; anchors: string[] }>;
+      }
+    >;
+  };
 
 const TEST_PLUGIN_ID = "docs-anatomy-test";
 
 beforeAll(() => {
-  window.matchMedia ??= ((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  })) as typeof window.matchMedia;
-  window.ResizeObserver ??= class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof ResizeObserver;
+  window.matchMedia ??=
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ ((
+      query: string,
+    ) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+  window.ResizeObserver ??=
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as typeof ResizeObserver;
   Element.prototype.scrollIntoView ??= () => {};
 });
 
@@ -179,13 +199,13 @@ describe("docs anatomy manifest", () => {
     registerTestPlugin();
     const { container } = renderAppSidebar();
 
-    const sectionSelectors: Record<string, string> = {
+    const sectionSelectors = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
       "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
       "plugin-nav": '[data-testid="plugin-nav-sidebar-items"]',
       "thread-list": '[data-sidebar="content"]',
       footer: '[data-sidebar="footer"]',
-    };
+    } satisfies Record<AppSidebarSection, string>;
     expect(Object.keys(sectionSelectors).sort()).toEqual(
       [...manifest.appSidebar].sort(),
     );
@@ -193,7 +213,10 @@ describe("docs anatomy manifest", () => {
     const sections = manifest.appSidebar.map((key): [string, Element] => {
       const element = container.querySelector(sectionSelectors[key]);
       expect(element, `missing sidebar section "${key}"`).not.toBeNull();
-      return [key, element as Element];
+      return [
+        key,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ element as Element,
+      ];
     });
     expectDocumentOrder(sections);
   });
@@ -204,12 +227,12 @@ describe("docs anatomy manifest", () => {
     const footer = container.querySelector('[data-sidebar="footer"]');
     expect(footer).not.toBeNull();
 
-    const footerSelectors: Record<string, () => Element | null> = {
+    const footerSelectors = {
       settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
       "plugin-footer-actions": () =>
         footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
-    };
+    } satisfies Record<SidebarFooterItem, () => Element | null>;
     expect(Object.keys(footerSelectors).sort()).toEqual(
       [...manifest.sidebarFooter].sort(),
     );
@@ -217,7 +240,10 @@ describe("docs anatomy manifest", () => {
     const items = manifest.sidebarFooter.map((key): [string, Element] => {
       const element = footerSelectors[key]();
       expect(element, `missing footer item "${key}"`).not.toBeNull();
-      return [key, element as Element];
+      return [
+        key,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ element as Element,
+      ];
     });
     expectDocumentOrder(items);
   });
@@ -246,14 +272,14 @@ describe("docs anatomy manifest", () => {
       </TooltipProvider>,
     );
 
-    const actionLabels: Record<string, string> = {
+    const actionLabels = {
       copy: "Copy message",
       edit: "Edit message",
       "add-to-chat": "Add to chat",
       "send-to-main-thread": "Send to main thread",
       fork: "Fork into new thread",
       "plugin-actions": "Anatomy message action",
-    };
+    } satisfies Record<MessageActionBarItem, string>;
     expect(Object.keys(actionLabels).sort()).toEqual(
       [...manifest.messageActionBar].sort(),
     );

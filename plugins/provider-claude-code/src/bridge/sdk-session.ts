@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import {
-  query,
   type CanUseTool,
   type McpSdkServerConfigWithInstance,
   type Options,
@@ -20,6 +19,7 @@ import {
   missingClaudeCliGuidance,
   translateMissingClaudeCliError,
 } from "./missing-cli-error.js";
+import { getClaudeSdkDependencies } from "./claude-sdk-dependencies.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -58,7 +58,7 @@ export type ClaudeMutableFlagSettings = {
 };
 
 type SdkSessionMessageHandler = (message: SDKMessage) => void;
-type SdkSessionDoneHandler = (error?: unknown) => void;
+type SdkSessionDoneHandler = (error?: Error) => void;
 
 interface QueuedSdkInputMessage {
   message: SDKUserMessage;
@@ -81,7 +81,7 @@ interface AppendBoundedTextArgs {
 }
 
 interface BuildSdkDoneErrorMessageArgs {
-  error: unknown;
+  errorMessage: string;
   stderrTail: string;
 }
 
@@ -99,7 +99,13 @@ function appendBoundedText(args: AppendBoundedTextArgs): string {
   return next.slice(next.length - SDK_STDERR_TAIL_MAX_CHARS);
 }
 
-function getErrorMessage(error: unknown): string {
+type ClaudeSettings = Exclude<Options["settings"], string | undefined>;
+
+function isClaudeSettings(value: Options["settings"]): value is ClaudeSettings {
+  return value !== undefined && Object(value) === value;
+}
+
+function getErrorMessage(error: Error | string): string {
   const message = error instanceof Error ? error.message : String(error);
   return isMissingClaudeCliMessage(message)
     ? missingClaudeCliGuidance()
@@ -107,7 +113,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
-  const errorMessage = getErrorMessage(args.error);
+  const errorMessage = getErrorMessage(args.errorMessage);
   const stderrTail = args.stderrTail.trim();
   if (stderrTail.length === 0 || errorMessage.includes(stderrTail)) {
     return errorMessage;
@@ -131,6 +137,7 @@ function spawnRecordedClaudeProcess(args: {
     args.onStderr(data);
   });
   experimental_recordProviderChildIo(child, { threadId: args.threadId });
+  // SAFETY: spawn returns the ChildProcess contract required by the Claude SDK.
   return child as SpawnedProcess;
 }
 
@@ -200,8 +207,9 @@ export class SdkSession {
     await this.query?.applyFlagSettings(args.settings);
     this.options.effort = args.effort;
     const { effortLevel: _effortLevel, ...sessionSettings } = args.settings;
-    const currentSettings =
-      typeof this.options.settings === "object" ? this.options.settings : {};
+    const currentSettings = isClaudeSettings(this.options.settings)
+      ? this.options.settings
+      : {};
     this.options.settings = {
       ...currentSettings,
       ...sessionSettings,
@@ -231,56 +239,54 @@ export class SdkSession {
       cwd: this.options.cwd,
       systemPrompt: this.options.systemPrompt,
       ...permissionOptions,
-      ...(experimental_isProviderBridgeRecording()
-        ? {
-            spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
-              spawnRecordedClaudeProcess({
-                onStderr,
-                spawnOptions,
-                threadId: recordThreadId?.() ?? null,
-              }),
-          }
-        : {}),
       includePartialMessages: true,
       settingSources: ["user", "project", "local"],
       persistSession: true,
       env: this.options.env ?? process.env,
       stderr: onStderr,
-      ...(this.options.mcpServers
-        ? { mcpServers: this.options.mcpServers }
-        : {}),
-      ...(this.options.allowedTools
-        ? { allowedTools: this.options.allowedTools }
-        : {}),
-      ...(this.options.disallowedTools
-        ? { disallowedTools: this.options.disallowedTools }
-        : {}),
-      ...(this.options.canUseTool
-        ? { canUseTool: this.options.canUseTool }
-        : {}),
-      ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
-      ...(this.options.hooks ? { hooks: this.options.hooks } : {}),
-      ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-      ...(!resumeSessionId && this.options.sessionId
-        ? { sessionId: this.options.sessionId }
-        : {}),
-      ...(this.options.model ? { model: this.options.model } : {}),
-      ...(this.options.additionalDirectories
-        ? { additionalDirectories: [...this.options.additionalDirectories] }
-        : {}),
-      ...(this.options.effort ? { effort: this.options.effort } : {}),
-      ...(this.options.pathToClaudeCodeExecutable
-        ? {
-            pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable,
-          }
-        : {}),
-      ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
-      ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
-      ...(this.options.settings ? { settings: this.options.settings } : {}),
     };
 
+    if (experimental_isProviderBridgeRecording()) {
+      sdkOptions.spawnClaudeCodeProcess = (spawnOptions: SpawnOptions) =>
+        spawnRecordedClaudeProcess({
+          onStderr,
+          spawnOptions,
+          threadId: recordThreadId?.() ?? null,
+        });
+    }
+    if (this.options.mcpServers)
+      sdkOptions.mcpServers = this.options.mcpServers;
+    if (this.options.allowedTools) {
+      sdkOptions.allowedTools = this.options.allowedTools;
+    }
+    if (this.options.disallowedTools) {
+      sdkOptions.disallowedTools = this.options.disallowedTools;
+    }
+    if (this.options.canUseTool)
+      sdkOptions.canUseTool = this.options.canUseTool;
+    if (this.options.sandbox) sdkOptions.sandbox = this.options.sandbox;
+    if (this.options.hooks) sdkOptions.hooks = this.options.hooks;
+    if (resumeSessionId) sdkOptions.resume = resumeSessionId;
+    if (!resumeSessionId && this.options.sessionId) {
+      sdkOptions.sessionId = this.options.sessionId;
+    }
+    if (this.options.model) sdkOptions.model = this.options.model;
+    if (this.options.additionalDirectories) {
+      sdkOptions.additionalDirectories = [
+        ...this.options.additionalDirectories,
+      ];
+    }
+    if (this.options.effort) sdkOptions.effort = this.options.effort;
+    if (this.options.pathToClaudeCodeExecutable) {
+      sdkOptions.pathToClaudeCodeExecutable =
+        this.options.pathToClaudeCodeExecutable;
+    }
+    if (this.options.plugins) sdkOptions.plugins = this.options.plugins;
+    if (this.options.thinking) sdkOptions.thinking = this.options.thinking;
+    if (this.options.settings) sdkOptions.settings = this.options.settings;
+
     try {
-      this.query = query({
+      this.query = getClaudeSdkDependencies().query({
         prompt: this.createInputIterable(),
         options: sdkOptions,
       });
@@ -300,8 +306,8 @@ export class SdkSession {
       message: { role: "user", content: text },
       parent_tool_use_id: null,
       session_id: this.sessionId ?? "",
-      ...(promptId !== undefined ? { uuid: promptId } : {}),
     };
+    if (promptId !== undefined) message.uuid = promptId;
 
     if (this.inputDone) {
       return Promise.reject(new Error("Claude SDK input stream is closed"));
@@ -434,10 +440,15 @@ export class SdkSession {
       }
       this.onDone();
     } catch (error) {
+      const translatedError = translateMissingClaudeCliError(error);
+      const errorMessage =
+        translatedError instanceof Error
+          ? translatedError.message
+          : String(translatedError);
       this.onDone(
         new Error(
           buildSdkDoneErrorMessage({
-            error,
+            errorMessage,
             stderrTail: this.stderrTail,
           }),
         ),

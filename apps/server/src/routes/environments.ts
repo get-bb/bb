@@ -14,6 +14,7 @@ import {
   type EnvironmentDiffQuery,
   type PublicApiSchema,
 } from "@bb/server-contract";
+import type { HostDaemonRetryableOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import {
@@ -318,18 +319,18 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       });
     }
     const target = requireWorkspaceCommandTarget(environment);
+    const statusArgs: Parameters<typeof callEnvironmentWorkspaceStatus>[1] = {
+      environment,
+      target,
+    };
+    if (query.mergeBaseBranch) {
+      statusArgs.mergeBaseBranch = query.mergeBaseBranch;
+    }
     const result = await deps.workspaceReadCaches.status.read({
       environmentId: environment.id,
       hostId: target.hostId,
       key: workspaceStatusCacheKey(target, query.mergeBaseBranch),
-      load: () =>
-        callEnvironmentWorkspaceStatus(deps, {
-          environment,
-          target,
-          ...(query.mergeBaseBranch
-            ? { mergeBaseBranch: query.mergeBaseBranch }
-            : {}),
-        }),
+      load: () => callEnvironmentWorkspaceStatus(deps, statusArgs),
     });
     if (result.outcome === "unavailable") {
       return context.json({
@@ -512,23 +513,32 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     }
     const absolutePath = path.join(environment.path, repoRelativePath);
     const ref = resolveDiffFileRef(query);
+    const command: Extract<
+      HostDaemonRetryableOnlineRpcCommand,
+      { type: "host.read_file" }
+    > = {
+      type: "host.read_file",
+      path: absolutePath,
+      rootPath: environment.path,
+    };
+    if (ref !== undefined) {
+      command.ref = ref;
+    }
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: environment.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: absolutePath,
-        rootPath: environment.path,
-        ...(ref !== undefined ? { ref } : {}),
-      },
+      command,
     });
-    return context.json({
+    const fileResponse = {
       path: result.path,
       content: result.content,
       contentEncoding: result.contentEncoding,
-      ...(result.mimeType ? { mimeType: result.mimeType } : {}),
       sizeBytes: result.sizeBytes,
-    });
+    };
+    if (result.mimeType) {
+      return context.json({ ...fileResponse, mimeType: result.mimeType });
+    }
+    return context.json(fileResponse);
   });
 
   get(routes.diffBranches, async (context, query) => {
@@ -538,17 +548,25 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     );
     const branchQuery = normalizeBranchQuery(query.query);
     const selectedBranch = normalizeBranchQuery(query.selectedBranch);
+    const command: Extract<
+      HostDaemonRetryableOnlineRpcCommand,
+      { type: "host.list_branch_options" }
+    > = {
+      type: "host.list_branch_options",
+      path: environment.path,
+      limit: parseBranchListLimit(query.limit),
+      remoteRefresh: "background",
+    };
+    if (branchQuery) {
+      command.query = branchQuery;
+    }
+    if (selectedBranch) {
+      command.selectedBranch = selectedBranch;
+    }
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: environment.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.list_branch_options",
-        path: environment.path,
-        ...(branchQuery ? { query: branchQuery } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
-        limit: parseBranchListLimit(query.limit),
-        remoteRefresh: "background",
-      },
+      command,
     });
     return context.json({
       branches: result.branches,
@@ -571,17 +589,23 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     });
 
     try {
+      const command: Extract<
+        HostDaemonRetryableOnlineRpcCommand,
+        { type: "host.list_paths" }
+      > = {
+        type: "host.list_paths",
+        limit,
+        includeFiles: inclusion.includeFiles,
+        includeDirectories: inclusion.includeDirectories,
+        path: environment.path,
+      };
+      if (query.query) {
+        command.query = query.query;
+      }
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: environment.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: environment.path,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeFiles: inclusion.includeFiles,
-          includeDirectories: inclusion.includeDirectories,
-        },
+        command,
       });
       return context.json({
         paths: result.paths,

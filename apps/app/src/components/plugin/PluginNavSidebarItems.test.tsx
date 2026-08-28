@@ -45,23 +45,20 @@ function registerPanel(
   title: string,
   experimentalSidebarAccessory?: ComponentType,
 ) {
+  const panel: PluginRegistrationSet["navPanels"][number] = {
+    id: "main",
+    title,
+    icon: "Puzzle",
+    path: "main",
+    component: () => null,
+  };
+  if (experimentalSidebarAccessory !== undefined) {
+    panel.experimental_sidebarAccessory = experimentalSidebarAccessory;
+  }
   setPluginSlotRegistrations(
     pluginId,
     registrationSet({
-      navPanels: [
-        {
-          id: "main",
-          title,
-          icon: "Puzzle",
-          path: "main",
-          component: () => null,
-          ...(experimentalSidebarAccessory === undefined
-            ? {}
-            : {
-                experimental_sidebarAccessory: experimentalSidebarAccessory,
-              }),
-        },
-      ],
+      navPanels: [panel],
     }),
   );
 }

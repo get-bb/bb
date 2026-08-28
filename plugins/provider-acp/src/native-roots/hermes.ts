@@ -19,7 +19,12 @@ const hermesSkillConfigSchema = z
   .object({
     skills: z
       .object({
-        external_dirs: z.union([z.string(), z.array(z.string())]).optional(),
+        external_dirs: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .transform((value) =>
+            value === undefined ? [] : Array.isArray(value) ? value : [value],
+          ),
       })
       .passthrough()
       .optional(),
@@ -45,9 +50,7 @@ export const resolveHermesNativeRoots: AcpNativeRootsResolver = async (
     parseYaml,
     hermesSkillConfigSchema,
   );
-  const configured = config?.skills?.external_dirs;
-  const externalDirectories =
-    typeof configured === "string" ? [configured] : (configured ?? []);
+  const externalDirectories = config?.skills?.external_dirs ?? [];
   return {
     skills: [
       skillsRoot({

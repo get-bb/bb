@@ -13,7 +13,7 @@ import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { DiffHost } from "@/components/code/DiffHost";
+import { DiffHost, type DiffRenderer } from "@/components/code/DiffHost";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   getWrappedImageIndex,
@@ -107,9 +107,11 @@ function canExpandContextForChangeKind(
 }
 
 function scheduleIdleWork(work: () => void): () => void {
-  if (typeof window.requestIdleCallback === "function") {
-    const handle = window.requestIdleCallback(work, { timeout: 2_000 });
-    return () => window.cancelIdleCallback(handle);
+  const requestIdleCallback = window.requestIdleCallback;
+  const cancelIdleCallback = window.cancelIdleCallback;
+  if (requestIdleCallback !== undefined && cancelIdleCallback !== undefined) {
+    const handle = requestIdleCallback(work, { timeout: 2_000 });
+    return () => cancelIdleCallback(handle);
   }
   const handle = window.setTimeout(work, 200);
   return () => window.clearTimeout(handle);
@@ -686,6 +688,7 @@ interface GitDiffCardSvgBodyProps {
   fullFileContents: ExperimentalDiffFullFileContents | null;
   presentation: DiffPresentation;
   onSelectionAddToChat?: (text: string) => void;
+  diffRenderer?: DiffRenderer;
 }
 
 function GitDiffCardSvgBody({
@@ -697,6 +700,7 @@ function GitDiffCardSvgBody({
   fullFileContents,
   presentation,
   onSelectionAddToChat,
+  diffRenderer,
 }: GitDiffCardSvgBodyProps) {
   return displayMode === "preview" ? (
     <GitDiffCardImageBody
@@ -711,6 +715,7 @@ function GitDiffCardSvgBody({
       fullFileContents={fullFileContents}
       {...presentation}
       onSelectionAddToChat={onSelectionAddToChat}
+      renderer={diffRenderer}
     />
   );
 }
@@ -721,6 +726,7 @@ interface GitDiffCardBodyProps {
   svgDisplayMode: GitDiffCardSvgDisplayMode;
   reservesCollapseGutter: boolean;
   onSelectionAddToChat?: (text: string) => void;
+  diffRenderer?: DiffRenderer;
 }
 
 export function GitDiffCardBody({
@@ -729,6 +735,7 @@ export function GitDiffCardBody({
   svgDisplayMode,
   reservesCollapseGutter,
   onSelectionAddToChat,
+  diffRenderer,
 }: GitDiffCardBodyProps) {
   const {
     bodySentinelRef,
@@ -786,6 +793,7 @@ export function GitDiffCardBody({
           fullFileContents={fullFileContents}
           presentation={presentation}
           onSelectionAddToChat={onSelectionAddToChat}
+          diffRenderer={diffRenderer}
         />
       ) : (
         <>
@@ -796,6 +804,7 @@ export function GitDiffCardBody({
             {...presentation}
             fallback={<GitDiffCardBodySkeleton />}
             onSelectionAddToChat={onSelectionAddToChat}
+            renderer={diffRenderer}
           />
           <GitDiffCardContextExpansionFooter
             contextExpansion={contextExpansion}

@@ -1,16 +1,18 @@
 import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+import type { TablesRelationalConfig } from "drizzle-orm/relations";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
 import { labelClaim } from "./schema.js";
 
 export type LabelClaim = typeof labelClaim.$inferSelect;
 
-// oxlint-disable-next-line typescript/no-explicit-any
+interface ConnectDbFullSchema extends Record<string, unknown> {}
+
 export type ConnectDb = BaseSQLiteDatabase<
   "sync" | "async",
   unknown,
-  Record<string, unknown>,
-  any
+  ConnectDbFullSchema,
+  TablesRelationalConfig
 >;
 
 export type LabelAvailability =

@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, lazy, type ComponentType, type ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
@@ -6,6 +6,8 @@ import {
   DEFAULT_CODE_OVERFLOW,
   type BbSourceCodeProps,
 } from "./code-rendering";
+
+type SourceCodeRenderer = ComponentType<BbSourceCodeProps>;
 
 const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
 
@@ -18,6 +20,7 @@ interface SourceCodeHostProps extends Omit<
   overflow?: BbSourceCodeProps["overflow"];
   highlightedLines?: BbSourceCodeProps["highlightedLines"];
   fallback?: ReactNode;
+  renderer?: SourceCodeRenderer;
 }
 
 export function SourceCodeHost({
@@ -30,12 +33,13 @@ export function SourceCodeHost({
   fallback = null,
   scrollToHighlightedLines,
   onSelectionAddToChat,
+  renderer: Renderer = BbSourceCode,
 }: SourceCodeHostProps) {
   const replacement = useSourceCodeRendererReplacement();
 
   const original = (
     <Suspense fallback={fallback}>
-      <BbSourceCode
+      <Renderer
         content={content}
         path={path}
         cacheKey={cacheKey}

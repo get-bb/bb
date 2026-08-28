@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
+import type { ComponentProps } from "react";
 import {
   act,
   cleanup,
@@ -22,12 +24,13 @@ import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
+import type { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 
-vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
-  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
-    <div data-testid="inline-composer">{initialPrompt}</div>
-  ),
-}));
+function TestPluginNewThreadComposer({
+  initialPrompt,
+}: ComponentProps<typeof PluginNewThreadComposer>) {
+  return <div data-testid="inline-composer">{initialPrompt}</div>;
+}
 
 function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
   const [, setSearchParams] = useSearchParams();
@@ -41,7 +44,7 @@ function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
   );
 }
 
-function responseJson(body: unknown, status = 200): Response {
+function responseJson(body: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -120,17 +123,21 @@ const DOCS_CATALOG_ENTRY = {
   installed: true,
 };
 
-function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
+function requestUrl(input: RequestInfo | URL): string {
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
+  return input;
+}
+
+function installFetch(plugins: JsonValue[] = [AUTOMATIONS_PLUGIN]) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
-      const rawUrl =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      const url = new URL(rawUrl, "http://localhost");
+      const url = new URL(requestUrl(input), "http://localhost");
       if (url.pathname === "/api/v1/system/config") {
         return responseJson(makeSystemConfig());
       }
@@ -221,14 +228,8 @@ describe("PluginsOverview", () => {
 
     const catalogRequests = () =>
       vi.mocked(fetch).mock.calls.filter(([input]) => {
-        const rawUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
         return (
-          new URL(rawUrl, "http://localhost").pathname ===
+          new URL(requestUrl(input), "http://localhost").pathname ===
           "/api/v1/plugin-catalog/search"
         );
       });
@@ -246,7 +247,11 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins"]}>
         <QueryClientWrapper>
           <SidebarHistoryNavigationControls />
-          <PluginsOverview />
+          <PluginsOverview
+            dependencies={{
+              PluginNewThreadComposer: TestPluginNewThreadComposer,
+            }}
+          />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -266,10 +271,10 @@ describe("PluginsOverview", () => {
     fireEvent.click(createPlugin);
     expect(screen.getByTestId("inline-composer")).toBeTruthy();
 
-    const goBack = screen.getByRole("button", { name: "Go back" });
-    await waitFor(() =>
-      expect((goBack as HTMLButtonElement).disabled).toBe(false),
-    );
+    const goBack = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Go back",
+    });
+    await waitFor(() => expect(goBack.disabled).toBe(false));
     fireEvent.click(goBack);
     await waitFor(() =>
       expect(screen.queryByTestId("inline-composer")).toBeNull(),
@@ -373,7 +378,10 @@ describe("PluginsOverview", () => {
       ),
     ).toBeNull();
     const search = screen.getByRole("textbox", { name: "Search plugins" });
-    const toolbar = search.parentElement?.parentElement as HTMLElement;
+    const toolbar = search.parentElement?.parentElement;
+    if (!toolbar) {
+      throw new Error("Search control has no toolbar ancestor");
+    }
     const category = screen.getByRole("button", { name: "Category" });
     const sort = screen.getByRole("button", { name: /^Sort:/ });
     expect(toolbar.contains(category)).toBe(true);
@@ -446,27 +454,50 @@ describe("PluginsOverview", () => {
         name: `Plugin ${ordinal}`,
       };
     });
-    const intersectionCallbacks = new Set<IntersectionObserverCallback>();
-    vi.stubGlobal(
-      "IntersectionObserver",
-      class IntersectionObserverMock {
-        constructor(private readonly callback: IntersectionObserverCallback) {
-          intersectionCallbacks.add(this.callback);
-        }
-        observe() {}
-        unobserve() {}
-        disconnect() {
-          intersectionCallbacks.delete(this.callback);
-        }
-      },
-    );
+    interface TestIntersectionObserver extends IntersectionObserver {
+      trigger(): void;
+    }
+    const intersectionObservers = new Set<TestIntersectionObserver>();
+    class IntersectionObserverMock implements TestIntersectionObserver {
+      readonly root: Element | Document | null = null;
+      readonly rootMargin = "";
+      readonly scrollMargin = "";
+      readonly thresholds: readonly number[] = [];
+
+      constructor(private readonly callback: IntersectionObserverCallback) {
+        intersectionObservers.add(this);
+      }
+
+      disconnect() {
+        intersectionObservers.delete(this);
+      }
+
+      observe(_target: Element) {}
+
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+
+      unobserve(_target: Element) {}
+
+      trigger() {
+        const entry: IntersectionObserverEntry = {
+          boundingClientRect: new DOMRect(),
+          intersectionRatio: 1,
+          intersectionRect: new DOMRect(),
+          isIntersecting: true,
+          rootBounds: null,
+          target: document.body,
+          time: performance.now(),
+        };
+        this.callback([entry], this);
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
     const reachSentinel = () =>
       act(() => {
-        for (const callback of intersectionCallbacks) {
-          callback(
-            [{ isIntersecting: true } as IntersectionObserverEntry],
-            {} as IntersectionObserver,
-          );
+        for (const observer of intersectionObservers) {
+          observer.trigger();
         }
       });
     installFetch(plugins);

@@ -11,6 +11,11 @@ interface VoiceTranscribeOptions {
   type?: string;
 }
 
+interface VoiceTranscribeRequest {
+  file: File;
+  prompt?: string;
+}
+
 export function registerVoiceCommands(
   program: Command,
   getUrl: () => string,
@@ -28,10 +33,10 @@ export function registerVoiceCommands(
         const blob = new File([bytes], basename(path), {
           type: opts.type ?? "audio/webm",
         });
-        const result = await createCliBbSdk(getUrl()).system.transcribeVoice({
-          file: blob,
-          ...(opts.prompt ? { prompt: opts.prompt } : {}),
-        });
+        const request: VoiceTranscribeRequest = { file: blob };
+        if (opts.prompt) request.prompt = opts.prompt;
+        const result =
+          await createCliBbSdk(getUrl()).system.transcribeVoice(request);
         if (outputJson(opts, result)) return;
         console.log(result.text);
       }),

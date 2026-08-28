@@ -1,76 +1,23 @@
 #!/usr/bin/env node
-/**
- * A fake provider child that replays a bridge recording's provider lanes.
- *
- *   node replay-provider-child.mjs --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>
- *
- * The bridge under test spawns this instead of the real CLI (`codex
- * app-server`, an ACP agent, the `claude` binary, `pi --mode rpc`). It plays the recorded
- * `provider→bridge` lines back on stdout, gated on the bridge's own writes:
- * the recording's `bridge→provider` entries are *expectations*, and the script
- * does not advance past one until the live bridge has written a matching line
- * (same method or control subtype for requests and notifications, same id for
- * responses). Ids the bridge mints for its requests are mapped to the recorded
- * ones so the recorded responses answer the live requests; ids the provider
- * minted are replayed verbatim, so the bridge's answers match by id. This is
- * what makes the fake generic: the recording IS the script, and the same
- * program serves every JSON-RPC provider and the Claude CLI control protocol.
- *
- * One recording can span several children (a new child per session, per
- * resume, per bridge restart). The lanes are cut into segments at each
- * bridge-originated `initialize`, and every spawned child claims the next
- * unclaimed segment through the shared `--state` directory. A child whose
- * first session-level request does not match its segment's (a maintenance
- * child the thread recording never saw, such as codex's unarchive) releases
- * the segment for the next child and answers generically.
- *
- * The harness paces the replay through the `cursor` file in the state
- * directory: provider lines are emitted only up to the recorded position of
- * the next runtime request, so a steer or an interrupt lands between the same
- * two provider lines it did live.
- *
- * Divergence never hangs the bridge: a live request that matches nothing for
- * STALL_MS is answered with a generic success, and a child past the end of its
- * segment answers everything generically. Both are logged on stderr.
- */
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmdirSync,
+} from "node:fs";
 import { Socket } from "node:net";
 import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
 
 const STALL_MS = 5_000;
-/**
- * How long an unmatched live line waits for the in-order expectation before
- * the script skips ahead to a later expectation it does match. Long enough
- * for a bridge to send two requests in the other order; short enough that a
- * bridge version which simply never sends a recorded request costs little.
- */
 const LOOKAHEAD_MS = 750;
 const CURSOR_POLL_MS = 5;
-/**
- * Gap between two emitted provider lines. A real provider never delivers a
- * response and the notification after it in one read; the bridge's response
- * handlers (which emit the steer's ack, say) must get the event loop between
- * them, or the replay reorders what the recording had in order.
- */
 const EMIT_GAP_MS = 2;
-/**
- * Gap after a response. The bridge continues its request's continuation in
- * a microtask once the line loop yields; a notification read in the same
- * chunk is handled first, so under load two milliseconds let a steer's ack
- * (emitted after `await request("turn/steer")`) land after the next
- * notification instead of before it, as the recording had it. A response
- * is rare, so the longer gap costs nothing measurable.
- */
 const RESPONSE_GAP_MS = 50;
-/** A request that opens or addresses a provider session; see segment release. */
 const SESSION_DEFINING_KEY =
   /^(thread|session)\/(start|resume|fork|new|load|archive|unarchive|name\/set)$/;
 
-/**
- * Only the replay flags are read; anything else on argv (the Agent SDK's
- * `--output-format stream-json …` when this plays the Claude CLI) is ignored.
- */
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -81,9 +28,19 @@ function parseArgs(argv) {
     }
   }
   if (!args.recording || !args.dialect || !args.state) {
-    throw new Error("usage: --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>");
+    throw new Error(
+      "usage: --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>",
+    );
   }
   return args;
+}
+
+function isStringValue(value) {
+  return String(value) === value;
+}
+
+function isObjectValue(value) {
+  return value !== null && Object(value) === value;
 }
 
 function readLane(dir, direction) {
@@ -93,24 +50,23 @@ function readLane(dir, direction) {
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line))
-    .map((entry) => ({ ...entry, run: typeof entry.run === "number" ? entry.run : 0 }));
+    .map((entry) => ({
+      ...entry,
+      run: Number.isFinite(entry.run) ? entry.run : 0,
+    }));
 }
-
-// ---------------------------------------------------------------------------
-// Dialects: classify a line into request / response / notification
-// ---------------------------------------------------------------------------
 
 const DIALECTS = {
   "json-rpc": {
     classify(message) {
-      const hasId = typeof message.id === "string" || typeof message.id === "number";
-      if (hasId && typeof message.method === "string") {
+      const hasId = isStringValue(message.id) || Number.isFinite(message.id);
+      if (hasId && isStringValue(message.method)) {
         return { kind: "request", id: message.id, key: message.method };
       }
       if (hasId) {
         return { kind: "response", id: message.id, key: "response" };
       }
-      if (typeof message.method === "string") {
+      if (isStringValue(message.method)) {
         return { kind: "notification", key: message.method };
       }
       return { kind: "notification", key: "?" };
@@ -135,7 +91,11 @@ const DIALECTS = {
         };
       }
       if (message.type === "control_response") {
-        return { kind: "response", id: message.response?.request_id, key: "control_response" };
+        return {
+          kind: "response",
+          id: message.response?.request_id,
+          key: "control_response",
+        };
       }
       return {
         kind: "notification",
@@ -143,7 +103,10 @@ const DIALECTS = {
       };
     },
     isInitialize(classified) {
-      return classified.kind === "request" && classified.key === "control_request:initialize";
+      return (
+        classified.kind === "request" &&
+        classified.key === "control_request:initialize"
+      );
     },
     withResponseId(message, id) {
       return { ...message, response: { ...message.response, request_id: id } };
@@ -155,14 +118,6 @@ const DIALECTS = {
       };
     },
   },
-  /**
-   * `pi --mode rpc`: commands carry `{ id, type }`, responses are
-   * `{ id, type: "response", command, success }`, and every other line is a
-   * raw AgentSessionEvent (or an `extension_ui_request`). The bb extension's
-   * channel (fd 3 child → bridge, fd 4 bridge → child) is recorded on the
-   * same lanes wrapped as `{ bbChannel: <message> }`; this dialect routes
-   * those back onto the channel fds.
-   */
   "pi-rpc": {
     channel: {
       key: "bbChannel",
@@ -171,9 +126,7 @@ const DIALECTS = {
     },
     classify(message) {
       const channel = message.bbChannel;
-      if (typeof channel === "object" && channel !== null) {
-        // The extension mints tool-call ids; the bridge mints request ids
-        // (`cr-N`), disjoint from its stdin ids (`bb-N`).
+      if (isObjectValue(channel)) {
         if (channel.kind === "tool-call" || channel.kind === "request") {
           return {
             kind: "request",
@@ -183,23 +136,28 @@ const DIALECTS = {
           };
         }
         if (channel.kind === "tool-result" || channel.kind === "reply") {
-          return { kind: "response", id: channel.id, key: "channel:response", channel: true };
+          return {
+            kind: "response",
+            id: channel.id,
+            key: "channel:response",
+            channel: true,
+          };
         }
-        return { kind: "notification", key: `channel:${channel.kind ?? "?"}`, channel: true };
+        return {
+          kind: "notification",
+          key: `channel:${channel.kind ?? "?"}`,
+          channel: true,
+        };
       }
       if (message.type === "response") {
         return { kind: "response", id: message.id, key: "response" };
       }
-      if (typeof message.type === "string" && typeof message.id === "string") {
+      if (isStringValue(message.type) && isStringValue(message.id)) {
         return { kind: "request", id: message.id, key: message.type };
       }
       return { kind: "notification", key: `event:${message.type ?? "?"}` };
     },
     isInitialize(classified) {
-      // Every pi child the bridge spawns (session, catalog, fork helper)
-      // opens with `get_state`, and the bridge numbers its requests per
-      // child from `bb-1`; later `get_state` probes (compaction guard, steer
-      // settlement) carry higher ids and do not start a segment.
       return (
         classified.kind === "request" &&
         classified.key === "get_state" &&
@@ -207,7 +165,7 @@ const DIALECTS = {
       );
     },
     withResponseId(message, id) {
-      if (typeof message.bbChannel === "object" && message.bbChannel !== null) {
+      if (isObjectValue(message.bbChannel)) {
         return { ...message, bbChannel: { ...message.bbChannel, id } };
       }
       return { ...message, id };
@@ -221,14 +179,10 @@ const DIALECTS = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Segments: one per spawned child, cut at each bridge-originated initialize
-// ---------------------------------------------------------------------------
-
 function parseLine(line) {
   try {
     const parsed = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null ? parsed : null;
+    return isObjectValue(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -239,8 +193,14 @@ function buildSegments(entries, dialect) {
   let current = null;
   for (const entry of entries) {
     const message = parseLine(entry.line);
-    const classified = message === null ? { kind: "raw", key: "raw" } : dialect.classify(message);
-    const startsSegment = entry.dir === "bridge→provider" && message !== null && dialect.isInitialize(classified);
+    const classified =
+      message === null
+        ? { kind: "raw", key: "raw" }
+        : dialect.classify(message);
+    const startsSegment =
+      entry.dir === "bridge→provider" &&
+      message !== null &&
+      dialect.isInitialize(classified);
     if (current === null || startsSegment) {
       current = [];
       segments.push(current);
@@ -267,16 +227,9 @@ function claimSegmentIndex(stateDir) {
 function releaseSegmentIndex(stateDir, index) {
   try {
     rmdirSync(join(stateDir, `segment-${index}`));
-  } catch {
-    // Already gone; nothing to release.
-  }
+  } catch {}
 }
 
-/**
- * The harness's pacing cursor: `"<run> <seq>"` (play recorded lines up to and
- * excluding that position), `"end"` (play everything), or absent (play
- * everything — a harness that does not pace).
- */
 function readCursor(stateDir) {
   let text;
   try {
@@ -291,7 +244,10 @@ function readCursor(stateDir) {
 
 function cursorAllows(cursor, entry) {
   if (cursor === null) return true;
-  return entry.run < cursor.run || (entry.run === cursor.run && entry.seq < cursor.seq);
+  return (
+    entry.run < cursor.run ||
+    (entry.run === cursor.run && entry.seq < cursor.seq)
+  );
 }
 
 function firstSessionDefiningKey(script) {
@@ -306,11 +262,6 @@ function firstSessionDefiningKey(script) {
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Claude hook callback ids: the SDK numbers hooks per process; align the
-// recorded registration with the live one by event name and position.
-// ---------------------------------------------------------------------------
 
 function hookCallbackIdMap(recordedInitialize, liveInitialize) {
   const map = new Map();
@@ -329,12 +280,11 @@ function hookCallbackIdMap(recordedInitialize, liveInitialize) {
   return map;
 }
 
-/** `\n`-terminated lines (CR stripped); never readline, which also splits on U+2028/U+2029. */
 function readNewlineDelimitedLines(input, onLine) {
   const decoder = new StringDecoder("utf8");
   let pending = "";
   input.on("data", (chunk) => {
-    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    const text = isStringValue(chunk) ? chunk : decoder.write(chunk);
     let start = 0;
     for (;;) {
       const index = text.indexOf("\n", start);
@@ -350,13 +300,7 @@ function readNewlineDelimitedLines(input, onLine) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Player
-// ---------------------------------------------------------------------------
-
 function main() {
-  // A bridge's install gate may probe `<cli> --version` through the replay
-  // command; answer like a CLI instead of claiming a segment and waiting.
   if (process.argv.includes("--version")) {
     process.stdout.write("0.0.0-replay\n");
     return;
@@ -372,9 +316,12 @@ function main() {
   const segments = buildSegments(entries, dialect);
   const segmentIndex = claimSegmentIndex(args.state);
   let script = segments[segmentIndex] ?? [];
-  const log = (text) => process.stderr.write(`[replay-child #${segmentIndex}] ${text}\n`);
+  const log = (text) =>
+    process.stderr.write(`[replay-child #${segmentIndex}] ${text}\n`);
   if (script.length === 0) {
-    log(`no recorded segment ${segmentIndex} (recording has ${segments.length}); answering generically`);
+    log(
+      `no recorded segment ${segmentIndex} (recording has ${segments.length}); answering generically`,
+    );
   }
   const segmentSessionKey = firstSessionDefiningKey(script);
   let sawSessionDefiningRequest = false;
@@ -382,9 +329,7 @@ function main() {
 
   let position = 0;
   const pendingLive = [];
-  /** recorded bridge request id → live bridge request id */
   const liveIdByRecordedId = new Map();
-  /** recorded bridge request ids this bridge never sent; their responses are dropped */
   const skippedRecordedIds = new Set();
   let hookIds = new Map();
   let stallTimer = null;
@@ -392,9 +337,11 @@ function main() {
   let emitTimer = null;
 
   const channel = dialect.channel ?? null;
-  const channelOut = channel ? createWriteStream(null, { fd: channel.childToBridgeFd }) : null;
+  const channelOut = channel
+    ? createWriteStream(null, { fd: channel.childToBridgeFd })
+    : null;
   function emit(message) {
-    if (channel && typeof message[channel.key] === "object" && message[channel.key] !== null) {
+    if (channel && isObjectValue(message[channel.key])) {
       channelOut.write(`${JSON.stringify(message[channel.key])}\n`);
       return;
     }
@@ -405,7 +352,12 @@ function main() {
     const { message, classified } = step;
     if (classified.kind === "response") {
       const liveId = liveIdByRecordedId.get(String(classified.id));
-      emit(dialect.withResponseId(message, liveId === undefined ? classified.id : liveId));
+      emit(
+        dialect.withResponseId(
+          message,
+          liveId === undefined ? classified.id : liveId,
+        ),
+      );
       return;
     }
     if (
@@ -416,7 +368,10 @@ function main() {
     ) {
       emit({
         ...message,
-        request: { ...message.request, callback_id: hookIds.get(message.request.callback_id) },
+        request: {
+          ...message.request,
+          callback_id: hookIds.get(message.request.callback_id),
+        },
       });
       return;
     }
@@ -450,7 +405,6 @@ function main() {
 
   function advance() {
     if (emitTimer !== null) {
-      // A line just went out; the next one waits its gap.
       return;
     }
     while (position < script.length) {
@@ -460,10 +414,6 @@ function main() {
           step.classified.kind !== "response" &&
           !cursorAllows(readCursor(args.state), step)
         ) {
-          // Paced by the harness: the next runtime request comes first. Only
-          // spontaneous lines wait; a response answers a request the bridge
-          // already made, and holding it would deadlock a child that is
-          // replaying a later segment (codex's maintenance child).
           if (cursorWait === null) {
             cursorWait = setTimeout(() => {
               cursorWait = null;
@@ -484,7 +434,6 @@ function main() {
             continue;
           }
           if (!liveIdByRecordedId.has(String(step.classified.id))) {
-            // The response to a bridge request the live bridge has not sent yet.
             return;
           }
         }
@@ -495,14 +444,16 @@ function main() {
         );
         return;
       }
-      // An expectation of what the bridge writes.
       const live = takeMatchingLive(step);
       if (live === null) {
         return;
       }
       if (step.classified.kind === "request") {
         liveIdByRecordedId.set(String(step.classified.id), live.classified.id);
-        if (dialect.isInitialize(step.classified) && args.dialect === "claude-cli") {
+        if (
+          dialect.isInitialize(step.classified) &&
+          args.dialect === "claude-cli"
+        ) {
           hookIds = hookCallbackIdMap(step.message, live.message);
         }
       }
@@ -510,12 +461,6 @@ function main() {
     }
   }
 
-  /**
-   * A live line that matches no current expectation but does match a later
-   * one: this bridge version skipped what the recording has in between. Drop
-   * those expectations (and the responses to skipped requests), keep emitting
-   * the provider lines in between, and resume at the match.
-   */
   function lookAhead() {
     lookaheadTimer = null;
     for (const live of pendingLive) {
@@ -545,7 +490,9 @@ function main() {
             emitRecorded(between);
           }
         }
-        log(`bridge skipped recorded ${skipped.join(", ")}; resuming at ${live.classified.key}`);
+        log(
+          `bridge skipped recorded ${skipped.join(", ")}; resuming at ${live.classified.key}`,
+        );
         position = index;
         advance();
         armStall();
@@ -556,10 +503,14 @@ function main() {
 
   function answerGenerically(live, reason) {
     if (live.classified.kind === "request") {
-      log(`${reason}: answering ${live.classified.key} (${String(live.classified.id)}) generically`);
+      log(
+        `${reason}: answering ${live.classified.key} (${String(live.classified.id)}) generically`,
+      );
       emit(dialect.genericResponse(live.classified.id, live.classified));
     } else {
-      log(`${reason}: dropping unmatched ${live.classified.kind} ${live.classified.key}`);
+      log(
+        `${reason}: dropping unmatched ${live.classified.kind} ${live.classified.key}`,
+      );
     }
   }
 
@@ -569,7 +520,9 @@ function main() {
     const expected = script[position];
     log(
       `stalled for ${STALL_MS}ms at step ${position}/${script.length}` +
-        (expected ? ` (expecting ${expected.dir} ${expected.classified.key})` : ""),
+        (expected
+          ? ` (expecting ${expected.dir} ${expected.classified.key})`
+          : ""),
     );
     for (const live of pendingLive.splice(0)) {
       answerGenerically(live, "stall");
@@ -581,13 +534,10 @@ function main() {
     if (stallTimer !== null) clearTimeout(stallTimer);
     if (lookaheadTimer !== null) clearTimeout(lookaheadTimer);
     stallTimer = pendingLive.length > 0 ? setTimeout(onStall, STALL_MS) : null;
-    lookaheadTimer = pendingLive.length > 0 ? setTimeout(lookAhead, LOOKAHEAD_MS) : null;
+    lookaheadTimer =
+      pendingLive.length > 0 ? setTimeout(lookAhead, LOOKAHEAD_MS) : null;
   }
 
-  /**
-   * This child is not the one the segment was recorded from: hand the
-   * segment back for the next spawn and serve this bridge generically.
-   */
   function releaseSegment(live) {
     log(
       `first session request ${live.classified.key} does not match the segment's ${segmentSessionKey}; releasing segment ${segmentIndex}`,
@@ -608,7 +558,10 @@ function main() {
       SESSION_DEFINING_KEY.test(live.classified.key)
     ) {
       sawSessionDefiningRequest = true;
-      if (segmentSessionKey !== null && live.classified.key !== segmentSessionKey) {
+      if (
+        segmentSessionKey !== null &&
+        live.classified.key !== segmentSessionKey
+      ) {
         releaseSegment(live);
       }
     }
@@ -621,8 +574,6 @@ function main() {
     armStall();
   }
 
-  // Newline-only framing, like the bridges' own readers: a recorded line
-  // with U+2028/U+2029 inside a JSON string must replay as one line.
   readNewlineDelimitedLines(process.stdin, (line) => {
     const message = parseLine(line);
     if (message !== null) onLiveMessage(message);
@@ -631,10 +582,11 @@ function main() {
     process.exit(0);
   });
   if (channel) {
-    // The bridge's channel writes (tool results, fork requests) arrive on
-    // their own fd; wrap them the way the recorder did so they match. A
-    // net.Socket reads the pipe non-blockingly, as the real extension does.
-    const channelIn = new Socket({ fd: channel.bridgeToChildFd, readable: true, writable: false });
+    const channelIn = new Socket({
+      fd: channel.bridgeToChildFd,
+      readable: true,
+      writable: false,
+    });
     channelIn.on("error", () => {});
     channelIn.unref();
     readNewlineDelimitedLines(channelIn, (line) => {

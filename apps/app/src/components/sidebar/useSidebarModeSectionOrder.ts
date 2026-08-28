@@ -10,13 +10,7 @@ import {
 import type { LegacySidebarEntityAnchor } from "@bb/client-core";
 import { usePersistedSidebarSectionOrder } from "./usePersistedSidebarSectionOrder";
 
-const MODE_SECTION_ORDER_CONFIG: Record<
-  SidebarOrganizationMode,
-  {
-    atom: typeof sidebarSectionOrderAtom;
-    legacyEntityAnchor: LegacySidebarEntityAnchor;
-  }
-> = {
+const MODE_SECTION_ORDER_CONFIG = {
   project: {
     atom: sidebarSectionOrderAtom,
     legacyEntityAnchor: "projects",
@@ -29,7 +23,13 @@ const MODE_SECTION_ORDER_CONFIG: Record<
     atom: sidebarMachineSectionOrderAtom,
     legacyEntityAnchor: "machines",
   },
-};
+} satisfies Record<
+  SidebarOrganizationMode,
+  {
+    atom: typeof sidebarSectionOrderAtom;
+    legacyEntityAnchor: LegacySidebarEntityAnchor;
+  }
+>;
 
 interface UseSidebarModeSectionOrderArgs {
   entitySectionIds: readonly SidebarSectionId[];
@@ -54,15 +54,20 @@ export function useSidebarModeSectionOrder({
 }: UseSidebarModeSectionOrderArgs): UseSidebarModeSectionOrderResult {
   const config = MODE_SECTION_ORDER_CONFIG[mode];
   const [storedOrder, setStoredOrder] = useAtom(config.atom);
-  const persistedOrder = usePersistedSidebarSectionOrder({
+  const persistedOrderOptions: Parameters<
+    typeof usePersistedSidebarSectionOrder
+  >[0] = {
     storedOrder,
     setStoredOrder,
     entitySectionIds,
     legacyEntityAnchor: config.legacyEntityAnchor,
     hasPinnedSection: true,
-    ...(hasThreadsSection === undefined ? {} : { hasThreadsSection }),
     isReady,
-  });
+  };
+  if (hasThreadsSection !== undefined) {
+    persistedOrderOptions.hasThreadsSection = hasThreadsSection;
+  }
+  const persistedOrder = usePersistedSidebarSectionOrder(persistedOrderOptions);
   const order = useMemo(
     () =>
       persistedOrder.filter(

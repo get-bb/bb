@@ -133,11 +133,12 @@ export function buildSpawnEnvironment(args: {
   }
   if (!environmentValue) {
     if (args.defaultPersonalWorkspace) {
-      return {
+      const environment: Extract<EnvironmentArgs, { type: "host" }> = {
         type: "host",
-        ...(args.hostId ? { hostId: args.hostId } : {}),
         workspace: { type: "personal" },
       };
+      if (args.hostId) environment.hostId = args.hostId;
+      return environment;
     }
     return {
       type: "host",
@@ -299,30 +300,35 @@ export function registerSpawnCommand(
         let thread: Thread;
         try {
           const sdk = createCliBbSdk(getUrl());
-          thread = await sdk.threads.spawn({
+          const spawnRequest: Parameters<typeof sdk.threads.spawn>[0] = {
             origin: "cli",
             projectId,
-            ...(opts.provider ? { providerId: opts.provider } : {}),
-            ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
               plan: opts.plan,
               files: opts.file,
               images: opts.image,
             }),
-            ...(reasoningLevel ? { reasoningLevel } : {}),
-            ...(opts.title ? { title: opts.title } : {}),
-            ...(serviceTier ? { serviceTier } : {}),
-            ...(permissionMode ? { permissionMode } : {}),
-            ...(visibility ? { visibility } : {}),
             environment,
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
-            ...(parentThreadId ? { parentThreadId } : {}),
-            ...(opts.section ? { sectionId: opts.section } : {}),
-            ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
-            ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
-          });
+          };
+          if (opts.provider) spawnRequest.providerId = opts.provider;
+          if (opts.model) spawnRequest.model = opts.model;
+          if (reasoningLevel) spawnRequest.reasoningLevel = reasoningLevel;
+          if (opts.title) spawnRequest.title = opts.title;
+          if (serviceTier) spawnRequest.serviceTier = serviceTier;
+          if (permissionMode) spawnRequest.permissionMode = permissionMode;
+          if (visibility) spawnRequest.visibility = visibility;
+          if (parentThreadId) spawnRequest.parentThreadId = parentThreadId;
+          if (opts.section) spawnRequest.sectionId = opts.section;
+          if (opts.sourceThread) {
+            spawnRequest.sourceThreadId = opts.sourceThread;
+          }
+          if (sourceSeqEnd !== undefined) {
+            spawnRequest.sourceSeqEnd = sourceSeqEnd;
+          }
+          thread = await sdk.threads.spawn(spawnRequest);
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
         }

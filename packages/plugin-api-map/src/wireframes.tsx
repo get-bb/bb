@@ -283,7 +283,7 @@ function RegionMark({
 }
 
 const useBrowserLayoutEffect =
-  typeof window === "undefined" ? useEffect : useLayoutEffect;
+  globalThis.window === undefined ? useEffect : useLayoutEffect;
 
 const CHIP_SIZE = 20;
 const CHIP_GAP = 8;
@@ -503,7 +503,7 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
   { title: "Ship dark mode", glyph: "dot" },
 ];
 
-const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
+const FOOTER_ITEM_RENDERERS = {
   settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
   "plugin-footer-actions": () => (
     <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
@@ -511,9 +511,9 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
     </span>
   ),
   "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
-};
+} satisfies Record<string, () => ReactNode>;
 
-const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
+const SIDEBAR_SECTION_RENDERERS = {
   "top-reserve": () => (
     <div
       data-guide-fixture="sidebar-top-reserve"
@@ -606,13 +606,13 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       className="mx-1.5 mb-1.5 flex w-fit items-center gap-2 px-2.5 py-2"
     >
       {anatomy.sidebarFooter.map((key) => (
-        <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
+        <Fragment key={key}>{renderFooterItem(key)}</Fragment>
       ))}
     </Mark>
   ),
-};
+} satisfies Record<string, () => ReactNode>;
 
-const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
+const MESSAGE_ACTION_RENDERERS = {
   copy: () => <MiniIcon icon={Copy01Icon} className="size-3.5" />,
   edit: () => <MiniIcon icon={PencilEdit01Icon} className="size-3.5" />,
   "add-to-chat": () => <MiniIcon icon={PlusSignIcon} className="size-3.5" />,
@@ -621,7 +621,25 @@ const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
   ),
   fork: () => <MiniIcon icon={GitBranchIcon} className="size-3.5" />,
   "plugin-actions": () => <PluginGlyph className="size-3.5" />,
-};
+} satisfies Record<string, () => ReactNode>;
+
+function renderFooterItem(key: string): ReactNode {
+  return Object.entries(FOOTER_ITEM_RENDERERS).find(
+    ([rendererKey]) => rendererKey === key,
+  )?.[1]?.();
+}
+
+function renderSidebarSection(key: string): ReactNode {
+  return Object.entries(SIDEBAR_SECTION_RENDERERS).find(
+    ([rendererKey]) => rendererKey === key,
+  )?.[1]?.();
+}
+
+function renderMessageAction(key: string): ReactNode {
+  return Object.entries(MESSAGE_ACTION_RENDERERS).find(
+    ([rendererKey]) => rendererKey === key,
+  )?.[1]?.();
+}
 
 export const ANATOMY_RENDERER_KEYS = {
   appSidebar: Object.keys(SIDEBAR_SECTION_RENDERERS),
@@ -633,6 +651,19 @@ export type AppShellRightPanelTab =
   | "thread-panel"
   | "file-opener"
   | "code-renderers";
+
+function expandedRightPanelTab(
+  id: string | null | undefined,
+): AppShellRightPanelTab | undefined {
+  switch (id) {
+    case "thread-panel":
+    case "file-opener":
+    case "code-renderers":
+      return id;
+    default:
+      return undefined;
+  }
+}
 
 function RightPanelTabLaneBadges({
   onTabSelect,
@@ -884,18 +915,24 @@ export function CommandPaletteWireframe() {
 
 export function AppShellWireframe() {
   const { expandedId } = useSurfaceMap();
-  const [rightPanelTab, setRightPanelTab] =
-    useState<AppShellRightPanelTab>("thread-panel");
+  const initialRightPanelTab =
+    expandedRightPanelTab(expandedId) ?? "thread-panel";
 
-  useEffect(() => {
-    if (
-      expandedId === "thread-panel" ||
-      expandedId === "file-opener" ||
-      expandedId === "code-renderers"
-    ) {
-      setRightPanelTab(expandedId);
-    }
-  }, [expandedId]);
+  return (
+    <AppShellWireframeContent
+      key={initialRightPanelTab}
+      initialRightPanelTab={initialRightPanelTab}
+    />
+  );
+}
+
+function AppShellWireframeContent({
+  initialRightPanelTab,
+}: {
+  initialRightPanelTab: AppShellRightPanelTab;
+}) {
+  const [rightPanelTab, setRightPanelTab] =
+    useState<AppShellRightPanelTab>(initialRightPanelTab);
 
   return (
     <div className="relative w-full px-10 pb-0 pt-[26px]">
@@ -967,7 +1004,7 @@ function AppShellWireframeBody({
         {}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
-            <Fragment key={key}>{SIDEBAR_SECTION_RENDERERS[key]?.()}</Fragment>
+            <Fragment key={key}>{renderSidebarSection(key)}</Fragment>
           ))}
         </div>
 
@@ -1098,9 +1135,7 @@ function AppShellWireframeBody({
                     )}
                   >
                     {anatomy.messageActionBar.map((key) => (
-                      <Fragment key={key}>
-                        {MESSAGE_ACTION_RENDERERS[key]?.()}
-                      </Fragment>
+                      <Fragment key={key}>{renderMessageAction(key)}</Fragment>
                     ))}
                   </span>
                 </Mark>

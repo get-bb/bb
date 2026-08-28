@@ -606,14 +606,15 @@ export class RuntimeManager {
     if (!this.options.dataDir) {
       throw new Error("Runtime skill staging requires a host dataDir");
     }
-    return stageInjectedSkillSources({
+    const stageArgs: Parameters<typeof stageInjectedSkillSources>[0] = {
       dataDir: this.options.dataDir,
       injectedSkillSources: args.injectedSkillSources,
-      ...(this.options.fetchSkillTree !== undefined
-        ? { fetchSkillTree: this.options.fetchSkillTree }
-        : {}),
       logger: this.getInjectedSkillsLogger(),
-    });
+    };
+    if (this.options.fetchSkillTree !== undefined) {
+      stageArgs.fetchSkillTree = this.options.fetchSkillTree;
+    }
+    return stageInjectedSkillSources(stageArgs);
   }
 
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
@@ -746,13 +747,14 @@ export class RuntimeManager {
       return args.entry;
     }
 
-    await this.replaceEntryForSkillCatalog({
+    const replaceArgs: ReplaceEntryForSkillCatalogArgs = {
       entry: args.entry,
       skillConfig: args.skillConfig,
-      ...(args.targetThreadId !== undefined
-        ? { targetThreadId: args.targetThreadId }
-        : {}),
-    });
+    };
+    if (args.targetThreadId !== undefined) {
+      replaceArgs.targetThreadId = args.targetThreadId;
+    }
+    await this.replaceEntryForSkillCatalog(replaceArgs);
     return null;
   }
 
@@ -906,13 +908,14 @@ export class RuntimeManager {
             signal,
           }),
       });
-      const compatible = await this.ensureCompatibleEntry({
+      const compatibilityArgs: EnsureCompatibleEntryArgs = {
         entry: existing,
         skillConfig,
-        ...(args.targetThreadId !== undefined
-          ? { targetThreadId: args.targetThreadId }
-          : {}),
-      });
+      };
+      if (args.targetThreadId !== undefined) {
+        compatibilityArgs.targetThreadId = args.targetThreadId;
+      }
+      const compatible = await this.ensureCompatibleEntry(compatibilityArgs);
       if (compatible) {
         return compatible;
       }
@@ -921,13 +924,14 @@ export class RuntimeManager {
     const pending = this.pendingEntries.get(args.environmentId);
     if (pending) {
       const entry = await pending;
-      const compatible = await this.ensureCompatibleEntry({
+      const compatibilityArgs: EnsureCompatibleEntryArgs = {
         entry,
         skillConfig,
-        ...(args.targetThreadId !== undefined
-          ? { targetThreadId: args.targetThreadId }
-          : {}),
-      });
+      };
+      if (args.targetThreadId !== undefined) {
+        compatibilityArgs.targetThreadId = args.targetThreadId;
+      }
+      const compatible = await this.ensureCompatibleEntry(compatibilityArgs);
       if (compatible) {
         return compatible;
       }
@@ -1226,14 +1230,17 @@ export class RuntimeManager {
     for (const thread of info.threads) {
       if (thread.activeTurnId === null) {
         if (thread.pendingTurnStart) {
-          events.push({
+          const errorEvent: Extract<ThreadEvent, { type: "system/error" }> = {
             type: "system/error",
             threadId: thread.threadId,
             scope: threadScope(),
             code: "provider_process_exited",
             message,
-            ...(detail ? { detail } : {}),
-          });
+          };
+          if (detail !== undefined) {
+            errorEvent.detail = detail;
+          }
+          events.push(errorEvent);
         }
         continue;
       }
@@ -1250,14 +1257,17 @@ export class RuntimeManager {
         status: "failed",
         error: { message },
       });
-      events.push({
+      const errorEvent: Extract<ThreadEvent, { type: "system/error" }> = {
         type: "system/error",
         threadId: thread.threadId,
         scope: turnScope(thread.activeTurnId),
         code: "provider_process_exited",
         message,
-        ...(detail ? { detail } : {}),
-      });
+      };
+      if (detail !== undefined) {
+        errorEvent.detail = detail;
+      }
+      events.push(errorEvent);
     }
 
     return events;
@@ -1275,10 +1285,9 @@ export class RuntimeManager {
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
-    runtime = this.createRuntime({
+    const runtimeOptions: AgentRuntimeOptions = {
       workspacePath,
       additionalWorkspaceWriteRoots: [],
-      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
@@ -1306,23 +1315,27 @@ export class RuntimeManager {
         }
         this.options.onProcessExit?.(info);
       },
-    });
+    };
+    if (providerProcessEnv !== null) {
+      runtimeOptions.env = providerProcessEnv;
+    }
+    runtime = this.createRuntime(runtimeOptions);
     return runtime;
   }
 
   private async createEntry(args: CreateEntryArgs): Promise<RuntimeEntry> {
-    const provision =
-      args.provision ??
-      (args.workspacePath
-        ? reconnectProvisionArgs({
-            environmentId: args.environmentId,
-            ...(args.personalWorkspaceRoot !== undefined
-              ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
-              : {}),
-            workspacePath: args.workspacePath,
-            workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
-          })
-        : null);
+    let provision = args.provision;
+    if (provision === undefined && args.workspacePath) {
+      const reconnectArgs: Parameters<typeof reconnectProvisionArgs>[0] = {
+        environmentId: args.environmentId,
+        workspacePath: args.workspacePath,
+        workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
+      };
+      if (args.personalWorkspaceRoot !== undefined) {
+        reconnectArgs.personalWorkspaceRoot = args.personalWorkspaceRoot;
+      }
+      provision = reconnectProvisionArgs(reconnectArgs);
+    }
 
     if (!provision) {
       throw new Error(
@@ -1343,11 +1356,9 @@ export class RuntimeManager {
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
-    runtime = this.createRuntime({
+    const runtimeOptions: AgentRuntimeOptions = {
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
-      ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
-      ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
@@ -1397,7 +1408,14 @@ export class RuntimeManager {
         }
         this.options.onProcessExit?.(info);
       },
-    });
+    };
+    if (args.skillConfig !== null) {
+      runtimeOptions.skillRoots = args.skillConfig.skillRoots;
+    }
+    if (providerProcessEnv !== null) {
+      runtimeOptions.env = providerProcessEnv;
+    }
+    runtime = this.createRuntime(runtimeOptions);
 
     return {
       environmentId: args.environmentId,

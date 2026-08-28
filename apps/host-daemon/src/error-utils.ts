@@ -3,11 +3,11 @@ interface ErrorSummary {
   errorName: string;
 }
 
-export function normalizeCaughtError(error: unknown): Error {
+export function normalizeCaughtError<T>(error: T): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export function summarizeError(error: unknown): ErrorSummary {
+export function summarizeError<T>(error: T): ErrorSummary {
   if (error instanceof Error) {
     return {
       errorMessage: error.message,
@@ -21,9 +21,7 @@ export function summarizeError(error: unknown): ErrorSummary {
   };
 }
 
-export function runtimeErrorLogFields(
-  error: unknown,
-): { err: unknown } | ErrorSummary {
+export function runtimeErrorLogFields<T>(error: T): { err: T } | ErrorSummary {
   return process.env.NODE_ENV === "production"
     ? summarizeError(error)
     : { err: error };

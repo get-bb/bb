@@ -11,7 +11,12 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  promptTextMentionSchema,
+  type JsonObject,
+} from "@bb/domain";
+import { z } from "zod";
 import type {
   PluginComposerApi,
   PluginFileOpenerProps,
@@ -389,9 +394,11 @@ describe("useComposer", () => {
     );
 
     expect(runtimeComposer).toBeDefined();
-    expect(Reflect.get(runtimeComposer ?? {}, "setThreadRowStatus")).toBeTypeOf(
-      "function",
-    );
+    const legacyStatusSetter =
+      runtimeComposer !== undefined && "setThreadRowStatus" in runtimeComposer
+        ? runtimeComposer.setThreadRowStatus
+        : undefined;
+    expect(legacyStatusSetter).toBeTypeOf("function");
   });
 
   it("reads, replaces, functionally updates, and clears the latest thread text without leaking to the new-thread scope", () => {
@@ -1210,13 +1217,11 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("n-mention"));
     expect(screen.getByTestId("draft-text").textContent).toBe("ideas.md ");
-    const mentions = JSON.parse(
-      screen.getByTestId("draft-mentions").textContent ?? "[]",
-    ) as Array<{
-      start: number;
-      end: number;
-      resource: Record<string, unknown>;
-    }>;
+    const mentions = z
+      .array(promptTextMentionSchema)
+      .parse(
+        JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+      );
     expect(mentions).toEqual([
       {
         start: 0,
@@ -1753,7 +1758,7 @@ describe("plugin thread panel actions", () => {
   it("contains a throwing run and declines non-JSON params without opening", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const declines: boolean[] = [];
-    const cyclic: Record<string, unknown> = {};
+    const cyclic: JsonObject = {};
     cyclic.self = cyclic;
     setPluginSlotRegistrations(
       "demo",
@@ -1772,7 +1777,12 @@ describe("plugin thread panel actions", () => {
             title: "Cyclic",
             component: PanelProbe,
             run: ({ openPanel }) => {
-              declines.push(openPanel({ params: cyclic as never }));
+              declines.push(
+                openPanel({
+                  params:
+                    /* SAFETY: The test controls this fixture and verifies its behavior. */ cyclic as never,
+                }),
+              );
             },
           },
           {
@@ -1781,7 +1791,12 @@ describe("plugin thread panel actions", () => {
             component: PanelProbe,
             run: ({ openPanel }) => {
               declines.push(
-                openPanel({ params: new Date("2026-01-01") as never }),
+                openPanel({
+                  params:
+                    /* SAFETY: The test controls this fixture and verifies its behavior. */ new Date(
+                      "2026-01-01",
+                    ) as never,
+                }),
               );
             },
           },

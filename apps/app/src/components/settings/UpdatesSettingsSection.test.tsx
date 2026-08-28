@@ -13,113 +13,73 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
-import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
+import type { BbDesktopInfo } from "@bb/desktop-contract";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   type ProviderCliKey,
 } from "@bb/host-daemon-contract";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import * as providerCliInstallModule from "@/components/provider-cli/provider-cli-install";
 import type {
   ProviderCliIssue,
   ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
-import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-cli-install";
 import { resetAppUpdateCheckStoreForTests } from "@/components/settings/app-update-check-store";
 import {
   getProviderCliInstallSnapshot,
   resetProviderCliInstallStoreForTests,
 } from "@/components/provider-cli/provider-cli-install-store";
 import { sdk } from "@/lib/sdk";
-import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
+import * as desktopUpdateInfoModule from "@/hooks/useDesktopUpdateInfo";
+import * as hostDaemonModule from "@/hooks/useHostDaemon";
+import * as updateInventoryModule from "@/hooks/useUpdateInventory";
+import * as hostMutationsModule from "@/hooks/mutations/host-mutations";
 import {
-  useUpdateInventory,
   type UpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
+import * as urlOpenRoutingModule from "@/lib/url-open-routing";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { UpdatesSettingsSection } from "./UpdatesSettingsSection";
 
-vi.mock("@/components/ui/app-toast", () => ({
-  appToast: {
-    dismiss: vi.fn(),
-    error: vi.fn(),
-    loading: vi.fn(),
-    message: vi.fn(),
-    success: vi.fn(),
-    warning: vi.fn(),
-  },
-}));
+import { makeProviderInfo } from "@/test/provider-info-fixture";
 
-vi.mock("@/lib/sdk", async () => {
-  const { makeProviderInfo } = await import("@/test/provider-info-fixture");
-  return {
-    sdk: {
-      system: { version: vi.fn() },
-      providers: {
-        list: vi.fn(async () => [
-          makeProviderInfo({ id: "codex", displayName: "Codex" }),
-          makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
-          makeProviderInfo({ id: "acp-cursor", displayName: "Cursor" }),
-        ]),
-      },
-    },
-  };
-});
-
-vi.mock("@/lib/ws", () => ({
-  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
-
-vi.mock("@/hooks/useUpdateInventory", () => ({
-  useUpdateInventory: vi.fn(),
-}));
-
-vi.mock("@/hooks/useDesktopUpdateInfo", () => ({
-  useDesktopUpdateInfo: vi.fn(),
-}));
-
-const hostDaemon = vi.hoisted(() => ({
-  localDaemonHostId: null as string | null,
-}));
-
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({
-    localDaemonHostId: hostDaemon.localDaemonHostId,
-  }),
-}));
-
-const openUrlInExternalBrowserMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/lib/url-open-routing", () => ({
-  openUrlInExternalBrowser: openUrlInExternalBrowserMock,
-}));
-
-const retryHostUpdateMutateMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/hooks/mutations/host-mutations", () => ({
-  useRetryHostUpdate: () => ({
-    isPending: false,
-    mutate: retryHostUpdateMutateMock,
-    variables: undefined,
-  }),
-}));
-
+const openUrlInExternalBrowserMock = vi.spyOn(
+  urlOpenRoutingModule,
+  "openUrlInExternalBrowser",
+);
+const retryHostUpdateMutateMock = vi.fn();
 const startInstallMock = vi.fn();
+interface HostDaemonTestState {
+  localDaemonHostId: string | null;
+}
 
-vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
-  const actual =
-    await original<
-      typeof import("@/components/provider-cli/provider-cli-install")
-    >();
-  return {
-    ...actual,
-    useProviderCliInstallRunner: vi.fn(() => ({
-      failuresByJobKey: new Map(),
-      queuedJobKeys: new Set<string>(),
-      runningJobKey: null,
-      startInstall: startInstallMock,
-    })),
-  };
-});
+const hostDaemon: HostDaemonTestState = {
+  localDaemonHostId: null,
+};
+const systemVersionMock = vi.spyOn(sdk.system, "version");
+const providerListMock = vi.spyOn(sdk.providers, "list");
+const useUpdateInventoryMock = vi.spyOn(
+  updateInventoryModule,
+  "useUpdateInventory",
+);
+const useDesktopUpdateInfoMock = vi.spyOn(
+  desktopUpdateInfoModule,
+  "useDesktopUpdateInfo",
+);
+const useProviderCliInstallRunnerMock = vi.spyOn(
+  providerCliInstallModule,
+  "useProviderCliInstallRunner",
+);
+const useHostDaemonMock = vi.spyOn(hostDaemonModule, "useHostDaemon");
+const useRetryHostUpdateMock = vi.spyOn(
+  hostMutationsModule,
+  "useRetryHostUpdate",
+);
+
+type RetryHostUpdateMutation = ReturnType<
+  typeof hostMutationsModule.useRetryHostUpdate
+>;
 
 function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
   return {
@@ -285,10 +245,6 @@ function renderSection({
   );
 }
 
-const useUpdateInventoryMock = vi.mocked(useUpdateInventory);
-const useDesktopUpdateInfoMock = vi.mocked(useDesktopUpdateInfo);
-const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
-
 beforeEach(() => {
   hostDaemon.localDaemonHostId = null;
   vi.stubGlobal(
@@ -301,6 +257,37 @@ beforeEach(() => {
     runningJobKey: null,
     startInstall: startInstallMock,
   });
+  providerListMock.mockResolvedValue([
+    makeProviderInfo({ id: "codex", displayName: "Codex" }),
+    makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+    makeProviderInfo({ id: "acp-cursor", displayName: "Cursor" }),
+  ]);
+  useHostDaemonMock.mockImplementation(() => ({
+    hasDaemon: false,
+    isLocalDaemonHost: (hostId) => hostId === hostDaemon.localDaemonHostId,
+    localDaemonHostId: hostDaemon.localDaemonHostId,
+    localHostId: null,
+    platform: null,
+    supportsNativeFolderPicker: false,
+  }));
+  useRetryHostUpdateMock.mockImplementation(() => ({
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
+    isPending: false,
+    isPaused: false,
+    isSuccess: false,
+    mutate: retryHostUpdateMutateMock,
+    mutateAsync: vi.fn<RetryHostUpdateMutation["mutateAsync"]>(),
+    reset: vi.fn<RetryHostUpdateMutation["reset"]>(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
+  }));
 });
 
 afterEach(() => {
@@ -324,9 +311,7 @@ describe("UpdatesSettingsSection", () => {
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({ machines: [makeMachine({ host })] }),
     );
-    vi.mocked(sdk.system.version).mockResolvedValue(
-      makeInventory({}).systemVersion!,
-    );
+    systemVersionMock.mockResolvedValue(makeInventory({}).systemVersion!);
 
     renderSection();
 
@@ -470,20 +455,24 @@ The canonical release summary.
     expect(
       screen.getByRole("button", { name: /^Open the full bb .* changelog$/ }),
     ).toBeDefined();
-    const changelog = document.querySelector(
-      '[data-updates-domain="changelog"]',
-    );
-    await waitFor(() => {
-      expect(changelog?.textContent).toContain("9.9.9");
+    const changelog = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-updates-domain="changelog"]',
+      );
+      if (element === null) {
+        throw new Error("The changelog preview did not render");
+      }
+      return element;
     });
+    expect(changelog.textContent).toContain("9.9.9");
     expect(
-      within(changelog as HTMLElement).getByRole("heading", {
+      within(changelog).getByRole("heading", {
         level: 2,
         name: "What's new",
       }),
     ).toBeDefined();
     expect(
-      within(changelog as HTMLElement).getByRole("heading", {
+      within(changelog).getByRole("heading", {
         level: 3,
         name: "9.9.9",
       }),
@@ -521,7 +510,7 @@ The canonical release summary.
     ).toContain("font-semibold");
     for (const highlight of ["New features", "Fixes"]) {
       expect(
-        within(changelog as HTMLElement).getByRole("heading", {
+        within(changelog).getByRole("heading", {
           level: 4,
           name: highlight,
         }),
@@ -1332,7 +1321,7 @@ The canonical release summary.
         hasAttention: true,
       }),
     );
-    vi.mocked(sdk.system.version).mockResolvedValue(availableVersion);
+    systemVersionMock.mockResolvedValue(availableVersion);
 
     renderSection();
     expect(screen.getByText("npx bb-app@latest")).toBeDefined();
@@ -1368,7 +1357,11 @@ The canonical release summary.
     const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
     const installUpdate = vi.fn().mockResolvedValue(undefined);
     useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: { checkForUpdates, installUpdate } as unknown as BbDesktopApi,
+      desktopApi: {
+        ...createBbDesktopApi(desktopInfo),
+        checkForUpdates,
+        installUpdate,
+      },
       desktopInfo,
       isDesktop: true,
     });
@@ -1407,7 +1400,7 @@ The canonical release summary.
       version: "0.0.5",
     };
     useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: {} as BbDesktopApi,
+      desktopApi: createBbDesktopApi(desktopInfo),
       desktopInfo,
       isDesktop: true,
     });
@@ -1432,7 +1425,10 @@ The canonical release summary.
     };
     const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
     useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
+      desktopApi: {
+        ...createBbDesktopApi(desktopInfo),
+        checkForUpdates,
+      },
       desktopInfo,
       isDesktop: true,
     });

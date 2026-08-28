@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -84,25 +85,19 @@ interface SetThreadQueuedMessageGroupBoundaryMutationRequest {
   id: string;
 }
 
+const httpErrorBodySchema = z.object({ message: z.string() }).passthrough();
+
 function getHttpErrorBodyMessage(error: BbHttpError): string | null {
-  const body = error.body;
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    !("message" in body) ||
-    typeof body.message !== "string"
-  ) {
-    return null;
-  }
-  return body.message;
+  const parsed = httpErrorBodySchema.safeParse(error.body);
+  return parsed.success ? parsed.data.message : null;
 }
 
-function isQueuedMessageNotFoundError(error: unknown): boolean {
+function isQueuedMessageNotFoundError(cause: unknown): boolean {
   return (
-    error instanceof BbHttpError &&
-    error.status === 404 &&
-    error.code === "invalid_request" &&
-    getHttpErrorBodyMessage(error) === "Queued message not found"
+    cause instanceof BbHttpError &&
+    cause.status === 404 &&
+    cause.code === "invalid_request" &&
+    getHttpErrorBodyMessage(cause) === "Queued message not found"
   );
 }
 
@@ -166,7 +161,7 @@ export function useSendThreadMessage() {
       senderThreadId,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
-      return await sdk.threads.send({
+      const request: Parameters<typeof sdk.threads.send>[0] = {
         threadId: id,
         input,
         model,
@@ -175,8 +170,11 @@ export function useSendThreadMessage() {
         permissionMode,
         executionInputSources,
         mode,
-        ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-      });
+      };
+      if (senderThreadId !== undefined) {
+        request.senderThreadId = senderThreadId;
+      }
+      return await sdk.threads.send(request);
     },
     onMutate: async (variables): Promise<SendThreadMessageTransaction> =>
       beginSendThreadMessageTransaction({
@@ -243,16 +241,20 @@ export function useCreateThreadQueuedMessage() {
       senderThreadId,
       executionInputSources,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
-      sdk.threads.queuedMessages.create({
-        threadId: id,
-        input,
-        model,
-        serviceTier,
-        reasoningLevel,
-        permissionMode,
-        executionInputSources,
-        ...(senderThreadId !== undefined ? { senderThreadId } : {}),
-      }),
+      (() => {
+        const request: CreateQueuedMessageRequest = {
+          input,
+          model,
+          serviceTier,
+          reasoningLevel,
+          permissionMode,
+          executionInputSources,
+        };
+        if (senderThreadId !== undefined) {
+          request.senderThreadId = senderThreadId;
+        }
+        return sdk.threads.queuedMessages.create({ threadId: id, ...request });
+      })(),
     onMutate: async (variables): Promise<CreateQueuedMessageTransaction> =>
       beginCreateQueuedMessageTransaction({
         queryClient,

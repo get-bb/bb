@@ -69,11 +69,12 @@ export async function listHostFiles(
       path: command.path,
     });
 
-    return finalizeListedFiles({
+    const args: Parameters<typeof finalizeListedFiles>[0] = {
       filePaths: await listFilesRecursively(realRootPath, realRootPath),
       limit: command.limit,
-      ...(command.query ? { query: command.query } : {}),
-    });
+    };
+    if (command.query) args.query = command.query;
+    return finalizeListedFiles(args);
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return { files: [], truncated: false };
@@ -95,7 +96,7 @@ export async function listHostPaths(
       path: command.path,
     });
 
-    return finalizeListedPaths({
+    const args: Parameters<typeof finalizeListedPaths>[0] = {
       paths: await listPathsRecursively({
         dir: realRootPath,
         root: realRootPath,
@@ -105,8 +106,9 @@ export async function listHostPaths(
       limit: command.limit,
       includeFiles: command.includeFiles,
       includeDirectories: command.includeDirectories,
-      ...(command.query ? { query: command.query } : {}),
-    });
+    };
+    if (command.query) args.query = command.query;
+    return finalizeListedPaths(args);
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return { paths: [], truncated: false };
@@ -210,22 +212,24 @@ export async function readHostFile(
     });
   }
 
-  return readFileForTransport({
+  const args: Parameters<typeof readFileForTransport>[0] = {
     resolvedPath: command.path,
     resultPath: command.path,
-    ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
-  });
+  };
+  if (command.rootPath !== undefined) args.rootPath = command.rootPath;
+  return readFileForTransport(args);
 }
 
 export async function readHostFileMetadata(
   command: CommandOf<"host.file_metadata">,
 ): Promise<HostDaemonOnlineRpcResult<"host.file_metadata">> {
   assertAbsoluteHostDiskPathCommand(command);
-  return readFileMetadataForTransport({
+  const args: Parameters<typeof readFileMetadataForTransport>[0] = {
     resolvedPath: command.path,
     resultPath: command.path,
-    ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
-  });
+  };
+  if (command.rootPath !== undefined) args.rootPath = command.rootPath;
+  return readFileMetadataForTransport(args);
 }
 
 export async function readHostRelativeFile(

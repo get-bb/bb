@@ -497,15 +497,13 @@ export function registerShowCommand(
             `--limit must be at most ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX} for minimal/verbose formats; use --all for the whole thread.`,
           );
         }
-        const timelineQuery = {
+        const timelineQuery: Parameters<BbSdk["threads"]["timeline"]>[0] = {
           threadId,
-          ...(format === "verbose"
-            ? { includeNestedRows: "true" as const }
-            : {}),
-          ...(segmentLimit === null
-            ? {}
-            : { segmentLimit: String(segmentLimit) }),
         };
+        if (format === "verbose") timelineQuery.includeNestedRows = "true";
+        if (segmentLimit !== null) {
+          timelineQuery.segmentLimit = String(segmentLimit);
+        }
         const timeline: ThreadTimelineResponse =
           await sdk.threads.timeline(timelineQuery);
         let rows = timeline.rows;
@@ -645,11 +643,12 @@ async function listThreadLogEventsPage(
   sdk: BbSdk,
   args: { threadId: string; limit: number; afterSeq: string | undefined },
 ): Promise<ThreadLogEventsPage> {
-  const rows = await sdk.threads.events.list({
+  const query: Parameters<typeof sdk.threads.events.list>[0] = {
     threadId: args.threadId,
     limit: String(args.limit + 1),
-    ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
-  });
+  };
+  if (args.afterSeq !== undefined) query.afterSeq = args.afterSeq;
+  const rows = await sdk.threads.events.list(query);
   const hasMore = rows.length > args.limit;
   return { rows: hasMore ? rows.slice(0, args.limit) : rows, hasMore };
 }
@@ -662,11 +661,12 @@ async function listAllThreadLogEvents(
   const rows: ThreadEventRow[] = [];
   let cursor = afterSeq;
   for (;;) {
-    const page = await sdk.threads.events.list({
+    const query: Parameters<typeof sdk.threads.events.list>[0] = {
       threadId,
       limit: String(THREAD_LOG_ALL_EVENTS_PAGE_SIZE),
-      ...(cursor === undefined ? {} : { afterSeq: cursor }),
-    });
+    };
+    if (cursor !== undefined) query.afterSeq = cursor;
+    const page = await sdk.threads.events.list(query);
     rows.push(...page);
     const last = page[page.length - 1];
     if (last === undefined || page.length < THREAD_LOG_ALL_EVENTS_PAGE_SIZE) {

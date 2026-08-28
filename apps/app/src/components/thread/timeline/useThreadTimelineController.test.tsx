@@ -8,26 +8,21 @@ import type {
 import { mergeLatestTimelineRows } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import * as realtimeSubscription from "@/hooks/useRealtimeSubscription";
+import * as serverConnectionState from "@/hooks/useServerConnectionState";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useThreadTimelineController } from "./useThreadTimelineController";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...actual,
-    sdk: { threads: { timeline: vi.fn() } },
-  };
-});
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useThreadDetailRealtimeSubscription: vi.fn(),
-}));
-
-vi.mock("@/hooks/useServerConnectionState", () => ({
-  useServerConnectionState: () => "connected",
-}));
+vi.spyOn(sdk.threads, "timeline");
+vi.spyOn(
+  realtimeSubscription,
+  "useThreadDetailRealtimeSubscription",
+).mockImplementation(() => {});
+vi.spyOn(serverConnectionState, "useServerConnectionState").mockReturnValue(
+  "connected",
+);
 
 afterEach(() => {
   cleanup();

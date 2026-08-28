@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppCommandId } from "@bb/domain";
+import { createRequire } from "node:module";
+import type { AppCommandId, JsonValue } from "@bb/domain";
 import type {
   BbDesktopApi,
   BbDesktopBrowserFindResult,
@@ -52,12 +53,12 @@ const electronMock = vi.hoisted(() => {
 
   interface SendCall {
     channel: string;
-    payload: unknown;
+    payload: JsonValue;
   }
 
   type IpcRendererListener = (
     event: IpcRendererEvent,
-    payload: unknown,
+    payload: JsonValue,
   ) => void;
 
   const desktopInfo: BbDesktopInfo = {
@@ -101,10 +102,10 @@ const electronMock = vi.hoisted(() => {
       zoomFactor = nextZoomFactor;
     },
     contextBridge: {
-      exposeInMainWorld(name: string, api: unknown): void {
+      exposeInMainWorld(name: string, api: BbDesktopApi): void {
         if (name === "bbDesktop") {
           exposedName = name;
-          exposedApi = api as BbDesktopApi;
+          exposedApi = api;
         }
       },
     },
@@ -119,7 +120,7 @@ const electronMock = vi.hoisted(() => {
       on(channel: string, listener: IpcRendererListener): void {
         listeners.set(channel, listener);
       },
-      send(channel: string, payload: unknown): void {
+      send(channel: string, payload: JsonValue): void {
         sendCalls.push({ channel, payload });
       },
     },
@@ -131,22 +132,52 @@ const electronMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("electron", () => ({
-  contextBridge: electronMock.contextBridge,
-  ipcRenderer: electronMock.ipcRenderer,
-  webFrame: electronMock.webFrame,
-}));
+const nodeRequire = createRequire(__filename);
+const electronModulePath = nodeRequire.resolve("electron");
+const originalElectronModule = nodeRequire.cache[electronModulePath];
+
+function installElectronTestAdapter(): void {
+  nodeRequire.cache[electronModulePath] = {
+    children: [],
+    exports: {
+      contextBridge: electronMock.contextBridge,
+      ipcRenderer: electronMock.ipcRenderer,
+      webFrame: electronMock.webFrame,
+    },
+    filename: electronModulePath,
+    id: electronModulePath,
+    isPreloading: false,
+    loaded: true,
+    parent: undefined,
+    path: electronModulePath.slice(0, electronModulePath.lastIndexOf("/")),
+    paths: [],
+    require: nodeRequire,
+  };
+}
+
+function restoreElectronModule(): void {
+  if (originalElectronModule === undefined) {
+    delete nodeRequire.cache[electronModulePath];
+    return;
+  }
+  nodeRequire.cache[electronModulePath] = originalElectronModule;
+}
 
 interface EmitIpcPayloadArgs {
   channel: string;
-  payload: unknown;
+  payload: JsonValue;
 }
 
 async function loadPreload(): Promise<BbDesktopApi> {
   electronMock.reset();
+  installElectronTestAdapter();
   vi.resetModules();
   process.env.BB_DESKTOP_VERSION = "0.0.0-test";
-  await import("../src/preload.js");
+  try {
+    await import("../src/preload.js");
+  } finally {
+    restoreElectronModule();
+  }
   const api = electronMock.exposedApi;
   expect(electronMock.exposedName).toBe("bbDesktop");
   expect(api).not.toBeNull();

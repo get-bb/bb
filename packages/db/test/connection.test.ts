@@ -136,27 +136,21 @@ describe("createConnection", () => {
     const db = createConnection(join(directory, "bb.db"));
 
     try {
-      expect(
-        db.$client.prepare("PRAGMA cache_size").get() as {
-          cache_size: number;
-        },
-      ).toEqual({ cache_size: -SQLITE_CACHE_SIZE_KIB });
-      expect(
-        db.$client.prepare("PRAGMA synchronous").get() as {
-          synchronous: number;
-        },
-      ).toEqual({ synchronous: 1 });
-      expect(
-        db.$client.prepare("PRAGMA mmap_size").get() as { mmap_size: number },
-      ).toEqual({ mmap_size: SQLITE_MMAP_SIZE_BYTES });
-      expect(
-        db.$client.prepare("PRAGMA busy_timeout").get() as { timeout: number },
-      ).toEqual({ timeout: SQLITE_BUSY_TIMEOUT_MS });
-      expect(
-        db.$client.prepare("PRAGMA journal_mode").get() as {
-          journal_mode: string;
-        },
-      ).toEqual({ journal_mode: "wal" });
+      expect(db.$client.prepare("PRAGMA cache_size").get()).toEqual({
+        cache_size: -SQLITE_CACHE_SIZE_KIB,
+      });
+      expect(db.$client.prepare("PRAGMA synchronous").get()).toEqual({
+        synchronous: 1,
+      });
+      expect(db.$client.prepare("PRAGMA mmap_size").get()).toEqual({
+        mmap_size: SQLITE_MMAP_SIZE_BYTES,
+      });
+      expect(db.$client.prepare("PRAGMA busy_timeout").get()).toEqual({
+        timeout: SQLITE_BUSY_TIMEOUT_MS,
+      });
+      expect(db.$client.prepare("PRAGMA journal_mode").get()).toEqual({
+        journal_mode: "wal",
+      });
     } finally {
       db.$client.close();
       rmSync(directory, { force: true, recursive: true });

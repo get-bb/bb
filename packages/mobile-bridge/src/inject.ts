@@ -1,13 +1,27 @@
 import type { NativeShellHandshake } from "./handshake.js";
+import type {
+  BridgeRequestKind,
+  BridgeSharePayload,
+  PageToShellMessage,
+} from "./messages.js";
+import type { ShareResult, ShellToPageEvent } from "./events.js";
 import { NATIVE_BRIDGE_GLOBAL } from "./version.js";
 
 export interface NativeShellApi extends NativeShellHandshake {
-  post(message: unknown): void;
-  request(kind: string, payload: unknown): Promise<unknown>;
-  subscribe(listener: (event: unknown) => void): () => void;
+  post(message: PageToShellMessage): void;
+  request(
+    kind: BridgeRequestKind,
+    payload: BridgeSharePayload,
+  ): Promise<ShareResult>;
+  subscribe(listener: (event: ShellToPageEvent) => void): () => void;
 }
 
-function encodeForScript(value: unknown): string {
+type BridgeScriptValue =
+  | NativeShellHandshake
+  | PageToShellMessage
+  | ShellToPageEvent;
+
+function encodeForScript(value: BridgeScriptValue): string {
   return JSON.stringify(value)
     .replace(/</gu, "\\u003c")
     .replace(/\u2028/gu, "\\u2028")
@@ -105,7 +119,7 @@ true;
 `;
 }
 
-export function buildBridgeEventScript(event: unknown): string {
+export function buildBridgeEventScript(event: ShellToPageEvent): string {
   return `
 (function () {
   try {

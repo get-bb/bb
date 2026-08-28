@@ -1,5 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
+import type { JsonValue } from "@bb/domain";
 import {
   getPluginSettingsValues,
   setPluginSettingsValues,
@@ -12,6 +13,20 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
+
+const { readFile, stat } = process.getBuiltinModule("node:fs/promises");
+
+interface PluginSettingsValues {
+  [key: string]: PluginSettingValue | undefined;
+}
+
+interface PluginSettingsViewValues {
+  [key: string]: PluginSettingValue | { set: boolean };
+}
+
+interface PluginSettingsUpdateValues {
+  [key: string]: JsonValue;
+}
 
 export { validateSettingsUpdate as validatePluginSettingsUpdate };
 
@@ -64,31 +79,32 @@ function parseStoredSettingValue(
   descriptor: PluginSettingDescriptor,
   raw: string | undefined,
 ): PluginSettingValue | undefined {
-  let parsed: unknown;
-  if (raw !== undefined) {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = undefined;
+  if (raw === undefined) return descriptor.default;
+  let parsedValue: PluginSettingValue;
+  try {
+    const parsed = (
+      descriptor.type === "boolean" ? z.boolean() : z.string()
+    ).safeParse(JSON.parse(raw));
+    if (!parsed.success) return descriptor.default;
+    parsedValue = parsed.data;
+  } catch {
+    return descriptor.default;
+  }
+  if (descriptor.type === "select") {
+    const selected = z.string().safeParse(parsedValue);
+    if (!selected.success || !descriptor.options.includes(selected.data)) {
+      return descriptor.default;
     }
+    return selected.data;
   }
-  const expected = descriptor.type === "boolean" ? "boolean" : "string";
-  if (typeof parsed !== expected) parsed = undefined;
-  if (
-    descriptor.type === "select" &&
-    typeof parsed === "string" &&
-    !descriptor.options.includes(parsed)
-  ) {
-    parsed = undefined;
-  }
-  return (parsed as PluginSettingValue | undefined) ?? descriptor.default;
+  return parsedValue;
 }
 
 export function readPluginSettingsValuesSync(
   args: Omit<PluginSettingsStoreArgs, "dataDir">,
-): Record<string, PluginSettingValue | undefined> {
+): PluginSettingsValues {
   const stored = getPluginSettingsValues(args.db, args.pluginId);
-  const values: Record<string, PluginSettingValue | undefined> = {};
+  const values: PluginSettingsValues = {};
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
     if (isSecret(descriptor)) continue;
     values[key] = parseStoredSettingValue(descriptor, stored[key]);
@@ -98,7 +114,7 @@ export function readPluginSettingsValuesSync(
 
 export async function readPluginSettingsValues(
   args: PluginSettingsStoreArgs,
-): Promise<Record<string, PluginSettingValue | undefined>> {
+): Promise<PluginSettingsValues> {
   const values = readPluginSettingsValuesSync(args);
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
     if (!isSecret(descriptor)) continue;
@@ -110,7 +126,7 @@ export async function readPluginSettingsValues(
 }
 
 export async function writePluginSettingsUpdate(
-  args: PluginSettingsStoreArgs & { values: Record<string, unknown> },
+  args: PluginSettingsStoreArgs & { values: PluginSettingsUpdateValues },
 ): Promise<void> {
   const rowUpdates: Record<string, string | null> = {};
   for (const [key, value] of Object.entries(args.values)) {
@@ -119,7 +135,7 @@ export async function writePluginSettingsUpdate(
     if (isSecret(descriptor)) {
       const path = secretFilePath(args.dataDir, args.pluginId, key);
       if (value === null) await deleteSecretFile(path);
-      else await writeSecretFile(path, value as string);
+      else await writeSecretFile(path, z.string().parse(value));
       continue;
     }
     rowUpdates[key] = value === null ? null : JSON.stringify(value);
@@ -131,14 +147,14 @@ export async function writePluginSettingsUpdate(
 
 export interface PluginSettingsView {
   schema: PluginSettingDescriptors;
-  values: Record<string, unknown>;
+  values: PluginSettingsViewValues;
 }
 
 export async function buildPluginSettingsView(
   args: PluginSettingsStoreArgs,
 ): Promise<PluginSettingsView> {
   const effective = await readPluginSettingsValues(args);
-  const values: Record<string, unknown> = {};
+  const values: PluginSettingsViewValues = {};
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
     if (isSecret(descriptor)) {
       values[key] = {

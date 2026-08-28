@@ -25,37 +25,18 @@ import {
 
 interface DeferredInstall {
   args: Parameters<typeof sdk.hosts.installProviderCli>[0];
-  reject: (error: unknown) => void;
   resolve: (events: ProviderCliInstallEvent[]) => void;
 }
 
-vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
-  ProviderCliInstallLogDialog: () => null,
-}));
+interface AppToastTestSpies {
+  error: ReturnType<typeof vi.spyOn>;
+  loading: ReturnType<typeof vi.spyOn>;
+  message: ReturnType<typeof vi.spyOn>;
+  success: ReturnType<typeof vi.spyOn>;
+}
 
-vi.mock("@/components/ui/app-toast", () => ({
-  appToast: {
-    dismiss: vi.fn(),
-    error: vi.fn(),
-    loading: vi.fn(),
-    message: vi.fn(),
-    success: vi.fn(),
-    warning: vi.fn(),
-  },
-}));
-
-vi.mock("@/lib/sdk", () => {
-  return {
-    sdk: {
-      hosts: {
-        installProviderCli: vi.fn(),
-      },
-    },
-  };
-});
-
-const installHostProviderCliMock = vi.mocked(sdk.hosts.installProviderCli);
-const appToastMock = vi.mocked(appToast);
+let installHostProviderCliMock: ReturnType<typeof vi.spyOn>;
+let appToastMock: AppToastTestSpies;
 
 let pendingInstalls: DeferredInstall[] = [];
 let queryClient: QueryClient;
@@ -127,10 +108,17 @@ beforeEach(() => {
   });
   resetProviderCliInstallStoreForTests();
   registerProviderCliInstallQueryClient(queryClient);
+  installHostProviderCliMock = vi.spyOn(sdk.hosts, "installProviderCli");
+  appToastMock = {
+    error: vi.spyOn(appToast, "error"),
+    loading: vi.spyOn(appToast, "loading"),
+    message: vi.spyOn(appToast, "message"),
+    success: vi.spyOn(appToast, "success"),
+  };
   installHostProviderCliMock.mockImplementation(
-    (args) =>
-      new Promise<ProviderCliInstallEvent[]>((resolve, reject) => {
-        pendingInstalls.push({ args, reject, resolve });
+    (args: Parameters<typeof sdk.hosts.installProviderCli>[0]) =>
+      new Promise<ProviderCliInstallEvent[]>((resolve) => {
+        pendingInstalls.push({ args, resolve });
       }),
   );
 });
@@ -138,6 +126,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("buildProviderCliIssue", () => {

@@ -2,7 +2,10 @@ import { getEventListeners } from "node:events";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { experimental_acpAgentProbeSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  type CreateFakePluginHostOptions,
+} from "@get-bb/plugin-sdk/testing";
 import { z } from "zod";
 import { acpHostContract } from "./src/contract.js";
 import { KNOWN_ACP_AGENTS } from "./src/known-agents.js";
@@ -11,6 +14,11 @@ import acpProvidersPlugin from "./server.js";
 const NO_LEGACY_CONFIG = "/tmp/bb-acp-plugin-test-no-config";
 
 const PLUGIN_ID = "provider-acp";
+
+type AcpProbeResult = z.infer<typeof experimental_acpAgentProbeSchema>;
+type HostRpcCall = Parameters<
+  NonNullable<CreateFakePluginHostOptions["experimental_callHostRpc"]>
+>[0];
 
 const DECLARED_ICON_NAMES = Object.keys(
   z
@@ -51,25 +59,25 @@ function registeredIds(
 
 async function loadPlugin(options: {
   customAgents?: string;
-  probe?: (command: string) => unknown;
+  probe?: (command: string) => AcpProbeResult;
   hosts?: { id: string; status: string }[];
 }) {
-  const host = createFakePluginHost({
+  const hostOptions: CreateFakePluginHostOptions = {
     pluginId: PLUGIN_ID,
     dataDir: NO_LEGACY_CONFIG,
     experimental_declaredIconNames: DECLARED_ICON_NAMES,
-    ...(options.customAgents === undefined
-      ? {}
-      : { settings: { customAgents: options.customAgents } }),
-    ...(options.probe === undefined
-      ? {}
-      : {
-          experimental_callHostRpc: (call: { input: unknown }) =>
-            options.probe?.(
-              (call.input as { command: string }).command,
-            ) as never,
-        }),
-  });
+  };
+  if (options.customAgents !== undefined) {
+    hostOptions.settings = { customAgents: options.customAgents };
+  }
+  if (options.probe !== undefined) {
+    const probe = options.probe;
+    hostOptions.experimental_callHostRpc = (call: HostRpcCall) => {
+      const input = acpHostContract.probeAgent.input.parse(call.input);
+      return probe(input.command);
+    };
+  }
+  const host = createFakePluginHost(hostOptions);
   host.harness.sdk.stub("hosts.list", () =>
     Promise.resolve(options.hosts ?? []),
   );

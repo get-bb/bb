@@ -5,9 +5,17 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { buildAttachmentUrl, registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
+
+const attachmentUploadResponseSchema = z
+  .object({ attachmentId: z.string(), url: z.string() })
+  .strict();
+const environmentPullRequestInputSchema = z
+  .object({ environmentId: z.string() })
+  .strict();
 
 describe("Tasks RPC domain API", () => {
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
@@ -29,9 +37,9 @@ describe("Tasks RPC domain API", () => {
       `/attachments/upload?taskId=${task.id}&fileName=diagram.png&mime=image%2Fpng`,
       { body: "image", headers: { "content-type": "image/png" } },
     );
-    const { attachmentId } = (await uploaded.json()) as {
-      attachmentId: string;
-    };
+    const { attachmentId } = attachmentUploadResponseSchema.parse(
+      await uploaded.json(),
+    );
     store.tasks.updateTask(task.id, {
       description: `![diagram](${buildAttachmentUrl(attachmentId)})`,
     });
@@ -720,11 +728,11 @@ describe("Tasks RPC domain API", () => {
         `/attachments/upload?commentId=${comment.id}&fileName=comment.txt&mime=text%2Fplain`,
         { body: "comment blob", headers: { "content-type": "text/plain" } },
       );
-      const taskAttachmentId = (
-        (await taskUpload.json()) as { attachmentId: string }
+      const taskAttachmentId = attachmentUploadResponseSchema.parse(
+        await taskUpload.json(),
       ).attachmentId;
-      const commentAttachmentId = (
-        (await commentUpload.json()) as { attachmentId: string }
+      const commentAttachmentId = attachmentUploadResponseSchema.parse(
+        await commentUpload.json(),
       ).attachmentId;
       const taskAttachment = store.tasks.getAttachment(taskAttachmentId);
       const commentAttachment = store.tasks.getAttachment(commentAttachmentId);
@@ -776,8 +784,9 @@ describe("Tasks RPC domain API", () => {
         `/attachments/upload?taskId=${task.id}&fileName=project.txt&mime=text%2Fplain`,
         { body: "project blob", headers: { "content-type": "text/plain" } },
       );
-      const attachmentId = ((await upload.json()) as { attachmentId: string })
-        .attachmentId;
+      const attachmentId = attachmentUploadResponseSchema.parse(
+        await upload.json(),
+      ).attachmentId;
       const attachment = store.tasks.getAttachment(attachmentId);
       if (!attachment) throw new Error("attachment row was not created");
       const database = bb.storage
@@ -1107,7 +1116,7 @@ describe("Tasks RPC domain API", () => {
   });
 
   it("resolves task pull requests from environment metadata, deduped by URL", async () => {
-    const pullRequestsByEnvironment: Record<string, PullRequestLookup> = {
+    const pullRequestsByEnvironment = {
       env_shared: {
         outcome: "available",
         pullRequest: makePullRequest({
@@ -1128,14 +1137,14 @@ describe("Tasks RPC domain API", () => {
         }),
       },
       env_no_pr: { outcome: "absent" },
-    };
-    const environmentByThread: Record<string, string | null> = {
+    } satisfies Record<string, PullRequestLookup>;
+    const environmentByThread = {
       thr_writer00: "env_shared",
       thr_reviewer0: "env_shared",
       thr_merger000: "env_merged",
       thr_no_env000: null,
       thr_no_pr0000: "env_no_pr",
-    };
+    } satisfies Record<string, string | null>;
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
@@ -1211,7 +1220,10 @@ describe("Tasks RPC domain API", () => {
     expect(
       harness.sdk
         .callsTo("environments.pullRequest")
-        .map(([input]) => (input as { environmentId: string }).environmentId)
+        .map(
+          ([input]) =>
+            environmentPullRequestInputSchema.parse(input).environmentId,
+        )
         .sort(),
     ).toEqual(["env_merged", "env_no_pr", "env_shared"]);
 
@@ -1368,7 +1380,7 @@ describe("Tasks RPC domain API", () => {
   });
 
   it("keeps the freshest payload when two environments share a PR URL", async () => {
-    const lookupByEnvironment: Record<string, PullRequestLookup> = {
+    const lookupByEnvironment = {
       env_stale: {
         outcome: "available",
         pullRequest: makePullRequest({
@@ -1389,7 +1401,7 @@ describe("Tasks RPC domain API", () => {
           updatedAt: "2026-07-16T12:00:00.000Z",
         }),
       },
-    };
+    } satisfies Record<string, PullRequestLookup>;
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {

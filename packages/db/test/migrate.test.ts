@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
-import { defaultAppSettings } from "@bb/domain";
+import {
+  defaultAppSettings,
+  jsonObjectSchema,
+  jsonValueSchema,
+} from "@bb/domain";
 import {
   createQueuedThreadMessage,
   createThread,
@@ -247,16 +251,31 @@ interface SeededLargeValueBackfillValues {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const latestMigrationWhen = Math.max(
-  ...(
+const migrationJournal = jsonObjectSchema.parse(
+  jsonValueSchema.parse(
     JSON.parse(
       readFileSync(
         resolve(__dirname, "../drizzle/meta/_journal.json"),
         "utf-8",
       ),
-    ) as { entries: { when: number }[] }
-  ).entries.map((entry) => entry.when),
+    ),
+  ),
 );
+const migrationEntries = migrationJournal.entries;
+if (!Array.isArray(migrationEntries)) {
+  throw new Error("Expected migration journal entries");
+}
+
+const migrationWhens = migrationEntries.map((entry) => {
+  const parsedEntry = jsonObjectSchema.parse(entry);
+  const when = parsedEntry.when;
+  if (!Number.isFinite(when)) {
+    throw new Error("Expected migration journal timestamp");
+  }
+  return Number(when);
+});
+
+const latestMigrationWhen = Math.max(...migrationWhens);
 
 function restoreWideExperimentsTable(db: DbConnection): void {
   const columns = db.$client
@@ -860,7 +879,11 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
     )
     .get();
   const createdAt = row?.createdAt;
-  if (typeof createdAt !== "number") {
+  if (
+    createdAt === undefined ||
+    createdAt === null ||
+    !Number.isFinite(createdAt)
+  ) {
     throw new Error("Expected at least one applied migration timestamp");
   }
   return createdAt;

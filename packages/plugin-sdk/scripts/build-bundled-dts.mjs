@@ -1,21 +1,3 @@
-// Generates the self-contained `.d.ts` bundles that `bb plugin new` ships into
-// a scaffolded plugin's `types/` directory, so authors get real BbPluginApi /
-// @get-bb/plugin-sdk/app types WITHOUT the (unpublished) @bb/* workspace packages
-// on disk.
-//
-// rollup-plugin-dts flattens @get-bb/plugin-sdk's own contracts plus every @bb/*
-// type it references (BbSdk, PromptInput, ThreadResponse, …) into the root
-// file. Testing subpaths reuse that already-portable root declaration through
-// the package's own public name instead of flattening the same contracts a
-// second time. Genuine npm packages remain external imports and resolve from
-// the consumer's own dependencies.
-//
-// The output, bundled-types/*.d.ts, is NOT committed. It is the package's
-// published `types` surface and a build output of the turbo task
-// `@get-bb/plugin-sdk#build:types`; @bb/templates reads it at scaffold-embed
-// time by file path (no package edge, to avoid a dependency cycle), and the
-// in-repo plugins typecheck against it. Unchanged files are not rewritten so
-// mtimes stay stable for watchers.
 import {
   existsSync,
   mkdirSync,
@@ -35,14 +17,13 @@ import {
 } from "node:worker_threads";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
+import { z } from "zod";
 
 import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const pkgsDir = path.resolve(pkgRoot, "..");
-// Server-contract modules whose real declarations are not portable into a
-// flattened .d.ts, each redirected to a loose stub (the stub headers say why).
 const STUBBED_MODULES = new Map([
   [
     path.join(pkgsDir, "server-contract/src/public-api.ts"),
@@ -96,8 +77,6 @@ const outputs = {
   "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
 };
 
-// Real npm packages the bundle imports from — kept external so they resolve
-// from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
   /^@get-bb\/plugin-sdk$/,
   /^node:/,
@@ -109,28 +88,32 @@ const EXTERNAL = [
   /^zod($|\/)/,
 ];
 
-/** Resolve any `@bb/<pkg>[/<sub>]` to its `source` export target on disk. */
+const packageExportSchema = z.union([
+  z.string().transform((source) => ({ source })),
+  z.object({ source: z.string() }).passthrough(),
+]);
+
+const packageManifestSchema = z.object({
+  exports: z.record(z.string(), packageExportSchema),
+});
+
 function resolveBbSource(id) {
   const match = /^@bb\/([^/]+)(\/.*)?$/.exec(id);
   if (!match) return null;
   const pkgDir = path.join(pkgsDir, match[1]);
   const manifestPath = path.join(pkgDir, "package.json");
   if (!existsSync(manifestPath)) return null;
-  const { exports } = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const { exports } = packageManifestSchema.parse(
+    JSON.parse(readFileSync(manifestPath, "utf8")),
+  );
   const key = match[2] ? "." + match[2] : ".";
   const entry = exports?.[key];
-  const source =
-    typeof entry === "string"
-      ? entry
-      : (entry?.source ?? entry?.types ?? entry?.default);
-  return source ? path.join(pkgDir, source) : null;
+  return entry === undefined ? null : path.join(pkgDir, entry.source);
 }
 
 const inlineWorkspace = {
   name: "inline-bb-workspace",
   resolveId(id, importer) {
-    // Redirect server-contract's non-portable modules to their loose stubs,
-    // whether imported by bare specifier or by a sibling's relative path.
     if (importer) {
       const asTs = path.resolve(
         path.dirname(importer),
@@ -151,8 +134,6 @@ async function bundle(input) {
     external: EXTERNAL,
     plugins: [inlineWorkspace, dts({ respectExternal: false })],
     onwarn(warning) {
-      // Circular type references are fine in .d.ts output; surface everything
-      // else so a genuinely broken bundle is visible.
       if (warning.code === "CIRCULAR_DEPENDENCY") return;
       console.warn(`[build-bundled-dts] ${warning.code}: ${warning.message}`);
     },
@@ -177,11 +158,6 @@ function generateBundle(entry) {
   );
 }
 
-// Each bundle builds its own TypeScript program, which is CPU-bound and
-// single-threaded inside rollup-plugin-dts; the six large entries take 2–7s
-// apiece. They are independent, so this file re-runs itself as a worker per
-// entry, as many at a time as there are cores, and the serial ~27s becomes
-// roughly the longest single bundle.
 if (!isMainThread) {
   parentPort.postMessage(await generateBundle(workerData.entry));
 } else {
@@ -200,7 +176,6 @@ async function main() {
       }
     }),
   );
-  // Keep the declared order so a diff of the outputs stays readable.
   writeOutputs(
     Object.fromEntries(
       Object.keys(outputs).map((fileName) => [fileName, generated[fileName]]),
@@ -236,10 +211,6 @@ function writeOutputs(generated) {
   }
 }
 
-/**
- * Temp sibling + rename, so a concurrent reader (another turbo process, tsc
- * in an editor) never sees a truncated declaration file.
- */
 function writeAtomically(target, content) {
   const temporary = `${target}.${process.pid}.tmp`;
   try {

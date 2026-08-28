@@ -1,58 +1,40 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactNode } from "react";
 import type { Host } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as localPathPicker from "@/hooks/useLocalPathPicker";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import { useQuickCreateProject } from "./useQuickCreateProject";
 
-const mocks = vi.hoisted(() => ({
-  hosts: [] as Host[] | undefined,
-  isLoadingHosts: false,
-  mutate: vi.fn(),
-  navigate: vi.fn(),
-  onClose: vi.fn(),
-  onOpen: vi.fn(),
-  onOpenChange: vi.fn(),
+const mocks = {
   openPathEntry: vi.fn(),
+};
+
+const pathPickerController = {
+  isAvailable: true,
+  hostId: "host_atum",
+  hostName: "atum",
+  openPathEntry: mocks.openPathEntry,
   openPicker: vi.fn(),
-  setRootComposeProjectId: vi.fn(),
-}));
+  platform: "linux" as const,
+  projectPathDialog: {
+    isOpen: false,
+    onClose: vi.fn(),
+    onOpen: vi.fn(),
+    onOpenChange: vi.fn(),
+    setTarget: vi.fn(),
+    target: null,
+  },
+  submitProjectPath: vi.fn(),
+} satisfies ReturnType<typeof localPathPicker.useLocalPathPicker>;
 
-vi.mock("react-router-dom", () => ({
-  useLocation: () => ({ pathname: "/" }),
-  useNavigate: () => mocks.navigate,
-}));
-
-vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useCreateProject: () => ({ isPending: false, mutate: mocks.mutate }),
-}));
-
-vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
-}));
-
-vi.mock("@/hooks/useLocalPathPicker", () => ({
-  useLocalPathPicker: () => ({
-    isAvailable: true,
-    hostId: "host_atum",
-    hostName: "atum",
-    openPathEntry: mocks.openPathEntry,
-    openPicker: mocks.openPicker,
-    platform: "linux",
-    projectPathDialog: {
-      isOpen: false,
-      onClose: mocks.onClose,
-      onOpen: mocks.onOpen,
-      onOpenChange: mocks.onOpenChange,
-      target: null,
-    },
-    submitProjectPath: vi.fn(),
-  }),
-}));
-
-vi.mock("@/lib/root-compose-selection", () => ({
-  useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
-}));
+const pathPickerSpy = vi
+  .spyOn(localPathPicker, "useLocalPathPicker")
+  .mockReturnValue(pathPickerController);
 
 function host(
   id: string,
@@ -73,8 +55,7 @@ function host(
 }
 
 beforeEach(() => {
-  mocks.hosts = [host("host_atum", "atum")];
-  mocks.isLoadingHosts = false;
+  pathPickerSpy.mockReturnValue(pathPickerController);
 });
 
 afterEach(() => {
@@ -84,7 +65,15 @@ afterEach(() => {
 
 describe("useQuickCreateProject", () => {
   it("delegates opening to the shared path-entry surface", () => {
-    const { result } = renderHook(() => useQuickCreateProject());
+    const { queryClient, wrapper: queryWrapper } =
+      createQueryClientTestHarness();
+    queryClient.setQueryData(hostsQueryKey(), [host("host_atum", "atum")]);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={["/"]}>
+        {queryWrapper({ children })}
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useQuickCreateProject(), { wrapper });
 
     act(() => result.current.openCreateDialog());
 
@@ -92,8 +81,18 @@ describe("useQuickCreateProject", () => {
   });
 
   it("exposes the machine list for the dialog's picker", () => {
-    mocks.hosts = [host("host_atum", "atum"), host("host_thoth", "Thoth")];
-    const { result } = renderHook(() => useQuickCreateProject());
+    const { queryClient, wrapper: queryWrapper } =
+      createQueryClientTestHarness();
+    queryClient.setQueryData(hostsQueryKey(), [
+      host("host_atum", "atum"),
+      host("host_thoth", "Thoth"),
+    ]);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={["/"]}>
+        {queryWrapper({ children })}
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useQuickCreateProject(), { wrapper });
 
     expect(result.current.hosts.map((item) => item.id)).toEqual([
       "host_atum",

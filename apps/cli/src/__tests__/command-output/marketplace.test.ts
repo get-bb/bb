@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { JsonObject } from "@bb/domain";
 import {
   collectLogPayloads,
   runCommand,
@@ -30,7 +32,9 @@ const official = {
   entryCount: 5,
 };
 
-function json(value: object, status = 200): Response {
+const marketplaceRequestSchema = z.object({ source: z.string() });
+
+function json(value: JsonObject, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: { "content-type": "application/json" },
@@ -71,9 +75,9 @@ describe("bb marketplace", () => {
 
     await runCommand(["marketplace", "add", "path:./catalog"], register);
 
-    const body = JSON.parse(
-      String(vi.mocked(fetch).mock.calls[0]?.[1]?.body),
-    ) as { source: string };
+    const body = marketplaceRequestSchema.parse(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
+    );
     expect(body.source.startsWith("path:/")).toBe(true);
     expect(body.source.endsWith("/catalog")).toBe(true);
   });

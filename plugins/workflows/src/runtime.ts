@@ -6,6 +6,7 @@ import {
   type QuickJSHandle,
   type QuickJSRuntime,
 } from "quickjs-emscripten-core";
+import { z } from "zod";
 import { assertJsonValue } from "./json-value.js";
 import type {
   ExecuteWorkflowScriptArgs,
@@ -34,9 +35,17 @@ const LIMIT_MAXIMUMS: WorkflowRuntimeLimits = {
   maxConcurrentAgents: 64,
 };
 
+const WORKFLOW_RUNTIME_LIMIT_KEYS = [
+  "memoryLimitBytes",
+  "maxStackBytes",
+  "synchronousDeadlineMs",
+  "maxAgentCalls",
+  "maxConcurrentAgents",
+] as const satisfies readonly (keyof WorkflowRuntimeLimits)[];
+
 const quickJsModule = newQuickJSWASMModuleFromVariant(SINGLEFILE_RELEASE_SYNC);
 
-function errorMessage(value: unknown): string {
+function errorMessage<T>(value: T): string {
   return value instanceof Error ? value.message : String(value);
 }
 
@@ -44,37 +53,26 @@ function isAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
+const workflowReferenceSchema = z.union([
+  z.string().min(1),
+  z.object({ name: z.string().min(1) }).strict(),
+  z.object({ script: z.string().min(1) }).strict(),
+  z.object({ scriptPath: z.string().min(1) }).strict(),
+]);
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 function parseWorkflowReference(value: JsonValue): WorkflowReference {
-  if (typeof value === "string") {
-    if (value.length === 0) {
-      throw new Error("workflow nameOrRef string must not be empty");
-    }
-    return value;
-  }
-  if (value === null || Array.isArray(value) || typeof value !== "object") {
-    throw new Error(
-      "workflow nameOrRef must be a non-empty string or a reference object",
-    );
-  }
-  const keys = Object.keys(value);
-  if (keys.length !== 1) {
-    throw new Error(
-      "workflow reference must contain exactly one of name, script, or scriptPath",
-    );
-  }
-  const key = keys[0];
-  if (key !== "name" && key !== "script" && key !== "scriptPath") {
-    throw new Error(
-      "workflow reference must contain exactly one of name, script, or scriptPath",
-    );
-  }
-  const referenceValue = value[key];
-  if (typeof referenceValue !== "string" || referenceValue.length === 0) {
-    throw new Error(`workflow reference ${key} must be a non-empty string`);
-  }
-  if (key === "name") return { name: referenceValue };
-  if (key === "script") return { script: referenceValue };
-  return { scriptPath: referenceValue };
+  return workflowReferenceSchema.parse(value);
 }
 
 function normalizeLimits(
@@ -82,7 +80,6 @@ function normalizeLimits(
 ): WorkflowRuntimeLimits {
   if (overrides === undefined) return { ...DEFAULT_LIMITS };
   if (
-    typeof overrides !== "object" ||
     overrides === null ||
     Array.isArray(overrides) ||
     Object.getPrototypeOf(overrides) !== Object.prototype
@@ -99,9 +96,7 @@ function normalizeLimits(
     }
   }
   const limits = { ...DEFAULT_LIMITS };
-  for (const key of Object.keys(DEFAULT_LIMITS) as Array<
-    keyof WorkflowRuntimeLimits
-  >) {
+  for (const key of WORKFLOW_RUNTIME_LIMIT_KEYS) {
     const descriptor = Object.getOwnPropertyDescriptor(overrides, key);
     const value =
       descriptor !== undefined && "value" in descriptor
@@ -125,9 +120,12 @@ function normalizeLimits(
 
 function jsonToHandle(vm: QuickJSContext, value: JsonValue): QuickJSHandle {
   if (value === null) return vm.null;
-  if (typeof value === "string") return vm.newString(value);
-  if (typeof value === "number") return vm.newNumber(value);
-  if (typeof value === "boolean") return value ? vm.true : vm.false;
+  const stringValue = z.string().safeParse(value);
+  if (stringValue.success) return vm.newString(stringValue.data);
+  const numberValue = z.number().safeParse(value);
+  if (numberValue.success) return vm.newNumber(numberValue.data);
+  const booleanValue = z.boolean().safeParse(value);
+  if (booleanValue.success) return booleanValue.data ? vm.true : vm.false;
   if (Array.isArray(value)) {
     const array = vm.newArray();
     for (let index = 0; index < value.length; index += 1) {
@@ -137,8 +135,12 @@ function jsonToHandle(vm: QuickJSContext, value: JsonValue): QuickJSHandle {
     }
     return array;
   }
+  const objectValue = z.record(z.string(), jsonValueSchema).safeParse(value);
+  if (!objectValue.success) {
+    throw new Error("Expected a JSON object");
+  }
   const object = vm.newObject();
-  for (const [key, childValue] of Object.entries(value)) {
+  for (const [key, childValue] of Object.entries(objectValue.data)) {
     const child = jsonToHandle(vm, childValue);
     vm.setProp(object, key, child);
     child.dispose();
@@ -168,7 +170,7 @@ function installJsonGlobal(
 
 interface ScheduledAgentCall {
   abort: () => void;
-  reject: (error: unknown) => void;
+  reject: (error: Error | string) => void;
   resolve: (value: JsonValue) => void;
   run: () => Promise<JsonValue>;
   signal: AbortSignal;
@@ -246,14 +248,14 @@ class SharedWorkflowScheduler implements WorkflowExecutionScheduler {
         .then(call.run)
         .then(
           (value) => this.finish(call, { value }),
-          (error) => this.finish(call, { error }),
+          (error) => this.finish(call, { error: errorMessage(error) }),
         );
     }
   }
 
   private finish(
     call: ScheduledAgentCall,
-    settlement: { value: JsonValue } | { error: unknown },
+    settlement: { value: JsonValue } | { error: Error | string },
   ): void {
     if (call.state !== "active") return;
     call.state = "settled";
@@ -278,7 +280,7 @@ function installAgentFunction(
   enterVm: () => void,
   signal: AbortSignal | undefined,
   currentPhase: () => string | null,
-): { close(reason?: string): void } {
+) {
   const pending = new Set<PendingAgentCall>();
   let closed = false;
 
@@ -290,7 +292,7 @@ function installAgentFunction(
 
   const finish = (
     call: PendingAgentCall,
-    settlement: { value: JsonValue } | { error: unknown },
+    settlement: { value: JsonValue } | { error: Error | string },
   ) => {
     if (closed || !pending.delete(call)) return;
     if ("value" in settlement) {
@@ -319,8 +321,10 @@ function installAgentFunction(
   const fn = vm.newFunction("agent", (...handles) => {
     if (closed) return rejectImmediately("Workflow is no longer running");
     const promptValue = handles[0] ? vm.dump(handles[0]) : "";
-    const prompt =
-      typeof promptValue === "string" ? promptValue : String(promptValue);
+    const parsedPrompt = z.string().safeParse(promptValue);
+    const prompt = parsedPrompt.success
+      ? parsedPrompt.data
+      : String(promptValue);
     const parsedOptions = parseAgentOptions(
       handles[1] ? dumpJson(vm, handles[1], "agent options") : undefined,
     );
@@ -342,9 +346,9 @@ function installAgentFunction(
           assertJsonValue(value, "agent result");
           finish(call, { value });
         },
-        (error) => finish(call, { error }),
+        (error) => finish(call, { error: errorMessage(error) }),
       )
-      .catch((error) => finish(call, { error }));
+      .catch((error) => finish(call, { error: errorMessage(error) }));
     return call.deferred.handle;
   });
   vm.setProp(vm.global, "agent", fn);
@@ -389,7 +393,7 @@ function installWorkflowFunction(
   depth: 0 | 1,
   enterVm: () => void,
   signal: AbortSignal | undefined,
-): { close(reason?: string): void } {
+) {
   const pending = new Set<PendingWorkflowCall>();
   let closed = false;
 
@@ -405,7 +409,7 @@ function installWorkflowFunction(
 
   const finish = (
     call: PendingWorkflowCall,
-    settlement: { value: JsonValue } | { error: unknown },
+    settlement: { value: JsonValue } | { error: Error | string },
   ) => {
     if (closed || !pending.delete(call)) return;
     if ("value" in settlement) {
@@ -460,9 +464,9 @@ function installWorkflowFunction(
           assertJsonValue(value, "nested workflow result");
           finish(call, { value });
         },
-        (error) => finish(call, { error }),
+        (error) => finish(call, { error: errorMessage(error) }),
       )
-      .catch((error) => finish(call, { error }));
+      .catch((error) => finish(call, { error: errorMessage(error) }));
     return call.deferred.handle;
   });
   vm.setProp(vm.global, "__bbWorkflow", fn);
@@ -701,11 +705,12 @@ export async function executeWorkflowScript({
     });
     installHostVoidFunction(vm, "phase", (handles) => {
       const value = handles[0] ? vm.dump(handles[0]) : undefined;
-      if (typeof value !== "string" || value.trim() === "") {
+      const parsedValue = z.string().safeParse(value);
+      if (!parsedValue.success || parsedValue.data.trim() === "") {
         throw new Error("phase title must be a non-empty string");
       }
-      currentPhase = value;
-      capabilities.phase(value);
+      currentPhase = parsedValue.data;
+      capabilities.phase(parsedValue.data);
     });
 
     enterVm();

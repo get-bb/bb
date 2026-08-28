@@ -10,6 +10,7 @@ import {
   parseStoredThreadEvent,
   parseThreadEventRow,
 } from "../src/stored-thread-event.js";
+import type { JsonObject } from "../src/json-value.js";
 import { threadScope, turnScope } from "../src/thread-event-scope.js";
 import { threadEventSchema } from "../src/provider-event.js";
 
@@ -188,11 +189,7 @@ describe("legacy tool-item adapter", () => {
     icon: { glyph: "FileText" },
   };
 
-  function toolItem(
-    tool: string,
-    args: Record<string, unknown>,
-    extra: Record<string, unknown> = {},
-  ) {
+  function toolItem(tool: string, args: JsonObject, extra: JsonObject = {}) {
     return {
       type: "toolCall",
       id: `call-${tool}`,
@@ -204,7 +201,7 @@ describe("legacy tool-item adapter", () => {
   }
 
   it("is never consulted for an item that carries a presentation, whatever its name", () => {
-    for (const [tool, args] of [
+    const presentedToolCases: Array<[string, JsonObject]> = [
       ["Read", { file_path: "/repo/a.ts" }],
       ["Grep", { pattern: "todo", path: "/repo" }],
       ["Glob", { pattern: "**/*.ts" }],
@@ -212,7 +209,8 @@ describe("legacy tool-item adapter", () => {
       ["ToolSearch", { query: "fetch" }],
       ["AskUserQuestion", { questions: [] }],
       ["Agent", { description: "x" }],
-    ] as const) {
+    ];
+    for (const [tool, args] of presentedToolCases) {
       const item = toolItem(tool, args, {
         presentation: presented,
         result: "agentId: 1\nreal output",

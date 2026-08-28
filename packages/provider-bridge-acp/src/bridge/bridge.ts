@@ -1,9 +1,16 @@
 import {
   isStandaloneBuiltinCompactCommand,
+  jsonObjectSchema,
+  jsonValueSchema,
   pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
 } from "@bb/domain";
-import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
+import type {
+  AvailableModel,
+  JsonValue,
+  PromptInput,
+  ReasoningLevel,
+} from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
@@ -29,7 +36,10 @@ import {
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BridgeJsonRpcResponse,
+  JsonRpcObject,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
@@ -41,6 +51,11 @@ import { z } from "zod";
 type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
 type BridgeToolCallContent = DecodedToolCallResponse["contentBlocks"][number];
 type BridgeToolCallImage = DecodedToolCallResponse["images"][number];
+type AcpPermissionRequestParams = z.infer<
+  typeof acpRequestPermissionParamsSchema
+>;
+type AcpReadTextFileParams = z.infer<typeof acpReadTextFileParamsSchema>;
+type AcpWriteTextFileParams = z.infer<typeof acpWriteTextFileParamsSchema>;
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -60,6 +75,7 @@ import {
 } from "../bridge-protocol.js";
 import {
   createAcpDeltaTranslator,
+  type AcpPermissionToolCallInput,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
 import { resolveAcpDialect, type AcpDialect } from "../dialect.js";
@@ -177,7 +193,7 @@ interface AcpThreadSession {
 
 type AcpDeferredStartEmitter = (
   method: string,
-  params: Record<string, unknown>,
+  params: JsonRpcObject,
   sessionId?: string,
 ) => void;
 
@@ -195,14 +211,14 @@ const THREAD_STOP_CANCEL_TIMEOUT_MS = 4_000;
 interface BridgeNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 interface BridgeRuntimeRequest {
   jsonrpc: "2.0";
   id: number;
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 const { send, sendResult, sendError } = createBridgeIo<
@@ -211,20 +227,17 @@ const { send, sendResult, sendError } = createBridgeIo<
 
 type AcpBridgeRequestId = Parameters<typeof sendResult>[0];
 
-function sendNotification(
-  method: string,
-  params: Record<string, unknown>,
-): void {
+function sendNotification(method: string, params: JsonRpcObject): void {
   send({ jsonrpc: "2.0", method, params });
 }
 
 function sendRuntimeRequest(
   method: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
+  params: JsonRpcObject,
+): Promise<JsonValue> {
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
-  const responsePromise = new Promise<unknown>(
+  const responsePromise = new Promise<JsonValue>(
     (resolveResponse, rejectResponse) => {
       pendingRuntimeRequests.set(requestId, (response) => {
         if ("error" in response) {
@@ -233,7 +246,12 @@ function sendRuntimeRequest(
           );
           return;
         }
-        resolveResponse(response.result);
+        const parsedResult = jsonValueSchema.safeParse(response.result);
+        if (!parsedResult.success) {
+          rejectResponse(new Error("Runtime request returned invalid JSON"));
+          return;
+        }
+        resolveResponse(parsedResult.data);
       });
     },
   );
@@ -246,6 +264,10 @@ function sendRuntimeRequest(
   return responsePromise;
 }
 
+function encodeAgentParams<T extends object>(params: T): JsonValue {
+  return jsonValueSchema.parse(params);
+}
+
 let configuredSkillRoots: AcpSkillRoot[] | null = null;
 
 function sendThreadDeltas(
@@ -255,16 +277,16 @@ function sendThreadDeltas(
   if (deltas.length === 0) {
     return;
   }
-  sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
-    threadId,
-    deltas: [...deltas],
-  });
+  sendNotification(
+    THREAD_DELTA_NOTIFICATION_METHOD,
+    jsonObjectSchema.parse({ threadId, deltas: [...deltas] }),
+  );
 }
 
 function emitForSession(
   session: AcpThreadSession,
   method: string,
-  params: Record<string, unknown>,
+  params: JsonRpcObject,
 ): void {
   sendThreadDeltas(
     session.bbThreadId,
@@ -282,13 +304,11 @@ function emitSessionError(session: AcpThreadSession, message: string): void {
       message,
     });
   }
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
-    threadId: session.bbThreadId,
-    ...(session.providerThreadId !== ""
-      ? { providerThreadId: session.providerThreadId }
-      : {}),
-    message,
-  });
+  const params: JsonRpcObject = { threadId: session.bbThreadId, message };
+  if (session.providerThreadId !== "") {
+    params.providerThreadId = session.providerThreadId;
+  }
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.error, params);
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
@@ -305,7 +325,7 @@ function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
 }
 
 async function forwardDynamicToolCall(args: {
-  arguments: Record<string, unknown>;
+  arguments: JsonRpcObject;
   callId: string;
   threadId: string;
   tool: string;
@@ -400,7 +420,10 @@ async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
     server.once("error", rejectBridge);
     server.listen(0, host, () => {
       const address = server.address();
-      if (!address || typeof address === "string") {
+      const parsedAddress = z
+        .object({ port: z.number().int().nonnegative() })
+        .safeParse(address);
+      if (!parsedAddress.success) {
         rejectBridge(
           new Error("ACP dynamic tool bridge did not bind a TCP port"),
         );
@@ -408,7 +431,7 @@ async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
       }
       resolveBridge({
         host,
-        port: address.port,
+        port: parsedAddress.data.port,
         server,
         token: randomBytes(32).toString("hex"),
       });
@@ -578,13 +601,16 @@ function nativeReasoningToThoughtLevelOption(
           hint: nativeReasoning,
           reasoningLevel: nativeReasoning.defaultLevel,
         });
-  return {
+  const option: AcpConfigOption = {
     id: nativeReasoning.configId,
     category: "thought_level",
     type: "select",
-    ...(currentValue !== undefined ? { currentValue } : {}),
     options,
   };
+  if (currentValue !== undefined) {
+    option.currentValue = currentValue;
+  }
+  return option;
 }
 
 function permissionCliArgsForMode(
@@ -641,7 +667,7 @@ const dynamicToolBridgeRequestSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("toolCall"),
-    arguments: z.record(z.string(), z.unknown()).default({}),
+    arguments: jsonObjectSchema.default({}),
     callId: z.string().min(1),
     threadId: z.string().min(1),
     token: z.string().min(1),
@@ -691,7 +717,7 @@ async function authenticateAcpAgent(args: {
     await args.connection.request({
       method: "authenticate",
       params: { methodId, _meta: { headless: true } },
-      resultSchema: z.unknown(),
+      resultSchema: jsonValueSchema,
     });
   } catch (error) {
     throw new AcpAuthRequiredError(
@@ -704,30 +730,34 @@ function acpClientCapabilities(
   parameterizedModelPicker: boolean,
   fsAccess = false,
 ) {
-  return {
+  const capabilities: AcpClientCapabilities = {
     fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
     terminal: false,
-    ...(parameterizedModelPicker === true
-      ? { _meta: { parameterizedModelPicker: true } }
-      : {}),
   };
+  if (parameterizedModelPicker === true) {
+    capabilities._meta = { parameterizedModelPicker: true };
+  }
+  return capabilities;
 }
 
 async function loadAgentModelCatalog(
   listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
   const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
+    const options: AcpModelListExecOptions = {
+      env: {
+        ...withoutBridgeRuntimeEnv(process.env),
+        ...(listCommand.envVars ?? {}),
+      },
+      timeout: MODEL_LIST_TIMEOUT_MS,
+    };
+    if (listCommand.cwd !== undefined) {
+      options.cwd = listCommand.cwd;
+    }
     execFile(
       listCommand.command,
       listCommand.args,
-      {
-        ...(listCommand.cwd !== undefined ? { cwd: listCommand.cwd } : {}),
-        env: {
-          ...withoutBridgeRuntimeEnv(process.env),
-          ...(listCommand.envVars ?? {}),
-        },
-        timeout: MODEL_LIST_TIMEOUT_MS,
-      },
+      options,
       (error, out, stderr) => {
         if (!error) {
           resolveExec(out);
@@ -815,11 +845,11 @@ async function loadSessionDiscoveredModels(
       (async () => {
         const initializeResult = await connection.request({
           method: "initialize",
-          params: {
+          params: encodeAgentParams({
             protocolVersion: ACP_PROTOCOL_VERSION,
             clientInfo: { name: "bb", version: "1.0.0" },
             clientCapabilities: acpClientCapabilities(parameterizedModelPicker),
-          },
+          }),
           resultSchema: acpInitializeResultSchema,
         });
         await authenticateAcpAgent({
@@ -960,15 +990,13 @@ async function discoverAcpNativeReasoningByModel(args: {
   }
 }
 
-function isMissingExecutableError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    error.code === "ENOENT" &&
-    "syscall" in error &&
-    typeof error.syscall === "string" &&
-    error.syscall.startsWith("spawn")
-  );
+interface AcpProcessError extends Error {
+  code?: string | number | null;
+  syscall?: string;
+}
+
+function isMissingExecutableError(error: AcpProcessError): boolean {
+  return error.code === "ENOENT" && error.syscall?.startsWith("spawn") === true;
 }
 
 class AcpAuthRequiredError extends BridgeRecoveryError {
@@ -989,6 +1017,23 @@ class AcpModelListAuthRequiredError extends AcpAuthRequiredError {
   }
 }
 
+interface AcpClientCapabilities {
+  fs: { readTextFile: boolean; writeTextFile: boolean };
+  terminal: boolean;
+  _meta?: { parameterizedModelPicker: true };
+}
+
+interface AcpModelListExecOptions {
+  cwd?: string;
+  env: Record<string, string | undefined>;
+  timeout: number;
+}
+
+interface AcpDialectOptions {
+  command: string;
+  dialectId?: string;
+}
+
 function isAcpAuthRequiredText(...texts: readonly string[]): boolean {
   const text = texts.join("\n");
   return (
@@ -1003,21 +1048,17 @@ function isAcpAuthRequiredText(...texts: readonly string[]): boolean {
 }
 
 function isAuthRequiredModelListError(
-  error: unknown,
+  error: AcpProcessError,
   stdout: string,
   stderr: string,
 ): boolean {
-  return isAcpAuthRequiredText(
-    error instanceof Error ? error.message : String(error),
-    stdout,
-    stderr,
-  );
+  return isAcpAuthRequiredText(error.message, stdout, stderr);
 }
 
 const ACP_AUTH_REQUIRED_ERROR_CODE = -32000;
 const ACP_AUTH_REQUIRED_ERROR_MESSAGE = "Authentication required";
 
-function isAcpAuthRequiredResponse(error: unknown): boolean {
+function isAcpAuthRequiredResponse(error: Error): boolean {
   return (
     error instanceof AcpAgentResponseError &&
     error.code === ACP_AUTH_REQUIRED_ERROR_CODE &&
@@ -1025,7 +1066,9 @@ function isAcpAuthRequiredResponse(error: unknown): boolean {
   );
 }
 
-function withAcpAuthRequiredRecovery(error: unknown): unknown {
+type AcpThrownValue = Error | JsonValue;
+
+function withAcpAuthRequiredRecovery(error: AcpThrownValue) {
   if (error instanceof AcpAuthRequiredError) return error;
   if (
     error instanceof Error &&
@@ -1342,15 +1385,9 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
 
 function handlePermissionRequest(
   session: AcpThreadSession,
-  params: unknown,
+  params: AcpPermissionRequestParams,
   responder: AcpAgentRequestResponder,
 ): void {
-  const parsed = acpRequestPermissionParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    responder.error(-32602, "Invalid session/request_permission params");
-    return;
-  }
-
   if (
     session.stopping ||
     session.cancelRequested ||
@@ -1360,30 +1397,39 @@ function handlePermissionRequest(
     return;
   }
 
-  const toolCall = parsed.data.toolCall;
+  const toolCall = params.toolCall;
+  let permissionToolCall: AcpPermissionToolCallInput | undefined;
+  if (toolCall?.toolCallId !== undefined) {
+    permissionToolCall = { toolCallId: toolCall.toolCallId };
+    if (toolCall.title !== undefined) {
+      permissionToolCall.title = toolCall.title;
+    }
+    if (toolCall.kind !== undefined) {
+      permissionToolCall.kind = toolCall.kind;
+    }
+    if (toolCall.rawKind !== undefined) {
+      permissionToolCall.rawKind = toolCall.rawKind;
+    }
+    if (toolCall.locations !== undefined) {
+      permissionToolCall.locations = toolCall.locations;
+    }
+    if (toolCall.rawInput !== undefined) {
+      permissionToolCall.rawInput = toolCall.rawInput;
+    }
+    if (toolCall.rawOutput !== undefined) {
+      permissionToolCall.rawOutput = toolCall.rawOutput;
+    }
+  }
   const bound =
-    toolCall?.toolCallId !== undefined
-      ? session.translator.notePermissionToolCall(session.bbThreadId, {
-          toolCallId: toolCall.toolCallId,
-          ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
-          ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
-          ...(toolCall.rawKind !== undefined
-            ? { rawKind: toolCall.rawKind }
-            : {}),
-          ...(toolCall.locations !== undefined
-            ? { locations: toolCall.locations }
-            : {}),
-          ...(toolCall.rawInput !== undefined
-            ? { rawInput: toolCall.rawInput }
-            : {}),
-          ...(toolCall.rawOutput !== undefined
-            ? { rawOutput: toolCall.rawOutput }
-            : {}),
-        })
-      : undefined;
+    permissionToolCall === undefined
+      ? undefined
+      : session.translator.notePermissionToolCall(
+          session.bbThreadId,
+          permissionToolCall,
+        );
   const pending: PendingAcpPermission = {
     responder,
-    options: parsed.data.options,
+    options: params.options,
   };
 
   if (session.policy.permissionMode === "full") {
@@ -1393,36 +1439,44 @@ function handlePermissionRequest(
 
   session.pendingPermissions.add(pending);
 
-  const normalizedToolCall =
-    toolCall?.toolCallId !== undefined && bound !== undefined
-      ? {
-          toolCallId: bound.toolCallId,
-          ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
-          ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
-          ...(toolCall.rawKind !== undefined
-            ? { rawKind: toolCall.rawKind }
-            : {}),
-          ...(toolCall.content !== undefined
-            ? { content: toolCall.content }
-            : {}),
-          ...(toolCall.rawInput !== undefined
-            ? { rawInput: toolCall.rawInput }
-            : {}),
-          ...(toolCall.locations !== undefined
-            ? { locations: toolCall.locations }
-            : {}),
-          startedToolCall: bound.event,
-          injectedTool: session.translator.getInjectedToolBinding(
-            session.bbThreadId,
-            bound.toolCallId,
-          ),
-        }
-      : undefined;
+  let normalizedToolCall:
+    | NonNullable<
+        Parameters<typeof buildAcpPermissionInteractionPayload>[0]
+      >["toolCall"]
+    | undefined;
+  if (toolCall?.toolCallId !== undefined && bound !== undefined) {
+    normalizedToolCall = {
+      toolCallId: bound.toolCallId,
+      startedToolCall: bound.event,
+      injectedTool: session.translator.getInjectedToolBinding(
+        session.bbThreadId,
+        bound.toolCallId,
+      ),
+    };
+    if (toolCall.title !== undefined) {
+      normalizedToolCall.title = toolCall.title;
+    }
+    if (toolCall.kind !== undefined) {
+      normalizedToolCall.kind = toolCall.kind;
+    }
+    if (toolCall.rawKind !== undefined) {
+      normalizedToolCall.rawKind = toolCall.rawKind;
+    }
+    if (toolCall.content !== undefined) {
+      normalizedToolCall.content = toolCall.content;
+    }
+    if (toolCall.rawInput !== undefined) {
+      normalizedToolCall.rawInput = toolCall.rawInput;
+    }
+    if (toolCall.locations !== undefined) {
+      normalizedToolCall.locations = toolCall.locations;
+    }
+  }
 
   {
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: normalizedToolCall,
-      options: parsed.data.options,
+      options: params.options,
       cwd: session.cwd,
       classifyToolCall: session.dialect.classifyToolCall,
     });
@@ -1480,18 +1534,13 @@ function sliceFileContent(
 }
 
 async function handleFsReadTextFile(
-  params: unknown,
+  params: AcpReadTextFileParams,
   responder: AcpAgentRequestResponder,
 ): Promise<void> {
-  const parsed = acpReadTextFileParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    responder.error(-32602, "Invalid fs/read_text_file params");
-    return;
-  }
   try {
-    const content = await fs.readFile(parsed.data.path, "utf8");
+    const content = await fs.readFile(params.path, "utf8");
     responder.result({
-      content: sliceFileContent(content, parsed.data.line, parsed.data.limit),
+      content: sliceFileContent(content, params.line, params.limit),
     });
   } catch (error) {
     responder.error(
@@ -1503,22 +1552,16 @@ async function handleFsReadTextFile(
 
 async function handleFsWriteTextFile(
   session: AcpThreadSession,
-  params: unknown,
+  params: AcpWriteTextFileParams,
   responder: AcpAgentRequestResponder,
 ): Promise<void> {
-  const parsed = acpWriteTextFileParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    responder.error(-32602, "Invalid fs/write_text_file params");
-    return;
-  }
-
   if (
     session.policy.permissionMode === "accept-edits" &&
-    !isPathInsideRoots(parsed.data.path, session.policy.workspaceWriteRoots)
+    !isPathInsideRoots(params.path, session.policy.workspaceWriteRoots)
   ) {
     responder.error(
       -32000,
-      `File writes outside the workspace are denied by BB's accept-edits permission mode: ${parsed.data.path}`,
+      `File writes outside the workspace are denied by BB's accept-edits permission mode: ${params.path}`,
     );
     return;
   }
@@ -1526,20 +1569,23 @@ async function handleFsWriteTextFile(
   try {
     let oldText: string | undefined;
     try {
-      oldText = await fs.readFile(parsed.data.path, "utf8");
+      oldText = await fs.readFile(params.path, "utf8");
     } catch {
       oldText = undefined;
     }
-    await fs.mkdir(dirname(parsed.data.path), { recursive: true });
-    await fs.writeFile(parsed.data.path, parsed.data.content, "utf8");
+    await fs.mkdir(dirname(params.path), { recursive: true });
+    await fs.writeFile(params.path, params.content, "utf8");
 
-    emitForSession(session, ACP_FS_WRITE_METHOD, {
+    const notification: JsonRpcObject = {
       threadId: session.bbThreadId,
-      path: parsed.data.path,
+      path: params.path,
       kind: oldText === undefined ? "add" : "update",
-      ...(oldText === undefined ? {} : { oldText }),
-      content: parsed.data.content,
-    });
+      content: params.content,
+    };
+    if (oldText !== undefined) {
+      notification.oldText = oldText;
+    }
+    emitForSession(session, ACP_FS_WRITE_METHOD, notification);
     responder.result(null);
   } catch (error) {
     responder.error(
@@ -1621,25 +1667,31 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
-  const dialect = resolveAcpDialect({
-    ...(params.dialectId === undefined ? {} : { dialectId: params.dialectId }),
+  const dialectOptions: AcpDialectOptions = {
     command: params.agent.command,
-  });
+  };
+  if (params.dialectId !== undefined) {
+    dialectOptions.dialectId = params.dialectId;
+  }
+  const dialect = resolveAcpDialect(dialectOptions);
   const translator = createAcpDeltaTranslator({
     cwd: params.cwd,
     dialect,
   });
   translator.configureInjectedTools(
-    (params.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
+    (params.dynamicTools ?? []).map((tool) => {
+      const injectedTool: Parameters<
+        AcpDeltaTranslator["configureInjectedTools"]
+      >[0][number] = { name: tool.name };
+      if (tool.presentation !== undefined) {
+        injectedTool.presentation = tool.presentation;
+      }
+      return injectedTool;
+    }),
   );
   const deferredEmits: {
     method: string;
-    params: Record<string, unknown>;
+    params: JsonRpcObject;
     sessionId: string | undefined;
   }[] = [];
   const emitStartNotification: AcpDeferredStartEmitter = (
@@ -1669,10 +1721,23 @@ async function startAgentSession(
     cwd: params.cwd,
     env: childEnv,
     recordThreadId: bbThreadId,
-    onNotification: (method, notificationParams) =>
-      handleAgentNotification(session, method, notificationParams),
-    onRequest: (method, requestParams, responder) =>
-      handleAgentRequest(session, method, requestParams, responder),
+    onNotification: (method, notificationParams) => {
+      const parsedParams = jsonValueSchema.safeParse(notificationParams);
+      handleAgentNotification(
+        session,
+        method,
+        parsedParams.success ? parsedParams.data : undefined,
+      );
+    },
+    onRequest: (method, requestParams, responder) => {
+      const parsedParams = jsonValueSchema.safeParse(requestParams);
+      handleAgentRequest(
+        session,
+        method,
+        parsedParams.success ? parsedParams.data : undefined,
+        responder,
+      );
+    },
     onExit: (info) => {
       const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
       cancelPendingPermissions(session);
@@ -1721,14 +1786,14 @@ async function startAgentSession(
   try {
     const initializeResult = await connection.request({
       method: "initialize",
-      params: {
+      params: encodeAgentParams({
         protocolVersion: ACP_PROTOCOL_VERSION,
         clientInfo: { name: "bb", version: "1.0.0" },
         clientCapabilities: acpClientCapabilities(
           params.parameterizedModelPicker,
           true,
         ),
-      },
+      }),
       resultSchema: acpInitializeResultSchema,
     });
     await authenticateAcpAgent({
@@ -1770,11 +1835,11 @@ async function startAgentSession(
     if (request.kind === "fork") {
       const forkedSession = await connection.request({
         method: "session/fork",
-        params: {
+        params: encodeAgentParams({
           sessionId: request.sourceProviderThreadId,
           cwd: params.cwd,
           mcpServers,
-        },
+        }),
         resultSchema: acpSessionForkResultSchema,
       });
       if (
@@ -1795,11 +1860,11 @@ async function startAgentSession(
       try {
         const configState = await connection.request({
           method: "session/load",
-          params: {
+          params: encodeAgentParams({
             sessionId: request.resumeProviderThreadId,
             cwd: params.cwd,
             mcpServers,
-          },
+          }),
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
         });
         loadedConfigOptions = configState?.configOptions;
@@ -1819,7 +1884,7 @@ async function startAgentSession(
       session.pendingLoadUsageUpdate = undefined;
       const newSession = await connection.request({
         method: "session/new",
-        params: { cwd: params.cwd, mcpServers },
+        params: encodeAgentParams({ cwd: params.cwd, mcpServers }),
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
@@ -1851,10 +1916,13 @@ async function startAgentSession(
       session.loadingSessionId = undefined;
       session.pendingLoadUsageUpdate = undefined;
       if (loadUsageUpdate) {
-        emitStartNotification(ACP_UPDATE_METHOD, {
-          threadId: session.bbThreadId,
-          update: loadUsageUpdate,
-        });
+        emitStartNotification(
+          ACP_UPDATE_METHOD,
+          jsonObjectSchema.parse({
+            threadId: session.bbThreadId,
+            update: loadUsageUpdate,
+          }),
+        );
       }
     }
 
@@ -2043,10 +2111,10 @@ function runTurn(
         session.promptRequestPending = true;
         const promptResult = session.connection.request({
           method: "session/prompt",
-          params: {
+          params: encodeAgentParams({
             sessionId: session.providerThreadId,
             prompt: buildPromptContentBlocks(session, pending.input),
-          },
+          }),
           resultSchema: acpPromptResultSchema,
         });
         acceptTurnInput(session, pending);
@@ -2097,16 +2165,16 @@ function startCompaction(
     threadId: session.bbThreadId,
   });
 
-  const finish = (outcome: Record<string, unknown>): void => {
+  const finish = (outcome: AcpCompactionOutcome): void => {
     finishCompaction(session, outcome);
   };
 
   const promptResult = session.connection.request({
     method: "session/prompt",
-    params: {
+    params: encodeAgentParams({
       sessionId: session.providerThreadId,
       prompt: [{ type: "text", text: "/compact" }],
-    },
+    }),
     resultSchema: acpPromptResultSchema,
   });
   acceptTurnInput(session, pending);
@@ -2124,7 +2192,7 @@ function startCompaction(
               },
       );
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       finish({
         status: "failed",
         error: error instanceof Error ? error.message : String(error),
@@ -2132,9 +2200,14 @@ function startCompaction(
     });
 }
 
+type AcpCompactionOutcome =
+  | { status: "completed" }
+  | { status: "interrupted" }
+  | { status: "failed"; error: string };
+
 function finishCompaction(
   session: AcpThreadSession,
-  outcome: Record<string, unknown>,
+  outcome: AcpCompactionOutcome,
 ): void {
   if (session.activePromptKind !== "compaction") {
     return;
@@ -2150,19 +2223,37 @@ function finishCompaction(
 function handleAgentRequest(
   session: AcpThreadSession,
   method: string,
-  params: unknown,
+  params: JsonValue | undefined,
   responder: AcpAgentRequestResponder,
 ): void {
   switch (method) {
-    case "session/request_permission":
-      handlePermissionRequest(session, params, responder);
+    case "session/request_permission": {
+      const parsed = acpRequestPermissionParamsSchema.safeParse(params);
+      if (!parsed.success) {
+        responder.error(-32602, "Invalid session/request_permission params");
+        return;
+      }
+      handlePermissionRequest(session, parsed.data, responder);
       return;
-    case "fs/read_text_file":
-      void handleFsReadTextFile(params, responder);
+    }
+    case "fs/read_text_file": {
+      const parsed = acpReadTextFileParamsSchema.safeParse(params);
+      if (!parsed.success) {
+        responder.error(-32602, "Invalid fs/read_text_file params");
+        return;
+      }
+      void handleFsReadTextFile(parsed.data, responder);
       return;
-    case "fs/write_text_file":
-      void handleFsWriteTextFile(session, params, responder);
+    }
+    case "fs/write_text_file": {
+      const parsed = acpWriteTextFileParamsSchema.safeParse(params);
+      if (!parsed.success) {
+        responder.error(-32602, "Invalid fs/write_text_file params");
+        return;
+      }
+      void handleFsWriteTextFile(session, parsed.data, responder);
       return;
+    }
     default:
       handleDialectRequest(session, method, params, responder);
   }
@@ -2171,7 +2262,7 @@ function handleAgentRequest(
 function handleDialectRequest(
   session: AcpThreadSession,
   method: string,
-  params: unknown,
+  params: JsonValue | undefined,
   responder: AcpAgentRequestResponder,
 ): void {
   const outcome = session.dialect.handleClientRequest?.(method, params);
@@ -2194,7 +2285,7 @@ function handleDialectRequest(
 function handleAgentNotification(
   session: AcpThreadSession,
   method: string,
-  params: unknown,
+  params: JsonValue | undefined,
 ): void {
   if (method !== "session/update") {
     return;
@@ -2218,10 +2309,10 @@ function handleAgentNotification(
     }
     return;
   }
-  const update = {
+  const update = jsonObjectSchema.parse({
     threadId: session.bbThreadId,
     update: parsed.data.update,
-  };
+  });
   if (session.providerThreadId === "") {
     session.deferStartEmit?.(ACP_UPDATE_METHOD, update, parsed.data.sessionId);
     return;
@@ -2243,7 +2334,9 @@ type DecodedAcpBridgeRequest =
     }
   | { kind: "ignored" };
 
-function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
+function decodeAcpBridgeJsonRpcRequest(
+  raw: JsonValue,
+): DecodedAcpBridgeRequest {
   const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success || envelope.data.id === undefined) {
     return { kind: "ignored" };
@@ -2259,8 +2352,8 @@ function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
     };
   }
   if (
-    !(acpBridgeCommandMethodValues as readonly string[]).includes(
-      envelope.data.method,
+    !acpBridgeCommandMethodValues.some(
+      (method) => method === envelope.data.method,
     )
   ) {
     return {
@@ -2332,7 +2425,7 @@ async function handleModelList(
 }
 
 function decodeLaunchSpec(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: AcpProviderOptions | undefined,
 ): AcpLaunchSpec | null {
   const launchSpec = acpLaunchSpecSchema.safeParse(
     providerOptions?.["acpLaunchSpec"],
@@ -2350,6 +2443,8 @@ const acpProviderOptionsSchema = z
   })
   .passthrough();
 
+type AcpProviderOptions = z.infer<typeof acpProviderOptionsSchema>;
+
 interface AcpModelPickerOptions {
   parameterizedModelPicker: boolean;
   primaryModels?: string[];
@@ -2357,22 +2452,23 @@ interface AcpModelPickerOptions {
 }
 
 function decodeAcpModelPickerOptions(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: AcpProviderOptions | undefined,
 ): AcpModelPickerOptions {
   const parsed = acpProviderOptionsSchema.parse(providerOptions ?? {});
-  return {
+  const options: AcpModelPickerOptions = {
     parameterizedModelPicker: parsed.parameterizedModelPicker === true,
-    ...(parsed.primaryModels === undefined
-      ? {}
-      : { primaryModels: [...parsed.primaryModels] }),
     reasoningProbePriorityModelIds: [
       ...(parsed.reasoningProbePriorityModelIds ?? []),
     ],
   };
+  if (parsed.primaryModels !== undefined) {
+    options.primaryModels = [...parsed.primaryModels];
+  }
+  return options;
 }
 
 function decodeAdditionalWorkspaceWriteRoots(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: AcpProviderOptions | undefined,
 ): string[] {
   return (
     acpProviderOptionsSchema.parse(providerOptions ?? {})
@@ -2381,20 +2477,23 @@ function decodeAdditionalWorkspaceWriteRoots(
 }
 
 function decodeDialectId(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: AcpProviderOptions | undefined,
 ): string | undefined {
   return acpProviderOptionsSchema.parse(providerOptions ?? {}).acpDialect;
 }
 
 function maintenanceForRequest(
-  providerOptions: Record<string, unknown> | undefined,
+  providerOptions: AcpProviderOptions | undefined,
   launchSpec: AcpLaunchSpec | null,
 ): AcpMaintenanceDialect | undefined {
   const dialectId = decodeDialectId(providerOptions);
-  return resolveAcpDialect({
-    ...(dialectId === undefined ? {} : { dialectId }),
+  const dialectOptions: AcpDialectOptions = {
     command: launchSpec?.command ?? "",
-  }).maintenance;
+  };
+  if (dialectId !== undefined) {
+    dialectOptions.dialectId = dialectId;
+  }
+  return resolveAcpDialect(dialectOptions).maintenance;
 }
 
 async function handleRequest(
@@ -2639,12 +2738,15 @@ async function handleRequest(
   }
 }
 
-function handleParsedMessage(parsed: unknown): void {
+function handleParsedMessage(parsed: JsonValue): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && typeof response.id === "number") {
-    const pending = pendingRuntimeRequests.get(response.id);
+  const responseId = response
+    ? z.number().safeParse(response.id)
+    : { success: false as const };
+  if (response !== null && responseId.success) {
+    const pending = pendingRuntimeRequests.get(responseId.data);
     if (pending) {
-      pendingRuntimeRequests.delete(response.id);
+      pendingRuntimeRequests.delete(responseId.data);
       pending(response);
       return;
     }
@@ -2673,14 +2775,26 @@ function handleParsedMessage(parsed: unknown): void {
   runBridgeRequest({
     request: decoded.request,
     handleRequest: (request) =>
-      handleRequest(request).catch((error: unknown) => {
-        throw withAcpAuthRequiredRecovery(error);
+      handleRequest(request).catch((error) => {
+        const parsedError = z
+          .union([z.instanceof(Error), jsonValueSchema])
+          .safeParse(error);
+        throw withAcpAuthRequiredRecovery(
+          parsedError.success ? parsedError.data : new Error(String(error)),
+        );
       }),
     sendError,
   });
 }
 
-export const handleLine = createBridgeLineHandler({ handleParsedMessage });
+export const handleLine = createBridgeLineHandler({
+  handleParsedMessage: (message) => {
+    const parsed = jsonValueSchema.safeParse(message);
+    if (parsed.success) {
+      handleParsedMessage(parsed.data);
+    }
+  },
+});
 
 async function stopAllSessions(): Promise<void> {
   await Promise.all(

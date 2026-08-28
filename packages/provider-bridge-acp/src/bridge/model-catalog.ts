@@ -22,7 +22,7 @@ export interface AcpNativeReasoningSupport {
 
 interface AgentModelVariant extends RawAgentModel {
   effort: ReasoningLevel;
-  effortToken: string | undefined;
+  effortToken: EffortToken | undefined;
   fast: boolean;
   thinking: boolean;
 }
@@ -31,7 +31,7 @@ const MODEL_LINE_PATTERN = /^(\S+) - (.+)$/;
 const BARE_PROVIDER_MODEL_LINE_PATTERN = /^\S+\/\S+$/;
 const BULLETED_MODEL_LINE_PATTERN = /^[*-]\s+(\S+)(?:\s+\([^)]*\))?$/u;
 
-const EFFORT_TOKENS: ReadonlyArray<readonly [string, ReasoningLevel]> = [
+const EFFORT_TOKENS = [
   ["extra-high", "xhigh"],
   ["medium", "medium"],
   ["xhigh", "xhigh"],
@@ -39,7 +39,9 @@ const EFFORT_TOKENS: ReadonlyArray<readonly [string, ReasoningLevel]> = [
   ["low", "low"],
   ["max", "max"],
   ["none", "none"],
-];
+] as const satisfies ReadonlyArray<readonly [string, ReasoningLevel]>;
+
+type EffortToken = (typeof EFFORT_TOKENS)[number][0] | "ultra";
 
 const FAST_TAIL = "-fast";
 const THINKING_TOKEN = "thinking";
@@ -94,46 +96,46 @@ export function findAcpThoughtLevelConfigOption(
   );
 }
 
-const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
-  Partial<Record<string, ReasoningLevel>>
-> = {
-  none: "none",
-  minimal: "low",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  ultracode: "ultracode",
-  max: "max",
-  ultra: "ultra",
-};
+const ACP_NATIVE_REASONING_LEVEL_BY_VALUE = new Map<string, ReasoningLevel>([
+  ["none", "none"],
+  ["minimal", "low"],
+  ["low", "low"],
+  ["medium", "medium"],
+  ["high", "high"],
+  ["xhigh", "xhigh"],
+  ["ultracode", "ultracode"],
+  ["max", "max"],
+  ["ultra", "ultra"],
+]);
 
-const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
-  Partial<Record<ReasoningLevel, readonly string[]>>
-> = {
-  none: ["none"],
-  low: ["low", "minimal"],
-  medium: ["medium"],
-  high: ["high"],
-  xhigh: ["xhigh"],
-  ultracode: ["ultracode", "xhigh"],
-  max: ["max", "xhigh"],
-  ultra: ["ultra", "max"],
-};
+const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL = new Map<
+  ReasoningLevel,
+  readonly string[]
+>([
+  ["none", ["none"]],
+  ["low", ["low", "minimal"]],
+  ["medium", ["medium"]],
+  ["high", ["high"]],
+  ["xhigh", ["xhigh"]],
+  ["ultracode", ["ultracode", "xhigh"]],
+  ["max", ["max", "xhigh"]],
+  ["ultra", ["ultra", "max"]],
+]);
 
 function acpNativeValueToReasoningLevel(
   value: string | undefined,
 ): ReasoningLevel | undefined {
   return value === undefined
     ? undefined
-    : ACP_NATIVE_REASONING_LEVEL_BY_VALUE[value];
+    : ACP_NATIVE_REASONING_LEVEL_BY_VALUE.get(value);
 }
 
 export function acpNativeReasoningLevelToValue(
   level: ReasoningLevel,
   thoughtLevelOption: AcpConfigOption,
 ): string | undefined {
-  const candidateValues = ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL[level];
+  const candidateValues =
+    ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL.get(level);
   if (candidateValues === undefined) {
     return undefined;
   }
@@ -217,7 +219,7 @@ export function buildModelCatalogFromConfigOptions(
       currentValue !== undefined ? option.value === currentValue : index === 0;
     const reasoning = reasoningByModel?.get(option.value) ?? {
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
-      defaultReasoningEffort: "medium" as ReasoningLevel,
+      defaultReasoningEffort: "medium",
     };
     return {
       id: option.value,
@@ -266,13 +268,15 @@ export function buildModelCatalogFromSessionModels(
       );
 }
 
-function splitVariant(id: string): {
+interface AgentModelVariantParts {
   familyKey: string;
   effort: ReasoningLevel;
-  effortToken: string | undefined;
+  effortToken: EffortToken | undefined;
   fast: boolean;
   thinking: boolean;
-} {
+}
+
+function splitVariant(id: string): AgentModelVariantParts {
   let rest = id;
   let fast = false;
   if (rest.endsWith(FAST_TAIL)) {
@@ -311,22 +315,22 @@ export function agentModelFamilyId(id: string): string {
   return splitVariant(id).familyKey;
 }
 
-const EFFORT_DISPLAY_WORDS: Readonly<Record<string, string>> = {
-  "extra-high": "Extra High",
-  medium: "Medium",
-  xhigh: "Extra High",
-  high: "High",
-  low: "Low",
-  max: "Max",
-  ultra: "Ultra",
-  none: "None",
-};
+const EFFORT_DISPLAY_WORDS = new Map<EffortToken, string>([
+  ["extra-high", "Extra High"],
+  ["medium", "Medium"],
+  ["xhigh", "Extra High"],
+  ["high", "High"],
+  ["low", "Low"],
+  ["max", "Max"],
+  ["ultra", "Ultra"],
+  ["none", "None"],
+]);
 
 function familyDisplayName(
   displayName: string,
-  effortToken: string | undefined,
+  effortToken: EffortToken | undefined,
 ): string {
-  const word = effortToken ? EFFORT_DISPLAY_WORDS[effortToken] : undefined;
+  const word = effortToken ? EFFORT_DISPLAY_WORDS.get(effortToken) : undefined;
   if (!word) {
     return cleanDisplayName(displayName);
   }
@@ -377,7 +381,7 @@ export function buildAgentModelCatalog(
       level: member.thinking
         ? member.effort
         : hasThinking
-          ? ("none" as ReasoningLevel)
+          ? "none"
           : member.effort,
     }));
 

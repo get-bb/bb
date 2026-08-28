@@ -2,7 +2,9 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import {
   isPluginOwnedIconPath,
+  jsonObjectSchema,
   pluginPackageJsonSchema,
+  type JsonObject,
   type PluginPackageJson,
 } from "@bb/domain";
 import {
@@ -11,8 +13,8 @@ import {
   assertValidPluginLogoSvg,
 } from "./svg-asset.js";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function isRecord<T>(value: T): value is T & JsonObject {
+  return jsonObjectSchema.safeParse(value).success;
 }
 
 function resolveManifestPath(
@@ -32,8 +34,8 @@ function resolveManifestPath(
   return resolved;
 }
 
-export async function validatePluginBuildManifest(
-  value: unknown,
+export async function validatePluginBuildManifest<T>(
+  value: T,
   rootDir: string,
   packageJsonPath: string,
 ): Promise<PluginPackageJson> {

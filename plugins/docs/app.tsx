@@ -18,6 +18,7 @@ import {
   type PluginThreadPanelProps,
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { docsRpcContract } from "./server.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
 import {
@@ -27,6 +28,7 @@ import {
   Node,
   mergeAttributes,
 } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
@@ -78,6 +80,7 @@ import {
 } from "@bb/shared-ui/select";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
+import { z } from "zod";
 
 interface Vault {
   id: string;
@@ -120,8 +123,24 @@ interface PreviewLease {
   expiresAtMs: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+interface SaveNoteRequest {
+  content: string;
+  expectedSha256?: string;
+  path: string;
+  vaultId: string;
+}
+
+interface SaveOpenedFileRequest {
+  content: string;
+  expectedSha256?: string;
+  path: string;
+  source: PluginFileOpenerProps["source"];
+}
+
+interface CreateVaultRequest {
+  hostId?: string;
+  name: string;
+  rootPath: string;
 }
 
 function encodePath(value: string): string {
@@ -269,9 +288,9 @@ const HtmlEmbed = Node.create<HtmlEmbedOptions>({
         serialize(
           state: {
             write(value: string): void;
-            closeBlock(node: unknown): void;
+            closeBlock(node: ProseMirrorNode): void;
           },
-          node: { attrs: { src: string; height: number } },
+          node: ProseMirrorNode,
         ) {
           state.write(
             `::html{src="${node.attrs.src}" height="${node.attrs.height}"}`,
@@ -414,11 +433,14 @@ function TiptapEditor({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef(onUpload);
-  uploadRef.current = onUpload;
   const firstRef = useRef(onFirstRender);
-  firstRef.current = onFirstRender;
   const changeRef = useRef(onMarkdownChange);
-  changeRef.current = onMarkdownChange;
+
+  useEffect(() => {
+    uploadRef.current = onUpload;
+    firstRef.current = onFirstRender;
+    changeRef.current = onMarkdownChange;
+  }, [onFirstRender, onMarkdownChange, onUpload]);
 
   useEffect(() => {
     ensureEditorStyles();
@@ -573,7 +595,7 @@ function refreshNotebookStore(
       store.error = null;
       notifyNotebookStore(store);
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       if (
         requestId !== store.requestId ||
         notebookStores.get(store.vaultId) !== store
@@ -606,13 +628,16 @@ function refreshNotebookStore(
 function useNotebook(vaultId: string | null) {
   const rpc = useRpc<typeof docsRpcContract>();
   const rpcRef = useRef(rpc);
-  rpcRef.current = rpc;
   const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
   const consumerRef = useRef(Symbol("docs-notebook-consumer"));
   const [, rerender] = useState(0);
   const refresh = useCallback(() => {
     void refreshNotebookStore(store, rpcRef.current);
   }, [store]);
+
+  useEffect(() => {
+    rpcRef.current = rpc;
+  }, [rpc]);
 
   useEffect(() => {
     const consumer = consumerRef.current;
@@ -710,19 +735,19 @@ function documentTitle(path: string): string {
   return (path.split("/").at(-1) ?? path).replace(/\.(md|html?)$/i, "");
 }
 
-function parseDocumentRef(value: unknown): DocumentRef | null {
-  if (!isRecord(value)) return null;
-  const vaultId =
-    typeof value.vaultId === "string"
-      ? value.vaultId
-      : typeof value.vault === "string"
-        ? value.vault
-        : "";
-  const path = typeof value.path === "string" ? value.path : "";
-  const title =
-    typeof value.title === "string" && value.title.trim()
-      ? value.title.trim()
-      : documentTitle(path);
+const documentRefSchema = z.object({
+  path: z.string().optional(),
+  title: z.string().optional(),
+  vault: z.string().optional(),
+  vaultId: z.string().optional(),
+});
+
+function parseDocumentRef(value: JsonValue | null): DocumentRef | null {
+  const parsed = documentRefSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const vaultId = parsed.data.vaultId ?? parsed.data.vault ?? "";
+  const path = parsed.data.path ?? "";
+  const title = parsed.data.title?.trim() || documentTitle(path);
   if (
     !vaultId ||
     !path ||
@@ -797,7 +822,6 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
   );
   useEffect(() => {
     let active = true;
-    setState(null);
     rpc
       .call("preparePreview", {
         vaultId: document.vaultId,
@@ -806,7 +830,7 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
       .then((lease) => {
         if (active) setState(lease);
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (active)
           setState({
             error: error instanceof Error ? error.message : String(error),
@@ -859,9 +883,13 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
         </Button>
       </div>
       {/\.html?$/i.test(document.path) ? (
-        <HtmlDocumentPanelBody document={document} />
+        <HtmlDocumentPanelBody
+          key={`${document.vaultId}:${document.path}`}
+          document={document}
+        />
       ) : (
         <NotePane
+          key={`${document.vaultId}:${document.path}`}
           vaultId={document.vaultId}
           notePath={document.path}
           onChanged={() => undefined}
@@ -899,13 +927,15 @@ function NotePane({
   const savingRef = useRef(false);
   const pathRef = useRef(notePath);
   const changedRef = useRef(onChanged);
-  changedRef.current = onChanged;
   const renamedRef = useRef(onRenamed);
-  renamedRef.current = onRenamed;
+
+  useEffect(() => {
+    changedRef.current = onChanged;
+    renamedRef.current = onRenamed;
+  }, [onChanged, onRenamed]);
 
   useEffect(() => {
     let active = true;
-    setState(null);
     Promise.all([
       rpc.call("readNote", { vaultId, path: notePath }),
       rpc.call("preparePreview", { vaultId, path: notePath }),
@@ -918,7 +948,7 @@ function NotePane({
         shaRef.current = file.sha256;
         setState({ content: file.content, lease });
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (active)
           setState({
             error: error instanceof Error ? error.message : String(error),
@@ -940,14 +970,13 @@ function NotePane({
       setSaveError(null);
       const content = markdownRef.current;
       try {
-        const value = await rpc.call("saveNote", {
+        const request: SaveNoteRequest = {
           vaultId,
           path: pathRef.current,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
+        };
+        if (!force && shaRef.current) request.expectedSha256 = shaRef.current;
+        const value = await rpc.call("saveNote", request);
         const result = value;
         if (result.outcome === "conflict") {
           setConflict(true);
@@ -1069,24 +1098,22 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
           : { kind: source.kind, threadId: source.threadId, path: filePath };
     }
   }, [filePath, source]);
-  const openerSource = useMemo(
-    () => ({
-      kind: source.kind,
-      threadId: source.threadId,
+  const openerSource = useMemo(() => {
+    const base = {
       environmentId: source.environmentId,
+      kind: source.kind,
       projectId: source.projectId,
-      ...(source.experimental_hostId === undefined
-        ? {}
-        : { experimental_hostId: source.experimental_hostId }),
-    }),
-    [
-      source.environmentId,
-      source.experimental_hostId,
-      source.kind,
-      source.projectId,
-      source.threadId,
-    ],
-  );
+      threadId: source.threadId,
+    } satisfies Omit<PluginFileOpenerProps["source"], "experimental_hostId">;
+    if (source.experimental_hostId === undefined) return base;
+    return { ...base, experimental_hostId: source.experimental_hostId };
+  }, [
+    source.environmentId,
+    source.experimental_hostId,
+    source.kind,
+    source.projectId,
+    source.threadId,
+  ]);
   const [state, setState] = useState<
     | { content: string; lease: PreviewLease; previewPath: string }
     | { error: string }
@@ -1103,9 +1130,6 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
 
   useEffect(() => {
     let active = true;
-    setState(null);
-    setConflict(false);
-    setSaveError(null);
     void rpc
       .call("openFile", { source: openerSource, path: filePath })
       .then(({ file, preview, previewPath }) => {
@@ -1115,7 +1139,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
         shaRef.current = file.sha256;
         setState({ content: file.content, lease: preview, previewPath });
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (active) {
           setState({
             error: error instanceof Error ? error.message : String(error),
@@ -1138,14 +1162,13 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       setSaveError(null);
       const content = markdownRef.current;
       try {
-        const result = await rpc.call("saveOpenedFile", {
+        const request: SaveOpenedFileRequest = {
           source: openerSource,
           path: filePath,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
+        };
+        if (!force && shaRef.current) request.expectedSha256 = shaRef.current;
+        const result = await rpc.call("saveOpenedFile", request);
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -1261,12 +1284,10 @@ function HtmlPane({
   const [lease, setLease] = useState<PreviewLease | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    setLease(null);
-    setError(null);
     void rpc
       .call("preparePreview", { vaultId, path: filePath })
       .then((value) => setLease(value))
-      .catch((reason: unknown) =>
+      .catch((reason) =>
         setError(reason instanceof Error ? reason.message : String(reason)),
       );
   }, [filePath, rpc, vaultId]);
@@ -1779,10 +1800,12 @@ function Tree({
   );
 }
 
-function parseRoute(subPath: string): {
+interface ParsedRoute {
   vaultId: string | null;
   filePath: string | null;
-} {
+}
+
+function parseRoute(subPath: string): ParsedRoute {
   if (!subPath) return { vaultId: null, filePath: null };
   const parts = subPath.split("/").map(decodeURIComponent);
   if (parts.length === 1 && /\.(md|html?)$/i.test(parts[0] ?? "")) {
@@ -1813,22 +1836,18 @@ function NotesWorkspace({
   const activeVaultId = data?.vault.id ?? route.vaultId;
   const filePath = route.filePath;
   const currentVaultIdRef = useRef(activeVaultId);
-  currentVaultIdRef.current = activeVaultId;
-  const isCurrentVault = useCallback(
-    (vaultId: string) => currentVaultIdRef.current === vaultId,
-    [],
-  );
-
-  const open = useCallback(
-    (path: string, replace = false) => {
-      if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
-      navigate.toPluginPanel("docs", {
-        subPath: `${activeVaultId}/${path}`,
-        replace,
-      });
-    },
-    [activeVaultId, isCurrentVault, navigate],
-  );
+  useEffect(() => {
+    currentVaultIdRef.current = activeVaultId;
+  }, [activeVaultId]);
+  const isCurrentVault = (vaultId: string) =>
+    currentVaultIdRef.current === vaultId;
+  const open = (path: string, replace = false) => {
+    if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
+    navigate.toPluginPanel("docs", {
+      subPath: `${activeVaultId}/${path}`,
+      replace,
+    });
+  };
 
   if (!data || !activeVaultId) {
     if (error)
@@ -1888,11 +1907,12 @@ function NotesWorkspace({
     if (!name || !rootPath) return;
     setVaultError(null);
     try {
-      const value = await rpc.call("createVault", {
+      const request: CreateVaultRequest = {
         name,
         rootPath,
-        ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
-      });
+      };
+      if (vaultHostId !== "primary") request.hostId = vaultHostId;
+      const value = await rpc.call("createVault", request);
       if (!isCurrentVault(activeVaultId)) return;
       setVaultName("");
       setVaultRootPath("");

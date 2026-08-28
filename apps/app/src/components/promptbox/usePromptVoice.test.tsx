@@ -2,18 +2,13 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { transcribeVoiceInput } from "@/lib/api";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import * as api from "@/lib/api";
+import * as voiceInputModule from "@/hooks/useVoiceInput";
 import type { PromptBoxHandle } from "./PromptBoxInternal";
 import { usePromptVoice } from "./usePromptVoice";
 
-vi.mock("@/lib/api", () => ({
-  transcribeVoiceInput: vi.fn(),
-}));
-
-vi.mock("@/hooks/useVoiceInput", () => ({
-  useVoiceInput: vi.fn(),
-}));
+const transcribeVoiceInput = vi.spyOn(api, "transcribeVoiceInput");
+const useVoiceInput = vi.spyOn(voiceInputModule, "useVoiceInput");
 
 const voiceInput = {
   state: "transcribing" as const,
@@ -27,7 +22,7 @@ const voiceInput = {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("usePromptVoice", () => {

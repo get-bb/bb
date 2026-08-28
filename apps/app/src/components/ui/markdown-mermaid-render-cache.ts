@@ -107,7 +107,8 @@ export function observeMermaidViewportEntry(
   element: Element,
   onEnter: ViewportEntryCallback,
 ): () => void {
-  if (typeof IntersectionObserver === "undefined") {
+  const IntersectionObserverConstructor = globalThis.IntersectionObserver;
+  if (IntersectionObserverConstructor === undefined) {
     onEnter();
     return () => {};
   }

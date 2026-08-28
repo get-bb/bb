@@ -44,7 +44,7 @@ function requestId(value: number): ClientTurnRequestId {
   return encodeClientTurnRequestIdNumber({ value });
 }
 
-function setup(): { db: DbConnection; thread: Thread } {
+function setup() {
   const db = createConnection(":memory:");
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
@@ -202,6 +202,18 @@ function seedTurns(
         options.commandChars === undefined
           ? `echo ${item}`
           : "x".repeat(options.commandChars);
+      const startedItem = {
+        type: "commandExecution",
+        id: itemId,
+        command,
+        cwd: "/tmp/test",
+        status: "pending",
+        approvalStatus: null,
+      };
+      const startedItemWithParent =
+        parentToolCallId === null
+          ? startedItem
+          : { ...startedItem, parentToolCallId };
       push({
         type: "item/started",
         scope: turnScope(turnId),
@@ -210,15 +222,7 @@ function seedTurns(
         itemKind: "commandExecution",
         parentToolCallId,
         data: JSON.stringify({
-          item: {
-            type: "commandExecution",
-            id: itemId,
-            command,
-            cwd: "/tmp/test",
-            ...(parentToolCallId === null ? {} : { parentToolCallId }),
-            status: "pending",
-            approvalStatus: null,
-          },
+          item: startedItemWithParent,
         }),
       });
       if (longRunning.has(item)) {
@@ -244,6 +248,23 @@ function seedTurns(
           }),
         });
       }
+      const completedItem = {
+        type: "commandExecution",
+        id: itemId,
+        command,
+        cwd: "/tmp/test",
+        status: "completed",
+        approvalStatus: null,
+        exitCode: 0,
+        aggregatedOutput:
+          options.outputChars === undefined
+            ? `output ${item}`
+            : "o".repeat(options.outputChars),
+      };
+      const completedItemWithParent =
+        parentToolCallId === null
+          ? completedItem
+          : { ...completedItem, parentToolCallId };
       push({
         type: "item/completed",
         scope: turnScope(turnId),
@@ -252,25 +273,32 @@ function seedTurns(
         itemKind: "commandExecution",
         parentToolCallId,
         data: JSON.stringify({
-          item: {
-            type: "commandExecution",
-            id: itemId,
-            command,
-            cwd: "/tmp/test",
-            ...(parentToolCallId === null ? {} : { parentToolCallId }),
-            status: "completed",
-            approvalStatus: null,
-            exitCode: 0,
-            aggregatedOutput:
-              options.outputChars === undefined
-                ? `output ${item}`
-                : "o".repeat(options.outputChars),
-          },
+          item: completedItemWithParent,
         }),
       });
     }
     for (const item of deferred) {
       const itemId = `${turnId}-item-${item}`;
+      const deferredItem = {
+        type: "commandExecution",
+        id: itemId,
+        command:
+          options.commandChars === undefined
+            ? `echo ${item}`
+            : "x".repeat(options.commandChars),
+        cwd: "/tmp/test",
+        status: "completed",
+        approvalStatus: null,
+        exitCode: 0,
+        aggregatedOutput:
+          options.outputChars === undefined
+            ? `late output ${item}`
+            : "o".repeat(options.outputChars),
+      };
+      const deferredItemWithParent =
+        parentToolCallId === null
+          ? deferredItem
+          : { ...deferredItem, parentToolCallId };
       push({
         type: "item/completed",
         scope: turnScope(turnId),
@@ -279,23 +307,7 @@ function seedTurns(
         itemKind: "commandExecution",
         parentToolCallId,
         data: JSON.stringify({
-          item: {
-            type: "commandExecution",
-            id: itemId,
-            command:
-              options.commandChars === undefined
-                ? `echo ${item}`
-                : "x".repeat(options.commandChars),
-            cwd: "/tmp/test",
-            ...(parentToolCallId === null ? {} : { parentToolCallId }),
-            status: "completed",
-            approvalStatus: null,
-            exitCode: 0,
-            aggregatedOutput:
-              options.outputChars === undefined
-                ? `late output ${item}`
-                : "o".repeat(options.outputChars),
-          },
+          item: deferredItemWithParent,
         }),
       });
     }
@@ -1333,10 +1345,10 @@ describe("in-turn windows and items that only stream", () => {
   });
 
   it.each([
-    { includeStartedEvent: false, providerShape: "without item/started" },
-    { includeStartedEvent: true, providerShape: "with item/started" },
+    { includeStartedEvent: false, providerVariant: "without item/started" },
+    { includeStartedEvent: true, providerVariant: "with item/started" },
   ])(
-    "keeps an unfinished assistant message whole across the cut $providerShape",
+    "keeps an unfinished assistant message whole across the cut $providerVariant",
     ({ includeStartedEvent }) => {
       const { db, thread } = setup();
       const itemId = "assistant-1";
@@ -1445,25 +1457,29 @@ function seedCrossTurnCompletion(
     turnId: string,
     status: "pending" | "completed",
     output: string | null,
-  ): Omit<EventInput, "sequence" | "threadId"> => ({
-    type: status === "pending" ? "item/started" : "item/completed",
-    scope: turnScope(turnId),
-    providerThreadId,
-    itemId: "call-1",
-    itemKind: "commandExecution",
-    parentToolCallId: null,
-    data: JSON.stringify({
-      item: {
-        type: "commandExecution",
-        id: "call-1",
-        command: "npm run dev",
-        cwd: "/tmp/test",
-        status,
-        approvalStatus: null,
-        ...(output === null ? {} : { exitCode: 0, aggregatedOutput: output }),
-      },
-    }),
-  });
+  ): Omit<EventInput, "sequence" | "threadId"> => {
+    const item = {
+      type: "commandExecution",
+      id: "call-1",
+      command: "npm run dev",
+      cwd: "/tmp/test",
+      status,
+      approvalStatus: null,
+    };
+    const itemWithOutput =
+      output === null
+        ? item
+        : { ...item, exitCode: 0, aggregatedOutput: output };
+    return {
+      type: status === "pending" ? "item/started" : "item/completed",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: "call-1",
+      itemKind: "commandExecution",
+      parentToolCallId: null,
+      data: JSON.stringify({ item: itemWithOutput }),
+    };
+  };
   const agentMessage = (
     turnId: string,
     id: string,

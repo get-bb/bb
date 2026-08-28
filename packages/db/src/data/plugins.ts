@@ -124,6 +124,14 @@ type NormalizeLegacyPluginSourceIntent =
       };
     };
 
+interface GitSelectorColumns {
+  sourceGitRequestedRef: string | null;
+  sourceGitRefKind: "branch" | "tag" | "commit" | null;
+  sourceGitRange: string | null;
+  sourceGitTagPrefix: string | null;
+  sourceGitResolvedTag: string | null;
+}
+
 export type NormalizeLegacyInstalledPluginInput = Omit<
   UpsertInstalledPluginInput,
   "exactResolution" | "sourceIntent"
@@ -140,20 +148,20 @@ function gitSelectorColumns(
 ) {
   return {
     sourceGitRequestedRef:
-      selector?.kind === "ref" ? selector.ref : (null as string | null),
+      selector?.kind === "ref" ? selector.ref : null,
     sourceGitRefKind:
       selector?.kind === "ref"
         ? selector.refKind
-        : (null as "branch" | "tag" | "commit" | null),
+        : null,
     sourceGitRange:
-      selector?.kind === "range" ? selector.range : (null as string | null),
+      selector?.kind === "range" ? selector.range : null,
     sourceGitTagPrefix:
-      selector?.kind === "range" ? selector.tagPrefix : (null as string | null),
+      selector?.kind === "range" ? selector.tagPrefix : null,
     sourceGitResolvedTag:
       selector?.kind === "range"
         ? selector.resolvedTag
-        : (null as string | null),
-  } as const;
+        : null,
+  } satisfies GitSelectorColumns;
 }
 
 function normalizedColumns(

@@ -162,12 +162,12 @@ async function loadThreadProviderModels(
   deps: LoggedWorkSessionDeps,
   thread: Thread,
 ): Promise<readonly AvailableModel[]> {
-  const result = await resolveSystemExecutionOptions(deps, {
-    providerId: thread.providerId,
-    ...(thread.environmentId !== null
-      ? { environmentId: thread.environmentId }
-      : {}),
-  });
+  type ExecutionOptions = Parameters<typeof resolveSystemExecutionOptions>[1];
+  const options: ExecutionOptions = { providerId: thread.providerId };
+  if (thread.environmentId !== null) {
+    options.environmentId = thread.environmentId;
+  }
+  const result = await resolveSystemExecutionOptions(deps, options);
   if (result.modelLoadError !== null) {
     throw new ApiError(
       503,

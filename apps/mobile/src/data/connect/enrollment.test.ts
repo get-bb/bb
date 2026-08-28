@@ -1,4 +1,5 @@
 import { ConnectMachineRedeemError } from "@bb/connect-client";
+import type { JsonValue } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   accountServerProfile,
@@ -6,7 +7,7 @@ import {
   redeemEnrollment,
 } from "./enrollment";
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(status: number, body: JsonValue): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -53,7 +54,7 @@ describe("redeemEnrollment", () => {
     const failure = await redeemEnrollment(
       { apexUrl: "https://getbb.app", code: "X-1" },
       limit,
-    ).catch((error: unknown) => describeEnrollmentError(error));
+    ).catch((cause: unknown) => describeEnrollmentError(cause));
     expect(failure).toMatchObject({ code: "machine_limit" });
     expect(failure).toHaveProperty("message", expect.stringContaining("20"));
 
@@ -67,7 +68,7 @@ describe("redeemEnrollment", () => {
         vi
           .fn<typeof fetch>()
           .mockResolvedValue(jsonResponse(status, { error: wire })),
-      ).catch((error: unknown) => describeEnrollmentError(error));
+      ).catch((cause: unknown) => describeEnrollmentError(cause));
       expect(failed).toMatchObject({ code });
     }
     expect(

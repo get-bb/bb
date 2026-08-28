@@ -1,4 +1,8 @@
 import { parse } from "yaml";
+import { z } from "zod";
+
+const jsonObjectSchema = z.record(z.string(), z.json());
+type JsonObject = z.output<typeof jsonObjectSchema>;
 
 interface MarkdownDocument {
   frontmatter: string;
@@ -23,26 +27,22 @@ function readLine(content: string, start: number): MarkdownLine {
   };
 }
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseFrontmatterMetadata(
-  source: string,
-): Record<string, unknown> | null {
-  let metadata: unknown;
+function parseFrontmatterMetadata(source: string): JsonObject | null {
+  let metadata: JsonObject | null;
   try {
-    metadata = parse(source, { maxAliasCount: 20 });
+    const parsed = parse(source, { maxAliasCount: 20 });
+    if (parsed === null || parsed === undefined) return {};
+    const result = jsonObjectSchema.safeParse(parsed);
+    metadata = result.success ? result.data : null;
   } catch {
     return null;
   }
-  if (metadata === null || metadata === undefined) return {};
-  return isMapping(metadata) ? metadata : null;
+  return metadata;
 }
 
-function frontmatterTitle(metadata: Record<string, unknown>): string | null {
-  const title = metadata.title;
-  return typeof title === "string" && title.trim() ? title.trim() : null;
+function frontmatterTitle(metadata: JsonObject): string | null {
+  const title = z.string().safeParse(metadata.title);
+  return title.success && title.data.trim() ? title.data.trim() : null;
 }
 
 export function parseMarkdownDocument(content: string): MarkdownDocument {

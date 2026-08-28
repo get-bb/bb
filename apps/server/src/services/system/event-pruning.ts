@@ -78,11 +78,11 @@ const GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "turn/diff/updated",
 ] as const;
 
-const KEEP_RECENT_BY_MODE: Record<ThreadEventPruningMode, number> = {
+const KEEP_RECENT_BY_MODE = {
   active: ACTIVE_THREAD_EVENT_KEEP_RECENT,
   idle: IDLE_THREAD_EVENT_KEEP_RECENT,
   archived: ARCHIVED_THREAD_EVENT_KEEP_RECENT,
-};
+} satisfies Record<ThreadEventPruningMode, number>;
 
 const activePruneTriggerThreadEventTypeSet = new Set<ThreadEventType>(
   ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES,

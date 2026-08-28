@@ -21,11 +21,11 @@ export function useAppBoot(): AppBootState {
       .then(() => {
         if (!cancelled) setState({ ready: true, error: null });
       })
-      .catch((error: unknown) => {
+      .catch((cause: unknown) => {
         if (!cancelled) {
           setState({
             ready: true,
-            error: error instanceof Error ? error.message : String(error),
+            error: cause instanceof Error ? cause.message : String(cause),
           });
         }
       });

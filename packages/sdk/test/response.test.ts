@@ -117,11 +117,7 @@ function createCancelableResponse(args: CancelableResponseArgs): Response {
 }
 
 function getBytesReader(response: Response): () => Promise<Uint8Array> {
-  const read = Reflect.get(response, "bytes");
-  if (typeof read !== "function") {
-    throw new Error("Expected Response.bytes to be available");
-  }
-  return () => read();
+  return () => response.bytes();
 }
 
 function createAbortedTimeoutSignal(): AbortSignal {
@@ -215,7 +211,7 @@ describe("readJsonResponse()", () => {
       () => {
         throw new Error("Expected readJsonResponse to reject");
       },
-      (caught: unknown) => caught,
+      (caught: BbHttpError) => caught,
     );
 
     expect(error).toBeInstanceOf(BbHttpError);

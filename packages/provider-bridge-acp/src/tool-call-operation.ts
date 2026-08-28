@@ -58,7 +58,7 @@ export function extractAcpCommand(
 }
 
 function isNonBlank(value: string | undefined): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+  return value !== undefined && value.trim().length > 0;
 }
 
 export function extractAcpToolCallPaths(

@@ -151,11 +151,12 @@ export function createRpcHandlers(
   return {
     async pair(args) {
       try {
-        return await tunnel.pair({
+        const pairArgs: Parameters<ConnectTunnel["pair"]>[0] = {
           code: args.code,
-          ...(args.server !== undefined ? { serverUrl: args.server } : {}),
-          ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
-        });
+        };
+        if (args.server !== undefined) pairArgs.serverUrl = args.server;
+        if (args.baseUrl !== undefined) pairArgs.baseUrl = args.baseUrl;
+        return await tunnel.pair(pairArgs);
       } catch (error) {
         if (error instanceof ConnectPairError) {
           throw new Error(error.code);

@@ -30,6 +30,38 @@ const execFileAsync = promisify(execFile);
 const pluginSdkRoot = resolve(process.cwd(), "../plugin-sdk");
 const dependencyRequire = createRequire(join(pluginSdkRoot, "package.json"));
 
+interface PackageManifest {
+  name?: string;
+  devDependencies?: Record<string, string>;
+}
+
+interface TestTypeScriptConfig {
+  include: string[];
+}
+
+interface TypeScriptCompilerOptions {
+  skipLibCheck: boolean;
+  paths?: Record<string, string[]>;
+}
+
+interface ExternalTypeScriptConfig {
+  compilerOptions: TypeScriptCompilerOptions;
+}
+
+interface InstalledSdkManifest {
+  version: string;
+  private?: boolean;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  exports: Record<string, { import: string; types: string }>;
+}
+
+interface ExecFileFailure {
+  stderr?: string;
+  stdout?: string;
+}
+
 const EXTERNAL_DEPENDENCIES = [
   "@hugeicons/core-free-icons",
   "@hugeicons/react",
@@ -224,9 +256,9 @@ function packageRoot(name: string): string {
     let current = dirname(dependencyRequire.resolve(name));
     while (true) {
       try {
-        const manifest = JSON.parse(
+        const manifest: PackageManifest = JSON.parse(
           readFileSync(join(current, "package.json"), "utf8"),
-        ) as { name?: string };
+        );
         if (manifest.name === name) return current;
       } catch {}
       const parent = dirname(current);
@@ -284,17 +316,17 @@ async function installPackedSdk(
 }
 
 async function scaffoldSdkPin(targetDir: string): Promise<string | undefined> {
-  const manifest = JSON.parse(
+  const manifest: PackageManifest = JSON.parse(
     await readFile(join(targetDir, "package.json"), "utf8"),
-  ) as { devDependencies?: Record<string, string> };
+  );
   return manifest.devDependencies?.["@get-bb/plugin-sdk"];
 }
 
 async function includeTestsInTypecheck(targetDir: string): Promise<void> {
   const tsconfigPath = join(targetDir, "tsconfig.json");
-  const tsconfig = JSON.parse(await readFile(tsconfigPath, "utf8")) as {
-    include: string[];
-  };
+  const tsconfig: TestTypeScriptConfig = JSON.parse(
+    await readFile(tsconfigPath, "utf8"),
+  );
   tsconfig.include.push("*.test.ts", "*.test.tsx");
   await writeFile(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
 }
@@ -308,7 +340,8 @@ async function runTypecheck(targetDir: string): Promise<void> {
       { cwd: targetDir },
     );
   } catch (error) {
-    const failed = error as { stderr?: string; stdout?: string };
+    // SAFETY: execFileAsync rejects with optional stdout and stderr fields.
+    const failed = error as ExecFileFailure;
     throw new Error(
       `external scaffold typecheck failed:\n${failed.stdout ?? ""}${failed.stderr ?? ""}`,
     );
@@ -324,7 +357,8 @@ async function runVitest(targetDir: string): Promise<void> {
       { cwd: targetDir },
     );
   } catch (error) {
-    const failed = error as { stderr?: string; stdout?: string };
+    // SAFETY: execFileAsync rejects with optional stdout and stderr fields.
+    const failed = error as ExecFileFailure;
     throw new Error(
       `external scaffold tests failed:\n${failed.stdout ?? ""}${failed.stderr ?? ""}`,
     );
@@ -379,14 +413,9 @@ describe("external plugin scaffold types", () => {
     expect(await scaffoldSdkPin(targetDir)).toBe(PLUGIN_SDK_VERSION);
     await useInstalledNodeModules(targetDir);
 
-    const tsconfig = JSON.parse(
+    const tsconfig: ExternalTypeScriptConfig = JSON.parse(
       await readFile(join(targetDir, "tsconfig.json"), "utf8"),
-    ) as {
-      compilerOptions: {
-        skipLibCheck: boolean;
-        paths?: Record<string, string[]>;
-      };
-    };
+    );
     expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
     expect(Object.keys(tsconfig.compilerOptions.paths ?? {})).toEqual(["@/*"]);
     await expect(
@@ -446,16 +475,9 @@ describe("external plugin scaffold types", () => {
       "@get-bb",
       "plugin-sdk",
     );
-    const installedManifest = JSON.parse(
+    const installedManifest: InstalledSdkManifest = JSON.parse(
       await readFile(join(installedSdk, "package.json"), "utf8"),
-    ) as {
-      version: string;
-      private?: boolean;
-      dependencies?: Record<string, string>;
-      optionalDependencies?: Record<string, string>;
-      peerDependencies?: Record<string, string>;
-      exports: Record<string, { import: string; types: string }>;
-    };
+    );
     expect(installedManifest.version).toBe(PLUGIN_SDK_VERSION);
     expect(installedManifest.private).not.toBe(true);
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
@@ -491,14 +513,9 @@ describe("external plugin scaffold types", () => {
       expect(runtime).not.toMatch(/from ['"]@bb\//u);
     }
     await expect(access(join(installedSdk, "src"))).rejects.toThrow();
-    const backendTsconfig = JSON.parse(
+    const backendTsconfig: ExternalTypeScriptConfig = JSON.parse(
       await readFile(join(backendDir, "tsconfig.json"), "utf8"),
-    ) as {
-      compilerOptions: {
-        skipLibCheck: boolean;
-        paths?: Record<string, string[]>;
-      };
-    };
+    );
     expect(backendTsconfig.compilerOptions.skipLibCheck).toBe(false);
     expect(backendTsconfig.compilerOptions.paths).toEqual({ "@/*": ["./*"] });
 

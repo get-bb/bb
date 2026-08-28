@@ -1,31 +1,53 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
   CanUseTool,
   PermissionResult,
+  Query,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  PendingInteractionResolution,
-  PromptInput,
-  ThreadEvent,
+import {
+  type JsonObject,
+  type JsonValue,
+  type PendingInteractionResolution,
+  type PromptInput,
+  type ThreadEvent,
 } from "@bb/domain";
 import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
+import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
-  queryMock: vi.fn(),
-}));
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
 
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
-  forkSession: forkSessionMock,
-  createSdkMcpServer: vi.fn(() => ({})),
-  tool: vi.fn((_name, _desc, _schema, handler) => handler),
-}));
+const forkSessionMock = vi.fn();
+const queryMock = vi.fn();
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    // SAFETY: This test invokes query only with the bridge's streaming prompt contract.
+    const query = queryMock(params as ScriptedClaudeQueryCall);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
+});
+
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "../bridge.js";
 import {
@@ -50,8 +72,9 @@ const STEER_REQUEST_ID = "creq_23456789ac";
 const SECOND_REQUEST_ID = "creq_23456789ad";
 const RESUMED_REQUEST_ID = "creq_23456789ae";
 
-function asSdkMessage(message: Record<string, unknown>): SDKMessage {
-  return message as unknown as SDKMessage;
+function asSdkMessage(message: JsonObject): SDKMessage {
+  // SAFETY: Each fixture supplies the SDK message discriminator and fields consumed by the bridge.
+  return message as SDKMessage;
 }
 
 interface ScriptedClaudeQueryCall {
@@ -258,12 +281,13 @@ function promptInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+function parseJsonObject(value: JsonValue | undefined): JsonObject | null {
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 interface ApprovalExchange {
-  payload: unknown;
+  payload: JsonValue | undefined;
   turnId: string | null;
   providerNativeIds: boolean;
   result: PermissionResult;
@@ -314,7 +338,8 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     const request = bridge.messages.find(
       (message) => message.method === method,
     );
-    if (request?.id === undefined || !isRecord(request.params)) {
+    const params = parseJsonObject(request?.params);
+    if (request?.id === undefined || params === null) {
       throw new Error(`Expected a forwarded ${method} request`);
     }
 
@@ -325,16 +350,16 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
         result: APPROVAL_RESOLUTION,
       }),
     );
-    const turnId = request.params.turnId;
+    const turnId = z.string().safeParse(params.turnId).data ?? null;
     const result = await resultPromise;
     if (result === null) {
       throw new Error("Expected the approval to return a decision");
     }
     return {
-      payload: request.params.payload,
-      providerNativeIds: request.params.providerNativeIds === true,
+      payload: params.payload,
+      providerNativeIds: params.providerNativeIds === true,
       result,
-      turnId: typeof turnId === "string" ? turnId : null,
+      turnId,
     };
   };
 
@@ -348,13 +373,14 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     });
     const startResponse = await bridge.waitForResponse(1);
     const startResult = startResponse.result;
-    if (
-      startResult !== null &&
-      typeof startResult === "object" &&
-      "providerThreadId" in startResult &&
-      typeof startResult.providerThreadId === "string"
-    ) {
-      providerThreadId = startResult.providerThreadId;
+    const parsedStartResult = jsonObjectSchema.safeParse(startResult);
+    if (parsedStartResult.success) {
+      const parsedProviderThreadId = z
+        .string()
+        .safeParse(parsedStartResult.data.providerThreadId);
+      if (parsedProviderThreadId.success) {
+        providerThreadId = parsedProviderThreadId.data;
+      }
     }
     collect();
 

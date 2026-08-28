@@ -10,9 +10,9 @@ export function createRetryingModuleLoader<T>(
 ): () => Promise<T> {
   let pending: Promise<T> | null = null;
   return () => {
-    pending ??= load().catch((error: unknown) => {
+    pending ??= load().catch((cause: unknown) => {
       pending = null;
-      throw error;
+      throw cause;
     });
     return pending;
   };

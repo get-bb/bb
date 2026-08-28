@@ -62,7 +62,7 @@ async function createServiceTranscriptionHarness(
 }
 
 function expectRetryableApiError(
-  error: unknown,
+  error: ApiError,
   expected: { code: string; status: number },
 ): void {
   expect(error).toBeInstanceOf(ApiError);
@@ -123,7 +123,7 @@ describe("voice transcription", () => {
         type: "audio/webm",
       });
       const error = await transcribeVoiceInput(harness.deps, { file }).catch(
-        (caught: unknown) => caught,
+        (caught) => caught,
       );
       expect(error).toBeInstanceOf(ApiError);
       expect(error).toMatchObject({
@@ -213,13 +213,15 @@ describe("voice transcription", () => {
         "Codex transcription request failed with HTTP 429: Transcription is temporarily unavailable. Please try again later.",
     }));
     try {
-      let thrown: unknown = null;
+      let thrown: ApiError | null = null;
       try {
         await transcribeVoiceInput(harness.deps, { file: voiceFile() });
       } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
         thrown = error;
       }
 
+      if (thrown === null) throw new Error("Expected a retryable API error.");
       expectRetryableApiError(thrown, {
         code: "transcription_unavailable",
         status: 503,
@@ -237,13 +239,15 @@ describe("voice transcription", () => {
       message: "Timed out waiting for the transcription",
     }));
     try {
-      let thrown: unknown = null;
+      let thrown: ApiError | null = null;
       try {
         await transcribeVoiceInput(harness.deps, { file: voiceFile() });
       } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
         thrown = error;
       }
 
+      if (thrown === null) throw new Error("Expected a retryable API error.");
       expectRetryableApiError(thrown, {
         code: "transcription_timeout",
         status: 504,

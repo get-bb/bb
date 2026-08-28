@@ -1,15 +1,17 @@
-import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
+import { z } from "zod";
 import {
   CUSTOM_CODE_THEME_JSON_MAX_LENGTH,
   codeThemeNameSchema,
   formatRegisteredCodeThemeName,
   isCodeThemeFilePath,
   parseVscodeThemeJson,
+  jsonObjectSchema,
   type DeclaredCodeTheme,
   type DeclaredCodeThemeSlot,
   type UiCodeThemeDeclaration,
 } from "@bb/domain";
+const { existsSync, readFileSync } = process.getBuiltinModule("node:fs");
 
 const THEME_MANIFEST_FILE_NAME = "theme.json";
 const CONVENTION_CODE_THEME_FILES = {
@@ -96,14 +98,17 @@ function readThemeManifestDeclaration(
   } catch {
     return null;
   }
-  if (parsed === null || typeof parsed !== "object") return null;
-  const codeTheme = (parsed as { codeTheme?: unknown }).codeTheme;
+  const manifest = jsonObjectSchema.safeParse(parsed);
+  if (!manifest.success) return null;
+  const codeTheme = manifest.data.codeTheme;
   if (codeTheme === undefined) return {};
-  if (codeTheme === null || typeof codeTheme !== "object") return null;
-  const record = codeTheme as { dark?: unknown; light?: unknown };
+  const record = jsonObjectSchema.safeParse(codeTheme);
+  if (!record.success) return null;
   const declaration: UiCodeThemeDeclaration = {};
-  if (typeof record.dark === "string") declaration.dark = record.dark;
-  if (typeof record.light === "string") declaration.light = record.light;
+  const dark = z.string().safeParse(record.data.dark);
+  const light = z.string().safeParse(record.data.light);
+  if (dark.success) declaration.dark = dark.data;
+  if (light.success) declaration.light = light.data;
   return declaration;
 }
 

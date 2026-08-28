@@ -24,6 +24,7 @@ function getCompiledTemplate<TTemplateId extends TemplateId>(
 ) {
   const cached = compiledTemplateCache.get(templateId);
   if (cached) {
+    // SAFETY: The cache key and delegate use the same generated template ID.
     return cached as HandlebarsTemplateDelegate<TemplateVariables[TTemplateId]>;
   }
 
@@ -33,6 +34,7 @@ function getCompiledTemplate<TTemplateId extends TemplateId>(
   );
   compiledTemplateCache.set(
     templateId,
+    // SAFETY: The compiled delegate uses the generated template variables for this template ID.
     compiled as HandlebarsTemplateDelegate<TemplateVariables[TemplateId]>,
   );
   return compiled;

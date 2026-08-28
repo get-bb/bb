@@ -19,6 +19,21 @@ interface ChunkSpec {
   facade?: string | null;
 }
 
+interface ExecFileFailure extends Error {
+  code: number;
+  stderr: string;
+  stdout: string;
+}
+
+function isExecFileFailure(error: Error): error is ExecFileFailure {
+  return (
+    "code" in error &&
+    Number.isInteger(error.code) &&
+    "stdout" in error &&
+    "stderr" in error
+  );
+}
+
 function chunk(fileName: string, spec: ChunkSpec = {}): BundleChunk {
   return {
     fileName,
@@ -86,13 +101,7 @@ async function runCheck(stats: BundleStats): Promise<{
     ]);
     return { code: 0, output: `${stdout}${stderr}` };
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      typeof error.code === "number" &&
-      "stdout" in error &&
-      "stderr" in error
-    ) {
+    if (error instanceof Error && isExecFileFailure(error)) {
       return { code: error.code, output: `${error.stdout}${error.stderr}` };
     }
     throw error;

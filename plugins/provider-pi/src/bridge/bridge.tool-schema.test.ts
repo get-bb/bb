@@ -10,6 +10,32 @@ import {
 let harness: FakePiBridgeHarness;
 let dumpPath: string;
 
+interface ToolProperty {
+  anyOf?: Array<{ const?: string; type?: string }>;
+  const?: string;
+  description?: string;
+  type?: string | string[];
+}
+
+interface ToolParameters {
+  additionalProperties?: boolean;
+  description?: string;
+  properties: {
+    count: ToolProperty;
+    kind: ToolProperty;
+    label: ToolProperty;
+    mode: ToolProperty;
+    target: ToolProperty;
+  };
+  required?: string[];
+}
+
+interface RegisteredTool {
+  description: string;
+  name: string;
+  parameters: ToolParameters;
+}
+
 beforeEach(async () => {
   harness = await startFakePiBridge({
     prefix: "bb-pi-tool-schema-",
@@ -74,23 +100,15 @@ it("carries descriptions, unions, constants, integers, and closed objects into t
   const registered = readFileSync(dumpPath, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map(
-      (line) =>
-        JSON.parse(line) as {
-          name: string;
-          description: string;
-          parameters: Record<string, unknown>;
-        },
-    );
+    .map((line) => {
+      // SAFETY: The fake bridge writes each registered tool with this contract.
+      return JSON.parse(line) as RegisteredTool;
+    });
   const tool = registered.find((entry) => entry.name === "bb_rich");
   expect(tool).toBeDefined();
-  expect(tool!.description).toBe("A richly typed bb tool.");
-  const parameters = tool!.parameters as {
-    description?: string;
-    additionalProperties?: boolean;
-    required?: string[];
-    properties: Record<string, Record<string, unknown>>;
-  };
+  if (!tool) throw new Error("registered tool was not written");
+  expect(tool.description).toBe("A richly typed bb tool.");
+  const parameters = tool.parameters;
   expect(parameters.description).toBe("The call.");
   expect(parameters.additionalProperties).toBe(false);
   expect(parameters.required).toEqual(["mode", "count"]);

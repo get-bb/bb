@@ -28,17 +28,6 @@ import {
   useUpdateKeyboardSettings,
 } from "./settings-mutations";
 
-vi.mock("@/lib/sdk", () => {
-  return {
-    sdk: {
-      system: {
-        updateGeneralSettings: vi.fn(),
-        updateKeyboardSettings: vi.fn(),
-      },
-    },
-  };
-});
-
 const defaultKeybindings: AppKeybindings = [
   {
     command: "thread.new",
@@ -65,7 +54,7 @@ function systemConfig(): SystemConfigResponse {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("general settings mutation", () => {
@@ -94,7 +83,9 @@ describe("general settings mutation", () => {
       ...defaultAppSettings,
       showUnhandledProviderEvents: true,
     };
-    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
+    vi.spyOn(sdk.system, "updateGeneralSettings").mockResolvedValue(
+      nextSettings,
+    );
     const { result } = renderHook(() => useUpdateGeneralSettings(), {
       wrapper,
     });
@@ -123,7 +114,9 @@ describe("general settings mutation", () => {
       ...defaultAppSettings,
       providerOrder: ["beta", "alpha"],
     };
-    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
+    vi.spyOn(sdk.system, "updateGeneralSettings").mockResolvedValue(
+      nextSettings,
+    );
     const { result } = renderHook(() => useUpdateGeneralSettings(), {
       wrapper,
     });
@@ -154,7 +147,9 @@ describe("general settings mutation", () => {
     });
     expect(readCachedModelCatalog(catalogCacheKey)).not.toBeNull();
     const nextSettings = { ...defaultAppSettings, streamerMode: true };
-    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
+    vi.spyOn(sdk.system, "updateGeneralSettings").mockResolvedValue(
+      nextSettings,
+    );
     const { result } = renderHook(() => useUpdateGeneralSettings(), {
       wrapper,
     });
@@ -174,7 +169,7 @@ describe("keyboard settings mutation", () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
     let resolveRequest: (overrides: AppKeybindingOverrides) => void = () => {};
-    vi.mocked(sdk.system.updateKeyboardSettings).mockImplementation(
+    vi.spyOn(sdk.system, "updateKeyboardSettings").mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRequest = resolve;
@@ -212,7 +207,7 @@ describe("keyboard settings mutation", () => {
   it("restores resolved system config when the request fails", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
-    vi.mocked(sdk.system.updateKeyboardSettings).mockRejectedValue(
+    vi.spyOn(sdk.system, "updateKeyboardSettings").mockRejectedValue(
       new Error("write failed"),
     );
     const { result } = renderHook(() => useUpdateKeyboardSettings(), {

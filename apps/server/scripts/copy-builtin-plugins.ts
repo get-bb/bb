@@ -35,6 +35,11 @@ const bbAppPackageJsonPath = path.resolve(
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
 
+interface CopyBuiltinPluginsCliOptions {
+  bbVersion: string;
+  targetRoot?: string;
+}
+
 async function exists(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
@@ -76,19 +81,18 @@ async function writeRuntimePackageJson(args: {
     "utf8",
   );
   const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
+  const runtimeBb = {
+    ...packageJson.bb,
+    server: "./dist/server.js",
+  };
+  if (packageJson.bb.app !== undefined) runtimeBb.app = "./dist/app.js";
+  if (packageJson.bb.host !== undefined) runtimeBb.host = "./dist/host.js";
   await writeFile(
     path.join(args.targetDir, "package.json"),
     `${JSON.stringify(
       {
         ...packageJson,
-        bb: {
-          ...packageJson.bb,
-          server: "./dist/server.js",
-          ...(packageJson.bb.app === undefined ? {} : { app: "./dist/app.js" }),
-          ...(packageJson.bb.host === undefined
-            ? {}
-            : { host: "./dist/host.js" }),
-        },
+        bb: runtimeBb,
       },
       null,
       2,
@@ -212,8 +216,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const targetFlagIndex = process.argv.indexOf("--target");
   const targetArg =
     targetFlagIndex !== -1 ? process.argv[targetFlagIndex + 1] : undefined;
-  await copyBuiltinPlugins({
+  const options: CopyBuiltinPluginsCliOptions = {
     bbVersion: await readAuthoritativeBbVersion(),
-    ...(targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {}),
-  });
+  };
+  if (targetArg !== undefined) options.targetRoot = path.resolve(targetArg);
+  await copyBuiltinPlugins(options);
 }

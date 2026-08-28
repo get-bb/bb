@@ -162,6 +162,7 @@ describe("bb skill commands", () => {
 
     await runCommand(["skill", "search", "--json"], register);
 
+    // SAFETY: The CLI emits the documented registry search result shape.
     const payload = JSON.parse(
       collectLogLines(vi.mocked(console.log)).join("\n"),
     ) as {
@@ -248,6 +249,7 @@ describe("bb skill commands", () => {
 
     await runCommand(["skill", "search", "--json"], register);
 
+    // SAFETY: The CLI emits the documented registry search result shape.
     const payload = JSON.parse(
       collectLogLines(vi.mocked(console.log)).join("\n"),
     ) as {

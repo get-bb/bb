@@ -35,10 +35,12 @@ const legacyInstalledPlugin = {
   logoDarkUrl: null,
 };
 
-function createLegacyServerSdk(): {
+interface LegacyServerSdkHarness {
   sdk: ReturnType<typeof createBbSdk>;
   bodies: unknown[];
-} {
+}
+
+function createLegacyServerSdk(): LegacyServerSdkHarness {
   const bodies: unknown[] = [];
   const fetch: FetchImplementation = async (_input, init) => {
     const body: unknown = JSON.parse(String(init?.body));

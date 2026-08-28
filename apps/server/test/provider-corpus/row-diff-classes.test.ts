@@ -166,7 +166,7 @@ describe("classifyRowSnapshotDiff", () => {
         name: "upgraded",
         reason: "fires",
         match: {
-          reshaped: {
+          ["reshaped"]: {
             from: { workKind: "tool" },
             to: { workKind: "file-read" },
           },
@@ -176,7 +176,10 @@ describe("classifyRowSnapshotDiff", () => {
         name: "upgraded",
         reason: "never fires",
         match: {
-          reshaped: { from: { workKind: "tool" }, to: { workKind: "search" } },
+          ["reshaped"]: {
+            from: { workKind: "tool" },
+            to: { workKind: "search" },
+          },
         },
       },
     ];
@@ -282,7 +285,7 @@ describe("classifyRowSnapshotDiff", () => {
         name: "structural",
         reason: "r",
         match: {
-          reshaped: {
+          ["reshaped"]: {
             from: { workKind: "tool" },
             to: { workKind: "delegation" },
           },
@@ -316,7 +319,7 @@ describe("classifyRowSnapshotDiff", () => {
       name: "upgraded",
       reason: "r",
       match: {
-        reshaped: {
+        ["reshaped"]: {
           from: { workKind: "tool" },
           to: { workKind: "file-read" },
           fields: ["id", "path"],
@@ -327,7 +330,7 @@ describe("classifyRowSnapshotDiff", () => {
       {
         ...restricted,
         match: {
-          reshaped: {
+          ["reshaped"]: {
             from: { workKind: "tool" },
             to: { workKind: "file-read" },
           },
@@ -459,7 +462,7 @@ describe("classifyRowSnapshotDiff", () => {
         name: "upgraded",
         reason: "r",
         match: {
-          reshaped: {
+          ["reshaped"]: {
             from: { workKind: "tool" },
             to: { workKind: "file-read" },
           },

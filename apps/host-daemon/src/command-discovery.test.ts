@@ -25,6 +25,7 @@ import {
 import { resolveDeclaredScanRoots } from "./command-handlers/list-commands.js";
 
 const PROVIDER_ID = "test-provider";
+const ROOT_KIND_KEY = "shape";
 
 interface WorkspaceFixture {
   cwd: string;
@@ -65,7 +66,7 @@ function declared(
 function resolved(
   rootPath: string,
   origin: ProviderResolvedNativeRoot["origin"],
-  shape: ProviderResolvedNativeRoot["shape"],
+  rootKind: ProviderResolvedNativeRoot["shape"],
   options: Partial<
     Pick<ProviderResolvedNativeRoot, "ancestors" | "namePrefix" | "recursive">
   > = {},
@@ -73,7 +74,7 @@ function resolved(
   return {
     path: rootPath,
     origin,
-    shape,
+    [ROOT_KIND_KEY]: rootKind,
     recursive: false,
     ancestors: false,
     namePrefix: "",
@@ -634,7 +635,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: fixture.cwd,
         rootPath: path.join(fixture.cwd, ".amp", "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -642,7 +643,7 @@ describe("resolveDeclaredScanRoots", () => {
       },
       {
         rootPath: path.join(fixture.homeDir, ".agents", "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "user",
@@ -651,14 +652,14 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: fixture.cwd,
         rootPath: path.join(fixture.cwd, ".amp", "commands"),
-        shape: "command",
+        [ROOT_KIND_KEY]: "command",
         namePrefix: "",
         source: "command",
         origin: "project",
       },
       {
         rootPath: path.join(fixture.homeDir, ".amp", "commands"),
-        shape: "command",
+        [ROOT_KIND_KEY]: "command",
         namePrefix: "",
         source: "command",
         origin: "user",
@@ -717,7 +718,7 @@ describe("resolveDeclaredScanRoots", () => {
       ].map(([directory, relativeDirectory]) => ({
         boundaryPath: fixture.cwd,
         rootPath: path.join(directory, ".agents", "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -772,7 +773,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: cwd,
         rootPath: path.join(cwd, ".agents", "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -809,7 +810,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: fixture.cwd,
         rootPath: path.join(fixture.cwd, ".grok", "skills"),
-        shape: "skill-recursive",
+        [ROOT_KIND_KEY]: "skill-recursive",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -817,7 +818,7 @@ describe("resolveDeclaredScanRoots", () => {
       },
       {
         rootPath: path.join(fixture.homeDir, ".grok", "skills"),
-        shape: "skill-recursive",
+        [ROOT_KIND_KEY]: "skill-recursive",
         namePrefix: "",
         source: "skill",
         origin: "user",
@@ -858,14 +859,14 @@ describe("resolveDeclaredScanRoots", () => {
     expect(roots).toEqual([
       {
         rootPath: path.join(fixture.homeDir, "tools", "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "release-tools:",
         source: "skill",
         origin: "user",
       },
       {
         rootPath: path.join(fixture.homeDir, "tools", "commands"),
-        shape: "command",
+        [ROOT_KIND_KEY]: "command",
         namePrefix: "release-tools:",
         source: "command",
         origin: "user",
@@ -970,7 +971,7 @@ describe("resolveDeclaredScanRoots", () => {
     expect(roots).toEqual([
       {
         rootPath: systemSkills,
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "user",
@@ -978,7 +979,7 @@ describe("resolveDeclaredScanRoots", () => {
       },
       {
         rootPath: missingSkills,
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "user",
@@ -987,7 +988,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: fixture.cwd,
         rootPath: teamSkills,
-        shape: "skill-recursive",
+        [ROOT_KIND_KEY]: "skill-recursive",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -996,7 +997,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         filePath: path.join(pluginRoot, "SKILL.md"),
         fallbackName: "local-plugin",
-        shape: "skill-file",
+        [ROOT_KIND_KEY]: "skill-file",
         namePrefix: "local-plugin:",
         source: "skill",
         origin: "user",
@@ -1004,35 +1005,35 @@ describe("resolveDeclaredScanRoots", () => {
       {
         filePath: path.join(pluginRoot, "linked-skill", "SKILL.md"),
         fallbackName: "linked-skill",
-        shape: "skill-file",
+        [ROOT_KIND_KEY]: "skill-file",
         namePrefix: "local-plugin:",
         source: "skill",
         origin: "user",
       },
       {
         rootPath: path.join(pluginRoot, "single-skill"),
-        shape: "skill-directory",
+        [ROOT_KIND_KEY]: "skill-directory",
         namePrefix: "local-plugin:",
         source: "skill",
         origin: "user",
       },
       {
         rootPath: path.join(pluginRoot, "skills"),
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "local-plugin:",
         source: "skill",
         origin: "user",
       },
       {
         rootPath: path.join(pluginRoot, "commands"),
-        shape: "command",
+        [ROOT_KIND_KEY]: "command",
         namePrefix: "local-plugin:",
         source: "command",
         origin: "user",
       },
       {
         filePath: path.join(pluginRoot, "extra", "deploy.md"),
-        shape: "command-file",
+        [ROOT_KIND_KEY]: "command-file",
         namePrefix: "local-plugin:",
         source: "command",
         origin: "user",
@@ -1080,7 +1081,7 @@ describe("resolveDeclaredScanRoots", () => {
     expect(roots).toEqual([
       {
         rootPath: skillDirectory,
-        shape: "skill-directory",
+        [ROOT_KIND_KEY]: "skill-directory",
         namePrefix: "",
         source: "skill",
         origin: "user",
@@ -1089,7 +1090,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         filePath: skillFilePath,
         fallbackName: "notes",
-        shape: "skill-file",
+        [ROOT_KIND_KEY]: "skill-file",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -1175,7 +1176,7 @@ describe("resolveDeclaredScanRoots", () => {
       {
         boundaryPath: fixture.cwd,
         rootPath: projectRoot,
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "project",
@@ -1183,7 +1184,7 @@ describe("resolveDeclaredScanRoots", () => {
       },
       {
         rootPath: userRoot,
-        shape: "skill",
+        [ROOT_KIND_KEY]: "skill",
         namePrefix: "",
         source: "skill",
         origin: "user",

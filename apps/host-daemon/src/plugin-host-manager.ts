@@ -5,6 +5,7 @@ import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
+import { z } from "zod";
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResult,
@@ -16,6 +17,7 @@ import {
   ensurePluginProcessDataDir,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
+import type { SanitizeInheritedChildProcessEnvArgs } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
 
@@ -32,6 +34,109 @@ type PluginHostDisposeCommand = Extract<
   { type: "plugin.host.dispose" }
 >;
 type PluginHostCallResult = HostDaemonOnlineRpcResult<"plugin.host.call">;
+
+type PluginHostCancelResult = { cancelled: boolean };
+type PluginHostDisposeResult = { disposed: boolean };
+
+interface WorkerLogContext {
+  pluginId: string;
+  generation: string;
+  digest: string;
+  pid: number | undefined;
+  uptimeMs: number;
+  ready: boolean;
+  activeCallCount: number;
+  pendingCallCount: number;
+  watchCount: number;
+  retainedLeaseCount: number;
+}
+
+interface WorkerFailureDetails {
+  err?: Error | string;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+}
+
+type WorkerWatchEvent =
+  | {
+      kind: "changed";
+      changes: readonly HostPathWatchChange[];
+    }
+  | { kind: "rescan-required" }
+  | { kind: "watch-error"; message: string };
+
+const workerMessageSchema = z.union([
+  z.object({
+    type: z.literal("ready"),
+    protocolVersion: z.number(),
+    pluginId: z.string(),
+    generation: z.string(),
+  }),
+  z.object({ type: z.literal("startup-error"), error: z.string() }),
+  z.object({
+    type: z.literal("result"),
+    callId: z.string(),
+    ok: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("signal"),
+    signal: z.string(),
+    payload: jsonValueSchema,
+  }),
+  z.object({
+    type: z.literal("lease-acquire"),
+    leaseId: z.string(),
+  }),
+  z.object({
+    type: z.literal("lease-release"),
+    leaseId: z.string(),
+  }),
+  z.object({
+    type: z.literal("watch-start"),
+    watchId: z.string().optional(),
+    rootPath: z.string().optional(),
+    ignoredPaths: z.array(z.string()).optional(),
+    debounceMs: z.number().optional(),
+    maxWaitMs: z.number().optional(),
+  }),
+  z.object({ type: z.literal("watch-stop"), watchId: z.string() }),
+  z.object({
+    type: z.literal("watch-ack"),
+    watchId: z.string(),
+    sequence: z.number(),
+  }),
+]);
+
+type WorkerMessage =
+  | { type: "call"; callId: string; method: string; input: JsonValue }
+  | { type: "cancel"; callId: string }
+  | { type: "dispose" }
+  | { type: "watch-ready"; watchId: string }
+  | { type: "watch-start-error"; watchId: string; error: string }
+  | {
+      type: "watch-event";
+      watchId: string;
+      sequence: number;
+      event: WorkerWatchEvent;
+    };
+
+type WorkerProcessMessage = JsonValue;
+
+type WorkerStartWatchMessage = Extract<
+  z.infer<typeof workerMessageSchema>,
+  { type: "watch-start" }
+>;
+type WorkerResultMessage = Extract<
+  z.infer<typeof workerMessageSchema>,
+  { type: "result" }
+>;
+
+interface CallAdmission {
+  callKey: string;
+  callState: ActiveCallState;
+}
 
 interface PendingCall {
   resolve: (result: PluginHostCallResult) => void;
@@ -132,7 +237,7 @@ function elapsedMs(startedAtMs: number): number {
   return Math.max(0, Math.round(performance.now() - startedAtMs));
 }
 
-function workerLogContext(worker: WorkerState): Record<string, unknown> {
+function workerLogContext(worker: WorkerState) {
   return {
     pluginId: worker.pluginId,
     generation: worker.generation,
@@ -144,7 +249,7 @@ function workerLogContext(worker: WorkerState): Record<string, unknown> {
     pendingCallCount: worker.pending.size,
     watchCount: worker.watches.size,
     retainedLeaseCount: worker.retainedLeaseIds.size,
-  };
+  } satisfies WorkerLogContext;
 }
 
 function defaultWorkerEntryPath(): string {
@@ -160,10 +265,6 @@ function defaultWorkerEntryPath(): string {
   throw new Error(
     `host plugin worker entry not found beside ${fileURLToPath(import.meta.url)} (looked for ${candidates.join(", ")})`,
   );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function observeBoundedStderr(
@@ -215,7 +316,7 @@ function observeBoundedStderr(
   source.on("end", emit);
 }
 
-function sendToWorker(child: ChildProcess, message: object): boolean {
+function sendToWorker(child: ChildProcess, message: WorkerMessage): boolean {
   if (!child.connected) return false;
   try {
     child.send(message, () => {});
@@ -322,7 +423,7 @@ export class PluginHostManager {
     }
   }
 
-  cancel(command: PluginHostCancelCommand): { cancelled: boolean } {
+  cancel(command: PluginHostCancelCommand): PluginHostCancelResult {
     const callState = this.activeCalls.get(this.callKey(command));
     if (callState === undefined) return { cancelled: false };
     callState.cancelled = true;
@@ -343,7 +444,7 @@ export class PluginHostManager {
 
   async dispose(
     command: PluginHostDisposeCommand,
-  ): Promise<{ disposed: boolean }> {
+  ): Promise<PluginHostDisposeResult> {
     return this.enqueueWorkerMutation(command.pluginId, async () => {
       this.retireGeneration(command.pluginId, command.generation);
       const worker = this.workers.get(command.pluginId);
@@ -444,7 +545,11 @@ export class PluginHostManager {
       pluginId: command.pluginId,
       prefix: "bb-host",
     });
+    const childEnvironment: SanitizeInheritedChildProcessEnvArgs = {
+      env: process.env,
+    };
     const shellPath = this.options.shellEnv?.().PATH;
+    if (shellPath !== undefined) childEnvironment.shellPath = shellPath;
     const startedAtMs = performance.now();
     let child: ChildProcess;
     try {
@@ -453,8 +558,7 @@ export class PluginHostManager {
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
           env: sanitizeInheritedChildProcessEnv({
-            env: process.env,
-            ...(shellPath !== undefined ? { shellPath } : {}),
+            ...childEnvironment,
           }),
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },
@@ -510,7 +614,7 @@ export class PluginHostManager {
     let unexpectedExitReported = false;
     const failWorker = (
       reason: string,
-      details: Record<string, unknown> = {},
+      details: WorkerFailureDetails = {},
     ): void => {
       this.cancelWorkerIdleTimer(worker);
       if (!worker.disposing && !unexpectedExitReported) {
@@ -550,13 +654,17 @@ export class PluginHostManager {
     }
     child.once("error", (error) => {
       clearTimeout(startTimer);
-      failWorker(`host plugin worker failed: ${errorMessage(error)}`, {
-        err: error,
-      });
+      failWorker(
+        `host plugin worker failed: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          err: error instanceof Error ? error : String(error),
+        },
+      );
     });
-    child.on("message", (message: unknown) => {
-      if (typeof message !== "object" || message === null) return;
-      const record = Object.fromEntries(Object.entries(message));
+    child.on("message", (message: WorkerProcessMessage) => {
+      const parsedMessage = workerMessageSchema.safeParse(message);
+      if (!parsedMessage.success) return;
+      const record = parsedMessage.data;
       if (
         record.type === "ready" &&
         record.protocolVersion === HOST_WORKER_PROTOCOL_VERSION &&
@@ -581,45 +689,32 @@ export class PluginHostManager {
         worker.child.kill("SIGKILL");
         return;
       }
-      if (record.type === "startup-error" && typeof record.error === "string") {
+      if (record.type === "startup-error") {
         clearTimeout(startTimer);
         failWorker(record.error);
         return;
       }
-      if (
-        record.type === "result" &&
-        typeof record.callId === "string" &&
-        typeof record.ok === "boolean"
-      ) {
+      if (record.type === "result") {
         this.finishPendingCall(worker, record.callId, record);
         return;
       }
-      if (record.type === "signal" && typeof record.signal === "string") {
-        const payload = jsonValueSchema.safeParse(record.payload);
-        if (!payload.success) return;
+      if (record.type === "signal") {
         this.options.onSignal?.({
           pluginId: worker.pluginId,
           generation: worker.generation,
           signal: record.signal,
-          payload: payload.data,
+          payload: record.payload,
         });
         return;
       }
-      if (
-        record.type === "lease-acquire" &&
-        typeof record.leaseId === "string" &&
-        record.leaseId.length > 0
-      ) {
+      if (record.type === "lease-acquire" && record.leaseId.length > 0) {
         if (!worker.disposing && this.workers.get(worker.pluginId) === worker) {
           worker.retainedLeaseIds.add(record.leaseId);
           this.cancelWorkerIdleTimer(worker);
         }
         return;
       }
-      if (
-        record.type === "lease-release" &&
-        typeof record.leaseId === "string"
-      ) {
+      if (record.type === "lease-release") {
         worker.retainedLeaseIds.delete(record.leaseId);
         this.scheduleWorkerIdle(worker);
         return;
@@ -628,15 +723,11 @@ export class PluginHostManager {
         void this.startWorkerWatch(worker, record);
         return;
       }
-      if (record.type === "watch-stop" && typeof record.watchId === "string") {
+      if (record.type === "watch-stop") {
         void this.stopWorkerWatch(worker, record.watchId);
         return;
       }
-      if (
-        record.type === "watch-ack" &&
-        typeof record.watchId === "string" &&
-        typeof record.sequence === "number"
-      ) {
+      if (record.type === "watch-ack") {
         this.ackWorkerWatch(worker, record.watchId, record.sequence);
       }
     });
@@ -651,45 +742,46 @@ export class PluginHostManager {
       await ready;
       return worker;
     } catch (error) {
-      await this.stopWorker(worker, errorMessage(error));
+      await this.stopWorker(
+        worker,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
 
   private async startWorkerWatch(
     worker: WorkerState,
-    message: Record<string, unknown>,
+    message: WorkerStartWatchMessage,
   ): Promise<void> {
     const watchId = message.watchId;
     const rootPath = message.rootPath;
     const ignoredPaths = message.ignoredPaths;
     const debounceMs = message.debounceMs;
     const maxWaitMs = message.maxWaitMs;
-    const invalid =
-      typeof watchId !== "string" ||
+    if (
+      watchId === undefined ||
       watchId.length === 0 ||
-      typeof rootPath !== "string" ||
+      rootPath === undefined ||
       !isAbsolute(rootPath) ||
       Buffer.byteLength(rootPath) > MAX_WATCH_PATH_BYTES ||
-      !Array.isArray(ignoredPaths) ||
+      ignoredPaths === undefined ||
       ignoredPaths.length > MAX_WATCH_IGNORE_ENTRIES ||
       ignoredPaths.some(
-        (entry) =>
-          typeof entry !== "string" ||
-          Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
+        (entry) => Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
       ) ||
-      typeof debounceMs !== "number" ||
+      debounceMs === undefined ||
       !Number.isInteger(debounceMs) ||
       debounceMs < MIN_WATCH_DEBOUNCE_MS ||
       debounceMs > MAX_WATCH_DEBOUNCE_MS ||
-      typeof maxWaitMs !== "number" ||
+      maxWaitMs === undefined ||
       !Number.isInteger(maxWaitMs) ||
       maxWaitMs < debounceMs ||
-      maxWaitMs > MAX_WATCH_WAIT_MS;
-    if (invalid) {
+      maxWaitMs > MAX_WATCH_WAIT_MS
+    ) {
       this.sendWorkerWatchStartError(
         worker,
-        typeof watchId === "string" ? watchId : "",
+        watchId ?? "",
         "invalid host watch options",
       );
       return;
@@ -727,9 +819,6 @@ export class PluginHostManager {
       );
       return;
     }
-    const validIgnoredPaths = ignoredPaths.filter(
-      (entry): entry is string => typeof entry === "string",
-    );
     const state: WorkerWatchState = {
       watchId,
       worker,
@@ -750,7 +839,7 @@ export class PluginHostManager {
     try {
       state.stop = watchPathRoot({
         rootPath,
-        ignoredPaths: validIgnoredPaths,
+        ignoredPaths,
         onChange: (changes) => this.queueWorkerWatchChanges(state, changes),
         onReady: () => {
           if (!state.stopped) {
@@ -772,7 +861,11 @@ export class PluginHostManager {
     } catch (error) {
       worker.watches.delete(watchId);
       state.stopped = true;
-      this.sendWorkerWatchStartError(worker, watchId, errorMessage(error));
+      this.sendWorkerWatchStartError(
+        worker,
+        watchId,
+        error instanceof Error ? error.message : String(error),
+      );
       this.scheduleWorkerIdle(worker);
     }
   }
@@ -829,7 +922,7 @@ export class PluginHostManager {
   private flushWorkerWatch(state: WorkerWatchState): void {
     if (state.stopped || state.inFlightSequence !== null) return;
     this.clearWorkerWatchTimers(state);
-    let event: object | null = null;
+    let event: WorkerWatchEvent | null = null;
     if (state.pendingError !== null) {
       event = { kind: "watch-error", message: state.pendingError };
       state.pendingError = null;
@@ -914,7 +1007,7 @@ export class PluginHostManager {
   private finishPendingCall(
     worker: WorkerState,
     callId: string,
-    result: Record<string, unknown>,
+    result: WorkerResultMessage,
   ): void {
     const pending = worker.pending.get(callId);
     if (pending === undefined) return;
@@ -928,13 +1021,7 @@ export class PluginHostManager {
       if (output.success) pending.resolve({ output: output.data });
       else pending.reject(new Error("host handler returned invalid JSON"));
     } else {
-      pending.reject(
-        new Error(
-          typeof result.error === "string"
-            ? result.error
-            : "host handler failed",
-        ),
-      );
+      pending.reject(new Error(result.error ?? "host handler failed"));
     }
   }
 
@@ -1040,10 +1127,7 @@ export class PluginHostManager {
     return `${command.pluginId}\0${command.generation}\0${command.callId}`;
   }
 
-  private admitCall(command: PluginHostCallCommand): {
-    callKey: string;
-    callState: ActiveCallState;
-  } {
+  private admitCall(command: PluginHostCallCommand): CallAdmission {
     const callKey = this.callKey(command);
     if (this.activeCalls.has(callKey)) {
       throw new Error(`duplicate host plugin call ${command.callId}`);

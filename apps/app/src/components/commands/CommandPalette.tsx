@@ -106,16 +106,14 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   useAppCommandHandler("palette.open", (invocation) => {
     const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
+      invocation.target ?? globalThis.document?.activeElement ?? null;
     openPalette("commands", target);
     return true;
   });
 
   useAppCommandHandler("thread.search", (invocation) => {
     const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
+      invocation.target ?? globalThis.document?.activeElement ?? null;
     openPalette("threads", target);
     return true;
   });

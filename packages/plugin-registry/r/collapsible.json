@@ -4,9 +4,6 @@
   "type": "registry:ui",
   "title": "collapsible",
   "description": "BB ui \"collapsible\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-collapsible"
-  ],
   "files": [
     {
       "path": "registry/components/ui/collapsible.tsx",
@@ -14,5 +11,8 @@
       "type": "registry:ui",
       "target": "components/ui/collapsible.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-collapsible"
   ]
 }

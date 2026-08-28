@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 interface LifecycleDiagramPathDependentTarget {
   withWorkspacePath: string;
   withoutWorkspacePath: string;
@@ -15,7 +17,15 @@ type LifecycleDiagramPredicateNames = Readonly<
   Record<string, readonly string[]>
 >;
 
-type LifecyclePredicateRecord = Readonly<Record<string, object>>;
+const lifecycleDiagramPathDependentTargetSchema = z.object({
+  withWorkspacePath: z.string(),
+  withoutWorkspacePath: z.string(),
+});
+
+const lifecyclePredicateRecordSchema = z.record(
+  z.string(),
+  z.record(z.string(), z.boolean()),
+);
 
 interface LifecycleDiagramTransitionGroup {
   from: string;
@@ -69,15 +79,27 @@ function createLifecycleDiagramTransitionGroups(
       const predicates = args.predicateNames[event] ?? [];
       const label =
         predicates.length > 0 ? `${event} ⟨${predicates.join(", ")}⟩` : event;
-      if (typeof to === "string") {
+      const stringTarget = z.string().safeParse(to);
+      if (stringTarget.success) {
         appendLifecycleDiagramTransitionGroup({
           groups,
-          transition: { from, label, to },
+          transition: { from, label, to: stringTarget.data },
         });
-      } else if (to.withWorkspacePath === to.withoutWorkspacePath) {
+        continue;
+      }
+      const pathDependentTarget =
+        lifecycleDiagramPathDependentTargetSchema.parse(to);
+      if (
+        pathDependentTarget.withWorkspacePath ===
+        pathDependentTarget.withoutWorkspacePath
+      ) {
         appendLifecycleDiagramTransitionGroup({
           groups,
-          transition: { from, label, to: to.withWorkspacePath },
+          transition: {
+            from,
+            label,
+            to: pathDependentTarget.withWorkspacePath,
+          },
         });
       } else {
         appendLifecycleDiagramTransitionGroup({
@@ -85,7 +107,7 @@ function createLifecycleDiagramTransitionGroups(
           transition: {
             from,
             label: `${label} (workspace on disk)`,
-            to: to.withWorkspacePath,
+            to: pathDependentTarget.withWorkspacePath,
           },
         });
         appendLifecycleDiagramTransitionGroup({
@@ -93,7 +115,7 @@ function createLifecycleDiagramTransitionGroups(
           transition: {
             from,
             label: `${label} (no workspace)`,
-            to: to.withoutWorkspacePath,
+            to: pathDependentTarget.withoutWorkspacePath,
           },
         });
       }
@@ -125,11 +147,12 @@ function appendLifecycleDiagramTransitionGroup({
   });
 }
 
-export function lifecyclePredicateNames(
-  predicates: LifecyclePredicateRecord,
+export function lifecyclePredicateNames<T>(
+  predicates: T,
 ): LifecycleDiagramPredicateNames {
+  const parsedPredicates = lifecyclePredicateRecordSchema.parse(predicates);
   return Object.fromEntries(
-    Object.entries(predicates).map(([event, flags]) => [
+    Object.entries(parsedPredicates).map(([event, flags]) => [
       event,
       Object.keys(flags),
     ]),

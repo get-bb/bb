@@ -139,7 +139,7 @@ export function SidebarWindowedItems({
     const promoteAll =
       !scrollElement ||
       scrollElement.clientHeight === 0 ||
-      typeof IntersectionObserver === "undefined";
+      globalThis.IntersectionObserver === undefined;
 
     const next = new Set<string>();
     for (const key of realizedKeys) {
@@ -177,7 +177,7 @@ export function SidebarWindowedItems({
   }, [windowingEnabled, keySignature]);
 
   useEffect(() => {
-    if (!windowingEnabled || typeof IntersectionObserver === "undefined") {
+    if (!windowingEnabled || globalThis.IntersectionObserver === undefined) {
       return;
     }
     const scrollElement = resolveScrollElement();

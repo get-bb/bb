@@ -22,6 +22,12 @@ function tokenColor(value: string | undefined): string | undefined {
   return TOKEN_COLOR.test(expanded) ? expanded : undefined;
 }
 
+function isTokenScopeList(
+  value: string | readonly string[],
+): value is readonly string[] {
+  return Array.isArray(value);
+}
+
 function tokenRules(
   theme: PluginCodeThemeData,
 ): MonacoNs.editor.ITokenThemeRule[] {
@@ -42,18 +48,17 @@ function tokenRules(
     const scopes =
       rule.scope === undefined
         ? [""]
-        : typeof rule.scope === "string"
-          ? rule.scope.split(",")
-          : rule.scope;
+        : isTokenScopeList(rule.scope)
+          ? rule.scope
+          : rule.scope.split(",");
     for (const scope of scopes) {
       const token = scope.trim();
       if (rule.scope !== undefined && token === "") continue;
-      rules.push({
-        token,
-        ...(foreground === undefined ? {} : { foreground }),
-        ...(background === undefined ? {} : { background }),
-        ...(fontStyle === undefined ? {} : { fontStyle }),
-      });
+      const tokenRule: MonacoNs.editor.ITokenThemeRule = { token };
+      if (foreground !== undefined) tokenRule.foreground = foreground;
+      if (background !== undefined) tokenRule.background = background;
+      if (fontStyle !== undefined) tokenRule.fontStyle = fontStyle;
+      rules.push(tokenRule);
     }
   }
   return rules;
@@ -70,10 +75,12 @@ function fontStyleFor(value: string | undefined): string | undefined {
   return styles.join(" ");
 }
 
-function workbenchColors(theme: PluginCodeThemeData): Record<string, string> {
-  const colors: Record<string, string> = {};
+function workbenchColors(
+  theme: PluginCodeThemeData,
+): MonacoNs.editor.IStandaloneThemeData["colors"] {
+  const colors: MonacoNs.editor.IStandaloneThemeData["colors"] = {};
   for (const [id, value] of Object.entries(theme.colors)) {
-    if (typeof value === "string" && WORKBENCH_COLOR.test(value)) {
+    if (WORKBENCH_COLOR.test(value)) {
       colors[id] = value;
     }
   }

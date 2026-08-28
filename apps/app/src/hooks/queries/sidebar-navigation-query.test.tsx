@@ -6,7 +6,7 @@ import {
   type SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { request } from "@/lib/api";
+import * as realtime from "@/hooks/useRealtimeSubscription";
 import {
   MAX_CACHED_SIDEBAR_THREADS_PER_PROJECT,
   SIDEBAR_BOOTSTRAP_CACHE_KEY,
@@ -16,21 +16,18 @@ import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSidebarNavigation } from "./sidebar-navigation-query";
 
-vi.mock("@/lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, request: vi.fn() };
-});
-
-vi.mock("@/lib/api-server", () => ({
-  apiClient: { "sidebar-bootstrap": { $get: vi.fn(() => ({})) } },
-}));
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useEnvironmentListRealtimeSubscription: vi.fn(),
-  useHostListRealtimeSubscription: vi.fn(),
-  useProjectListRealtimeSubscription: vi.fn(),
-  useThreadListRealtimeSubscription: vi.fn(),
-}));
+vi.spyOn(realtime, "useEnvironmentListRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(realtime, "useHostListRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(realtime, "useProjectListRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(realtime, "useThreadListRealtimeSubscription").mockImplementation(
+  () => undefined,
+);
 
 const PERSONAL_PROJECT: SidebarBootstrapResponse["personalProject"] = {
   id: "proj_personal",
@@ -57,11 +54,24 @@ const BOOTSTRAP: SidebarBootstrapResponse = {
   personalProject: PERSONAL_PROJECT,
 };
 
-const pendingForever = () => new Promise<never>(() => {});
+let fetchPending = false;
+let fetchBootstrap = BOOTSTRAP;
+const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+  fetchPending
+    ? new Promise<Response>(() => {})
+    : Promise.resolve(
+        new Response(JSON.stringify(fetchBootstrap), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      ),
+);
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  fetchPending = false;
+  fetchBootstrap = BOOTSTRAP;
   window.localStorage.clear();
   resetSidebarBootstrapCacheForTest();
 });
@@ -70,7 +80,7 @@ describe("useSidebarNavigation", () => {
   it("replays the last bootstrap while the live one loads", async () => {
     sidebarBootstrapResponseSchema.parse(BOOTSTRAP);
 
-    vi.mocked(request).mockResolvedValue(BOOTSTRAP);
+    fetchBootstrap = BOOTSTRAP;
     const warmHarness = createQueryClientTestHarness();
     const warm = renderHook(() => useSidebarNavigation(), {
       wrapper: warmHarness.wrapper,
@@ -78,18 +88,18 @@ describe("useSidebarNavigation", () => {
     await waitFor(() => expect(warm.result.current.data).toEqual(BOOTSTRAP));
     warm.unmount();
 
-    vi.mocked(request).mockImplementation(pendingForever);
+    fetchPending = true;
     const reloadHarness = createQueryClientTestHarness();
     const { result } = renderHook(() => useSidebarNavigation(), {
       wrapper: reloadHarness.wrapper,
     });
     expect(result.current.isPlaceholderData).toBe(true);
     expect(result.current.data?.projects[0]?.name).toBe("Felt walk");
-    await waitFor(() => expect(request).toHaveBeenCalled());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   });
 
   it("keeps the cold-profile skeleton: no placeholder without a stored bootstrap", () => {
-    vi.mocked(request).mockImplementation(pendingForever);
+    fetchPending = true;
     const harness = createQueryClientTestHarness();
     const { result } = renderHook(() => useSidebarNavigation(), {
       wrapper: harness.wrapper,
@@ -114,7 +124,7 @@ describe("useSidebarNavigation", () => {
       };
       sidebarBootstrapResponseSchema.parse(large);
 
-      vi.mocked(request).mockResolvedValue(large);
+      fetchBootstrap = large;
       const warmHarness = createQueryClientTestHarness();
       const warm = renderHook(() => useSidebarNavigation(), {
         wrapper: warmHarness.wrapper,
@@ -139,7 +149,7 @@ describe("useSidebarNavigation", () => {
       warm.unmount();
 
       resetSidebarBootstrapCacheForTest();
-      vi.mocked(request).mockImplementation(pendingForever);
+      fetchPending = true;
       const reloadHarness = createQueryClientTestHarness();
       const { result } = renderHook(() => useSidebarNavigation(), {
         wrapper: reloadHarness.wrapper,
@@ -161,7 +171,7 @@ describe("useSidebarNavigation", () => {
         throw new DOMException("quota", "QuotaExceededError");
       });
     try {
-      vi.mocked(request).mockResolvedValue(BOOTSTRAP);
+      fetchBootstrap = BOOTSTRAP;
       const harness = createQueryClientTestHarness();
       const { result } = renderHook(() => useSidebarNavigation(), {
         wrapper: harness.wrapper,

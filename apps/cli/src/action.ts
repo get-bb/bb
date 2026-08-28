@@ -21,20 +21,21 @@ export function action<TArgs extends CommandActionArgs>(
     try {
       await fn(...args);
     } catch (err: unknown) {
-      if (isProcessExitError(err)) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (isProcessExitError(error)) {
         throw err;
       }
-      if (err instanceof CliExitError) {
-        console.error(`Error: ${err.message}`);
-        process.exit(err.exitCode);
+      if (error instanceof CliExitError) {
+        console.error(`Error: ${error.message}`);
+        process.exit(error.exitCode);
         return;
       }
-      console.error(`Error: ${getErrorMessage(err)}`);
+      console.error(`Error: ${getErrorMessage(error)}`);
       process.exit(1);
     }
   };
 }
 
-function isProcessExitError(err: unknown): boolean {
-  return err instanceof Error && err.message.startsWith("process.exit:");
+function isProcessExitError(error: Error): boolean {
+  return error.message.startsWith("process.exit:");
 }

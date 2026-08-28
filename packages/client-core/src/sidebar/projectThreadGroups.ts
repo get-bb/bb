@@ -67,7 +67,7 @@ export type ThreadComparator = ((
 };
 
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
-type SidebarProjectThreadShape = Pick<
+type SidebarProjectThreadMetadata = Pick<
   ThreadListEntry,
   "originKind" | "visibility"
 >;
@@ -448,7 +448,7 @@ export function buildSectionThreadList(
 }
 
 export function isSidebarProjectThread(
-  thread: SidebarProjectThreadShape,
+  thread: SidebarProjectThreadMetadata,
 ): boolean {
   return thread.visibility !== "hidden";
 }

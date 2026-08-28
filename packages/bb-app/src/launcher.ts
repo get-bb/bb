@@ -99,6 +99,12 @@ const CONFIG_REFRESH_COMMAND = "refresh";
 type ManagedConfigValueKey = BbAppManagedConfigKey;
 type ManagedConfigKey = "BB_SERVER_URL" | "serverUrl" | ManagedConfigValueKey;
 
+interface LauncherConfigWarningFields {
+  error: string;
+  index: number;
+  providerId?: string;
+}
+
 const MANAGED_CONFIG_KEYS = BB_APP_MANAGED_CONFIG_KEYS;
 const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
 const STARTUP_ONLY_MANAGED_CONFIG_KEYS = new Set<string>(["BB_LOG_LEVEL"]);
@@ -121,8 +127,12 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_TRANSCRIPTION",
 ]);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
-const SECRET_SHAPED_ENV_NAME_PATTERN =
-  /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/u;
+const SECRET_ENV_NAME_PATTERN = /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/u;
+const launcherStringOptionSchema = z.string().optional();
+const managedConfigExtrasSchema = z.object({
+  customAcpAgents: z.array(z.unknown()).optional(),
+  customModels: z.array(z.unknown()).optional(),
+});
 
 const bbAppPackageJsonSchema = z
   .object({
@@ -518,6 +528,21 @@ interface CreateHostDaemonJoinEnvArgs {
   serverUrl: string;
 }
 
+function createHostDaemonJoinConfig(
+  serverUrl: string,
+  machineCredential: string | undefined,
+  connectMachineId: string | undefined,
+): ManagedConfigForWrite {
+  const config: ManagedConfigForWrite = { serverUrl };
+  if (machineCredential !== undefined) {
+    config.machineCredential = machineCredential;
+  }
+  if (connectMachineId !== undefined) {
+    config.connectMachineId = connectMachineId;
+  }
+  return config;
+}
+
 interface CreateEnvFromOptionsArgs {
   env: NodeJS.ProcessEnv;
   options: LauncherCliOptions;
@@ -687,8 +712,8 @@ function isPortableEnvName(value: string): boolean {
   return PORTABLE_ENV_NAME_PATTERN.test(value);
 }
 
-function isSecretShapedEnvName(value: string): boolean {
-  return SECRET_SHAPED_ENV_NAME_PATTERN.test(value);
+function isSecretEnvName(value: string): boolean {
+  return SECRET_ENV_NAME_PATTERN.test(value);
 }
 
 function supportedConfigKeysText(): string {
@@ -699,13 +724,11 @@ function createDefaultLauncherOptions(): LauncherCliOptions {
   return { help: false, json: false };
 }
 
-function readStringOption(
-  value: boolean | string | string[] | undefined,
-): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  return toOptionalString(value);
+type LauncherOptionValue = boolean | string | string[] | undefined;
+
+function readStringOption(value: LauncherOptionValue): string | undefined {
+  const parsed = launcherStringOptionSchema.safeParse(value);
+  return parsed.success ? toOptionalString(parsed.data) : undefined;
 }
 
 function readBooleanOption(
@@ -927,30 +950,27 @@ export function resolveServerListenerUrl(
 function applyManagedConfigEnv(
   args: ApplyManagedConfigEnvArgs,
 ): NodeJS.ProcessEnv {
-  return {
-    ...args.env,
-    ...(args.config.machineCredential !== undefined
-      ? {
-          BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
-        }
-      : {}),
-    ...(args.config.connectMachineId !== undefined
-      ? { BB_CONNECT_MACHINE_ID: args.config.connectMachineId }
-      : {}),
-    ...args.config.config,
-    ...args.envFile.env,
-  };
+  const env: NodeJS.ProcessEnv = { ...args.env };
+  if (args.config.machineCredential !== undefined) {
+    env.BB_CONNECT_MACHINE_CREDENTIAL = args.config.machineCredential;
+  }
+  if (args.config.connectMachineId !== undefined) {
+    env.BB_CONNECT_MACHINE_ID = args.config.connectMachineId;
+  }
+  Object.assign(env, args.config.config, args.envFile.env);
+  return env;
 }
 
 function createServerBaseEnv(args: CreateServerBaseEnvArgs): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...args.env,
     ...args.config.config,
     ...args.envFile.env,
-    ...(args.serverBindHostOverride !== undefined
-      ? { BB_SERVER_BIND_HOST: args.serverBindHostOverride }
-      : {}),
   };
+  if (args.serverBindHostOverride !== undefined) {
+    env.BB_SERVER_BIND_HOST = args.serverBindHostOverride;
+  }
+  return env;
 }
 
 async function readManagedConfig(
@@ -982,12 +1002,8 @@ async function readManagedConfig(
   }
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 const launcherConfigWarningLogger = {
-  warn(fields: Record<string, unknown>, message: string): void {
+  warn(fields: LauncherConfigWarningFields, message: string): void {
     process.stderr.write(`${message}: ${JSON.stringify(fields)}\n`);
   },
 };
@@ -1004,15 +1020,16 @@ async function readManagedConfigForWrite(
     const parsedConfig = parseBbAppManagedConfig(parsedJson, {
       logger: launcherConfigWarningLogger,
     });
-    if (!isJsonObject(parsedJson)) {
+    const parsedExtras = managedConfigExtrasSchema.safeParse(parsedJson);
+    if (!parsedExtras.success) {
       return parsedConfig;
     }
     const configForWrite: ManagedConfigForWrite = { ...parsedConfig };
-    if (Array.isArray(parsedJson.customAcpAgents)) {
-      configForWrite.customAcpAgents = parsedJson.customAcpAgents;
+    if (parsedExtras.data.customAcpAgents !== undefined) {
+      configForWrite.customAcpAgents = parsedExtras.data.customAcpAgents;
     }
-    if (Array.isArray(parsedJson.customModels)) {
-      configForWrite.customModels = parsedJson.customModels;
+    if (parsedExtras.data.customModels !== undefined) {
+      configForWrite.customModels = parsedExtras.data.customModels;
     }
     return configForWrite;
   } catch (error) {
@@ -1575,7 +1592,7 @@ function resolveManagedConfigKey(rawKey: string): ManagedConfigKey {
   if (isManagedConfigValueKey(key)) {
     return key;
   }
-  if (isSecretShapedEnvName(key)) {
+  if (isSecretEnvName(key)) {
     throw new Error(
       `bb-app config does not store secrets. Use "bb-app env set ${key} <value>" instead.`,
     );
@@ -2058,10 +2075,11 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
     if (sshAuthority.length === 0) {
       throw new Error("SSH target must not be empty");
     }
-    const hostId = await resolveClientSshTargetHostId({
-      ...(args.hostId !== undefined ? { requestedHostId: args.hostId } : {}),
-      serverOrigin,
-    });
+    const hostIdArgs: ResolveClientSshTargetHostIdArgs = { serverOrigin };
+    if (args.hostId !== undefined) {
+      hostIdArgs.requestedHostId = args.hostId;
+    }
+    const hostId = await resolveClientSshTargetHostId(hostIdArgs);
     const nextConfig = setClientSshTarget(
       await readClientConfig({ dataDir: args.dataDir }),
       serverOrigin,
@@ -2379,7 +2397,7 @@ export async function waitForHostDaemonStatus(
 }
 
 function toChunkString(chunk: OutputChunk): string {
-  return typeof chunk === "string" ? chunk : chunk.toString("utf8");
+  return Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
 }
 
 function createOutputBuffer(): OutputBuffer {
@@ -2648,10 +2666,13 @@ function resolveEnrollmentRequirements(
   args: ResolveEnrollmentRequirementsArgs,
 ): EnrollmentRequirements {
   const enrollKey = toOptionalString(args.env.BB_HOST_ENROLL_KEY);
-  return {
+  const requirements: EnrollmentRequirements = {
     enrolled: existsSync(join(args.context.dataDir, HOST_AUTH_FILE_NAME)),
-    ...(enrollKey !== undefined ? { enrollKey } : {}),
   };
+  if (enrollKey !== undefined) {
+    requirements.enrollKey = enrollKey;
+  }
+  return requirements;
 }
 
 function resolveHostDaemonCommand(
@@ -2684,11 +2705,11 @@ export async function createHostDaemonJoinEnv(
       throw new Error("--host-id is required when --join-code is supplied");
     }
     await writeManagedConfig({
-      config: {
-        serverUrl: args.serverUrl,
-        ...(machineCredential !== undefined ? { machineCredential } : {}),
-        ...(connectMachineId !== undefined ? { connectMachineId } : {}),
-      },
+      config: createHostDaemonJoinConfig(
+        args.serverUrl,
+        machineCredential,
+        connectMachineId,
+      ),
       dataDir: args.context.dataDir,
     });
     return {
@@ -2712,11 +2733,11 @@ export async function createHostDaemonJoinEnv(
   }
 
   await writeManagedConfig({
-    config: {
-      serverUrl: args.serverUrl,
-      ...(machineCredential !== undefined ? { machineCredential } : {}),
-      ...(connectMachineId !== undefined ? { connectMachineId } : {}),
-    },
+    config: createHostDaemonJoinConfig(
+      args.serverUrl,
+      machineCredential,
+      connectMachineId,
+    ),
     dataDir: args.context.dataDir,
   });
 
@@ -3300,7 +3321,7 @@ export async function runBbApp(
     return;
   }
 
-  const runtime = await resolveBbAppRuntimeState({
+  const runtimeArgs: ResolveBbAppRuntimeStateArgs = {
     entrypointUrl: import.meta.url,
     env: process.env,
     homeDir: homedir(),
@@ -3311,10 +3332,11 @@ export async function runBbApp(
       command.kind === "host-daemon"
         ? "managed"
         : "local",
-    ...(options.worktreePolicy === null
-      ? {}
-      : { worktreePolicy: options.worktreePolicy }),
-  });
+  };
+  if (options.worktreePolicy !== null) {
+    runtimeArgs.worktreePolicy = options.worktreePolicy;
+  }
+  const runtime = await resolveBbAppRuntimeState(runtimeArgs);
 
   if (command.kind === "start") {
     const configuredServerBindHost = runtime.serverEnv.BB_SERVER_BIND_HOST;
@@ -3363,14 +3385,15 @@ export async function runBbApp(
   }
 
   if (command.kind === "client") {
-    await runClientCommand({
+    const clientCommandArgs: RunClientCommandArgs = {
       args: command.args,
       dataDir: runtime.context.dataDir,
-      ...(parsedArgs.options.hostId !== undefined
-        ? { hostId: parsedArgs.options.hostId }
-        : {}),
       json: parsedArgs.options.json === true,
-    });
+    };
+    if (parsedArgs.options.hostId !== undefined) {
+      clientCommandArgs.hostId = parsedArgs.options.hostId;
+    }
+    await runClientCommand(clientCommandArgs);
     return;
   }
 
@@ -3440,16 +3463,17 @@ export async function runBbApp(
     })();
     return shutdownPromise;
   };
+  const startServerArgs: StartFullStackServerProcessArgs = {
+    context,
+    env: serverEnv,
+    outputBuffer,
+    processes,
+  };
+  if (options.beforeServerStart !== undefined) {
+    startServerArgs.beforeStart = options.beforeServerStart;
+  }
   const startServer = (): Promise<ManagedProcessRun> =>
-    startFullStackServerProcess({
-      ...(options.beforeServerStart === undefined
-        ? {}
-        : { beforeStart: options.beforeServerStart }),
-      context,
-      env: serverEnv,
-      outputBuffer,
-      processes,
-    });
+    startFullStackServerProcess(startServerArgs);
 
   const removeSignalForwarding = installTerminationSignalForwarding(
     (signal) => {

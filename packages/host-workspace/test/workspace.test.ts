@@ -935,7 +935,7 @@ describe("Workspace", () => {
       message: "real commit",
       noVerify: false,
     });
-    expect(typeof commit.commitSha).toBe("string");
+    expect(commit.commitSha).toEqual(expect.any(String));
   });
 
   it("throws a typed no_changes error when squash-merging a branch with nothing to merge", async () => {

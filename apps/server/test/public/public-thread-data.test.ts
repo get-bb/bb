@@ -18,6 +18,7 @@ import {
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
+  promptInputSchema,
   threadQueuedMessageSchema,
   threadScope,
   threadSchema,
@@ -82,7 +83,28 @@ const clientTurnRequestedDataSchema = z.object({
   senderThreadId: z.string().nullable(),
 });
 
+const storedTurnRequestSchema = z
+  .object({
+    execution: z
+      .object({
+        model: z.string().optional(),
+        serviceTier: z.string().optional(),
+      })
+      .optional(),
+    input: z.array(promptInputSchema).optional(),
+    inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
+  })
+  .passthrough();
+
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
+
+interface AttachmentInput {
+  type: "localFile";
+  path: string;
+  name: string;
+  sizeBytes: number;
+  mimeType?: string;
+}
 
 describe("public thread data routes", () => {
   it("manages sections through the canonical public route lifecycle", async () => {
@@ -667,11 +689,12 @@ describe("public thread data routes", () => {
       const prepareSpy = vi.spyOn(harness.db.$client, "prepare");
       const countFullOutlineQueries = () =>
         prepareSpy.mock.calls.filter(([source]) => {
+          const parsedSource = z.string().safeParse(source);
           return (
-            typeof source === "string" &&
-            source.includes('"created_at"') &&
-            source.includes('"data"') &&
-            source.includes("union all")
+            parsedSource.success &&
+            parsedSource.data.includes('"created_at"') &&
+            parsedSource.data.includes('"data"') &&
+            parsedSource.data.includes("union all")
           );
         }).length;
 
@@ -846,13 +869,13 @@ describe("public thread data routes", () => {
           label: "alpha.txt",
         },
       };
-      const attachmentInput = {
+      const attachmentInput: AttachmentInput = {
         type: "localFile",
         path: uploaded.path,
         name: uploaded.name,
         sizeBytes: uploaded.sizeBytes,
-        ...(uploaded.mimeType ? { mimeType: uploaded.mimeType } : {}),
       };
+      if (uploaded.mimeType) attachmentInput.mimeType = uploaded.mimeType;
 
       const createThreadResponse = await harness.app.request(
         "/api/v1/threads",
@@ -1076,8 +1099,8 @@ describe("public thread data routes", () => {
       const taskData = (
         status: "pending" | "completed",
         taskStatus: "running" | "completed",
-      ) => ({
-        item: {
+      ) => {
+        const item = {
           type: "backgroundTask" as const,
           id: "task:wf-1",
           taskType: "local_workflow",
@@ -1086,9 +1109,11 @@ describe("public thread data routes", () => {
           taskStatus,
           skipTranscript: false,
           workflowName: "fixture-mini",
-          ...(status === "completed" ? { summary: "done" } : {}),
-        },
-      });
+        };
+        return status === "completed"
+          ? { item: { ...item, summary: "done" } }
+          : { item };
+      };
 
       seedEvent(harness.deps, {
         threadId: thread.id,
@@ -1215,8 +1240,8 @@ describe("public thread data routes", () => {
         itemId: string;
         taskType: string;
         description: string;
-      }) => ({
-        item: {
+      }) => {
+        const item = {
           type: "backgroundTask" as const,
           id: args.itemId,
           taskType: args.taskType,
@@ -1224,11 +1249,11 @@ describe("public thread data routes", () => {
           status: "pending" as const,
           taskStatus: "running" as const,
           skipTranscript: false,
-          ...(args.taskType === "local_workflow"
-            ? { workflowName: "fixture-mini" }
-            : {}),
-        },
-      });
+        };
+        return args.taskType === "local_workflow"
+          ? { item: { ...item, workflowName: "fixture-mini" } }
+          : { item };
+      };
       const providerThreadId = "provider-thread-1";
       const seedClientRequest = (
         sequence: number,
@@ -3274,14 +3299,28 @@ describe("public thread data routes", () => {
           ),
         )
         .all();
-      const groupedRequestEvents = requestedEvents.filter((event) =>
-        Object.hasOwn(JSON.parse(event.data), "inputGroups"),
-      );
+      const groupedRequestEvents = requestedEvents.filter((event) => {
+        const parsed = storedTurnRequestSchema.safeParse(
+          JSON.parse(event.data),
+        );
+        return parsed.success && parsed.data.inputGroups !== undefined;
+      });
       expect(groupedRequestEvents).toHaveLength(1);
-      const eventData = JSON.parse(groupedRequestEvents[0]!.data) as {
-        inputGroups: { text: string; type: "text" }[][];
-      };
-      expect(eventData.inputGroups.map((group) => group[0]?.text)).toEqual([
+      const groupedRequestEvent = groupedRequestEvents.at(0);
+      if (groupedRequestEvent === undefined) {
+        throw new Error("Expected one grouped turn request event");
+      }
+      const eventData = storedTurnRequestSchema.parse(
+        JSON.parse(groupedRequestEvent.data),
+      );
+      if (eventData.inputGroups === undefined) {
+        throw new Error("Expected grouped input data");
+      }
+      expect(
+        eventData.inputGroups.map((group) =>
+          group[0]?.type === "text" ? group[0].text : undefined,
+        ),
+      ).toEqual([
         "First grouped queued message",
         "Second grouped queued message",
       ]);
@@ -3485,14 +3524,17 @@ describe("public thread data routes", () => {
         .orderBy(events.sequence)
         .all()
         .find((event) => {
-          const parsed = JSON.parse(event.data) as {
-            execution?: { model?: string; serviceTier?: string };
-          };
-          return parsed.execution?.model === "gpt-5";
+          const parsed = storedTurnRequestSchema.safeParse(
+            JSON.parse(event.data),
+          );
+          return parsed.success && parsed.data.execution?.model === "gpt-5";
         });
       expect(requestedEvent).toBeTruthy();
+      if (requestedEvent === undefined) {
+        throw new Error("Expected a client turn request event");
+      }
       expect(
-        requestedEvent ? JSON.parse(requestedEvent.data) : null,
+        storedTurnRequestSchema.parse(JSON.parse(requestedEvent.data)),
       ).toMatchObject({
         execution: {
           model: "gpt-5",
@@ -3764,15 +3806,20 @@ describe("public thread data routes", () => {
         )
         .get();
       expect(requestedEvent).toBeTruthy();
-      const requestedData = JSON.parse(requestedEvent?.data ?? "{}") as {
-        inputGroups?: { text: string; type: "text" }[][];
-      };
-      expect(requestedData.inputGroups?.map((group) => group[0]?.text)).toEqual(
-        [
-          "First reprovision grouped message",
-          "Second reprovision grouped message",
-        ],
+      if (requestedEvent === undefined) {
+        throw new Error("Expected a client turn request event");
+      }
+      const requestedData = storedTurnRequestSchema.parse(
+        JSON.parse(requestedEvent.data),
       );
+      expect(
+        requestedData.inputGroups?.map((group) =>
+          group[0]?.type === "text" ? group[0].text : undefined,
+        ),
+      ).toEqual([
+        "First reprovision grouped message",
+        "Second reprovision grouped message",
+      ]);
 
       await reportQueuedCommandSuccess(harness, provisionCommand, {
         path: "/tmp/grouped-queued-message-reprovision",
@@ -3912,10 +3959,12 @@ describe("public thread data routes", () => {
         .all()
         .at(-1);
       expect(requestedEvent).toBeTruthy();
-      const requestedData = JSON.parse(requestedEvent?.data ?? "{}") as {
-        input?: unknown;
-        inputGroups?: unknown;
-      };
+      if (requestedEvent === undefined) {
+        throw new Error("Expected a client turn request event");
+      }
+      const requestedData = storedTurnRequestSchema.parse(
+        JSON.parse(requestedEvent.data),
+      );
       expect(requestedData.input).toEqual(expectedInput);
       expect(requestedData.inputGroups).toEqual(expectedInputGroups);
     });

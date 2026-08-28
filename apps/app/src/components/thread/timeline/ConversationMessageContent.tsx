@@ -205,7 +205,7 @@ function CollapsibleMessageText({
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
   const showMutedPrefix =
-    typeof mutePrefixLength === "number" &&
+    mutePrefixLength !== undefined &&
     mutePrefixLength > 0 &&
     mutePrefixLength < text.length;
   const prefixText = showMutedPrefix ? text.slice(0, mutePrefixLength) : null;

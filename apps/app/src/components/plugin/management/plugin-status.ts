@@ -15,10 +15,7 @@ type PluginRuntimeStatusDefinition = Omit<
   "condition" | "recovery"
 >;
 
-const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
-  PluginRuntimeStatus,
-  PluginRuntimeStatusDefinition | null
-> = {
+const PLUGIN_RUNTIME_STATUS_DEFINITIONS = {
   running: null,
   error: { icon: "CircleX", label: "Failed", tone: "error" },
   incompatible: {
@@ -34,7 +31,7 @@ const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
     tone: "warning",
   },
   degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
-};
+} satisfies Record<PluginRuntimeStatus, PluginRuntimeStatusDefinition | null>;
 
 function pluginRuntimeRecovery(plugin: PluginListItem): string {
   switch (plugin.status) {

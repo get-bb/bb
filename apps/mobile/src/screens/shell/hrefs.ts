@@ -10,13 +10,11 @@ function untypedHref(pathname: string, params?: HrefParams): Href {
         ),
       )
     : undefined;
-  const href: { pathname: string; params?: Record<string, string> } = {
-    pathname,
-    ...(definedParams && Object.keys(definedParams).length > 0
-      ? { params: definedParams }
-      : {}),
-  };
-  return href as Href;
+  const href: Href = { pathname };
+  if (definedParams && Object.keys(definedParams).length > 0) {
+    href.params = definedParams;
+  }
+  return href;
 }
 
 export function firstParam(value: string | string[] | undefined): string {
@@ -25,7 +23,7 @@ export function firstParam(value: string | string[] | undefined): string {
 }
 
 export function rawPathHref(path: string): Href {
-  return path as Href;
+  return path;
 }
 
 export function webViewShellHref(

@@ -1,17 +1,14 @@
 import type { ExperimentalAiServiceErrorCode } from "@get-bb/plugin-sdk/ai-services";
 import { ApiError } from "../../errors.js";
 
-export const AI_SERVICE_ERROR_CODES: Record<
-  ExperimentalAiServiceErrorCode,
-  string
-> = {
+export const AI_SERVICE_ERROR_CODES = {
   timeout: "ai_service_timeout",
   rate_limited: "ai_service_rate_limited",
   service_unavailable: "ai_service_unavailable",
   auth_required: "ai_service_auth_required",
   request_failed: "ai_service_request_failed",
   invalid_response: "ai_service_invalid_response",
-};
+} satisfies Record<ExperimentalAiServiceErrorCode, string>;
 
 const TRANSIENT_CODES = new Set<ExperimentalAiServiceErrorCode>([
   "timeout",

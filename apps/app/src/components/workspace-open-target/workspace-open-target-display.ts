@@ -3,10 +3,7 @@ import type {
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 
-const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
-  string,
-  string | undefined
-> = {
+const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS = {
   "android-studio": "Android Studio",
   antigravity: "Antigravity",
   bbedit: "BBEdit",
@@ -38,7 +35,10 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
 export function getWorkspaceOpenTargetFallbackLabel(
   targetId: WorkspaceOpenTargetId,
 ): string {
-  return WORKSPACE_OPEN_TARGET_FALLBACK_LABELS[targetId] ?? targetId;
+  const entry = Object.entries(WORKSPACE_OPEN_TARGET_FALLBACK_LABELS).find(
+    ([key]) => key === targetId,
+  );
+  return entry?.[1] ?? targetId;
 }
 
 export function getWorkspaceOpenTargetFallbackIcon(

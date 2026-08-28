@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
-import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
@@ -31,7 +30,7 @@ import {
 } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+const logger = testLogger;
 
 async function writeSkill(rootPath: string, name: string): Promise<string> {
   const dir = join(rootPath, name);
@@ -64,19 +63,22 @@ async function writePlugin(
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
+  const packageManifest = {
+    name: options.name,
+    version: "0.1.0",
+    bb: {
+      name: "Agent contributions fixture",
+      description: "Agent contributions plugin fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
+  };
+  if (options.bbSkills !== undefined) {
+    Object.assign(packageManifest.bb, { skills: options.bbSkills });
+  }
   await writeFile(
     join(rootDir, "package.json"),
-    JSON.stringify({
-      name: options.name,
-      version: "0.1.0",
-      bb: {
-        name: "Agent contributions fixture",
-        description: "Agent contributions plugin fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...(options.bbSkills ? { skills: options.bbSkills } : {}),
-      },
-    }),
+    JSON.stringify(packageManifest),
   );
   await writeFile(
     join(rootDir, "server.ts"),

@@ -1,4 +1,8 @@
-import type { ThreadEvent } from "@bb/domain";
+import type {
+  JsonValue,
+  ThreadEvent,
+  ThreadEventItemPresentation,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   createClaudeDeltaHarness,
@@ -6,11 +10,7 @@ import {
 } from "./delta-test-harness.js";
 import { createClaudeDeltaTranslator } from "./delta-translation.js";
 
-function toolUse(
-  id: string,
-  name: string,
-  input: unknown,
-): Record<string, unknown> {
+function toolUse(id: string, name: string, input: JsonValue) {
   return {
     type: "assistant",
     message: {
@@ -23,9 +23,9 @@ function toolUse(
 
 function toolResult(
   id: string,
-  content: unknown,
-  extra: Record<string, unknown> = {},
-): Record<string, unknown> {
+  content: JsonValue,
+  extra: Record<string, JsonValue> = {},
+) {
   return {
     type: "user",
     message: {
@@ -51,7 +51,9 @@ function completedItems(events: ThreadEvent[]) {
 
 type StartedItem = ReturnType<typeof startedItems>[number];
 
-function presentationOf(item: StartedItem | undefined): unknown {
+function presentationOf(
+  item: StartedItem | undefined,
+): ThreadEventItemPresentation | undefined {
   return item !== undefined && "presentation" in item
     ? item.presentation
     : undefined;
@@ -649,8 +651,8 @@ describe("claude item presentation", () => {
 describe("claude background-task presentation", () => {
   function taskStarted(
     taskType: string,
-    extra: Record<string, unknown> = {},
-  ): Record<string, unknown> {
+    extra: Record<string, JsonValue> = {},
+  ) {
     return {
       type: "system",
       subtype: "task_started",

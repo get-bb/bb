@@ -329,6 +329,13 @@ export function useArchivedThreads(
   const hasParent = kind === "all" ? undefined : kind === "child";
   useThreadListRealtimeSubscription({ enabled });
 
+  const queryKeyFilters: Parameters<typeof archivedThreadsListQueryKey>[0] = {};
+  if (projectId !== undefined) {
+    queryKeyFilters.projectId = projectId;
+  }
+  if (kind !== "all") {
+    queryKeyFilters.kind = kind;
+  }
   return useInfiniteQuery<
     ThreadListResponse,
     Error,
@@ -336,19 +343,22 @@ export function useArchivedThreads(
     ReturnType<typeof archivedThreadsListQueryKey>,
     number
   >({
-    queryKey: archivedThreadsListQueryKey({
-      ...(projectId ? { projectId } : {}),
-      ...(kind !== "all" ? { kind } : {}),
-    }),
-    queryFn: ({ pageParam, signal }) =>
-      sdk.threads.list({
-        ...(projectId ? { projectId } : {}),
-        ...(hasParent !== undefined ? { hasParent } : {}),
+    queryKey: archivedThreadsListQueryKey(queryKeyFilters),
+    queryFn: ({ pageParam, signal }) => {
+      const request: Parameters<typeof sdk.threads.list>[0] = {
         archived: true,
         limit: ARCHIVED_THREADS_PAGE_SIZE,
         offset: pageParam,
         signal,
-      }),
+      };
+      if (projectId !== undefined) {
+        request.projectId = projectId;
+      }
+      if (hasParent !== undefined) {
+        request.hasParent = hasParent;
+      }
+      return sdk.threads.list(request);
+    },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length < ARCHIVED_THREADS_PAGE_SIZE) {
@@ -766,12 +776,15 @@ export function useThreadStorageFiles(
     queryKey: threadStorageFilesQueryKey(id, listOptions),
     queryFn: ({ signal }) => {
       const query = listOptions.query?.trim() ?? "";
-      return sdk.threads.storageFiles({
+      const request: Parameters<typeof sdk.threads.storageFiles>[0] = {
         limit: String(listOptions.limit),
-        ...(query.length > 0 ? { query } : {}),
         threadId: requireThreadId(id, "useThreadStorageFiles"),
         signal,
-      });
+      };
+      if (query.length > 0) {
+        request.query = query;
+      }
+      return sdk.threads.storageFiles(request);
     },
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
@@ -806,14 +819,17 @@ export function useThreadStoragePaths(
     queryKey: threadStoragePathsQueryKey(id, listOptions),
     queryFn: ({ signal }) => {
       const query = listOptions.query?.trim() ?? "";
-      return sdk.threads.storagePaths({
+      const request: Parameters<typeof sdk.threads.storagePaths>[0] = {
         includeDirectories: listOptions.includeDirectories ? "true" : "false",
         includeFiles: listOptions.includeFiles ? "true" : "false",
         limit: String(listOptions.limit),
-        ...(query.length > 0 ? { query } : {}),
         threadId: requireThreadId(id, "useThreadStoragePaths"),
         signal,
-      });
+      };
+      if (query.length > 0) {
+        request.query = query;
+      }
+      return sdk.threads.storagePaths(request);
     },
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
@@ -909,18 +925,19 @@ async function fetchThreadTimeline({
   const queryKey = threadTimelineQueryKey(threadId);
   const previous = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
   const segmentLimit = resolveThreadTimelineSegmentLimit();
-  const pageArgs =
-    segmentLimit === undefined ? {} : { segmentLimit: String(segmentLimit) };
-  const response = await sdk.threads.timeline({
+  const pageArgs: Parameters<typeof sdk.threads.timeline>[0] = {
     threadId,
     signal,
-    ...pageArgs,
-    ...(previous?.maxSeq !== undefined
-      ? { afterSequence: String(previous.maxSeq) }
-      : {}),
-  });
+  };
+  if (segmentLimit !== undefined) {
+    pageArgs.segmentLimit = String(segmentLimit);
+  }
+  if (previous?.maxSeq !== undefined) {
+    pageArgs.afterSequence = String(previous.maxSeq);
+  }
+  const response = await sdk.threads.timeline(pageArgs);
   return mergeThreadTimelineDelta(previous, response, () =>
-    sdk.threads.timeline({ threadId, signal, ...pageArgs }),
+    sdk.threads.timeline({ ...pageArgs, afterSequence: undefined }),
   );
 }
 
@@ -944,9 +961,7 @@ export function useThreadTimeline(
     },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
-    ...(options?.staleTime === undefined
-      ? {}
-      : { staleTime: options.staleTime }),
+    staleTime: options?.staleTime,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
@@ -973,9 +988,7 @@ export function useThreadConversationOutline(
     },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
-    ...(options?.staleTime === undefined
-      ? {}
-      : { staleTime: options.staleTime }),
+    staleTime: options?.staleTime,
   });
 }
 

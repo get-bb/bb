@@ -263,9 +263,9 @@ function collectTimelineRenderers(
 
 function buildSnapshot(previous: PluginSlotSnapshot): PluginSlotSnapshot {
   const pluginIds = [...registrationsByPluginId.keys()].sort();
-  const next: { -readonly [K in SlotKind]: PluginSlotSnapshot[K] } = {
+  const next = {
     ...previous,
-  };
+  } satisfies { -readonly [K in SlotKind]: PluginSlotSnapshot[K] };
   let changed = false;
   for (const kind of SLOT_KINDS) {
     const collected =

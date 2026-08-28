@@ -60,9 +60,7 @@ describe("identity", () => {
   });
 
   it("detects a non-empty host name", async () => {
-    await expect(detectHostName()).resolves.toSatisfy(
-      (value) => typeof value === "string" && value.trim().length > 0,
-    );
+    await expect(detectHostName()).resolves.toMatch(/\S/u);
   });
 
   it("does not persist BB_HOST_ID until persistHostId is called", async () => {

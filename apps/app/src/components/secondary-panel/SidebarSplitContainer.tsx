@@ -30,7 +30,6 @@ import {
   type PaneContextValue,
 } from "@/views/thread-detail/PaneContext";
 import {
-  createSidebarSplitState,
   focusSidebarPane,
   getSidebarGroupForPane,
   isCanonicalSidebarSplitState,
@@ -106,20 +105,15 @@ export function SidebarSplitContainer({
 }: SidebarSplitContainerProps) {
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const storageKey = sidebarSplitStorageKey(panelStateId);
-  const [initialStorageValue] = useState<string | null>(() =>
-    typeof window === "undefined"
-      ? null
-      : window.localStorage.getItem(storageKey),
+  const [initialStorageValue] = useState<string | null>(
+    () => globalThis.window?.localStorage.getItem(storageKey) ?? null,
   );
   const [state, setState] = useState<SidebarSplitState>(() => {
-    const restored =
-      typeof window === "undefined"
-        ? createSidebarSplitState(availableTabIds, activeTabId)
-        : parseSidebarSplitState(
-            initialStorageValue,
-            availableTabIds,
-            activeTabId,
-          );
+    const restored = parseSidebarSplitState(
+      initialStorageValue,
+      availableTabIds,
+      activeTabId,
+    );
     return setSidebarPaneMaximized(
       restored,
       isFullScreen ? restored.layout.focusedPaneId : null,

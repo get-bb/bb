@@ -105,11 +105,13 @@ export async function createTelemetryService(
         body,
         headers: { "content-type": "application/json" },
         method: "POST",
-      }).catch((error: unknown) => {
+      }).catch((error) => {
+        const telemetryError =
+          error instanceof Error ? error : new Error(String(error));
         args.logger.debug(
           {
             app_surface: appSurface,
-            err: error,
+            err: telemetryError,
             event: event.name,
           },
           "Telemetry event send failed",

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import { encodeClientTurnRequestIdNumber, type JsonValue } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -35,7 +35,15 @@ import {
 } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+// SAFETY: testLogger supplies the logger methods that the plugin service calls.
+const logger = testLogger as Pick<Logger, "debug" | "error" | "info" | "warn">;
+
+const textToolCallResponseSchema = z.object({
+  success: z.boolean(),
+  contentItems: z.array(
+    z.object({ type: z.literal("inputText"), text: z.string() }),
+  ),
+});
 
 async function writePlugin(
   dir: string,
@@ -238,12 +246,12 @@ describe("bb.agents.registerTool", () => {
     });
     expect(invalid.success).toBe(false);
     expect(invalid.contentItems[0]).toMatchObject({ type: "inputText" });
-    expect((invalid.contentItems[0] as { text: string }).text).toContain(
-      'Invalid arguments for tool "search_issues"',
-    );
-    expect((invalid.contentItems[0] as { text: string }).text).toContain(
-      "query",
-    );
+    expect(
+      textToolCallResponseSchema.parse(invalid).contentItems[0].text,
+    ).toContain('Invalid arguments for tool "search_issues"');
+    expect(
+      textToolCallResponseSchema.parse(invalid).contentItems[0].text,
+    ).toContain("query");
     expect(
       service.list().find((p) => p.id === "zodded")?.handlerStats.errorCount,
     ).toBe(0);
@@ -263,9 +271,9 @@ describe("bb.agents.registerTool", () => {
       ctx,
     });
     expect(failed.success).toBe(false);
-    expect((failed.contentItems[0] as { text: string }).text).toContain(
-      "tool boom",
-    );
+    expect(
+      textToolCallResponseSchema.parse(failed).contentItems[0].text,
+    ).toContain("tool boom");
     expect(
       service.list().find((p) => p.id === "zodded")?.handlerStats.errorCount,
     ).toBe(1);
@@ -366,7 +374,7 @@ describe("bb.agents.registerTool", () => {
     });
 
     expect(() =>
-      (api.agents.registerTool as (tool: unknown) => void)({
+      api.agents.registerTool({
         name: "bad_presentation",
         description: "Invalid presentation fixture",
         presentation: { icon: { glyph: "" } },
@@ -543,8 +551,12 @@ describe("bb.agents.experimental_registerProvider (removed in SDK 0.4.16)", () =
     await service.installPath(rootDir);
     const api = service.getApi("current-agents")!;
 
-    expect(() =>
-      Reflect.get(api.agents, "experimental_registerProvider"),
+    // SAFETY: the runtime proxy retains this removed getter to report a clear migration error.
+    const agentsWithRemovedProvider = api.agents as typeof api.agents & {
+      experimental_registerProvider: unknown;
+    };
+    expect(
+      () => agentsWithRemovedProvider.experimental_registerProvider,
     ).toThrow(REMOVED_MESSAGE);
     expect(Object.keys(api.agents).sort()).toEqual([
       "configure",
@@ -1090,7 +1102,7 @@ describe("internal tool-call dispatch to plugin tools", () => {
           status: "active",
         });
 
-        const postToolCall = (tool: string, args: unknown) =>
+        const postToolCall = (tool: string, args: JsonValue) =>
           harness.app.request("/internal/session/tool-call", {
             method: "POST",
             headers: internalAuthHeaders(harness),
@@ -1125,10 +1137,9 @@ describe("internal tool-call dispatch to plugin tools", () => {
 
         const badResponse = await postToolCall("strict_add", { a: 2 });
         expect(badResponse.status).toBe(200);
-        const bad = (await readJson(badResponse)) as {
-          success: boolean;
-          contentItems: Array<{ text: string }>;
-        };
+        const bad = textToolCallResponseSchema.parse(
+          await readJson(badResponse),
+        );
         expect(bad.success).toBe(false);
         expect(bad.contentItems[0].text).toContain(
           'Invalid arguments for tool "strict_add"',
@@ -1138,10 +1149,9 @@ describe("internal tool-call dispatch to plugin tools", () => {
           UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
           { path: environmentPath },
         );
-        const builtin = (await readJson(builtinResponse)) as {
-          success: boolean;
-          contentItems: Array<{ text: string }>;
-        };
+        const builtin = textToolCallResponseSchema.parse(
+          await readJson(builtinResponse),
+        );
         expect(builtin.success).toBe(true);
         expect(builtin.contentItems[0].text).toContain("already using");
 

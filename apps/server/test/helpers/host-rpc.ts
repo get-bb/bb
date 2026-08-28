@@ -64,13 +64,15 @@ export interface HostRpcResponder {
   unregister(): void;
 }
 
-function toErrorMessage(error: unknown): string {
+type TestRpcError = Error | string;
+
+function toErrorMessage(error: TestRpcError): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 function buildTestFailureResponse(
   request: HostDaemonOnlineRpcRequestMessage,
-  error: unknown,
+  error: TestRpcError,
 ): HostDaemonOnlineRpcResponseMessage {
   return {
     type: "host-rpc.response",
@@ -159,7 +161,10 @@ export function registerHostRpcResponder(
         try {
           response = build();
         } catch (error) {
-          response = buildTestFailureResponse(message, error);
+          response = buildTestFailureResponse(
+            message,
+            error instanceof Error ? error : String(error),
+          );
         }
         harness.hub.recordHostOnlineRpcResponse({
           message: response,
@@ -176,14 +181,24 @@ export function registerHostRpcResponder(
       try {
         handled = args.handle(message);
       } catch (error) {
-        respond(() => buildTestFailureResponse(message, error));
+        respond(() =>
+          buildTestFailureResponse(
+            message,
+            error instanceof Error ? error : String(error),
+          ),
+        );
         return;
       }
       if (handled instanceof Promise) {
         void handled.then(
           (result) => respond(() => buildHostRpcResponse(message, result)),
-          (error: unknown) =>
-            respond(() => buildTestFailureResponse(message, error)),
+          (error) =>
+            respond(() =>
+              buildTestFailureResponse(
+                message,
+                error instanceof Error ? error : String(error),
+              ),
+            ),
         );
         return;
       }

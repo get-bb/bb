@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { z } from "zod";
 import { resolveRepoRelativeFile } from "./env-file-path.js";
 
-const shapeSchema = z
+const rowMatcherSchema = z
   .object({
     kind: z.string().optional(),
     workKind: z.string().optional(),
@@ -10,29 +10,31 @@ const shapeSchema = z
     nested: z.boolean().optional(),
   })
   .strict();
-export type RowShapeSpec = z.infer<typeof shapeSchema>;
+export type RowMatcherSpec = z.infer<typeof rowMatcherSchema>;
+
+const ROW_KIND_CHANGE_KEY: "reshaped" = "reshaped";
 
 const matcherSchema = z.union([
-  z.object({ added: shapeSchema }).strict(),
-  z.object({ removed: shapeSchema }).strict(),
+  z.object({ added: rowMatcherSchema }).strict(),
+  z.object({ removed: rowMatcherSchema }).strict(),
   z
     .object({
-      changed: shapeSchema.extend({ fields: z.array(z.string()).min(1) }),
+      changed: rowMatcherSchema.extend({ fields: z.array(z.string()).min(1) }),
     })
     .strict(),
   z
     .object({
-      reshaped: z
+      [ROW_KIND_CHANGE_KEY]: z
         .object({
-          from: shapeSchema,
-          to: shapeSchema,
+          from: rowMatcherSchema,
+          to: rowMatcherSchema,
           fields: z.array(z.string()).min(1).optional(),
         })
         .strict(),
     })
     .strict(),
-  z.object({ moved: shapeSchema }).strict(),
-  z.object({ resegmented: shapeSchema }).strict(),
+  z.object({ moved: rowMatcherSchema }).strict(),
+  z.object({ resegmented: rowMatcherSchema }).strict(),
   z
     .object({ pageField: z.object({ field: z.string().min(1) }).strict() })
     .strict(),
@@ -64,11 +66,56 @@ export function resolveRowDiffClassesPath(
     : resolveRepoRelativeFile(ROW_CLASSES_FILE_ENV, value);
 }
 
-export type SnapshotRow = Record<string, unknown>;
+export type SnapshotValue =
+  | undefined
+  | string
+  | number
+  | boolean
+  | null
+  | SnapshotValue[]
+  | { [key: string]: SnapshotValue };
+
+export interface SnapshotRow {
+  [key: string]: SnapshotValue;
+}
+
+export interface SnapshotPage extends SnapshotRow {
+  rows?: SnapshotRow[];
+}
+
+export interface SnapshotVariant {
+  pages?: SnapshotPage[];
+}
 
 export interface RowSnapshotVariants {
-  variants?: Record<string, { pages?: { rows?: SnapshotRow[] }[] } | undefined>;
+  variants?: Record<string, SnapshotVariant>;
 }
+
+const snapshotJsonValueSchema: z.ZodType<SnapshotValue> = z.lazy(() =>
+  z.union([
+    z.undefined(),
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(snapshotJsonValueSchema),
+    z.record(z.string(), snapshotJsonValueSchema),
+  ]),
+);
+const snapshotJsonObjectSchema: z.ZodType<SnapshotRow> = z.record(
+  z.string(),
+  snapshotJsonValueSchema,
+);
+const snapshotPageSchema = z
+  .object({ rows: z.array(snapshotJsonObjectSchema).optional() })
+  .catchall(snapshotJsonValueSchema);
+const snapshotVariantSchema = z
+  .object({ pages: z.array(snapshotPageSchema).optional() })
+  .catchall(snapshotJsonValueSchema);
+const rowSnapshotVariantsSchema = z
+  .object({ variants: z.record(z.string(), snapshotVariantSchema).optional() })
+  .strict();
+const EMPTY_PAGE: SnapshotPage = {};
 
 export type RowChange =
   | { type: "added"; thread: string; id: string; row: SnapshotRow }
@@ -108,13 +155,13 @@ export type RowChange =
       thread: string;
       id: string;
       field: string;
-      before: unknown;
-      after: unknown;
+      before: SnapshotValue;
+      after: SnapshotValue;
     };
 
 export const CONTAINER_BOUNDS_CLASS = "container-bounds";
 
-const CONTAINER_FIELDS = ["children", "childRows"] as const;
+const CONTAINER_FIELDS = new Set(["children", "childRows"]);
 const CONTAINER_BOUND_FIELDS = new Set([
   "summaryCount",
   "sourceSeqEnd",
@@ -124,8 +171,9 @@ const CONTAINER_BOUND_FIELDS = new Set([
   "startedAt",
 ]);
 
-function str(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+function stringValue(value: SnapshotValue): string | undefined {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function ownRowId(id: string): string {
@@ -135,23 +183,26 @@ function ownRowId(id: string): string {
 }
 
 export function rowIdentity(row: SnapshotRow): string {
-  const id = str(row.id) ?? "";
+  const id = stringValue(row.id) ?? "";
   if (row.kind === "work") {
-    const key = str(row.callId) ?? str(row.itemId) ?? str(row.interactionId);
+    const key =
+      stringValue(row.callId) ??
+      stringValue(row.itemId) ??
+      stringValue(row.interactionId);
     if (key !== undefined) return `work:${key}`;
   }
-  if (row.kind === "turn") return `turn:${str(row.turnId) ?? id}`;
+  if (row.kind === "turn") return `turn:${stringValue(row.turnId) ?? id}`;
   return `${String(row.kind)}:${ownRowId(id)}`;
 }
 
-export function rowShape(row: SnapshotRow): string {
+export function rowKindLabel(row: SnapshotRow): string {
   return row.kind === "work"
     ? `${String(row.kind)}/${String(row.workKind)}`
     : String(row.kind);
 }
 
-function matchesShape(
-  spec: RowShapeSpec | undefined,
+function matchesRowSpec(
+  spec: RowMatcherSpec | undefined,
   row: SnapshotRow,
 ): boolean {
   if (!spec) return true;
@@ -161,7 +212,7 @@ function matchesShape(
   if (spec.role !== undefined && row.role !== spec.role) return false;
   if (
     spec.nested !== undefined &&
-    (str(row.id) ?? "").includes(":child:") !== spec.nested
+    (stringValue(row.id) ?? "").includes(":child:") !== spec.nested
   ) {
     return false;
   }
@@ -171,30 +222,31 @@ function matchesShape(
 function classMatches(cls: RowDiffClass, change: RowChange): boolean {
   const m = cls.match;
   if ("added" in m) {
-    return change.type === "added" && matchesShape(m.added, change.row);
+    return change.type === "added" && matchesRowSpec(m.added, change.row);
   }
   if ("removed" in m) {
-    return change.type === "removed" && matchesShape(m.removed, change.row);
+    return change.type === "removed" && matchesRowSpec(m.removed, change.row);
   }
   if ("changed" in m) {
     return (
       change.type === "changed" &&
-      matchesShape(m.changed, change.after) &&
+      matchesRowSpec(m.changed, change.after) &&
       change.fields.every((field) => m.changed.fields.includes(field))
     );
   }
   if ("reshaped" in m) {
-    const allowed = m.reshaped.fields;
+    const kindChangeMatcher = m[ROW_KIND_CHANGE_KEY];
+    const allowed = kindChangeMatcher.fields;
     return (
       change.type === "reshaped" &&
-      matchesShape(m.reshaped.from, change.before) &&
-      matchesShape(m.reshaped.to, change.after) &&
+      matchesRowSpec(kindChangeMatcher.from, change.before) &&
+      matchesRowSpec(kindChangeMatcher.to, change.after) &&
       (allowed === undefined ||
         change.fields.every((field) => allowed.includes(field)))
     );
   }
   if ("moved" in m) {
-    return change.type === "moved" && matchesShape(m.moved, change.after);
+    return change.type === "moved" && matchesRowSpec(m.moved, change.after);
   }
   if ("pageField" in m) {
     return change.type === "pageField" && change.field === m.pageField.field;
@@ -202,24 +254,24 @@ function classMatches(cls: RowDiffClass, change: RowChange): boolean {
   return (
     change.type === "resegmented" &&
     change.after.length > 0 &&
-    matchesShape(m.resegmented, change.after[0] as SnapshotRow)
+    matchesRowSpec(m.resegmented, change.after[0])
   );
 }
 
 export function describeRowChange(change: RowChange): string {
   switch (change.type) {
     case "changed":
-      return `changed ${rowShape(change.after)} [${change.fields.join(",")}]`;
+      return `changed ${rowKindLabel(change.after)} [${change.fields.join(",")}]`;
     case "reshaped":
-      return `reshaped ${rowShape(change.before)} → ${rowShape(change.after)} [${change.fields.join(",")}]`;
+      return `reshaped ${rowKindLabel(change.before)} → ${rowKindLabel(change.after)} [${change.fields.join(",")}]`;
     case "resegmented": {
       const sample = change.after[0] ?? change.before[0];
-      return `resegmented ${sample ? rowShape(sample) : "?"} ${change.before.length}→${change.after.length}`;
+      return `resegmented ${sample ? rowKindLabel(sample) : "?"} ${change.before.length}→${change.after.length}`;
     }
     case "pageField":
       return `changed page.${change.field}`;
     default:
-      return `${change.type} ${rowShape(change.type === "moved" ? change.after : change.row)}`;
+      return `${change.type} ${rowKindLabel(change.type === "moved" ? change.after : change.row)}`;
   }
 }
 
@@ -347,14 +399,19 @@ function childRowsOf(rows: readonly SnapshotRow[]): SnapshotRow[] {
   for (const row of rows) {
     for (const key of CONTAINER_FIELDS) {
       const value = row[key];
-      if (Array.isArray(value)) children.push(...(value as SnapshotRow[]));
+      if (Array.isArray(value)) {
+        children.push(...z.array(snapshotJsonObjectSchema).parse(value));
+      }
     }
   }
   return children;
 }
 
 function hasContainer(row: SnapshotRow): boolean {
-  return CONTAINER_FIELDS.some((key) => Array.isArray(row[key]));
+  for (const key of CONTAINER_FIELDS) {
+    if (Array.isArray(row[key])) return true;
+  }
+  return false;
 }
 
 function pool(
@@ -399,14 +456,14 @@ function diffRow(
   id: string,
 ): number {
   const { thread } = diff;
-  const reshaped = rowShape(a) !== rowShape(b);
+  const rowKindChanged = rowKindLabel(a) !== rowKindLabel(b);
   const fields: string[] = [];
   let boundsOnly = true;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if ((CONTAINER_FIELDS as readonly string[]).includes(key)) continue;
+    if (CONTAINER_FIELDS.has(key)) continue;
     if (JSON.stringify(a[key]) === JSON.stringify(b[key])) continue;
-    const aId = str(a.id);
-    const bId = str(b.id);
+    const aId = stringValue(a.id);
+    const bId = stringValue(b.id);
     if (
       key === "id" &&
       aId !== undefined &&
@@ -420,7 +477,7 @@ function diffRow(
     if (!CONTAINER_BOUND_FIELDS.has(key)) boundsOnly = false;
   }
   fields.sort();
-  if (reshaped) {
+  if (rowKindChanged) {
     classify(diff, {
       type: "reshaped",
       thread,
@@ -432,15 +489,15 @@ function diffRow(
       ),
     });
   }
-  const turnId = b.kind === "turn" ? str(b.turnId) : undefined;
+  const turnId = b.kind === "turn" ? stringValue(b.turnId) : undefined;
   if (turnId !== undefined) diff.turnStack.push(turnId);
   const nestedChanges = diffRows(diff, childRowsOf([b]), childRowsOf([a]));
   if (turnId !== undefined) diff.turnStack.pop();
   if (nestedChanges > 0 && turnId !== undefined) {
     diff.shared.turnsWithChildChanges.add(turnId);
   }
-  let own = reshaped ? 1 : 0;
-  if (fields.length > 0 && !reshaped) {
+  let own = rowKindChanged ? 1 : 0;
+  if (fields.length > 0 && !rowKindChanged) {
     const explainedByChildren =
       nestedChanges > 0 ||
       (turnId !== undefined &&
@@ -487,7 +544,8 @@ function diffRows(
       continue;
     }
     if (bs.length !== as.length) {
-      const turnId = as[0]?.kind === "turn" ? str(as[0].turnId) : undefined;
+      const turnId =
+        as[0]?.kind === "turn" ? stringValue(as[0].turnId) : undefined;
       if (turnId !== undefined) diff.turnStack.push(turnId);
       classify(diff, {
         type: "resegmented",
@@ -504,12 +562,10 @@ function diffRows(
       continue;
     }
     for (let index = 0; index < bs.length; index += 1) {
-      changes += diffRow(
-        diff,
-        bs[index] as SnapshotRow,
-        as[index] as SnapshotRow,
-        id,
-      );
+      const beforeRow = bs[index];
+      const afterRow = as[index];
+      if (beforeRow === undefined || afterRow === undefined) continue;
+      changes += diffRow(diff, beforeRow, afterRow, id);
     }
   }
   for (const [id, as] of afterById) {
@@ -528,8 +584,9 @@ function settleVariantDiff(diff: VariantDiff): void {
       added.delete(id);
       const pairs = Math.min(removedRows.length, addedRows.length);
       for (let index = 0; index < pairs; index += 1) {
-        const b = removedRows[index] as PooledRow;
-        const a = addedRows[index] as PooledRow;
+        const b = removedRows[index];
+        const a = addedRows[index];
+        if (b === undefined || a === undefined) continue;
         shared.movedRows.set(id, a.row);
         underTurns(diff, a.turns, () => {
           classify(diff, {
@@ -598,10 +655,12 @@ export function classifyRowSnapshotDiff(
   classes: readonly RowDiffClass[],
   report: RowDiffReport,
 ): number {
+  const parsedBefore = rowSnapshotVariantsSchema.parse(before);
+  const parsedAfter = rowSnapshotVariantsSchema.parse(after);
   const variants = [
     ...new Set([
-      ...Object.keys(before.variants ?? {}),
-      ...Object.keys(after.variants ?? {}),
+      ...Object.keys(parsedBefore.variants ?? {}),
+      ...Object.keys(parsedAfter.variants ?? {}),
     ]),
   ].sort((x, y) => (x === "nested" ? -1 : y === "nested" ? 1 : 0));
   const shared: SharedThreadState = {
@@ -623,12 +682,12 @@ export function classifyRowSnapshotDiff(
     };
     changes += diffRows(
       diff,
-      variantRows(before, variant),
-      variantRows(after, variant),
+      variantRows(parsedBefore, variant),
+      variantRows(parsedAfter, variant),
     );
     settleVariantDiff(diff);
     settleContainerBounds(diff);
-    changes += diffPageFields(diff, before, after, variant);
+    changes += diffPageFields(diff, parsedBefore, parsedAfter, variant);
   }
   return changes;
 }
@@ -644,8 +703,8 @@ function diffPageFields(
   let changes = 0;
   const pages = Math.max(beforePages.length, afterPages.length);
   for (let index = 0; index < pages; index += 1) {
-    const b = (beforePages[index] ?? {}) as Record<string, unknown>;
-    const a = (afterPages[index] ?? {}) as Record<string, unknown>;
+    const b = beforePages[index] ?? EMPTY_PAGE;
+    const a = afterPages[index] ?? EMPTY_PAGE;
     for (const field of new Set([...Object.keys(b), ...Object.keys(a)])) {
       if (field === "rows") continue;
       if (JSON.stringify(b[field]) === JSON.stringify(a[field])) continue;
@@ -718,12 +777,12 @@ export function formatRowDiffReport(
   }
   if (report.unclassified.length > 0) {
     lines.push(`UNCLASSIFIED: ${report.unclassified.length}`);
-    const byShape = new Map<string, number>();
+    const byDescription = new Map<string, number>();
     for (const change of report.unclassified) {
       const key = describeRowChange(change);
-      byShape.set(key, (byShape.get(key) ?? 0) + 1);
+      byDescription.set(key, (byDescription.get(key) ?? 0) + 1);
     }
-    for (const [key, count] of [...byShape]
+    for (const [key, count] of [...byDescription]
       .sort((x, y) => y[1] - x[1])
       .slice(0, 40)) {
       lines.push(`  ${count.toString().padStart(6)}  ${key}`);

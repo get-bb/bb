@@ -16,14 +16,15 @@ import {
 import { createAppQueryClient } from "../src/lib/query-client";
 import "./ladle.css";
 
-if (typeof window !== "undefined") {
-  const params = new URLSearchParams(window.location.search);
+const browserWindow = globalThis.window;
+if (browserWindow !== undefined) {
+  const params = new URLSearchParams(browserWindow.location.search);
   if (!params.has("theme")) {
-    const stored = window.localStorage.getItem("bb.theme");
+    const stored = browserWindow.localStorage.getItem("bb.theme");
     if (stored === "light" || stored === "dark") {
       params.set("theme", stored);
-      const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-      window.history.replaceState(null, "", next);
+      const next = `${browserWindow.location.pathname}?${params.toString()}${browserWindow.location.hash}`;
+      browserWindow.history.replaceState(null, "", next);
     }
   }
 }

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetChatGptCloudflareCookiesForTests } from "../ai/chatgpt-fetch.js";
+import type { JsonObject } from "../ai/codex-auth.js";
 import {
   __testing,
   getCodexProviderHealth,
@@ -98,7 +99,7 @@ describe("Codex credential health and usage", () => {
   const tempDirs: string[] = [];
   let homeDir: string;
 
-  function base64UrlJson(value: object): string {
+  function base64UrlJson(value: JsonObject): string {
     return Buffer.from(JSON.stringify(value)).toString("base64url");
   }
 

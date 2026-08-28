@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   promptMentionResourceSchema,
   type PromptMentionResource,
@@ -29,13 +28,10 @@ interface ParsePromptMentionClipboardElementArgs {
   element: Element;
 }
 
-const promptMentionClipboardResourcePayloadSchema = z.object({
-  resource: promptMentionResourceSchema,
-});
-
-function parseJsonAttribute(value: string): unknown | null {
+function parseJsonAttribute(value: string): PromptMentionResource | null {
   try {
-    return JSON.parse(value);
+    const result = promptMentionResourceSchema.safeParse(JSON.parse(value));
+    return result.success ? result.data : null;
   } catch {
     return null;
   }
@@ -51,9 +47,7 @@ export function promptMentionClipboardDataAttributes(
   };
 }
 
-export function promptMentionClipboardContent(
-  resource: PromptMentionResource,
-): { text: string; html: string } {
+export function promptMentionClipboardContent(resource: PromptMentionResource) {
   const serializedText = serializedTextForPromptMentionResource(resource);
   const element = document.createElement("span");
   for (const [name, value] of Object.entries(
@@ -143,14 +137,11 @@ export function parsePromptMentionClipboardElement({
   }
 
   const parsedResource = parseJsonAttribute(resourceJson);
-  const result = promptMentionClipboardResourcePayloadSchema.safeParse({
-    resource: parsedResource,
-  });
-  if (!result.success) {
+  if (parsedResource === null) {
     return null;
   }
   const normalizedSerializedText = serializedTextForClipboardPayload(
-    result.data.resource,
+    parsedResource,
     serializedText,
   );
   if (normalizedSerializedText === null) {
@@ -158,7 +149,7 @@ export function parsePromptMentionClipboardElement({
   }
 
   return {
-    resource: result.data.resource,
+    resource: parsedResource,
     serializedText: normalizedSerializedText,
   };
 }

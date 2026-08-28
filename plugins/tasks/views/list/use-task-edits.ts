@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Task } from "../../shared/contract.js";
 import { useTasksRpc } from "../../shell/data.js";
 import {
@@ -17,6 +17,8 @@ interface ListTaskEditController {
   edit: (task: Task, patch: TaskEdit) => void;
 }
 
+type TaskEditRejection = Error | string;
+
 export function useListTaskEdits(
   serverTasks: readonly Task[] | undefined,
   onError: (message: string) => void,
@@ -24,18 +26,24 @@ export function useListTaskEdits(
   const rpc = useTasksRpc();
   const [entries, setEntries] = useState<TaskEntries>(() => new Map());
   const genRef = useRef(0);
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
-
-  useEffect(() => {
-    if (serverTasks === undefined) return;
-    setEntries((prev) => reconcileEntries(prev, serverTasks));
-  }, [serverTasks]);
+  const visibleEntries = useMemo(
+    () =>
+      serverTasks === undefined
+        ? entries
+        : reconcileEntries(entries, serverTasks),
+    [entries, serverTasks],
+  );
 
   const edit = useCallback(
     (task: Task, patch: TaskEdit) => {
       const gen = (genRef.current += 1);
-      setEntries((prev) => beginEdit(prev, task.id, patch, gen));
+      setEntries((prev) => {
+        const current =
+          serverTasks === undefined
+            ? prev
+            : reconcileEntries(prev, serverTasks);
+        return beginEdit(current, task.id, patch, gen);
+      });
 
       void rpc.call("updateTask", { taskId: task.id, ...patch }).then(
         (result) => {
@@ -45,21 +53,19 @@ export function useListTaskEdits(
             );
           } else {
             setEntries((prev) => settleFailure(prev, task.id, patch, gen));
-            onErrorRef.current(result.error.message);
+            onError(result.error.message);
           }
         },
-        (error: unknown) => {
+        (error: TaskEditRejection) => {
           setEntries((prev) => settleFailure(prev, task.id, patch, gen));
-          onErrorRef.current(
-            error instanceof Error ? error.message : String(error),
-          );
+          onError(error instanceof Error ? error.message : String(error));
         },
       );
     },
-    [rpc],
+    [onError, rpc, serverTasks],
   );
 
-  const pending = useMemo(() => pendingIds(entries), [entries]);
+  const pending = useMemo(() => pendingIds(visibleEntries), [visibleEntries]);
 
-  return { entries, pending, edit };
+  return { entries: visibleEntries, pending, edit };
 }

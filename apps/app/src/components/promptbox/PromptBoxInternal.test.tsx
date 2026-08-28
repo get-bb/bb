@@ -4049,7 +4049,12 @@ describe("voice recording escape", () => {
 
     const dismiss = vi.fn();
     const onWindowEscape = (event: Event) => {
-      if ((event as KeyboardEvent).key === "Escape") dismiss();
+      if (
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          event as KeyboardEvent
+        ).key === "Escape"
+      )
+        dismiss();
     };
     window.addEventListener("keydown", onWindowEscape);
     const event = pressEscape();

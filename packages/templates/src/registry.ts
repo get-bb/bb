@@ -22,7 +22,7 @@ function isTemplateId(value: string): value is TemplateId {
 }
 
 function isTemplateKind(value: string): value is TemplateKind {
-  return (TEMPLATE_KINDS as readonly string[]).includes(value);
+  return TEMPLATE_KINDS.some((kind) => kind === value);
 }
 
 function decodeTemplateDefinitions(): Record<TemplateId, TemplateDefinition> {
@@ -33,15 +33,17 @@ function decodeTemplateDefinitions(): Record<TemplateId, TemplateDefinition> {
     if (!isTemplateKind(definition.kind)) {
       throw new Error(`Unknown generated template kind: ${definition.kind}`);
     }
-    return [
+    const entry: [TemplateId, TemplateDefinition] = [
       definition.id,
       {
         ...definition,
         id: definition.id,
         kind: definition.kind,
       },
-    ] as const;
+    ];
+    return entry;
   });
+  // SAFETY: Every generated template ID enters the record before this return.
   return Object.fromEntries(entries) as Record<TemplateId, TemplateDefinition>;
 }
 

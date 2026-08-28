@@ -15,7 +15,7 @@ export interface CookieStoreLike {
     url: string,
     cookie: SessionCookieSpec,
     useWebKit: boolean,
-  ): Promise<unknown>;
+  ): Promise<boolean | void>;
 }
 
 function cookieDomainMatches(domain: string, host: string): boolean {

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { useMemo, type ComponentProps, type ReactNode } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  type ComponentProps,
+} from "react";
+import { createPortal } from "react-dom";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -15,7 +21,19 @@ import {
   getPromptDraftAccessor,
   usePromptDraftStorage,
 } from "@/hooks/usePromptDraftStorage";
-import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
+import { ThreadDetailSecondaryContent as ThreadDetailSecondaryContentSurface } from "./ThreadDetailSecondaryContent";
+import {
+  SecondaryPanelLayout,
+  type SecondaryPanelLayoutDependencies,
+} from "@/components/secondary-panel/SecondaryPanelLayout";
+import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { useThreads } from "@/hooks/queries/thread-queries";
+import {
+  Panel,
+  PanelGroup,
+  type ImperativePanelGroupHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
 import {
   DefaultPaneContextProvider,
   PaneContext,
@@ -24,158 +42,144 @@ import {
 } from "./PaneContext";
 
 type ThreadDetailSecondaryContentProps = ComponentProps<
-  typeof ThreadDetailSecondaryContent
+  typeof ThreadDetailSecondaryContentSurface
+>;
+type ThreadSecondaryPanelProps = ComponentProps<
+  (typeof import("@/components/secondary-panel/ThreadSecondaryPanel"))["ThreadSecondaryPanel"]
+>;
+type RenderBrowserDeck = NonNullable<
+  ThreadSecondaryPanelProps["renderBrowserDeck"]
 >;
 
 const secondaryPanelMockState = vi.hoisted(() => ({
-  renderBrowserDeck: undefined as
-    | ((
-        activeBrowserTabId: string,
-        pane: {
-          isFocused: boolean;
-          onFocusPane: () => void;
-        },
-      ) => ReactNode)
-    | undefined,
+  renderBrowserDeck: vi.fn<RenderBrowserDeck>(),
 }));
 
-vi.mock("@/lib/bb-desktop", () => ({
-  DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
-  getBbDesktopInfo: () => null,
-  shouldReserveMacosTrafficLights: () => false,
-  shouldUseMacosDesktopChrome: () => false,
-}));
+const emptyThreadsQueryResult: ReturnType<typeof useThreads> = {
+  data: [],
+  dataUpdatedAt: 0,
+  error: null,
+  errorUpdateCount: 0,
+  errorUpdatedAt: 0,
+  failureCount: 0,
+  failureReason: null,
+  fetchStatus: "idle",
+  isError: false,
+  isEnabled: true,
+  isFetched: true,
+  isFetchedAfterMount: true,
+  isFetching: false,
+  isInitialLoading: false,
+  isLoading: false,
+  isLoadingError: false,
+  isPending: false,
+  isPlaceholderData: false,
+  isRefetchError: false,
+  isRefetching: false,
+  isPaused: false,
+  isStale: false,
+  isSuccess: true,
+  promise: Promise.resolve([]),
+  refetch: async () => emptyThreadsQueryResult,
+  status: "success",
+};
+const useThreadsMock = vi.fn<typeof useThreads>(() => emptyThreadsQueryResult);
+const timelinePaneRenders = vi.fn();
 
-vi.mock("@/components/ui/sidebar.js", () => ({
-  useOptionalIsSidebarShowing: () => true,
-}));
-
-const { useThreadsMock } = vi.hoisted(() => ({
-  useThreadsMock: vi.fn((..._args: unknown[]) => ({ data: [] })),
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: useThreadsMock,
-}));
-
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 50,
-}));
-
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    { children?: ReactNode }
-  >(({ children }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({ getLayout: () => [50, 50], setLayout: () => {} }),
-      [],
-    );
-    return React.createElement(
-      "div",
-      { "data-testid": "panel-group" },
-      children,
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", { "data-testid": "panel" }, children);
-
-  return { Panel, PanelGroup };
+const TestPanelGroup = forwardRef<
+  ImperativePanelGroupHandle,
+  ComponentProps<typeof PanelGroup>
+>(({ children }, ref) => {
+  useImperativeHandle(
+    ref,
+    () => ({
+      getId: () => "panel-group",
+      getLayout: () => [50, 50],
+      setLayout: () => {},
+    }),
+    [],
+  );
+  return <div data-testid="panel-group">{children}</div>;
 });
-
-vi.mock(
-  "@/components/secondary-panel/ThreadMetadataContent",
-  async (importOriginal) => {
-    const React = await import("react");
-    const actual =
-      await importOriginal<
-        typeof import("@/components/secondary-panel/ThreadMetadataContent")
-      >();
-
-    return {
-      ...actual,
-      ThreadMetadataCard: ({
-        children,
-      }: ComponentProps<typeof actual.ThreadMetadataCard>) =>
-        React.createElement(
-          "div",
-          { "data-testid": "metadata-card" },
-          children,
-        ),
-      ThreadMetadataContent: (
-        _props: ComponentProps<typeof actual.ThreadMetadataContent>,
-      ) => React.createElement("div", { "data-testid": "metadata-content" }),
-      hasAnyThreadMetadata: () => false,
-    };
-  },
-);
-
-vi.mock(
-  "@/components/secondary-panel/ThreadSecondaryPanel",
-  async (importOriginal) => {
-    const React = await import("react");
-    const actual =
-      await importOriginal<
-        typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
-      >();
-
-    const ThreadSecondaryPanel = ({
+const TestPanel = forwardRef<
+  ImperativePanelHandle,
+  ComponentProps<typeof Panel>
+>(({ children }, _ref) => <div data-testid="panel">{children}</div>);
+const TestResponsiveDrawerShell = ({
+  children,
+  open,
+}: Parameters<SecondaryPanelLayoutDependencies["ResponsiveDrawerShell"]>[0]) =>
+  createPortal(
+    <div data-open={String(open)} data-testid="responsive-drawer-shell">
+      {children}
+    </div>,
+    document.body,
+  );
+const TestSecondaryPanel = ({
+  renderBrowserDeck,
+  inlinePanelToggle,
+  metadataContent,
+  renderAsDrawer,
+}: ComponentProps<
+  (typeof import("@/components/secondary-panel/ThreadSecondaryPanel"))["ThreadSecondaryPanel"]
+>) => {
+  if (renderBrowserDeck === undefined) {
+    secondaryPanelMockState.renderBrowserDeck.mockReset();
+  } else {
+    secondaryPanelMockState.renderBrowserDeck.mockImplementation(
       renderBrowserDeck,
-      inlinePanelToggle,
-      metadataContent,
-      renderAsDrawer,
-    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) => {
-      secondaryPanelMockState.renderBrowserDeck = renderBrowserDeck;
-      return React.createElement(
-        "section",
-        {
-          "data-inline-panel-toggle": inlinePanelToggle,
-          "data-testid": renderAsDrawer
-            ? "drawer-secondary-panel"
-            : "inline-secondary-panel",
-        },
-        metadataContent,
-      );
-    };
-
-    return { ...actual, ThreadSecondaryPanel };
-  },
-);
-
-const { timelinePaneRenders } = vi.hoisted(() => ({
-  timelinePaneRenders: vi.fn(),
-}));
-
-vi.mock("./ThreadTimelinePane", async (importOriginal) => {
-  const React = await import("react");
-  const actual = await importOriginal<typeof import("./ThreadTimelinePane")>();
-
-  const ThreadTimelinePane = ({
-    footer,
-    threadId,
-  }: ComponentProps<typeof actual.ThreadTimelinePane>) => {
-    timelinePaneRenders();
-    return React.createElement(
-      "div",
-      {
-        "data-testid": "thread-timeline-pane",
-        "data-thread-id": threadId,
-      },
-      footer,
     );
-  };
+  }
+  return (
+    <section
+      data-inline-panel-toggle={inlinePanelToggle}
+      data-testid={
+        renderAsDrawer ? "drawer-secondary-panel" : "inline-secondary-panel"
+      }
+    >
+      <div data-testid="metadata-card">{metadataContent}</div>
+    </section>
+  );
+};
+const TestTimelinePane = ({
+  footer,
+  threadId,
+}: ComponentProps<typeof ThreadTimelinePane>) => {
+  timelinePaneRenders();
+  return (
+    <div data-testid="thread-timeline-pane" data-thread-id={threadId}>
+      {footer}
+    </div>
+  );
+};
+const TestMetadataContent = () => <div data-testid="metadata-content" />;
+const TestHasMetadata = () => false;
 
-  return { ...actual, ThreadTimelinePane };
-});
+function TestThreadDetailSecondaryContent(
+  props: ThreadDetailSecondaryContentProps,
+) {
+  return (
+    <ThreadDetailSecondaryContentSurface
+      {...props}
+      dependencies={{
+        LazyThreadSecondaryPanel: TestSecondaryPanel,
+        SecondaryPanelLayout,
+        ThreadMetadataContent: TestMetadataContent,
+        ThreadTimelinePane: TestTimelinePane,
+        hasAnyThreadMetadata: TestHasMetadata,
+        useThreads: useThreadsMock,
+        secondaryPanelLayoutDependencies: {
+          Panel: TestPanel,
+          PanelGroup: TestPanelGroup,
+          ResponsiveDrawerShell: TestResponsiveDrawerShell,
+          dispatchBrowserViewBoundsSync: vi.fn(),
+        },
+      }}
+    />
+  );
+}
+
+const ThreadDetailSecondaryContent = TestThreadDetailSecondaryContent;
 
 const noop = () => {};
 let publishedHostedPanel: PaneSecondaryPanelViewModel | null = null;
@@ -221,7 +225,7 @@ function FooterComposerDraftProbe() {
 }
 
 function makeThread(): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     archivedAt: null,
     createdAt: 0,
     deletedAt: null,
@@ -257,31 +261,32 @@ function createProps(
     isConversationCollapsed,
     isMetadataLoading,
     isSecondaryPanelOpen: true,
-    metadata: {
-      canAssignToParent: false,
-      canTakeOverThread: false,
-      environment: null,
-      environmentDisplayHost: { locality: "local", identity: null },
-      isLoadingMergeBaseBranchOptions: false,
-      mergeBaseBranchOptions: undefined,
-      onAssignParent: noop,
-      onParentSelectorOpenChange: noop,
-      onRetryParentThreads: noop,
-      onMergeBaseBranchChange: noop,
-      parentThreadProjectId: null,
-      parentThreadDisplayName: null,
-      parentThreads: [],
-      isLoadingParentThreads: false,
-      isParentThreadsError: false,
-      projectId: "proj-test",
-      pullRequest: null,
-      selectedMergeBaseBranch: undefined,
-      thread: makeThread(),
-      threadSchedules: [],
-      updateThreadPending: false,
-      workspaceStatus: undefined,
-      workspaceStatusError: null,
-    } as ThreadDetailSecondaryContentProps["metadata"],
+    metadata:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+        canAssignToParent: false,
+        canTakeOverThread: false,
+        environment: null,
+        environmentDisplayHost: { locality: "local", identity: null },
+        isLoadingMergeBaseBranchOptions: false,
+        mergeBaseBranchOptions: undefined,
+        onAssignParent: noop,
+        onParentSelectorOpenChange: noop,
+        onRetryParentThreads: noop,
+        onMergeBaseBranchChange: noop,
+        parentThreadProjectId: null,
+        parentThreadDisplayName: null,
+        parentThreads: [],
+        isLoadingParentThreads: false,
+        isParentThreadsError: false,
+        projectId: "proj-test",
+        pullRequest: null,
+        selectedMergeBaseBranch: undefined,
+        thread: makeThread(),
+        threadSchedules: [],
+        updateThreadPending: false,
+        workspaceStatus: undefined,
+        workspaceStatusError: null,
+      } as ThreadDetailSecondaryContentProps["metadata"],
     onToggleConversationCollapse: noop,
     onToggleSecondaryPanel: noop,
     renderHostedPanel: (panel) => panel,
@@ -298,23 +303,27 @@ function createProps(
       onPanelFocus: noop,
       renderBrowserDeck: () => null,
     },
-    timeline: {
-      activeThinking: null,
-      hasOlderTimelineRows: false,
-      isLoadingOlderTimelineRows: false,
-      isThreadTimelinePending: false,
-      onLoadOlderRows: noop,
-      resolveMentionLink: () => null,
-      showOngoingIndicator: false,
-      stopRequestedAt: null,
-      threadId: "thread-1",
-      threadRuntimeDisplayStatus: "idle",
-      timelineError: false,
-      timelineRows: [],
-      unreadDividerAutoScroll: false,
-      unreadDividerPlacement: null,
-      workspaceRootPath: undefined,
-    } as unknown as ThreadDetailSecondaryContentProps["timeline"],
+    timeline:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+        canSpawnChild: false,
+        activeThinking: null,
+        hasOlderTimelineRows: false,
+        isLoadingOlderTimelineRows: false,
+        isThreadTimelinePending: false,
+        isStopping: false,
+        onLoadOlderRows: noop,
+        resolveMentionLink: () => null,
+        showOngoingIndicator: false,
+        stopRequestedAt: null,
+        stoppingAnchorAt: 0,
+        threadId: "thread-1",
+        threadRuntimeDisplayStatus: "idle",
+        timelineError: false,
+        timelineRows: [],
+        unreadDividerAutoScroll: false,
+        unreadDividerPlacement: null,
+        workspaceRootPath: undefined,
+      } as ThreadDetailSecondaryContentProps["timeline"],
   };
 }
 
@@ -360,7 +369,7 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
-  secondaryPanelMockState.renderBrowserDeck = undefined;
+  secondaryPanelMockState.renderBrowserDeck.mockReset();
   timelinePaneRenders.mockClear();
   useThreadsMock.mockClear();
   window.localStorage.clear();
@@ -490,10 +499,11 @@ describe("ThreadDetailSecondaryContent", () => {
     const panelGroup = screen.getByTestId("panel-group");
 
     const nextProps = createProps();
-    nextProps.timeline = {
-      ...nextProps.timeline,
-      threadId: "thread-2",
-    } as ThreadDetailSecondaryContentProps["timeline"];
+    nextProps.timeline =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+        ...nextProps.timeline,
+        threadId: "thread-2",
+      } as ThreadDetailSecondaryContentProps["timeline"];
     rerender(
       <MemoryRouter>
         <DefaultPaneContextProvider>

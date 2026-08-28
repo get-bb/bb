@@ -6,6 +6,12 @@ import { readCodexAuthCredentials } from "./codex-auth.js";
 
 const tempDirs: string[] = [];
 
+type CodexJwtValue = string | number | boolean | null | CodexJwtObject;
+
+interface CodexJwtObject {
+  [key: string]: CodexJwtValue | CodexJwtValue[];
+}
+
 async function writeApiKeyAuth(
   codexHome: string,
   apiKey: string,
@@ -70,7 +76,7 @@ it("reads ChatGPT credentials with the account id from the access token claims",
   tempDirs.push(homeDir);
   vi.stubEnv("HOME", homeDir);
   vi.stubEnv("CODEX_HOME", "");
-  const base64UrlJson = (value: object) =>
+  const base64UrlJson = (value: CodexJwtObject) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
   const accessToken = `${base64UrlJson({ alg: "none" })}.${base64UrlJson({
     exp: Math.floor(Date.now() / 1000) + 3600,

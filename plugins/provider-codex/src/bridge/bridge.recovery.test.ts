@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { jsonObjectSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import { BRIDGE_NOTIFICATION_METHODS } from "@bb/provider-bridge-protocol";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
@@ -67,7 +68,16 @@ const OK_TURN = [
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
 
-function stubFakeAppServer(script: Record<string, unknown>): void {
+interface FakeAppServerScript {
+  turns?: readonly (readonly {
+    method: string;
+    params: object;
+  }[])[];
+  turnCursorPath?: string;
+  renameEmptyRolloutFailures?: number;
+}
+
+function stubFakeAppServer(script: FakeAppServerScript): void {
   const scriptPath = join(workspaceDir, "fake-codex-script.json");
   writeFileSync(scriptPath, JSON.stringify(script), "utf8");
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
@@ -77,16 +87,18 @@ function stubFakeAppServer(script: Record<string, unknown>): void {
   );
 }
 
-function notifications(method: string): unknown[] {
+function notifications(method: string): JsonValue[] {
   return harness.messages
     .filter((message) => message.method === method)
-    .map((message) => message.params);
+    .flatMap((message) =>
+      message.params === undefined ? [] : [message.params],
+    );
 }
 
 async function waitForNotification(
   method: string,
-  predicate: (params: unknown) => boolean,
-): Promise<unknown> {
+  predicate: (params: JsonValue) => boolean,
+): Promise<JsonValue> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const found = notifications(method).find(predicate);
@@ -98,10 +110,20 @@ async function waitForNotification(
   );
 }
 
-function threadDeltas(): unknown[] {
+function parseJsonObject(value: JsonValue): JsonObject | null {
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function threadDeltas(): JsonObject[] {
   return notifications("thread/delta").flatMap((params) => {
-    const deltas = (params as { deltas?: unknown[] } | undefined)?.deltas;
-    return Array.isArray(deltas) ? deltas : [];
+    const parsedParams = parseJsonObject(params);
+    const deltas = parsedParams?.deltas;
+    if (!Array.isArray(deltas)) return [];
+    return deltas.flatMap((delta) => {
+      const parsedDelta = parseJsonObject(delta);
+      return parsedDelta === null ? [] : [parsedDelta];
+    });
   });
 }
 
@@ -159,9 +181,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
     retryable: false,
   });
   expect(
-    threadDeltas().filter(
-      (delta) => (delta as { kind?: string }).kind === "provider.error",
-    ),
+    threadDeltas().filter((delta) => delta.kind === "provider.error"),
   ).toHaveLength(1);
   expect(notifications(BRIDGE_NOTIFICATION_METHODS.sessionReplaced)).toEqual(
     [],
@@ -186,13 +206,16 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
     }),
   ]);
   await waitForNotification("thread/delta", (params) => {
-    const deltas = (params as { deltas?: unknown[] }).deltas ?? [];
-    return deltas.some(
-      (delta) =>
-        (delta as { kind?: string; status?: string }).kind ===
-          "turn.boundary" &&
-        (delta as { status?: string }).status === "completed",
-    );
+    const parsedParams = parseJsonObject(params);
+    const deltas = parsedParams?.deltas;
+    if (!Array.isArray(deltas)) return false;
+    return deltas.some((delta) => {
+      const parsedDelta = parseJsonObject(delta);
+      return (
+        parsedDelta?.kind === "turn.boundary" &&
+        parsedDelta.status === "completed"
+      );
+    });
   });
   expect(
     notifications(BRIDGE_NOTIFICATION_METHODS.providerRecovery),

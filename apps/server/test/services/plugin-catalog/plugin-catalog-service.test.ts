@@ -13,6 +13,10 @@ import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import type {
+  MarketplaceEntry,
+  MarketplaceManifest,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
@@ -31,7 +35,26 @@ const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
 );
 
-function remoteEntry(overrides: Record<string, unknown> = {}) {
+type JsonValue =
+  | boolean
+  | JsonValue[]
+  | null
+  | number
+  | string
+  | { [key: string]: JsonValue };
+
+type InstallCatalogPluginArgs = Parameters<
+  Parameters<
+    typeof createPluginCatalogService
+  >[0]["plugins"]["installCatalogPlugin"]
+>[0];
+type PluginCatalogServiceArgs = Parameters<
+  typeof createPluginCatalogService
+>[0];
+
+function remoteEntry(
+  overrides: Partial<MarketplaceEntry> = {},
+): MarketplaceEntry {
   return {
     id: "widgets",
     displayName: "Acme Widgets",
@@ -50,7 +73,7 @@ function remoteEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function manifest(plugins: unknown[]): unknown {
+function manifest(plugins: MarketplaceEntry[]): MarketplaceManifest {
   return {
     schemaVersion: 1,
     name: "bb-community",
@@ -60,7 +83,7 @@ function manifest(plugins: unknown[]): unknown {
 }
 
 function jsonResponse(
-  body: unknown,
+  body: JsonValue | MarketplaceManifest,
   headers: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(body), {
@@ -72,7 +95,7 @@ function jsonResponse(
 describe("plugin catalog service", () => {
   let db: DbConnection;
   let installedNames: string[];
-  let installedCatalogEntries: unknown[];
+  let installedCatalogEntries: InstallCatalogPluginArgs[];
 
   let dataDir: string;
 
@@ -96,7 +119,7 @@ describe("plugin catalog service", () => {
     fetch?: MarketplaceFetch;
     warn?: (message: string) => void;
   }) {
-    return createPluginCatalogService({
+    const serviceArgs: PluginCatalogServiceArgs = {
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
@@ -106,7 +129,7 @@ describe("plugin catalog service", () => {
           installedNames.push(name);
           throw new Error("installation stopped by test");
         },
-        installCatalogPlugin: async (args: unknown) => {
+        installCatalogPlugin: async (args: InstallCatalogPluginArgs) => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
@@ -115,12 +138,13 @@ describe("plugin catalog service", () => {
           detail: "no registry in this test",
         }),
       },
-      ...(options?.bundledPlugins === undefined
-        ? {}
-        : { bundledPlugins: options.bundledPlugins }),
-      ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
-      ...(options?.warn === undefined ? {} : { warn: options.warn }),
-    });
+    };
+    if (options?.bundledPlugins !== undefined) {
+      serviceArgs.bundledPlugins = options.bundledPlugins;
+    }
+    if (options?.fetch !== undefined) serviceArgs.fetch = options.fetch;
+    if (options?.warn !== undefined) serviceArgs.warn = options.warn;
+    return createPluginCatalogService(serviceArgs);
   }
 
   function registerInstalledOfficial(args: {
@@ -434,11 +458,13 @@ describe("plugin catalog service", () => {
 
     it("refuses a manifest published under another marketplace name", async () => {
       const catalog = service({
-        fetch: async () =>
-          jsonResponse({
-            ...(manifest([remoteEntry()]) as Record<string, unknown>),
+        fetch: async () => {
+          const payload = {
+            ...manifest([remoteEntry()]),
             name: "someone-else",
-          }),
+          };
+          return jsonResponse(payload);
+        },
       });
       await expect(catalog.refresh(9_000)).rejects.toThrow(/someone-else/);
       expect((await catalog.search("widgets")).length).toBe(0);
@@ -610,7 +636,7 @@ describe("plugin catalog service", () => {
 
     function fetchWith(
       stats: () => Response,
-      entries: unknown[] = [remoteEntry()],
+      entries: MarketplaceEntry[] = [remoteEntry()],
     ): MarketplaceFetch {
       return async (url) => {
         if (url === MANIFEST_URL) return jsonResponse(manifest(entries));
@@ -751,7 +777,7 @@ describe("plugin catalog service", () => {
   });
 
   describe("catalog installs", () => {
-    async function refreshedCatalog(entry: Record<string, unknown>) {
+    async function refreshedCatalog(entry: MarketplaceEntry) {
       const catalog = service({
         fetch: async (url) =>
           url === MANIFEST_URL

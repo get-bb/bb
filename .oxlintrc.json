@@ -1,7 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [],
-  "jsPlugins": ["./scripts/oxlint-plugin.mjs"],
+  "jsPlugins": [
+    "./scripts/oxlint-plugin.mjs",
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    }
+  ],
   "categories": {
     "correctness": "off"
   },
@@ -9,9 +15,36 @@
     "builtin": true
   },
   "rules": {
-    "bb/no-comments": "error"
+    "bb/no-comments": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error"
   },
   "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".bb/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
     "**/node_modules/**",
     "**/dist/**",
     "**/coverage/**",
@@ -22,7 +55,8 @@
     "apps/mobile/.expo/**",
     "packages/templates/src/generated/**",
     "packages/plugin-build/src/generated/**",
-    "packages/plugin-sdk/bundled-types/**"
+    "packages/plugin-sdk/bundled-types/**",
+    "tools/oxlint/anti-slop/**"
   ],
   "overrides": [
     {

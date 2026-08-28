@@ -20,19 +20,33 @@ import type {
   ExperimentalPermissionModePickerProps,
   ExperimentalProviderModelPickerProps,
 } from "@get-bb/plugin-sdk/app";
+import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AutomationRunStatusIndicator,
 } from "bb-plugin-automations/detail-view";
 
-vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
-  ...(await importOriginal()),
-  experimental_ProviderModelPicker: ({
-    value,
-    onChange,
-    routing,
-    disabled,
-  }: ExperimentalProviderModelPickerProps) => (
+import {
+  EMPTY_PLUGIN_UPDATE_STATE,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { PluginDetail } from "./PluginDetail";
+import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
+import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
+
+function TestProviderModelPicker({
+  value,
+  onChange,
+  routing,
+  disabled,
+}: ExperimentalProviderModelPickerProps) {
+  return (
     <button
       type="button"
       data-testid="bb-provider-model-picker"
@@ -58,13 +72,16 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
       {value.model === "claude-opus-5" ? "Opus 5" : value.model} ·{" "}
       {value.reasoningLevel}
     </button>
-  ),
-  experimental_PermissionModePicker: ({
-    providerId,
-    value,
-    onChange,
-    disabled,
-  }: ExperimentalPermissionModePickerProps) => (
+  );
+}
+
+function TestPermissionModePicker({
+  providerId,
+  value,
+  onChange,
+  disabled,
+}: ExperimentalPermissionModePickerProps) {
+  return (
     <button
       type="button"
       aria-label="Permission mode"
@@ -79,26 +96,24 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
           ? "Approve for me"
           : "Full Access"}
     </button>
-  ),
-}));
-import {
-  EMPTY_PLUGIN_UPDATE_STATE,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
-import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import {
-  resetPluginSlotStoreForTest,
-  setPluginSlotRegistrations,
-} from "@/lib/plugin-slots";
-import { PluginDetail } from "./PluginDetail";
-import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
-import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
-import { sdk } from "@/lib/sdk";
+  );
+}
+
+vi.spyOn(
+  pluginSdkApp,
+  "experimental_ProviderModelPicker",
+  "get",
+).mockReturnValue(TestProviderModelPicker);
+vi.spyOn(
+  pluginSdkApp,
+  "experimental_PermissionModePicker",
+  "get",
+).mockReturnValue(TestPermissionModePicker);
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 function renderedRecipe(container: HTMLElement): Array<[string, string]> {
@@ -696,8 +711,12 @@ describe("Skill detail recipe", () => {
       act(() => {
         for (const callback of intersectionCallbacks) {
           callback(
-            [{ isIntersecting: true } as IntersectionObserverEntry],
-            {} as IntersectionObserver,
+            [
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+                isIntersecting: true,
+              } as IntersectionObserverEntry,
+            ],
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as IntersectionObserver,
           );
         }
       });
@@ -851,33 +870,38 @@ describe("Automation detail recipe", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Next run:")).toBeNull();
 
-    const emptyRuns = screen
-      .getByText("No runs yet.")
-      .closest('[data-automation-runs-state="empty"]') as HTMLElement;
+    const emptyRuns =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen
+        .getByText("No runs yet.")
+        .closest('[data-automation-runs-state="empty"]') as HTMLElement;
     expect(emptyRuns).not.toBeNull();
 
     const savedPrompt = screen.getByRole("textbox", { name: "Saved prompt" });
     expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
     expect(savedPrompt.getAttribute("aria-disabled")).toBe("true");
-    const readOnlyPromptShell = container.querySelector(
-      '[data-automation-prompt-readonly-shell=""]',
-    ) as HTMLElement;
+    const readOnlyPromptShell =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-automation-prompt-readonly-shell=""]',
+      ) as HTMLElement;
     expect(readOnlyPromptShell.contains(savedPrompt)).toBe(true);
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
     expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
-    const disabledModelSelector = container.querySelector(
-      '[data-testid="bb-provider-model-picker"]',
-    ) as HTMLButtonElement;
-    const disabledPermissionSelector = container.querySelector(
-      '[data-testid="bb-permission-mode-picker"]',
-    ) as HTMLButtonElement;
+    const disabledModelSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-testid="bb-provider-model-picker"]',
+      ) as HTMLButtonElement;
+    const disabledPermissionSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-testid="bb-permission-mode-picker"]',
+      ) as HTMLButtonElement;
     expect(disabledModelSelector.disabled).toBe(true);
     expect(disabledPermissionSelector.disabled).toBe(true);
     expect(readOnlyPromptShell.contains(disabledModelSelector)).toBe(true);
     expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(true);
-    const readOnlyPromptFooter = container.querySelector(
-      '[data-automation-prompt-footer=""]',
-    ) as HTMLElement;
+    const readOnlyPromptFooter =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-automation-prompt-footer=""]',
+      ) as HTMLElement;
     expect(readOnlyPromptShell.contains(readOnlyPromptFooter)).toBe(true);
     const editButton = screen.getByRole("button", { name: "Edit prompt" });
     expect(editButton.querySelector('[data-icon="Edit"]')).not.toBeNull();
@@ -888,45 +912,64 @@ describe("Automation detail recipe", () => {
 
     fireEvent.click(editButton);
 
-    const promptContent = screen.getByRole("textbox", {
-      name: "Automation prompt",
-    }) as HTMLTextAreaElement;
-    const promptPanel = promptContent.closest("form") as HTMLElement;
+    const promptContent =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByRole(
+        "textbox",
+        {
+          name: "Automation prompt",
+        },
+      ) as HTMLTextAreaElement;
+    const promptPanel =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ promptContent.closest(
+        "form",
+      ) as HTMLElement;
     expect(
       container.querySelector('[data-automation-prompt-readonly-shell=""]'),
     ).toBeNull();
     expect(promptContent.value).toBe("Summarize yesterday's commits.");
     expect(promptContent.readOnly).toBe(false);
-    const promptActionRow = container.querySelector(
-      '[data-automation-prompt-action-row=""]',
-    ) as HTMLElement;
+    const promptActionRow =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-automation-prompt-action-row=""]',
+      ) as HTMLElement;
     expect(promptPanel.contains(promptActionRow)).toBe(true);
-    const promptFooter = container.querySelector(
-      '[data-automation-prompt-footer=""]',
-    ) as HTMLElement;
+    const promptFooter =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-automation-prompt-footer=""]',
+      ) as HTMLElement;
     expect(promptFooter.textContent).toContain("Local");
     expect(promptFooter.textContent).toContain("Approve for me");
     expect(
       promptFooter.querySelectorAll('[data-option-display=""]'),
     ).toHaveLength(1);
-    const accessSelector = promptFooter.querySelector(
-      '[data-testid="bb-permission-mode-picker"]',
-    ) as HTMLButtonElement;
+    const accessSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ promptFooter.querySelector(
+        '[data-testid="bb-permission-mode-picker"]',
+      ) as HTMLButtonElement;
     expect(accessSelector.disabled).toBe(false);
     expect(accessSelector.getAttribute("aria-label")).toBe("Permission mode");
     expect(promptPanel.textContent).toContain("Opus 5");
     expect(promptPanel.textContent).toContain("Claude");
-    const modelSelector = promptPanel.querySelector(
-      '[data-testid="bb-provider-model-picker"]',
-    ) as HTMLButtonElement;
+    const modelSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ promptPanel.querySelector(
+        '[data-testid="bb-provider-model-picker"]',
+      ) as HTMLButtonElement;
     expect(modelSelector.disabled).toBe(false);
     expect(modelSelector.textContent).toContain("medium");
     const savePrompt = screen.getByRole("button", { name: "Save Prompt" });
     expect(promptPanel.contains(savePrompt)).toBe(true);
     expect(savePrompt.querySelector('[data-icon="Check"]')).not.toBeNull();
-    expect((savePrompt as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        savePrompt as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     const cancelEditing = screen.getByRole("button", { name: "Cancel" });
-    expect((cancelEditing as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        cancelEditing as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     fireEvent.click(cancelEditing);
     expect(
       await screen.findByRole("textbox", { name: "Saved prompt" }),
@@ -934,16 +977,25 @@ describe("Automation detail recipe", () => {
     expect(updateAgent).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
-    const reopenedPrompt = screen.getByRole("textbox", {
-      name: "Automation prompt",
-    }) as HTMLTextAreaElement;
-    const reopenedPanel = reopenedPrompt.closest("form") as HTMLElement;
-    const reopenedModelSelector = reopenedPanel.querySelector(
-      '[data-testid="bb-provider-model-picker"]',
-    ) as HTMLButtonElement;
-    const reopenedAccessSelector = container.querySelector(
-      '[data-testid="bb-permission-mode-picker"]',
-    ) as HTMLButtonElement;
+    const reopenedPrompt =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByRole(
+        "textbox",
+        {
+          name: "Automation prompt",
+        },
+      ) as HTMLTextAreaElement;
+    const reopenedPanel =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ reopenedPrompt.closest(
+        "form",
+      ) as HTMLElement;
+    const reopenedModelSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ reopenedPanel.querySelector(
+        '[data-testid="bb-provider-model-picker"]',
+      ) as HTMLButtonElement;
+    const reopenedAccessSelector =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-testid="bb-permission-mode-picker"]',
+      ) as HTMLButtonElement;
     const reopenedSavePrompt = screen.getByRole("button", {
       name: "Save Prompt",
     });
@@ -952,10 +1004,15 @@ describe("Automation detail recipe", () => {
     });
     fireEvent.click(reopenedModelSelector);
     fireEvent.click(reopenedAccessSelector);
-    expect((reopenedSavePrompt as HTMLButtonElement).disabled).toBe(false);
     expect(
-      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
-        .disabled,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        reopenedSavePrompt as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     fireEvent.click(reopenedSavePrompt);
     expect(updateAgent).toHaveBeenCalledWith({
@@ -1022,12 +1079,14 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    const promptShell = container.querySelector(
-      '[data-promptbox-shell=""]',
-    ) as HTMLElement;
-    const promptFooter = promptShell.querySelector(
-      '[data-automation-prompt-footer=""]',
-    ) as HTMLElement;
+    const promptShell =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-promptbox-shell=""]',
+      ) as HTMLElement;
+    const promptFooter =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ promptShell.querySelector(
+        '[data-automation-prompt-footer=""]',
+      ) as HTMLElement;
     expect(promptShell.textContent).toContain("Claude");
     expect(promptShell.textContent).toContain("Opus 5");
     expect(promptFooter.textContent).toContain("bb");
@@ -1089,9 +1148,10 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[aria-label="Project"] [data-icon="Folder"]'),
     ).toBeTruthy();
-    const promptFooter = container.querySelector(
-      '[data-automation-prompt-footer=""]',
-    ) as HTMLElement;
+    const promptFooter =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
+        '[data-automation-prompt-footer=""]',
+      ) as HTMLElement;
     expect(promptFooter.textContent).toContain("Local");
     expect(
       promptFooter.querySelectorAll('[data-option-display=""]'),
@@ -1174,8 +1234,9 @@ describe("Automation detail recipe", () => {
       container.querySelector('[data-automation-script-fade="below"]'),
     ).toBeNull();
 
-    const scriptPanel = scriptScroll.parentElement
-      ?.parentElement as HTMLElement;
+    const scriptPanel =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ scriptScroll
+        .parentElement?.parentElement as HTMLElement;
     expect(scriptPanel.className).toContain("bg-background");
     expect(scriptPanel.className).not.toContain("shadow-xs");
     expect(scriptPanel.className).not.toContain("shadow-sm");
@@ -1242,9 +1303,10 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    const errorState = screen
-      .getByText("Runs unavailable.")
-      .closest('[data-automation-runs-state="error"]') as HTMLElement;
+    const errorState =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen
+        .getByText("Runs unavailable.")
+        .closest('[data-automation-runs-state="error"]') as HTMLElement;
     expect(errorState.className).not.toContain("text-destructive");
     expect(container.querySelector('[data-icon="CircleX"]')).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();

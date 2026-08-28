@@ -2,7 +2,37 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { Task } from "../../shared/contract.js";
+import type {
+  PluginRpcCallArgs,
+  StandardSchemaV1InferInput,
+  StandardSchemaV1InferOutput,
+} from "@get-bb/plugin-sdk";
+import type { TasksRpc } from "../../shell/data.js";
+import type { Preset, Task, TasksRpcContract } from "../../shared/contract.js";
+
+type TaskRpcInput<Method extends keyof TasksRpcContract> =
+  StandardSchemaV1InferInput<TasksRpcContract[Method]["input"]>;
+type TaskRpcResult<Method extends keyof TasksRpcContract> =
+  StandardSchemaV1InferOutput<TasksRpcContract[Method]["output"]>;
+type TaskRpcCallArgs<Method extends keyof TasksRpcContract> = PluginRpcCallArgs<
+  TasksRpcContract[Method]
+>;
+type TaskRpcOverrides = Partial<{
+  [Method in keyof TasksRpcContract]: (
+    input: TaskRpcInput<Method>,
+  ) => TaskRpcResult<Method> | Promise<TaskRpcResult<Method>>;
+}>;
+type CreateTaskInput = TaskRpcInput<"createTask">;
+type CreateLabelInput = TaskRpcInput<"createLabel">;
+type CreatePresetInput = TaskRpcInput<"createPreset">;
+type UpdatePresetInput = TaskRpcInput<"updatePreset">;
+type DeleteFolderInput = TaskRpcInput<"deleteFolder">;
+type CreateProjectInput = TaskRpcInput<"createProject">;
+type PresetRpcInput = CreatePresetInput | UpdatePresetInput;
+type PresetRpcCall = {
+  method: "createPreset" | "updatePreset";
+  input: PresetRpcInput;
+};
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -50,22 +80,22 @@ const project = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function createdTask(input: Record<string, unknown>): Task {
+function createdTask(input: CreateTaskInput): Task {
   return {
     id: TASK_ID,
     projectId: PROJECT_ID,
     number: 5,
     key: "TSK-5",
-    title: String(input.title),
-    description: String(input.description ?? ""),
-    status: (input.status as Task["status"]) ?? "backlog",
-    priority: (input.priority as Task["priority"]) ?? "none",
-    dueDate: (input.dueDate as string | null) ?? null,
-    parentTaskId: (input.parentTaskId as string | null) ?? null,
+    title: input.title,
+    description: input.description ?? "",
+    status: input.status ?? "backlog",
+    priority: input.priority ?? "none",
+    dueDate: input.dueDate ?? null,
+    parentTaskId: input.parentTaskId ?? null,
     position: 1,
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
-    labelIds: (input.labelIds as string[]) ?? [],
+    labelIds: input.labelIds ?? [],
   };
 }
 
@@ -82,7 +112,7 @@ describe("derivePrefix", () => {
 
 describe("NewTaskDialog", () => {
   it("creates a task in the route's project with column defaults and navigates to it", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateTaskInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -94,7 +124,7 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (input: CreateTaskInput) => {
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -126,7 +156,7 @@ describe("NewTaskDialog", () => {
   });
 
   it("keeps the dialog open and clears the draft when Create more is on", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateTaskInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -138,7 +168,7 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (input: CreateTaskInput) => {
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -151,9 +181,7 @@ describe("NewTaskDialog", () => {
     fireEvent.change(title, { target: { value: "First" } });
     fireEvent.click(slot.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(createCalls).toHaveLength(1));
-    expect((slot.getByLabelText("Task title") as HTMLInputElement).value).toBe(
-      "",
-    );
+    expect(slot.getByLabelText<HTMLInputElement>("Task title").value).toBe("");
     expect(slot.navigateCalls).toEqual([]);
   });
 
@@ -189,7 +217,7 @@ describe("NewTaskDialog", () => {
   });
 
   it("offers a compact create-label action when the query matches no label", async () => {
-    const createLabelCalls: Array<Record<string, unknown>> = [];
+    const createLabelCalls: CreateLabelInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -210,7 +238,7 @@ describe("NewTaskDialog", () => {
               },
             ],
           }),
-          createLabel: (input: Record<string, unknown>) => {
+          createLabel: (input: CreateLabelInput) => {
             createLabelCalls.push(input);
             return {
               label: {
@@ -254,6 +282,7 @@ describe("NewTaskDialog attachments", () => {
     fetchCalls.length = 0;
     failFileNames.clear();
     uploadGate = null;
+    // SAFETY: the fake preserves the global fetch signature and returns Response for every branch.
     globalThis.fetch = (async (
       input: RequestInfo | URL,
       init?: RequestInit,
@@ -293,7 +322,7 @@ describe("NewTaskDialog attachments", () => {
     sidebarSummary: () => ({ projects: [] }),
     listTasks: () => ({ tasks: [] }),
     listLabels: () => ({ labels: [] }),
-    createTask: (input: Record<string, unknown>) => ({
+    createTask: (input: CreateTaskInput) => ({
       ok: true,
       task: createdTask(input),
     }),
@@ -403,9 +432,9 @@ describe("NewTaskDialog attachments", () => {
     ).toContain("Over the 25 MB attachment limit");
 
     await slot.findByText(/Remove attachments over the 25 MB limit/);
-    const createButton = slot.getByRole("button", {
+    const createButton = slot.getByRole<HTMLButtonElement>("button", {
       name: "Create task",
-    }) as HTMLButtonElement;
+    });
     expect(createButton.disabled).toBe(true);
     fireEvent.click(createButton);
     expect(slot.navigateCalls).toEqual([]);
@@ -442,9 +471,9 @@ describe("NewTaskDialog attachments", () => {
 
     pasteFile(titleInput, new File(["y"], "late.txt", { type: "text/plain" }));
     expect(slot.queryByText("late.txt")).toBeNull();
-    const removeButton = slot.getByRole("button", {
+    const removeButton = slot.getByRole<HTMLButtonElement>("button", {
       name: "Remove slow.png",
-    }) as HTMLButtonElement;
+    });
     expect(removeButton.disabled).toBe(true);
     fireEvent.click(removeButton);
     expect(slot.getByText("slow.png")).toBeDefined();
@@ -535,7 +564,7 @@ describe("NewTaskDialog attachments", () => {
 
 const MACHINES = [{ id: "mach_1", name: "Sawyer Air" }];
 
-function presetRow(overrides: Record<string, unknown> = {}) {
+function presetRow(overrides: Partial<Preset> = {}): Preset {
   return {
     id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
     name: "FB3 BE live worktree",
@@ -556,24 +585,24 @@ function presetRow(overrides: Record<string, unknown> = {}) {
 
 describe("describePresetEnvironment", () => {
   it("summarizes worktree presets and falls back to defaults and raw ids", () => {
-    expect(describePresetEnvironment(presetRow() as never, MACHINES)).toBe(
+    expect(describePresetEnvironment(presetRow(), MACHINES)).toBe(
       "Worktree · main · Sawyer Air",
     );
     expect(
       describePresetEnvironment(
-        presetRow({ baseBranch: null, machineId: null }) as never,
+        presetRow({ baseBranch: null, machineId: null }),
         MACHINES,
       ),
     ).toBe("Worktree · default · default");
     expect(
       describePresetEnvironment(
-        presetRow({ machineId: "mach_gone" }) as never,
+        presetRow({ machineId: "mach_gone" }),
         MACHINES,
       ),
     ).toBe("Worktree · main · mach_gone");
     expect(
       describePresetEnvironment(
-        presetRow({ environmentKind: "project-default" }) as never,
+        presetRow({ environmentKind: "project-default" }),
         MACHINES,
       ),
     ).toBe("Project default");
@@ -595,14 +624,22 @@ describe("savePresetDraft", () => {
   } as const;
 
   function captureRpc() {
-    const calls: Array<{ method: string; input: unknown }> = [];
-    const rpc = {
-      call: (method: string, input: unknown) => {
+    const calls: PresetRpcCall[] = [];
+    const rpc: TasksRpc = {
+      async call<Method extends keyof TasksRpcContract>(
+        method: Method,
+        ...args: TaskRpcCallArgs<Method>
+      ) {
+        if (method !== "createPreset" && method !== "updatePreset") {
+          throw new Error(`Unexpected RPC method: ${method}`);
+        }
+        const input = args[0];
+        if (input === undefined) throw new Error("Missing RPC input");
         calls.push({ method, input });
-        return Promise.resolve({});
+        return { preset: presetRow() };
       },
     };
-    return { calls, rpc: rpc as never };
+    return { calls, rpc };
   }
 
   it("sends trimmed worktree targets on create", async () => {
@@ -619,7 +656,7 @@ describe("savePresetDraft", () => {
 
   it("nulls stale targets when the kind is project-default", async () => {
     const { calls, rpc } = captureRpc();
-    await savePresetDraft(rpc, presetRow() as never, {
+    await savePresetDraft(rpc, presetRow(), {
       ...draft,
       environmentKind: "project-default",
     });
@@ -649,8 +686,8 @@ describe("savePresetDraft", () => {
 
 describe("PresetDialog environment section", () => {
   function renderManagePresets(
-    presets: unknown[],
-    rpcOverrides: Record<string, unknown> = {},
+    presets: Preset[],
+    rpcOverrides: TaskRpcOverrides = {},
   ) {
     return renderSlot(
       app.navPanels[0]!,
@@ -677,15 +714,13 @@ describe("PresetDialog environment section", () => {
     fireEvent.click(
       slot.getByRole("button", { name: "Edit preset FB3 BE live worktree" }),
     );
-    const branch = (await slot.findByLabelText(
-      "Base branch",
-    )) as HTMLInputElement;
+    const branch = await slot.findByLabelText<HTMLInputElement>("Base branch");
     expect(branch.value).toBe("main");
     expect(branch.placeholder).toBe("project default base — leave empty");
     expect(slot.getByLabelText("Machine")).toBeDefined();
     await waitFor(() =>
       expect(
-        (slot.getByLabelText("Reasoning level") as HTMLInputElement).value,
+        slot.getByLabelText<HTMLInputElement>("Reasoning level").value,
       ).toBe("ultra"),
     );
     expect(
@@ -719,9 +754,9 @@ describe("PresetDialog environment section", () => {
   });
 
   it("saves the host picker's provider, model, reasoning, and tier together", async () => {
-    const updates: Array<Record<string, unknown>> = [];
+    const updates: UpdatePresetInput[] = [];
     const slot = renderManagePresets([presetRow()], {
-      updatePreset: (input: Record<string, unknown>) => {
+      updatePreset: (input: UpdatePresetInput) => {
         updates.push(input);
         return { preset: { ...presetRow(), ...input } };
       },
@@ -774,7 +809,7 @@ describe("Manage folders", () => {
     createdAt: "2026-07-15T00:00:00.000Z",
   };
 
-  function renderFolders(overrides: Record<string, unknown> = {}) {
+  function renderFolders(overrides: TaskRpcOverrides = {}) {
     return renderSlot(
       app.navPanels[0]!,
       { subPath: "manage" },
@@ -795,9 +830,9 @@ describe("Manage folders", () => {
   }
 
   it("deletes a folder after naming what the delete unfiles", async () => {
-    const deleteCalls: Array<Record<string, unknown>> = [];
+    const deleteCalls: DeleteFolderInput[] = [];
     const slot = renderFolders({
-      deleteFolder: (input: Record<string, unknown>) => {
+      deleteFolder: (input: DeleteFolderInput) => {
         deleteCalls.push(input);
         return {
           deleted: true,
@@ -824,13 +859,13 @@ describe("Manage folders", () => {
     const projectsLoaded = new Promise<void>((resolve) => {
       releaseProjects = resolve;
     });
-    const deleteCalls: Array<Record<string, unknown>> = [];
+    const deleteCalls: DeleteFolderInput[] = [];
     const slot = renderFolders({
       listProjects: async () => {
         await projectsLoaded;
         return { projects: [{ ...project, folderId: parentFolder.id }] };
       },
-      deleteFolder: (input: Record<string, unknown>) => {
+      deleteFolder: (input: DeleteFolderInput) => {
         deleteCalls.push(input);
         return {
           deleted: true,
@@ -888,13 +923,13 @@ describe("Manage folders", () => {
 
   it("blocks deleting on stale rows after a refresh fails", async () => {
     let projectsUnavailable = false;
-    const deleteCalls: Array<Record<string, unknown>> = [];
+    const deleteCalls: DeleteFolderInput[] = [];
     const slot = renderFolders({
       listProjects: () => {
         if (projectsUnavailable) throw new Error("projects unavailable");
         return { projects: [{ ...project, folderId: parentFolder.id }] };
       },
-      deleteFolder: (input: Record<string, unknown>) => {
+      deleteFolder: (input: DeleteFolderInput) => {
         deleteCalls.push(input);
         return { deleted: true, movedProjectIds: [], movedFolderIds: [] };
       },
@@ -969,7 +1004,7 @@ describe("Manage folders", () => {
 });
 
 describe("NewProjectDialog", () => {
-  function renderEmptyState(overrides: Record<string, unknown> = {}) {
+  function renderEmptyState(overrides: TaskRpcOverrides = {}) {
     return renderSlot(
       app.navPanels[0]!,
       { subPath: "" },
@@ -987,9 +1022,9 @@ describe("NewProjectDialog", () => {
   }
 
   it("derives the prefix from the name and creates the project", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateProjectInput[] = [];
     const slot = renderEmptyState({
-      createProject: (input: Record<string, unknown>) => {
+      createProject: (input: CreateProjectInput) => {
         createCalls.push(input);
         return { project: { ...project, ...input, id: PROJECT_ID } };
       },
@@ -998,9 +1033,7 @@ describe("NewProjectDialog", () => {
     fireEvent.change(await slot.findByPlaceholderText("e.g. Tasks Plugin"), {
       target: { value: "Home Lab" },
     });
-    expect((slot.getByPlaceholderText("TSK") as HTMLInputElement).value).toBe(
-      "HL",
-    );
+    expect(slot.getByPlaceholderText<HTMLInputElement>("TSK").value).toBe("HL");
     fireEvent.click(slot.getByRole("button", { name: "Create project" }));
     await waitFor(() => expect(createCalls).toHaveLength(1));
     expect(createCalls[0]).toMatchObject({
@@ -1021,28 +1054,26 @@ describe("NewProjectDialog", () => {
   it("flags malformed prefixes before submit", async () => {
     const slot = renderEmptyState();
     fireEvent.click(await slot.findByRole("button", { name: /New project/ }));
-    const prefix = slot.getByPlaceholderText("TSK");
+    const prefix = slot.getByPlaceholderText<HTMLInputElement>("TSK");
     fireEvent.change(prefix, { target: { value: "9x" } });
-    expect((prefix as HTMLInputElement).value).toBe("9X");
+    expect(prefix.value).toBe("9X");
     await slot.findByText(
       "Use 1–10 uppercase letters and digits, starting with a letter.",
     );
     expect(
-      (
-        slot.getByRole("button", {
-          name: "Create project",
-        }) as HTMLButtonElement
-      ).disabled,
+      slot.getByRole<HTMLButtonElement>("button", {
+        name: "Create project",
+      }).disabled,
     ).toBe(true);
   });
 
   it("links the personal project from the discovered project picker", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateProjectInput[] = [];
     const slot = renderEmptyState({
       listBbProjects: () => ({
         bbProjects: [{ id: "proj_personal", name: "Personal" }],
       }),
-      createProject: (input: Record<string, unknown>) => {
+      createProject: (input: CreateProjectInput) => {
         createCalls.push(input);
         return { project: { ...project, ...input, id: PROJECT_ID } };
       },

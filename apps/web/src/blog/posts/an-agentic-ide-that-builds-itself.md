@@ -23,12 +23,12 @@ Software now is cheaper than ever before and I think those previous assumptions 
 This is where **bb** shines. It is a full agent orchestrator with solid fundamentals. It has a beautiful timeline and works with any coding agent using your own subscriptions. But the thing that sets it apart is that you can extend it in any way you see fit. Here is **bb** the first time you open it:
 
 ![bb the first time you open it](/blog/an-agentic-ide-that-builds-itself/first-open.jpg)
-*Threads on the left! I've never seen this before.*
+_Threads on the left! I've never seen this before._
 
 Here is my **bb**:
 
 ![A customized bb with a task system inside the IDE](/blog/an-agentic-ide-that-builds-itself/custom.jpg)
-*Yes, I've cloned Linear inside of my IDE.*
+_Yes, I've cloned Linear inside of my IDE._
 
 Same install. Your imagination is the limit. Here is a set of things that people have added to **bb** all by just asking it to build it for them:
 
@@ -42,7 +42,7 @@ tweet:https://x.com/sawyerhood/status/2083215357872120216
 - **A digital audio workstation.** I have a surface that lets me upload samples and prompt agents to create code using [Strudel](https://strudel.cc/workshop/getting-started/) to do music production inside of **bb**.
 
 [![A DAW inside my agent orchestrator](/blog/an-agentic-ide-that-builds-itself/daw.jpg)](https://x.com/sawyerhood/status/2085039905529597982)
-*A DAW inside my agent orchestrator.*
+_A DAW inside my agent orchestrator._
 
 Moreover, much of the functionality that ships with **bb** was built using the same extension system that you can use to have **bb** customize itself: provider agnostic workflows, the ask user question tool, side chat, crons, inline previews, and remote access are all plugins.
 

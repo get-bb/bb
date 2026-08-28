@@ -1,5 +1,9 @@
-export function toWatchErrorMessage(error: unknown): string {
-  return error instanceof Error && error.message.trim().length > 0
+export interface WatchError {
+  message: string;
+}
+
+export function toWatchErrorMessage(error: WatchError): string {
+  return error.message.trim().length > 0
     ? error.message
     : "Unknown watch error";
 }

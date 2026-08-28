@@ -59,11 +59,7 @@ function readSubmitConfig() {
   const keyId = ios?.ascApiKeyId;
   const issuerId = ios?.ascApiKeyIssuerId;
   const appId = ios?.ascAppId;
-  if (
-    typeof keyId !== "string" ||
-    typeof issuerId !== "string" ||
-    typeof appId !== "string"
-  ) {
+  if (![keyId, issuerId, appId].every((value) => String(value) === value)) {
     throw new Error(
       "eas.json submit.production.ios needs ascApiKeyId, ascApiKeyIssuerId, and ascAppId.",
     );

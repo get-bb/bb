@@ -233,22 +233,28 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.sectionId) {
       requireThreadSection(deps, query.sectionId);
     }
-    const threads = listThreadsWithPendingInteractionState(deps.db, {
-      ...(query.projectId ? { projectId: query.projectId } : {}),
-      ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
-      ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
-      ...(query.sectionId ? { sectionId: query.sectionId } : {}),
-      ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
-      ...(query.originKind ? { originKind: query.originKind } : {}),
-      ...(query.originPluginId ? { originPluginId: query.originPluginId } : {}),
+    const listOptions: Parameters<
+      typeof listThreadsWithPendingInteractionState
+    >[1] = {
       includeHidden: query.includeHidden === "true",
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
       hasParent:
         query.hasParent === undefined ? undefined : query.hasParent === "true",
-      ...(limit !== undefined ? { limit } : {}),
-      ...(offset !== undefined ? { offset } : {}),
-    });
+    };
+    if (query.projectId) listOptions.projectId = query.projectId;
+    if (query.parentThreadId) listOptions.parentThreadId = query.parentThreadId;
+    if (query.sourceThreadId) listOptions.sourceThreadId = query.sourceThreadId;
+    if (query.sectionId) listOptions.sectionId = query.sectionId;
+    if (query.unsectioned === "true") listOptions.unsectioned = true;
+    if (query.originKind) listOptions.originKind = query.originKind;
+    if (query.originPluginId) listOptions.originPluginId = query.originPluginId;
+    if (limit !== undefined) listOptions.limit = limit;
+    if (offset !== undefined) listOptions.offset = offset;
+    const threads = listThreadsWithPendingInteractionState(
+      deps.db,
+      listOptions,
+    );
     return context.json(
       toThreadListEntryResponses(deps, { threads }) satisfies ThreadListEntry[],
     );
@@ -348,14 +354,16 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
 
     if ("model" in payload || "reasoningLevel" in payload) {
+      const executionPatch: Parameters<
+        typeof applyThreadExecutionOverride
+      >[1]["patch"] = {};
+      if ("model" in payload) executionPatch.model = payload.model;
+      if ("reasoningLevel" in payload) {
+        executionPatch.reasoningLevel = payload.reasoningLevel;
+      }
       await applyThreadExecutionOverride(deps, {
         thread,
-        patch: {
-          ...("model" in payload ? { model: payload.model } : {}),
-          ...("reasoningLevel" in payload
-            ? { reasoningLevel: payload.reasoningLevel }
-            : {}),
-        },
+        patch: executionPatch,
       });
     }
 

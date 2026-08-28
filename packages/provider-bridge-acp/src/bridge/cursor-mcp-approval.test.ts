@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   approveCursorSessionMcpServer,
   buildCursorMcpApprovalIdentifier,
@@ -10,6 +11,7 @@ import {
 import type { AcpMcpServerConfig } from "./tool-proxy-mcp.js";
 
 const tempDirs: string[] = [];
+const stringArraySchema = z.array(z.string());
 
 function makeTempDir(prefix: string): string {
   const path = mkdtempSync(join(tmpdir(), prefix));
@@ -94,16 +96,18 @@ describe("Cursor ACP session MCP approvals", () => {
     const installed = approvals.flatMap((approval) =>
       approval ? [approval] : [],
     );
-    const stored = JSON.parse(readFileSync(first.path, "utf8")) as string[];
+    const stored = stringArraySchema.parse(
+      JSON.parse(readFileSync(first.path, "utf8")),
+    );
     expect(stored[0]).toBe("user-approved-server");
     expect(stored.slice(1).sort()).toEqual(
       installed.map((approval) => approval.approval).sort(),
     );
 
     await Promise.all(installed.map(revokeCursorSessionMcpServer));
-    expect(JSON.parse(readFileSync(first.path, "utf8")) as unknown).toEqual([
-      "user-approved-server",
-    ]);
+    expect(
+      stringArraySchema.parse(JSON.parse(readFileSync(first.path, "utf8"))),
+    ).toEqual(["user-approved-server"]);
     expect(() => readFileSync(`${first.path}.bb-lock`)).toThrow();
   });
 
@@ -133,8 +137,8 @@ describe("Cursor ACP session MCP approvals", () => {
     if (existing) {
       await revokeCursorSessionMcpServer(existing);
     }
-    expect(JSON.parse(readFileSync(installed.path, "utf8")) as unknown).toEqual(
-      [installed.approval],
-    );
+    expect(
+      stringArraySchema.parse(JSON.parse(readFileSync(installed.path, "utf8"))),
+    ).toEqual([installed.approval]);
   });
 });

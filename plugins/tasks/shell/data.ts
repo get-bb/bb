@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { z } from "zod";
+import { useRealtime, useRpc, type JsonValue } from "@get-bb/plugin-sdk/app";
+import { z } from "zod";
 import { tasksRpcContract, type TasksRpcContract } from "../shared/contract.js";
 import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
 import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
@@ -17,6 +17,8 @@ export function useTasksRpc() {
 }
 
 export type TasksRpc = ReturnType<typeof useTasksRpc>;
+
+type TaskQueryFailure = Error | JsonValue | bigint | symbol | undefined;
 
 interface TaskListQuery {
   projectId?: string;
@@ -36,11 +38,17 @@ export async function listAllTasks(
   const tasks: Task[] = [];
   let cursor: string | undefined;
   do {
-    const page = await rpc.call("listTasks", {
-      ...input,
-      limit: TASKS_PAGE_MAX_LIMIT,
-      ...(cursor === undefined ? {} : { cursor }),
-    });
+    const page =
+      cursor === undefined
+        ? await rpc.call("listTasks", {
+            ...input,
+            limit: TASKS_PAGE_MAX_LIMIT,
+          })
+        : await rpc.call("listTasks", {
+            ...input,
+            limit: TASKS_PAGE_MAX_LIMIT,
+            cursor,
+          });
     tasks.push(...page.tasks);
     cursor = page.nextCursor ?? undefined;
   } while (cursor !== undefined);
@@ -61,7 +69,9 @@ function useInvalidation(
   onInvalidate: () => void,
 ): void {
   const ref = useRef({ channels, onInvalidate });
-  ref.current = { channels, onInvalidate };
+  useEffect(() => {
+    ref.current = { channels, onInvalidate };
+  }, [channels, onInvalidate]);
   const fire = useCallback((channel: InvalidationChannel) => {
     if (ref.current.channels.includes(channel)) ref.current.onInvalidate();
   }, []);
@@ -95,13 +105,20 @@ export function useTasksQuery<T>(
   const { generation, beginGenerationWork, endGenerationWork } =
     useTasksRefresh();
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
   const snapshotRef = useRef(options.snapshot);
-  snapshotRef.current = options.snapshot;
+  useEffect(() => {
+    snapshotRef.current = options.snapshot;
+  }, [options.snapshot]);
+  const depsKey = JSON.stringify(deps);
   const [state, setState] = useState<{
     data: T | undefined;
     error: string | null;
     isLoading: boolean;
+    resolvedDepsKey: string;
+    resolvedGeneration: number;
   }>(() => ({
     data:
       options.snapshot === undefined
@@ -109,12 +126,13 @@ export function useTasksQuery<T>(
         : readQuerySnapshot(options.snapshot.name, options.snapshot.schema),
     error: null,
     isLoading: true,
+    resolvedDepsKey: depsKey,
+    resolvedGeneration: generation,
   }));
   const seqRef = useRef(0);
   const previousGenerationRef = useRef(generation);
-  const depsKey = JSON.stringify(deps);
   const dataDepsKeyRef = useRef(depsKey);
-  const refresh = useCallback(() => {
+  const runRefresh = useCallback(() => {
     const seq = ++seqRef.current;
     const snapshot = snapshotRef.current;
     const snapshotRevision =
@@ -126,23 +144,34 @@ export function useTasksQuery<T>(
         }
         if (seq !== seqRef.current) return;
         dataDepsKeyRef.current = depsKey;
-        setState({ data, error: null, isLoading: false });
+        setState({
+          data,
+          error: null,
+          isLoading: false,
+          resolvedDepsKey: depsKey,
+          resolvedGeneration: generation,
+        });
       },
-      (error: unknown) => {
+      (error: TaskQueryFailure) => {
         if (seq !== seqRef.current) return;
         const keepsData = dataDepsKeyRef.current === depsKey;
         setState((current) => ({
           data: keepsData ? current.data : undefined,
           error: error instanceof Error ? error.message : String(error),
           isLoading: false,
+          resolvedDepsKey: depsKey,
+          resolvedGeneration: generation,
         }));
       },
     );
-  }, [rpc, depsKey]);
+  }, [rpc, depsKey, generation]);
+  const refresh = useCallback(() => {
+    setState((current) => ({ ...current, isLoading: true }));
+    return runRefresh();
+  }, [runRefresh]);
   useEffect(() => {
     const generationBumped = previousGenerationRef.current !== generation;
     previousGenerationRef.current = generation;
-    setState((current) => ({ ...current, isLoading: true }));
     if (generationBumped) beginGenerationWork();
     let settled = false;
     const finish = () => {
@@ -150,18 +179,31 @@ export function useTasksQuery<T>(
       settled = true;
       endGenerationWork();
     };
-    void refresh().finally(finish);
+    void runRefresh().finally(finish);
     return () => {
       finish();
     };
-  }, [refresh, generation, beginGenerationWork, endGenerationWork]);
+  }, [runRefresh, generation, beginGenerationWork, endGenerationWork]);
   useInvalidation(channels, refresh);
-  return { ...state, refresh };
+  return {
+    data: state.data,
+    error: state.error,
+    isLoading:
+      state.isLoading ||
+      state.resolvedDepsKey !== depsKey ||
+      state.resolvedGeneration !== generation,
+    refresh,
+  };
 }
 
 const foldersSnapshot = {
   name: "folders",
-  schema: tasksRpcContract.listFolders.output.shape.folders,
+  schema: z
+    .preprocess(
+      (value) => ({ folders: value }),
+      tasksRpcContract.listFolders.output,
+    )
+    .transform((value) => value.folders),
 };
 
 export function useFolders() {
@@ -175,7 +217,12 @@ export function useFolders() {
 
 const projectsSnapshot = {
   name: "projects",
-  schema: tasksRpcContract.listProjects.output.shape.projects,
+  schema: z
+    .preprocess(
+      (value) => ({ projects: value }),
+      tasksRpcContract.listProjects.output,
+    )
+    .transform((value) => value.projects),
 };
 
 export function useProjects() {
@@ -196,7 +243,12 @@ export function usePresets() {
 
 const sidebarSummarySnapshot = {
   name: "sidebar-summary",
-  schema: tasksRpcContract.sidebarSummary.output.shape.projects,
+  schema: z
+    .preprocess(
+      (value) => ({ projects: value }),
+      tasksRpcContract.sidebarSummary.output,
+    )
+    .transform((value) => value.projects),
 };
 
 export function useSidebarSummary() {
@@ -213,11 +265,11 @@ export function useMentionItems() {
   return useCallback(
     async (query: string): Promise<MentionItem[]> => {
       const trimmed = query.trim();
+      const taskRequest = trimmed
+        ? rpc.call("listTasks", { search: trimmed, limit: 8 })
+        : rpc.call("listTasks", { limit: 8 });
       const [taskResult, threadResult] = await Promise.all([
-        rpc.call("listTasks", {
-          ...(trimmed ? { search: trimmed } : {}),
-          limit: 8,
-        }),
+        taskRequest,
         rpc
           .call("searchThreads", { query: trimmed, limit: 5 })
           .catch(() => ({ threads: [] })),

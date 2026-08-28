@@ -39,6 +39,7 @@ const fileWriteResultSchema = z.discriminatedUnion("outcome", [
     currentSha256: z.string().nullable(),
   }),
 ]);
+const httpErrorSchema = z.object({ status: z.number() });
 
 function requireOptionValue(
   argv: readonly string[],
@@ -130,13 +131,6 @@ function resolveHostPath(cwd: string, candidate: string): string {
     : path.win32.resolve(cwd, candidate);
 }
 
-function httpStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null || !("status" in error))
-    return null;
-  const status = error.status;
-  return typeof status === "number" ? status : null;
-}
-
 async function readSnapshot(
   bb: BbPluginApi,
   args: { hostId: string; path: string },
@@ -147,7 +141,10 @@ async function readSnapshot(
       throw new Error("Dotenv file is not valid UTF-8 text.");
     return { content: result.content, sha256: result.sha256 };
   } catch (error) {
-    if (httpStatus(error) === 404) return { content: "", sha256: null };
+    const parsedError = httpErrorSchema.safeParse(error);
+    if (parsedError.success && parsedError.data.status === 404) {
+      return { content: "", sha256: null };
+    }
     throw error;
   }
 }

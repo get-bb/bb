@@ -1,6 +1,6 @@
 import type { ProviderInfo, ReasoningLevel } from "@bb/domain";
 
-const FALLBACK_REASONING_LABELS: Record<ReasoningLevel, string> = {
+const FALLBACK_REASONING_LABELS = {
   none: "None",
   low: "Low",
   medium: "Medium",
@@ -9,7 +9,7 @@ const FALLBACK_REASONING_LABELS: Record<ReasoningLevel, string> = {
   ultracode: "Ultracode",
   max: "Max",
   ultra: "Ultra",
-};
+} satisfies Record<ReasoningLevel, string>;
 
 export type ReasoningLabelSource = Pick<ProviderInfo, "reasoningLevels">;
 

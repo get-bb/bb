@@ -1,18 +1,30 @@
 import { WebSocket as NodeWsWebSocket, type RawData } from "ws";
+import { z } from "zod";
 import { wrapStandardWebsocket } from "./realtime-client.js";
 import type { BbRealtimeSocket, BbRealtimeSocketFactory } from "./transport.js";
 
-function decodeWsMessageData(data: RawData): string {
-  if (typeof data === "string") {
+const websocketMessageDataSchema = z
+  .union([
+    z.string(),
+    z.instanceof(ArrayBuffer),
+    z.instanceof(Buffer),
+    z.array(z.instanceof(Buffer)),
+  ])
+  .transform((data) => {
+    if (data instanceof ArrayBuffer) {
+      return Buffer.from(new Uint8Array(data)).toString("utf8");
+    }
+    if (Buffer.isBuffer(data)) {
+      return data.toString("utf8");
+    }
+    if (Array.isArray(data)) {
+      return Buffer.concat(data).toString("utf8");
+    }
     return data;
-  }
-  if (Array.isArray(data)) {
-    return Buffer.concat(data).toString("utf8");
-  }
-  if (Buffer.isBuffer(data)) {
-    return data.toString("utf8");
-  }
-  return Buffer.from(new Uint8Array(data)).toString("utf8");
+  });
+
+function decodeWsMessageData(data: RawData): string {
+  return websocketMessageDataSchema.parse(data);
 }
 
 export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
@@ -39,8 +51,9 @@ export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
 
 export function createNodeWebsocketFactory(): BbRealtimeSocketFactory {
   return (url) => {
-    if (typeof WebSocket !== "undefined") {
-      return wrapStandardWebsocket(new WebSocket(url));
+    const standardWebSocket = globalThis.WebSocket;
+    if (standardWebSocket !== undefined) {
+      return wrapStandardWebsocket(new standardWebSocket(url));
     }
     return wrapNodeWsWebsocket(url);
   };

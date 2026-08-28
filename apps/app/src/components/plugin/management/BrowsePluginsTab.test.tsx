@@ -1,19 +1,21 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
+import type { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 
-vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
-  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
-    <div data-testid="inline-composer">{initialPrompt}</div>
-  ),
-}));
+function TestPluginNewThreadComposer({
+  initialPrompt,
+}: ComponentProps<typeof PluginNewThreadComposer>) {
+  return <div data-testid="inline-composer">{initialPrompt}</div>;
+}
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -584,7 +586,9 @@ describe("BrowsePluginsTab", () => {
     const memoryCard = (await screen.findByText("Memory")).closest("div");
     expect(memoryCard).not.toBeNull();
     expect(
-      (memoryCard as HTMLElement).querySelector('[data-icon="Brain"]'),
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        memoryCard as HTMLElement
+      ).querySelector('[data-icon="Brain"]'),
     ).not.toBeNull();
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
@@ -893,6 +897,9 @@ describe("BrowsePluginsTab", () => {
           onInstallFromSource={() => {}}
           onInstall={() => {}}
           onOpenPlugin={() => {}}
+          dependencies={{
+            PluginNewThreadComposer: TestPluginNewThreadComposer,
+          }}
         />
       </MemoryRouter>,
       { wrapper },

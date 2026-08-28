@@ -147,6 +147,12 @@ export interface UpdateLocalPathProjectSourceInput {
 
 export type UpdateProjectSourceInput = UpdateLocalPathProjectSourceInput;
 
+type ProjectSourceUpdate = {
+  path?: string;
+  isDefault?: boolean;
+  updatedAt: number;
+};
+
 export function updateProjectSource(
   db: DbConnection,
   notifier: DbNotifier,
@@ -171,14 +177,14 @@ export function updateProjectSource(
         .run();
     }
     const { isDefault: _isDefault, ...rest } = input;
+    let sourceUpdate: ProjectSourceUpdate = { ...rest, updatedAt: now };
+    if (input.isDefault) {
+      sourceUpdate = { ...sourceUpdate, isDefault: true };
+    }
     const updatedRow =
       tx
         .update(projectSources)
-        .set({
-          ...rest,
-          ...(input.isDefault ? { isDefault: true } : {}),
-          updatedAt: now,
-        })
+        .set(sourceUpdate)
         .where(eq(projectSources.id, id))
         .returning()
         .get() ?? null;

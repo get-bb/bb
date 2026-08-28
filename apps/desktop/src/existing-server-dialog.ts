@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
-import { escapeHtmlText } from "@bb/domain";
+import { escapeHtmlText, type JsonValue } from "@bb/domain";
 import {
   BB_DESKTOP_EXISTING_SERVER_DIALOG_CHOOSE_CHANNEL,
   existingServerDialogChooseRequestSchema,
@@ -242,7 +242,7 @@ export function openExistingServerDialog(
 
     function handleChoose(
       event: { sender: { id: number } },
-      payload: unknown,
+      payload: JsonValue | undefined,
     ): void {
       if (event.sender.id !== dialogWindow.webContents.id) {
         return;

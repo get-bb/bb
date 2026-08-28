@@ -98,15 +98,16 @@ export function getInactiveSessionLogFields(
     };
   }
 
-  return {
+  const fields: InactiveSessionLogFields = {
     authenticatedHostId: args.authenticatedHostId,
     inactiveSessionReason: "active",
     leaseExpiresAt: session.leaseExpiresAt,
-    ...(session.leaseExpiresAt <= args.now
-      ? { leaseStaleByMs: args.now - session.leaseExpiresAt }
-      : {}),
     sessionHostId: session.hostId,
     sessionId: args.sessionId,
     sessionStatus: session.status,
   };
+  if (session.leaseExpiresAt <= args.now) {
+    fields.leaseStaleByMs = args.now - session.leaseExpiresAt;
+  }
+  return fields;
 }

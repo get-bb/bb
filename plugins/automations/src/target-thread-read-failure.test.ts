@@ -29,7 +29,7 @@ async function createHost(
                 permissionModes: ["accept-edits", "auto", "full"],
               },
             },
-          ] as never;
+          ];
         },
       },
       threads: {
@@ -45,13 +45,13 @@ async function createHost(
       },
     },
   });
-  await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+  await plugin(host.bb);
   return host;
 }
 
 function createService(host: Awaited<ReturnType<typeof createHost>>) {
   return createAutomationService({
-    bb: host.bb as never,
+    bb: host.bb,
     db: host.bb.storage.database(),
     pluginDataDir: "/tmp/bb-automations-read-failure-test",
     serverUrl: "http://127.0.0.1:38886",

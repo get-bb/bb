@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "radio-group",
   "description": "BB ui \"radio-group\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-radio-group",
-    "lucide-react"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/radio-group.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/radio-group.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-radio-group",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

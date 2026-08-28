@@ -182,7 +182,71 @@ interface ThreadDetailPromptAreaProps {
   steerActiveThreadOnEnter: boolean;
   composerFocusRequestNonce: number;
   thread: ThreadWithRuntime;
+  dependencies?: ThreadDetailPromptAreaDependencies;
 }
+
+export interface ThreadDetailPromptAreaDependencies {
+  FollowUpPromptBox: typeof FollowUpPromptBox;
+  ThreadEnvironmentSummary: typeof ThreadEnvironmentSummary;
+  QueuedMessagesList: typeof QueuedMessagesList;
+  ThreadBackgroundCommandsCard: typeof ThreadBackgroundCommandsCard;
+  ThreadGoalCard: typeof ThreadGoalCard;
+  ThreadPromptContextBanner: typeof ThreadPromptContextBanner;
+  ThreadPromptModeCard: typeof ThreadPromptModeCard;
+  ThreadTodoCard: typeof ThreadTodoCard;
+  ThreadWorkflowCard: typeof ThreadWorkflowCard;
+  ThreadPendingInteractionBanner: typeof ThreadPendingInteractionBanner;
+  appToast: typeof appToast;
+  useThreadCreationOptions: typeof useThreadCreationOptions;
+  useCancelThreadPlan: typeof useCancelThreadPlan;
+  useClearThreadGoal: typeof useClearThreadGoal;
+  useCreateThreadQueuedMessage: typeof useCreateThreadQueuedMessage;
+  useStopThread: typeof useStopThread;
+  useUnarchiveThread: typeof useUnarchiveThread;
+  useProjectDisplayName: typeof useProjectDisplayName;
+  useThreadDefaultExecutionOptions: typeof useThreadDefaultExecutionOptions;
+  getLatestPendingInteraction: typeof getLatestPendingInteraction;
+  useThreadQueuedMessages: typeof useThreadQueuedMessages;
+  useThreadPromptHistory: typeof useThreadPromptHistory;
+  useComposerAttachmentUploads: typeof useComposerAttachmentUploads;
+  useDraftAttachmentUploads: typeof useDraftAttachmentUploads;
+  useComposerTypeahead: typeof useComposerTypeahead;
+  useActiveComposerDraft: typeof useActiveComposerDraft;
+  useInlineQueuedMessageEditing: typeof useInlineQueuedMessageEditing;
+  useQueuedMessageActions: typeof useQueuedMessageActions;
+}
+
+export const defaultThreadDetailPromptAreaDependencies: ThreadDetailPromptAreaDependencies =
+  {
+    FollowUpPromptBox,
+    ThreadEnvironmentSummary,
+    QueuedMessagesList,
+    ThreadBackgroundCommandsCard,
+    ThreadGoalCard,
+    ThreadPromptContextBanner,
+    ThreadPromptModeCard,
+    ThreadTodoCard,
+    ThreadWorkflowCard,
+    ThreadPendingInteractionBanner,
+    appToast,
+    useThreadCreationOptions,
+    useCancelThreadPlan,
+    useClearThreadGoal,
+    useCreateThreadQueuedMessage,
+    useStopThread,
+    useUnarchiveThread,
+    useProjectDisplayName,
+    useThreadDefaultExecutionOptions,
+    getLatestPendingInteraction,
+    useThreadQueuedMessages,
+    useThreadPromptHistory,
+    useComposerAttachmentUploads,
+    useDraftAttachmentUploads,
+    useComposerTypeahead,
+    useActiveComposerDraft,
+    useInlineQueuedMessageEditing,
+    useQueuedMessageActions,
+  };
 
 interface InlineDraftComposerOptions {
   attachments: FollowUpPromptBoxProps["attachments"];
@@ -210,9 +274,11 @@ interface InlineDraftComposerOptions {
   threadRuntimeDisplayStatus: FollowUpComposerProps["threadRuntimeDisplayStatus"];
   typeahead: FollowUpPromptBoxProps["typeahead"];
   collapseResetKey: string;
+  FollowUpPromptBox: typeof FollowUpPromptBox;
 }
 
 function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
+  const FollowUpPromptBox = options.FollowUpPromptBox;
   return (
     <FollowUpPromptBox
       id={options.composerId}
@@ -373,7 +439,38 @@ export function ThreadDetailPromptArea({
   steerActiveThreadOnEnter,
   composerFocusRequestNonce,
   thread,
+  dependencies = defaultThreadDetailPromptAreaDependencies,
 }: ThreadDetailPromptAreaProps) {
+  const {
+    FollowUpPromptBox,
+    ThreadEnvironmentSummary,
+    QueuedMessagesList,
+    ThreadBackgroundCommandsCard,
+    ThreadGoalCard,
+    ThreadPromptContextBanner,
+    ThreadPromptModeCard,
+    ThreadTodoCard,
+    ThreadWorkflowCard,
+    ThreadPendingInteractionBanner,
+    appToast,
+    useThreadCreationOptions,
+    useCancelThreadPlan,
+    useClearThreadGoal,
+    useCreateThreadQueuedMessage,
+    useStopThread,
+    useUnarchiveThread,
+    useProjectDisplayName,
+    useThreadDefaultExecutionOptions,
+    getLatestPendingInteraction,
+    useThreadQueuedMessages,
+    useThreadPromptHistory,
+    useComposerAttachmentUploads,
+    useDraftAttachmentUploads,
+    useComposerTypeahead,
+    useActiveComposerDraft,
+    useInlineQueuedMessageEditing,
+    useQueuedMessageActions,
+  } = dependencies;
   const navigate = useNavigate();
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
@@ -534,25 +631,31 @@ export function ThreadDetailPromptArea({
       if (!pullRequest) {
         return null;
       }
-      const actions =
+      let actions:
+        | {
+            isPending: boolean;
+            onMarkReady?: () => void;
+            onMerge?: (method: PullRequestMergeMethod) => void;
+            onConvertToDraft?: () => void;
+            selectedMergeMethod?: typeof pullRequestMergeMethod;
+          }
+        | undefined;
+      if (
         onPullRequestReady ||
         onPullRequestMerge ||
         onPullRequestDraft ||
         isEnvironmentActionPending
-          ? {
-              isPending: isEnvironmentActionPending,
-              ...(onPullRequestReady
-                ? { onMarkReady: onPullRequestReady }
-                : {}),
-              ...(onPullRequestMerge ? { onMerge: onPullRequestMerge } : {}),
-              ...(onPullRequestDraft
-                ? { onConvertToDraft: onPullRequestDraft }
-                : {}),
-              ...(onPullRequestMerge
-                ? { selectedMergeMethod: pullRequestMergeMethod }
-                : {}),
-            }
-          : undefined;
+      ) {
+        actions = { isPending: isEnvironmentActionPending };
+        if (onPullRequestReady) actions.onMarkReady = onPullRequestReady;
+        if (onPullRequestMerge) {
+          actions.onMerge = onPullRequestMerge;
+          actions.selectedMergeMethod = pullRequestMergeMethod;
+        }
+        if (onPullRequestDraft) {
+          actions.onConvertToDraft = onPullRequestDraft;
+        }
+      }
       return actions ? { pullRequest, actions } : { pullRequest };
     }, [
       isEnvironmentActionPending,
@@ -826,6 +929,7 @@ export function ThreadDetailPromptArea({
     currentPromptDraftInput,
     followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
+    appToast,
     promptDraft,
     sendMessage,
     setBottomAttachmentError,
@@ -897,6 +1001,7 @@ export function ThreadDetailPromptArea({
     sendQueuedMessageById,
     setBottomAttachmentError,
     thread.id,
+    appToast,
   ]);
 
   const handleSendQueuedImmediately = useCallback(
@@ -1185,6 +1290,7 @@ export function ThreadDetailPromptArea({
       environmentLabel,
       onCreateNewThreadInWorktree,
       projectName,
+      ThreadEnvironmentSummary,
     ],
   );
   const activePromptModeCard = useMemo(
@@ -1202,6 +1308,7 @@ export function ThreadDetailPromptArea({
       cancelThreadPlan.isPending,
       handleCancelPlan,
       isPromptModeExpanded,
+      ThreadPromptModeCard,
     ],
   );
   const activeGoalCard = useMemo(
@@ -1214,7 +1321,13 @@ export function ThreadDetailPromptArea({
         onToggle={() => setIsGoalExpanded((value) => !value)}
       />
     ),
-    [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
+    [
+      clearThreadGoal.isPending,
+      goal,
+      handleClearGoal,
+      isGoalExpanded,
+      ThreadGoalCard,
+    ],
   );
   const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const inlineEditQueuedMessageId =
@@ -1275,6 +1388,7 @@ export function ThreadDetailPromptArea({
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
       onDismiss: dismissInlineQueuedMessageEditor,
       content: buildInlineDraftComposer({
+        FollowUpPromptBox,
         attachments: {
           items: activeComposerDraft.attachments,
           projectId,
@@ -1333,6 +1447,7 @@ export function ThreadDetailPromptArea({
     setActiveComposerDraft,
     thread.id,
     typeaheadConfig,
+    FollowUpPromptBox,
   ]);
   usePublishPluginComposerHost(
     queuedMessageEditor
@@ -1380,6 +1495,7 @@ export function ThreadDetailPromptArea({
         variant="cap"
       >
         {buildInlineDraftComposer({
+          FollowUpPromptBox,
           attachments: {
             items: draft.attachments,
             projectId,
@@ -1447,6 +1563,7 @@ export function ThreadDetailPromptArea({
     sentMessagePluginComposerHost,
     thread.id,
     typeaheadConfig,
+    FollowUpPromptBox,
   ]);
   const childPendingInteractionBanners = useMemo(
     () =>
@@ -1458,7 +1575,7 @@ export function ThreadDetailPromptArea({
           threadId={item.childThreadId}
         />
       )),
-    [childPendingInteractions],
+    [childPendingInteractions, ThreadPendingInteractionBanner],
   );
   const promptStack = useMemo(
     () => (
@@ -1594,6 +1711,11 @@ export function ThreadDetailPromptArea({
       thread.id,
       workspaceChangedFilesSection,
       workspaceStatusPending,
+      ThreadPromptContextBanner,
+      ThreadBackgroundCommandsCard,
+      ThreadTodoCard,
+      ThreadWorkflowCard,
+      QueuedMessagesList,
     ],
   );
 
@@ -1607,7 +1729,12 @@ export function ThreadDetailPromptArea({
         threadId={thread.id}
       />
     );
-  }, [activePendingInteraction, shouldHideComposer, thread.id]);
+  }, [
+    activePendingInteraction,
+    shouldHideComposer,
+    thread.id,
+    ThreadPendingInteractionBanner,
+  ]);
   const pendingInteractionStack = useMemo(
     () => (
       <>

@@ -36,7 +36,7 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
     )
     .get();
   const createdAt = row?.createdAt;
-  if (typeof createdAt !== "number") {
+  if (createdAt === undefined || createdAt === null) {
     throw new Error("Expected at least one applied migration timestamp");
   }
   return createdAt;

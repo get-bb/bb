@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type {
   PromptTextMention,
+  PromptMentionResource,
   SystemMessageKind,
   SystemMessageSubject,
   ThreadOriginKind,
@@ -375,6 +376,14 @@ function GeneratedAgentSourceTitle({
           }) ?? null)
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";
+  const mentionResource: PromptMentionResource = {
+    kind: "thread",
+    threadId: sourceThreadId ?? "",
+    label: sourceDisplayName,
+  };
+  if (sourceProjectId !== null) {
+    mentionResource.projectId = sourceProjectId;
+  }
 
   return (
     <span
@@ -390,12 +399,7 @@ function GeneratedAgentSourceTitle({
         </span>
       ) : (
         <PromptMentionPill
-          resource={{
-            kind: "thread",
-            threadId: sourceThreadId,
-            ...(sourceProjectId === null ? {} : { projectId: sourceProjectId }),
-            label: sourceDisplayName,
-          }}
+          resource={mentionResource}
           serializedText={`@thread:${sourceThreadId}`}
           linkHref={sourceLinkHref ?? undefined}
           onActivate={sourceTitleAction ?? undefined}

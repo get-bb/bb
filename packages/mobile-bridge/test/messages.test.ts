@@ -5,7 +5,17 @@ import {
   type NativeShellHandshake,
 } from "../src/index.js";
 
-function json(value: unknown): string {
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+type JsonObject = { readonly [key: string]: JsonValue };
+
+function json(value: JsonObject): string {
   return JSON.stringify(value);
 }
 
@@ -28,7 +38,7 @@ const handshake: NativeShellHandshake = {
 
 describe("parsePageToShellMessage", () => {
   it("accepts every message kind the contract defines", () => {
-    const cases: unknown[] = [
+    const cases: JsonObject[] = [
       { type: "ready", path: "/threads/thr_1" },
       { type: "title", title: "bb", path: "/" },
       { type: "haptic", kind: "impact-medium" },

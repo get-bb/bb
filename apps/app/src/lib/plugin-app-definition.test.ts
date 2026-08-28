@@ -20,9 +20,7 @@ describe("definePluginApp", () => {
   });
 
   it("rejects a non-function setup", () => {
-    expect(() => definePluginApp(undefined as unknown as () => void)).toThrow(
-      /setup function/,
-    );
+    expect(() => definePluginApp(JSON.parse("null"))).toThrow(/setup function/);
   });
 });
 
@@ -78,10 +76,12 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
 
   it("rejects a missing title", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
-        id: "subagents",
-        component: Component,
-      } as never);
+      app.slots.experimental_threadHeaderAction(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          id: "subagents",
+          component: Component,
+        } as never,
+      );
     });
     expect(() => collectPluginAppRegistrations(definition)).toThrow(/title/);
   });
@@ -144,10 +144,12 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
 
   it("rejects a missing component", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadList({
-        id: "inbox",
-        title: "Inbox",
-      } as never);
+      app.slots.experimental_threadList(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          id: "inbox",
+          title: "Inbox",
+        } as never,
+      );
     });
     expect(() => collectPluginAppRegistrations(definition)).toThrow();
   });
@@ -406,7 +408,9 @@ describe("collectPluginAppRegistrations", () => {
       app.composer.customize({ id: "valid-first" });
       app.composer.customize({
         id: "bad-scope",
-        scopes: ["modal" as never],
+        scopes: [
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ "modal" as never,
+        ],
       });
       app.composer.customize({ id: "valid-last", scopes: ["side-chat"] });
     });
@@ -429,10 +433,16 @@ describe("collectPluginAppRegistrations", () => {
     const definition = definePluginApp((app) => {
       app.composer.customize({
         id: "malformed-array",
-        actions: {} as never,
+        actions:
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as never,
         banners: [
           { id: "good-banner", component: Component },
-          { id: "bad-banner", chrome: "dialog" as never, component: Component },
+          {
+            id: "bad-banner",
+            chrome:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ "dialog" as never,
+            component: Component,
+          },
         ],
       });
       app.composer.customize({
@@ -488,13 +498,18 @@ describe("collectPluginAppRegistrations", () => {
       app.composer.customize({
         id: "reused-after-malformed",
         actions: [
-          { id: "same-action", component: null as never },
+          {
+            id: "same-action",
+            component:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ null as never,
+          },
           { id: "same-action", component: Component },
         ],
         banners: [
           {
             id: "same-banner",
-            chrome: "dialog" as never,
+            chrome:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ "dialog" as never,
             component: Component,
           },
           { id: "same-banner", component: Component },
@@ -543,7 +558,8 @@ describe("collectPluginAppRegistrations", () => {
         definePluginApp((app) => {
           app.contentScripts.register({
             id: "missing-mount",
-            mount: undefined as never,
+            mount:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as never,
           });
         }),
       /"mount" must be a function/,
@@ -569,7 +585,8 @@ describe("collectPluginAppRegistrations", () => {
         definePluginApp((app) => {
           app.slots.settingsSection({
             id: "x",
-            title: 12 as never,
+            title:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ 12 as never,
             component: Component,
           });
         }),
@@ -603,7 +620,7 @@ describe("collectPluginAppRegistrations", () => {
           app.slots.messageAction({
             id: "no-run",
             title: "No run",
-            run: undefined as never,
+            run: /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as never,
           });
         }),
       /"run" must be a function/,
@@ -629,11 +646,13 @@ describe("collectPluginAppRegistrations", () => {
       "sidebar footer action missing run",
       () =>
         definePluginApp((app) => {
-          app.slots.sidebarFooterAction({
-            id: "x",
-            title: "X",
-            icon: "Smartphone",
-          } as never);
+          app.slots.sidebarFooterAction(
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+              id: "x",
+              title: "X",
+              icon: "Smartphone",
+            } as never,
+          );
         }),
       /"run" must be a function/,
     ],
@@ -685,7 +704,7 @@ describe("collectPluginAppRegistrations", () => {
             id: "x",
             title: "X",
             component: Component,
-            run: "nope" as never,
+            run: /* SAFETY: The test controls this fixture and verifies its behavior. */ "nope" as never,
           });
         }),
       /"run" must be a function/,
@@ -698,7 +717,7 @@ describe("collectPluginAppRegistrations", () => {
             id: "x",
             title: "X",
             component: Component,
-            run: "nope" as never,
+            run: /* SAFETY: The test controls this fixture and verifies its behavior. */ "nope" as never,
           });
         }),
       /"run" must be a function/,
@@ -710,7 +729,8 @@ describe("collectPluginAppRegistrations", () => {
           app.slots.homepageSection({
             id: "x",
             title: "X",
-            component: undefined as never,
+            component:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as never,
           });
         }),
       /"component" must be/,
@@ -725,7 +745,8 @@ describe("collectPluginAppRegistrations", () => {
             icon: "columns",
             path: "x",
             component: Component,
-            headerContent: "nope" as never,
+            headerContent:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ "nope" as never,
           });
         }),
       /"headerContent" must be a React component/,
@@ -734,14 +755,16 @@ describe("collectPluginAppRegistrations", () => {
       "nav panel with the pre-0.4.16 SDK experimental_fixedTabs key",
       () =>
         definePluginApp((app) => {
-          app.slots.navPanel({
-            id: "x",
-            title: "X",
-            icon: "columns",
-            path: "x",
-            component: Component,
-            experimental_fixedTabs: [],
-          } as never);
+          app.slots.navPanel(
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+              id: "x",
+              title: "X",
+              icon: "columns",
+              path: "x",
+              component: Component,
+              experimental_fixedTabs: [],
+            } as never,
+          );
         }),
       'slots.navPanel: "experimental_fixedTabs" was renamed to "fixedTabs" in SDK 0.4.16',
     ],
@@ -749,14 +772,16 @@ describe("collectPluginAppRegistrations", () => {
       "nav panel with an unknown experimental_ key",
       () =>
         definePluginApp((app) => {
-          app.slots.navPanel({
-            id: "x",
-            title: "X",
-            icon: "columns",
-            path: "x",
-            component: Component,
-            experimental_badge: Component,
-          } as never);
+          app.slots.navPanel(
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+              id: "x",
+              title: "X",
+              icon: "columns",
+              path: "x",
+              component: Component,
+              experimental_badge: Component,
+            } as never,
+          );
         }),
       'slots.navPanel: unknown field "experimental_badge"',
     ],
@@ -770,7 +795,8 @@ describe("collectPluginAppRegistrations", () => {
             icon: "columns",
             path: "x",
             component: Component,
-            experimental_sidebarAccessory: "nope" as never,
+            experimental_sidebarAccessory:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ "nope" as never,
           });
         }),
       /"experimental_sidebarAccessory" must be a React component/,
@@ -829,7 +855,8 @@ describe("collectPluginAppRegistrations", () => {
         definePluginApp((app) => {
           app.slots.messageDirective({
             id: "inline-vis",
-            component: undefined as never,
+            component:
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as never,
           });
         }),
       /"component" must be/,

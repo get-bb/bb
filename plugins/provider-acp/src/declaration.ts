@@ -1,4 +1,5 @@
 import type {
+  JsonValue,
   PluginProviderCapabilities,
   PluginProviderDeclaration,
   PluginProviderStrings,
@@ -25,7 +26,7 @@ const DEFAULT_FORK = "none" as const;
 
 function acpStrings(agent: AcpAgentDefinition): PluginProviderStrings {
   const signIn = agent.signInCommand;
-  return {
+  const strings: PluginProviderStrings = {
     signInHint:
       signIn === undefined
         ? `Sign in to ${agent.displayName} on the machine, then reload.`
@@ -35,51 +36,41 @@ function acpStrings(agent: AcpAgentDefinition): PluginProviderStrings {
         ? `Your ${agent.displayName} session expired. Sign in on the machine, then reload.`
         : `Your ${agent.displayName} session expired. Run \`${signIn}\`, then reload.`,
     installUrl: agent.installUrl ?? "https://agentclientprotocol.com",
-    ...(agent.iconTint === undefined ? {} : { iconTint: agent.iconTint }),
   };
+  if (agent.iconTint !== undefined) strings.iconTint = agent.iconTint;
+  return strings;
 }
 
 export function acpProviderDeclaration(
   agent: AcpAgentDefinition,
 ): PluginProviderDeclaration {
-  return {
+  const bridgeOptionEntries: Array<[string, JsonValue]> = [
+    ["acpLaunchSpec", { ...agent.launch }],
+  ];
+  if (agent.dialect !== undefined) {
+    bridgeOptionEntries.push(["acpDialect", agent.dialect]);
+  }
+  if (agent.parameterizedModelPicker === true) {
+    bridgeOptionEntries.push(["parameterizedModelPicker", true]);
+  }
+  if (agent.primaryModels !== undefined) {
+    bridgeOptionEntries.push(["primaryModels", [...agent.primaryModels]]);
+  }
+  if (agent.reasoningProbePriorityModelIds !== undefined) {
+    bridgeOptionEntries.push([
+      "reasoningProbePriorityModelIds",
+      [...agent.reasoningProbePriorityModelIds],
+    ]);
+  }
+  const bridgeOptions = Object.fromEntries(bridgeOptionEntries);
+
+  const declaration: PluginProviderDeclaration = {
     id: agent.id,
     displayName: agent.displayName,
     family: ACP_FAMILY,
-    ...(agent.icon === undefined ? {} : { icon: agent.icon }),
     strings: acpStrings(agent),
     serviceTiers: [...ACP_SERVICE_TIERS],
-    ...(agent.visibility === undefined
-      ? {}
-      : { experimental_visibility: agent.visibility }),
-    ...(agent.launch.nativeSkillRoots === undefined
-      ? {}
-      : {
-          experimental_nativeSkillRoots: {
-            user: [...agent.launch.nativeSkillRoots.user],
-            project: [...agent.launch.nativeSkillRoots.project],
-          },
-        }),
-    ...(agent.nativeRootsResolver === undefined
-      ? {}
-      : { experimental_resolvesNativeRoots: true }),
-    experimental_bridgeOptions: {
-      ...(agent.dialect === undefined ? {} : { acpDialect: agent.dialect }),
-      ...(agent.parameterizedModelPicker === true
-        ? { parameterizedModelPicker: true }
-        : {}),
-      ...(agent.primaryModels === undefined
-        ? {}
-        : { primaryModels: [...agent.primaryModels] }),
-      ...(agent.reasoningProbePriorityModelIds === undefined
-        ? {}
-        : {
-            reasoningProbePriorityModelIds: [
-              ...agent.reasoningProbePriorityModelIds,
-            ],
-          }),
-      acpLaunchSpec: { ...agent.launch },
-    },
+    experimental_bridgeOptions: bridgeOptions,
     models: { scope: "host" },
     maintenance: {
       health: true,
@@ -90,9 +81,6 @@ export function acpProviderDeclaration(
       ...ACP_BASE_CAPABILITIES,
       fork: agent.fork ?? DEFAULT_FORK,
       permissionModes: [...ACP_BASE_CAPABILITIES.permissionModes],
-      ...(agent.supportsManualCompaction === true
-        ? { supportsManualCompaction: true }
-        : {}),
       reasoningLevels:
         agent.reasoningLevels === undefined
           ? [...ACP_BASE_CAPABILITIES.reasoningLevels]
@@ -100,4 +88,21 @@ export function acpProviderDeclaration(
     },
     composerActions: [],
   };
+  if (agent.icon !== undefined) declaration.icon = agent.icon;
+  if (agent.visibility !== undefined) {
+    declaration.experimental_visibility = agent.visibility;
+  }
+  if (agent.launch.nativeSkillRoots !== undefined) {
+    declaration.experimental_nativeSkillRoots = {
+      user: [...agent.launch.nativeSkillRoots.user],
+      project: [...agent.launch.nativeSkillRoots.project],
+    };
+  }
+  if (agent.nativeRootsResolver !== undefined) {
+    declaration.experimental_resolvesNativeRoots = true;
+  }
+  if (agent.supportsManualCompaction === true) {
+    declaration.capabilities.supportsManualCompaction = true;
+  }
+  return declaration;
 }

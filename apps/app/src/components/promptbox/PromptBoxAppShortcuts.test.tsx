@@ -1,83 +1,107 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { defaultAppSettings, type AppShortcut } from "@bb/domain";
+import * as bbDesktop from "@/lib/bb-desktop";
+import * as pluginSdkHooks from "@/lib/plugin-sdk-hooks";
+import * as systemQueries from "@/hooks/queries/system-queries";
 import {
   AppCommandProvider,
   useAppCommandHandler,
   useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  PromptBoxInternal,
-} from "./PromptBoxInternal";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+
+let inertTypeaheadCommandConfig: typeof import("./PromptBoxInternal").INERT_TYPEAHEAD_COMMAND_CONFIG;
+let PromptBoxInternal: typeof import("./PromptBoxInternal").PromptBoxInternal;
 
 const testState = vi.hoisted(() => ({
-  calls: [] as string[],
+  calls:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as string[],
   composerInputLocked: false,
   sidebarHandlerResult: true,
-  sidebarShortcut: {
-    key: "\\",
-    mod: true,
-    meta: false,
-    control: false,
-    alt: false,
-    shift: false,
-  } as AppShortcut,
+  sidebarShortcut:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+      key: "\\",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    } as AppShortcut,
 }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings },
-      keybindings: [
-        {
-          command: "thread.previous" as const,
-          desktopOnly: false,
-          shortcut: {
-            key: "ArrowUp",
-            mod: true,
-            meta: false,
-            control: false,
-            alt: false,
-            shift: true,
-          },
-          when: { all: ["mainSurface" as const], none: [] },
-        },
-        {
-          command: "thread.next" as const,
-          desktopOnly: false,
-          shortcut: {
-            key: "ArrowDown",
-            mod: true,
-            meta: false,
-            control: false,
-            alt: false,
-            shift: true,
-          },
-          when: { all: ["mainSurface" as const], none: [] },
-        },
-        {
-          command: "sidebar.toggle" as const,
-          desktopOnly: false,
-          shortcut: testState.sidebarShortcut,
-          when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
-        },
-      ],
+const systemConfigData = {
+  generalSettings: { ...defaultAppSettings },
+  keybindings: [
+    {
+      command: "thread.previous" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "ArrowUp",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
     },
-  }),
-}));
+    {
+      command: "thread.next" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "ArrowDown",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
+      command: "sidebar.toggle" as const,
+      desktopOnly: false,
+      shortcut: testState.sidebarShortcut,
+      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+    },
+  ],
+};
 
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
+// SAFETY: The test provides the fields that PromptBoxInternal reads from this query result.
+vi.spyOn(systemQueries, "useSystemConfig").mockReturnValue({
+  data: systemConfigData,
+} as ReturnType<typeof systemQueries.useSystemConfig>);
+vi.spyOn(bbDesktop, "getBbDesktopInfo").mockReturnValue(null);
+vi.spyOn(pluginSdkHooks, "useComposerInputLock").mockImplementation(
+  () => testState.composerInputLocked,
+);
 
-vi.mock("@/lib/plugin-sdk-hooks", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/plugin-sdk-hooks")>()),
-  useComposerInputLock: () => testState.composerInputLocked,
-}));
+beforeAll(async () => {
+  const promptBoxInternal = await import("./PromptBoxInternal");
+  inertTypeaheadCommandConfig =
+    promptBoxInternal.INERT_TYPEAHEAD_COMMAND_CONFIG;
+  PromptBoxInternal = promptBoxInternal.PromptBoxInternal;
+});
+
+beforeEach(() => {
+  vi.spyOn(pluginSdkHooks, "useComposerInputLock").mockImplementation(
+    () => testState.composerInputLocked,
+  );
+});
 
 function SidebarToggleHandler() {
   useAppCommandHandler("sidebar.toggle", () => {
@@ -106,29 +130,42 @@ function ShortcutHintState() {
 }
 
 function renderComposer(extra: React.ReactNode = null) {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      keybindings: systemConfigData.keybindings.map((binding) =>
+        binding.command === "sidebar.toggle"
+          ? { ...binding, shortcut: testState.sidebarShortcut }
+          : binding,
+      ),
+    }),
+  );
   render(
-    <MemoryRouter>
-      <AppCommandProvider>
-        <SidebarToggleHandler />
-        {extra}
-        <PromptBoxInternal
-          value=""
-          mentionRanges={[]}
-          onChange={vi.fn()}
-          onSubmit={vi.fn()}
-          mentionMenuPlacement="bottom"
-          typeahead={{
-            mention: {
-              suggestions: [],
-              isLoading: false,
-              isError: false,
-              onQueryChange: vi.fn(),
-            },
-            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-          }}
-        />
-      </AppCommandProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <AppCommandProvider>
+          <SidebarToggleHandler />
+          {extra}
+          <PromptBoxInternal
+            value=""
+            mentionRanges={[]}
+            onChange={vi.fn()}
+            onSubmit={vi.fn()}
+            mentionMenuPlacement="bottom"
+            typeahead={{
+              mention: {
+                suggestions: [],
+                isLoading: false,
+                isError: false,
+                onQueryChange: vi.fn(),
+              },
+              command: inertTypeaheadCommandConfig,
+            }}
+          />
+        </AppCommandProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   const editor = document.querySelector<HTMLElement>(
     "[data-promptbox-editor-content] [contenteditable]",
@@ -154,6 +191,8 @@ function pressInEditor(
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "platform");
   testState.calls.length = 0;
   testState.composerInputLocked = false;
   testState.sidebarHandlerResult = true;
@@ -172,7 +211,10 @@ describe("prompt editor app shortcuts", () => {
     ["ArrowUp", "thread.previous"],
     ["ArrowDown", "thread.next"],
   ])("runs the configured Meta+Shift+%s app shortcut", (key, command) => {
-    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
     const editor = renderComposer(<ThreadNavigationHandlers />);
 
     const event = pressInEditor(editor, {

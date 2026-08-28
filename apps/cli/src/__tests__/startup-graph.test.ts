@@ -272,11 +272,13 @@ describe("bb startup module graph", () => {
       await new Promise<void>((resolvePromise) =>
         server.listen(0, "127.0.0.1", resolvePromise),
       );
-      const address = server.address();
-      if (address === null || typeof address === "string") {
+      const address = z
+        .object({ port: z.number().int().positive() })
+        .safeParse(server.address());
+      if (!address.success) {
         throw new Error("Fixture server did not bind to a TCP port");
       }
-      const serverUrl = `http://127.0.0.1:${address.port}`;
+      const serverUrl = `http://127.0.0.1:${address.data.port}`;
 
       try {
         for (const helpFlag of ["-h", "--help"]) {

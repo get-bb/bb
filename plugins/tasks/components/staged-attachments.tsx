@@ -7,6 +7,13 @@ import type { AttachmentOwnerRef } from "../views/detail/attachments.js";
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
+function createPreviewUrl(file: File): string | null {
+  if (!file.type.startsWith("image/")) return null;
+  const createObjectUrl = URL.createObjectURL;
+  if (createObjectUrl === undefined) return null;
+  return createObjectUrl(file);
+}
+
 export interface StagedAttachment {
   id: number;
   file: File;
@@ -32,19 +39,11 @@ export function stageFiles(files: readonly File[]): StagedAttachment[] {
 }
 
 function ChipThumbnail({ file }: { file: File }) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl] = useState(() => createPreviewUrl(file));
   useEffect(() => {
-    if (
-      !file.type.startsWith("image/") ||
-      typeof URL.createObjectURL !== "function"
-    ) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    if (previewUrl === null) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
   if (!previewUrl) return null;
   return (
     <img

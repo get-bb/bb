@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const DEFAULT_CONNECT_BASE_URL = "https://getbb.app";
 
 export function resolveDefaultConnectBaseUrl(env: NodeJS.ProcessEnv): string {
@@ -31,10 +33,14 @@ export function resolveDefaultConnectBaseUrl(env: NodeJS.ProcessEnv): string {
   return url.origin;
 }
 
-interface RedeemedCredential {
-  credential: string;
-  handle: string;
-}
+const redeemedCredentialSchema = z.object({
+  credential: z.string().min(1),
+  handle: z.string().min(1),
+});
+
+const redeemErrorResponseSchema = z.object({ error: z.string().optional() });
+
+type RedeemedCredential = z.infer<typeof redeemedCredentialSchema>;
 
 type ConnectPairErrorCode =
   | "invalid_code"
@@ -70,9 +76,14 @@ function pairErrorCodeForRedeem(
   return "invalid_code";
 }
 
-export function asConnectPairError(error: unknown): ConnectPairError {
+export function asConnectPairError<T>(error: T): ConnectPairError {
   if (error instanceof ConnectPairError) return error;
-  const message = error instanceof Error ? error.message : String(error);
+  const parsed = z.union([z.instanceof(Error), z.string()]).safeParse(error);
+  const message = parsed.success
+    ? parsed.data instanceof Error
+      ? parsed.data.message
+      : parsed.data
+    : String(error);
   return new ConnectPairError("network", message);
 }
 
@@ -86,12 +97,21 @@ export async function redeemConnectCode(args: {
     body: JSON.stringify({ code: args.code }),
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    const parsedBody = redeemErrorResponseSchema.safeParse(
+      await res.json().catch(() => ({})),
+    );
+    const body = parsedBody.success ? parsedBody.data : {};
     throw new ConnectPairError(
       pairErrorCodeForRedeem(res.status, body.error),
       `Redeem failed (${res.status})${body.error ? `: ${body.error}` : ""}`,
     );
   }
-  const data = (await res.json()) as RedeemedCredential;
-  return { credential: data.credential, handle: data.handle };
+  const parsed = redeemedCredentialSchema.safeParse(await res.json());
+  if (!parsed.success) {
+    throw new ConnectPairError(
+      "network",
+      "Redeem returned an invalid credential response",
+    );
+  }
+  return parsed.data;
 }

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { JsonObject, JsonValue } from "@bb/domain";
 import {
   entryRepositoryUrl,
   entrySourceDisplay,
@@ -13,7 +14,7 @@ import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalo
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
 
-const publishedSchemaShape = z.object({
+const publishedManifestSchema = z.object({
   $defs: z.object({
     gitRangeSource: z.object({
       properties: z.object({
@@ -28,7 +29,7 @@ const publishedSchemaShape = z.object({
 });
 
 const publishedTagPrefixPattern = new RegExp(
-  publishedSchemaShape.parse(
+  publishedManifestSchema.parse(
     JSON.parse(
       readFileSync(
         new URL(
@@ -42,7 +43,7 @@ const publishedTagPrefixPattern = new RegExp(
   "u",
 );
 
-function entry(overrides: Record<string, unknown> = {}): unknown {
+function entry(overrides: JsonObject = {}): JsonObject {
   return {
     id: "widgets",
     displayName: "Acme Widgets",
@@ -56,7 +57,7 @@ function entry(overrides: Record<string, unknown> = {}): unknown {
   };
 }
 
-function manifest(plugins: unknown[]): unknown {
+function manifest(plugins: JsonValue[]): JsonObject {
   return {
     schemaVersion: 1,
     name: "bb-community",
@@ -65,11 +66,11 @@ function manifest(plugins: unknown[]): unknown {
   };
 }
 
-function parse(plugins: unknown[]) {
+function parse(plugins: JsonValue[]) {
   return parseMarketplaceManifest(manifest(plugins), "manifest");
 }
 
-function firstEntry(plugins: unknown[]): MarketplaceEntry {
+function firstEntry(plugins: JsonValue[]): MarketplaceEntry {
   const parsed = parse(plugins).plugins[0];
   if (parsed === undefined) throw new Error("entry missing");
   return parsed;
@@ -94,7 +95,7 @@ describe("marketplace manifest schema", () => {
   it("rejects a schemaVersion it does not implement", () => {
     expect(() =>
       parseMarketplaceManifest(
-        { ...(manifest([entry()]) as object), schemaVersion: 2 },
+        { ...manifest([entry()]), schemaVersion: 2 },
         "manifest",
       ),
     ).toThrow(/unknown schemaVersion 2/);
@@ -106,7 +107,7 @@ describe("marketplace manifest schema", () => {
     );
     expect(() =>
       parseMarketplaceManifest(
-        { ...(manifest([entry()]) as object), extra: true },
+        { ...manifest([entry()]), extra: true },
         "manifest",
       ),
     ).toThrow(/unrecognized key/iu);
@@ -298,7 +299,7 @@ describe("marketplace manifest schema", () => {
         "git:https://github.com/acme/plugins.git@^1.0.0#plugins/widgets (tags widgets/vX.Y.Z)",
       );
 
-      for (const git of [
+      const invalidGitSources: JsonObject[] = [
         {
           url: "https://github.com/acme/plugins.git",
           ref: "v1.0.0",
@@ -326,7 +327,8 @@ describe("marketplace manifest schema", () => {
           ref: "v1.0.0",
           tagPrefix: "widgets/",
         },
-      ]) {
+      ];
+      for (const git of invalidGitSources) {
         expect(() => parse([entry({ source: { git } })])).toThrow();
       }
       expect(publishedTagPrefixPattern.test("widgets/.hidden/")).toBe(false);
@@ -451,11 +453,12 @@ describe("marketplace manifest schema", () => {
 
   describe("engines policy", () => {
     it("refuses an entry that declares engine ranges", () => {
-      for (const engines of [
+      const invalidEngineRanges: JsonObject[] = [
         { bb: ">=1.0.0" },
         { bbPluginSdk: "^0.5.0" },
         { bb: ">=1.0.0", bbPluginSdk: "^0.5.0" },
-      ]) {
+      ];
+      for (const engines of invalidEngineRanges) {
         expect(() => parse([entry({ engines })])).toThrow(/engines/u);
       }
     });

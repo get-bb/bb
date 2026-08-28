@@ -6,13 +6,14 @@ import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import { z } from "zod";
 import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const personalVaultChangedPayloadSchema = z.object({
+  vaultId: z.literal("personal"),
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -247,6 +248,12 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
 
 type DocsRpcHandlers = PluginRpcHandlers<typeof docsRpcContract>;
 
+interface SaveNoteResult {
+  outcome: "written";
+  sha256: string;
+  sizeBytes: number;
+}
+
 function assertDocsFrontendInference(
   client: PluginRpcClient<typeof docsRpcContract>,
 ) {
@@ -291,7 +298,7 @@ describe("Docs RPC contract", () => {
       saveNote: docsRpcContract.saveNote,
     });
     bb.rpc.register(contract, {
-      saveNote(): { outcome: "written"; sha256: string; sizeBytes: number } {
+      saveNote(): SaveNoteResult {
         return { outcome: "written", sha256: "sha", sizeBytes: -1 };
       },
     });
@@ -1054,6 +1061,7 @@ describe("Docs vault operations", () => {
         path: filePath,
         rootPath,
         content: "# Updated",
+        contentEncoding: "utf8",
         expectedSha256: "test-sha",
       },
     ]);
@@ -1144,6 +1152,7 @@ describe("Docs vault operations", () => {
           path: filePath,
           rootPath,
           content: "# Updated remote plan",
+          contentEncoding: "utf8",
           expectedSha256: "remote-sha",
         },
       ],
@@ -1276,6 +1285,7 @@ describe("Docs vault operations", () => {
           path: "/remote/project/docs/plan.md",
           rootPath: "/remote/project",
           content: "# Updated project plan",
+          contentEncoding: "utf8",
           expectedSha256: "project-sha",
         },
       ],
@@ -1370,6 +1380,7 @@ describe("Docs vault operations", () => {
           path: openedPath,
           rootPath: storageRootPath,
           content: "# Updated thread",
+          contentEncoding: "utf8",
           expectedSha256: "thread-sha",
         },
       ],
@@ -1421,8 +1432,8 @@ describe("Docs vault operations", () => {
           harness.realtimeSignals.some(
             (signal) =>
               signal.channel === "vault-changed" &&
-              isRecord(signal.payload) &&
-              signal.payload.vaultId === "personal",
+              personalVaultChangedPayloadSchema.safeParse(signal.payload)
+                .success,
           ),
         1_000,
       );

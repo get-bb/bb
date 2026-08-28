@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "avatar",
   "description": "BB ui \"avatar\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-avatar"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/avatar.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/avatar.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-avatar"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

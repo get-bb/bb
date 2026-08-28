@@ -22,14 +22,8 @@ const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
 const PROJECT_PROVIDER_ID = "project-provider";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    system: {
-      executionOptions: vi.fn(),
-      providerStates: vi.fn(),
-    },
-  },
-}));
+const executionOptions = vi.spyOn(sdk.system, "executionOptions");
+const providerStates = vi.spyOn(sdk.system, "providerStates");
 
 function readyProviderStates(providerId: string): SystemProviderStatesResponse {
   return {
@@ -285,10 +279,8 @@ function setProjectScopedValue(baseKey: string, value: string): void {
 }
 
 beforeEach(() => {
-  vi.mocked(sdk.system.executionOptions).mockResolvedValue(
-    executionOptionsResponse(),
-  );
-  vi.mocked(sdk.system.providerStates).mockResolvedValue({ providers: [] });
+  executionOptions.mockResolvedValue(executionOptionsResponse());
+  providerStates.mockResolvedValue({ providers: [] });
 });
 
 afterEach(() => {

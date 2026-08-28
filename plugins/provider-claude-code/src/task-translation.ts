@@ -1,7 +1,6 @@
 import {
   type BackgroundTaskStatus,
   type BackgroundTaskUsage,
-  type DeltaBackgroundTaskShape,
   type ThreadDelta,
   type WorkflowAgentSnapshot,
   type WorkflowAgentState,
@@ -45,6 +44,19 @@ interface ClaudeTrackedTask {
 }
 
 export type ClaudeTaskMap = Map<string, ClaudeTrackedTask>;
+
+type DeltaItem = Extract<
+  ThreadDelta,
+  { kind: "item.open" | "item.close" }
+>["item"];
+type DeltaBackgroundTaskItem = Extract<DeltaItem, { type: "backgroundTask" }>;
+
+interface ClaudeTaskKey {
+  providerItemId: string;
+  parentRef?: string;
+}
+
+type ClaudeTaskProgressDelta = Extract<ThreadDelta, { kind: "item.progress" }>;
 
 interface TranslateClaudeTaskMessageArgs {
   event: unknown;
@@ -103,7 +115,7 @@ function normalizeWorkflowAgentRecord(
   record: ClaudeWorkflowAgentRecord,
 ): WorkflowAgentSnapshot {
   const attempt = isPositiveInt(record.attempt) ? record.attempt : 1;
-  return {
+  const snapshot: WorkflowAgentSnapshot = {
     index: record.index,
     label: record.label,
     state: deriveWorkflowAgentState(record),
@@ -112,35 +124,30 @@ function normalizeWorkflowAgentRecord(
     cached: record.cached ?? false,
     lastProgressAt:
       record.lastProgressAt ?? record.startedAt ?? record.queuedAt ?? 0,
-    ...(isPositiveInt(record.phaseIndex)
-      ? { phaseIndex: record.phaseIndex }
-      : {}),
-    ...(record.phaseTitle !== undefined
-      ? { phaseTitle: record.phaseTitle }
-      : {}),
-    ...(record.agentType !== undefined ? { agentType: record.agentType } : {}),
-    ...(record.isolation !== undefined ? { isolation: record.isolation } : {}),
-    ...(record.queuedAt !== undefined ? { queuedAt: record.queuedAt } : {}),
-    ...(record.startedAt !== undefined ? { startedAt: record.startedAt } : {}),
-    ...(record.lastToolName !== undefined
-      ? { lastToolName: record.lastToolName }
-      : {}),
-    ...(record.lastToolSummary !== undefined
-      ? { lastToolSummary: record.lastToolSummary }
-      : {}),
-    ...(record.promptPreview !== undefined
-      ? { promptPreview: record.promptPreview }
-      : {}),
-    ...(record.resultPreview !== undefined
-      ? { resultPreview: record.resultPreview }
-      : {}),
-    ...(record.error !== undefined ? { error: record.error } : {}),
-    ...(record.tokens !== undefined ? { tokens: record.tokens } : {}),
-    ...(record.toolCalls !== undefined ? { toolCalls: record.toolCalls } : {}),
-    ...(record.durationMs !== undefined
-      ? { durationMs: record.durationMs }
-      : {}),
   };
+  if (isPositiveInt(record.phaseIndex)) snapshot.phaseIndex = record.phaseIndex;
+  if (record.phaseTitle !== undefined) snapshot.phaseTitle = record.phaseTitle;
+  if (record.agentType !== undefined) snapshot.agentType = record.agentType;
+  if (record.isolation !== undefined) snapshot.isolation = record.isolation;
+  if (record.queuedAt !== undefined) snapshot.queuedAt = record.queuedAt;
+  if (record.startedAt !== undefined) snapshot.startedAt = record.startedAt;
+  if (record.lastToolName !== undefined) {
+    snapshot.lastToolName = record.lastToolName;
+  }
+  if (record.lastToolSummary !== undefined) {
+    snapshot.lastToolSummary = record.lastToolSummary;
+  }
+  if (record.promptPreview !== undefined) {
+    snapshot.promptPreview = record.promptPreview;
+  }
+  if (record.resultPreview !== undefined) {
+    snapshot.resultPreview = record.resultPreview;
+  }
+  if (record.error !== undefined) snapshot.error = record.error;
+  if (record.tokens !== undefined) snapshot.tokens = record.tokens;
+  if (record.toolCalls !== undefined) snapshot.toolCalls = record.toolCalls;
+  if (record.durationMs !== undefined) snapshot.durationMs = record.durationMs;
+  return snapshot;
 }
 
 function foldWorkflowProgressRecords(
@@ -160,13 +167,14 @@ function foldWorkflowProgressRecords(
     }
     const phaseRecord = claudeWorkflowPhaseRecordSchema.safeParse(rawRecord);
     if (phaseRecord.success && isPositiveInt(phaseRecord.data.index)) {
-      task.phasesByIndex.set(phaseRecord.data.index, {
+      const phase: WorkflowPhaseSnapshot = {
         index: phaseRecord.data.index,
         title: phaseRecord.data.title,
-        ...(phaseRecord.data.kind !== undefined
-          ? { kind: phaseRecord.data.kind }
-          : {}),
-      });
+      };
+      if (phaseRecord.data.kind !== undefined) {
+        phase.kind = phaseRecord.data.kind;
+      }
+      task.phasesByIndex.set(phaseRecord.data.index, phase);
     }
   }
 }
@@ -185,11 +193,9 @@ function buildWorkflowSnapshot(
   };
 }
 
-function buildClaudeTaskShape(
-  task: ClaudeTrackedTask,
-): DeltaBackgroundTaskShape {
+function buildClaudeTaskItem(task: ClaudeTrackedTask): DeltaBackgroundTaskItem {
   const workflow = buildWorkflowSnapshot(task);
-  return {
+  const item: DeltaBackgroundTaskItem = {
     type: "backgroundTask",
     familyId: task.taskId,
     taskType: task.taskType,
@@ -197,37 +203,35 @@ function buildClaudeTaskShape(
     status: backgroundTaskItemStatus(task.taskStatus),
     taskStatus: task.taskStatus,
     skipTranscript: task.skipTranscript,
-    ...(task.workflowName !== undefined
-      ? { workflowName: task.workflowName }
-      : {}),
-    ...(workflow ? { workflow } : {}),
-    ...(task.usage ? { usage: task.usage } : {}),
-    ...(task.summary !== undefined ? { summary: task.summary } : {}),
-    ...(task.error !== undefined ? { error: task.error } : {}),
-    ...(task.outputFile !== undefined ? { outputFile: task.outputFile } : {}),
   };
+  if (task.workflowName !== undefined) item.workflowName = task.workflowName;
+  if (workflow !== undefined) item.workflow = workflow;
+  if (task.usage !== undefined) item.usage = task.usage;
+  if (task.summary !== undefined) item.summary = task.summary;
+  if (task.error !== undefined) item.error = task.error;
+  if (task.outputFile !== undefined) item.outputFile = task.outputFile;
+  return item;
 }
 
-function taskKey(task: ClaudeTrackedTask): {
-  providerItemId: string;
-  parentRef?: string;
-} {
-  return {
+function taskKey(task: ClaudeTrackedTask): ClaudeTaskKey {
+  const key: ClaudeTaskKey = {
     providerItemId: task.providerItemKey,
-    ...(task.toolUseId !== undefined ? { parentRef: task.toolUseId } : {}),
   };
+  if (task.toolUseId !== undefined) key.parentRef = task.toolUseId;
+  return key;
 }
 
 function buildClaudeTaskProgressDelta(
   task: ClaudeTrackedTask,
   flush: boolean,
 ): ThreadDelta {
-  return {
+  const delta: ClaudeTaskProgressDelta = {
     kind: "item.progress",
     key: taskKey(task),
-    snapshot: buildClaudeTaskShape(task),
-    ...(flush ? { flush: true } : {}),
+    snapshot: buildClaudeTaskItem(task),
   };
+  if (flush) delta.flush = true;
+  return delta;
 }
 
 function claudeTaskPresentation(task: ClaudeTrackedTask) {
@@ -239,12 +243,12 @@ function claudeTaskPresentation(task: ClaudeTrackedTask) {
 }
 
 function buildClaudeTaskCloseDelta(task: ClaudeTrackedTask): ThreadDelta {
-  const shape = buildClaudeTaskShape(task);
+  const item = buildClaudeTaskItem(task);
   return {
     kind: "item.close",
     key: taskKey(task),
-    status: shape.status,
-    item: shape,
+    status: item.status,
+    item,
     presentation: claudeTaskPresentation(task),
   };
 }
@@ -306,7 +310,7 @@ export function translateClaudeTaskMessage(
       {
         kind: "item.open",
         key: taskKey(task),
-        item: buildClaudeTaskShape(task),
+        item: buildClaudeTaskItem(task),
         presentation: claudeTaskPresentation(task),
       },
     ];

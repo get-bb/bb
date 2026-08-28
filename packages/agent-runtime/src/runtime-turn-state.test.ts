@@ -7,15 +7,16 @@ function turnStarted(
   turnId: string,
   options: { parentToolCallId?: string } = {},
 ): ThreadEvent {
-  return {
+  const event: ThreadEvent = {
     type: "turn/started",
     threadId: "t1",
     providerThreadId: "p1",
-    ...(options.parentToolCallId
-      ? { parentToolCallId: options.parentToolCallId }
-      : {}),
     scope: turnScope(turnId),
   };
+  if (options.parentToolCallId) {
+    event.parentToolCallId = options.parentToolCallId;
+  }
+  return event;
 }
 
 function turnCompleted(turnId: string): ThreadEvent {

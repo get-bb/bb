@@ -11,7 +11,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
+import {
+  derivePluginId,
+  jsonObjectSchema,
+  PLUGIN_SDK_VERSION,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
   PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
@@ -137,6 +143,16 @@ interface RewrittenSdkImportFile {
   imports: number;
 }
 
+interface RewrittenSdkSpecifiers {
+  text: string;
+  imports: number;
+}
+
+interface SdkPin {
+  inDependencies: boolean;
+  version: string | null;
+}
+
 export async function migratePluginToPackageLayout(
   args: MigratePluginArgs,
 ): Promise<PluginPackageLayoutMigration> {
@@ -218,10 +234,7 @@ async function rewriteSdkImportsInFile(
   await writeFileAtomically(filePath, relativePath, rewritten.text);
 }
 
-function rewriteLegacySdkSpecifiers(content: string): {
-  text: string;
-  imports: number;
-} {
+function rewriteLegacySdkSpecifiers(content: string): RewrittenSdkSpecifiers {
   let imports = 0;
   const text = content.replace(
     LEGACY_SDK_SPECIFIER_PATTERN,
@@ -353,17 +366,9 @@ async function planManifest(
   } catch {
     throw new Error("package.json could not be read");
   }
-  let manifest: Record<string, unknown>;
+  let manifest: JsonObject;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error("not an object");
-    }
-    manifest = parsed as Record<string, unknown>;
+    manifest = jsonObjectSchema.parse(JSON.parse(raw));
   } catch {
     throw new Error("package.json is not valid JSON");
   }
@@ -376,7 +381,7 @@ async function planManifest(
   const movedFromDependencies = declaredPin.inDependencies;
   if (pin !== null || movedFromDependencies) {
     if (movedFromDependencies) {
-      const deps = asRecord(manifest.dependencies);
+      const deps = asJsonObject(manifest.dependencies);
       delete deps["@get-bb/plugin-sdk"];
       if (Object.keys(deps).length === 0) {
         delete manifest.dependencies;
@@ -385,7 +390,7 @@ async function planManifest(
       }
     }
     manifest.devDependencies = insertDependency(
-      asRecord(manifest.devDependencies),
+      asJsonObject(manifest.devDependencies),
       "@get-bb/plugin-sdk",
       sdkVersion,
     );
@@ -398,9 +403,9 @@ async function planManifest(
 
   let enginesFloor: ManifestPlan["enginesFloor"] = null;
   if (options.raiseFloor) {
-    const engines = asRecord(manifest.engines);
+    const engines = asJsonObject(manifest.engines);
     const current = engines.bbPluginSdk;
-    const from = typeof current === "string" ? current : null;
+    const from = isJsonString(current) ? current : null;
     if (isFloorBelow(from, sdkVersion)) {
       enginesFloor = { from, to: `>=${sdkVersion}` };
       manifest.engines = { ...engines, bbPluginSdk: `>=${sdkVersion}` };
@@ -431,26 +436,25 @@ async function planManifest(
 }
 
 function applyShimmedTypePins(
-  manifest: Record<string, unknown>,
+  manifest: JsonObject,
   policy: ShimmedTypePinPolicy,
 ): ShimmedTypePinChange[] {
   if (policy === "none") return [];
   const changes: ShimmedTypePinChange[] = [];
-  const deps = asRecord(manifest.dependencies);
-  let devDeps = asRecord(manifest.devDependencies);
+  const deps = asJsonObject(manifest.dependencies);
+  let devDeps = asJsonObject(manifest.devDependencies);
   let depsChanged = false;
   for (const [name, hostVersion] of Object.entries(
     PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
   )) {
     const runtimeDeclared = deps[name];
     const devDeclared = devDeps[name];
-    const inDependencies = typeof runtimeDeclared === "string";
-    const declared =
-      typeof devDeclared === "string"
-        ? devDeclared
-        : inDependencies
-          ? runtimeDeclared
-          : null;
+    const inDependencies = isJsonString(runtimeDeclared);
+    const declared = isJsonString(devDeclared)
+      ? devDeclared
+      : inDependencies
+        ? runtimeDeclared
+        : null;
     if (declared === null && policy === "declared") continue;
     if (declared === hostVersion && !inDependencies) continue;
     changes.push({
@@ -477,38 +481,39 @@ function applyShimmedTypePins(
   return changes;
 }
 
-function readSdkPinFrom(manifest: Record<string, unknown>): {
-  inDependencies: boolean;
-  version: string | null;
-} {
-  const inDependencies =
-    typeof asRecord(manifest.dependencies)["@get-bb/plugin-sdk"] === "string";
+function readSdkPinFrom(manifest: JsonObject): SdkPin {
+  const inDependencies = isJsonString(
+    asJsonObject(manifest.dependencies)["@get-bb/plugin-sdk"],
+  );
   for (const field of ["devDependencies", "dependencies"] as const) {
-    const declared = asRecord(manifest[field])["@get-bb/plugin-sdk"];
-    if (typeof declared === "string")
-      return { inDependencies, version: declared };
+    const declared = asJsonObject(manifest[field])["@get-bb/plugin-sdk"];
+    if (isJsonString(declared)) return { inDependencies, version: declared };
   }
   return { inDependencies, version: null };
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+function asJsonObject(value: JsonValue | undefined): JsonObject {
+  if (value === undefined) return {};
+  const result = jsonObjectSchema.safeParse(value);
+  return result.success ? result.data : {};
+}
+
+function isJsonString(value: JsonValue | undefined): value is string {
+  return value === String(value);
 }
 
 function insertDependency(
-  deps: Record<string, unknown>,
+  deps: JsonObject,
   name: string,
   version: string,
-): Record<string, unknown> {
+): JsonObject {
   if (name in deps) return { ...deps, [name]: version };
   const keys = Object.keys(deps);
   const sorted = keys.every(
     (key, index) => index === 0 || keys[index - 1]! < key,
   );
   if (!sorted) return { ...deps, [name]: version };
-  const next: Record<string, unknown> = {};
+  const next: JsonObject = {};
   let inserted = false;
   for (const key of keys) {
     if (!inserted && name < key) {
@@ -556,25 +561,17 @@ async function planTsconfig(
   const path = join(rootDir, "tsconfig.json");
   if ((await statNoFollow(path, "tsconfig.json")) === null) return empty;
   const raw = await readFile(path, "utf8");
-  let tsconfig: Record<string, unknown>;
+  let tsconfig: JsonObject;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error("not an object");
-    }
-    tsconfig = parsed as Record<string, unknown>;
+    tsconfig = jsonObjectSchema.parse(JSON.parse(raw));
   } catch {
     throw new Error(
       "tsconfig.json is not valid JSON — remove the @get-bb/plugin-sdk paths entry by hand",
     );
   }
 
-  const compilerOptions = asRecord(tsconfig.compilerOptions);
-  const paths = asRecord(compilerOptions.paths);
+  const compilerOptions = asJsonObject(tsconfig.compilerOptions);
+  const paths = asJsonObject(compilerOptions.paths);
   const removedPathMaps = Object.keys(paths).filter((key) =>
     SDK_PATH_MAP_PREFIXES.some(
       (name) => key === name || key.startsWith(`${name}/`),
@@ -586,7 +583,7 @@ async function planTsconfig(
       ? []
       : include.filter(
           (entry): entry is string =>
-            typeof entry === "string" &&
+            isJsonString(entry) &&
             (entry === "types" || entry.startsWith("types/")),
         );
   if (removedPathMaps.length === 0 && removedIncludes.length === 0) {
@@ -606,7 +603,7 @@ async function planTsconfig(
   }
   if (removedIncludes.length > 0 && include !== null) {
     tsconfig.include = include.filter(
-      (entry) => typeof entry !== "string" || !removedIncludes.includes(entry),
+      (entry) => !isJsonString(entry) || !removedIncludes.includes(entry),
     );
   }
   return {
@@ -637,7 +634,7 @@ async function planVendoredDeletions(
   return { deletedFiles, removedTypesDir: remaining.length === 0 };
 }
 
-function reserialize(raw: string, value: Record<string, unknown>): string {
+function reserialize(raw: string, value: JsonObject): string {
   const indentMatch = /\n([ \t]+)"/.exec(raw);
   const indent = indentMatch === null ? 2 : indentMatch[1]!;
   const serialized = JSON.stringify(value, null, indent);
@@ -665,10 +662,8 @@ async function readDeclaredSdkPin(rootDir: string): Promise<string | null> {
   const manifest = await readJsonFile(join(rootDir, "package.json"));
   if (manifest === null) return null;
   for (const field of ["devDependencies", "dependencies"] as const) {
-    const deps = manifest[field];
-    if (typeof deps !== "object" || deps === null) continue;
-    const declared = (deps as Record<string, unknown>)["@get-bb/plugin-sdk"];
-    if (typeof declared === "string") return declared;
+    const declared = asJsonObject(manifest[field])["@get-bb/plugin-sdk"];
+    if (isJsonString(declared)) return declared;
   }
   return null;
 }
@@ -687,12 +682,8 @@ async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
       raw.includes('"@get-bb/plugin-sdk') || raw.includes('"@bb/plugin-sdk')
     );
   }
-  const compilerOptions = tsconfig.compilerOptions;
-  if (typeof compilerOptions !== "object" || compilerOptions === null) {
-    return false;
-  }
-  const paths = (compilerOptions as Record<string, unknown>).paths;
-  if (typeof paths !== "object" || paths === null) return false;
+  const compilerOptions = asJsonObject(tsconfig.compilerOptions);
+  const paths = asJsonObject(compilerOptions.paths);
   return Object.keys(paths).some(
     (key) =>
       key === "@get-bb/plugin-sdk" ||
@@ -702,13 +693,12 @@ async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
   );
 }
 
-async function readJsonFile(
-  path: string,
-): Promise<Record<string, unknown> | null> {
+async function readJsonFile(path: string): Promise<JsonObject | null> {
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-    if (typeof parsed !== "object" || parsed === null) return null;
-    return parsed as Record<string, unknown>;
+    const result = jsonObjectSchema.safeParse(
+      JSON.parse(await readFile(path, "utf8")),
+    );
+    return result.success ? result.data : null;
   } catch {
     return null;
   }
@@ -722,7 +712,8 @@ async function statNoFollow(
   try {
     stats = await lstat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return null;
     throw error;
   }
   if (stats.isSymbolicLink()) {
@@ -1449,7 +1440,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   try {
     await mkdir(targetDir, { recursive: false });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+    if (error instanceof Error && "code" in error && error.code === "EEXIST") {
       throw new Error(`directory already exists: ${targetDir}`);
     }
     throw error;

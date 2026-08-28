@@ -7,19 +7,24 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { act, type ReactElement } from "react";
+import { act, type ComponentProps, type ReactElement } from "react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  FilePreview,
+  FilePreview as FilePreviewSurface,
   buildCsvPreviewData,
   getCsvTruncationNote,
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
-import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { truncateSourceCode } from "@/components/code/source-code-budget";
+import { SecondaryPanelFilePreview as SecondaryPanelFilePreviewSurface } from "./ThreadStorageFilePreview";
 import {
   PierreWorkerPoolGateContext,
+  useRequirePierreWorkerPool,
+  usePierreWorkerPool,
   type PierreWorkerPoolGate,
 } from "@/lib/pierre-worker-pool-gate";
+import { WorkerPoolManager } from "@pierre/diffs/worker";
 
 interface MockPierreFileProps {
   file: {
@@ -66,10 +71,14 @@ const pierreMock = vi.hoisted(() => {
   const state = {
     cachedFileKeys: new Set<string>(),
     initialStats: createStats(),
-    lastFile: null as MockPierreFileProps["file"] | null,
+    lastFile:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ null as
+        | MockPierreFileProps["file"]
+        | null,
     mountCount: 0,
     renderCount: 0,
-    statsCallback: null as StatsCallback | null,
+    statsCallback:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ null as StatsCallback | null,
     unsubscribe: vi.fn(),
   };
 
@@ -91,80 +100,174 @@ const pierreMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("@pierre/diffs/react", async () => {
-  const React = await import("react");
+function TestSourceCodeRenderer({
+  content,
+  path,
+  cacheKey,
+  highlightedLines = null,
+}: {
+  content: string;
+  path: string;
+  cacheKey?: string;
+  highlightedLines?: { end: number; start: number } | null;
+}) {
+  const isWorkerPoolReady = useRequirePierreWorkerPool();
+  const workerPool = usePierreWorkerPool();
+  const [workerStats, setWorkerStats] = React.useState(
+    pierreMock.state.initialStats,
+  );
+  const [instanceId] = React.useState(() => {
+    pierreMock.state.mountCount += 1;
+    return pierreMock.state.mountCount;
+  });
+  const hostRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    if (workerPool === undefined) return;
+    const unsubscribe = workerPool.subscribeToStatChanges((stats) => {
+      pierreMock.state.initialStats = stats;
+      setWorkerStats(stats);
+    });
+    return unsubscribe;
+  }, [workerPool]);
+  const file = React.useMemo(
+    () => ({ name: path, contents: content, cacheKey }),
+    [cacheKey, content, path],
+  );
+  const truncation = React.useMemo(
+    () => truncateSourceCode(content),
+    [content],
+  );
+  const [fullFileRequested, setFullFileRequested] = React.useState(false);
+  const targetLine = highlightedLines?.start ?? null;
+  const showsFullFile =
+    truncation === null ||
+    fullFileRequested ||
+    (targetLine !== null && targetLine > truncation.renderedLineCount);
+  const renderedFile = React.useMemo(() => {
+    if (showsFullFile || truncation === null) return file;
+    return {
+      ...file,
+      cacheKey: `${file.cacheKey}:head`,
+      contents: truncation.contents,
+    };
+  }, [file, showsFullFile, truncation]);
+  const selectedLines = highlightedLines;
+  React.useLayoutEffect(() => {
+    if (!isWorkerPoolReady || workerStats.managerState !== "initialized") {
+      return;
+    }
+    pierreMock.state.lastFile = renderedFile;
+    pierreMock.state.renderCount += 1;
 
-  return {
-    File: ({ file, selectedLines = null }: MockPierreFileProps) => {
-      const [instanceId] = React.useState(() => {
-        pierreMock.state.mountCount += 1;
-        return pierreMock.state.mountCount;
-      });
-      const hostRef = React.useRef<HTMLElement>(null);
-      pierreMock.state.lastFile = file;
-      pierreMock.state.renderCount += 1;
+    const host = hostRef.current;
+    if (host === null) return;
+    const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    const code = document.createElement("code");
+    code.dataset.code = "";
+    code.scrollLeft = 240;
+    code.replaceChildren(
+      ...renderedFile.contents.split("\n").map((lineContents, index) => {
+        const lineNumber = index + 1;
+        const line = document.createElement("div");
+        line.dataset.line = String(lineNumber);
+        line.dataset.lineIndex = String(index);
+        line.textContent = lineContents;
+        line.getBoundingClientRect = () => ({
+          bottom: 718 + index * 18,
+          height: 18,
+          left: 0,
+          right: 800,
+          top: 700 + index * 18,
+          width: 800,
+          x: 0,
+          y: 700 + index * 18,
+          toJSON: () => ({}),
+        });
+        line.scrollIntoView = () => {
+          code.scrollLeft = 0;
+        };
+        if (
+          selectedLines !== null &&
+          lineNumber >= selectedLines.start &&
+          lineNumber <= selectedLines.end
+        ) {
+          line.dataset.selectedLine = "single";
+        }
+        return line;
+      }),
+    );
+    shadowRoot.replaceChildren(code);
+    const viewport = host.parentElement;
+    if (viewport instanceof HTMLElement && highlightedLines !== null) {
+      viewport.scrollTop = 727;
+      const target = shadowRoot.querySelector(
+        `[data-line="${highlightedLines.start}"]`,
+      );
+      target?.setAttribute("data-bb-source-code-target-line", "");
+    }
+  }, [
+    file,
+    highlightedLines,
+    isWorkerPoolReady,
+    renderedFile,
+    selectedLines,
+    workerStats.managerState,
+  ]);
 
-      React.useLayoutEffect(() => {
-        const host = hostRef.current;
-        if (host === null) return;
-        const shadowRoot =
-          host.shadowRoot ?? host.attachShadow({ mode: "open" });
-        const code = document.createElement("code");
-        code.dataset.code = "";
-        code.scrollLeft = 240;
-        code.replaceChildren(
-          ...file.contents.split("\n").map((lineContents, index) => {
-            const lineNumber = index + 1;
-            const line = document.createElement("div");
-            line.dataset.line = String(lineNumber);
-            line.dataset.lineIndex = String(index);
-            line.textContent = lineContents;
-            line.getBoundingClientRect = () => ({
-              bottom: 718 + index * 18,
-              height: 18,
-              left: 0,
-              right: 800,
-              top: 700 + index * 18,
-              width: 800,
-              x: 0,
-              y: 700 + index * 18,
-              toJSON: () => ({}),
-            });
-            line.scrollIntoView = () => {
-              code.scrollLeft = 0;
-            };
-            if (
-              selectedLines !== null &&
-              lineNumber >= selectedLines.start &&
-              lineNumber <= selectedLines.end
-            ) {
-              line.dataset.selectedLine = "single";
-            }
-            return line;
-          }),
-        );
-        shadowRoot.replaceChildren(code);
-      }, [file.contents, selectedLines]);
+  if (!isWorkerPoolReady || workerStats.managerState !== "initialized") {
+    return null;
+  }
+  return React.createElement(
+    "div",
+    { "data-bb-source-code-viewport": "" },
+    React.createElement("diffs-container", {
+      ref: hostRef,
+      "data-instance-id": String(instanceId),
+      "data-render-count": String(pierreMock.state.renderCount),
+      "data-testid": "pierre-file",
+    }),
+    truncation !== null && !showsFullFile
+      ? React.createElement(
+          "div",
+          {},
+          `Showing the first ${SOURCE_CODE_MAX_LINES.toLocaleString()} of ${truncation.totalLineCount.toLocaleString()} lines.`,
+          React.createElement(
+            "button",
+            { type: "button", onClick: () => setFullFileRequested(true) },
+            "Load full file",
+          ),
+        )
+      : null,
+  );
+}
 
-      return React.createElement("diffs-container", {
-        ref: hostRef,
-        "data-instance-id": String(instanceId),
-        "data-render-count": String(pierreMock.state.renderCount),
-        "data-testid": "pierre-file",
-      });
-    },
-    WorkerPoolContext: React.createContext(undefined),
-    useWorkerPool: () => pierreMock.workerPool,
-    VirtualizerContext: React.createContext(undefined),
-  };
-});
+function FilePreview(props: ComponentProps<typeof FilePreviewSurface>) {
+  return (
+    <FilePreviewSurface
+      {...props}
+      sourceCodeRenderer={TestSourceCodeRenderer}
+    />
+  );
+}
+
+function SecondaryPanelFilePreview(
+  props: ComponentProps<typeof SecondaryPanelFilePreviewSurface>,
+) {
+  return (
+    <SecondaryPanelFilePreviewSurface
+      {...props}
+      sourceCodeRenderer={TestSourceCodeRenderer}
+    />
+  );
+}
 
 function renderWithWorkerPool(ui: ReactElement) {
   const gate: PierreWorkerPoolGate = {
     ready: true,
-    pool: pierreMock.workerPool as unknown as NonNullable<
-      PierreWorkerPoolGate["pool"]
-    >,
+    pool: Object.assign(
+      Object.create(WorkerPoolManager.prototype),
+      pierreMock.workerPool,
+    ),
     request: () => undefined,
   };
   return render(
@@ -234,7 +337,7 @@ describe("FilePreview", () => {
     );
 
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         screen.getByRole("button", {
           name: "Refreshing file",
         }) as HTMLButtonElement
@@ -544,7 +647,9 @@ describe("FilePreview", () => {
 
   it("hands the desktop shell an absolute preview url", () => {
     const openExternalUrl = vi.fn();
-    (window as unknown as { bbDesktop: unknown }).bbDesktop = {
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+      window as { bbDesktop: unknown }
+    ).bbDesktop = {
       openExternalUrl,
     };
 
@@ -569,7 +674,11 @@ describe("FilePreview", () => {
         `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
       );
     } finally {
-      delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
+      delete (
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          window as { bbDesktop?: unknown }
+        ).bbDesktop
+      );
     }
   });
 

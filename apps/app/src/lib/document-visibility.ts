@@ -10,10 +10,10 @@ function notifyListeners(): void {
   }
 }
 
-if (typeof document !== "undefined" && typeof window !== "undefined") {
-  document.addEventListener("visibilitychange", notifyListeners);
-  window.addEventListener("pageshow", notifyListeners);
-  window.addEventListener("focus", notifyListeners);
+if (globalThis.document !== undefined && globalThis.window !== undefined) {
+  globalThis.document.addEventListener("visibilitychange", notifyListeners);
+  globalThis.window.addEventListener("pageshow", notifyListeners);
+  globalThis.window.addEventListener("focus", notifyListeners);
 }
 
 export function subscribeToDocumentVisibility(
@@ -27,7 +27,8 @@ export function subscribeToDocumentVisibility(
 
 export function isDocumentVisible(): boolean {
   return (
-    typeof document === "undefined" || document.visibilityState === "visible"
+    globalThis.document === undefined ||
+    globalThis.document.visibilityState === "visible"
   );
 }
 

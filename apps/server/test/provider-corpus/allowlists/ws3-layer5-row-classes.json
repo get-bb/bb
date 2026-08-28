@@ -26,9 +26,7 @@
       "changed": {
         "kind": "work",
         "workKind": "tool",
-        "fields": [
-          "activityIntents"
-        ]
+        "fields": ["activityIntents"]
       }
     }
   },
@@ -55,10 +53,7 @@
       "changed": {
         "kind": "work",
         "workKind": "delegation",
-        "fields": [
-          "background",
-          "childRef"
-        ]
+        "fields": ["background", "childRef"]
       }
     }
   },
@@ -69,11 +64,7 @@
       "changed": {
         "kind": "work",
         "workKind": "delegation",
-        "fields": [
-          "background",
-          "childRef",
-          "output"
-        ]
+        "fields": ["background", "childRef", "output"]
       }
     }
   },
@@ -123,10 +114,7 @@
       "changed": {
         "kind": "work",
         "workKind": "tool",
-        "fields": [
-          "sourceSeqStart",
-          "startedAt"
-        ]
+        "fields": ["sourceSeqStart", "startedAt"]
       }
     }
   }

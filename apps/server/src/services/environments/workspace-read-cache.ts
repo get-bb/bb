@@ -69,7 +69,7 @@ export class EnvironmentReadCache<
         }
         return value;
       },
-      (error: unknown) => {
+      (error: Error) => {
         if (this.inFlight.get(cacheKey)?.promise === promise) {
           this.inFlight.delete(cacheKey);
         }

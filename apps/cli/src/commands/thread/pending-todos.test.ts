@@ -9,7 +9,7 @@ import {
 
 import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
 
-function captureLogLines(fn: () => void): { lines: string[] } {
+function captureLogLines(fn: () => void) {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {});
   try {
     fn();

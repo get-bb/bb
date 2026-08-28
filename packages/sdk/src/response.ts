@@ -1,4 +1,6 @@
 import { extractErrorMessage } from "@bb/core-ui";
+import type { JsonValue } from "@bb/domain";
+import { z } from "zod";
 
 export const DEFAULT_BB_REQUEST_TIMEOUT_MS = 75_000;
 
@@ -51,9 +53,12 @@ const RESPONSE_BODY_READER_METHODS = new Set<PropertyKey>([
   "text",
 ]);
 
-const ERROR_EXTRACT_OPTS: { legacyKeys: readonly ["detail", "error"] } = {
-  legacyKeys: ["detail", "error"],
-};
+const ERROR_EXTRACT_OPTS = { legacyKeys: ["detail", "error"] as const };
+
+const errorCauseSchema = z.object({ code: z.string() }).passthrough();
+const httpErrorPayloadSchema = z
+  .object({ code: z.string().optional() })
+  .passthrough();
 
 function formatRequestTimeoutDuration(timeoutMs: number): string {
   const seconds = timeoutMs / 1000;
@@ -113,7 +118,13 @@ export function createRequestTimeoutFetch(
       const response = await fetch(input, { ...init, signal: requestSignal });
       return wrapRequestTimeoutResponse({ context, response });
     } catch (error) {
-      if (isRequestTimeoutError(context, error)) {
+      if (
+        isRequestTimeoutError(
+          context,
+          error instanceof Error ? error : null,
+          error === context.timeoutSignal.reason,
+        )
+      ) {
         throw new BbRequestTimeoutError(options.timeoutMs);
       }
       throw error;
@@ -141,7 +152,10 @@ export async function resolveResponse<TResponse extends SdkResponseLike>(
   try {
     response = await responsePromise;
   } catch (error) {
-    if (isTypeErrorWithCauseCode(error, "ECONNREFUSED")) {
+    if (
+      error instanceof TypeError &&
+      isTypeErrorWithCauseCode(error, "ECONNREFUSED")
+    ) {
       throw new Error(
         "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
       );
@@ -161,7 +175,13 @@ async function readResponseBodyWithTimeoutMapping<TBody>(
   try {
     return await args.read();
   } catch (error) {
-    if (isRequestTimeoutError(args.context, error)) {
+    if (
+      isRequestTimeoutError(
+        args.context,
+        error instanceof Error ? error : null,
+        error === args.context.timeoutSignal.reason,
+      )
+    ) {
       throw new BbRequestTimeoutError(args.context.timeoutMs);
     }
     throw error;
@@ -177,13 +197,9 @@ function wrapRequestTimeoutResponse(
   return new Proxy(response, {
     get(target, property) {
       if (RESPONSE_BODY_READER_METHODS.has(property)) {
-        const read = Reflect.get(target, property, target);
-        if (typeof read === "function") {
-          return () =>
-            readResponseBodyWithTimeoutMapping({
-              context,
-              read: read.bind(target),
-            });
+        const read = getResponseBodyReader(target, property);
+        if (read !== undefined) {
+          return () => readResponseBodyWithTimeoutMapping({ context, read });
         }
       }
 
@@ -204,12 +220,81 @@ function wrapRequestTimeoutResponse(
               response: target.clone(),
             });
         default: {
-          const value = Reflect.get(target, property, target);
-          return typeof value === "function" ? value.bind(target) : value;
+          return getResponseProperty(target, property);
         }
       }
     },
   });
+}
+
+type ResponseBodyValue =
+  | ArrayBuffer
+  | Blob
+  | Uint8Array
+  | object
+  | string
+  | JsonValue;
+type ResponseBodyMethod = () => Promise<ResponseBodyValue>;
+
+function getResponseBodyReader(
+  target: Response,
+  property: PropertyKey,
+): ResponseBodyMethod | undefined {
+  switch (property) {
+    case "arrayBuffer":
+      return () => target.arrayBuffer();
+    case "blob":
+      return () => target.blob();
+    case "bytes":
+      return () => target.bytes();
+    case "formData":
+      return () => target.formData();
+    case "json":
+      return () => target.json();
+    case "text":
+      return () => target.text();
+    default:
+      return undefined;
+  }
+}
+
+type ResponseDataProperty =
+  | "type"
+  | "url"
+  | "redirected"
+  | "status"
+  | "ok"
+  | "statusText"
+  | "headers"
+  | "body"
+  | "bodyUsed";
+
+function getResponseProperty(
+  target: Response,
+  property: PropertyKey,
+): Response[ResponseDataProperty] | undefined {
+  switch (property) {
+    case "type":
+      return target.type;
+    case "url":
+      return target.url;
+    case "redirected":
+      return target.redirected;
+    case "status":
+      return target.status;
+    case "ok":
+      return target.ok;
+    case "statusText":
+      return target.statusText;
+    case "headers":
+      return target.headers;
+    case "body":
+      return target.body;
+    case "bodyUsed":
+      return target.bodyUsed;
+    default:
+      return undefined;
+  }
 }
 
 function wrapRequestTimeoutBody(
@@ -231,7 +316,13 @@ function wrapRequestTimeoutBody(
         }
         controller.enqueue(result.value);
       } catch (error) {
-        if (isRequestTimeoutError(args.context, error)) {
+        if (
+          isRequestTimeoutError(
+            args.context,
+            error instanceof Error ? error : null,
+            error === args.context.timeoutSignal.reason,
+          )
+        ) {
           controller.error(new BbRequestTimeoutError(args.context.timeoutMs));
           return;
         }
@@ -246,17 +337,15 @@ function wrapRequestTimeoutBody(
 
 function isRequestTimeoutError(
   context: RequestTimeoutContext,
-  error: unknown,
+  error: Error | null,
+  matchesTimeoutReason: boolean,
 ): boolean {
-  if (context.timeoutSignal.aborted && error === context.timeoutSignal.reason) {
-    return true;
-  }
-
   return (
-    context.timeoutSignal.aborted &&
-    context.requestSignal.reason === context.timeoutSignal.reason &&
-    error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError")
+    (context.timeoutSignal.aborted && matchesTimeoutReason) ||
+    (context.timeoutSignal.aborted &&
+      context.requestSignal.reason === context.timeoutSignal.reason &&
+      error !== null &&
+      (error.name === "AbortError" || error.name === "TimeoutError"))
   );
 }
 
@@ -269,17 +358,11 @@ function validateRequestTimeoutMs(timeoutMs: number): void {
 }
 
 function isTypeErrorWithCauseCode(
-  error: unknown,
+  error: TypeError,
   expectedCode: string,
 ): boolean {
-  if (!(error instanceof TypeError)) {
-    return false;
-  }
-  const { cause } = error;
-  if (!cause || typeof cause !== "object") {
-    return false;
-  }
-  return "code" in cause && cause.code === expectedCode;
+  const cause = errorCauseSchema.safeParse(error.cause);
+  return cause.success && cause.data.code === expectedCode;
 }
 
 interface HttpErrorInfo {
@@ -288,15 +371,10 @@ interface HttpErrorInfo {
   message: string;
 }
 
-function readHttpErrorCode(parsed: unknown): string | null {
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
-  }
-  if (!("code" in parsed)) {
-    return null;
-  }
-  const { code } = parsed;
-  return typeof code === "string" ? code : null;
+function readHttpErrorCode(
+  parsed: z.infer<typeof httpErrorPayloadSchema>,
+): string | null {
+  return parsed.code ?? null;
 }
 
 async function readHttpErrorInfo(
@@ -330,9 +408,12 @@ async function readHttpErrorInfo(
 
   try {
     const parsed: unknown = JSON.parse(normalized);
+    const parsedPayload = httpErrorPayloadSchema.safeParse(parsed);
     return {
       body: parsed,
-      code: readHttpErrorCode(parsed),
+      code: parsedPayload.success
+        ? readHttpErrorCode(parsedPayload.data)
+        : null,
       message: extractErrorMessage(parsed, ERROR_EXTRACT_OPTS) ?? normalized,
     };
   } catch {

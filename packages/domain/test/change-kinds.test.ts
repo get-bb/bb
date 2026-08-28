@@ -17,10 +17,33 @@ type StrictChangedOption = (typeof changedMessageSchema.options)[number];
 type LenientChangedOption =
   (typeof changedMessageLenientSchema.options)[number];
 
+type ChangedOption = StrictChangedOption | LenientChangedOption;
+
+const changedEntities = [
+  "thread",
+  "project",
+  "environment",
+  "host",
+  "system",
+] as const;
+
+function changedOptionEntity(option: ChangedOption): string {
+  for (const entity of changedEntities) {
+    if (option.safeParse({ type: "changed", entity, changes: [] }).success) {
+      return entity;
+    }
+  }
+  throw new Error("The changed schema has no known entity");
+}
+
+function changedOptionFields(option: ChangedOption): string[] {
+  return [...option.keyof().options].sort();
+}
+
 function strictOptionsByEntity(): Map<string, StrictChangedOption> {
   const options = new Map<string, StrictChangedOption>();
   for (const option of changedMessageSchema.options) {
-    options.set(option.shape.entity.value, option);
+    options.set(changedOptionEntity(option), option);
   }
   return options;
 }
@@ -28,7 +51,7 @@ function strictOptionsByEntity(): Map<string, StrictChangedOption> {
 function lenientOptionsByEntity(): Map<string, LenientChangedOption> {
   const options = new Map<string, LenientChangedOption>();
   for (const option of changedMessageLenientSchema.options) {
-    options.set(option.shape.entity.value, option);
+    options.set(changedOptionEntity(option), option);
   }
   return options;
 }
@@ -99,8 +122,8 @@ describe("lenient changed-message schema parity", () => {
       if (!lenientOption) {
         throw new Error(`Missing lenient schema for entity ${entity}`);
       }
-      expect(Object.keys(lenientOption.shape).sort(), entity).toEqual(
-        Object.keys(strictOption.shape).sort(),
+      expect(changedOptionFields(lenientOption), entity).toEqual(
+        changedOptionFields(strictOption),
       );
     }
   });
@@ -159,11 +182,11 @@ describe("lenient changed-message schema parity", () => {
         throw new Error(`Missing strict schema for entity ${message.entity}`);
       }
       expect(Object.keys(message).sort(), message.entity).toEqual(
-        Object.keys(strictOption.shape).sort(),
+        changedOptionFields(strictOption),
       );
     }
     expect(Object.keys(maximalThreadMetadata).sort()).toEqual(
-      Object.keys(threadChangeMetadataSchema.shape).sort(),
+      [...threadChangeMetadataSchema.keyof().options].sort(),
     );
   });
 });

@@ -10,8 +10,10 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
-import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
+import type { JsonValue } from "@bb/domain";
+import type { BbPluginApi, PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   claimAutomationScheduledRun,
   closeAutomationRun,
@@ -47,6 +49,57 @@ import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir } from "./script-files.js";
+
+type TestProvider = Awaited<
+  ReturnType<BbPluginApi["sdk"]["providers"]["list"]>
+>[number];
+
+const TEST_PROVIDER: TestProvider = {
+  id: "codex",
+  pluginId: "provider-codex",
+  displayName: "Codex",
+  logoUrl: null,
+  maintenance: { health: false, usage: false, installation: false },
+  capabilities: {
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
+    supportsServiceTier: false,
+    supportsNativeUserQuestion: false,
+    supportsFork: false,
+    supportsSessionRewind: false,
+    permissionModes: ["accept-edits", "auto", "full"],
+    modelCatalogScope: "host",
+  },
+  composerActions: [],
+  available: true,
+};
+
+interface AutomationRunDatabaseRow {
+  id: string;
+  status: string;
+  skipReason: string | null;
+  finishedAt: number | null;
+}
+
+interface ReconciliationThread {
+  id: string;
+  status: "idle" | "active" | "starting" | "stopping" | "error";
+  deletedAt: number | null;
+  archivedAt: number | null;
+}
+
+const storedScriptPathSchema = z
+  .object({
+    execution: z.object({ storedScriptPath: z.string() }).passthrough(),
+  })
+  .passthrough();
+
+const nodeErrorSchema = z.object({ code: z.string() }).passthrough();
+
+function nodeErrorCode(error: Error): string | undefined {
+  const parsed = nodeErrorSchema.safeParse(error);
+  return parsed.success ? parsed.data.code : undefined;
+}
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
@@ -175,15 +228,7 @@ function createAutomationServiceBb() {
         list: async () => [],
       },
       providers: {
-        list: async () =>
-          [
-            {
-              id: "codex",
-              capabilities: {
-                permissionModes: ["accept-edits", "auto", "full"],
-              },
-            },
-          ] as never,
+        list: async () => [TEST_PROVIDER],
       },
       threads: {
         get: async () => {
@@ -276,16 +321,11 @@ describe("data migrations", () => {
     })();
 
     const rows = db
-      .prepare(
+      .prepare<[], AutomationRunDatabaseRow>(
         `SELECT id, status, skip_reason AS skipReason, finished_at AS finishedAt
            FROM automation_runs ORDER BY id`,
       )
-      .all() as Array<{
-      id: string;
-      status: string;
-      skipReason: string | null;
-      finishedAt: number | null;
-    }>;
+      .all();
     expect(rows.map((row) => [row.id, row.status])).toEqual([
       ["run_first", "skipped"],
       ["run_second", "skipped"],
@@ -299,41 +339,40 @@ describe("data migrations", () => {
 
 describe("startup reconciliation", () => {
   function reconcileBb(threads: {
-    get: (args: { threadId: string }) => Promise<unknown>;
+    get: (args: { threadId: string }) => Promise<ReconciliationThread>;
   }) {
     const published: unknown[] = [];
-    return {
-      bb: {
-        sdk: {
-          threads: {
-            get: threads.get,
-            send: async () => {
-              throw new Error("not expected");
-            },
-            spawn: async () => {
-              throw new Error("not expected");
-            },
+    const bb = {
+      sdk: {
+        threads: {
+          // SAFETY: The fake returns the fields that reconciliation validates at runtime.
+          get: threads.get as never,
+          send: async () => {
+            throw new Error("not expected");
+          },
+          spawn: async () => {
+            throw new Error("not expected");
           },
         },
-        realtime: {
-          publish: (...args: unknown[]) => void published.push(args),
-        },
-        log: {
-          debug: () => undefined,
-          error: () => undefined,
-          info: () => undefined,
-          warn: () => undefined,
-        },
       },
-      published,
+      realtime: {
+        publish: (...args: unknown[]) => void published.push(args),
+      },
+      log: {
+        debug: () => undefined,
+        error: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+      },
     };
+    return { bb, published };
   }
 
   function thread(
     threadId: string,
     status: "idle" | "active" | "starting" | "stopping" | "error",
     extra: { deletedAt?: number | null; archivedAt?: number | null } = {},
-  ) {
+  ): ReconciliationThread {
     return {
       id: threadId,
       status,
@@ -406,7 +445,7 @@ describe("startup reconciliation", () => {
       { id: "auto_gone", thread: null, status: "skipped" },
       { id: "auto_unreachable", thread: "boom", status: "running" },
     ] as const;
-    const threads = new Map<string, unknown>();
+    const threads = new Map<string, ReconciliationThread | null | "boom">();
     for (const testCase of cases) {
       const automation = createScheduledAutomation(db, 0, testCase.id);
       const run = createManualRun(db, {
@@ -424,6 +463,7 @@ describe("startup reconciliation", () => {
         if (value === null) {
           throw Object.assign(new Error("not found"), { status: 404 });
         }
+        if (value === undefined) throw new Error("thread not found");
         if (value === "boom") throw new Error("connection refused");
         return value;
       },
@@ -1308,6 +1348,7 @@ describe("automation CLI --script-file", () => {
     let cli: PluginCliRegistration | undefined;
     registerAutomationCli({
       bb: {
+        // SAFETY: This test fake implements the CLI SDK surfaces that the command exercises.
         sdk: sdk as never,
         cli: {
           register: (registration) => {
@@ -1422,11 +1463,9 @@ describe("automation CLI --script-file", () => {
         ["show", automationId, "--project", "proj_test", "--json"],
         {},
       );
-      const refreshedPath: unknown = JSON.parse(updatedJson.stdout ?? "")
-        .execution.storedScriptPath;
-      if (typeof refreshedPath !== "string") {
-        throw new Error("missing storedScriptPath after update");
-      }
+      const refreshedPath = storedScriptPathSchema.parse(
+        JSON.parse(updatedJson.stdout ?? ""),
+      ).execution.storedScriptPath;
       expect(
         refreshedPath.startsWith(
           automationScriptDir(t.pluginDataDir, automationId),
@@ -1626,7 +1665,9 @@ async function isProcessRunning(pid: number): Promise<boolean> {
   try {
     process.kill(pid, 0);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if (error instanceof Error && nodeErrorCode(error) === "ESRCH") {
+      return false;
+    }
     throw error;
   }
 
@@ -1637,7 +1678,7 @@ async function isProcessRunning(pid: number): Promise<boolean> {
     const state = stat.slice(closingParen + 2, closingParen + 3);
     return state !== "Z" && state !== "X";
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
+    const code = error instanceof Error ? nodeErrorCode(error) : undefined;
     if (code === "ENOENT" || code === "ESRCH") return false;
     throw error;
   }
@@ -1740,12 +1781,17 @@ describe("legacy import", () => {
         },
       }),
     );
-    const kv = new Map<string, unknown>();
+    const kv = new Map<string, JsonValue>();
     const bb = {
       storage: {
         kv: {
-          get: async <T>(key: string) => kv.get(key) as T | undefined,
-          set: async (key: string, value: unknown) => {
+          get: async <T>(key: string) => {
+            const value = kv.get(key);
+            return value === undefined
+              ? undefined
+              : JSON.parse(JSON.stringify(value));
+          },
+          set: async (key: string, value: JsonValue) => {
             kv.set(key, value);
           },
         },

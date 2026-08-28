@@ -3,12 +3,16 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import { setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import {
+  registrySkillDetailSchema,
+  registrySkillInstallResponseSchema,
+  registrySkillsPageSchema,
   skillContentResponseSchema,
   skillFilesResponseSchema,
   skillListResponseSchema,
@@ -27,11 +31,6 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-
-const installServerRegistrySkillMock = vi.hoisted(() => vi.fn());
-vi.mock("../../src/services/skills/registry-skill-install.js", () => ({
-  installServerRegistrySkill: installServerRegistrySkillMock,
-}));
 
 interface SkillRpcStub {
   requests: HostDaemonOnlineRpcRequestMessage[];
@@ -58,6 +57,10 @@ function registryHtml(args: {
       userInteractionCount: args.installs ?? 100,
     },
   })}</script>`;
+}
+
+async function makeTempDir(prefix = "bb-server-test-"): Promise<string> {
+  return mkdtemp(join(tmpdir(), prefix));
 }
 
 function registerSkillRpc(
@@ -335,15 +338,9 @@ describe("public project skills route", () => {
       const firstResponse = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=2",
       );
-      const firstBody = (await readJson(firstResponse)) as {
-        skills: Array<{ id: string }>;
-        pagination: {
-          page: number;
-          perPage: number;
-          total: number;
-          hasMore: boolean;
-        };
-      };
+      const firstBody = registrySkillsPageSchema.parse(
+        await readJson(firstResponse),
+      );
       expect(firstBody.skills.map((skill) => skill.id)).toEqual([
         "owner/first-repo/first-skill",
         "owner/second-repo/second-skill",
@@ -358,15 +355,9 @@ describe("public project skills route", () => {
       const secondResponse = await harness.app.request(
         "/api/v1/skills-registry?page=1&perPage=2",
       );
-      const secondBody = (await readJson(secondResponse)) as {
-        skills: Array<{ id: string }>;
-        pagination: {
-          page: number;
-          perPage: number;
-          total: number;
-          hasMore: boolean;
-        };
-      };
+      const secondBody = registrySkillsPageSchema.parse(
+        await readJson(secondResponse),
+      );
       expect(secondBody.skills.map((skill) => skill.id)).toEqual([
         "owner/third-repo/third-skill",
       ]);
@@ -416,15 +407,7 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      const body = (await readJson(response)) as {
-        skills: Array<{ id: string }>;
-        pagination: {
-          page: number;
-          perPage: number;
-          total: number;
-          hasMore: boolean;
-        };
-      };
+      const body = registrySkillsPageSchema.parse(await readJson(response));
       expect(body.skills).toHaveLength(8);
       expect(body.pagination).toEqual({
         page: 16,
@@ -476,10 +459,7 @@ describe("public project skills route", () => {
       const response = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=24",
       );
-      const body = (await readJson(response)) as {
-        skills: Array<{ id: string }>;
-        ranking: string;
-      };
+      const body = registrySkillsPageSchema.parse(await readJson(response));
 
       const params = new URL(requested[0] ?? "https://x.invalid").searchParams;
       expect(params.get("view")).toBe("trending");
@@ -514,19 +494,25 @@ describe("public project skills route", () => {
         }),
       );
 
-      const browse = (await readJson(
-        await harness.app.request("/api/v1/skills-registry?page=0&perPage=24"),
-      )) as { skills: Array<{ id: string }> };
+      const browse = registrySkillsPageSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/skills-registry?page=0&perPage=24",
+          ),
+        ),
+      );
       expect(browse.skills.map((skill) => skill.id)).toEqual([
         "owner/zulu-repo/zulu-skill",
         "owner/alpha-repo/alpha-skill",
       ]);
 
-      const search = (await readJson(
-        await harness.app.request(
-          "/api/v1/skills-registry?q=skill&page=0&perPage=24",
+      const search = registrySkillsPageSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/skills-registry?q=skill&page=0&perPage=24",
+          ),
         ),
-      )) as { skills: Array<{ id: string }> };
+      );
       expect(search.skills.map((skill) => skill.id)).toEqual([
         "owner/alpha-repo/alpha-skill",
         "owner/zulu-repo/zulu-skill",
@@ -554,9 +540,13 @@ describe("public project skills route", () => {
         }),
       );
 
-      const body = (await readJson(
-        await harness.app.request("/api/v1/skills-registry?page=0&perPage=24"),
-      )) as { skills: Array<{ id: string }>; ranking: string };
+      const body = registrySkillsPageSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/skills-registry?page=0&perPage=24",
+          ),
+        ),
+      );
 
       expect(body.skills.map((skill) => skill.id)).toEqual([
         "owner/steady-repo/steady-skill",
@@ -593,10 +583,7 @@ describe("public project skills route", () => {
           "/api/v1/skills-registry?page=0&perPage=24",
         );
         expect(response.status).toBe(200);
-        const body = (await readJson(response)) as {
-          skills: Array<{ id: string }>;
-          ranking: string;
-        };
+        const body = registrySkillsPageSchema.parse(await readJson(response));
         expect(body.skills.map((skill) => skill.id)).toEqual([
           "owner/steady-repo/steady-skill",
         ]);
@@ -618,10 +605,7 @@ describe("public project skills route", () => {
         "/api/v1/skills-registry?q=nothing-matches-this&page=0&perPage=24",
       );
       expect(response.status).toBe(200);
-      const body = (await readJson(response)) as {
-        skills: unknown[];
-        pagination: { total: number };
-      };
+      const body = registrySkillsPageSchema.parse(await readJson(response));
       expect(body.skills).toEqual([]);
       expect(body.pagination.total).toBe(0);
     });
@@ -688,9 +672,7 @@ describe("public project skills route", () => {
       const response = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=24",
       );
-      const body = (await readJson(response)) as {
-        skills: Array<{ id: string }>;
-      };
+      const body = registrySkillsPageSchema.parse(await readJson(response));
       expect(body.skills.map((skill) => skill.id)).toEqual([
         "owner/nested-repo/nested-skill",
       ]);
@@ -739,9 +721,9 @@ describe("public project skills route", () => {
       const listResponse = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=24",
       );
-      const listBody = (await readJson(listResponse)) as {
-        skills: Array<{ id: string }>;
-      };
+      const listBody = registrySkillsPageSchema.parse(
+        await readJson(listResponse),
+      );
       expect(listBody.skills.map((skill) => skill.id)).toEqual([
         "owner/aliased-repo/public-name",
       ]);
@@ -749,9 +731,11 @@ describe("public project skills route", () => {
       const detailResponse = await harness.app.request(
         "/api/v1/skills-registry/detail?source=owner%2Faliased-repo&skillId=public-name",
       );
-      const detailBody = (await readJson(detailResponse)) as {
-        files: Array<{ contents: string }>;
-      };
+      const detailBody = registrySkillDetailSchema.parse(
+        await readJson(detailResponse),
+      );
+      expect(detailBody.files).not.toBeNull();
+      if (detailBody.files === null) throw new Error("Expected skill files");
       expect(detailBody.files[0]?.contents).toContain("# Public name");
       expect(detailBody.files[0]?.contents).toContain(
         "Loaded from the real registry preview.",
@@ -787,11 +771,7 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      const body = (await readJson(response)) as {
-        skills: Array<{ id: string }>;
-        pagination: { total: number; hasMore: boolean };
-        ranking: string;
-      };
+      const body = registrySkillsPageSchema.parse(await readJson(response));
       expect(body.skills.map((skill) => skill.id)).toEqual([
         "owner/available-repo/available-skill",
         "owner/stale-repo/stale-skill",
@@ -807,10 +787,9 @@ describe("public project skills route", () => {
         "/api/v1/skills-registry?q=stale&page=0&perPage=24",
       );
       expect(searchResponse.status).toBe(200);
-      const searchBody = (await readJson(searchResponse)) as {
-        skills: Array<{ id: string }>;
-        ranking: string;
-      };
+      const searchBody = registrySkillsPageSchema.parse(
+        await readJson(searchResponse),
+      );
       expect(searchBody.skills.map((skill) => skill.id)).toEqual([
         "owner/stale-repo/stale-skill",
       ]);
@@ -848,9 +827,9 @@ describe("public project skills route", () => {
       const listResponse = await harness.app.request(
         "/api/v1/skills-registry?page=0&perPage=24",
       );
-      const listBody = (await readJson(listResponse)) as {
-        skills: Array<{ stars: number | null }>;
-      };
+      const listBody = registrySkillsPageSchema.parse(
+        await readJson(listResponse),
+      );
 
       expect(listResponse.status).toBe(200);
       expect(listBody.skills.map((skill) => skill.stars)).toEqual([null, null]);
@@ -917,8 +896,23 @@ describe("public project skills route", () => {
 
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
-      const filePath = "/data/skills/find-skills/SKILL.md";
-      installServerRegistrySkillMock.mockResolvedValueOnce({ filePath });
+      const fakeBin = await makeTempDir("bb-registry-install-bin-");
+      const fakeNpx = join(
+        fakeBin,
+        process.platform === "win32" ? "npx.cmd" : "npx",
+      );
+      await writeFile(
+        fakeNpx,
+        [
+          "#!/bin/sh",
+          'if [ "$1" != "-y" ] || [ "$2" != "skills@1.5.19" ] || [ "$3" != "add" ] || [ "$4" != "vercel-labs/skills" ] || [ "$5" != "--agent" ] || [ "$6" != "universal" ] || [ "$7" != "--skill" ] || [ "$8" != "find-skills" ] || [ "$9" != "--copy" ] || [ "${10}" != "--yes" ]; then exit 1; fi',
+          'mkdir -p ".agents/skills/$8"',
+          'printf "%s\\n" "---" "name: $8" "description: Installed by the registry test." "---" > ".agents/skills/$8/SKILL.md"',
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(fakeNpx, 0o755);
+      vi.stubEnv("PATH", `${fakeBin}${delimiter}${process.env.PATH ?? ""}`);
       vi.stubGlobal(
         "fetch",
         vi.fn(
@@ -945,12 +939,16 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({ ok: true, filePath });
-      expect(installServerRegistrySkillMock).toHaveBeenCalledWith({
-        dataDir: harness.deps.config.dataDir,
-        packageRef: "vercel-labs/skills",
-        registrySkillId: "github.com/vercel-labs/skills/find-skills",
-        skillId: "find-skills",
+      const body = registrySkillInstallResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(body).toEqual({
+        ok: true,
+        filePath: join(
+          resolveDataDirSkillsRootPath(harness.deps.config.dataDir),
+          "find-skills",
+          "SKILL.md",
+        ),
       });
     });
   });
@@ -992,7 +990,6 @@ describe("public project skills route", () => {
 
   it("rejects a parent-directory segment before any upstream request", async () => {
     await withTestHarness(async (harness) => {
-      installServerRegistrySkillMock.mockClear();
       const fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
 
@@ -1009,13 +1006,11 @@ describe("public project skills route", () => {
 
       expect(response.status).toBe(400);
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
     });
   });
 
   it("rejects a dash exposed by stripping the github.com prefix", async () => {
     await withTestHarness(async (harness) => {
-      installServerRegistrySkillMock.mockClear();
       vi.stubGlobal(
         "fetch",
         vi.fn(
@@ -1042,7 +1037,6 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
     });
   });
 

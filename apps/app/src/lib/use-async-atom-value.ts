@@ -13,7 +13,9 @@ function loadableAtomFor<T>(
 ): Atom<LoadableState<T>> {
   const cached = loadableAtomCache.get(sourceAtom);
   if (cached) {
-    return cached as Atom<LoadableState<T>>;
+    return /* SAFETY: The weak map stores each source atom with its loadable atom of the same generic type. */ cached as Atom<
+      LoadableState<T>
+    >;
   }
   const created = loadable(sourceAtom);
   loadableAtomCache.set(sourceAtom, created);

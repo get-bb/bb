@@ -15,15 +15,16 @@ export function createHttpTransport(
   const fetchImpl = args.fetch ?? fetch;
   const client = createApiClient(baseUrl, { fetch: fetchImpl });
 
-  return {
+  const transport: BbSdkTransport = {
     api: client.api,
     baseUrl,
     fetch: fetchImpl,
-    ...(args.realtimeUrl ? { realtimeUrl: args.realtimeUrl } : {}),
     runtime: args.runtime,
     websocket: args.websocket,
     readJson: readJsonResponse,
     readVoid: readVoidResponse,
     resolve: resolveResponse,
   };
+  if (args.realtimeUrl) transport.realtimeUrl = args.realtimeUrl;
+  return transport;
 }

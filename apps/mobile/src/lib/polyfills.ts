@@ -1,10 +1,10 @@
 import { getRandomValues } from "expo-crypto";
 
-type CryptoLike = { getRandomValues?: unknown };
-
-const globalCrypto = (globalThis as { crypto?: CryptoLike }).crypto;
+const globalCrypto = globalThis.crypto;
 if (!globalCrypto) {
-  (globalThis as { crypto?: CryptoLike }).crypto = { getRandomValues };
-} else if (typeof globalCrypto.getRandomValues !== "function") {
-  globalCrypto.getRandomValues = getRandomValues;
+  Object.defineProperty(globalThis, "crypto", { value: { getRandomValues } });
+} else if (!(globalCrypto.getRandomValues instanceof Function)) {
+  Object.defineProperty(globalCrypto, "getRandomValues", {
+    value: getRandomValues,
+  });
 }

@@ -161,15 +161,13 @@ const RADIX_CONTENT_KEYS: ReadonlySet<string> = new Set(
   RADIX_CONTENT_PROP_NAMES,
 );
 
-export function stripRadixContentProps<T extends Record<string, unknown>>(
+export function stripRadixContentProps<T extends object>(
   props: T,
 ): Omit<T, RadixContentPropName> {
-  const result = {} as Record<string, unknown>;
-  for (const key of Object.keys(props)) {
-    if (!RADIX_CONTENT_KEYS.has(key)) {
-      result[key] = props[key];
-    }
-  }
+  const result = Object.fromEntries(
+    Object.entries(props).filter(([key]) => !RADIX_CONTENT_KEYS.has(key)),
+  );
+  // SAFETY: Object.entries removes only the known Radix properties and preserves every remaining prop.
   return result as Omit<T, RadixContentPropName>;
 }
 
@@ -191,7 +189,7 @@ export function useResponsiveDrawerRealization({
 }: {
   open: boolean;
   enabled?: boolean;
-}): { isContentRealized: boolean; realizeContent: () => void } {
+}) {
   const [isContentRealized, setIsContentRealized] = React.useState(false);
   const realizeContent = React.useCallback(
     () => setIsContentRealized(true),
@@ -357,7 +355,7 @@ function handleDrawerTab(event: KeyboardEvent, panel: HTMLElement): void {
       last?.focus({ preventScroll: true });
       return;
     }
-    const index = focusable.indexOf(activeElement as HTMLElement);
+    const index = focusable.findIndex((element) => element === activeElement);
     focusable[Math.max(0, index - 1)]?.focus({ preventScroll: true });
     return;
   }
@@ -370,7 +368,7 @@ function handleDrawerTab(event: KeyboardEvent, panel: HTMLElement): void {
     first?.focus({ preventScroll: true });
     return;
   }
-  const index = focusable.indexOf(activeElement as HTMLElement);
+  const index = focusable.findIndex((element) => element === activeElement);
   focusable[Math.min(focusable.length - 1, index + 1)]?.focus({
     preventScroll: true,
   });
@@ -607,7 +605,7 @@ export function PersistentResponsiveDrawerShell({
     [requestClose, setDragPosition],
   );
 
-  const portalTarget = typeof document === "undefined" ? null : document.body;
+  const portalTarget = globalThis.document?.body ?? null;
   if (portalTarget === null) {
     return null;
   }

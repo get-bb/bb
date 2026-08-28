@@ -1,6 +1,6 @@
-export function isFsErrorWithCode(
-  error: unknown,
+export function isFsErrorWithCode<ErrorInput>(
+  error: ErrorInput,
   code: string,
-): error is NodeJS.ErrnoException {
+): error is ErrorInput & NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
 }

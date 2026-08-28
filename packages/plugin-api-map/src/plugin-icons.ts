@@ -30,7 +30,11 @@ interface FirstPartyPlugin {
   icon: IconSvgElement;
 }
 
-const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
+interface FirstPartyPluginMap {
+  readonly [displayName: string]: FirstPartyPlugin;
+}
+
+const FIRST_PARTY_PLUGINS: FirstPartyPluginMap = {
   "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
   Automations: { id: "automations", icon: Clock01Icon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
@@ -59,7 +63,11 @@ export function firstPartyPluginId(displayName: string): string | null {
   return FIRST_PARTY_PLUGINS[displayName]?.id ?? null;
 }
 
-const SURFACE_ICONS: Record<string, IconSvgElement> = {
+interface SurfaceIconMap {
+  readonly [surfaceId: string]: IconSvgElement;
+}
+
+const SURFACE_ICONS: SurfaceIconMap = {
   cli: TerminalIcon,
   "agent-tools": SparklesIcon,
   background: Clock01Icon,

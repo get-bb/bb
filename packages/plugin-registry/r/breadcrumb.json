@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "breadcrumb",
   "description": "BB ui \"breadcrumb\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-slot",
-    "lucide-react"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/breadcrumb.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/breadcrumb.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-slot",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

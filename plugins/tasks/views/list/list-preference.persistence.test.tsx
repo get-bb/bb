@@ -129,8 +129,53 @@ const labelsA = [
   },
 ];
 
-function baseRpc(overrides: Record<string, unknown> = {}) {
-  const listTasksCalls: unknown[] = [];
+interface ListTasksInput {
+  projectId?: string | null;
+  activeOnly?: boolean;
+  statuses?: readonly string[];
+  priorities?: readonly string[];
+  labelIds?: readonly string[];
+}
+
+interface BaseRpcOverrides {
+  listTasks?: (input: ListTasksInput) => { tasks: Task[] };
+}
+
+function baseRpc(overrides: BaseRpcOverrides = {}) {
+  const listTasksCalls: ListTasksInput[] = [];
+  const defaultListTasks = (input: ListTasksInput) => {
+    listTasksCalls.push(input);
+    let tasks: Task[];
+    if (input.activeOnly) {
+      tasks = [
+        task(PROJECT_A, 9, "in_progress", "high"),
+        task(PROJECT_B, 9, "in_progress", "high"),
+      ];
+    } else if (input.projectId === PROJECT_A) {
+      tasks = tasksA.map((item, index) =>
+        index === 0
+          ? { ...item, labelIds: [LABEL_BUG] }
+          : index === 1
+            ? { ...item, labelIds: [LABEL_UX] }
+            : item,
+      );
+    } else if (input.projectId === PROJECT_B) {
+      tasks = tasksB;
+    } else {
+      tasks = [...tasksA, ...tasksB];
+    }
+    let next = applyListFilters(tasks, input);
+    if (input.labelIds !== undefined) {
+      if (input.labelIds.length === 0) next = [];
+      else {
+        const allowed = new Set(input.labelIds);
+        next = next.filter((item) =>
+          item.labelIds.some((id) => allowed.has(id)),
+        );
+      }
+    }
+    return { tasks: next };
+  };
   const rpc = {
     listProjects: () => ({ projects: [projectA, projectB] }),
     listFolders: () => ({ folders: [] }),
@@ -139,49 +184,10 @@ function baseRpc(overrides: Record<string, unknown> = {}) {
     listLabels: (input: { projectId: string }) => ({
       labels: input.projectId === PROJECT_A ? labelsA : [],
     }),
-    listTasks: (input: {
-      projectId?: string | null;
-      activeOnly?: boolean;
-      statuses?: readonly string[];
-      priorities?: readonly string[];
-      labelIds?: readonly string[];
-    }) => {
-      listTasksCalls.push(input);
-      let tasks: Task[];
-      if (input.activeOnly) {
-        tasks = [
-          task(PROJECT_A, 9, "in_progress", "high"),
-          task(PROJECT_B, 9, "in_progress", "high"),
-        ];
-      } else if (input.projectId === PROJECT_A) {
-        tasks = tasksA.map((item, index) =>
-          index === 0
-            ? { ...item, labelIds: [LABEL_BUG] }
-            : index === 1
-              ? { ...item, labelIds: [LABEL_UX] }
-              : item,
-        );
-      } else if (input.projectId === PROJECT_B) {
-        tasks = tasksB;
-      } else {
-        tasks = [...tasksA, ...tasksB];
-      }
-      let next = applyListFilters(tasks, input);
-      if (input.labelIds !== undefined) {
-        if (input.labelIds.length === 0) next = [];
-        else {
-          const allowed = new Set(input.labelIds);
-          next = next.filter((item) =>
-            item.labelIds.some((id) => allowed.has(id)),
-          );
-        }
-      }
-      return { tasks: next };
-    },
     listTaskThreads: () => ({ taskThreads: [] }),
     listComments: () => ({ comments: [] }),
     listAttachments: () => ({ attachments: [] }),
-    ...overrides,
+    listTasks: overrides.listTasks ?? defaultListTasks,
   };
   return Object.assign(rpc, { listTasksCalls });
 }
@@ -418,8 +424,7 @@ describe("list filter/sort preference persistence", () => {
 
     await waitFor(() => {
       const withLabels = rpc.listTasksCalls.filter(
-        (call): call is { labelIds?: string[]; priorities?: string[] } =>
-          typeof call === "object" && call !== null,
+        (call) => call.labelIds !== undefined,
       );
       expect(
         withLabels.some(
@@ -473,11 +478,7 @@ describe("list filter/sort preference persistence", () => {
     await waitFor(() => {
       expect(
         rpc.listTasksCalls.some(
-          (call) =>
-            typeof call === "object" &&
-            call !== null &&
-            Array.isArray((call as { labelIds?: unknown }).labelIds) &&
-            (call as { labelIds: unknown[] }).labelIds.length === 0,
+          (call) => call.labelIds !== undefined && call.labelIds.length === 0,
         ),
       ).toBe(true);
     });

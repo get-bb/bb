@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 import { useOverflowMeasurement } from "./conversation-message-overflow";
 
+type ResizeObserverTestState = {
+  callback: ResizeObserverCallback | null;
+  instance: ResizeObserver | null;
+};
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -23,23 +28,26 @@ function OverflowProbe({ name }: { name: string }) {
 
 describe("useOverflowMeasurement", () => {
   it("shares one observer and batches measurements for all rows", () => {
-    let observerCallback: ResizeObserverCallback | null = null;
+    const observerState: ResizeObserverTestState = {
+      callback: null,
+      instance: null,
+    };
     const observe = vi.fn();
     const unobserve = vi.fn();
     const disconnect = vi.fn();
     const constructorSpy = vi.fn();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: ResizeObserverCallback) {
-          constructorSpy();
-          observerCallback = callback;
-        }
-        observe = observe;
-        unobserve = unobserve;
-        disconnect = disconnect;
-      },
-    );
+    class TestResizeObserver implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        constructorSpy();
+        observerState.callback = callback;
+        observerState.instance = this;
+      }
+
+      observe = observe;
+      unobserve = unobserve;
+      disconnect = disconnect;
+    }
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
     const scrollHeight = vi
       .spyOn(HTMLElement.prototype, "scrollHeight", "get")
       .mockImplementation(function (this: HTMLElement) {
@@ -71,15 +79,28 @@ describe("useOverflowMeasurement", () => {
     expect(scrollWidth).not.toHaveBeenCalled();
     expect(clientWidth).not.toHaveBeenCalled();
 
-    act(() => {
-      observerCallback?.(
-        [
-          { target: first } as unknown as ResizeObserverEntry,
-          { target: second } as unknown as ResizeObserverEntry,
-        ],
-        {} as ResizeObserver,
-      );
-    });
+    if (observerState.callback === null || observerState.instance === null) {
+      throw new Error("Expected a ResizeObserver instance");
+    }
+    const callback = observerState.callback;
+    const instance = observerState.instance;
+    const entries: ResizeObserverEntry[] = [
+      {
+        target: first,
+        borderBoxSize: [],
+        contentBoxSize: [],
+        contentRect: new DOMRect(),
+        devicePixelContentBoxSize: [],
+      },
+      {
+        target: second,
+        borderBoxSize: [],
+        contentBoxSize: [],
+        contentRect: new DOMRect(),
+        devicePixelContentBoxSize: [],
+      },
+    ];
+    act(() => callback(entries, instance));
 
     expect(constructorSpy).toHaveBeenCalledOnce();
     expect(observe).toHaveBeenCalledTimes(2);

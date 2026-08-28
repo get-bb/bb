@@ -34,13 +34,12 @@ function toModelPickerOption(
   model: AvailableModel,
   formatModelLabel: (displayName: string) => string,
 ): ModelPickerOption {
-  return {
+  const option: ModelPickerOption = {
     value: model.model,
     label: formatModelLabel(model.displayName || model.model),
-    ...(model.routeProviderId
-      ? { routeProviderId: model.routeProviderId }
-      : {}),
   };
+  if (model.routeProviderId) option.routeProviderId = model.routeProviderId;
+  return option;
 }
 
 export function resolveModelCatalogSelection({

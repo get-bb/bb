@@ -81,11 +81,15 @@ export async function cloneProject(args: {
   await requireEmptyOrMissingTarget(targetPath);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   try {
-    await runGit(["clone", args.remoteUrl, targetPath], {
+    const cloneOptions: GitProcessOptions & {
+      cwd: string;
+      timeoutMs: number;
+    } = {
       cwd: path.dirname(targetPath),
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
-    });
+    };
+    if (args.shellPath !== undefined) cloneOptions.shellPath = args.shellPath;
+    await runGit(["clone", args.remoteUrl, targetPath], cloneOptions);
   } catch (error) {
     if (error instanceof WorkspaceError) {
       throw new ExpectedCommandDispatchError(error.code, error.message);

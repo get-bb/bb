@@ -2,6 +2,7 @@ import {
   fetchDesktopSession,
   redeemMachineCredential,
 } from "@bb/connect-client";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import CookieManager from "@react-native-cookies/cookies";
 import { File, Directory, Paths } from "expo-file-system";
 import { useLocalSearchParams } from "expo-router";
@@ -17,11 +18,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { MediaCapturePermissionGrantType } from "react-native-webview/lib/WebViewTypes";
+import { z } from "zod";
 import {
   BOOT_TIMING_PROBE,
   SPIKE_HARNESS,
   SPIKE_PROBES,
-  type SpikeProbeId,
 } from "./webview-spike-probes";
 
 const SPIKE_PRELUDE = `${SPIKE_HARNESS}
@@ -38,7 +39,7 @@ const GRANT_TYPES: MediaCapturePermissionGrantType[] = [
 interface SpikeEvent {
   atIso: string;
   source: "native" | "page";
-  payload: unknown;
+  payload: JsonValue;
 }
 
 function appendSessionLine(event: SpikeEvent): void {
@@ -86,8 +87,7 @@ export function WebViewSpikeScreen() {
   const [loadedUrl, setLoadedUrl] = useState(initialUrl);
   const [reloadKey, setReloadKey] = useState(0);
   const [grantType, setGrantType] = useState<MediaCapturePermissionGrantType>(
-    (GRANT_TYPES.find((value) => value === firstParam(params.grant)) ??
-      "grant") as MediaCapturePermissionGrantType,
+    GRANT_TYPES.find((value) => value === firstParam(params.grant)) ?? "grant",
   );
   const [showChrome, setShowChrome] = useState(
     firstParam(params.chrome) !== "0",
@@ -106,22 +106,27 @@ export function WebViewSpikeScreen() {
   const webViewRef = useRef<WebView>(null);
   const loadStartedAtRef = useRef<number | null>(null);
 
-  const record = useCallback((source: "native" | "page", payload: unknown) => {
-    const event: SpikeEvent = {
-      atIso: new Date().toISOString(),
-      source,
-      payload,
-    };
-    appendSessionLine(event);
-    const text =
-      typeof payload === "string" ? payload : JSON.stringify(payload);
-    setLog((previous) =>
-      [`${event.atIso.slice(11, 23)} ${source[0]} ${text}`, ...previous].slice(
-        0,
-        200,
-      ),
-    );
-  }, []);
+  const record = useCallback(
+    (source: "native" | "page", payload: JsonValue) => {
+      const event: SpikeEvent = {
+        atIso: new Date().toISOString(),
+        source,
+        payload,
+      };
+      appendSessionLine(event);
+      const parsedText = z.string().safeParse(payload);
+      const text = parsedText.success
+        ? parsedText.data
+        : JSON.stringify(payload);
+      setLog((previous) =>
+        [
+          `${event.atIso.slice(11, 23)} ${source[0]} ${text}`,
+          ...previous,
+        ].slice(0, 200),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     record("native", {
@@ -202,7 +207,7 @@ export function WebViewSpikeScreen() {
     (event: WebViewMessageEvent) => {
       const raw = event.nativeEvent.data;
       try {
-        record("page", JSON.parse(raw));
+        record("page", jsonValueSchema.parse(JSON.parse(raw)));
       } catch {
         record("page", raw);
       }
@@ -227,9 +232,7 @@ export function WebViewSpikeScreen() {
     let cancelled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
     ids.forEach((id, index) => {
-      const probe = SPIKE_PROBES.find(
-        (entry) => entry.id === (id as SpikeProbeId),
-      );
+      const probe = SPIKE_PROBES.find((entry) => entry.id === id);
       if (probe === undefined) {
         record("native", { kind: "probe", id, error: "unknown probe" });
         return;
@@ -295,7 +298,7 @@ export function WebViewSpikeScreen() {
                 setGrantType(
                   GRANT_TYPES[
                     (GRANT_TYPES.indexOf(grantType) + 1) % GRANT_TYPES.length
-                  ] as MediaCapturePermissionGrantType,
+                  ] ?? "grant",
                 )
               }
             />

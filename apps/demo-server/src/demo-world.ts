@@ -89,7 +89,26 @@ interface DemoWorldOptions {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-function json(body: unknown, status = 200): Response {
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+function json<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
@@ -119,9 +138,10 @@ function notFound(threadId: string): Response {
   );
 }
 
-async function readJson(request: Request): Promise<unknown> {
+async function readJson(request: Request): Promise<JsonValue | null> {
   try {
-    return await request.json();
+    const parsed = jsonValueSchema.safeParse(await request.json());
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }

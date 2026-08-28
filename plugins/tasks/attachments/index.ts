@@ -13,14 +13,14 @@ const INLINE_RASTER_MIMES = new Set([
   "image/avif",
 ]);
 
-const RASTER_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+const RASTER_MIME_BY_EXTENSION = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".avif": "image/avif",
-};
+} satisfies Readonly<Record<string, string>>;
 
 const UPLOAD_PATH = "/attachments/upload";
 const DOWNLOAD_PATH = "/attachments/download";
@@ -66,14 +66,22 @@ export class AttachmentReferencedError extends Error {
 }
 
 class AttachmentCleanupError extends Error {
+  readonly cleanupCause: unknown;
+
   constructor(
     readonly attachment: Attachment,
-    readonly cleanupCause: unknown,
+    cause: unknown,
   ) {
     super(`Failed to remove attachment blob: ${attachment.fileName}`);
+    this.cleanupCause = cause;
     this.name = "AttachmentCleanupError";
   }
 }
+
+type AttachmentRouteError =
+  | AttachmentRequestError
+  | AttachmentReferencedError
+  | AttachmentCleanupError;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -249,10 +257,10 @@ function inferMimeFromBytes(bytes: Uint8Array, fileName: string): string {
   const sniffed = sniffRasterMime(bytes.subarray(0, 12));
   if (sniffed) return sniffed;
   const extension = fileName.toLowerCase().match(/\.[^.]+$/u)?.[0];
-  return (
-    (extension && RASTER_MIME_BY_EXTENSION[extension]) ??
-    "application/octet-stream"
-  );
+  const extensionMime = Object.entries(RASTER_MIME_BY_EXTENSION).find(
+    ([key]) => key === extension,
+  )?.[1];
+  return extensionMime ?? "application/octet-stream";
 }
 
 function normalizeOwner(
@@ -272,11 +280,15 @@ function normalizeOwner(
   throw new Error("unreachable attachment owner state");
 }
 
-function attachmentParameters(context: PluginHttpContext): {
+interface AttachmentParameters {
   owner: AttachmentOwner;
   fileName: string;
   mime: string;
-} {
+}
+
+function attachmentParameters(
+  context: PluginHttpContext,
+): AttachmentParameters {
   const query = context.req.query();
   const owner = normalizeOwner(
     query.taskId ?? context.req.header("x-task-id"),
@@ -405,7 +417,19 @@ export async function readAttachmentContent(
   return { attachment, content: await readFile(sourcePath) };
 }
 
-function errorResponse(context: PluginHttpContext, error: unknown): Response {
+function parseAttachmentRouteError(
+  cause: unknown,
+): AttachmentRouteError | null {
+  if (cause instanceof AttachmentRequestError) return cause;
+  if (cause instanceof AttachmentReferencedError) return cause;
+  if (cause instanceof AttachmentCleanupError) return cause;
+  return null;
+}
+
+function errorResponse(
+  context: PluginHttpContext,
+  error: AttachmentRouteError,
+): Response {
   if (error instanceof AttachmentRequestError) {
     return context.json({ error: error.message }, error.status);
   }
@@ -520,7 +544,9 @@ export function registerAttachments(
           201,
         );
       } catch (error) {
-        return errorResponse(context, error);
+        const routeError = parseAttachmentRouteError(error);
+        if (routeError === null) throw error;
+        return errorResponse(context, routeError);
       }
     },
     { auth: "token" },
@@ -570,7 +596,9 @@ export function registerAttachments(
         return context.json({ error: "attachment not found" }, 404);
       return context.json({ deleted: true });
     } catch (error) {
-      return errorResponse(context, error);
+      const routeError = parseAttachmentRouteError(error);
+      if (routeError === null) throw error;
+      return errorResponse(context, routeError);
     }
   });
 }

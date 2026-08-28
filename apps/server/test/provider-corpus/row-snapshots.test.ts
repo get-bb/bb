@@ -8,6 +8,7 @@ import {
 } from "@bb/test-helpers";
 import type { CorpusThread } from "@bb/test-helpers";
 import type { TimelineRow } from "@bb/server-contract";
+import { z } from "zod";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { createTestProviderRegistry } from "../helpers/provider-registry.js";
@@ -37,7 +38,6 @@ import {
   readRowDiffClasses,
   resolveRowDiffClassesPath,
   type RowDiffClass,
-  type RowSnapshotVariants,
 } from "./row-diff-classes.js";
 
 const PER_THREAD_TIMEOUT_MS = 5 * 60_000;
@@ -47,8 +47,60 @@ interface RowSnapshot {
   eventRows: number;
   provider: string;
   threadId: string;
-  variants: Record<string, { pages: unknown[] }>;
+  variants: Record<string, { pages: JsonValue[] }>;
 }
+
+interface RowSnapshotBuild {
+  rows: number;
+  snapshot: JsonValue;
+}
+
+interface RowSnapshotRun {
+  mode: typeof mode;
+  threads: number;
+  rows: number;
+  bytes: number;
+  wallMs: number;
+  diffThreads: string[];
+  allowedDiffs: number;
+  rowClassesFile?: string;
+  rowClasses?: Record<string, number>;
+  containerBoundsBy?: Record<string, number>;
+  unclassified?: number;
+}
+
+const snapshotJsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(snapshotJsonValueSchema),
+    z.record(z.string(), snapshotJsonValueSchema),
+  ]),
+);
+const rowSnapshotVariantsSchema = z.object({
+  variants: z
+    .record(
+      z.string(),
+      z
+        .object({
+          pages: z
+            .array(
+              z
+                .object({
+                  rows: z
+                    .array(z.record(z.string(), snapshotJsonValueSchema))
+                    .optional(),
+                })
+                .catchall(snapshotJsonValueSchema),
+            )
+            .optional(),
+        })
+        .catchall(snapshotJsonValueSchema),
+    )
+    .optional(),
+});
 
 function countTimelineRows(rows: readonly TimelineRow[]): number {
   let count = 0;
@@ -65,7 +117,7 @@ function buildRowSnapshot(
   loaded: LoadedCorpusThread,
   corpusThread: CorpusThread,
   registry: ProviderRegistryService,
-): { rows: number; snapshot: JsonValue } {
+): RowSnapshotBuild {
   let rows = 0;
   const variants: RowSnapshot["variants"] = {};
   for (const variant of TIMELINE_VARIANTS) {
@@ -78,7 +130,9 @@ function buildRowSnapshot(
     for (const page of pages) {
       rows += countTimelineRows(page.response.rows);
     }
-    variants[variant] = { pages: pages.map((page) => page.response) };
+    variants[variant] = {
+      pages: pages.map((page) => normalizeJson(page.response)),
+    };
   }
   const snapshot: RowSnapshot = {
     threadId: corpusThread.id,
@@ -130,9 +184,10 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
       : [];
   const rowClassReport = createRowDiffReport();
   let registry: ProviderRegistryService | null = null;
+  const diffThreads: string[] = [];
   const totals = {
     bytes: 0,
-    diffThreads: [] as string[],
+    diffThreads,
     allowedDiffs: 0,
     printedDiffThreads: 0,
     rows: 0,
@@ -177,15 +232,16 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
             `No row snapshot for ${threadId} at ${filePath}; run the suite once with BB_PROVIDER_CORPUS_SNAPSHOT=write`,
           );
         }
-        const expected = normalizeJson(
-          JSON.parse(fs.readFileSync(filePath, "utf8")),
+        const expected = rowSnapshotVariantsSchema.parse(
+          normalizeJson(JSON.parse(fs.readFileSync(filePath, "utf8"))),
         );
+        const actual = rowSnapshotVariantsSchema.parse(built.snapshot);
         if (rowClassesPath !== null) {
           const report = createRowDiffReport();
           const changes = classifyRowSnapshotDiff(
             `${provider}/${threadId}`,
-            expected as RowSnapshotVariants,
-            built.snapshot as RowSnapshotVariants,
+            expected,
+            actual,
             rowClasses,
             report,
           );
@@ -261,31 +317,26 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
       `Row snapshots (${mode}): ${totals.threads} threads, ${totals.rows} rows, ${megabytes} MB, ${wallMs} ms\n`,
     );
     fs.mkdirSync(snapshotsDir, { recursive: true });
+    const lastRun: RowSnapshotRun = {
+      mode,
+      threads: totals.threads,
+      rows: totals.rows,
+      bytes: totals.bytes,
+      wallMs,
+      diffThreads: totals.diffThreads,
+      allowedDiffs: totals.allowedDiffs,
+    };
+    if (rowClassesPath !== null) {
+      lastRun.rowClassesFile = rowClassesPath;
+      lastRun.rowClasses = Object.fromEntries(rowClassReport.claims);
+      lastRun.containerBoundsBy = Object.fromEntries(
+        rowClassReport.containerBoundsBy,
+      );
+      lastRun.unclassified = rowClassReport.unclassified.length;
+    }
     fs.writeFileSync(
       path.join(snapshotsDir, "rows-last-run.json"),
-      `${JSON.stringify(
-        {
-          mode,
-          threads: totals.threads,
-          rows: totals.rows,
-          bytes: totals.bytes,
-          wallMs,
-          diffThreads: totals.diffThreads,
-          allowedDiffs: totals.allowedDiffs,
-          ...(rowClassesPath === null
-            ? {}
-            : {
-                rowClassesFile: rowClassesPath,
-                rowClasses: Object.fromEntries(rowClassReport.claims),
-                containerBoundsBy: Object.fromEntries(
-                  rowClassReport.containerBoundsBy,
-                ),
-                unclassified: rowClassReport.unclassified.length,
-              }),
-        },
-        null,
-        2,
-      )}\n`,
+      `${JSON.stringify(lastRun, null, 2)}\n`,
     );
     if (mode === "write") {
       return;

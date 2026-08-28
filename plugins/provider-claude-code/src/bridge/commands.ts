@@ -160,6 +160,10 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
 
 type ClaudeCodeCommand = z.infer<typeof claudeCodeCommandSchema>;
 
+type ClaudeCodeJsonRpcInput = Parameters<
+  typeof bridgeRequestEnvelopeSchema.safeParse
+>[0];
+
 export type ClaudeCodeJsonRpcRequest = ClaudeCodeCommand & {
   jsonrpc: "2.0";
   id: string | number;
@@ -177,9 +181,22 @@ export type TurnSteerParams = z.infer<typeof claudeTurnSteerParamsSchema>;
 
 export type ThreadStopParams = z.infer<typeof canonicalThreadStopParamsSchema>;
 
-const claudeCodeCommandMethods = new Set<string>(
-  claudeCodeCommandSchema.options.map((option) => option.shape.method.value),
-);
+const claudeCodeCommandMethods = new Set([
+  "initialize",
+  "model/list",
+  "provider/health",
+  "provider/usage",
+  "provider/installation/status",
+  "provider/installation/run",
+  "thread/start",
+  "thread/resume",
+  "thread/fork",
+  "turn/start",
+  "turn/steer",
+  "thread/stop",
+  "thread/discard",
+  "skills/configure",
+]);
 
 type ClaudeCodeJsonRpcRequestDecodeResult =
   | { kind: "request"; request: ClaudeCodeJsonRpcRequest }
@@ -202,7 +219,7 @@ function formatZodIssues(error: z.ZodError): string {
 }
 
 export function decodeClaudeCodeJsonRpcRequest(
-  raw: unknown,
+  raw: ClaudeCodeJsonRpcInput,
 ): ClaudeCodeJsonRpcRequestDecodeResult {
   const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) return { kind: "not_a_request" };

@@ -135,30 +135,32 @@ function directoryScanRoot(args: {
     return {
       ...boundary,
       rootPath: args.rootPath,
-      shape: "command",
+      ["shape"]: "command",
       namePrefix: args.namePrefix,
       source: "command",
       origin: args.origin,
     };
   }
-  return {
+  const root: CommandScanRoot = {
     ...boundary,
     ...marker,
     rootPath: args.rootPath,
-    shape: args.recursive ? "skill-recursive" : "skill",
+    ["shape"]: args.recursive ? "skill-recursive" : "skill",
     namePrefix: args.namePrefix,
     source: "skill",
     origin: args.origin,
-    ...(args.namePrefix === ""
-      ? {
-          skillIdentitySeed: skillIdentitySeed(
-            args.providerId,
-            args.origin,
-            args.identity,
-          ),
-        }
-      : {}),
   };
+  if (args.namePrefix === "") {
+    return {
+      ...root,
+      skillIdentitySeed: skillIdentitySeed(
+        args.providerId,
+        args.origin,
+        args.identity,
+      ),
+    };
+  }
+  return root;
 }
 
 async function ancestorScanRoots(args: {
@@ -271,11 +273,11 @@ function resolvedSingleScanRoot(
           ),
         }
       : {};
-  switch (root.shape) {
+  switch (root["shape"]) {
     case "skill":
       return {
         rootPath: root.path,
-        shape: "skill-directory",
+        ["shape"]: "skill-directory",
         namePrefix: root.namePrefix,
         source: "skill",
         origin: root.origin,
@@ -286,7 +288,7 @@ function resolvedSingleScanRoot(
         filePath: root.path,
         fallbackName:
           root.fallbackName ?? path.basename(path.dirname(root.path)),
-        shape: "skill-file",
+        ["shape"]: "skill-file",
         namePrefix: root.namePrefix,
         source: "skill",
         origin: root.origin,
@@ -295,7 +297,7 @@ function resolvedSingleScanRoot(
     case "command-file":
       return {
         filePath: root.path,
-        shape: "command-file",
+        ["shape"]: "command-file",
         namePrefix: root.namePrefix,
         source: "command",
         origin: root.origin,

@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  type JsonValue,
+  jsonValueSchema,
   type ProviderHealthResult,
   type ProviderInstallationRunResult,
   type ProviderInstallationStatus,
@@ -81,10 +83,12 @@ function claudeDistTags(value: string | null): {
   }
 }
 
-function claudeDoctor(value: string | null): {
+interface ClaudeDoctorResult {
   installMethod: "native" | "npm-global" | "package-manager" | "unknown" | null;
   updateChannel: "latest" | "stable" | null;
-} {
+}
+
+function claudeDoctor(value: string | null): ClaudeDoctorResult {
   const running =
     value === null ? null : /^Running:\s+([^\s(]+)/mu.exec(value)?.[1];
   const channel =
@@ -436,7 +440,7 @@ function scopedWindows(
 }
 
 function normalizeUsage(
-  raw: unknown,
+  raw: JsonValue | null,
   credentials: ClaudeCredentials,
   email: string | null,
 ): ProviderUsage {
@@ -507,7 +511,11 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
     }
     return {
       supported: true,
-      usage: normalizeUsage(await response.json(), credentials, email),
+      usage: normalizeUsage(
+        jsonValueSchema.safeParse(await response.json()).data ?? null,
+        credentials,
+        email,
+      ),
     };
   } catch (error) {
     return {

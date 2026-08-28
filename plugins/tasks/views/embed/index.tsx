@@ -14,68 +14,78 @@ import { PANEL_PATH, tasksRouteToSubPath } from "../../shell/routes.js";
 import { DetailView } from "../detail/index.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
 import { PriorityIcon, StatusIcon } from "../list/icons.js";
+import { z } from "zod";
 
 const TASK_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,9}-\d+$/;
+const realtimeChangeSchema = z
+  .object({
+    taskId: z.string().optional(),
+    projectId: z.string().optional(),
+  })
+  .passthrough();
 
 type TaskEmbedState =
   | { kind: "loading" }
   | { kind: "found"; task: Task }
-  | { kind: "not_found" }
-  | { kind: "error" };
+  | { kind: "not_found"; taskKey: string }
+  | { kind: "error"; taskKey: string };
 
-function useTaskEmbed(taskKey: string): {
+interface TaskEmbedResult {
   state: TaskEmbedState;
   retry: () => void;
-} {
+}
+
+function useTaskEmbed(taskKey: string): TaskEmbedResult {
   const rpc = useTasksRpc();
   const [state, setState] = useState<TaskEmbedState>({ kind: "loading" });
   const seqRef = useRef(0);
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
   const refresh = useCallback(() => {
     if (taskKey === "") return;
     const seq = ++seqRef.current;
     rpc.call("getTaskByKey", { taskKey }).then(
       ({ task }) => {
         if (seq !== seqRef.current) return;
-        setState(task ? { kind: "found", task } : { kind: "not_found" });
+        setState(
+          task ? { kind: "found", task } : { kind: "not_found", taskKey },
+        );
       },
       () => {
         if (seq !== seqRef.current) return;
-        setState({ kind: "error" });
+        setState({ kind: "error", taskKey });
       },
     );
   }, [rpc, taskKey]);
 
   useEffect(() => {
-    setState({ kind: "loading" });
     refresh();
   }, [refresh]);
 
   const onEvent = useCallback(
     (matches: (task: Task) => boolean) => {
-      const current = stateRef.current;
+      const current = state;
       if (current.kind !== "found" || matches(current.task)) refresh();
     },
-    [refresh],
+    [refresh, state],
   );
   useRealtime("tasks:changed", (payload) => {
-    const taskId = isRecord(payload) ? payload.taskId : undefined;
-    onEvent((task) => typeof taskId !== "string" || taskId === task.id);
+    const parsed = realtimeChangeSchema.safeParse(payload);
+    const taskId = parsed.success ? parsed.data.taskId : undefined;
+    onEvent((task) => taskId === undefined || taskId === task.id);
   });
   useRealtime("projects:changed", (payload) => {
-    const projectId = isRecord(payload) ? payload.projectId : undefined;
-    onEvent(
-      (task) => typeof projectId !== "string" || projectId === task.projectId,
-    );
+    const parsed = realtimeChangeSchema.safeParse(payload);
+    const projectId = parsed.success ? parsed.data.projectId : undefined;
+    onEvent((task) => projectId === undefined || projectId === task.projectId);
   });
 
-  return { state, retry: refresh };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  const stateMatchesTask =
+    state.kind === "loading" ||
+    (state.kind === "found" && state.task.key === taskKey) ||
+    (state.kind !== "found" && state.taskKey === taskKey);
+  return {
+    state: stateMatchesTask ? state : { kind: "loading" },
+    retry: refresh,
+  };
 }
 
 function taskDetailSubPath(taskKey: string): string {
@@ -271,11 +281,12 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
 }
 
 function TaskEmbedPanelContent({ params }: PluginThreadPanelProps) {
-  const taskKey =
-    isRecord(params) && typeof params.taskKey === "string"
-      ? params.taskKey
-      : null;
-  if (taskKey === null || !TASK_KEY_PATTERN.test(taskKey.trim())) {
+  const parsedParams = z
+    .object({ taskKey: z.string() })
+    .passthrough()
+    .safeParse(params);
+  const taskKey = parsedParams.success ? parsedParams.data.taskKey : undefined;
+  if (taskKey === undefined || !TASK_KEY_PATTERN.test(taskKey.trim())) {
     return (
       <div className="p-3 text-sm text-muted-foreground">
         Open a task card from a message to view it here.

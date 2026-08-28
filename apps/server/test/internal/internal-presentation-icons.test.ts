@@ -2,7 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { events } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  threadScope,
+  turnScope,
+  type JsonObject,
+} from "@bb/domain";
 import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
@@ -20,9 +25,22 @@ import {
 } from "../helpers/seed.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import { z } from "zod";
 
 const PLUGIN_ID = "provider-widgets";
 const PROVIDER_ID = "widgets";
+
+const storedGlyphSchema = z.object({
+  item: z
+    .object({
+      presentation: z
+        .object({
+          icon: z.object({ glyph: z.string() }).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
 
 async function setup() {
   const harness = await createTestAppHarness();
@@ -99,7 +117,7 @@ function storedRows(harness: TestAppHarness, threadId: string) {
       itemKind: row.itemKind,
       scopeKind: row.scopeKind,
       turnId: row.turnId,
-      data: JSON.parse(row.data) as unknown,
+      data: jsonObjectSchema.parse(JSON.parse(row.data)),
     }));
 }
 
@@ -159,11 +177,7 @@ describe("presentation icon ingest validation", () => {
       expect(
         storedRows(harness, thread.id).map((row) => [
           row.type,
-          (
-            row.data as {
-              item?: { presentation?: { icon: { glyph: string } } };
-            }
-          ).item?.presentation?.icon.glyph,
+          storedGlyph(row),
         ]),
       ).toEqual([
         ["turn/started", undefined],
@@ -357,26 +371,28 @@ describe("presentation icon ingest validation on thread-scoped item snapshots", 
       const itemType = type.startsWith("item/delegation/")
         ? "delegation"
         : "backgroundTask";
+      const expectedDataBase = {
+        providerId: PROVIDER_ID,
+        rawType: `presentation/icon:${itemType}`,
+        rawEvent: {
+          method: type,
+          params: {
+            itemId: "item-3",
+            itemType,
+            glyph: "other-plugin/gauge",
+            reason: `presentation.icon "other-plugin/gauge" is not an icon declared by plugin "${PLUGIN_ID}"`,
+          },
+        },
+      };
+      const expectedData =
+        itemType === "delegation"
+          ? { ...expectedDataBase, parentToolCallId: "parent-1" }
+          : expectedDataBase;
       expect(rows[3]).toMatchObject({
         itemKind: null,
         scopeKind: "thread",
         turnId: null,
-        data: {
-          providerId: PROVIDER_ID,
-          rawType: `presentation/icon:${itemType}`,
-          rawEvent: {
-            method: type,
-            params: {
-              itemId: "item-3",
-              itemType,
-              glyph: "other-plugin/gauge",
-              reason: `presentation.icon "other-plugin/gauge" is not an icon declared by plugin "${PLUGIN_ID}"`,
-            },
-          },
-          ...(itemType === "delegation"
-            ? { parentToolCallId: "parent-1" }
-            : {}),
-        },
+        data: expectedData,
       });
       expect(rows[4]).toMatchObject({
         data: {
@@ -452,9 +468,8 @@ function bbToolItem(
   };
 }
 
-function storedGlyph(row: { data: unknown }): string | undefined {
-  return (row.data as { item?: { presentation?: { icon: { glyph: string } } } })
-    .item?.presentation?.icon.glyph;
+function storedGlyph(row: { data: JsonObject }): string | undefined {
+  return storedGlyphSchema.parse(row.data).item?.presentation?.icon?.glyph;
 }
 
 describe("presentation icon ingest validation for bb-injected tool rows", () => {

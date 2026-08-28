@@ -3,9 +3,8 @@ const MAX_LOCAL_PREVIEWS = 24;
 const localPreviewUrlsByPath = new Map<string, string>();
 
 function canCreateObjectUrls(): boolean {
-  return (
-    typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
-  );
+  const urlConstructor = globalThis.URL;
+  return urlConstructor !== undefined && "createObjectURL" in urlConstructor;
 }
 
 export function registerLocalAttachmentPreview(path: string, file: Blob): void {

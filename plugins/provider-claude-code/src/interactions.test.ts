@@ -13,15 +13,17 @@ import {
 import {
   claudePermissionRequestApprovalParamsSchema,
   claudeUserQuestionRequestParamsSchema,
+  type ClaudePermissionRequestApprovalParams,
+  type ClaudeUserQuestionRequestParams,
 } from "./interactive-contract.js";
 
-function decodeApproval(params: unknown) {
+function decodeApproval(params: ClaudePermissionRequestApprovalParams) {
   return buildClaudeApprovalInteractionPayload(
     claudePermissionRequestApprovalParamsSchema.parse(params),
   );
 }
 
-function decodeUserQuestion(params: unknown) {
+function decodeUserQuestion(params: ClaudeUserQuestionRequestParams) {
   return buildClaudeUserQuestionPayload(
     claudeUserQuestionRequestParamsSchema.parse(params),
   );

@@ -39,9 +39,10 @@ function isKeyboardInputElement(element: Element): element is HTMLElement {
 }
 
 export function blurActiveKeyboardInputWithin(container: Element | null): void {
-  if (typeof document === "undefined") return;
+  const browserDocument = globalThis.document;
+  if (browserDocument === undefined) return;
 
-  const activeElement = document.activeElement;
+  const activeElement = browserDocument.activeElement;
   if (!activeElement || !isKeyboardInputElement(activeElement)) return;
   if (container !== null && !container.contains(activeElement)) return;
 
@@ -62,15 +63,15 @@ export function preventOverlayTriggerSelection(event: MouseEvent): void {
 
 let lastInputModality: "pointer" | "keyboard" = "pointer";
 
-if (typeof document !== "undefined") {
-  document.addEventListener(
+if (globalThis.document !== undefined) {
+  globalThis.document.addEventListener(
     "keydown",
     () => {
       lastInputModality = "keyboard";
     },
     { capture: true },
   );
-  document.addEventListener(
+  globalThis.document.addEventListener(
     "pointerdown",
     () => {
       lastInputModality = "pointer";

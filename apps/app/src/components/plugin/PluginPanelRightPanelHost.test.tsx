@@ -11,7 +11,11 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+} from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createEmptyFixedPanelTabsState,
@@ -23,22 +27,27 @@ import {
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { z } from "zod";
+import type { JsonValue, PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
+import type { TerminalSession } from "@bb/server-contract";
+import { sdk } from "@/lib/sdk";
+import * as appCommandProvider from "@/components/commands/AppCommandProvider";
+import * as browserDesktop from "@/lib/bb-desktop";
+import * as compactViewport from "@bb/shared-ui/hooks/use-compact-viewport";
+import * as fileOpenerPreference from "@/lib/file-opener-preference";
+import * as hostQueries from "@/hooks/queries/host-queries";
+import * as pluginSlots from "@/lib/plugin-slots";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import * as terminalQueries from "@/hooks/queries/thread-terminal-queries";
+import * as lazySecondaryPanelComponents from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import * as secondaryPanelLayout from "@/components/secondary-panel/SecondaryPanelLayout";
+import { useThreadTerminalController } from "@/components/thread/terminal/useThreadTerminalController";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
 } from "@/lib/app-fixed-tab-navigation";
 
-interface TestFixedTabRegistration {
-  panelId: string;
-  id: string;
-  title: string;
-  icon: string;
-  component: (props: { subPath: string }) => ReactNode;
-  experimental_target?: {
-    validate(value: import("@get-bb/plugin-sdk").JsonValue): boolean;
-  };
-  layout?: "padded" | "flush";
-}
+type TestFixedTabRegistration = PluginFixedTabDeclaration;
 
 interface TestFileOpenerRegistration {
   id: string;
@@ -68,7 +77,7 @@ const threadTabsApi = vi.hoisted(() => ({
   get: vi.fn(),
   update: vi.fn(),
 }));
-const terminalQueryState = vi.hoisted(() => ({
+const terminalQueryState: { sessions: TerminalSession[] } = vi.hoisted(() => ({
   sessions: [
     {
       id: "terminal-1",
@@ -106,9 +115,12 @@ const terminalQueryState = vi.hoisted(() => ({
 }));
 const fixedTabState = vi.hoisted(() => ({
   panelRegistered: true,
-  registrations: [] as TestFixedTabRegistration[],
-  fileOpeners: [] as TestFileOpenerRegistration[],
-  newThreadPanelActions: [] as TestNewThreadPanelActionRegistration[],
+  registrations:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as TestFixedTabRegistration[],
+  fileOpeners:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as TestFileOpenerRegistration[],
+  newThreadPanelActions:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as TestNewThreadPanelActionRegistration[],
 }));
 const hostState = vi.hoisted(() => ({
   hosts: [
@@ -118,165 +130,117 @@ const hostState = vi.hoisted(() => ({
   primaryHostId: "host-1",
 }));
 const secondaryPanelState = vi.hoisted(() => ({
-  fixedTabs: [] as Array<{
-    contentFillsRegion: boolean;
-    hasRenderer: boolean;
-    title: string;
-  }>,
-  splitPanelStateId: undefined as string | undefined,
-  tabKinds: [] as string[],
+  fixedTabs:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as Array<{
+      contentFillsRegion: boolean;
+      hasRenderer: boolean;
+      title: string;
+    }>,
+  splitPanelStateId:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as
+      | string
+      | undefined,
+  tabKinds:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as string[],
 }));
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...actual,
-    sdk: {
-      ...actual.sdk,
-      threads: {
-        ...actual.sdk.threads,
-        tabs: threadTabsApi,
-      },
-    },
-  };
+const fixedTabTargetSchema = z.object({
+  kind: z.literal("record"),
+  recordId: z.string(),
 });
 
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => viewportState.isCompactViewport,
+vi.spyOn(sdk.threads.tabs, "get").mockImplementation(threadTabsApi.get);
+vi.spyOn(sdk.threads.tabs, "update").mockImplementation(threadTabsApi.update);
+vi.spyOn(compactViewport, "useIsCompactViewport").mockImplementation(
+  () => viewportState.isCompactViewport,
+);
+vi.spyOn(appCommandProvider, "useAppCommandHandler").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(appCommandProvider, "useAppCommandShortcut").mockImplementation(
+  () => null,
+);
+vi.spyOn(pluginSlots, "usePluginSlots").mockImplementation(() => ({
+  ...pluginSlots.EMPTY_PLUGIN_SLOT_SNAPSHOT,
+  fileOpeners: fixedTabState.fileOpeners,
+  newThreadPanelActions: fixedTabState.newThreadPanelActions,
+  navPanels: fixedTabState.panelRegistered
+    ? [
+        {
+          id: "board",
+          pluginId: "demo",
+          path: "board",
+          title: "Board",
+          icon: "Columns",
+          component: () => null,
+          generation: 1,
+          fixedTabs: fixedTabState.registrations,
+        },
+      ]
+    : [],
 }));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandHandler: () => undefined,
-  useAppCommandShortcut: () => null,
-}));
-
-vi.mock("@/lib/plugin-slots", () => ({
-  usePluginSlots: () => ({
-    fileOpeners: fixedTabState.fileOpeners,
-    newThreadPanelActions: fixedTabState.newThreadPanelActions,
-    navPanels: fixedTabState.panelRegistered
-      ? [
-          {
-            id: "board",
-            pluginId: "demo",
-            path: "board",
-            title: "Board",
-            icon: "Columns",
-            component: () => null,
-            generation: 1,
-            fixedTabs: fixedTabState.registrations,
-          },
-        ]
-      : [],
+vi.spyOn(
+  fileOpenerPreference,
+  "useFileOpenerPreferenceValue",
+).mockImplementation(() => ({}));
+vi.spyOn(browserDesktop, "getDesktopBrowserApi").mockImplementation(() => null);
+vi.spyOn(browserDesktop, "isDesktopBrowserAvailable").mockImplementation(
+  () => browserState.available,
+);
+vi.spyOn(terminalQueries, "useCreateTerminal").mockImplementation(() =>
+  useMutation({ mutationFn: async (request) => createTerminal(request) }),
+);
+vi.spyOn(terminalQueries, "useCloseTerminal").mockImplementation(() =>
+  useMutation({
+    mutationFn: async () => terminalQueryState.sessions[0],
   }),
-}));
-
-vi.mock("@/lib/file-opener-preference", () => ({
-  useFileOpenerPreferenceValue: () => ({ kind: "automatic" }),
-}));
-
-vi.mock("@/lib/bb-desktop", () => ({
-  getDesktopBrowserApi: () => null,
-  isDesktopBrowserAvailable: () => browserState.available,
-}));
-
-vi.mock("@/hooks/queries/thread-terminal-queries", () => ({
-  useCreateTerminal: () => ({
-    isPending: false,
-    mutateAsync: createTerminal,
-  }),
-  useCreateEnvironmentTerminal: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useCreateThreadTerminal: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useCloseTerminal: () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    mutateAsync: vi.fn(),
-    variables: undefined,
-  }),
-  useCloseEnvironmentTerminal: () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    variables: undefined,
-  }),
-  useCloseThreadTerminal: () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    variables: undefined,
-  }),
-  useRenameTerminal: () => ({ mutate: vi.fn() }),
-  useRenameEnvironmentTerminal: () => ({ mutate: vi.fn() }),
-  useRenameThreadTerminal: () => ({ mutate: vi.fn() }),
-  useEnvironmentTerminals: () => ({
-    data: terminalQueryState,
-    error: null,
-    isLoading: false,
-  }),
-  useThreadTerminals: () => ({
-    data: terminalQueryState,
-    error: null,
-    isLoading: false,
-  }),
-  useTerminals: () => ({
-    data: terminalQueryState,
-    error: null,
-    isLoading: false,
-  }),
-}));
-
-vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: () => ({ data: hostState.hosts, isLoading: false }),
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: { primaryHostId: hostState.primaryHostId },
-  }),
-}));
-
-vi.mock("react-resizable-panels", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-resizable-panels")>()),
-  Panel: ({ children }: { children?: ReactNode }) => (
-    <div data-testid="panel-placeholder">{children}</div>
-  ),
-}));
-
-vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
-  SecondaryPanelLayout: ({
-    main,
-    open,
-    renderPanel,
-  }: {
-    main: ReactNode;
-    open: boolean;
-    renderPanel: (options: {
-      presentation: "inline";
-      canShowNativeBrowserView: boolean;
-      isMainCollapsed: boolean;
-      onToggleMainCollapse: () => void;
-    }) => ReactNode;
-  }) => (
+);
+/* SAFETY: The test supplies only the query fields used by the host. */
+vi.spyOn(terminalQueries, "useTerminals").mockImplementation(
+  () =>
+    ({
+      data: terminalQueryState,
+      error: null,
+      isLoading: false,
+    }) as ReturnType<typeof terminalQueries.useTerminals>,
+);
+/* SAFETY: The test supplies only the query fields used by the host. */
+vi.spyOn(hostQueries, "useHosts").mockImplementation(
+  () =>
+    ({
+      data: hostState.hosts,
+      isLoading: false,
+    }) as ReturnType<typeof hostQueries.useHosts>,
+);
+/* SAFETY: The test supplies only the query field used by the host. */
+vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(
+  () =>
+    ({
+      data: { primaryHostId: hostState.primaryHostId },
+    }) as ReturnType<typeof systemQueries.useSystemConfig>,
+);
+vi.spyOn(secondaryPanelLayout, "SecondaryPanelLayout").mockImplementation(
+  ({ main, open, renderPanel }) => (
     <div data-testid="shared-secondary-panel-layout">
       {main}
       <div data-testid="shared-secondary-panel-region" hidden={!open}>
         {renderPanel({
           presentation: "inline",
           canShowNativeBrowserView: true,
+          inlinePanelToggle: "button",
           isMainCollapsed: false,
           onToggleMainCollapse: () => undefined,
         })}
       </div>
     </div>
   ),
-}));
+);
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  ThreadSecondaryPanel: ({
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyThreadSecondaryPanel",
+).mockImplementation(
+  ({
     activeTab,
     tabs,
     fixedTabs,
@@ -284,36 +248,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     onOpenNewTab,
     renderBrowserDeck,
     splitPanelStateId,
-  }: {
-    activeTab: { id: string } | null;
-    tabs: Array<{
-      contentFillsRegion?: boolean;
-      label: string;
-      onClose: () => void;
-      onSelect: () => void;
-      renderContent: (pane: {
-        isFocused: boolean;
-        onFocusPane: () => void;
-      }) => ReactNode;
-      tab: { id: string; kind: string };
-    }>;
-    fixedTabs: Array<{
-      tab: { id: string };
-      title: string;
-      onSelect: () => void;
-      contentFillsRegion?: boolean;
-      renderContent?: (pane: {
-        isFocused: boolean;
-        onFocusPane: () => void;
-      }) => ReactNode;
-    }>;
-    onClose: () => void;
-    onOpenNewTab: () => void;
-    renderBrowserDeck?: (
-      activeBrowserTabId: string | null,
-      pane: { isFocused: boolean; onFocusPane: () => void },
-    ) => ReactNode;
-    splitPanelStateId?: string;
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
     const activeFixedTab = fixedTabs.find(
@@ -370,10 +304,10 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       </aside>
     );
   },
-}));
+);
 
-vi.mock("@/components/secondary-panel/NewTabPage", () => ({
-  NewTabPage: ({
+vi.spyOn(lazySecondaryPanelComponents, "LazyNewTabPage").mockImplementation(
+  ({
     onOpenBrowser,
     onStartTerminal,
     startTerminalDisabled,
@@ -404,54 +338,47 @@ vi.mock("@/components/secondary-panel/NewTabPage", () => ({
       ) : null}
     </div>
   ),
-}));
+);
 
-vi.mock("@/components/secondary-panel/BrowserTabDeck", () => ({
-  BrowserTabDeck: ({
-    activeBrowserTabId,
-  }: {
-    activeBrowserTabId: string | null;
-  }) =>
-    activeBrowserTabId === null ? null : (
+vi.spyOn(lazySecondaryPanelComponents, "LazyBrowserTabDeck").mockImplementation(
+  ({ activeBrowserTabId }) =>
+    activeBrowserTabId === null ? (
+      <></>
+    ) : (
       <div data-testid="plugin-page-browser" />
     ),
-}));
+);
 
-vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
-  const { useThreadTerminalController } =
-    await import("@/components/thread/terminal/useThreadTerminalController");
-  return {
-    ThreadTerminalPanel: (
-      props: Parameters<typeof useThreadTerminalController>[0],
-    ) => {
-      const controller = useThreadTerminalController(props);
-      return (
-        <div data-testid="plugin-page-terminal">
-          <button
-            type="button"
-            onClick={() => controller.handleSelectTerminal("terminal-2")}
-          >
-            Select sibling terminal
-          </button>
-        </div>
-      );
-    },
-  };
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyThreadTerminalPanel",
+).mockImplementation((props) => {
+  const controller = useThreadTerminalController(props);
+  return (
+    <div data-testid="plugin-page-terminal">
+      <button
+        type="button"
+        onClick={() => controller.handleSelectTerminal("terminal-2")}
+      >
+        Select sibling terminal
+      </button>
+    </div>
+  );
 });
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
-  WorkspaceFilePreviewTabContent: ({
-    activePath,
-    environmentId,
-  }: {
-    activePath: string;
-    environmentId: string;
-  }) => (
-    <div>
-      workspace:{environmentId}:{activePath}
-    </div>
-  ),
-  HostScopedFilePreviewTabContent: ({
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyWorkspaceFilePreviewTabContent",
+).mockImplementation(({ activePath, environmentId }) => (
+  <div>
+    workspace:{environmentId}:{activePath}
+  </div>
+));
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyHostScopedFilePreviewTabContent",
+).mockImplementation(
+  ({
     activePath,
     hostId,
     isPanelOpen,
@@ -467,18 +394,17 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
       host:{hostId}:{activePath}
     </div>
   ),
-  ThreadStorageFilePreviewTabContent: ({
-    activePath,
-    threadId,
-  }: {
-    activePath: string;
-    threadId: string;
-  }) => (
+);
+vi.spyOn(
+  lazySecondaryPanelComponents,
+  "LazyThreadStorageFilePreviewTabContent",
+).mockImplementation(
+  ({ activePath, threadId }: { activePath: string; threadId: string }) => (
     <div>
       storage:{threadId}:{activePath}
     </div>
   ),
-}));
+);
 
 function FileIntentButtons() {
   const navigation = useAppNavigationHost();
@@ -789,12 +715,8 @@ describe("PluginPanelRightPanelHost", () => {
         icon: "Info",
         component: Details,
         experimental_target: {
-          validate: (value) =>
-            typeof value === "object" &&
-            value !== null &&
-            !Array.isArray(value) &&
-            value.kind === "record" &&
-            typeof value.recordId === "string",
+          validate: (value): value is JsonValue =>
+            fixedTabTargetSchema.safeParse(value).success,
         },
       },
     ];

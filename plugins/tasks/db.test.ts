@@ -28,7 +28,7 @@ function cursorForEmptyArrayFilter(
   const decoded: unknown = JSON.parse(
     Buffer.from(cursor, "base64url").toString("utf8"),
   );
-  if (typeof decoded !== "object" || decoded === null) {
+  if (!(decoded instanceof Object)) {
     throw new Error("expected an object cursor fixture");
   }
   const normalized = JSON.stringify({
@@ -369,7 +369,7 @@ describe("tasks storage", () => {
         const keys: string[] = [];
         let cursor: string | undefined;
         do {
-          const page = store.listTasksPage({
+          const pageOptions: Parameters<typeof store.listTasksPage>[0] = {
             projectId: project.id,
             statuses: ["todo"],
             priorities: ["urgent", "high", "low"],
@@ -377,8 +377,9 @@ describe("tasks storage", () => {
             search: "later",
             sort,
             limit: 1,
-            ...(cursor === undefined ? {} : { cursor }),
-          });
+          };
+          if (cursor !== undefined) pageOptions.cursor = cursor;
+          const page = store.listTasksPage(pageOptions);
           keys.push(...page.tasks.map((task) => task.key));
           cursor = page.nextCursor ?? undefined;
         } while (cursor !== undefined);

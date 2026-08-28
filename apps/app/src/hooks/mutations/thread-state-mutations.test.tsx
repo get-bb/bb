@@ -19,9 +19,8 @@ import {
   useUpdateThread,
 } from "./thread-state-mutations";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { unpin: vi.fn(), update: vi.fn() } },
-}));
+const updateThread = vi.spyOn(sdk.threads, "update");
+const unpinThread = vi.spyOn(sdk.threads, "unpin");
 
 function makeThreadWithRuntime(
   thread: Partial<ThreadWithRuntime> = {},
@@ -149,7 +148,7 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(sdk.threads.update).mockImplementation(
+    updateThread.mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;
@@ -219,7 +218,7 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(sdk.threads.update).mockImplementation(
+    updateThread.mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;
@@ -295,13 +294,13 @@ describe("thread state mutations", () => {
       sidebarNavigationQueryKey(),
       makeSidebarNavigation([listEntry]),
     );
-    vi.mocked(sdk.threads.unpin).mockImplementation(
+    unpinThread.mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUnpin = resolve;
         }),
     );
-    vi.mocked(sdk.threads.update).mockImplementation(
+    updateThread.mockImplementation(
       () =>
         new Promise<ThreadResponse>((resolve) => {
           resolveUpdate = resolve;

@@ -1,4 +1,10 @@
-import { Suspense, lazy, useMemo, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  useMemo,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
@@ -9,7 +15,10 @@ import {
   DEFAULT_CODE_OVERFLOW,
   DEFAULT_DIFF_VIEW,
   type DiffPresentation,
+  type BbDiffProps,
 } from "./code-rendering";
+
+export type DiffRenderer = ComponentType<BbDiffProps>;
 
 const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
@@ -22,6 +31,7 @@ interface DiffHostProps extends Partial<DiffPresentation> {
   className?: string;
   fallback?: ReactNode;
   onSelectionAddToChat?: (text: string) => void;
+  renderer?: DiffRenderer;
 }
 
 export function DiffHost({
@@ -34,6 +44,7 @@ export function DiffHost({
   className,
   fallback = null,
   onSelectionAddToChat,
+  renderer: Renderer = BbDiff,
 }: DiffHostProps) {
   const replacement = useDiffRendererReplacement();
   const isReplaced = replacement.kind === "plugin";
@@ -44,7 +55,7 @@ export function DiffHost({
 
   const original = (
     <Suspense fallback={fallback}>
-      <BbDiff
+      <Renderer
         file={file}
         patchText={patchText}
         fullFileContents={fullFileContents}

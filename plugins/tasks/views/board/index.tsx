@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -131,19 +132,30 @@ async function fetchBoard(
   };
 }
 
-type ColumnMap = Record<TaskStatus, Task[]>;
+interface ColumnMap {
+  backlog: Task[];
+  todo: Task[];
+  in_progress: Task[];
+  in_review: Task[];
+  done: Task[];
+  canceled: Task[];
+}
 
-function groupColumns(tasks: readonly Task[]): ColumnMap {
-  const columns: ColumnMap = {
-    backlog: [],
-    todo: [],
-    in_progress: [],
-    in_review: [],
-    done: [],
-    canceled: [],
-  };
+function groupColumns(tasks: readonly Task[]) {
+  const columns = {
+    backlog: createTaskColumn(),
+    todo: createTaskColumn(),
+    in_progress: createTaskColumn(),
+    in_review: createTaskColumn(),
+    done: createTaskColumn(),
+    canceled: createTaskColumn(),
+  } satisfies ColumnMap;
   for (const task of tasks) columns[task.status].push(task);
   return columns;
+}
+
+function createTaskColumn(): Task[] {
+  return [];
 }
 
 interface DragState {
@@ -154,6 +166,13 @@ interface DragState {
   offsetY: number;
   width: number;
   overStatus: TaskStatus | null;
+  dropIndex: number;
+}
+
+interface BoardMove {
+  board: BoardData;
+  taskId: string;
+  toStatus: TaskStatus;
   dropIndex: number;
 }
 
@@ -285,15 +304,20 @@ export function BoardView({ projectId }: BoardViewProps) {
     [projectId],
   );
 
-  const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);
+  const [optimisticMoves, setOptimisticMoves] = useState<BoardMove[]>([]);
+  const columns = useMemo(() => {
+    if (!board.data) return undefined;
+    let next = groupColumns(board.data.tasks);
+    for (const move of optimisticMoves) {
+      if (move.board !== board.data) continue;
+      next = applyBoardMove(next, move.taskId, move.toStatus, move.dropIndex);
+    }
+    return next;
+  }, [board.data, optimisticMoves]);
+  const columnsRef = useRef<ColumnMap | undefined>(undefined);
   useEffect(() => {
-    setColumns(undefined);
-  }, [projectId]);
-  useEffect(() => {
-    if (board.data) setColumns(groupColumns(board.data.tasks));
-  }, [board.data]);
-  const columnsRef = useRef(columns);
-  columnsRef.current = columns;
+    columnsRef.current = columns;
+  }, [columns]);
 
   const [drag, setDrag] = useState<DragState | null>(null);
   const [quickAddStatus, setQuickAddStatus] = useState<TaskStatus | null>(null);
@@ -351,7 +375,13 @@ export function BoardView({ projectId }: BoardViewProps) {
       taskId,
       dropIndex,
     );
-    setColumns(applyBoardMove(current, taskId, toStatus, dropIndex));
+    const currentBoard = board.data;
+    if (currentBoard) {
+      setOptimisticMoves((moves) => [
+        ...moves.filter((move) => move.board === currentBoard),
+        { board: currentBoard, taskId, toStatus, dropIndex },
+      ]);
+    }
     void rpc
       .call("boardMove", {
         taskId,

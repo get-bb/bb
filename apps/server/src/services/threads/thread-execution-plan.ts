@@ -120,18 +120,17 @@ function createMissingThreadExecutionModelError(threadId: string): ApiError {
 class ProviderCapabilityValidationError extends ApiError {}
 
 function isMissingThreadExecutionModelError(
-  error: unknown,
+  error: ApiError,
   threadId: string,
 ): boolean {
   return (
-    error instanceof ApiError &&
     error.body.code === "internal_error" &&
     error.body.message === `Thread ${threadId} has no stored execution model`
   );
 }
 
 function isProviderCapabilityValidationError(
-  error: unknown,
+  error: ApiError,
 ): error is ProviderCapabilityValidationError {
   return error instanceof ProviderCapabilityValidationError;
 }
@@ -185,12 +184,12 @@ export function buildExistingThreadExecutionInput(
     request.permissionMode,
     resolveRequestInputSource(sources, "permissionMode"),
   );
-  return {
-    ...(model ? { model } : {}),
-    ...(serviceTier ? { serviceTier } : {}),
-    ...(reasoningLevel ? { reasoningLevel } : {}),
-    ...(permissionMode ? { permissionMode } : {}),
-  };
+  const input: ExistingThreadExecutionInput = {};
+  if (model !== undefined) input.model = model;
+  if (serviceTier !== undefined) input.serviceTier = serviceTier;
+  if (reasoningLevel !== undefined) input.reasoningLevel = reasoningLevel;
+  if (permissionMode !== undefined) input.permissionMode = permissionMode;
+  return input;
 }
 
 function validateProviderPermissionMode(
@@ -355,11 +354,15 @@ export async function tryResolveExistingThreadExecutionPlan(
   try {
     return await resolveExistingThreadExecutionPlan(deps, args);
   } catch (error) {
-    if (isMissingThreadExecutionModelError(error, args.threadId)) {
+    if (
+      error instanceof ApiError &&
+      isMissingThreadExecutionModelError(error, args.threadId)
+    ) {
       return null;
     }
     if (
       !hasExecutionInput(args.input) &&
+      error instanceof ApiError &&
       (isProviderCapabilityValidationError(error) ||
         isHostPermissionCeilingConflictError(error))
     ) {

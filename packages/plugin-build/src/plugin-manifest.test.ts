@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { PluginPackageJson } from "@bb/domain";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
 
 const SVG =
@@ -32,11 +33,11 @@ describe("validatePluginBuildManifest: bb.branding assets", () => {
   async function fixture(
     icons: Record<string, string>,
     files: Record<string, string> = {},
-    branding: Record<string, unknown> = {
+    branding: PluginPackageJson["bb"]["branding"] = {
       icon: "Zap",
       experimental_icons: icons,
     },
-  ): Promise<{ dir: string; manifest: unknown }> {
+  ): Promise<{ dir: string; manifest: PluginPackageJson }> {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-icons-build-"));
     tempDirs.push(dir);
     await writeFile(join(dir, "server.ts"), "export default () => {};\n");

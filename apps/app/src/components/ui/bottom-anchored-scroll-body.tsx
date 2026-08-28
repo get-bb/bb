@@ -852,8 +852,8 @@ export function BottomAnchoredScrollBody({
     };
 
     let resizeObserver: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(handleScrollAreaResize);
+    if (globalThis.ResizeObserver !== undefined) {
+      resizeObserver = new globalThis.ResizeObserver(handleScrollAreaResize);
       resizeObserver.observe(scrollArea);
       resizeObserver.observe(scrollContent);
     }

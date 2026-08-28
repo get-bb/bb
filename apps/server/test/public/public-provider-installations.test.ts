@@ -1,7 +1,5 @@
-import type {
-  HostDaemonOnlineRpcRequestMessage,
-  ProviderCliStatusResponse,
-} from "@bb/host-daemon-contract";
+import { providerCliStatusResponseSchema } from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
@@ -148,7 +146,9 @@ describe("public provider installation routes", () => {
       );
 
       expect(response.status).toBe(200);
-      const body = (await readJson(response)) as ProviderCliStatusResponse;
+      const body = providerCliStatusResponseSchema.parse(
+        await readJson(response),
+      );
       expect(Object.keys(body)).toEqual([
         "codex",
         "claude-code",
@@ -215,7 +215,9 @@ describe("public provider installation routes", () => {
       );
 
       expect(response.status).toBe(200);
-      const body = (await readJson(response)) as ProviderCliStatusResponse;
+      const body = providerCliStatusResponseSchema.parse(
+        await readJson(response),
+      );
       expect(Object.keys(body)).toEqual(["codex", "pi", "acp-cursor"]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",

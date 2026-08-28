@@ -1,3 +1,11 @@
+import { z } from "zod";
+
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "./json-value.js";
 import type { ThreadEventItemPresentation } from "./item-presentation.js";
 import type { ThreadEventType } from "./provider-event.js";
 
@@ -23,15 +31,31 @@ export function isLegacyThreadEventType(
   return legacyThreadEventTypeSet.has(type);
 }
 
-export interface StoredThreadEventShape {
+export interface StoredThreadEventRecord {
   type: ThreadEventType;
-  data: Record<string, unknown>;
+  data: JsonObject;
+}
+
+interface StoredThreadEventRecordInput {
+  type: ThreadEventType;
+  data: object;
+}
+
+const storedThreadEventRecordSchema = z.object({
+  type: z.string(),
+  data: jsonObjectSchema,
+});
+
+function isStoredThreadEventRecord(
+  stored: StoredThreadEventRecordInput,
+): stored is StoredThreadEventRecord {
+  return storedThreadEventRecordSchema.safeParse(stored).success;
 }
 
 function legacyItemId(
   prefix: string,
   turnId: string | null,
-  payload: unknown,
+  payload: JsonValue,
 ): string {
   const text = JSON.stringify(payload);
   let hash = 5381;
@@ -53,10 +77,15 @@ const GOAL_FIELDS = [
   "timeUsedSeconds",
 ] as const;
 
+const goalFieldSet = new Set<string>(GOAL_FIELDS);
+
 export function convertLegacyStoredThreadEvent(
-  stored: StoredThreadEventShape,
+  stored: StoredThreadEventRecordInput,
   scope: StoredThreadEventConversionScope = { turnId: null },
-): StoredThreadEventShape {
+): StoredThreadEventRecord {
+  if (!isStoredThreadEventRecord(stored)) {
+    throw new Error("Stored thread event data must contain JSON values");
+  }
   switch (stored.type) {
     case "item/started":
     case "item/completed": {
@@ -67,26 +96,38 @@ export function convertLegacyStoredThreadEvent(
     }
     case "turn/plan/updated": {
       const { plan, explanation, ...rest } = stored.data;
-      const steps = Array.isArray(plan) ? plan : [];
+      const stepsResult = z.array(jsonValueSchema).safeParse(plan);
+      const steps = stepsResult.success ? stepsResult.data : [];
+      const explanationResult = z.string().safeParse(explanation);
+      const idPayload: JsonObject = { steps };
+      if (explanationResult.success) {
+        idPayload.explanation = explanationResult.data;
+      }
+      const item = {
+        type: "planSteps",
+        id: legacyItemId("legacy-plan", scope.turnId, idPayload),
+        steps,
+        status: "completed",
+      };
+      if (explanationResult.success) {
+        return {
+          type: "item/completed",
+          data: {
+            ...rest,
+            item: { ...item, explanation: explanationResult.data },
+          },
+        };
+      }
       return {
         type: "item/completed",
         data: {
           ...rest,
-          item: {
-            type: "planSteps",
-            id: legacyItemId("legacy-plan", scope.turnId, {
-              steps,
-              explanation,
-            }),
-            steps,
-            ...(typeof explanation === "string" ? { explanation } : {}),
-            status: "completed",
-          },
+          item,
         },
       };
     }
     case "thread/goal/updated": {
-      const payload: Record<string, unknown> = {};
+      const payload: JsonObject = {};
       for (const field of GOAL_FIELDS) {
         payload[field] = stored.data[field];
       }
@@ -134,9 +175,9 @@ export function convertLegacyStoredThreadEvent(
 }
 
 function legacyInteractionLifecycleRecord(
-  data: Record<string, unknown>,
-  payload: unknown,
-): Record<string, unknown> {
+  data: JsonObject,
+  payload: JsonValue,
+) {
   return {
     id: data.interactionId,
     status: data.status,
@@ -151,13 +192,11 @@ function legacyInteractionLifecycleRecord(
   };
 }
 
-function withoutGoalFields(
-  data: Record<string, unknown>,
-): Record<string, unknown> {
-  const rest: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (!(GOAL_FIELDS as readonly string[]).includes(key)) {
-      rest[key] = value;
+function withoutGoalFields(data: JsonObject) {
+  const rest = { ...data };
+  for (const key of Object.keys(data)) {
+    if (goalFieldSet.has(key)) {
+      delete rest[key];
     }
   }
   return rest;
@@ -203,26 +242,30 @@ function legacyBaseToolName(tool: string): string {
 }
 
 function firstStringField(
-  args: Record<string, unknown> | undefined,
+  args: JsonObject | undefined,
   keys: readonly string[],
 ): string | undefined {
   for (const key of keys) {
-    const value = args?.[key];
-    if (typeof value === "string" && value.length > 0) return value;
+    const result = z.string().safeParse(args?.[key]);
+    if (result.success && result.data.length > 0) return result.data;
   }
   return undefined;
 }
 
 function legacyToolCallCommand(
   tool: string,
-  args: Record<string, unknown> | undefined,
+  args: JsonObject | undefined,
 ): string {
   if (!args) return tool;
   const entries = Object.entries(args).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return tool;
   const compact = entries
     .map(([k, v]) => {
-      const vs = typeof v === "string" ? v.trim() : JSON.stringify(v);
+      const stringResult = z.string().safeParse(v);
+      const encoded = JSON.stringify(v);
+      const vs = stringResult.success
+        ? stringResult.data.trim()
+        : (encoded ?? "");
       const display = vs.length > 40 ? `${vs.slice(0, 37)}...` : vs;
       return `${k}: ${display}`;
     })
@@ -241,41 +284,60 @@ function stripLegacyAgentResultMetadata(result: string): string {
     .trim();
 }
 
-interface LegacyToolItem {
-  type: "toolCall";
+const legacyToolItemSchema = z
+  .object({
+    type: z.literal("toolCall"),
+    id: z.string(),
+    tool: z.string(),
+    arguments: jsonObjectSchema.optional(),
+    status: z.enum(["pending", "completed", "failed", "interrupted"]),
+    result: jsonValueSchema.optional(),
+    parentToolCallId: z.string().optional(),
+  })
+  .catchall(jsonValueSchema);
+
+type LegacyToolItem = z.infer<typeof legacyToolItemSchema>;
+
+interface LegacyUpgradedToolItem {
+  [key: string]: JsonValue;
+  type: string;
   id: string;
-  tool: string;
-  arguments?: Record<string, unknown>;
-  status: "pending" | "completed" | "failed" | "interrupted";
-  result?: unknown;
-  parentToolCallId?: string;
-  [key: string]: unknown;
+  status: LegacyToolItem["status"];
 }
 
-function isLegacyToolItem(item: unknown): item is LegacyToolItem {
-  if (item === null || typeof item !== "object") return false;
-  const record = item as Record<string, unknown>;
-  return (
-    record.type === "toolCall" &&
-    typeof record.id === "string" &&
-    typeof record.tool === "string" &&
-    typeof record.status === "string" &&
-    record.presentation === undefined
-  );
+function isLegacyToolItem(item: JsonValue): item is LegacyToolItem {
+  const result = legacyToolItemSchema.safeParse(item);
+  return result.success && result.data.presentation === undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+function addOptionalItemField(
+  item: JsonObject,
+  key: string,
+  value: string | undefined,
+): JsonObject {
+  if (value !== undefined) {
+    item[key] = value;
+  }
+  return item;
 }
 
-function sharedLegacyItemFields(item: LegacyToolItem): Record<string, unknown> {
-  return {
+function createLegacyToolItem(
+  type: string,
+  item: LegacyToolItem,
+  fields: JsonObject,
+): LegacyUpgradedToolItem {
+  const upgraded: LegacyUpgradedToolItem = {
+    type,
     id: item.id,
     status: item.status,
-    ...(item.parentToolCallId === undefined
-      ? {}
-      : { parentToolCallId: item.parentToolCallId }),
   };
+  if (item.parentToolCallId !== undefined) {
+    upgraded.parentToolCallId = item.parentToolCallId;
+  }
+  for (const [key, value] of Object.entries(fields)) {
+    upgraded[key] = value;
+  }
+  return upgraded;
 }
 
 export function isLegacyDelegationToolCall(call: {
@@ -288,62 +350,50 @@ export function isLegacyDelegationToolCall(call: {
   );
 }
 
-export function upgradeLegacyToolItem(item: unknown): unknown {
+export function upgradeLegacyToolItem(item: JsonValue): JsonValue {
   if (!isLegacyToolItem(item)) return item;
   const tool = legacyBaseToolName(item.tool);
-  const args = isRecord(item.arguments) ? item.arguments : undefined;
+  const args = item.arguments;
 
   if (LEGACY_READ_TOOL_NAMES.has(tool)) {
     const path = firstStringField(args, ["file_path", "file", "path"]);
     if (path === undefined) return item;
-    return {
-      type: "fileRead",
-      ...sharedLegacyItemFields(item),
+    return createLegacyToolItem("fileRead", item, {
       path,
       cmd: legacyToolCallCommand(item.tool, args),
-    };
+    });
   }
   if (LEGACY_CONTENT_SEARCH_TOOL_NAMES.has(tool)) {
     const query = firstStringField(args, ["pattern", "query"]);
     if (query === undefined) return item;
     const path = firstStringField(args, ["path"]);
-    return {
-      type: "search",
-      ...sharedLegacyItemFields(item),
-      mode: "content",
-      query,
-      ...(path === undefined ? {} : { path }),
-      cmd: legacyToolCallCommand(item.tool, args),
-    };
+    const fields: JsonObject = { mode: "content", query };
+    addOptionalItemField(fields, "path", path);
+    fields.cmd = legacyToolCallCommand(item.tool, args);
+    return createLegacyToolItem("search", item, fields);
   }
   if (LEGACY_PATH_SEARCH_TOOL_NAMES.has(tool)) {
     const query = firstStringField(args, ["pattern"]);
     const path = firstStringField(args, ["path"]);
     if (query === undefined && path === undefined) return item;
-    return {
-      type: "search",
-      ...sharedLegacyItemFields(item),
-      mode: "path",
-      query: query ?? "",
-      ...(path === undefined ? {} : { path }),
-      cmd: legacyToolCallCommand(item.tool, args),
-    };
+    const fields: JsonObject = { mode: "path", query: query ?? "" };
+    addOptionalItemField(fields, "path", path);
+    fields.cmd = legacyToolCallCommand(item.tool, args);
+    return createLegacyToolItem("search", item, fields);
   }
   if (LEGACY_LIST_TOOL_NAMES.has(tool)) {
     const path = firstStringField(args, ["path"]);
     if (path === undefined) return item;
-    return {
-      type: "search",
-      ...sharedLegacyItemFields(item),
+    return createLegacyToolItem("search", item, {
       mode: "list",
       query: "",
       path,
       cmd: legacyToolCallCommand(item.tool, args),
-    };
+    });
   }
   if (LEGACY_SUPPRESSED_TOOL_NAMES.has(tool)) {
     if (item.status !== "pending" && item.status !== "completed") return item;
-    const presentation: ThreadEventItemPresentation = {
+    const presentation = {
       label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
       icon: { glyph: "Toolbox" },
       suppress: true,
@@ -352,10 +402,11 @@ export function upgradeLegacyToolItem(item: unknown): unknown {
   }
   if (
     LEGACY_AGENT_RESULT_TOOL_NAMES.has(tool) &&
-    typeof item.result === "string"
+    z.string().safeParse(item.result).success
   ) {
-    const stripped = stripLegacyAgentResultMetadata(item.result);
-    return stripped === item.result ? item : { ...item, result: stripped };
+    const result = z.string().parse(item.result);
+    const stripped = stripLegacyAgentResultMetadata(result);
+    return stripped === result ? item : { ...item, result: stripped };
   }
   return item;
 }

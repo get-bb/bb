@@ -1,4 +1,9 @@
-import type { AppTheme, AppThemeSelection } from "@bb/domain";
+import {
+  appThemeSelectionSchema,
+  type AppTheme,
+  type AppThemeSelection,
+} from "@bb/domain";
+import { z } from "zod";
 import type { ThemeCatalogResponse } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -43,21 +48,23 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       );
     },
     async set(input) {
-      if (typeof input === "string") {
+      const themeId = z.string().safeParse(input);
+      if (themeId.success) {
         const appearance = (
           await transport.readJson(transport.api.v1.system.config.$get())
         ).appearance;
         return transport.readJson(
           transport.api.v1.settings.appearance.$put({
             json: {
-              themeId: input,
+              themeId: themeId.data,
               faviconColor: appearance.faviconColor,
             },
           }),
         );
       }
+      const selection = appThemeSelectionSchema.parse(input);
       return transport.readJson(
-        transport.api.v1.settings.appearance.$put({ json: input }),
+        transport.api.v1.settings.appearance.$put({ json: selection }),
       );
     },
   };

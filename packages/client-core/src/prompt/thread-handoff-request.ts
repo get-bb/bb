@@ -1,4 +1,5 @@
 import type { PromptTextMention } from "@bb/domain";
+import { z } from "zod";
 import type { PromptDraftState } from "./prompt-draft.js";
 
 export const THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY =
@@ -17,56 +18,44 @@ interface ThreadHandoffLocationState {
   [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: ThreadHandoffCreateSeed;
 }
 
+const threadHandoffCreateSeedSchema = z.object({
+  environmentId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : null)),
+  projectId: z.string().min(1),
+  sourceThreadId: z.string().min(1),
+  sourceThreadTitle: z.string().trim().min(1),
+});
+
+const threadHandoffLocationStateSchema = z
+  .object({
+    [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]:
+      threadHandoffCreateSeedSchema,
+  })
+  .passthrough();
+
 export function buildThreadHandoffLocationState(
   seed: ThreadHandoffCreateSeed,
 ): ThreadHandoffLocationState {
-  return {
+  const state: ThreadHandoffLocationState = {
     focusPrompt: true,
-    ...(seed.environmentId !== null
-      ? { reuseEnvironmentId: seed.environmentId }
-      : {}),
     [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: seed,
   };
+  if (seed.environmentId !== null) {
+    state.reuseEnvironmentId = seed.environmentId;
+  }
+  return state;
 }
 
-export function readThreadHandoffCreateSeedFromLocationState(
-  state: unknown,
+export function readThreadHandoffCreateSeedFromLocationState<T>(
+  state: T,
 ): ThreadHandoffCreateSeed | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as Record<string, unknown>)[
-    THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY
-  ];
-  if (!candidate || typeof candidate !== "object") return null;
-  const value = candidate as Record<string, unknown>;
-  if (
-    typeof value.projectId !== "string" ||
-    value.projectId.length === 0 ||
-    typeof value.sourceThreadId !== "string" ||
-    value.sourceThreadId.length === 0 ||
-    typeof value.sourceThreadTitle !== "string" ||
-    value.sourceThreadTitle.trim().length === 0
-  ) {
-    return null;
-  }
-  if (
-    value.environmentId !== undefined &&
-    value.environmentId !== null &&
-    typeof value.environmentId !== "string"
-  ) {
-    return null;
-  }
-
-  const environmentId =
-    typeof value.environmentId === "string" && value.environmentId.length > 0
-      ? value.environmentId
-      : null;
-
-  return {
-    environmentId,
-    projectId: value.projectId,
-    sourceThreadId: value.sourceThreadId,
-    sourceThreadTitle: value.sourceThreadTitle.trim(),
-  };
+  const parsed = threadHandoffLocationStateSchema.safeParse(state);
+  return parsed.success
+    ? parsed.data[THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]
+    : null;
 }
 
 export function buildThreadHandoffPromptDraft(

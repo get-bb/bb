@@ -4,13 +4,11 @@ import { z } from "zod";
 import { bridgeErrorDataSchema, type ProviderRecoveryHint } from "../errors.js";
 import type { ProviderRequestCommandPlan } from "./contracts.js";
 
-export type JsonRpcObject = Record<string, unknown>;
-
 export interface JsonRpcMessage extends JsonRpcObject {
   jsonrpc: "2.0";
   id?: string | number;
   method: string;
-  params?: unknown;
+  params?: JsonRpcValue;
 }
 
 export interface ProviderInboundRequest {
@@ -28,6 +26,26 @@ export type JsonValue =
   | null
   | JsonValue[]
   | { [key: string]: JsonValue | undefined };
+
+export type JsonRpcValue = JsonValue | undefined;
+
+export type JsonRpcObject = Record<string, JsonRpcValue>;
+
+const jsonRpcValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.null(),
+    z.array(jsonRpcValueSchema),
+    z.record(z.string(), jsonRpcValueSchema),
+  ]),
+);
+const jsonRpcObjectSchema: z.ZodType<JsonRpcObject> = z.record(
+  z.string(),
+  jsonRpcValueSchema,
+);
+const jsonRpcIdSchema = z.union([z.string(), z.number()]);
 
 export const JSON_RPC_INVALID_PARAMS_CODE = -32602;
 
@@ -66,11 +84,12 @@ export class JsonRpcResponseError extends Error {
 }
 
 export interface PendingJsonRpcRequest {
-  resolve: (result: unknown) => void;
+  resolve: (result: JsonRpcValue) => void;
   reject: (error: Error) => void;
 }
 
-export const ignoredJsonRpcResultSchema = z.unknown();
+export const ignoredJsonRpcResultSchema: z.ZodType<JsonRpcValue> =
+  jsonRpcValueSchema.optional();
 
 export interface ParsedJsonRpcNonJsonLine {
   kind: "non_json";
@@ -118,7 +137,7 @@ export interface SendJsonRpcRequestArgs<TResult> {
 interface SendJsonRpcResultArgs {
   child: ChildProcess;
   id: string | number;
-  result: unknown;
+  result: JsonRpcValue;
 }
 
 interface SendJsonRpcErrorArgs {
@@ -128,17 +147,19 @@ interface SendJsonRpcErrorArgs {
   message: string;
 }
 
-interface SendProviderRequestDecodeErrorArgs {
+interface SendProviderRequestDecodeErrorArgs<TError> {
   child: ChildProcess;
-  error: unknown;
+  error: TError;
   id: string | number;
 }
 
-interface SendProviderResponseEncodeErrorArgs {
+interface SendProviderResponseEncodeErrorArgs<TError> {
   child: ChildProcess;
-  error: unknown;
+  error: TError;
   id: string | number;
 }
+
+type ParsedProviderError = Error | JsonRpcValue;
 
 interface SettleJsonRpcResponseArgs {
   id: string | number;
@@ -149,37 +170,42 @@ interface SettleJsonRpcResponseArgs {
 const closedJsonRpcStdinErrorCodes = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 const jsonRpcStdinErrorHandledStreams = new WeakSet<Writable>();
 
-function isJsonRpcObject(value: unknown): value is JsonRpcObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+function parseJsonRpcObject(value: JsonRpcValue): JsonRpcObject | undefined {
+  const parsed = jsonRpcObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
-function isJsonRpcId(value: unknown): value is string | number {
-  return typeof value === "string" || typeof value === "number";
+function isJsonRpcId(value: JsonRpcValue): value is string | number {
+  return jsonRpcIdSchema.safeParse(value).success;
 }
 
-function formatJsonRpcErrorMessage(error: unknown): string {
-  if (isJsonRpcObject(error) && typeof error.message === "string") {
-    return error.message;
+function formatJsonRpcErrorMessage(error: JsonRpcValue): string {
+  const parsed = parseJsonRpcObject(error);
+  const message =
+    parsed === undefined ? undefined : z.string().safeParse(parsed.message);
+  if (message?.success) {
+    return message.data;
   }
   return JSON.stringify(error);
 }
 
-function jsonRpcResponseError(error: unknown): Error {
-  if (
-    isJsonRpcObject(error) &&
-    typeof error.code === "number" &&
-    typeof error.message === "string"
-  ) {
+function jsonRpcResponseError(error: JsonRpcValue): Error {
+  const parsed = parseJsonRpcObject(error);
+  const code =
+    parsed === undefined ? undefined : z.number().safeParse(parsed.code);
+  const message =
+    parsed === undefined ? undefined : z.string().safeParse(parsed.message);
+  if (code?.success && message?.success) {
     return new JsonRpcResponseError(
-      error.code,
-      error.message,
-      decodeRecoveryHint(error.data),
+      code.data,
+      message.data,
+      decodeRecoveryHint(parsed?.data),
     );
   }
   return new Error(formatJsonRpcErrorMessage(error));
 }
 
-function decodeRecoveryHint(data: unknown): ProviderRecoveryHint | null {
+function decodeRecoveryHint(data: JsonRpcValue): ProviderRecoveryHint | null {
   if (data === undefined) {
     return null;
   }
@@ -187,12 +213,18 @@ function decodeRecoveryHint(data: unknown): ProviderRecoveryHint | null {
   return parsed.success ? (parsed.data.recovery ?? null) : null;
 }
 
+function parseProviderThrownValue<TError>(value: TError): ParsedProviderError {
+  if (value instanceof Error) {
+    return value;
+  }
+  const parsed = jsonRpcValueSchema.safeParse(value);
+  return parsed.success ? parsed.data : new Error("Provider operation failed");
+}
+
 function isClosedJsonRpcStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    closedJsonRpcStdinErrorCodes.has(error.code)
-  );
+  if (!("code" in error)) return false;
+  const code = z.string().safeParse(error.code);
+  return code.success && closedJsonRpcStdinErrorCodes.has(code.data);
 }
 
 function handleJsonRpcStdinError(error: Error): void {
@@ -227,40 +259,49 @@ export function parseJsonRpcLine(line: string): ParsedJsonRpcLine {
     return { kind: "non_json" };
   }
 
-  if (!isJsonRpcObject(parsed)) {
+  const parsedValue = jsonRpcValueSchema.safeParse(parsed);
+  if (!parsedValue.success) {
     return { kind: "invalid_json_rpc" };
   }
 
-  const parsedId = parsed.id;
-  const parsedMethod = parsed.method;
+  const parsedObject = parseJsonRpcObject(parsedValue.data);
+  if (parsedObject === undefined) {
+    return { kind: "invalid_json_rpc" };
+  }
+
+  const parsedId = parsedObject.id;
+  const parsedMethod = parsedObject.method;
   if (isJsonRpcId(parsedId) && !parsedMethod) {
     return {
       kind: "response",
-      parsed,
+      parsed: parsedObject,
       parsedId,
     };
   }
 
-  if (isJsonRpcId(parsedId) && typeof parsedMethod === "string") {
+  const parsedMethodResult = z.string().safeParse(parsedMethod);
+  if (isJsonRpcId(parsedId) && parsedMethodResult.success) {
     const rawRequest: JsonRpcMessage = {
       jsonrpc: "2.0",
       id: parsedId,
-      method: parsedMethod,
-      ...(Object.hasOwn(parsed, "params") ? { params: parsed.params } : {}),
+      method: parsedMethodResult.data,
     };
+    if (Object.hasOwn(parsedObject, "params")) {
+      rawRequest.params = parsedObject.params;
+    }
     return {
       kind: "request",
       parsedId,
-      parsedMethod,
+      parsedMethod: parsedMethodResult.data,
       rawRequest,
     };
   }
 
-  if (typeof parsedMethod === "string") {
+  if (parsedMethodResult.success) {
     return {
       kind: "notification",
-      notificationMethod: parsedMethod,
-      parsed,
+      notificationMethod: parsedMethodResult.data,
+      parsed: parsedObject,
     };
   }
 
@@ -271,12 +312,13 @@ export function getJsonRpcStringParam(
   message: JsonRpcObject,
   key: string,
 ): string | undefined {
-  if (!isJsonRpcObject(message.params)) {
+  const params = jsonRpcObjectSchema.safeParse(message.params);
+  if (!params.success) {
     return undefined;
   }
 
-  const value = message.params[key];
-  return typeof value === "string" ? value : undefined;
+  const value = z.string().safeParse(params.data[key]);
+  return value.success ? value.data : undefined;
 }
 
 export function settleJsonRpcResponse(args: SettleJsonRpcResponseArgs): void {
@@ -308,11 +350,14 @@ export function toJsonRpcMessage(
   if ("jsonrpc" in message) {
     return message;
   }
-  return {
+  const result: JsonRpcMessage = {
     jsonrpc: "2.0",
     method: message.method,
-    ...(message.params !== undefined ? { params: message.params } : {}),
   };
+  if (message.params !== undefined) {
+    result.params = jsonRpcValueSchema.parse(message.params);
+  }
+  return result;
 }
 
 export function sendJsonRpcRequest<TResult>(
@@ -377,34 +422,36 @@ export function sendJsonRpcError(args: SendJsonRpcErrorArgs): void {
   );
 }
 
-export function sendProviderRequestDecodeErrorIfKnown(
-  args: SendProviderRequestDecodeErrorArgs,
+export function sendProviderRequestDecodeErrorIfKnown<TError>(
+  args: SendProviderRequestDecodeErrorArgs<TError>,
 ): boolean {
-  if (!(args.error instanceof ProviderRequestDecodeError)) {
+  const error = parseProviderThrownValue(args.error);
+  if (!(error instanceof ProviderRequestDecodeError)) {
     return false;
   }
 
   sendJsonRpcError({
     child: args.child,
     id: args.id,
-    message: args.error.message,
-    code: args.error.code,
+    message: error.message,
+    code: error.code,
   });
   return true;
 }
 
-export function sendProviderResponseEncodeErrorIfKnown(
-  args: SendProviderResponseEncodeErrorArgs,
+export function sendProviderResponseEncodeErrorIfKnown<TError>(
+  args: SendProviderResponseEncodeErrorArgs<TError>,
 ): boolean {
-  if (!(args.error instanceof ProviderResponseEncodeError)) {
+  const error = parseProviderThrownValue(args.error);
+  if (!(error instanceof ProviderResponseEncodeError)) {
     return false;
   }
 
   sendJsonRpcError({
     child: args.child,
     id: args.id,
-    message: args.error.message,
-    code: args.error.code,
+    message: error.message,
+    code: error.code,
   });
   return true;
 }

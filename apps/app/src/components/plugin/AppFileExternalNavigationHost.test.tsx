@@ -9,26 +9,34 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import * as localOpenTargets from "@/hooks/useLocalOpenTargets";
+import * as resolvedLiveFileTarget from "@/hooks/useResolvedLiveFileTarget";
 import { AppFileExternalNavigationHost } from "./AppFileExternalNavigationHost";
 
-const openPreferred = vi.hoisted(() => vi.fn());
+const openPreferred = vi.fn().mockResolvedValue(true);
 const recordAccepted = vi.fn();
 
-vi.mock("@/hooks/useResolvedLiveFileTarget", () => ({
-  useResolvedLiveFileTarget: (target: { path: string }) => ({
-    status: "available",
-    absolutePath: `/workspace/${target.path}`,
-    hostId: "host_1",
-    openContext: { kind: "local" },
-  }),
+vi.spyOn(
+  resolvedLiveFileTarget,
+  "useResolvedLiveFileTarget",
+).mockImplementation((target) => ({
+  status: "available",
+  absolutePath: `/workspace/${target?.path ?? ""}`,
+  openContext: { kind: "local" },
 }));
-
-vi.mock("@/hooks/useLocalOpenTargets", () => ({
-  useLocalOpenTargets: () => ({
-    isLoading: false,
-    openPathInPreferredFileTarget: openPreferred,
-  }),
-}));
+vi.spyOn(localOpenTargets, "useLocalOpenTargets").mockReturnValue({
+  canOpenPreferredDirectoryTarget: false,
+  canOpenPreferredFileTarget: false,
+  directoryOpenTargets: [],
+  fileOpenTargets: [],
+  isLoading: false,
+  openPathInDirectoryTarget: openPreferred,
+  openPathInFileTarget: openPreferred,
+  openPathInPreferredDirectoryTarget: openPreferred,
+  openPathInPreferredFileTarget: openPreferred,
+  preferredDirectoryTarget: null,
+  preferredFileTarget: null,
+});
 
 function Probe() {
   const navigation = useAppNavigationHost();

@@ -113,9 +113,11 @@ describe("@bb/templates", () => {
     }
 
     for (const template of templates) {
+      // SAFETY: The preceding loop creates placeholder values for every variable in every template.
       const vars = placeholderVariables[
         template.id
       ] as TemplateVariables[TemplateId];
+      // SAFETY: Generated template definitions contain only TemplateId values.
       expect(() =>
         renderTemplate(template.id as TemplateId, vars),
       ).not.toThrow();

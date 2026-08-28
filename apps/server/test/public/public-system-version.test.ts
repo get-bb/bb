@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SystemVersionResponse } from "@bb/server-contract";
+import {
+  systemVersionResponseSchema,
+  type SystemVersionResponse,
+} from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -29,7 +32,9 @@ describe("GET /api/v1/system/version", () => {
       async (harness) => {
         const response = await harness.app.request("/api/v1/system/version");
         expect(response.status).toBe(200);
-        const body = (await readJson(response)) as SystemVersionResponse;
+        const body = systemVersionResponseSchema.parse(
+          await readJson(response),
+        );
         expect(body.isDevelopment).toBe(true);
         expect(body.updateAvailable).toBe(false);
         expect(body.latestVersion).toBeNull();

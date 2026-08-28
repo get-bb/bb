@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "separator",
   "description": "BB ui \"separator\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-separator"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/separator.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/separator.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-separator"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

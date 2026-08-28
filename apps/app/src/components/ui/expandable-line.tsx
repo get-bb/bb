@@ -21,7 +21,7 @@ export function ExpandableLine({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const handleToggle = () => {
     const selection =
-      typeof window === "undefined" ? null : window.getSelection();
+      "window" in globalThis ? globalThis.window.getSelection() : null;
     if (selection && selection.toString().length > 0) {
       return;
     }

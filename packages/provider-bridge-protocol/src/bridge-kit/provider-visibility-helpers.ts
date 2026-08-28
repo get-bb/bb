@@ -1,11 +1,26 @@
+import { z } from "zod";
 import type { JsonRpcMessage } from "./runtime-json-rpc.js";
+import type { JsonValue } from "./runtime-json-rpc.js";
 
-export interface StringRecord {
-  [key: string]: unknown;
-}
+export type StringRecord = { [key: string]: JsonValue | undefined };
 
-export function isRecord(value: unknown): value is StringRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const stringRecordSchema: z.ZodType<StringRecord> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
+
+export function isRecord<T>(value: T): value is T & StringRecord {
+  return stringRecordSchema.safeParse(value).success;
 }
 
 export function getRecordProperty(
@@ -21,7 +36,8 @@ export function getStringProperty(
   key: string,
 ): string | undefined {
   const next = value[key];
-  return typeof next === "string" ? next : undefined;
+  const parsed = z.string().safeParse(next);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function getRawSdkMessage(event: JsonRpcMessage): StringRecord | null {

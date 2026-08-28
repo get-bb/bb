@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "progress",
   "description": "BB ui \"progress\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-progress"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/progress.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/progress.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-progress"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

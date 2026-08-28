@@ -1,13 +1,40 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { z } from "zod";
+import { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const agentErrorSchema = z.object({
+  code: z.number().optional(),
+  data: jsonValueSchema.optional(),
+  message: z.string().optional(),
+});
+const agentMessageSchema = z.object({
+  error: agentErrorSchema.optional(),
+  id: z.union([z.string(), z.number()]).optional(),
+  jsonrpc: z.literal("2.0").optional(),
+  method: z.string().optional(),
+  params: jsonValueSchema.optional(),
+  result: jsonValueSchema.optional(),
+});
+const agentErrorCodeSchema = z.object({ code: z.string() });
+
+type AgentMessageValue = JsonValue | undefined;
+type AgentMessage = z.infer<typeof agentMessageSchema>;
+type AgentError = z.infer<typeof agentErrorSchema>;
+type AgentOutgoingMessage = {
+  error?: { code: number; message: string };
+  id?: string | number;
+  jsonrpc: "2.0";
+  method?: string;
+  params?: AgentMessageValue;
+  result?: AgentMessageValue;
+};
 
 export interface AcpAgentRequestResponder {
-  result(value: unknown): void;
+  result(value: AgentMessageValue): void;
   error(code: number, message: string): void;
 }
 
@@ -23,10 +50,10 @@ interface CreateAcpAgentConnectionOptions {
   cwd: string;
   env: Record<string, string | undefined>;
   recordThreadId: string | null;
-  onNotification(method: string, params: unknown): void;
+  onNotification(method: string, params: AgentMessageValue): void;
   onRequest(
     method: string,
-    params: unknown,
+    params: AgentMessageValue,
     responder: AcpAgentRequestResponder,
   ): void;
   onExit(info: AcpAgentExitInfo): void;
@@ -34,13 +61,13 @@ interface CreateAcpAgentConnectionOptions {
 
 interface AcpAgentRequestArgs<TResult> {
   method: string;
-  params: unknown;
+  params: AgentMessageValue;
   resultSchema: z.ZodType<TResult>;
 }
 
 export interface AcpAgentConnection {
   request<TResult>(args: AcpAgentRequestArgs<TResult>): Promise<TResult>;
-  notify(method: string, params: unknown): void;
+  notify(method: string, params: AgentMessageValue): void;
   kill(): void;
   readonly exited: boolean;
 }
@@ -63,53 +90,33 @@ export class AcpAgentResponseError extends Error {
 }
 
 interface PendingAgentRequest {
-  resolve(value: unknown): void;
+  resolve(value: AgentMessageValue): void;
   reject(error: Error): void;
 }
 
-interface ParsedAgentMessage {
-  id?: string | number;
-  method?: string;
-  result?: unknown;
-  error?: AgentErrorObject;
-  params?: unknown;
-}
-
-interface AgentErrorObject {
-  code?: number;
-  message?: string;
-  data?: unknown;
-}
-
 function isClosedAgentStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    CLOSED_STDIN_ERROR_CODES.has(error.code)
-  );
+  const parsed = agentErrorCodeSchema.safeParse(error);
+  return parsed.success && CLOSED_STDIN_ERROR_CODES.has(parsed.data.code);
 }
 
-export function formatAgentError(error: AgentErrorObject): string {
+export function formatAgentError(error: AgentError): string {
   const message =
     error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
   const details = formatAgentErrorData(error.data);
   return details === undefined ? message : `${message}: ${details}`;
 }
 
-function formatAgentErrorData(data: unknown): string | undefined {
+function formatAgentErrorData(data: AgentMessageValue): string | undefined {
   if (data === undefined || data === null) {
     return undefined;
   }
-  if (typeof data === "string") {
-    return data.trim() === "" ? undefined : data;
+  const stringData = z.string().safeParse(data);
+  if (stringData.success) {
+    return stringData.data.trim() === "" ? undefined : stringData.data;
   }
-  if (
-    typeof data === "object" &&
-    "details" in data &&
-    typeof data.details === "string" &&
-    data.details.trim() !== ""
-  ) {
-    return data.details;
+  const details = z.object({ details: z.string() }).safeParse(data);
+  if (details.success && details.data.details.trim() !== "") {
+    return details.data.details;
   }
   try {
     return JSON.stringify(data);
@@ -118,21 +125,19 @@ function formatAgentErrorData(data: unknown): string | undefined {
   }
 }
 
-function parseAgentLine(line: string): ParsedAgentMessage | null {
+function parseAgentLine(line: string): AgentMessage | null {
   const trimmed = line.trim();
   if (!trimmed) {
     return null;
   }
-  let parsed: unknown;
+  let parsed;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return null;
-  }
-  return parsed as ParsedAgentMessage;
+  const result = agentMessageSchema.safeParse(parsed);
+  return result.success ? result.data : null;
 }
 
 export function createAcpAgentConnection(
@@ -165,10 +170,8 @@ export function createAcpAgentConnection(
       return;
     }
     exited = true;
-    const code =
-      "code" in error && typeof error.code === "string"
-        ? ` (${error.code})`
-        : "";
+    const parsedCode = agentErrorCodeSchema.safeParse(error);
+    const code = parsedCode.success ? ` (${parsedCode.data.code})` : "";
     const detail = `stdin closed${code}: ${error.message}`;
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
@@ -178,7 +181,7 @@ export function createAcpAgentConnection(
     options.onExit({ code: null, signal: null, stderrTail });
   }
 
-  function writeLine(message: object): void {
+  function writeLine(message: AgentOutgoingMessage): void {
     if (stopping) {
       return;
     }
@@ -216,11 +219,12 @@ export function createAcpAgentConnection(
       }
 
       const id = message.id;
-      if (
-        (typeof id === "string" || typeof id === "number") &&
-        message.method === undefined
-      ) {
-        const numericId = typeof id === "number" ? id : Number(id);
+      if (id !== undefined && message.method === undefined) {
+        const numericIdResult = z.coerce.number().safeParse(id);
+        if (!numericIdResult.success) {
+          return;
+        }
+        const numericId = numericIdResult.data;
         const request = pending.get(numericId);
         if (!request) {
           return;
@@ -239,11 +243,11 @@ export function createAcpAgentConnection(
         return;
       }
 
-      if (typeof message.method !== "string") {
+      if (message.method === undefined) {
         return;
       }
 
-      if (typeof id === "string" || typeof id === "number") {
+      if (id !== undefined) {
         let settled = false;
         options.onRequest(message.method, message.params, {
           result(value) {

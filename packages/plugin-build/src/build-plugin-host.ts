@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { jsonObjectSchema, type JsonValue } from "@bb/domain";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
@@ -54,6 +55,11 @@ const PLUGIN_SDK_HOST_FALLBACK_NAMESPACE = "bb-host-sdk-fallback";
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function jsonString(value: JsonValue | undefined): string | null {
+  if (value === undefined || Array.isArray(value)) return null;
+  return String(value) === value ? value : null;
 }
 
 interface SourceToken {
@@ -274,13 +280,10 @@ async function owningPackageName(
     }
     visited.push(directory);
     try {
-      const parsed: unknown = JSON.parse(
-        await readFile(join(directory, "package.json"), "utf8"),
+      const parsed = jsonObjectSchema.safeParse(
+        JSON.parse(await readFile(join(directory, "package.json"), "utf8")),
       );
-      const name =
-        isRecord(parsed) && typeof parsed.name === "string"
-          ? parsed.name
-          : null;
+      const name = parsed.success ? jsonString(parsed.data.name) : null;
       for (const entry of visited) cache.set(entry, name);
       return name;
     } catch {
@@ -383,6 +386,7 @@ export async function buildPluginHost(
   try {
     const stagedJsPath = join(stageDir, "host.js");
     const stagedMetaPath = join(stageDir, "host.meta.json");
+    // SAFETY: The configured toolchain module provides the esbuild API required by this builder.
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");

@@ -51,7 +51,12 @@ export function ContextMenu({
     if (state === null) return;
     menuRef.current?.querySelector("button")?.focus();
     const onPointerDown = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) onClose();
+      if (
+        !(event.target instanceof Node) ||
+        !menuRef.current?.contains(event.target)
+      ) {
+        onClose();
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -65,9 +70,11 @@ export function ContextMenu({
       if (menu === null) return;
       const buttons = Array.from(menu.querySelectorAll("button"));
       if (buttons.length === 0) return;
-      const index = buttons.indexOf(
-        document.activeElement as HTMLButtonElement,
-      );
+      const activeElement = document.activeElement;
+      const index =
+        activeElement instanceof HTMLButtonElement
+          ? buttons.indexOf(activeElement)
+          : -1;
       const delta = event.key === "ArrowDown" ? 1 : -1;
       const next = (index + delta + buttons.length) % buttons.length;
       buttons[next]?.focus();

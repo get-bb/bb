@@ -32,6 +32,7 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly "~standard": {
     readonly version: 1;
     readonly vendor: string;
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters
     readonly validate: (
       value: unknown,
     ) =>

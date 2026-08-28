@@ -1,5 +1,5 @@
+import { providerRecoveryKindSchema } from "@bb/domain";
 import { z } from "zod";
-import { providerRecoveryHintSchema } from "./errors.js";
 
 export const BRIDGE_NOTIFICATION_METHODS = {
   threadIdentity: "thread/identity",
@@ -37,7 +37,9 @@ export const providerRawNotificationSchema = z
 export const providerRecoveryNotificationSchema = z
   .object({
     threadId: z.string().min(1).optional(),
-    ...providerRecoveryHintSchema.shape,
+    kind: providerRecoveryKindSchema,
+    message: z.string().min(1),
+    retryable: z.boolean(),
   })
   .passthrough();
 

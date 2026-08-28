@@ -238,16 +238,20 @@ function scheduleIdleFixedPanelTabsStoragePrune(): void {
   const run = () => {
     pruneFixedPanelTabsStorage({ now: Date.now() });
   };
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return;
   }
-  if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(run, {
+  if (browserWindow.requestIdleCallback !== undefined) {
+    browserWindow.requestIdleCallback(run, {
       timeout: FIXED_PANEL_TABS_STORAGE_PRUNE_IDLE_TIMEOUT_MS,
     });
     return;
   }
-  window.setTimeout(run, FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS);
+  browserWindow.setTimeout(
+    run,
+    FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS,
+  );
 }
 
 export function resetFixedPanelTabsStorageMaintenanceForTest(): void {

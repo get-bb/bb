@@ -260,11 +260,14 @@ function buildClaudeUserQuestionOutput(
     );
   }
   const annotations = buildClaudeUserQuestionAnnotations(payload, resolution);
-  return {
+  const output: ClaudeUserQuestionOutput = {
     questions: payload.questions.map(buildClaudeUserQuestion),
     answers,
-    ...(annotations ? { annotations } : {}),
   };
+  if (annotations !== undefined) {
+    output.annotations = annotations;
+  }
+  return output;
 }
 
 function resolveClaudeGrantedPermissions(
@@ -339,10 +342,13 @@ export function buildClaudeInteractiveResponse(
     toolName: getClaudePermissionUpdateToolName(args.payload),
   });
 
-  return {
+  const response: ClaudeInteractiveResponse = {
     kind: "permission_request",
     behavior: "allow",
     decisionClassification: "user_permanent",
-    ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
   };
+  if (updatedPermissions !== undefined) {
+    response.updatedPermissions = updatedPermissions;
+  }
+  return response;
 }

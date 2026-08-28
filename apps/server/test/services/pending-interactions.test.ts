@@ -68,15 +68,20 @@ function requestPluginInteraction(
     signal?: AbortSignal;
   },
 ) {
-  return deps.pendingInteractions.requestPluginInteraction({
+  const request: Parameters<
+    PendingInteractionLifecycle["requestPluginInteraction"]
+  >[0] = {
     pluginId: "secrets",
     threadId: args.threadId,
     rendererId: "secret-request",
     title: "Add secrets",
     payload: { fields: [{ name: args.name ?? "API_KEY" }] },
     timeoutMs: 10_000,
-    ...(args.signal ? { signal: args.signal } : {}),
-  });
+  };
+  if (args.signal !== undefined) {
+    request.signal = args.signal;
+  }
+  return deps.pendingInteractions.requestPluginInteraction(request);
 }
 
 describe("pending interaction lifecycle", () => {

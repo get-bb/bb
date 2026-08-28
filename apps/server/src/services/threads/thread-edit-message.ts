@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import { z } from "zod";
 import {
   deleteThreadEventSuffixInTransaction,
   events,
@@ -66,6 +67,15 @@ interface EditableTurn {
   sourceProviderThreadId: string | null;
 }
 
+type HistoryReplacement = NonNullable<
+  Parameters<typeof sendThreadMessage>[1]["historyReplacement"]
+>;
+
+const committedOperationMetadataSchema = z.object({
+  fingerprint: z.string(),
+  requestSequence: z.number(),
+});
+
 function conflict(message: string): never {
   throw new ApiError(409, "invalid_request", message);
 }
@@ -107,11 +117,8 @@ function findCommittedOperation(
   if (!row) return null;
   const event = parseStoredEvent(row);
   if (event.type !== "system/operation") return null;
-  const fingerprint = event.metadata?.fingerprint;
-  const requestSequence = event.metadata?.requestSequence;
-  return typeof fingerprint === "string" && typeof requestSequence === "number"
-    ? { fingerprint, requestSequence }
-    : null;
+  const metadata = committedOperationMetadataSchema.safeParse(event.metadata);
+  return metadata.success ? metadata.data : null;
 }
 
 const EDIT_MESSAGE_STOP_TIMEOUT_MS = 60_000;
@@ -534,6 +541,12 @@ export async function editThreadMessage(
     expectedRequestSequence: _expectedRequestSequence,
     ...sendPayload
   } = args.payload;
+  const historyReplacement: HistoryReplacement = {
+    forkSourceProviderThreadId: stagedProviderThreadId,
+  };
+  if (discardStagedRewind !== undefined) {
+    historyReplacement.onCommandSettled = discardStagedRewind;
+  }
   try {
     await sendThreadMessage(deps, {
       beforeAppendInTransaction: ({ tx }) => {
@@ -588,12 +601,7 @@ export async function editThreadMessage(
         });
       },
       environment: args.environment,
-      historyReplacement: {
-        forkSourceProviderThreadId: stagedProviderThreadId,
-        ...(discardStagedRewind !== undefined
-          ? { onCommandSettled: discardStagedRewind }
-          : {}),
-      },
+      historyReplacement,
       payload: {
         ...sendPayload,
         input: [...target.leadingAgentOnlyInput, ...sendPayload.input],

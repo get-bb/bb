@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
+import { z } from "zod";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import {
@@ -512,7 +512,11 @@ describe("runPluginCliCommand", () => {
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const address = z.object({ port: z.number() }).safeParse(server.address());
+    if (!address.success) {
+      throw new Error("Expected the test server to expose an address");
+    }
+    const baseUrl = `http://127.0.0.1:${address.data.port}`;
     const previousDispatcher = getGlobalDispatcher();
     setGlobalDispatcher(new Agent({ headersTimeout: 200 }));
     try {

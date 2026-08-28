@@ -41,6 +41,10 @@ interface CodexTopologyRuntime {
   launch(digest: string): AgentRuntimeBridgeLaunch;
 }
 
+interface FakeCodexScriptOverrides {
+  startDelayMs?: number;
+}
+
 describe("codex process topology", () => {
   let workspaceDir: string;
   const runtimes: AgentRuntime[] = [];
@@ -56,7 +60,7 @@ describe("codex process topology", () => {
 
   function createCodexTopologyRuntime(
     args: {
-      fakeScript?: Record<string, unknown>;
+      fakeScript?: FakeCodexScriptOverrides;
       threadCreationTimeoutMs?: number;
     } = {},
   ): CodexTopologyRuntime {
@@ -79,28 +83,27 @@ describe("codex process topology", () => {
         digest,
         modulePath: codexBridgeModulePath,
       });
+    const runtimeOptions: Parameters<typeof createAgentRuntime>[0] = {
+      workspacePath: workspaceDir,
+      env: {
+        ...record.env,
+        BB_CODEX_BRIDGE_APP_SERVER_COMMAND: process.execPath,
+        BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify([
+          fakeAppServerPath,
+          scriptPath,
+        ]),
+      },
+      onEvent: (event) => events.push(event),
+      onProcessExit: (info) => bridgeExits.push({ expected: info.expected }),
+      onToolCall: async () => ({ contentItems: [], success: true }),
+    };
+    if (args.threadCreationTimeoutMs !== undefined) {
+      runtimeOptions.threadCreation = {
+        requestTimeoutMs: args.threadCreationTimeoutMs,
+      };
+    }
     const runtime = withBridgeLaunch(
-      createAgentRuntime({
-        workspacePath: workspaceDir,
-        env: {
-          ...record.env,
-          BB_CODEX_BRIDGE_APP_SERVER_COMMAND: process.execPath,
-          BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify([
-            fakeAppServerPath,
-            scriptPath,
-          ]),
-        },
-        onEvent: (event) => events.push(event),
-        onProcessExit: (info) => bridgeExits.push({ expected: info.expected }),
-        onToolCall: async () => ({ contentItems: [], success: true }),
-        ...(args.threadCreationTimeoutMs === undefined
-          ? {}
-          : {
-              threadCreation: {
-                requestTimeoutMs: args.threadCreationTimeoutMs,
-              },
-            }),
-      }),
+      createAgentRuntime(runtimeOptions),
       launch("codex-v1"),
     );
     runtimes.push(runtime);
@@ -139,14 +142,19 @@ describe("codex process topology", () => {
     threadId: string,
     bridgeLaunch?: AgentRuntimeBridgeLaunch,
   ): Promise<string> {
-    const { providerThreadId } = await runtime.startThread({
-      ...(bridgeLaunch === undefined ? {} : { bridgeLaunch }),
+    const startThreadArgs: Parameters<
+      LaunchBoundAgentRuntime["startThread"]
+    >[0] = {
       environmentId: "env-1",
       projectId: "p1",
       providerId: "codex",
       threadId,
       options: fullRuntimeOptions,
-    });
+    };
+    if (bridgeLaunch !== undefined) {
+      startThreadArgs.bridgeLaunch = bridgeLaunch;
+    }
+    const { providerThreadId } = await runtime.startThread(startThreadArgs);
     return providerThreadId;
   }
 

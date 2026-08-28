@@ -25,6 +25,7 @@ import {
   buildExecutionOptions,
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
+  type ThreadStartCommandArgs,
 } from "./thread-commands.js";
 import {
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -101,6 +102,11 @@ interface FormatAgentThreadInputArgs {
 interface BuildAgentThreadMessageTextArgs {
   messageText: string;
   senderThreadId: string;
+}
+
+interface PromptWithOptionalGroups {
+  input: PromptInput[];
+  inputGroups?: PromptInput[][];
 }
 
 interface SendThreadMessageTransactionPreflightArgs {
@@ -339,23 +345,28 @@ function appendAndQueueSendThreadMessageInTransaction({
   const request = db.transaction(
     (tx) => {
       beforeAppendInTransaction?.({ tx });
+      const requestArgs: Parameters<
+        typeof appendPreparedClientTurnRequestedEventWithNotificationInTransaction
+      >[1] = {
+        threadId: thread.id,
+        environmentId,
+        type: "client/turn/requested",
+        input,
+        execution,
+        initiator,
+        senderThreadId,
+        requestMethod: "turn/start",
+        source: "tell",
+        target,
+        requestId,
+      };
+      if (inputGroups !== undefined) {
+        requestArgs.inputGroups = inputGroups;
+      }
       const appended =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
-          {
-            threadId: thread.id,
-            environmentId,
-            type: "client/turn/requested",
-            input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
-            execution,
-            initiator,
-            senderThreadId,
-            requestMethod: "turn/start",
-            source: "tell",
-            target,
-            requestId,
-          },
+          requestArgs,
         );
       recordAcceptedPromptHistoryEntry(
         { db: tx },
@@ -434,8 +445,12 @@ export async function sendThreadMessage(
     deps.db,
     thread.id,
   );
+  const promptWithGroups: PromptWithOptionalGroups = { input };
+  if (inputGroups !== undefined) {
+    promptWithGroups.inputGroups = inputGroups;
+  }
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
-    { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
+    promptWithGroups,
     deferredFirstTurnContext,
   ));
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
@@ -518,11 +533,10 @@ export async function sendThreadMessage(
   const requestId = createClientTurnRequestId();
 
   if (mode === "start") {
-    const commandArgs = {
+    const commandArgs: ThreadStartCommandArgs = {
       thread,
       fork: null,
       input,
-      ...(inputGroups !== undefined ? { inputGroups } : {}),
       requestId,
       execution,
       permissionEscalation,
@@ -537,6 +551,9 @@ export async function sendThreadMessage(
       providerId: thread.providerId,
       syncGeneratedTitle: false,
     };
+    if (inputGroups !== undefined) {
+      commandArgs.inputGroups = inputGroups;
+    }
     const command = args.historyReplacement
       ? {
           command: await buildThreadStartCommand(deps, {
@@ -592,20 +609,21 @@ export async function sendThreadMessage(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
-    startLiveHostCommand(deps, {
+    const liveCommandArgs: Parameters<typeof startLiveHostCommand>[1] = {
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      ...(args.historyReplacement?.onCommandSettled !== undefined
-        ? { onSettled: args.historyReplacement.onCommandSettled }
-        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
         );
       },
-    });
+    };
+    if (args.historyReplacement?.onCommandSettled !== undefined) {
+      liveCommandArgs.onSettled = args.historyReplacement.onCommandSettled;
+    }
+    startLiveHostCommand(deps, liveCommandArgs);
     if (queuedRequest.activeThread) {
       deps.hub.notifyThread(
         thread.id,
@@ -622,24 +640,31 @@ export async function sendThreadMessage(
   await ensureHostSessionReadyForWork(deps, {
     hostId: readyEnvironment.hostId,
   });
-  const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
-    thread,
-    input,
-    ...(inputGroups !== undefined ? { inputGroups } : {}),
-    execution,
-    permissionEscalation,
-    target: {
-      mode,
-      expectedTurnId: expectedSteerTurnId,
-    },
-    environment: {
-      id: readyEnvironment.id,
-      hostId: readyEnvironment.hostId,
-      path: readyEnvironment.path,
-      status: readyEnvironment.status,
-      workspaceProvisionType: readyEnvironment.workspaceProvisionType,
-    },
-  });
+  const turnSubmitArgs: Parameters<typeof prepareTurnSubmitCommandPayload>[1] =
+    {
+      thread,
+      input,
+      execution,
+      permissionEscalation,
+      target: {
+        mode,
+        expectedTurnId: expectedSteerTurnId,
+      },
+      environment: {
+        id: readyEnvironment.id,
+        hostId: readyEnvironment.hostId,
+        path: readyEnvironment.path,
+        status: readyEnvironment.status,
+        workspaceProvisionType: readyEnvironment.workspaceProvisionType,
+      },
+    };
+  if (inputGroups !== undefined) {
+    turnSubmitArgs.inputGroups = inputGroups;
+  }
+  const preparedCommand = await prepareTurnSubmitCommandPayload(
+    deps,
+    turnSubmitArgs,
+  );
   const command = addRequestIdToTurnSubmitCommandPayload({
     preparedCommand,
     requestId,

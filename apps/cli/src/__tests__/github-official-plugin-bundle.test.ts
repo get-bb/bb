@@ -14,13 +14,61 @@ const GITHUB_DIR = fileURLToPath(
   new URL("../../../../plugins/github", import.meta.url),
 );
 
+type ComponentStub = (...args: never[]) => object;
+
 interface SlotRegistration {
   id: string;
   title?: string;
   icon?: string;
   path?: string;
-  component: unknown;
-  headerContent?: unknown;
+  component: ComponentStub;
+  headerContent?: ComponentStub;
+}
+
+interface RegisteredSlots {
+  homepageSection: SlotRegistration[];
+  navPanel: SlotRegistration[];
+  threadPanelAction: SlotRegistration[];
+  sidebarFooterAction: SlotRegistration[];
+}
+
+interface PluginSetup {
+  slots: Record<string, (registration: SlotRegistration) => void>;
+}
+
+type PluginSetupCallback = (app: PluginSetup) => void;
+
+interface PluginApp {
+  __bbPluginApp: boolean;
+  setup: PluginSetupCallback;
+}
+
+interface PluginRuntime {
+  react: {
+    forwardRef: <T>(render: T) => T;
+    createContext: () => Record<string, never>;
+    memo: <T>(component: T) => T;
+  };
+  reactDom: ComponentStub;
+  reactDomClient: ComponentStub;
+  jsxRuntime: {
+    jsx: ComponentStub;
+    jsxs: ComponentStub;
+    Fragment: object;
+  };
+  pluginSdkApp: {
+    definePluginApp: (setup: PluginSetupCallback) => PluginApp;
+  };
+  sonner: ComponentStub;
+  vaul: ComponentStub;
+  radixDropdownMenu: ComponentStub;
+  radixSelect: ComponentStub;
+  pierreDiffs: ComponentStub;
+  pierreDiffsReact: ComponentStub;
+  clsx: ComponentStub;
+  tailwindMerge: ComponentStub;
+  classVarianceAuthority: ComponentStub;
+  sharedUiIcon: ComponentStub;
 }
 
 describe("GitHub official plugin frontend bundle", () => {
@@ -32,7 +80,7 @@ describe("GitHub official plugin frontend bundle", () => {
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
-    delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
+    Reflect.deleteProperty(globalThis, "__bbPluginRuntime");
   });
 
   it("registers a single GitHub nav panel with header content", async () => {
@@ -57,30 +105,36 @@ describe("GitHub official plugin frontend bundle", () => {
       await testToolchain(),
     );
 
-    const registered: Record<string, SlotRegistration[]> = {
+    const registered: RegisteredSlots = {
       homepageSection: [],
       navPanel: [],
       threadPanelAction: [],
       sidebarFooterAction: [],
     };
-    const componentStub: unknown = new Proxy(function stub() {}, {
+    function stubFunction(..._args: never[]) {
+      return {};
+    }
+
+    let componentStub: ComponentStub;
+    componentStub = new Proxy(stubFunction, {
       get: (target, prop) =>
-        prop === "prototype"
-          ? Reflect.get(target, prop)
-          : (componentStub as object),
+        prop === "prototype" ? target.prototype : componentStub,
       set: () => true,
     });
-    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
+    const runtime: PluginRuntime = {
       react: {
-        forwardRef: (render: unknown) => render,
+        forwardRef: <T>(render: T) => render,
         createContext: () => ({}),
-        memo: (component: unknown) => component,
+        memo: <T>(component: T) => component,
       },
       reactDom: componentStub,
       reactDomClient: componentStub,
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       pluginSdkApp: {
-        definePluginApp: (setup: unknown) => ({ __bbPluginApp: true, setup }),
+        definePluginApp: (setup: PluginSetupCallback) => ({
+          __bbPluginApp: true,
+          setup,
+        }),
       },
       sonner: componentStub,
       vaul: componentStub,
@@ -93,6 +147,11 @@ describe("GitHub official plugin frontend bundle", () => {
       classVarianceAuthority: componentStub,
       sharedUiIcon: componentStub,
     };
+    Object.defineProperty(globalThis, "__bbPluginRuntime", {
+      configurable: true,
+      value: runtime,
+    });
+    // SAFETY: The built plugin module exports a default object with the plugin app marker and setup function.
     const mod = (await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href
     )) as {
@@ -120,8 +179,8 @@ describe("GitHub official plugin frontend bundle", () => {
       icon: "Github",
       path: "github",
     });
-    expect(typeof registered.navPanel[0]?.component).toBe("function");
-    expect(typeof registered.navPanel[0]?.headerContent).toBe("function");
+    expect(registered.navPanel[0]?.component).toBeInstanceOf(Function);
+    expect(registered.navPanel[0]?.headerContent).toBeInstanceOf(Function);
 
     expect(registered.threadPanelAction).toHaveLength(1);
     expect(registered.threadPanelAction[0]).toMatchObject({
@@ -129,7 +188,7 @@ describe("GitHub official plugin frontend bundle", () => {
       title: "GitHub PR",
       icon: "Github",
     });
-    expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
+    expect(registered.threadPanelAction[0]?.component).toBeInstanceOf(Function);
 
     expect(registered.homepageSection).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);

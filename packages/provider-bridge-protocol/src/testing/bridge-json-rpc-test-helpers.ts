@@ -96,9 +96,9 @@ export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
     buffer: string | Uint8Array,
   ) => {
     const text =
-      typeof buffer === "string"
-        ? buffer
-        : Buffer.from(buffer).toString("utf8");
+      buffer instanceof Uint8Array
+        ? Buffer.from(buffer).toString("utf8")
+        : buffer;
     for (const line of text.split("\n")) {
       if (line.trim().length > 0) {
         messages.push(bridgeJsonRpcOutputSchema.parse(JSON.parse(line)));

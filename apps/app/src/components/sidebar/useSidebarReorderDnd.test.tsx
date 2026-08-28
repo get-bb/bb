@@ -14,12 +14,19 @@ import {
   useSidebarReorderDnd,
 } from "./useSidebarReorderDnd";
 
-const DRAG_START_EVENT = { active: { id: "thread-1" } } as DragStartEvent;
-const DRAG_END_EVENT = {
-  active: { id: "thread-1" },
-  over: { id: "thread-2" },
-} as DragEndEvent;
-const DRAG_CANCEL_EVENT = { active: { id: "thread-1" } } as DragCancelEvent;
+const DRAG_START_EVENT =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    active: { id: "thread-1" },
+  } as DragStartEvent;
+const DRAG_END_EVENT =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    active: { id: "thread-1" },
+    over: { id: "thread-2" },
+  } as DragEndEvent;
+const DRAG_CANCEL_EVENT =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    active: { id: "thread-1" },
+  } as DragCancelEvent;
 
 afterEach(() => {
   cleanup();

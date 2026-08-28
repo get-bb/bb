@@ -8,7 +8,10 @@ import {
   type ReactNode,
 } from "react";
 import { defaultAppSettings, type PromptInput } from "@bb/domain";
-import type { SendMessageDelivery } from "@bb/server-contract";
+import type {
+  SendMessageDelivery,
+  SendMessageRequest,
+} from "@bb/server-contract";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -74,6 +77,60 @@ import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
+
+export interface EmbeddedThreadChatDependencies {
+  BottomAnchoredScrollBody: typeof BottomAnchoredScrollBody;
+  FollowUpPromptBox: typeof FollowUpPromptBox;
+  ThreadPendingInteractionBanner: typeof ThreadPendingInteractionBanner;
+  QueuedMessagesList: typeof QueuedMessagesList;
+  OverflowFade: typeof OverflowFade;
+  ThreadTimelinePanelContent: typeof ThreadTimelinePanelContent;
+  ThreadTimelineSurface: typeof ThreadTimelineSurface;
+  useThreadCreationOptions: typeof useThreadCreationOptions;
+  useThread: typeof useThread;
+  useThreadPendingInteractions: typeof useThreadPendingInteractions;
+  useThreadQueuedMessages: typeof useThreadQueuedMessages;
+  useThreadDefaultExecutionOptions: typeof useThreadDefaultExecutionOptions;
+  useSystemConfig: typeof useSystemConfig;
+  useCreateThreadQueuedMessage: typeof useCreateThreadQueuedMessage;
+  useSendThreadMessage: typeof useSendThreadMessage;
+  useStopThread: typeof useStopThread;
+  useMarkThreadRead: typeof useMarkThreadRead;
+  useThreadReadTracking: typeof useThreadReadTracking;
+  appToast: typeof appToast;
+  useActiveComposerDraft: typeof useActiveComposerDraft;
+  useComposerAttachmentUploads: typeof useComposerAttachmentUploads;
+  useComposerTypeahead: typeof useComposerTypeahead;
+  useInlineQueuedMessageEditing: typeof useInlineQueuedMessageEditing;
+  useQueuedMessageActions: typeof useQueuedMessageActions;
+}
+
+export const defaultDependencies: EmbeddedThreadChatDependencies = {
+  BottomAnchoredScrollBody,
+  FollowUpPromptBox,
+  ThreadPendingInteractionBanner,
+  QueuedMessagesList,
+  OverflowFade,
+  ThreadTimelinePanelContent,
+  ThreadTimelineSurface,
+  useThreadCreationOptions,
+  useThread,
+  useThreadPendingInteractions,
+  useThreadQueuedMessages,
+  useThreadDefaultExecutionOptions,
+  useSystemConfig,
+  useCreateThreadQueuedMessage,
+  useSendThreadMessage,
+  useStopThread,
+  useMarkThreadRead,
+  useThreadReadTracking,
+  appToast,
+  useActiveComposerDraft,
+  useComposerAttachmentUploads,
+  useComposerTypeahead,
+  useInlineQueuedMessageEditing,
+  useQueuedMessageActions,
+};
 
 function reportHeldSendDelivery(delivery: SendMessageDelivery): void {
   if (delivery !== "deferred") {
@@ -150,21 +207,34 @@ interface EmbeddedThreadChatHostedFooterProps {
 }
 
 type EmbeddedThreadChatProps =
-  | EmbeddedThreadChatComposerModeProps
-  | EmbeddedThreadChatHostedFooterProps;
+  | (EmbeddedThreadChatComposerModeProps & {
+      dependencies?: EmbeddedThreadChatDependencies;
+    })
+  | (EmbeddedThreadChatHostedFooterProps & {
+      dependencies?: EmbeddedThreadChatDependencies;
+    });
 
 export function EmbeddedThreadChat(props: EmbeddedThreadChatProps) {
+  const dependencies = props.dependencies ?? defaultDependencies;
   if (props.variant === "hosted-footer") {
-    return <EmbeddedThreadChatHostedFooter {...props} />;
+    return (
+      <EmbeddedThreadChatHostedFooter {...props} dependencies={dependencies} />
+    );
   }
-  return <EmbeddedThreadChatWithComposer {...props} />;
+  return (
+    <EmbeddedThreadChatWithComposer {...props} dependencies={dependencies} />
+  );
 }
 
 function EmbeddedThreadChatHostedFooter({
   footer,
   scrollOverlay,
   surface,
-}: EmbeddedThreadChatHostedFooterProps) {
+  dependencies,
+}: EmbeddedThreadChatHostedFooterProps & {
+  dependencies: EmbeddedThreadChatDependencies;
+}) {
+  const { ThreadTimelineSurface } = dependencies;
   return (
     <div
       data-thread-window=""
@@ -202,7 +272,35 @@ function EmbeddedThreadChatWithComposer({
   measure = "panel",
   surfaceTone = "background",
   composer,
-}: EmbeddedThreadChatComposerModeProps) {
+  dependencies,
+}: EmbeddedThreadChatComposerModeProps & {
+  dependencies: EmbeddedThreadChatDependencies;
+}) {
+  const {
+    BottomAnchoredScrollBody,
+    FollowUpPromptBox,
+    ThreadPendingInteractionBanner,
+    QueuedMessagesList,
+    OverflowFade,
+    ThreadTimelinePanelContent,
+    useThreadCreationOptions,
+    useThread,
+    useThreadPendingInteractions,
+    useThreadQueuedMessages,
+    useThreadDefaultExecutionOptions,
+    useSystemConfig,
+    useCreateThreadQueuedMessage,
+    useSendThreadMessage,
+    useStopThread,
+    useMarkThreadRead,
+    useThreadReadTracking,
+    appToast,
+    useActiveComposerDraft,
+    useComposerAttachmentUploads,
+    useComposerTypeahead,
+    useInlineQueuedMessageEditing,
+    useQueuedMessageActions,
+  } = dependencies;
   const labels = DEFAULT_LABELS;
   const systemConfigQuery = useSystemConfig();
   const steerActiveThreadOnEnter =
@@ -279,28 +377,33 @@ function EmbeddedThreadChatWithComposer({
       : permissionMode;
 
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
-  const executionRequestFields = useMemo(
-    () => ({
-      ...(selectedExecutionModel.length > 0
-        ? {
-            model: selectedExecutionModel,
-            reasoningLevel,
-            ...(selectedExecutionServiceTier
-              ? { serviceTier: selectedExecutionServiceTier }
-              : {}),
-          }
-        : {}),
-      ...(effectivePermissionMode !== undefined
-        ? { permissionMode: effectivePermissionMode }
-        : {}),
-    }),
-    [
-      effectivePermissionMode,
-      reasoningLevel,
-      selectedExecutionModel,
-      selectedExecutionServiceTier,
-    ],
-  );
+  const executionRequestFields = useMemo<
+    Pick<
+      SendMessageRequest,
+      "model" | "reasoningLevel" | "serviceTier" | "permissionMode"
+    >
+  >(() => {
+    const fields: Pick<
+      SendMessageRequest,
+      "model" | "reasoningLevel" | "serviceTier" | "permissionMode"
+    > = {};
+    if (selectedExecutionModel.length > 0) {
+      fields.model = selectedExecutionModel;
+      fields.reasoningLevel = reasoningLevel;
+      if (selectedExecutionServiceTier !== undefined) {
+        fields.serviceTier = selectedExecutionServiceTier;
+      }
+    }
+    if (effectivePermissionMode !== undefined) {
+      fields.permissionMode = effectivePermissionMode;
+    }
+    return fields;
+  }, [
+    effectivePermissionMode,
+    reasoningLevel,
+    selectedExecutionModel,
+    selectedExecutionServiceTier,
+  ]);
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const [inlineComposerFocusNonce, setInlineComposerFocusNonce] = useState(0);
   const [isTurnSubmitting, setIsTurnSubmitting] = useState(false);
@@ -482,6 +585,7 @@ function EmbeddedThreadChatWithComposer({
     displayStatus,
     isTurnSubmitting,
     labels.sendError,
+    appToast,
     promptDraft,
     setBottomAttachmentError,
   ]);
@@ -550,6 +654,7 @@ function EmbeddedThreadChatWithComposer({
     executionRequestFields,
     handleSendQueuedImmediately,
     labels.sendError,
+    appToast,
     promptDraft,
     queuedMessages,
     sendThreadMessage,
@@ -1022,6 +1127,7 @@ function EmbeddedThreadChatWithComposer({
     queuedComposerTextEffects,
     surfaceKey,
     typeaheadConfig,
+    FollowUpPromptBox,
   ]);
 
   const queuedMessagesStack = useMemo(
@@ -1055,6 +1161,7 @@ function EmbeddedThreadChatWithComposer({
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
+      QueuedMessagesList,
     ],
   );
 

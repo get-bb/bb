@@ -49,7 +49,10 @@ import {
   requireDeferredFirstTurnContextCurrent,
   resolveDeferredFirstTurnContext,
 } from "./deferred-first-turn-context.js";
-import { appendClientTurnEventInTransaction } from "./thread-events.js";
+import {
+  appendClientTurnEventInTransaction,
+  type ClientTurnRequestedEventArgs,
+} from "./thread-events.js";
 import {
   getLastProviderThreadId,
   isManualCompactionActive,
@@ -127,31 +130,22 @@ export interface CreateQueuedMessageForThreadArgs {
 export function queuedMessagePayloadFromSendRequest(
   payload: SendMessageRequest,
 ): CreateQueuedMessageRequest {
-  return {
-    input: payload.input,
-    ...(payload.model !== undefined ? { model: payload.model } : {}),
-    ...(payload.serviceTier !== undefined
-      ? { serviceTier: payload.serviceTier }
-      : {}),
-    ...(payload.reasoningLevel !== undefined
-      ? { reasoningLevel: payload.reasoningLevel }
-      : {}),
-    ...(payload.permissionMode !== undefined
-      ? { permissionMode: payload.permissionMode }
-      : {}),
-    ...(payload.executionInputSources !== undefined
-      ? { executionInputSources: payload.executionInputSources }
-      : {}),
-    ...(payload.senderThreadId !== undefined
-      ? { senderThreadId: payload.senderThreadId }
-      : {}),
-  };
+  const request: CreateQueuedMessageRequest = { input: payload.input };
+  if (payload.model !== undefined) request.model = payload.model;
+  if (payload.serviceTier !== undefined)
+    request.serviceTier = payload.serviceTier;
+  if (payload.reasoningLevel !== undefined)
+    request.reasoningLevel = payload.reasoningLevel;
+  if (payload.permissionMode !== undefined)
+    request.permissionMode = payload.permissionMode;
+  if (payload.executionInputSources !== undefined)
+    request.executionInputSources = payload.executionInputSources;
+  if (payload.senderThreadId !== undefined)
+    request.senderThreadId = payload.senderThreadId;
+  return request;
 }
 
-function admitQueuedMessage(
-  db: DbQueryConnection,
-  thread: Thread,
-): { providerThreadId: string | null } {
+function admitQueuedMessage(db: DbQueryConnection, thread: Thread) {
   ensureThreadIsWritable(thread);
   const providerThreadId = getLastProviderThreadId({ db }, thread.id);
   if (thread.environmentId === null) {
@@ -252,6 +246,10 @@ interface FormatQueuedMessageInputForSenderArgs {
   senderThreadId: string | null;
 }
 
+type SendQueuedMessagePayload = SendMessageRequest & {
+  inputGroups?: PromptInput[][];
+};
+
 const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
 const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
 const activeQueuedMessageClaimTokens = new Set<string>();
@@ -260,16 +258,17 @@ function sendQueuedMessagePayload(
   queuedMessage: ThreadQueuedMessage,
   mode: SendQueuedMessageMode,
   senderThreadId: string | null,
-): SendMessageRequest {
-  return {
+): SendQueuedMessagePayload {
+  const payload: SendQueuedMessagePayload = {
     input: queuedMessage.content,
     mode,
     model: queuedMessage.model,
     permissionMode: queuedMessage.permissionMode,
     reasoningLevel: queuedMessage.reasoningLevel,
     serviceTier: queuedMessage.serviceTier,
-    ...(senderThreadId !== null ? { senderThreadId } : {}),
   };
+  if (senderThreadId !== null) payload.senderThreadId = senderThreadId;
+  return payload;
 }
 
 function formatQueuedMessageInputForSender(
@@ -358,11 +357,8 @@ function createQueuedMessageClaimLostError(): ApiError {
   );
 }
 
-function isQueuedMessageClaimLostError(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE
-  );
+function isQueuedMessageClaimLostError(error: ApiError): boolean {
+  return error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE;
 }
 
 async function sendClaimedQueuedMessage(
@@ -449,16 +445,22 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   await ensureHostSessionReadyForWork(deps, {
     hostId: environment.hostId,
   });
-  const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+  const preparedCommandArgs: Parameters<
+    typeof prepareTurnSubmitCommandPayload
+  >[1] = {
     environment,
     execution,
     input,
-    ...(inputGroups.length > 1 ? { inputGroups } : {}),
     permissionEscalation,
     providerThreadId,
     target: { mode: "start" },
     thread,
-  });
+  };
+  if (inputGroups.length > 1) preparedCommandArgs.inputGroups = inputGroups;
+  const preparedCommand = await prepareTurnSubmitCommandPayload(
+    deps,
+    preparedCommandArgs,
+  );
 
   const { activeThread, command } = deps.db.transaction(
     (tx) => {
@@ -474,19 +476,20 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       if (!consumed) {
         throw createQueuedMessageClaimLostError();
       }
-      const request = appendClientTurnEventInTransaction(tx, {
+      const requestArgs: ClientTurnRequestedEventArgs = {
         environmentId: thread.environmentId,
         execution,
         initiator,
         input,
-        ...(inputGroups.length > 1 ? { inputGroups } : {}),
         requestMethod: "turn/start",
         senderThreadId,
         source: "tell",
         target: { kind: "new-turn" },
         threadId: thread.id,
         type: "client/turn/requested",
-      });
+      };
+      if (inputGroups.length > 1) requestArgs.inputGroups = inputGroups;
+      const request = appendClientTurnEventInTransaction(tx, requestArgs);
       recordAcceptedPromptHistoryEntry(
         { db: tx },
         {
@@ -553,6 +556,12 @@ async function sendClaimedQueuedMessageForThread(
   const environment = await requireThreadCommandEnvironment(deps, {
     thread: args.thread,
   });
+  const payload = sendQueuedMessagePayload(
+    { ...queuedMessage, content: input },
+    args.mode,
+    args.queuedMessages[0]!.senderThreadId,
+  );
+  if (inputGroups.length > 1) payload.inputGroups = inputGroups;
   await sendThreadMessage(deps, {
     beforeAppendInTransaction: ({ tx }) => {
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
@@ -563,14 +572,7 @@ async function sendClaimedQueuedMessageForThread(
       }
     },
     environment,
-    payload: {
-      ...sendQueuedMessagePayload(
-        { ...queuedMessage, content: input },
-        args.mode,
-        args.queuedMessages[0]!.senderThreadId,
-      ),
-      ...(inputGroups.length > 1 ? { inputGroups } : {}),
-    },
+    payload,
     thread: args.thread,
     trigger: "auto-dispatch",
   });
@@ -637,7 +639,7 @@ export async function sendNextQueuedMessageIfPresent(
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
-    if (isQueuedMessageClaimLostError(error)) {
+    if (error instanceof ApiError && isQueuedMessageClaimLostError(error)) {
       return false;
     }
     if (isCommandTimeoutError(error)) {

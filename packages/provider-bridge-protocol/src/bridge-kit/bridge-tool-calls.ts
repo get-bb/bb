@@ -1,5 +1,28 @@
 import { z } from "zod";
 
+type BridgeJsonRpcValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly BridgeJsonRpcValue[]
+  | { readonly [key: string]: BridgeJsonRpcValue };
+
+const bridgeJsonRpcValueSchema: z.ZodType<BridgeJsonRpcValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(bridgeJsonRpcValueSchema).readonly(),
+    z.record(z.string(), bridgeJsonRpcValueSchema),
+  ]),
+);
+
+type BridgeToolCallArguments = {
+  readonly [key: string]: BridgeJsonRpcValue;
+};
+
 const providerToolCallResponseSchema = z.object({
   success: z.boolean(),
   contentItems: z.array(
@@ -26,7 +49,7 @@ export interface BridgeToolCallRequest {
     turnId: string | null;
     callId: string;
     tool: string;
-    arguments: Record<string, unknown>;
+    arguments: BridgeToolCallArguments;
   };
 }
 
@@ -46,7 +69,7 @@ const jsonRpcErrorSchema = z.object({
 const jsonRpcSuccessResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]),
-  result: z.unknown(),
+  result: bridgeJsonRpcValueSchema,
 });
 
 const jsonRpcErrorResponseSchema = z.object({
@@ -59,19 +82,10 @@ export type BridgeJsonRpcResponse =
   | z.infer<typeof jsonRpcSuccessResponseSchema>
   | z.infer<typeof jsonRpcErrorResponseSchema>;
 
-function isJsonRpcRequest(input: unknown): boolean {
-  return (
-    typeof input === "object" &&
-    input !== null &&
-    "method" in input &&
-    input.method !== undefined
-  );
-}
-
 export function decodeBridgeJsonRpcResponse(
-  input: unknown,
+  input: BridgeJsonRpcValue,
 ): BridgeJsonRpcResponse | null {
-  if (isJsonRpcRequest(input)) return null;
+  if (bridgeRequestEnvelopeSchema.safeParse(input).success) return null;
 
   const error = jsonRpcErrorResponseSchema.safeParse(input);
   if (error.success) return error.data;
@@ -89,6 +103,13 @@ export type BridgeToolCallContent =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
 
+export interface DecodedToolCallResponse {
+  content: string;
+  contentBlocks: BridgeToolCallContent[];
+  images: BridgeToolCallImage[];
+  isError: boolean;
+}
+
 const IMAGE_DATA_URL = /^data:(.+);base64,(.+)$/s;
 
 function decodeImageDataUrl(imageUrl: string): BridgeToolCallImage | null {
@@ -103,12 +124,9 @@ function decodeImageDataUrl(imageUrl: string): BridgeToolCallImage | null {
   return { data, mimeType };
 }
 
-export function decodeToolCallResponsePayload(result: unknown): {
-  content: string;
-  contentBlocks: BridgeToolCallContent[];
-  images: BridgeToolCallImage[];
-  isError: boolean;
-} {
+export function decodeToolCallResponsePayload(
+  result: BridgeJsonRpcValue,
+): DecodedToolCallResponse {
   const parsed = providerToolCallResponseSchema.safeParse(result);
   if (!parsed.success) {
     return {

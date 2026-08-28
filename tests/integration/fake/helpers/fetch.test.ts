@@ -13,9 +13,18 @@ interface ResetServerOptions {
   resetFirstRequest: boolean;
 }
 
+function isAddressInfo(
+  address: AddressInfo | string | null,
+): address is AddressInfo {
+  return (
+    address !== null &&
+    Object.prototype.toString.call(address) === "[object Object]"
+  );
+}
+
 function requireAddress(server: Server): AddressInfo {
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  if (!isAddressInfo(address)) {
     throw new Error("Expected test server to listen on a TCP port");
   }
   return address;

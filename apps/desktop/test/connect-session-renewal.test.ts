@@ -7,7 +7,7 @@ import {
 const HOUR_MS = 60 * 60 * 1000;
 const LEAD_MS = 5 * 60 * 1000;
 
-function createGate(): { promise: Promise<void>; release: () => void } {
+function createGate() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
     release = resolve;
@@ -23,7 +23,11 @@ function createHarness(
 ) {
   let now = 1_000_000;
   let nextHandle = 1;
-  const timers = new Map<number, { at: number; handler: () => void }>();
+  type HarnessTimerHandle = number | ReturnType<typeof setTimeout>;
+  const timers = new Map<
+    HarnessTimerHandle,
+    { at: number; handler: () => void }
+  >();
   const logs: string[] = [];
 
   const renewal = createConnectSessionRenewal({
@@ -39,7 +43,7 @@ function createHarness(
       return handle;
     },
     clearTimeoutFn(handle) {
-      timers.delete(handle as number);
+      timers.delete(handle);
     },
   });
 

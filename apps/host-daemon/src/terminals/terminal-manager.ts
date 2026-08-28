@@ -187,12 +187,21 @@ interface TerminalOperationCompletion {
   resolve: () => void;
 }
 
+interface NodePtyWithDestroy {
+  destroy(): void;
+}
+
+function hasNodePtyDestroy(
+  pty: ReturnType<typeof spawnPty>,
+): pty is ReturnType<typeof spawnPty> & NodePtyWithDestroy {
+  return "destroy" in pty;
+}
+
 function disposeNodePty(pty: ReturnType<typeof spawnPty>): void {
-  const destroy = "destroy" in pty ? pty.destroy : undefined;
-  if (typeof destroy !== "function") {
+  if (!hasNodePtyDestroy(pty)) {
     throw new Error("node-pty terminal does not expose resource disposal");
   }
-  Reflect.apply(destroy, pty, []);
+  pty.destroy();
 }
 
 const nodePtyAdapter: TerminalPtyAdapter = {

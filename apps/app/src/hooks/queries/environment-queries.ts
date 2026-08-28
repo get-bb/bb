@@ -8,6 +8,7 @@ import type {
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDiffBranchesQuery,
   EnvironmentDiffFilesResponse,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
@@ -212,14 +213,19 @@ export function useEnvironmentMergeBaseBranches(
       limit,
       selectedBranch ?? "",
     ),
-    queryFn: ({ signal }) =>
-      sdk.environments.diffBranches({
+    queryFn: ({ signal }) => {
+      const args: EnvironmentDiffBranchesQuery & {
+        environmentId: string;
+        signal: AbortSignal;
+      } = {
         environmentId,
-        ...(query ? { query } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
         limit: String(limit),
         signal,
-      }),
+      };
+      if (query) args.query = query;
+      if (selectedBranch) args.selectedBranch = selectedBranch;
+      return sdk.environments.diffBranches(args);
+    },
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: MERGE_BASE_BRANCHES_STALE_MS,

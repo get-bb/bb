@@ -29,7 +29,7 @@ import {
   upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
-import type { Logger } from "@bb/logger";
+import type { ServerLogger } from "../../../src/types.js";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -40,8 +40,20 @@ import {
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
-const logger = testLogger as unknown as Logger;
+const logger: ServerLogger = testLogger;
 const run = promisify(execFile);
+
+interface PluginFixturePackageJson {
+  name: string;
+  version: string;
+  engines?: { bb?: string; bbPluginSdk?: string };
+  bb: {
+    name: string;
+    description: string;
+    branding: { icon: string };
+    server: string;
+  };
+}
 
 async function git(cwd: string, args: string[]): Promise<string> {
   return (await run("git", args, { cwd })).stdout.trim();
@@ -54,20 +66,18 @@ async function commitPlugin(
   serverSource?: string,
 ): Promise<string> {
   await mkdir(repo, { recursive: true });
-  await writeFile(
-    join(repo, "package.json"),
-    JSON.stringify({
-      name: "bb-plugin-updater",
-      version,
-      ...(engines ? { engines } : {}),
-      bb: {
-        name: "Updater fixture",
-        description: "Plugin update fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-      },
-    }),
-  );
+  const packageJson: PluginFixturePackageJson = {
+    name: "bb-plugin-updater",
+    version,
+    bb: {
+      name: "Updater fixture",
+      description: "Plugin update fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
+  };
+  if (engines !== undefined) packageJson.engines = engines;
+  await writeFile(join(repo, "package.json"), JSON.stringify(packageJson));
   await writeFile(
     join(repo, "server.ts"),
     serverSource ??

@@ -131,6 +131,11 @@ interface RequestRecoveryArgs {
   threadId: string;
 }
 
+interface RejectionHintScope {
+  providerId: string;
+  threadId?: string;
+}
+
 export class AgentRuntimeRecoveryError extends Error {
   readonly code: "auth_required" | "rate_limited";
   readonly recovery: AgentRuntimeProviderRecoveryHint;
@@ -290,10 +295,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const threadEventGrammar = new ThreadEventGrammar();
   const bridgeNodeEnv = defaultBridgeNodeEnv();
 
-  const providerProcesses = new RuntimeProviderProcessManager({
+  const providerProcessManagerArgs: ConstructorParameters<
+    typeof RuntimeProviderProcessManager
+  >[0] = {
     additionalWorkspaceWriteRoots,
     bridgeBundleDir: options.bridgeBundleDir,
-    ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath: process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
@@ -319,7 +325,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     onStderr: options.onStderr,
     skillRoots,
     workspacePath: options.workspacePath,
-  });
+  };
+  if (bridgeNodeEnv !== undefined) {
+    providerProcessManagerArgs.bridgeNodeEnv = bridgeNodeEnv;
+  }
+  const providerProcesses = new RuntimeProviderProcessManager(
+    providerProcessManagerArgs,
+  );
 
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
@@ -404,18 +416,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     timeoutMs?: number;
     recovery?: RequestRecoveryArgs;
   }): Promise<TResult> {
+    const request: SendJsonRpcRequestArgs<TResult> = {
+      child: args.proc.child,
+      getNextId: () => nextRequestId++,
+      message: args.message,
+      pending: args.proc.pending,
+      resultSchema: args.resultSchema,
+    };
+    if (args.timeoutMs !== undefined) {
+      request.timeoutMs = args.timeoutMs;
+    }
     return sendRequestWithRecovery({
       allowUnarchive: true,
       proc: args.proc,
       recovery: args.recovery,
-      request: {
-        child: args.proc.child,
-        getNextId: () => nextRequestId++,
-        message: args.message,
-        pending: args.proc.pending,
-        resultSchema: args.resultSchema,
-        ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
-      },
+      request,
     });
   }
 
@@ -436,12 +451,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         pending: args.proc.pending,
       });
     } catch (error) {
-      const hint = rejectionHint(error, {
+      const rejectionScope: RejectionHintScope = {
         providerId: args.proc.providerId,
-        ...(args.recovery === undefined
-          ? {}
-          : { threadId: args.recovery.threadId }),
-      });
+      };
+      if (args.recovery !== undefined) {
+        rejectionScope.threadId = args.recovery.threadId;
+      }
+      const hint = rejectionHint(
+        error instanceof Error ? error : new Error(String(error)),
+        rejectionScope,
+      );
       if (hint === null) {
         throw error;
       }
@@ -492,7 +511,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function rejectionHint(
-    error: unknown,
+    error: Error,
     scope: { providerId: string; threadId?: string },
   ): AgentRuntimeProviderRecoveryHint | null {
     if (!(error instanceof JsonRpcResponseError) || error.recovery === null) {
@@ -575,10 +594,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           pending: proc.pending,
         });
       } catch (retryError) {
-        const nextHint = rejectionHint(retryError, {
-          providerId: args.recovery.providerId,
-          threadId: args.recovery.threadId,
-        });
+        const nextHint = rejectionHint(
+          retryError instanceof Error
+            ? retryError
+            : new Error(String(retryError)),
+          {
+            providerId: args.recovery.providerId,
+            threadId: args.recovery.threadId,
+          },
+        );
         if (nextHint === null) {
           throw retryError;
         }
@@ -920,7 +944,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           instructions: currentConfig.instructions,
         });
       },
-    }).catch((error: unknown) => {
+    }).catch((error) => {
       options.onStderr?.(
         `Bridge restart for thread "${args.threadId}" failed: ${error instanceof Error ? error.message : String(error)}`,
         args.threadId,
@@ -1024,27 +1048,28 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }): Promise<void> {
     const { currentConfig } = args;
     const resumeInstructions = args.instructions ?? currentConfig.instructions;
-    await runtime.resumeThread({
+    const resumeArgs: Parameters<AgentRuntime["resumeThread"]>[0] = {
       bridgeLaunch: currentConfig.bridgeLaunch,
       environmentId: currentConfig.environmentId,
       threadId: args.threadId,
-      ...(currentConfig.projectId !== undefined
-        ? { projectId: currentConfig.projectId }
-        : {}),
       providerThreadId: args.providerThreadId,
       providerId: currentConfig.providerId,
       options: args.options,
-      ...(resumeInstructions !== undefined
-        ? { instructions: resumeInstructions }
-        : {}),
-      ...(currentConfig.dynamicTools !== undefined
-        ? { dynamicTools: currentConfig.dynamicTools }
-        : {}),
-      ...(currentConfig.disallowedTools !== undefined
-        ? { disallowedTools: currentConfig.disallowedTools }
-        : {}),
       instructionMode: currentConfig.instructionMode,
-    });
+    };
+    if (currentConfig.projectId !== undefined) {
+      resumeArgs.projectId = currentConfig.projectId;
+    }
+    if (resumeInstructions !== undefined) {
+      resumeArgs.instructions = resumeInstructions;
+    }
+    if (currentConfig.dynamicTools !== undefined) {
+      resumeArgs.dynamicTools = currentConfig.dynamicTools;
+    }
+    if (currentConfig.disallowedTools !== undefined) {
+      resumeArgs.disallowedTools = currentConfig.disallowedTools;
+    }
+    await runtime.resumeThread(resumeArgs);
   }
 
   async function archiveOrUnarchiveThread(
@@ -1464,32 +1489,37 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             instructions,
             skillRoots,
           });
-          const adapterCommand: AdapterCommand = fork
-            ? {
-                type: "thread/fork",
-                threadId,
-                cwd: options.workspacePath,
-                sourceProviderThreadId: fork.sourceProviderThreadId,
-                ...(fork.sourceProviderCheckpointId !== undefined
-                  ? {
-                      sourceProviderCheckpointId:
-                        fork.sourceProviderCheckpointId,
-                    }
-                  : {}),
-                options: providerExecutionContext,
-                dynamicTools,
-                disallowedTools,
-                instructionMode,
-              }
-            : {
-                type: "thread/start",
-                threadId,
-                cwd: options.workspacePath,
-                options: providerExecutionContext,
-                dynamicTools,
-                disallowedTools,
-                instructionMode,
-              };
+          let adapterCommand: AdapterCommand;
+          if (fork) {
+            const forkCommand: Extract<
+              AdapterCommand,
+              { type: "thread/fork" }
+            > = {
+              type: "thread/fork",
+              threadId,
+              cwd: options.workspacePath,
+              sourceProviderThreadId: fork.sourceProviderThreadId,
+              options: providerExecutionContext,
+              dynamicTools,
+              disallowedTools,
+              instructionMode,
+            };
+            if (fork.sourceProviderCheckpointId !== undefined) {
+              forkCommand.sourceProviderCheckpointId =
+                fork.sourceProviderCheckpointId;
+            }
+            adapterCommand = forkCommand;
+          } else {
+            adapterCommand = {
+              type: "thread/start",
+              threadId,
+              cwd: options.workspacePath,
+              options: providerExecutionContext,
+              dynamicTools,
+              disallowedTools,
+              instructionMode,
+            };
+          }
           let resolved: string;
           try {
             const cmd = requireProviderRequestPlan({
@@ -1497,21 +1527,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               plan: proc.adapter.buildCommandPlan(adapterCommand),
               providerId,
             });
-            const result = await sendCommand({
+            const commandRequest = {
               proc,
               message: cmd,
               resultSchema: threadIdentityResultSchema,
               timeoutMs: threadCreationRequestTimeoutMs,
-              ...(fork
-                ? {
-                    recovery: {
-                      providerId,
-                      providerThreadId: fork.sourceProviderThreadId,
-                      threadId,
-                    },
-                  }
-                : {}),
-            });
+            };
+            const result = fork
+              ? await sendCommand({
+                  ...commandRequest,
+                  recovery: {
+                    providerId,
+                    providerThreadId: fork.sourceProviderThreadId,
+                    threadId,
+                  },
+                })
+              : await sendCommand(commandRequest);
             updateSessionRestoreCapability(threadId, result.sessionRestorable);
             recordProviderThreadIdentity(
               proc,
@@ -1530,14 +1561,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 `Thread start with input requires a client request id for ${threadId}`,
               );
             }
-            await runtime.runTurn({
+            const runTurnArgs: Parameters<AgentRuntime["runTurn"]>[0] = {
               threadId,
               input,
-              ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
               options: execOpts,
               instructions,
-            });
+            };
+            if (inputGroups !== undefined) {
+              runTurnArgs.inputGroups = inputGroups;
+            }
+            await runtime.runTurn(runTurnArgs);
           }
 
           markHostedProviderSessionIdle(threadId);
@@ -1865,12 +1899,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
           });
 
-          const adapterCommand: AdapterCommand = {
+          const adapterCommand: Extract<
+            AdapterCommand,
+            { type: "turn/start" }
+          > = {
             type: "turn/start",
             threadId,
             providerThreadId: requireProviderThreadId(threadId),
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
@@ -1878,6 +1914,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               instructions,
             }),
           };
+          if (inputGroups !== undefined) {
+            adapterCommand.inputGroups = inputGroups;
+          }
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
             plan: proc.adapter.buildCommandPlan(adapterCommand),
@@ -1951,13 +1990,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
           });
 
-          const adapterCommand: AdapterCommand = {
+          const adapterCommand: Extract<
+            AdapterCommand,
+            { type: "turn/steer" }
+          > = {
             type: "turn/steer",
             threadId,
             providerThreadId: requireProviderThreadId(threadId),
             expectedTurnId,
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
@@ -1965,6 +2006,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               instructions,
             }),
           };
+          if (inputGroups !== undefined) {
+            adapterCommand.inputGroups = inputGroups;
+          }
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
             plan: proc.adapter.buildCommandPlan(adapterCommand),
@@ -2169,12 +2213,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
         providerId,
       });
+      const modelListCommand: Extract<AdapterCommand, { type: "model/list" }> =
+        {
+          type: "model/list",
+        };
+      if (cwd !== undefined) {
+        modelListCommand.cwd = cwd;
+      }
       const command = requireProviderRequestPlan({
         commandType: "model/list",
-        plan: proc.adapter.buildCommandPlan({
-          type: "model/list",
-          ...(cwd !== undefined ? { cwd } : {}),
-        }),
+        plan: proc.adapter.buildCommandPlan(modelListCommand),
         providerId,
       });
       const result = await sendCommand({
@@ -2191,10 +2239,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
         providerId,
       });
-      const plan = proc.adapter.buildCommandPlan({
+      const healthCommand: Extract<
+        AdapterCommand,
+        { type: "provider/health" }
+      > = {
         type: "provider/health",
-        ...(cwd !== undefined ? { cwd } : {}),
-      });
+      };
+      if (cwd !== undefined) {
+        healthCommand.cwd = cwd;
+      }
+      const plan = proc.adapter.buildCommandPlan(healthCommand);
       if (plan.kind === "noop") {
         return { supported: false };
       }
@@ -2211,10 +2265,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
         providerId,
       });
-      const plan = proc.adapter.buildCommandPlan({
-        type: "provider/usage",
-        ...(cwd !== undefined ? { cwd } : {}),
-      });
+      const usageCommand: Extract<AdapterCommand, { type: "provider/usage" }> =
+        {
+          type: "provider/usage",
+        };
+      if (cwd !== undefined) {
+        usageCommand.cwd = cwd;
+      }
+      const plan = proc.adapter.buildCommandPlan(usageCommand);
       if (plan.kind === "noop") {
         return { supported: false };
       }
@@ -2236,13 +2294,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
         providerId,
       });
+      const installationStatusCommand: Extract<
+        AdapterCommand,
+        { type: "provider/installation/status" }
+      > = {
+        type: "provider/installation/status",
+      };
+      if (cwd !== undefined) {
+        installationStatusCommand.cwd = cwd;
+      }
+      if (requirement !== undefined) {
+        installationStatusCommand.requirement = requirement;
+      }
       const plan = requireProviderRequestPlan({
         commandType: "provider/installation/status",
-        plan: proc.adapter.buildCommandPlan({
-          type: "provider/installation/status",
-          ...(cwd !== undefined ? { cwd } : {}),
-          ...(requirement !== undefined ? { requirement } : {}),
-        }),
+        plan: proc.adapter.buildCommandPlan(installationStatusCommand),
         providerId,
       });
       return await sendCommand({
@@ -2258,13 +2324,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
         providerId,
       });
+      const installationRunCommand: Extract<
+        AdapterCommand,
+        { type: "provider/installation/run" }
+      > = {
+        type: "provider/installation/run",
+        action,
+      };
+      if (cwd !== undefined) {
+        installationRunCommand.cwd = cwd;
+      }
       const plan = requireProviderRequestPlan({
         commandType: "provider/installation/run",
-        plan: proc.adapter.buildCommandPlan({
-          type: "provider/installation/run",
-          action,
-          ...(cwd !== undefined ? { cwd } : {}),
-        }),
+        plan: proc.adapter.buildCommandPlan(installationRunCommand),
         providerId,
       });
       return await sendCommand({

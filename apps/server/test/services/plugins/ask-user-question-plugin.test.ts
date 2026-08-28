@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import { builtinPluginSource } from "../../../src/services/plugins/builtin-registry.js";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
@@ -97,26 +98,31 @@ describe("ask-user-question builtin plugin", () => {
     expect(tool?.description).toContain(
       "Use this tool only when you are blocked on a decision that is genuinely the user's to make",
     );
-    const schema = tool?.inputSchema as {
-      required: string[];
-      properties: {
-        questions: {
-          minItems: number;
-          maxItems: number;
-          items: {
-            required: string[];
-            properties: {
-              multiSelect: { default: boolean };
-              options: {
-                minItems: number;
-                maxItems: number;
-                items: { properties: Record<string, unknown> };
-              };
-            };
-          };
-        };
-      };
-    };
+    if (tool === undefined) throw new Error("AskUserQuestion tool is missing");
+    const schema = z
+      .object({
+        required: z.array(z.string()),
+        properties: z.object({
+          questions: z.object({
+            minItems: z.number(),
+            maxItems: z.number(),
+            items: z.object({
+              required: z.array(z.string()),
+              properties: z.object({
+                multiSelect: z.object({ default: z.boolean() }),
+                options: z.object({
+                  minItems: z.number(),
+                  maxItems: z.number(),
+                  items: z.object({
+                    properties: z.record(z.string(), z.json()),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      })
+      .parse(tool.inputSchema);
     expect(schema.required).toEqual(["questions"]);
     expect(schema.properties.questions.minItems).toBe(1);
     expect(schema.properties.questions.maxItems).toBe(4);

@@ -151,10 +151,10 @@ describe("install cli skills", () => {
       const stale = seedHostSession(harness.deps, { id: "host-stale" });
       const empty = seedHostSession(harness.deps, { id: "host-empty" });
       const expectedHash = expectedCliSkillTreeHash(harness);
-      const hashByHostId: Record<string, string | null> = {
-        "host-current": expectedHash,
-        "host-stale": "b".repeat(64),
-        "host-empty": null,
+      const hashForHostId = (hostId: string): string | null => {
+        if (hostId === "host-current") return expectedHash;
+        if (hostId === "host-stale") return "b".repeat(64);
+        return null;
       };
       for (const { host, session } of [current, stale, empty]) {
         registerHostRpcResponder(harness, {
@@ -172,7 +172,7 @@ describe("install cli skills", () => {
                   {
                     name: "bb-cli",
                     path: `/home/${host.id}/.agents/skills/bb-cli`,
-                    treeHash: hashByHostId[host.id] ?? null,
+                    treeHash: hashForHostId(host.id),
                   },
                 ],
               },

@@ -23,7 +23,7 @@
   "observability": { "enabled": true },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
   "durable_objects": {
-    "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+    "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }],
   },
   // Production: every *.getbb.app subdomain hits the gate via the wildcard
   // zone route (backed by a proxied `*` DNS record). The apex + www are
@@ -38,15 +38,15 @@
       // apply DB --remote` from this config before every deploy (the
       // d1_migrations tracking tables were seeded with the hand-applied
       // 0000-000N chain on 2026-07-08).
-      "migrations_dir": "../../packages/connect-db/migrations"
-    }
+      "migrations_dir": "../../packages/connect-db/migrations",
+    },
   ],
   "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
   "env": {
     "staging": {
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TunnelDO"] }],
       "durable_objects": {
-        "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }]
+        "bindings": [{ "name": "TUNNEL_DO", "class_name": "TunnelDO" }],
       },
       "vars": { "BASE_DOMAIN": "vibecodethis.site" },
       // Staging now has a dashboard-managed wildcard (`*.vibecodethis.site`
@@ -61,16 +61,16 @@
       "routes": [
         { "pattern": "sawyer.vibecodethis.site", "custom_domain": true },
         { "pattern": "sawyer--8000.vibecodethis.site", "custom_domain": true },
-        { "pattern": "sawyer--8099.vibecodethis.site", "custom_domain": true }
+        { "pattern": "sawyer--8099.vibecodethis.site", "custom_domain": true },
       ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "bb-connect-staging",
           "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
-          "migrations_dir": "../../packages/connect-db/migrations"
-        }
-      ]
-    }
-  }
+          "migrations_dir": "../../packages/connect-db/migrations",
+        },
+      ],
+    },
+  },
 }

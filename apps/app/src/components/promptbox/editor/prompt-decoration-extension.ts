@@ -12,6 +12,7 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { z } from "zod";
 import type { PromptTextMention } from "@bb/domain";
 import {
   promptEditorSerializationFromDoc,
@@ -23,6 +24,14 @@ export const ULTRACODE_HIGHLIGHT_CLASS = "prompt-ultracode-highlight";
 interface PromptDecorationRange {
   from: number;
   to: number;
+}
+
+interface PromptDecorationSpec {
+  className: string;
+  ruleId: string;
+  sourceId: string;
+  sourceOrder: string;
+  "data-bb-plugin-decoration"?: string;
 }
 
 type PromptDecorationRule = NonNullable<
@@ -46,7 +55,7 @@ export interface PromptDecorationExtensionOptions {
   getDecorationSources?: () => readonly PromptDecorationSource[];
   getDraftObservers?: () => readonly PromptDraftObserver[];
   draftObserverDebounceMs?: number;
-  onRuleError?: (sourceId: string, ruleId: string, error: unknown) => void;
+  onRuleError?: (sourceId: string, ruleId: string, cause: unknown) => void;
 }
 
 interface PromptDecorationPluginState {
@@ -93,27 +102,20 @@ const BUILT_IN_HOST_SOURCE: PromptDecorationSource = {
   effects: [PROMPT_ULTRACODE_DECORATION_RULE],
 };
 
-function parseRanges(value: unknown): PromptDecorationRange[] | null {
-  if (!Array.isArray(value)) return null;
-  const ranges: PromptDecorationRange[] = [];
-  for (const range of value) {
-    if (
-      typeof range !== "object" ||
-      range === null ||
-      !("from" in range) ||
-      !("to" in range) ||
-      typeof range.from !== "number" ||
-      typeof range.to !== "number" ||
-      !Number.isInteger(range.from) ||
-      !Number.isInteger(range.to) ||
-      range.from < 0 ||
-      range.to <= range.from
-    ) {
-      return null;
-    }
-    ranges.push({ from: range.from, to: range.to });
-  }
-  return ranges;
+const promptDecorationRangeSchema = z
+  .object({
+    from: z.number().int().nonnegative(),
+    to: z.number().int().positive(),
+  })
+  .refine(({ from, to }) => to > from);
+
+const promptDecorationRangesSchema = z.array(promptDecorationRangeSchema);
+
+function parseRanges(
+  value: ReturnType<PromptDecorationRule["match"]>,
+): PromptDecorationRange[] | null {
+  const result = promptDecorationRangesSchema.safeParse(value);
+  return result.success ? result.data : null;
 }
 
 function decorationForIntersection(
@@ -121,7 +123,7 @@ function decorationForIntersection(
   segment: PromptEditorOffsetSegment,
   range: PromptDecorationRange,
   className: string,
-  spec: Record<string, string>,
+  spec: PromptDecorationSpec,
 ): Decoration | null {
   const textFrom = Math.max(segment.textFrom, range.from);
   const textTo = Math.min(segment.textTo, range.to);
@@ -148,18 +150,36 @@ function decorationForIntersection(
 function defaultRuleErrorLogger(
   sourceId: string,
   ruleId: string,
-  error: unknown,
+  cause: unknown,
 ): void {
   console.warn(
     `[composer-decoration:${sourceId}/${ruleId}] match failed; disabled until the next plugin generation`,
-    error,
+    cause,
   );
 }
 
-function defaultObserverErrorLogger(observerId: string, error: unknown): void {
+function promptDecorationSpec(
+  source: PromptDecorationSource,
+  rule: PromptDecorationRule,
+  sourceIndex: number,
+  ruleIndex: number,
+): PromptDecorationSpec {
+  const spec: PromptDecorationSpec = {
+    className: rule.className,
+    ruleId: rule.id,
+    sourceId: source.id,
+    sourceOrder: `${sourceIndex}:${ruleIndex}`,
+  };
+  if (source.pluginId) {
+    spec["data-bb-plugin-decoration"] = source.pluginId;
+  }
+  return spec;
+}
+
+function defaultObserverErrorLogger(observerId: string, cause: unknown): void {
   console.warn(
     `[composer-draft-observer:${observerId}] onDraftChange failed`,
-    error,
+    cause,
   );
 }
 
@@ -185,7 +205,7 @@ function buildDecorations(
 
       let ranges: PromptDecorationRange[];
       try {
-        const result: unknown = rule.match(serialization.text);
+        const result = rule.match(serialization.text);
         const parsed = parseRanges(result);
         if (parsed === null) {
           throw new TypeError("match must return valid integer ranges");
@@ -211,15 +231,7 @@ function buildDecorations(
             segment,
             boundedRange,
             rule.className,
-            {
-              className: rule.className,
-              ...(source.pluginId
-                ? { "data-bb-plugin-decoration": source.pluginId }
-                : {}),
-              ruleId: rule.id,
-              sourceId: source.id,
-              sourceOrder: `${sourceIndex}:${ruleIndex}`,
-            },
+            promptDecorationSpec(source, rule, sourceIndex, ruleIndex),
           );
           if (decoration !== null) decorations.push(decoration);
         }

@@ -138,10 +138,14 @@ function buildEventMeta(row: ThreadEventRow): EventMeta {
   };
 }
 
-export function decodeThreadEventRow(row: ThreadEventRow): {
+interface DecodedThreadEventRow {
   event: ThreadEvent;
   meta: EventMeta;
-} {
+}
+
+export function decodeThreadEventRow(
+  row: ThreadEventRow,
+): DecodedThreadEventRow {
   return {
     event: buildThreadEvent(row),
     meta: buildEventMeta(row),

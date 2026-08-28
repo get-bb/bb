@@ -1,4 +1,11 @@
-import type { ThreadEvent } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+  type ThreadEvent,
+} from "@bb/domain";
+import { z } from "zod";
 
 export interface NormalizeCalibrationEventsOptions {
   internedIdFields?: readonly string[];
@@ -29,19 +36,22 @@ class IdInterner {
   }
 }
 
+const stringSchema = z.string();
+
 function normalizeValue(
-  value: unknown,
+  value: JsonValue,
   interner: IdInterner,
   idFields: ReadonlySet<string>,
-): unknown {
+): JsonValue {
   if (Array.isArray(value)) {
     return value.map((entry) => normalizeValue(entry, interner, idFields));
   }
-  if (value === null || typeof value !== "object") {
+  const objectResult = jsonObjectSchema.safeParse(value);
+  if (!objectResult.success) {
     return value;
   }
-  const normalized: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  const normalized: JsonObject = {};
+  for (const [key, entry] of Object.entries(objectResult.data)) {
     if (entry === undefined || DROPPED_FIELDS.has(key)) {
       continue;
     }
@@ -49,8 +59,9 @@ function normalizeValue(
       normalized[key] = entry === null ? null : "";
       continue;
     }
-    if (idFields.has(key) && typeof entry === "string") {
-      normalized[key] = interner.intern(entry);
+    const stringEntry = stringSchema.safeParse(entry);
+    if (idFields.has(key) && stringEntry.success) {
+      normalized[key] = interner.intern(stringEntry.data);
       continue;
     }
     normalized[key] = normalizeValue(entry, interner, idFields);
@@ -61,25 +72,26 @@ function normalizeValue(
 export function normalizeCalibrationEvents(
   events: readonly ThreadEvent[],
   options: NormalizeCalibrationEventsOptions = {},
-): unknown[] {
+): JsonValue[] {
   const interner = new IdInterner();
   const idFields = new Set<string>(
     options.internedIdFields ?? DEFAULT_INTERNED_ID_FIELDS,
   );
-  const wireShaped: unknown = JSON.parse(JSON.stringify(events));
-  const list = Array.isArray(wireShaped) ? wireShaped : [];
-  return list.map((event) => normalizeValue(event, interner, idFields));
+  const wireEvents = jsonValueSchema
+    .array()
+    .parse(JSON.parse(JSON.stringify(events)));
+  return wireEvents.map((event) => normalizeValue(event, interner, idFields));
 }
 
-export interface CalibrationStreamDiff {
-  onlyInBridge: unknown[];
-  onlyInLegacy: unknown[];
+export interface CalibrationStreamDiff<Value> {
+  onlyInBridge: Value[];
+  onlyInLegacy: Value[];
 }
 
-export function diffCalibrationStreams(
-  legacy: readonly unknown[],
-  bridge: readonly unknown[],
-): CalibrationStreamDiff {
+export function diffCalibrationStreams<Value>(
+  legacy: readonly Value[],
+  bridge: readonly Value[],
+): CalibrationStreamDiff<Value> {
   const left = legacy.map((event) => JSON.stringify(event));
   const right = bridge.map((event) => JSON.stringify(event));
   const lengths: number[][] = Array.from({ length: left.length + 1 }, () =>
@@ -94,8 +106,8 @@ export function diffCalibrationStreams(
     }
   }
 
-  const onlyInLegacy: unknown[] = [];
-  const onlyInBridge: unknown[] = [];
+  const onlyInLegacy: Value[] = [];
+  const onlyInBridge: Value[] = [];
   let i = 0;
   let j = 0;
   while (i < left.length && j < right.length) {
@@ -116,17 +128,18 @@ export function diffCalibrationStreams(
 }
 
 export function describeCalibrationEvents(
-  events: readonly unknown[],
+  events: readonly JsonValue[],
 ): string[] {
   return events.map((event) => {
-    if (event === null || typeof event !== "object") {
+    const eventObject = jsonObjectSchema.safeParse(event);
+    if (!eventObject.success) {
       return String(event);
     }
-    const record: Record<string, unknown> = { ...event };
-    const type = typeof record.type === "string" ? record.type : "?";
-    const item = record.item;
-    if (item !== null && typeof item === "object" && "type" in item) {
-      return `${type}:${String((item as { type: unknown }).type)}`;
+    const typeResult = stringSchema.safeParse(eventObject.data.type);
+    const type = typeResult.success ? typeResult.data : "?";
+    const itemObject = jsonObjectSchema.safeParse(eventObject.data.item);
+    if (itemObject.success && "type" in itemObject.data) {
+      return `${type}:${String(itemObject.data.type)}`;
     }
     return type;
   });

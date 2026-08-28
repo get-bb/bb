@@ -1,6 +1,12 @@
 import { eq } from "drizzle-orm";
 import { events } from "@bb/db";
-import { threadScope, turnScope, type ExtensionKind } from "@bb/domain";
+import {
+  jsonValueSchema,
+  threadScope,
+  turnScope,
+  type ExtensionKind,
+  type JsonValue,
+} from "@bb/domain";
 import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
@@ -130,13 +136,13 @@ function storedRows(harness: TestAppHarness, threadId: string) {
       itemKind: row.itemKind,
       scopeKind: row.scopeKind,
       turnId: row.turnId,
-      data: JSON.parse(row.data) as unknown,
+      data: jsonValueSchema.parse(JSON.parse(row.data)),
     }));
 }
 
 function extensionItemEvent(
   threadId: string,
-  payload: unknown,
+  payload: JsonValue,
   kind: ExtensionKind = GOAL_KIND,
 ): HostDaemonEventEnvelope {
   return {
@@ -150,7 +156,7 @@ function extensionItemEvent(
         type: "extension",
         id: "item-1",
         kind,
-        payload: payload as never,
+        payload,
         status: "pending",
         presentation: PRESENTATION,
         parentToolCallId: "parent-1",
@@ -161,7 +167,7 @@ function extensionItemEvent(
 
 function extensionStateEvent(
   threadId: string,
-  payload: unknown,
+  payload: JsonValue,
   kind: ExtensionKind = GOAL_KIND,
 ): HostDaemonEventEnvelope {
   return {
@@ -172,7 +178,7 @@ function extensionStateEvent(
       providerThreadId: "prov-1",
       scope: threadScope(),
       kind,
-      payload: payload as never,
+      payload,
     },
   };
 }

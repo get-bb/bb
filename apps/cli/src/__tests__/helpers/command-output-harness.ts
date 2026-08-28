@@ -1,60 +1,13 @@
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { Command } from "commander";
-import { createApiClient, type ApiClient } from "@bb/server-contract";
+import { z } from "zod";
+import type { JsonValue } from "@bb/domain";
 
 const readlineState = vi.hoisted(() => ({
   question: vi.fn(),
   close: vi.fn(),
 }));
 
-const serverClientState = vi.hoisted(() => ({
-  createClient: vi.fn(),
-}));
-
-vi.mock("../../client.js", async () => {
-  const { cliFetch } =
-    await vi.importActual<typeof import("../../client.js")>("../../client.js");
-  const { createBbSdk } =
-    await vi.importActual<typeof import("@bb/sdk/core")>("@bb/sdk/core");
-  const { createHttpTransport } =
-    await vi.importActual<typeof import("@bb/sdk/node")>("@bb/sdk/node");
-  const toResponse = (resolved: MockTransportResolved): Response =>
-    resolved instanceof Response
-      ? resolved
-      : new Response(JSON.stringify(resolved), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-  const createCliBbSdk = vi.fn((baseUrl: string) => {
-    const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
-    return createBbSdk({
-      transport: {
-        ...realTransport,
-        api: serverClientState.createClient(baseUrl)?.api ?? {},
-        readJson: (responsePromise: MockTransportPromise) =>
-          realTransport.readJson(responsePromise.then(toResponse)),
-        readVoid: (responsePromise: MockTransportPromise) =>
-          realTransport.readVoid(responsePromise.then(toResponse)),
-      },
-    });
-  });
-  return { cliFetch, createCliBbSdk };
-});
-
-vi.mock("node:readline/promises", () => ({
-  createInterface: vi.fn(() => ({
-    question: readlineState.question,
-    close: readlineState.close,
-  })),
-}));
-
-vi.mock("../../daemon.js", () => ({
-  resolveLocalHostId: vi.fn(async () => "host-test-001"),
-}));
-
-import { resolveLocalHostId } from "../../daemon.js";
-
-type ServerClient = ApiClient;
 type MockTransportResolved =
   | Response
   | object
@@ -63,17 +16,89 @@ type MockTransportResolved =
   | boolean
   | null
   | undefined;
-type MockTransportPromise = Promise<MockTransportResolved>;
 type ConsoleLogArgs = Parameters<typeof console.log>;
 export type CommandRegistrar = (program: Command) => void;
 
-interface ServerClientOverride {
-  api: object;
+interface ApiRequestArgs {
+  json?: JsonValue;
+  param?: Record<string, string>;
+  query?: Record<string, string>;
 }
 
-export const createClientMock = serverClientState.createClient;
+type ApiStubHandler = {
+  bivarianceHack(
+    args: ApiRequestArgs,
+  ): MockTransportResolved | Promise<MockTransportResolved>;
+}["bivarianceHack"];
+
+const serverApiHandlers = new Map<string, ApiStubHandler>();
+const jsonBodySchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonBodySchema),
+    z.record(z.string(), jsonBodySchema),
+  ]),
+);
+
+export const createClientMock = vi.fn();
 export const readlineMocks = readlineState;
-export const resolveLocalHostIdMock = vi.mocked(resolveLocalHostId);
+export const resolveLocalHostIdMock = vi.fn(async () => "host-test-001");
+
+function routeMatches(route: string, url: URL, method: string): boolean {
+  const routeParts = route.split(".");
+  const routeMethod = routeParts.pop();
+  if (routeMethod !== `$${method.toLowerCase()}`) return false;
+  const pathParts = url.pathname.split("/").filter(Boolean).slice(1);
+  if (routeParts.length !== pathParts.length) return false;
+  return routeParts.every(
+    (part, index) => part.startsWith(":") || part === pathParts[index],
+  );
+}
+
+function requestArgs(
+  route: string,
+  url: URL,
+  init: RequestInit,
+): ApiRequestArgs {
+  const routeParts = route.split(".");
+  routeParts.pop();
+  const pathParts = url.pathname.split("/").filter(Boolean).slice(1);
+  const args: ApiRequestArgs = {};
+  const params: Record<string, string> = {};
+  routeParts.forEach((part, index) => {
+    if (part.startsWith(":")) params[part.slice(1)] = pathParts[index]!;
+  });
+  if (Object.keys(params).length > 0) args.param = params;
+  const query = Object.fromEntries(url.searchParams.entries());
+  if (Object.keys(query).length > 0) args.query = query;
+  if (init.body !== undefined) {
+    args.json = jsonBodySchema.parse(JSON.parse(String(init.body)));
+  }
+  return args;
+}
+
+async function fetchStub(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const url = new URL(String(input));
+  if (url.pathname === "/status") {
+    return Response.json({ hostId: await resolveLocalHostIdMock() });
+  }
+  const route = [...serverApiHandlers.keys()].find((candidate) =>
+    routeMatches(candidate, url, init.method ?? "GET"),
+  );
+  const handler =
+    route === undefined ? undefined : serverApiHandlers.get(route);
+  if (route === undefined || handler === undefined) {
+    return Response.json({ ok: true });
+  }
+  const result = await handler(requestArgs(route, url, init));
+  return result instanceof Response ? result : Response.json(result);
+}
 
 export function setupCommandOutputTestEnvironment(): void {
   beforeEach(() => {
@@ -82,16 +107,10 @@ export function setupCommandOutputTestEnvironment(): void {
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit:${code ?? 0}`);
     });
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchStub);
 
     createClientMock.mockReset();
-    resolveLocalHostIdMock.mockClear();
+    resolveLocalHostIdMock.mockReset();
     resolveLocalHostIdMock.mockResolvedValue("host-test-001");
     Object.defineProperty(process.stdin, "isTTY", {
       value: true,
@@ -103,6 +122,17 @@ export function setupCommandOutputTestEnvironment(): void {
     });
     readlineState.question.mockReset();
     readlineState.close.mockReset();
+    readlineState.question.mockResolvedValue("no");
+
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      const text = Buffer.from(chunk).toString("utf8");
+      if (text.endsWith(" [y/N] ")) {
+        void Promise.resolve(readlineState.question(text)).then((answer) => {
+          process.stdin.emit("data", `${String(answer)}\n`);
+        });
+      }
+      return true;
+    });
 
     vi.stubEnv("BB_PROJECT_ID", undefined);
     vi.stubEnv("BB_THREAD_ID", undefined);
@@ -114,32 +144,11 @@ export function setupCommandOutputTestEnvironment(): void {
   });
 }
 
-function asServerClient(value: ServerClientOverride): ServerClient {
-  return Object.assign(createApiClient("http://server"), value);
-}
-
-type ApiStubHandler = (
-  ...args: never[]
-) => MockTransportResolved | MockTransportPromise;
-interface ApiStubNode {
-  [segment: string]: ApiStubNode | ApiStubHandler;
-}
-
 export function stubServerApi(handlers: Record<string, ApiStubHandler>): void {
-  const api: ApiStubNode = {};
+  serverApiHandlers.clear();
   for (const [path, handler] of Object.entries(handlers)) {
-    const segments = path.split(".");
-    let node = api;
-    for (let i = 0; i < segments.length - 1; i += 1) {
-      const segment = segments[i];
-      const existing = node[segment];
-      const child: ApiStubNode = typeof existing === "object" ? existing : {};
-      node[segment] = child;
-      node = child;
-    }
-    node[segments[segments.length - 1]] = handler;
+    serverApiHandlers.set(path, handler);
   }
-  createClientMock.mockReturnValue(asServerClient({ api }));
 }
 
 export function collectLogLines(logSpy: ReturnType<typeof vi.spyOn>): string[] {

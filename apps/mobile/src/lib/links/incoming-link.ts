@@ -42,10 +42,12 @@ export function isDeveloperRoutePath(path: string): boolean {
 
 const SCHEME_URL_PATTERN = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/iu;
 
-function splitPathAndSearch(rest: string): {
+interface PathAndSearch {
   pathname: string;
   search: string;
-} {
+}
+
+function splitPathAndSearch(rest: string): PathAndSearch {
   const withoutHash = rest.split("#", 1)[0] ?? "";
   const queryIndex = withoutHash.indexOf("?");
   const rawPath =

@@ -1,3 +1,4 @@
+import type { JsonValue } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   callPluginRpc,
@@ -27,7 +28,7 @@ describe("isAutomationEditRoutePath", () => {
 
 type FetchLike = Parameters<typeof callPluginRpc>[0];
 
-function jsonResponse(body: unknown, ok = true, status = 200) {
+function jsonResponse(body: JsonValue, ok = true, status = 200) {
   return {
     ok,
     status,
@@ -97,7 +98,8 @@ describe("callPluginRpc", () => {
 
   it("rejects cyclic and non-finite inputs before fetch", async () => {
     const fetchImpl = vi.fn<FetchLike>();
-    const cyclic: { self?: unknown } = {};
+    type CyclicInput = { self?: CyclicInput };
+    const cyclic: CyclicInput = {};
     cyclic.self = cyclic;
     await expect(
       callPluginRpc(fetchImpl, "demo", "cyclic", cyclic),

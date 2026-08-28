@@ -1,10 +1,15 @@
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { SVGProps } from "react";
 import type { MiniMapSlot } from "./paneContentSplitIndicator";
 
 const GLYPH_SIZE = 14;
 const GLYPH_PADDING = 1;
 const INNER = GLYPH_SIZE - 2 * GLYPH_PADDING;
 const OUTLINE_WIDTH = 1;
+const SVG_RENDERING_PROPERTY = "shapeRendering";
+const SVG_RENDERING_PROPS = {
+  [SVG_RENDERING_PROPERTY]: "crispEdges",
+} satisfies Pick<SVGProps<SVGSVGElement>, "shapeRendering">;
 
 interface SplitPaneMiniMapProps {
   slots: MiniMapSlot[];
@@ -43,7 +48,7 @@ export function SplitPaneMiniMap({
         !representsFocusedPane && "opacity-60",
         isWorking && "animate-shine-icon",
       )}
-      shapeRendering="crispEdges"
+      {...SVG_RENDERING_PROPS}
       role="img"
       aria-label={label}
     >

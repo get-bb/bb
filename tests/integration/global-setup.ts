@@ -10,12 +10,8 @@ const execFile = promisify(execFileCallback);
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
 
-function isExecExitCodeOne(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return false;
-  }
-
-  return Reflect.get(error, "code") === 1;
+function isExecExitCodeOne(error: Error): boolean {
+  return Object.getOwnPropertyDescriptor(error, "code")?.value === 1;
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -76,7 +72,7 @@ async function listOpenFilePids(tmpRoot: string): Promise<number[]> {
   } catch (error) {
     if (
       (isNodeError(error) && error.code === "ENOENT") ||
-      isExecExitCodeOne(error)
+      (error instanceof Error && isExecExitCodeOne(error))
     ) {
       return [];
     }

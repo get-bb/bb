@@ -84,6 +84,10 @@ interface DispatchOpenFailureToastArgs {
   description?: string;
 }
 
+interface OpenFailureToastOptions {
+  description?: string;
+}
+
 interface SupportedLineNumberArgs {
   columnNumber: number | null;
   contextKind: WorkspaceOpenTargetContextKind;
@@ -125,9 +129,9 @@ function getOpenUnavailableDescription(
 }
 
 function dispatchOpenFailureToast(args: DispatchOpenFailureToastArgs): void {
-  appToast.error(LOCAL_OPEN_FAILURE_TITLE, {
-    ...(args.description ? { description: args.description } : {}),
-  });
+  const options: OpenFailureToastOptions = {};
+  if (args.description) options.description = args.description;
+  appToast.error(LOCAL_OPEN_FAILURE_TITLE, options);
 }
 
 function getSupportedLocation(
@@ -309,7 +313,7 @@ export function useLocalOpenTargets(
         return true;
       } catch (error) {
         const description = error instanceof Error ? error.message : undefined;
-        dispatchOpenFailureToast({ ...(description ? { description } : {}) });
+        dispatchOpenFailureToast({ description });
         return false;
       }
     },

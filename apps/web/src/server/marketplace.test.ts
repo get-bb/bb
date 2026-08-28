@@ -27,7 +27,8 @@ function bucketOf(objects: Record<string, StoredObject>) {
     if (options?.onlyIf?.get("if-none-match") === httpEtag) return metadata;
     return { ...metadata, body: stored.body };
   };
-  return { get } as unknown as R2Bucket;
+  // SAFETY: The fake supplies the R2 get result contract that this test exercises.
+  return { get } as R2Bucket;
 }
 
 const bucket = bucketOf({

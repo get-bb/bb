@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
-import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { TERMINAL_DATA_MAX_BYTES, type Host } from "@bb/domain";
+import type { TerminalSession } from "@bb/server-contract";
 import {
   collectLogLines,
   collectLogPayloads,
@@ -16,7 +17,9 @@ import {
   resolveSendData,
 } from "../../commands/terminal.js";
 
-function makeTerminalSession(overrides: Record<string, unknown> = {}) {
+function makeTerminalSession(
+  overrides: Partial<TerminalSession> = {},
+): TerminalSession {
   return {
     id: "term-1",
     threadId: "thr-1",
@@ -36,13 +39,15 @@ function makeTerminalSession(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeHost(overrides: Record<string, unknown> = {}) {
+function makeHost(overrides: Partial<Host> = {}): Host {
   return {
     id: "host-1",
     name: "laptop",
     type: "persistent",
     status: "connected",
+    maxPermissionMode: "full",
     lastSeenAt: 1,
+    lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -383,7 +388,6 @@ describe("bb terminal command output", () => {
 
     expect(output).toHaveBeenCalledWith({
       param: { terminalId: "term-1" },
-      query: {},
     });
     expect(write).toHaveBeenCalledWith(Buffer.from("hello\n", "utf8"));
   });

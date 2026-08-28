@@ -21,15 +21,19 @@ async function waitFor(
 function createRecordingLogger() {
   const warnings: string[] = [];
   const errors: string[] = [];
-  return {
-    logger: {
-      warn: (_fields: Record<string, unknown>, message: string) => {
-        warnings.push(message);
-      },
-      error: (_fields: Record<string, unknown>, message: string) => {
-        errors.push(message);
-      },
+  type DaemonLogger = NonNullable<
+    NonNullable<Parameters<typeof acquireDaemonLock>[1]>["logger"]
+  >;
+  const logger: DaemonLogger = {
+    warn: (_fields, message: string) => {
+      warnings.push(message);
     },
+    error: (_fields, message: string) => {
+      errors.push(message);
+    },
+  };
+  return {
+    logger,
     warnings,
     errors,
   };

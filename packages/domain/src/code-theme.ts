@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { draculaLightCodeTheme } from "./code-themes/dracula-light.js";
 import { nordLightCodeTheme } from "./code-themes/nord-light.js";
-import { jsonObjectSchema, type JsonObject } from "./json-value.js";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "./json-value.js";
 
 export const DEFAULT_CODE_THEME_DARK = "pierre-dark";
 export const DEFAULT_CODE_THEME_LIGHT = "pierre-light";
@@ -23,9 +28,8 @@ const codeThemePairSchema = z
   .strict();
 export type CodeThemePair = z.infer<typeof codeThemePairSchema>;
 
-const vscodeThemeJsonSchema = jsonObjectSchema.refine(
-  (value) => typeof value.name === "string" && value.name.length > 0,
-  { message: "Code theme JSON must include a non-empty name" },
+const vscodeThemeJsonSchema = jsonObjectSchema.and(
+  z.object({ name: z.string().min(1) }),
 );
 type VscodeThemeJson = JsonObject & { name: string };
 
@@ -91,44 +95,61 @@ export function formatRegisteredCodeThemeName(
 
 const VSCODE_THEME_JSON_MAX_DEPTH = 32;
 
-function jsonDepthExceeds(value: unknown, maxDepth: number): boolean {
-  const visit = (node: unknown, depth: number): boolean => {
+function jsonDepthExceeds(value: JsonValue, maxDepth: number): boolean {
+  const visit = (node: JsonValue, depth: number): boolean => {
     if (depth > maxDepth) return true;
-    if (node === null || typeof node !== "object") return false;
     if (Array.isArray(node)) {
       return node.some((entry) => visit(entry, depth + 1));
     }
-    return Object.values(node).some((entry) => visit(entry, depth + 1));
+    const object = jsonObjectSchema.safeParse(node);
+    return (
+      object.success &&
+      Object.values(object.data).some((entry) => visit(entry, depth + 1))
+    );
   };
   return visit(value, 0);
 }
 
-export function parseVscodeThemeJson(value: unknown): VscodeThemeJson | null {
+export function parseVscodeThemeJson<T>(value: T): VscodeThemeJson | null {
   try {
-    if (jsonDepthExceeds(value, VSCODE_THEME_JSON_MAX_DEPTH)) return null;
-    const parsed = vscodeThemeJsonSchema.safeParse(value);
+    const parsedValue = jsonValueSchema.safeParse(value);
+    if (!parsedValue.success) return null;
+    if (jsonDepthExceeds(parsedValue.data, VSCODE_THEME_JSON_MAX_DEPTH)) {
+      return null;
+    }
+    const parsed = vscodeThemeJsonSchema.safeParse(parsedValue.data);
     if (!parsed.success) return null;
-    return parsed.data as VscodeThemeJson;
+    return parsed.data;
   } catch {
     return null;
   }
 }
 
+function isBuiltInPaletteId(
+  paletteId: string,
+): paletteId is keyof typeof builtInPaletteCodeThemes {
+  return Object.hasOwn(builtInPaletteCodeThemes, paletteId);
+}
+
 function paletteCodeThemeFallback(paletteId: string): CodeThemePair {
-  if (Object.hasOwn(builtInPaletteCodeThemes, paletteId)) {
-    return builtInPaletteCodeThemes[
-      paletteId as keyof typeof builtInPaletteCodeThemes
-    ];
+  if (isBuiltInPaletteId(paletteId)) {
+    return builtInPaletteCodeThemes[paletteId];
   }
   return builtInPaletteCodeThemes.default;
 }
 
-const builtInPaletteCodeThemeFiles: Partial<
-  Record<keyof typeof builtInPaletteCodeThemes, Record<string, JsonObject>>
-> = {
+const builtInPaletteCodeThemeFiles = {
   nord: { "bb:nord:light": nordLightCodeTheme },
   dracula: { "bb:dracula:light": draculaLightCodeTheme },
-};
+} satisfies Partial<
+  Record<keyof typeof builtInPaletteCodeThemes, Record<string, JsonObject>>
+>;
+
+function isBuiltInPaletteFileId(
+  paletteId: string,
+): paletteId is keyof typeof builtInPaletteCodeThemeFiles {
+  return Object.hasOwn(builtInPaletteCodeThemeFiles, paletteId);
+}
 
 export function stampRegisteredThemeName(
   name: string,
@@ -146,12 +167,9 @@ export function resolveCodeTheme(
   const dark = declared?.dark?.name ?? fallback.dark;
   const light = declared?.light?.name ?? fallback.light;
   const files: Record<string, JsonObject> = {};
-  const builtInFiles =
-    paletteId in builtInPaletteCodeThemeFiles
-      ? builtInPaletteCodeThemeFiles[
-          paletteId as keyof typeof builtInPaletteCodeThemeFiles
-        ]
-      : undefined;
+  const builtInFiles = isBuiltInPaletteFileId(paletteId)
+    ? builtInPaletteCodeThemeFiles[paletteId]
+    : undefined;
   if (builtInFiles !== undefined) {
     for (const [name, file] of Object.entries(builtInFiles)) {
       if (name === dark || name === light) {

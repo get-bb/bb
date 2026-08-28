@@ -522,7 +522,7 @@ function shouldUseExplicitEventParentToolCallId({
     return true;
   }
   return (
-    typeof eventTurnId !== "string" ||
+    eventTurnId === undefined ||
     state.suppressedAcceptedRootParentToolCallIdsByTurnId.get(eventTurnId) !==
       parentToolCallId
   );
@@ -584,8 +584,7 @@ function buildFlatProjectionData(
     const eventTurnId = getEventTurnId(decoded);
     const eventProviderThreadId = getEventProviderThreadId(decoded);
     const isAcceptedRootClientTurn =
-      typeof eventTurnId === "string" &&
-      acceptedRootClientTurnIds.has(eventTurnId);
+      eventTurnId !== undefined && acceptedRootClientTurnIds.has(eventTurnId);
     const decodedEventParentToolCallId = getEventParentToolCallId(decoded);
     if (
       decoded.type === "turn/started" &&

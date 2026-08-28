@@ -14,6 +14,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PluginComposerHostScopeProvider,
@@ -21,7 +22,11 @@ import {
   usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import {
+  ThreadDetailPromptArea,
+  defaultThreadDetailPromptAreaDependencies,
+  type ThreadDetailPromptAreaDependencies,
+} from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
   sendMessageMutateAsync: vi.fn(),
@@ -29,251 +34,223 @@ const mocks = vi.hoisted(() => ({
   updateQueuedMessageMutateAsync: vi.fn(),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
-  return { ...actual, useNavigate: () => vi.fn() };
-});
+const queryMocks = {
+  /* SAFETY: The fixture contains only valid queued messages for this test. */
+  queuedMessages: [] as ThreadQueuedMessage[],
+};
 
-vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
-  FollowUpPromptBox: ({
-    composer,
-    pendingInteraction = null,
-    stack,
-  }: {
-    composer: {
-      message: string;
-      onChangeMessage: (message: string, mentions: []) => void;
-      onSubmit: () => void;
-    } | null;
-    pendingInteraction?: ReactNode;
-    stack: ReactNode;
-  }) => (
-    <div data-testid="follow-up-prompt-box">
-      <div data-testid="prompt-stack">
-        {stack}
-        {pendingInteraction}
+/* SAFETY: The fixture replaces each production dependency with a focused test implementation. */
+const promptAreaDependencies: ThreadDetailPromptAreaDependencies =
+  Object.assign({}, defaultThreadDetailPromptAreaDependencies, {
+    FollowUpPromptBox: ({
+      composer,
+      pendingInteraction = null,
+      stack,
+    }: {
+      composer: {
+        message: string;
+        onChangeMessage: (message: string, mentions: []) => void;
+        onSubmit: () => void;
+      } | null;
+      pendingInteraction?: ReactNode;
+      stack: ReactNode;
+    }) => (
+      <div data-testid="follow-up-prompt-box">
+        <div data-testid="prompt-stack">
+          {stack}
+          {pendingInteraction}
+        </div>
+        {composer ? (
+          <div hidden={pendingInteraction !== null}>
+            <input
+              aria-label="Composer message"
+              value={composer.message}
+              onChange={(event) =>
+                composer.onChangeMessage(event.currentTarget.value, [])
+              }
+            />
+            <button type="button" onClick={composer.onSubmit}>
+              Submit composer
+            </button>
+          </div>
+        ) : null}
       </div>
-      {composer ? (
-        <div hidden={pendingInteraction !== null}>
-          <input
-            aria-label="Composer message"
-            value={composer.message}
-            onChange={(event) =>
-              composer.onChangeMessage(event.currentTarget.value, [])
+    ),
+    ThreadEnvironmentSummary: () => <div />,
+    QueuedMessagesList: ({
+      inlineEditor,
+      queuedMessages,
+      onEdit,
+    }: {
+      inlineEditor?: { content: ReactNode; onDismiss: () => void };
+      queuedMessages: readonly ThreadQueuedMessage[];
+      onEdit: (request: {
+        queuedMessageId: string;
+        queuedMessageIndex: number;
+      }) => void;
+    }) => (
+      <div data-testid="queued-message-list">
+        {queuedMessages.map((message, index) => (
+          <button
+            key={message.id}
+            type="button"
+            onClick={() =>
+              onEdit({ queuedMessageId: message.id, queuedMessageIndex: index })
             }
-          />
-          <button type="button" onClick={composer.onSubmit}>
-            Submit composer
+          >
+            Edit queued message {index + 1}
           </button>
-        </div>
-      ) : null}
-    </div>
-  ),
-}));
-
-vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
-  ThreadEnvironmentSummary: () => <div />,
-}));
-
-vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
-  QueuedMessagesList: ({
-    inlineEditor,
-    queuedMessages,
-    onEdit,
-  }: {
-    inlineEditor?: { content: ReactNode; onDismiss: () => void };
-    queuedMessages: readonly ThreadQueuedMessage[];
-    onEdit: (request: {
-      queuedMessageId: string;
-      queuedMessageIndex: number;
-    }) => void;
-  }) => (
-    <div data-testid="queued-message-list">
-      {queuedMessages.map((message, index) => (
-        <button
-          key={message.id}
-          type="button"
-          onClick={() =>
-            onEdit({ queuedMessageId: message.id, queuedMessageIndex: index })
-          }
-        >
-          Edit queued message {index + 1}
-        </button>
-      ))}
-      {inlineEditor ? (
-        <div data-testid="inline-queued-message-editor">
-          {inlineEditor.content}
-          <button type="button" onClick={inlineEditor.onDismiss}>
-            Cancel queued edit
-          </button>
-        </div>
-      ) : null}
-    </div>
-  ),
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
-  ThreadBackgroundCommandsCard: () => null,
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
-  ThreadGoalCard: () => null,
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
-  ThreadPromptContextBanner: () => null,
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
-  ThreadPromptModeCard: () => null,
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
-  ThreadTodoCard: () => null,
-}));
-
-vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
-  ThreadWorkflowCard: () => null,
-}));
-
-vi.mock(
-  "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
-  () => ({
+        ))}
+        {inlineEditor ? (
+          <div data-testid="inline-queued-message-editor">
+            {inlineEditor.content}
+            <button type="button" onClick={inlineEditor.onDismiss}>
+              Cancel queued edit
+            </button>
+          </div>
+        ) : null}
+      </div>
+    ),
+    ThreadBackgroundCommandsCard: () => null,
+    ThreadGoalCard: () => null,
+    ThreadPromptContextBanner: () => null,
+    ThreadPromptModeCard: () => null,
+    ThreadTodoCard: () => null,
+    ThreadWorkflowCard: () => null,
     ThreadPendingInteractionBanner: () => (
       <div data-testid="pending-interaction" />
     ),
-  }),
-);
-
-vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
-  PluginPendingInteractionComposer: () => null,
-}));
-
-vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: vi.fn() },
-}));
-
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
-    hasMore: false,
-    isError: false,
-    isLoading: false,
-    isLoadingMore: false,
-    loadMore: vi.fn(),
-    suggestions: [],
-    trigger: null,
-  }),
-}));
-
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
-    isError: false,
-    isLoading: false,
-    setQuery: vi.fn(),
-    suggestions: [],
-  }),
-}));
-
-vi.mock("@/hooks/useThreadCreationOptions", () => ({
-  useThreadCreationOptions: () => ({
-    activeModel: null,
-    executionInputSources: {},
-    hasMultipleProviders: false,
-    isLoadingModels: false,
-    modelLoadError: null,
-    modelLoadFailed: false,
-    modelOptions: [],
-    moreModelOptions: [],
-    permissionMode: "auto",
-    permissionModeOptions: [],
-    providerOptions: [],
-    reasoningLevel: "medium",
-    reasoningOptions: [],
-    selectedModel: "gpt-5",
-    selectedProviderComposerActions: [],
-    selectedProviderDisplayName: "Codex",
-    selectedProviderId: "codex",
-    serviceTier: undefined,
-    serviceTierSupportByProvider: {},
-    setPermissionMode: vi.fn(),
-    setReasoningLevel: vi.fn(),
-    setSelectedModel: vi.fn(),
-    setServiceTier: vi.fn(),
-    supportsPermissionModeSelection: true,
-    supportsServiceTier: false,
-  }),
-}));
-
-vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-}));
-
-vi.mock("@/hooks/mutations/thread-runtime-mutations", () => {
-  const idleMutation = () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    mutateAsync: vi.fn(),
-    variables: null,
-  });
-  return {
-    useCancelThreadPlan: idleMutation,
-    useClearThreadGoal: idleMutation,
-    useCreateThreadQueuedMessage: idleMutation,
-    useDeleteThreadQueuedMessage: idleMutation,
-    useReorderThreadQueuedMessage: idleMutation,
-    useSetThreadQueuedMessageGroupBoundary: idleMutation,
-    useSendThreadQueuedMessage: idleMutation,
-    useStopThread: idleMutation,
-    useUpdateThreadQueuedMessage: () => ({
-      isPending: false,
-      mutateAsync: mocks.updateQueuedMessageMutateAsync,
-    }),
-  };
-});
-
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useUnarchiveThread: () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    variables: null,
-  }),
-}));
-
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useProjectDisplayName: () => null,
-}));
-
-vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
-  useThreadDefaultExecutionOptions: () => ({
-    data: {
-      model: "gpt-5",
+    PluginPendingInteractionComposer: () => null,
+    appToast: { error: vi.fn() },
+    useThreadCreationOptions: () => ({
+      activeModel: null,
+      executionInputSources: {},
+      hasMultipleProviders: false,
+      isLoadingModels: false,
+      modelLoadError: null,
+      modelLoadFailed: false,
+      modelOptions: [],
+      moreModelOptions: [],
       permissionMode: "auto",
+      permissionModeOptions: [],
+      providerOptions: [],
       reasoningLevel: "medium",
-      serviceTier: "default",
-      source: "client/turn/requested",
-    },
-    isError: false,
-  }),
-}));
-
-const queryMocks = vi.hoisted(() => ({
-  queuedMessages: [] as ThreadQueuedMessage[],
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
-    interactions.at(-1) ?? null,
-  useThreadPromptHistory: () => ({ data: [] }),
-  useThreadQueuedMessages: () => ({ data: queryMocks.queuedMessages }),
-}));
+      reasoningOptions: [],
+      selectedModel: "gpt-5",
+      selectedProviderComposerActions: [],
+      selectedProviderDisplayName: "Codex",
+      selectedProviderId: "codex",
+      serviceTier: undefined,
+      serviceTierSupportByProvider: {},
+      setPermissionMode: vi.fn(),
+      setReasoningLevel: vi.fn(),
+      setSelectedModel: vi.fn(),
+      setServiceTier: vi.fn(),
+      supportsPermissionModeSelection: true,
+      supportsServiceTier: false,
+    }),
+    useCancelThreadPlan: () => ({
+      isPending: false,
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      variables: null,
+    }),
+    useClearThreadGoal: () => ({
+      isPending: false,
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      variables: null,
+    }),
+    useCreateThreadQueuedMessage: () => ({
+      isPending: false,
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      variables: null,
+    }),
+    useStopThread: () => ({
+      isPending: false,
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      variables: null,
+    }),
+    useUnarchiveThread: () => ({
+      isPending: false,
+      mutate: vi.fn(),
+      variables: null,
+    }),
+    useProjectDisplayName: () => null,
+    useThreadDefaultExecutionOptions: () => ({
+      data: {
+        model: "gpt-5",
+        permissionMode: "auto",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      },
+      isError: false,
+    }),
+    getLatestPendingInteraction: (
+      interactions: readonly PendingInteraction[],
+    ) => interactions.at(-1) ?? null,
+    useThreadQueuedMessages: () => ({ data: queryMocks.queuedMessages }),
+    useThreadPromptHistory: () => ({ data: [] }),
+    useComposerAttachmentUploads: () => ({
+      bottomAttachmentError: null,
+      setBottomAttachmentError: vi.fn(),
+      handleAttachBottomFiles: vi.fn(),
+      isAttachingBottomFiles: false,
+      inlineAttachmentError: null,
+      setInlineAttachmentError: vi.fn(),
+      handleAttachInlineFiles: vi.fn(),
+      isAttachingInlineFiles: false,
+    }),
+    useDraftAttachmentUploads: () => ({
+      attachmentError: null,
+      setAttachmentError: vi.fn(),
+      handleAttachFiles: vi.fn(),
+      isAttachingFiles: false,
+    }),
+    useQueuedMessageActions: () => ({
+      processingQueuedMessage: null,
+      queuedMessageActionPending: false,
+      isUpdateQueuedMessagePending: false,
+      sendQueuedMessageById: vi.fn(),
+      handleSendQueuedImmediately: vi.fn(),
+      handleSaveInlineQueuedMessage: vi.fn(),
+      handleDeleteQueuedMessage: vi.fn(),
+      handleReorderQueuedMessage: vi.fn(),
+      handleSetQueuedMessageGroupBoundary: vi.fn(),
+    }),
+    useComposerTypeahead: () => ({
+      typeaheadConfig: {
+        mention: {
+          triggers: [],
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          onQueryChange: vi.fn(),
+          resolveLink: () => null,
+        },
+        command: {
+          trigger: null,
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          hasMore: false,
+          isLoadingMore: false,
+          loadMore: vi.fn(),
+          onQueryChange: vi.fn(),
+          onEditorFocus: vi.fn(),
+        },
+      },
+      promptActions: [],
+    }),
+  });
 
 const PROJECT_ID = "proj_keystrokes";
 
 function makeThread(id: string): ThreadWithRuntime {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     archivedAt: null,
     environmentId: null,
     id,
@@ -360,42 +337,45 @@ function buildPromptArea({
   pendingInteractions = [],
 }: RenderPromptAreaArgs) {
   return (
-    <PluginComposerHostScopeProvider>
-      <ShellProbe />
-      <PublishedHostDraftProbe />
-      <ThreadDetailPromptArea
-        activeBackgroundAgentCount={0}
-        activeBackgroundCommands={[]}
-        activePromptMode={null}
-        activeWorkflows={[]}
-        canUseGitUi={false}
-        childPendingInteractions={[]}
-        childThreadsSection={null}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
-        environmentGoneStatus={null}
-        goal={null}
-        modelFallback={null}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
-        parentThreadSection={null}
-        pendingInteractions={pendingInteractions}
-        pendingInteractionsInitialLoading={false}
-        pendingTodos={null}
-        projectId={PROJECT_ID}
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
-        resolveMentionLink={() => null}
-        sendMessage={{
-          isPending: false,
-          mutateAsync: mocks.sendMessageMutateAsync,
-        }}
-        steerActiveThreadOnEnter={false}
-        thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
-      />
-    </PluginComposerHostScopeProvider>
+    <MemoryRouter>
+      <PluginComposerHostScopeProvider>
+        <ShellProbe />
+        <PublishedHostDraftProbe />
+        <ThreadDetailPromptArea
+          activeBackgroundAgentCount={0}
+          activeBackgroundCommands={[]}
+          activePromptMode={null}
+          activeWorkflows={[]}
+          canUseGitUi={false}
+          childPendingInteractions={[]}
+          childThreadsSection={null}
+          composerFocusRequestNonce={0}
+          contextBannerMergeBase={null}
+          environmentGoneStatus={null}
+          goal={null}
+          modelFallback={null}
+          isEnvironmentActionPending={false}
+          onChangedFileClick={vi.fn()}
+          parentThreadSection={null}
+          pendingInteractions={pendingInteractions}
+          pendingInteractionsInitialLoading={false}
+          pendingTodos={null}
+          projectId={PROJECT_ID}
+          pullRequest={null}
+          pullRequestMergeMethod="squash"
+          resolveMentionLink={() => null}
+          sendMessage={{
+            isPending: false,
+            mutateAsync: mocks.sendMessageMutateAsync,
+          }}
+          steerActiveThreadOnEnter={false}
+          thread={thread}
+          workspaceChangedFilesSection={null}
+          workspaceStatusPending={false}
+          dependencies={promptAreaDependencies}
+        />
+      </PluginComposerHostScopeProvider>
+    </MemoryRouter>
   );
 }
 
@@ -404,9 +384,12 @@ function renderPromptArea(args: RenderPromptAreaArgs) {
 }
 
 function getBottomComposerInput(): HTMLInputElement {
-  return screen.getByRole("textbox", {
-    name: "Composer message",
-  }) as HTMLInputElement;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByRole(
+    "textbox",
+    {
+      name: "Composer message",
+    },
+  ) as HTMLInputElement;
 }
 
 let threadCounter = 0;
@@ -522,9 +505,10 @@ describe("ThreadDetailPromptArea published composer host", () => {
       "Already queued",
     );
 
-    const inlineInput = within(
-      screen.getByTestId("inline-queued-message-editor"),
-    ).getByRole("textbox", { name: "Composer message" }) as HTMLInputElement;
+    const inlineInput =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ within(
+        screen.getByTestId("inline-queued-message-editor"),
+      ).getByRole("textbox", { name: "Composer message" }) as HTMLInputElement;
     const typed = "Already queued and refined";
     for (
       let index = "Already queued".length + 1;

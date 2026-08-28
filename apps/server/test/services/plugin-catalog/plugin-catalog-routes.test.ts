@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
+import type { JsonValue } from "@bb/domain";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
@@ -38,7 +39,7 @@ describe("plugin catalog routes", () => {
   function catalogApp(
     fetchImpl?: Parameters<typeof createPluginCatalogService>[0]["fetch"],
   ) {
-    const catalog = createPluginCatalogService({
+    const options = {
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
@@ -55,8 +56,10 @@ describe("plugin catalog routes", () => {
           detail: "no registry in this test",
         }),
       },
-      ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
-    });
+    } satisfies Parameters<typeof createPluginCatalogService>[0];
+    const catalog = createPluginCatalogService(
+      fetchImpl === undefined ? options : { ...options, fetch: fetchImpl },
+    );
     const app = new Hono();
     registerPluginCatalogRoutes(app, catalog);
     return { app, catalog };
@@ -157,7 +160,7 @@ describe("plugin catalog routes", () => {
   describe("marketplace routes", () => {
     const ACME_URL = "https://acme.test/marketplace.json";
 
-    function acmeCatalog(): unknown {
+    function acmeCatalog(): import("../../../src/services/plugin-catalog/marketplace-manifest.js").MarketplaceManifest {
       return {
         schemaVersion: 1,
         name: "acme-plugins",
@@ -191,7 +194,7 @@ describe("plugin catalog routes", () => {
     async function postJson(
       app: ReturnType<typeof catalogApp>["app"],
       path: string,
-      body: unknown,
+      body: JsonValue,
     ): Promise<Response> {
       return app.request(path, {
         method: "POST",

@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  threadDeltaNotificationParamsSchema,
+  type ThreadDelta,
+} from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
 
 import { handleLine } from "./bridge.js";
 
@@ -22,6 +26,8 @@ const sessionOptions = {
   permissionEscalation: null,
 } as const;
 
+const threadStartResultSchema = z.object({ providerThreadId: z.string() });
+
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
 
@@ -34,22 +40,28 @@ function delegationDeltas(): DelegationLifecycle[] {
   const found: DelegationLifecycle[] = [];
   for (const message of harness.messages) {
     if (message.method !== "thread/delta") continue;
-    const params = message.params as
-      | { threadId?: unknown; deltas?: unknown }
-      | undefined;
-    if (params?.threadId !== THREAD_ID || !Array.isArray(params.deltas)) {
+    const params = threadDeltaNotificationParamsSchema.safeParse(
+      message.params,
+    );
+    if (!params.success || params.data.threadId !== THREAD_ID) {
       continue;
     }
-    for (const delta of params.deltas as ThreadDelta[]) {
-      if (
-        (delta.kind === "item.open" || delta.kind === "item.close") &&
-        delta.item.type === "delegation"
-      ) {
-        found.push(delta as DelegationLifecycle);
+    for (const delta of params.data.deltas) {
+      if (isDelegationLifecycle(delta)) {
+        found.push(delta);
       }
     }
   }
   return found;
+}
+
+function isDelegationLifecycle(
+  delta: ThreadDelta,
+): delta is DelegationLifecycle {
+  return (
+    (delta.kind === "item.open" || delta.kind === "item.close") &&
+    delta.item.type === "delegation"
+  );
 }
 
 async function waitForDelegationDeltas(
@@ -98,12 +110,13 @@ it("settles the open delegation as failed when the app-server child dies", async
     options: { ...sessionOptions },
   });
   const startResponse = await harness.waitForResponse(1);
-  const providerThreadId = (
-    startResponse.result as { providerThreadId: string } | undefined
-  )?.providerThreadId;
-  if (typeof providerThreadId !== "string") {
+  const providerThread = threadStartResultSchema.safeParse(
+    startResponse.result,
+  );
+  if (!providerThread.success) {
     throw new Error(`thread/start failed: ${JSON.stringify(startResponse)}`);
   }
+  const providerThreadId = providerThread.data.providerThreadId;
 
   harness.sendRequest(2, "turn/start", {
     threadId: THREAD_ID,

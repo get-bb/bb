@@ -30,6 +30,7 @@ import {
 } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
 import type { TerminalCreateTarget } from "@bb/server-contract";
+import type { TerminalQueryScope } from "@/hooks/queries/query-keys";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;
@@ -230,18 +231,18 @@ export function useThreadTerminalController({
       enabled: isPanelOpen && terminalTargetKind === "environment",
     },
   );
-  const globalTerminalsQuery = useTerminals(
-    target.kind === "host_path"
-      ? {
-          kind: "host_path",
-          hostId: target.hostId,
-          ...(target.cwd === null ? {} : { cwd: target.cwd }),
-        }
-      : null,
-    {
-      enabled: isPanelOpen && terminalTargetKind === "host_path",
-    },
-  );
+  let globalTerminalScope: Parameters<typeof useTerminals>[0] = null;
+  if (target.kind === "host_path") {
+    const hostPathScope: Extract<TerminalQueryScope, { kind: "host_path" }> = {
+      kind: "host_path",
+      hostId: target.hostId,
+    };
+    if (target.cwd !== null) hostPathScope.cwd = target.cwd;
+    globalTerminalScope = hostPathScope;
+  }
+  const globalTerminalsQuery = useTerminals(globalTerminalScope, {
+    enabled: isPanelOpen && terminalTargetKind === "host_path",
+  });
   const terminalsQuery =
     terminalTargetKind === "thread"
       ? threadTerminalsQuery

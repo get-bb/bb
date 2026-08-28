@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { ThreadEvent } from "@bb/domain";
 import {
   experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
@@ -24,6 +25,8 @@ const sessionOptions = {
   approvalReviewer: null,
   permissionEscalation: null,
 } as const;
+
+const threadStartResultSchema = z.object({ providerThreadId: z.string() });
 
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
@@ -52,13 +55,11 @@ async function startSession(): Promise<string> {
     options: { ...sessionOptions },
   });
   const response = await harness.waitForResponse(1);
-  const providerThreadId = (
-    response.result as { providerThreadId: string } | undefined
-  )?.providerThreadId;
-  if (typeof providerThreadId !== "string") {
+  const parsedResult = threadStartResultSchema.safeParse(response.result);
+  if (!parsedResult.success) {
     throw new Error(`thread/start failed: ${JSON.stringify(response)}`);
   }
-  return providerThreadId;
+  return parsedResult.data.providerThreadId;
 }
 
 beforeEach(() => {

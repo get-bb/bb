@@ -1,15 +1,25 @@
 declare const __BB_PLUGIN_ID__: string | undefined;
 
-export function usePortalScopeProps(): {
+interface PortalScopeProps {
   "data-bb-portaled-overlay": "";
   "data-bb-plugin-root"?: "";
   "data-bb-plugin"?: string;
-} {
-  const pluginId =
-    typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;
-  return {
+}
+
+function readPluginId(): string | undefined {
+  try {
+    return __BB_PLUGIN_ID__;
+  } catch {
+    return undefined;
+  }
+}
+
+export function usePortalScopeProps(): PortalScopeProps {
+  const props: PortalScopeProps = {
     "data-bb-portaled-overlay": "",
     "data-bb-plugin-root": "",
-    ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}),
   };
+  const pluginId = readPluginId();
+  if (pluginId !== undefined) props["data-bb-plugin"] = pluginId;
+  return props;
 }

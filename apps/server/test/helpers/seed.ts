@@ -24,6 +24,7 @@ import {
 } from "@bb/domain";
 import type {
   EnvironmentStatus,
+  JsonObject,
   PermissionMode,
   PromptInput,
   RecordedPermissionMode,
@@ -51,7 +52,7 @@ interface SeedEventArgs<TType extends ThreadEventType> {
 
 interface SeedStoredEventArgs {
   createdAt?: number;
-  data: Record<string, unknown>;
+  data: JsonObject;
   environmentId?: string | null;
   itemId?: string | null;
   itemKind?: ThreadEventItemType | null;
@@ -80,14 +81,15 @@ export function seedHost(
     type?: "persistent";
   } = {},
 ) {
-  return upsertHost(deps.db, deps.hub, {
-    ...(args.connectMachineId !== undefined
-      ? { connectMachineId: args.connectMachineId }
-      : {}),
+  const hostArgs: Parameters<typeof upsertHost>[2] = {
     id: args.id,
     name: args.name ?? "Test Host",
     type: args.type ?? "persistent",
-  });
+  };
+  if (args.connectMachineId !== undefined) {
+    hostArgs.connectMachineId = args.connectMachineId;
+  }
+  return upsertHost(deps.db, deps.hub, hostArgs);
 }
 
 export function seedHostSession(

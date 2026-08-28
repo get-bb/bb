@@ -59,11 +59,11 @@ function sanitizeErrorMessage(raw: string): string | null {
 }
 
 function resolveRecordingErrorMessage(
-  error: unknown,
+  cause: unknown,
   hasPreferredAudioInput = false,
 ): string {
-  if (error instanceof DOMException) {
-    switch (error.name) {
+  if (cause instanceof DOMException) {
+    switch (cause.name) {
       case "NotAllowedError":
       case "SecurityError":
         return "Microphone permission denied";
@@ -81,8 +81,8 @@ function resolveRecordingErrorMessage(
         return "Failed to start voice recording";
     }
   }
-  if (error instanceof Error && error.message.trim().length > 0) {
-    const message = sanitizeErrorMessage(error.message);
+  if (cause instanceof Error && cause.message.trim().length > 0) {
+    const message = sanitizeErrorMessage(cause.message);
     if (message) {
       return message;
     }
@@ -91,10 +91,11 @@ function resolveRecordingErrorMessage(
 }
 
 function resolvePreferredAudioMimeType(): string | null {
-  if (typeof MediaRecorder === "undefined") return null;
+  const MediaRecorderConstructor = globalThis.MediaRecorder;
+  if (!MediaRecorderConstructor) return null;
   const candidates = ["audio/webm", "audio/mp4", "audio/ogg"];
   for (const candidate of candidates) {
-    if (MediaRecorder.isTypeSupported(candidate)) {
+    if (MediaRecorderConstructor.isTypeSupported(candidate)) {
       return candidate;
     }
   }
@@ -145,18 +146,21 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   }, []);
 
   const requestRecordingWakeLock = useCallback(() => {
+    const browserWindow = globalThis.window;
+    const browserNavigator = globalThis.navigator;
+    const browserDocument = globalThis.document;
     if (
-      typeof window === "undefined" ||
-      typeof navigator === "undefined" ||
-      typeof document === "undefined" ||
-      !("wakeLock" in navigator) ||
-      window.isSecureContext === false ||
-      document.visibilityState !== "visible"
+      !browserWindow ||
+      !browserNavigator ||
+      !browserDocument ||
+      !("wakeLock" in browserNavigator) ||
+      browserWindow.isSecureContext === false ||
+      browserDocument.visibilityState !== "visible"
     ) {
       return;
     }
 
-    const wakeLock = navigator.wakeLock;
+    const wakeLock = browserNavigator.wakeLock;
     if (!wakeLock) {
       return;
     }

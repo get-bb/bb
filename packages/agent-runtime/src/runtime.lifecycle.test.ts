@@ -82,7 +82,7 @@ describe("createAgentRuntime lifecycle", () => {
         })
         .then(
           (result) => ({ status: "resolved" as const, result }),
-          (error: unknown) => ({ status: "rejected" as const, error }),
+          (error: Error) => ({ status: "rejected" as const, error }),
         );
       void startOutcome.then(() => {
         settled = true;

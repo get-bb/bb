@@ -26,10 +26,10 @@ const DEFAULT_ROOT_FONT_SIZE_PX = 16;
 
 function isCompactPromptShellWidth(width: number): boolean {
   const parsedRootFontSize =
-    typeof window === "undefined"
+    globalThis.window === undefined
       ? Number.NaN
       : Number.parseFloat(
-          window.getComputedStyle(document.documentElement).fontSize,
+          globalThis.window.getComputedStyle(document.documentElement).fontSize,
         );
   const rootFontSize = Number.isFinite(parsedRootFontSize)
     ? parsedRootFontSize

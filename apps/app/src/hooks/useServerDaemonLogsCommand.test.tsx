@@ -4,11 +4,16 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useEffect } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type AppDefaultKeybinding } from "@bb/domain";
+import type { AppDefaultKeybinding } from "@bb/domain";
+import type { BbDesktopInfo } from "@bb/desktop-contract";
 import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { useServerDaemonLogsCommand } from "./useServerDaemonLogsCommand";
 
 const LOGS_BINDING: AppDefaultKeybinding = {
@@ -19,27 +24,20 @@ const LOGS_BINDING: AppDefaultKeybinding = {
 };
 
 const openServerDaemonLogs = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-const testState = vi.hoisted(() => ({ available: false }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings, showKeyboardHints: false },
-      keybindings: [],
-      defaultKeybindings: [LOGS_BINDING],
-    },
-  }),
-}));
-
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => ({
+function makeDesktopInfo(serverDaemonLogsAvailable: boolean): BbDesktopInfo {
+  return {
+    downloadState: "idle",
+    lastCheckedAt: null,
+    latestVersion: null,
+    pendingVersion: null,
     platform: "macos",
-    getInfo: () =>
-      Promise.resolve({ serverDaemonLogsAvailable: testState.available }),
-    onChange: () => () => undefined,
-    openServerDaemonLogs,
-  }),
-}));
+    serverDaemonLogsAvailable,
+    updateAvailable: false,
+    updateDownloaded: false,
+    version: "0.0.0",
+  };
+}
 
 let runner: ReturnType<typeof useAppCommandRunner> | null = null;
 
@@ -53,13 +51,27 @@ function Harness() {
 }
 
 function renderHarness(available: boolean) {
-  testState.available = available;
-  render(
-    <MemoryRouter>
-      <AppCommandProvider>
-        <Harness />
-      </AppCommandProvider>
-    </MemoryRouter>,
+  const desktopApi = createBbDesktopApi(makeDesktopInfo(available));
+  desktopApi.openServerDaemonLogs = openServerDaemonLogs;
+  window.bbDesktop = desktopApi;
+  const { queryClient, wrapper } = createQueryClientTestHarness();
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      defaultKeybindings: [LOGS_BINDING],
+      keybindings: [],
+    }),
+  );
+  return render(
+    wrapper({
+      children: (
+        <MemoryRouter>
+          <AppCommandProvider>
+            <Harness />
+          </AppCommandProvider>
+        </MemoryRouter>
+      ),
+    }),
   );
 }
 
@@ -76,6 +88,7 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  delete window.bbDesktop;
   runner = null;
   vi.clearAllMocks();
 });

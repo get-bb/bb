@@ -1,6 +1,6 @@
 type ImageSize = { width: number; height: number };
 
-const IMAGE_SIZES: Record<string, ImageSize> = {
+const IMAGE_SIZES = {
   "/blog/an-agentic-ide-that-builds-itself/header.png": {
     width: 680,
     height: 272,
@@ -17,8 +17,10 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
-};
+} satisfies Record<string, ImageSize>;
 
 export function getImageSize(src: string): ImageSize | undefined {
-  return IMAGE_SIZES[src];
+  return Object.entries(IMAGE_SIZES).find(
+    ([imagePath]) => imagePath === src,
+  )?.[1];
 }

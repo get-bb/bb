@@ -20,8 +20,9 @@ import {
 } from "@testing-library/react";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
@@ -33,7 +34,9 @@ import {
 } from "@/lib/plugin-slots";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
+  defaultThreadDetailPromptAreaDependencies,
   ThreadDetailPromptArea,
+  type ThreadDetailPromptAreaDependencies,
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 
@@ -41,25 +44,31 @@ const mocks = vi.hoisted(() => ({
   cancelThreadPlanMutate: vi.fn(),
   clearThreadGoalMutate: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
-  defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
+  defaultExecutionOptions:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
-  navigate: vi.fn(),
-  pluginComposerHost: null as PluginComposerHost | null,
+  pluginComposerHost:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ null as PluginComposerHost | null,
   promptDraft: {
     addAttachment: vi.fn(),
+    addQuote: vi.fn(),
     attachments: [],
+    clear: vi.fn(),
     clearIfCurrentMatches: vi.fn(),
     getCurrent: vi.fn(),
     mentions: [],
     removeAttachment: vi.fn(),
     restoreIfEmpty: vi.fn(),
+    setAttachments: vi.fn(),
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),
     storageKey: "bb.promptbox.contents-proj_1-thr_1-3",
     subscribe: vi.fn(() => () => {}),
     text: "",
+    value: "",
   },
-  queuedMessages: [] as ThreadQueuedMessage[],
+  queuedMessages:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as ThreadQueuedMessage[],
   reorderQueuedMessageMutateAsync: vi.fn(),
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
@@ -74,216 +83,181 @@ const mocks = vi.hoisted(() => ({
   useThreadQueuedMessages: vi.fn(),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
-  return {
-    ...actual,
-    useNavigate: () => mocks.navigate,
-  };
-});
-
-vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
-  const { ComposerBannersSlot } = await vi.importActual<
-    typeof import("@/components/plugin/PluginComposerBanners")
-  >("@/components/plugin/PluginComposerBanners");
-  return {
-    FollowUpPromptBox: ({
-      attachments,
-      composer,
-      execution,
-      executionReadOnly,
-      pendingInteraction,
-      permission,
-      permissionReadOnly,
-      pluginComposerHost,
-      showScrollToBottomButton,
-      stack,
-      suppressPluginComposerCustomizations,
-      textEffects,
-    }: {
-      attachments: {
-        items: readonly unknown[];
-        onAttachFiles: (files: File[]) => void | Promise<void>;
-      };
-      composer: {
-        message: string;
-        onChangeMessage: (message: string, mentions: []) => void;
-        onEscape?: () => void;
-        onSubmit: () => void;
-        submitTitle?: string;
-        submitMode: { kind: string; reason?: string };
-      } | null;
-      execution: {
-        footerAction?: {
-          label: string;
-          onClick: () => void;
-        };
-        model: {
-          active?: { model: string } | null;
-        };
-        reasoning: { value: string };
-        serviceTier?: { value?: string };
-      };
-      executionReadOnly?: boolean;
-      pendingInteraction?: ReactNode;
-      permission: { value?: string };
-      permissionReadOnly?: boolean;
-      pluginComposerHost?: PluginComposerHost | null;
-      showScrollToBottomButton?: boolean;
-      stack: ReactNode;
-      suppressPluginComposerCustomizations?: boolean;
-      textEffects?: readonly {
-        effect: { className: string };
-      }[];
-    }) => (
-      <div data-testid="follow-up-prompt-box">
-        {}
-        <div data-testid="prompt-stack">
-          {pluginComposerHost ? (
-            <ComposerBannersSlot
-              view={{
-                scope: pluginComposerHost.scope,
-                layout: "expanded",
-                draft: { text: "", isEmpty: true, attachmentCount: 0 },
-                run: { isRunning: false, isSubmitting: false },
-              }}
-            >
-              {stack}
-            </ComposerBannersSlot>
-          ) : (
-            stack
-          )}
-          {pendingInteraction}
-        </div>
-        <div data-testid="composer-boundary" />
-        <div data-testid="composer-hidden">
-          {pendingInteraction ? "true" : "false"}
-        </div>
-        <div data-testid="submit-mode">
-          {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
-        </div>
-        <div data-testid="submit-title">
-          {composer?.submitTitle ?? "Submit"}
-        </div>
-        <div data-testid="plugin-customizations-suppressed">
-          {suppressPluginComposerCustomizations ? "true" : "false"}
-        </div>
-        <div data-testid="selected-model">{execution.model.active?.model}</div>
-        <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
-        <div data-testid="selected-service-tier">
-          {execution.serviceTier?.value}
-        </div>
-        <div data-testid="selected-permission">{permission.value}</div>
-        <div data-testid="execution-read-only">
-          {executionReadOnly ? "true" : "false"}
-        </div>
-        <div data-testid="permission-read-only">
-          {permissionReadOnly ? "true" : "false"}
-        </div>
-        <div data-testid="attachment-count">{attachments.items.length}</div>
-        <div data-testid="composer-text-effect">
-          {textEffects && textEffects.length > 0
-            ? textEffects.map(({ effect }) => effect.className).join(",")
-            : "none"}
-        </div>
-        <div data-testid="composer-location">
-          {showScrollToBottomButton === false ? "inline" : "bottom"}
-        </div>
-        <div data-testid="plugin-composer-scope">
-          {pluginComposerHost
-            ? `${pluginComposerHost.scope.kind}:${
-                pluginComposerHost.scope.kind === "queued-message"
-                  ? pluginComposerHost.scope.queuedMessageId
-                  : pluginComposerHost.scope.kind === "thread"
-                    ? pluginComposerHost.scope.threadId
-                    : (pluginComposerHost.scope.projectId ?? "null")
-              }`
-            : "route"}
-        </div>
-        {pluginComposerHost ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                pluginComposerHost.setDraft({
-                  ...pluginComposerHost.getCurrent(),
-                  text: "Plugin-enhanced queued message",
-                })
-              }
-            >
-              Simulate plugin replacement
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                pluginComposerHost.setDraft({
-                  ...pluginComposerHost.getCurrent(),
-                  text: "First plugin update",
-                });
-                const current = pluginComposerHost.getCurrent();
-                pluginComposerHost.setDraft({
-                  ...current,
-                  text: `${current.text} + second plugin update`,
-                });
-              }}
-            >
-              Simulate chained plugin updates
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                mocks.pluginComposerHost = pluginComposerHost;
-              }}
-            >
-              Capture plugin host
-            </button>
-          </>
-        ) : null}
-        {composer ? (
-          <>
-            <input
-              aria-label="Composer message"
-              value={composer.message}
-              onChange={(event) =>
-                composer.onChangeMessage(event.currentTarget.value, [])
-              }
-            />
-            <button type="button" onClick={composer.onSubmit}>
-              Submit composer
-            </button>
-            {composer.onEscape ? (
-              <button type="button" onClick={composer.onEscape}>
-                Escape composer
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() =>
-                void attachments.onAttachFiles([
-                  new File(["queued"], "queued.txt", { type: "text/plain" }),
-                ])
-              }
-            >
-              Attach file
-            </button>
-          </>
-        ) : null}
-        {execution.footerAction ? (
-          <button type="button" onClick={execution.footerAction.onClick}>
-            {execution.footerAction.label}
+const followUpPromptBoxModule =
+  await import("@/components/promptbox/FollowUpPromptBox");
+const pluginComposerBannersModule =
+  await import("@/components/plugin/PluginComposerBanners");
+const { ComposerBannersSlot } = pluginComposerBannersModule;
+const FollowUpPromptBoxFixture = ({
+  attachments,
+  composer,
+  execution,
+  executionReadOnly,
+  pendingInteraction,
+  permission,
+  permissionReadOnly,
+  pluginComposerHost,
+  showScrollToBottomButton,
+  stack,
+  suppressPluginComposerCustomizations,
+  textEffects,
+}: Parameters<typeof followUpPromptBoxModule.FollowUpPromptBox>[0]) => (
+  <div data-testid="follow-up-prompt-box">
+    {}
+    <div data-testid="prompt-stack">
+      {pluginComposerHost ? (
+        <ComposerBannersSlot
+          view={{
+            scope: pluginComposerHost.scope,
+            layout: "expanded",
+            draft: { text: "", isEmpty: true, attachmentCount: 0 },
+            run: { isRunning: false, isSubmitting: false },
+          }}
+        >
+          {stack}
+        </ComposerBannersSlot>
+      ) : (
+        stack
+      )}
+      {pendingInteraction}
+    </div>
+    <div data-testid="composer-boundary" />
+    <div data-testid="composer-hidden">
+      {pendingInteraction ? "true" : "false"}
+    </div>
+    <div data-testid="submit-mode">
+      {composer?.submitMode.kind}:
+      {composer?.submitMode.kind === "blocked"
+        ? composer.submitMode.reason
+        : ""}
+    </div>
+    <div data-testid="submit-title">{composer?.submitTitle ?? "Submit"}</div>
+    <div data-testid="plugin-customizations-suppressed">
+      {suppressPluginComposerCustomizations ? "true" : "false"}
+    </div>
+    <div data-testid="selected-model">{execution.model.active?.model}</div>
+    <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
+    <div data-testid="selected-service-tier">
+      {execution.serviceTier?.value}
+    </div>
+    <div data-testid="selected-permission">{permission.value}</div>
+    <div data-testid="execution-read-only">
+      {executionReadOnly ? "true" : "false"}
+    </div>
+    <div data-testid="permission-read-only">
+      {permissionReadOnly ? "true" : "false"}
+    </div>
+    <div data-testid="attachment-count">{attachments.items?.length ?? 0}</div>
+    <div data-testid="composer-text-effect">
+      {textEffects && textEffects.length > 0
+        ? textEffects.map(({ effect }) => effect.className).join(",")
+        : "none"}
+    </div>
+    <div data-testid="composer-location">
+      {showScrollToBottomButton === false ? "inline" : "bottom"}
+    </div>
+    <div data-testid="plugin-composer-scope">
+      {pluginComposerHost
+        ? `${pluginComposerHost.scope.kind}:${
+            pluginComposerHost.scope.kind === "queued-message"
+              ? pluginComposerHost.scope.queuedMessageId
+              : pluginComposerHost.scope.kind === "thread"
+                ? pluginComposerHost.scope.threadId
+                : (pluginComposerHost.scope.projectId ?? "null")
+          }`
+        : "route"}
+    </div>
+    {pluginComposerHost ? (
+      <>
+        <button
+          type="button"
+          onClick={() =>
+            pluginComposerHost.setDraft({
+              ...pluginComposerHost.getCurrent(),
+              text: "Plugin-enhanced queued message",
+            })
+          }
+        >
+          Simulate plugin replacement
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            pluginComposerHost.setDraft({
+              ...pluginComposerHost.getCurrent(),
+              text: "First plugin update",
+            });
+            const current = pluginComposerHost.getCurrent();
+            pluginComposerHost.setDraft({
+              ...current,
+              text: `${current.text} + second plugin update`,
+            });
+          }}
+        >
+          Simulate chained plugin updates
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            mocks.pluginComposerHost = pluginComposerHost;
+          }}
+        >
+          Capture plugin host
+        </button>
+      </>
+    ) : null}
+    {composer ? (
+      <>
+        <input
+          aria-label="Composer message"
+          value={composer.message}
+          onChange={(event) =>
+            composer.onChangeMessage(event.currentTarget.value, [])
+          }
+        />
+        <button type="button" onClick={composer.onSubmit}>
+          Submit composer
+        </button>
+        {composer.onEscape ? (
+          <button type="button" onClick={composer.onEscape}>
+            Escape composer
           </button>
         ) : null}
-      </div>
-    ),
-  };
-});
+        <button
+          type="button"
+          onClick={() => {
+            if (!attachments.onAttachFiles) return;
+            void attachments.onAttachFiles([
+              new File(["queued"], "queued.txt", { type: "text/plain" }),
+            ]);
+          }}
+        >
+          Attach file
+        </button>
+      </>
+    ) : null}
+    {execution.footerAction ? (
+      <button type="button" onClick={execution.footerAction.onClick}>
+        {execution.footerAction.label}
+      </button>
+    ) : null}
+  </div>
+);
 
-vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
-  ThreadEnvironmentSummary: () => <div />,
-}));
+const threadEnvironmentSummaryModule =
+  await import("@/components/promptbox/ThreadEnvironmentSummary");
+const ThreadEnvironmentSummaryFixture = memo(
+  (
+    _: Parameters<
+      typeof threadEnvironmentSummaryModule.ThreadEnvironmentSummary
+    >[0],
+  ) => <div />,
+);
 
-vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
-  QueuedMessagesList: ({
+const queuedMessagesListModule =
+  await import("@/components/promptbox/banner/QueuedMessagesList");
+vi.spyOn(queuedMessagesListModule, "QueuedMessagesList").mockImplementation(
+  ({
     inlineEditor,
     queuedMessages,
     onEdit,
@@ -321,14 +295,19 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
       ) : null}
     </div>
   ),
-}));
+);
 
-vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
-  ThreadBackgroundCommandsCard: () => null,
-}));
+const threadBackgroundCommandsCardModule =
+  await import("@/components/promptbox/banner/ThreadBackgroundCommandsCard");
+vi.spyOn(
+  threadBackgroundCommandsCardModule,
+  "ThreadBackgroundCommandsCard",
+).mockImplementation(() => null);
 
-vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
-  ThreadGoalCard: ({
+const threadGoalCardModule =
+  await import("@/components/promptbox/banner/ThreadGoalCard");
+vi.spyOn(threadGoalCardModule, "ThreadGoalCard").mockImplementation(
+  ({
     goal,
     onClearGoal,
   }: {
@@ -347,14 +326,19 @@ vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
         ) : null}
       </div>
     ) : null,
-}));
+);
 
-vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
-  ThreadPromptContextBanner: () => null,
-}));
+const threadPromptContextBannerModule =
+  await import("@/components/promptbox/banner/ThreadPromptContextBanner");
+vi.spyOn(
+  threadPromptContextBannerModule,
+  "ThreadPromptContextBanner",
+).mockImplementation(() => null);
 
-vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
-  ThreadPromptModeCard: ({
+const threadPromptModeCardModule =
+  await import("@/components/promptbox/banner/ThreadPromptModeCard");
+vi.spyOn(threadPromptModeCardModule, "ThreadPromptModeCard").mockImplementation(
+  ({
     activePromptMode,
     onExitPlanMode,
   }: {
@@ -373,14 +357,16 @@ vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
         ) : null}
       </div>
     ) : null,
-}));
+);
 
-vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
-  ThreadTodoCard: () => null,
-}));
+const threadTodoCardModule =
+  await import("@/components/promptbox/banner/ThreadTodoCard");
+vi.spyOn(threadTodoCardModule, "ThreadTodoCard").mockImplementation(() => null);
 
-vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
-  ThreadWorkflowCard: ({
+const threadWorkflowCardModule =
+  await import("@/components/promptbox/banner/ThreadWorkflowCard");
+vi.spyOn(threadWorkflowCardModule, "ThreadWorkflowCard").mockImplementation(
+  ({
     workflow,
     isExpanded,
     onToggle,
@@ -398,29 +384,32 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
       {workflow.workflowName}
     </button>
   ),
-}));
-
-vi.mock(
-  "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
-  () => ({
-    ThreadPendingInteractionBanner: () => (
-      <div data-testid="composer-stack-item">Pending interaction</div>
-    ),
-  }),
 );
 
-vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
-  PluginPendingInteractionComposer: () => (
-    <div data-testid="composer-stack-item">Plugin pending interaction</div>
-  ),
-}));
+const threadPendingInteractionBannerModule =
+  await import("@/components/thread/pending-interactions/ThreadPendingInteractionBanner");
+vi.spyOn(
+  threadPendingInteractionBannerModule,
+  "ThreadPendingInteractionBanner",
+).mockImplementation(() => (
+  <div data-testid="composer-stack-item">Pending interaction</div>
+));
 
-vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: mocks.toastError },
-}));
+const pluginPendingInteractionComposerModule =
+  await import("@/components/plugin/PluginPendingInteractionComposer");
+vi.spyOn(
+  pluginPendingInteractionComposerModule,
+  "PluginPendingInteractionComposer",
+).mockImplementation(() => (
+  <div data-testid="composer-stack-item">Plugin pending interaction</div>
+));
 
-vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
+const appToastModule = await import("@/components/ui/app-toast");
+vi.spyOn(appToastModule.appToast, "error").mockImplementation(mocks.toastError);
+
+const commandSuggestionsModule = await import("@/hooks/useCommandSuggestions");
+vi.spyOn(commandSuggestionsModule, "useCommandSuggestions").mockImplementation(
+  () => ({
     hasMore: false,
     isError: false,
     isLoading: false,
@@ -429,135 +418,412 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
     suggestions: [],
     trigger: null,
   }),
+);
+
+const promptDraftStorageModule = await import("@/hooks/usePromptDraftStorage");
+vi.spyOn(promptDraftStorageModule, "usePromptDraftStorage").mockImplementation(
+  () => mocks.promptDraft,
+);
+
+const promptMentionsModule = await import("@/hooks/usePromptMentions");
+vi.spyOn(promptMentionsModule, "usePromptMentions").mockImplementation(() => ({
+  query: null,
+  triggers: [],
+  isError: false,
+  isLoading: false,
+  setQuery: vi.fn(),
+  suggestions: [],
 }));
 
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftStorage: () => mocks.promptDraft,
+const threadCreationOptionsModule =
+  await import("@/hooks/useThreadCreationOptions");
+type ThreadCreationOptionsInput = Parameters<
+  typeof threadCreationOptionsModule.useThreadCreationOptions
+>[0];
+vi.spyOn(
+  threadCreationOptionsModule,
+  "useThreadCreationOptions",
+).mockImplementation((options: ThreadCreationOptionsInput) => {
+  mocks.useThreadCreationOptions(options);
+  return {
+    clearReuseEnvironment: vi.fn(),
+    environmentSelectionValue: "",
+    executionOptionsRouting: {},
+    activeModel: undefined,
+    executionInputSources: {},
+    hasMultipleProviders: false,
+    isLoadingModels: false,
+    modelLoadError: null,
+    modelLoadFailed: false,
+    modelCatalogIsVerified: false,
+    modelOptions: [],
+    moreModelOptions: [],
+    permissionMode: "auto",
+    permissionModeOptions: [],
+    permissionModeIsVerified: false,
+    providerOptions: [],
+    reasoningLevel: "medium",
+    reasoningOptions: [],
+    selectedModel: "gpt-5",
+    selectedProviderComposerActions: [],
+    selectedProviderDisplayName: "Codex",
+    selectedProviderId: "codex",
+    serviceTierFastLabel: "Fast",
+    serviceTier: undefined,
+    serviceTierSupportByProvider: {},
+    setPermissionMode: vi.fn(),
+    setSelectedProviderId: vi.fn(),
+    setProviderModelReasoning: vi.fn(),
+    setReasoningLevel: vi.fn(),
+    setSelectedModel: vi.fn(),
+    setServiceTier: vi.fn(),
+    setEnvironmentSelectionValue: vi.fn(),
+    supportsPermissionModeSelection: true,
+    supportsServiceTier: false,
+  };
+});
+
+const projectMutationsModule =
+  await import("@/hooks/mutations/project-mutations");
+vi.spyOn(
+  projectMutationsModule,
+  "useUploadPromptAttachment",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.uploadPromptAttachmentMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
 }));
 
-vi.mock("@/hooks/usePromptMentions", () => ({
-  usePromptMentions: () => ({
+const threadRuntimeMutationsModule =
+  await import("@/hooks/mutations/thread-runtime-mutations");
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useCancelThreadPlan",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: mocks.cancelThreadPlanMutate,
+  mutateAsync: vi.fn(),
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(threadRuntimeMutationsModule, "useClearThreadGoal").mockImplementation(
+  () => ({
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
     isError: false,
-    isLoading: false,
-    setQuery: vi.fn(),
-    suggestions: [],
-  }),
-}));
-
-vi.mock("@/hooks/useThreadCreationOptions", () => ({
-  useThreadCreationOptions: (options: unknown) => {
-    mocks.useThreadCreationOptions(options);
-    return {
-      activeModel: null,
-      executionInputSources: {},
-      hasMultipleProviders: false,
-      isLoadingModels: false,
-      modelLoadError: null,
-      modelLoadFailed: false,
-      modelOptions: [],
-      moreModelOptions: [],
-      permissionMode: "auto",
-      permissionModeOptions: [],
-      providerOptions: [],
-      reasoningLevel: "medium",
-      reasoningOptions: [],
-      selectedModel: "gpt-5",
-      selectedProviderComposerActions: [],
-      selectedProviderDisplayName: "Codex",
-      selectedProviderId: "codex",
-      serviceTier: undefined,
-      serviceTierSupportByProvider: {},
-      setPermissionMode: vi.fn(),
-      setReasoningLevel: vi.fn(),
-      setSelectedModel: vi.fn(),
-      setServiceTier: vi.fn(),
-      supportsPermissionModeSelection: true,
-      supportsServiceTier: false,
-    };
-  },
-}));
-
-vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({
+    isIdle: true,
     isPending: false,
-    mutateAsync: mocks.uploadPromptAttachmentMutateAsync,
-  }),
-}));
-
-vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
-  useCancelThreadPlan: () => ({
-    isPending: false,
-    mutate: mocks.cancelThreadPlanMutate,
-  }),
-  useClearThreadGoal: () => ({
-    isPending: false,
+    isPaused: false,
+    isSuccess: false,
     mutate: mocks.clearThreadGoalMutate,
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
   }),
-  useCreateThreadQueuedMessage: () => ({
+);
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useCreateThreadQueuedMessage",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.createQueuedMessageMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useDeleteThreadQueuedMessage",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.deleteQueuedMessageMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useReorderThreadQueuedMessage",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.reorderQueuedMessageMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useSetThreadQueuedMessageGroupBoundary",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.setQueuedMessageGroupBoundaryMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useSendThreadQueuedMessage",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.sendQueuedMessageMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
+}));
+vi.spyOn(threadRuntimeMutationsModule, "useStopThread").mockImplementation(
+  () => ({
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
     isPending: false,
-    mutateAsync: mocks.createQueuedMessageMutateAsync,
-  }),
-  useDeleteThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.deleteQueuedMessageMutateAsync,
-  }),
-  useReorderThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.reorderQueuedMessageMutateAsync,
-  }),
-  useSetThreadQueuedMessageGroupBoundary: () => ({
-    isPending: false,
-    mutateAsync: mocks.setQueuedMessageGroupBoundaryMutateAsync,
-  }),
-  useSendThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.sendQueuedMessageMutateAsync,
-  }),
-  useStopThread: () => ({
-    isPending: false,
+    isPaused: false,
+    isSuccess: false,
     mutate: mocks.stopThreadMutate,
-    variables: null,
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
   }),
-  useUpdateThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: mocks.updateQueuedMessageMutateAsync,
-  }),
+);
+vi.spyOn(
+  threadRuntimeMutationsModule,
+  "useUpdateThreadQueuedMessage",
+).mockImplementation(() => ({
+  context: undefined,
+  data: undefined,
+  error: null,
+  failureCount: 0,
+  failureReason: null,
+  isError: false,
+  isIdle: true,
+  isPending: false,
+  isPaused: false,
+  isSuccess: false,
+  mutate: vi.fn(),
+  mutateAsync: mocks.updateQueuedMessageMutateAsync,
+  reset: vi.fn(),
+  status: "idle",
+  submittedAt: 0,
+  variables: undefined,
 }));
 
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useUnarchiveThread: () => ({
+const threadStateMutationsModule =
+  await import("@/hooks/mutations/thread-state-mutations");
+vi.spyOn(threadStateMutationsModule, "useUnarchiveThread").mockImplementation(
+  () => ({
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
     isPending: false,
     mutate: mocks.unarchiveThreadMutate,
-    variables: null,
+    mutateAsync: vi.fn(),
+    isPaused: false,
+    isSuccess: false,
+    reset: vi.fn(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
   }),
-}));
+);
 
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useProjectDisplayName: () => null,
-}));
+const sidebarNavigationQueryModule =
+  await import("@/hooks/queries/sidebar-navigation-query");
+vi.spyOn(
+  sidebarNavigationQueryModule,
+  "useProjectDisplayName",
+).mockImplementation(() => undefined);
 
-vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
-  useThreadDefaultExecutionOptions: (threadId: string, options: unknown) => {
+function makeQueryResult<T>(data: T) {
+  return {
+    data,
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    errorUpdateCount: 0,
+    isFetching: false,
+    isPaused: false,
+    isStale: false,
+    isEnabled: true,
+    refetch: vi.fn(),
+    fetchStatus: "idle",
+    promise: Promise.resolve(data),
+    isError: false,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isLoading: false,
+    isLoadingError: false,
+    isInitialLoading: false,
+    isPending: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isSuccess: true,
+    status: "success",
+  } as const;
+}
+
+const threadDefaultExecutionOptionsModule =
+  await import("@/hooks/queries/thread-default-execution-options-query");
+type ThreadDefaultExecutionOptions = Parameters<
+  typeof threadDefaultExecutionOptionsModule.useThreadDefaultExecutionOptions
+>[1];
+vi.spyOn(
+  threadDefaultExecutionOptionsModule,
+  "useThreadDefaultExecutionOptions",
+).mockImplementation(
+  (threadId: string, options: ThreadDefaultExecutionOptions) => {
     mocks.useThreadDefaultExecutionOptions(threadId, options);
-    return {
-      data: mocks.defaultExecutionOptions,
-      isError: false,
-    };
+    return makeQueryResult(mocks.defaultExecutionOptions);
   },
-}));
+);
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
-    interactions.at(-1) ?? null,
-  useThreadPromptHistory: (threadId: string, options: unknown) => {
+const threadQueriesModule = await import("@/hooks/queries/thread-queries");
+type ThreadPromptHistoryOptions = Parameters<
+  typeof threadQueriesModule.useThreadPromptHistory
+>[1];
+type ThreadQueuedMessagesOptions = Parameters<
+  typeof threadQueriesModule.useThreadQueuedMessages
+>[1];
+vi.spyOn(threadQueriesModule, "useThreadPromptHistory").mockImplementation(
+  (threadId: string, options: ThreadPromptHistoryOptions) => {
     mocks.useThreadPromptHistory(threadId, options);
-    return { data: [] };
+    return makeQueryResult([]);
   },
-  useThreadQueuedMessages: (threadId: string, options: unknown) => {
+);
+vi.spyOn(threadQueriesModule, "useThreadQueuedMessages").mockImplementation(
+  (threadId: string, options: ThreadQueuedMessagesOptions) => {
     mocks.useThreadQueuedMessages(threadId, options);
-    return { data: mocks.queuedMessages };
+    return makeQueryResult(mocks.queuedMessages);
   },
-}));
+);
+
+const threadDetailPromptAreaDependencies: ThreadDetailPromptAreaDependencies = {
+  ...defaultThreadDetailPromptAreaDependencies,
+  FollowUpPromptBox:
+    /* SAFETY: The test fixture implements the FollowUpPromptBox props used by ThreadDetailPromptArea. */ FollowUpPromptBoxFixture as typeof followUpPromptBoxModule.FollowUpPromptBox,
+  ThreadEnvironmentSummary: ThreadEnvironmentSummaryFixture,
+  QueuedMessagesList: queuedMessagesListModule.QueuedMessagesList,
+  ThreadBackgroundCommandsCard:
+    threadBackgroundCommandsCardModule.ThreadBackgroundCommandsCard,
+  ThreadGoalCard: threadGoalCardModule.ThreadGoalCard,
+  ThreadPromptContextBanner:
+    threadPromptContextBannerModule.ThreadPromptContextBanner,
+  ThreadPromptModeCard: threadPromptModeCardModule.ThreadPromptModeCard,
+  ThreadTodoCard: threadTodoCardModule.ThreadTodoCard,
+  ThreadWorkflowCard: threadWorkflowCardModule.ThreadWorkflowCard,
+  ThreadPendingInteractionBanner:
+    threadPendingInteractionBannerModule.ThreadPendingInteractionBanner,
+  appToast: appToastModule.appToast,
+  useThreadCreationOptions:
+    threadCreationOptionsModule.useThreadCreationOptions,
+  useCancelThreadPlan: threadRuntimeMutationsModule.useCancelThreadPlan,
+  useClearThreadGoal: threadRuntimeMutationsModule.useClearThreadGoal,
+  useCreateThreadQueuedMessage:
+    threadRuntimeMutationsModule.useCreateThreadQueuedMessage,
+  useStopThread: threadRuntimeMutationsModule.useStopThread,
+  useUnarchiveThread: threadStateMutationsModule.useUnarchiveThread,
+  useProjectDisplayName: sidebarNavigationQueryModule.useProjectDisplayName,
+  useThreadDefaultExecutionOptions:
+    threadDefaultExecutionOptionsModule.useThreadDefaultExecutionOptions,
+  useThreadQueuedMessages: threadQueriesModule.useThreadQueuedMessages,
+  useThreadPromptHistory: threadQueriesModule.useThreadPromptHistory,
+};
 
 function makeQueuedMessage(
   overrides: Partial<ThreadQueuedMessage> = {},
@@ -579,7 +845,7 @@ function makeQueuedMessage(
 function makeThread(
   overrides: Partial<ThreadWithRuntime> = {},
 ): ThreadWithRuntime {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     archivedAt: null,
     environmentId: null,
     id: "thr_1",
@@ -687,39 +953,52 @@ function buildPromptAreaElement({
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
-    <ThreadDetailPromptArea
-      activeBackgroundAgentCount={0}
-      activeBackgroundCommands={[]}
-      activePromptMode={activePromptMode}
-      activeWorkflows={activeWorkflows}
-      canUseGitUi={false}
-      childPendingInteractions={childPendingInteractions}
-      childThreadsSection={null}
-      composerFocusRequestNonce={0}
-      contextBannerMergeBase={null}
-      environmentGoneStatus={null}
-      goal={goal}
-      modelFallback={modelFallback}
-      isEnvironmentActionPending={false}
-      onChangedFileClick={vi.fn()}
-      parentThreadSection={null}
-      pendingInteractions={pendingInteractions}
-      pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
-      pendingTodos={null}
-      projectId="proj_1"
-      pullRequest={null}
-      pullRequestMergeMethod="squash"
-      resolveMentionLink={() => null}
-      sendMessage={{
-        isPending: false,
-        mutateAsync: vi.fn(),
-      }}
-      sentMessageEdit={sentMessageEdit}
-      steerActiveThreadOnEnter={false}
-      thread={thread}
-      workspaceChangedFilesSection={null}
-      workspaceStatusPending={false}
-    />
+    <MemoryRouter>
+      <ThreadDetailPromptArea
+        activeBackgroundAgentCount={0}
+        activeBackgroundCommands={[]}
+        activePromptMode={activePromptMode}
+        activeWorkflows={activeWorkflows}
+        canUseGitUi={false}
+        childPendingInteractions={childPendingInteractions}
+        childThreadsSection={null}
+        composerFocusRequestNonce={0}
+        contextBannerMergeBase={null}
+        environmentGoneStatus={null}
+        goal={goal}
+        modelFallback={modelFallback}
+        isEnvironmentActionPending={false}
+        onChangedFileClick={vi.fn()}
+        parentThreadSection={null}
+        pendingInteractions={pendingInteractions}
+        pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
+        pendingTodos={null}
+        projectId="proj_1"
+        pullRequest={null}
+        pullRequestMergeMethod="squash"
+        resolveMentionLink={() => null}
+        sendMessage={{
+          isPending: false,
+          mutateAsync: vi.fn(),
+        }}
+        sentMessageEdit={sentMessageEdit}
+        steerActiveThreadOnEnter={false}
+        thread={thread}
+        workspaceChangedFilesSection={null}
+        workspaceStatusPending={false}
+        dependencies={threadDetailPromptAreaDependencies}
+      />
+      <NavigationCapture />
+    </MemoryRouter>
+  );
+}
+
+function NavigationCapture() {
+  const location = useLocation();
+  return (
+    <output data-testid="navigation-capture">
+      {JSON.stringify({ pathname: location.pathname, state: location.state })}
+    </output>
   );
 }
 
@@ -799,7 +1078,7 @@ describe("ThreadDetailPromptArea", () => {
       inlineEditor.getByTestId("plugin-customizations-suppressed").textContent,
     ).toBe("true");
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
@@ -810,7 +1089,7 @@ describe("ThreadDetailPromptArea", () => {
       .find((element) => !hostElement.contains(element));
     expect(bottomComposer).toBeDefined();
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         within(bottomComposer!).getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
@@ -971,19 +1250,20 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLTextAreaElement
       ).value,
     ).toBe("Already queued");
-    const bottomComposer = screen
-      .getAllByRole("textbox", { name: "Composer message" })
-      .find(
-        (element) =>
-          element.closest('[data-testid="inline-queued-message-editor"]') ===
-          null,
-      ) as HTMLInputElement;
+    const bottomComposer =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen
+        .getAllByRole("textbox", { name: "Composer message" })
+        .find(
+          (element) =>
+            element.closest('[data-testid="inline-queued-message-editor"]') ===
+            null,
+        ) as HTMLInputElement;
     expect(bottomComposer.value).toBe("Keep this bottom draft");
     fireEvent.change(bottomComposer, {
       target: { value: "Still-usable bottom draft" },
@@ -1013,7 +1293,7 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.promptDraft.text).toBe("Keep this bottom draft");
     await waitFor(() => {
       expect(
-        (
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
           screen.getByRole("textbox", {
             name: "Composer message",
           }) as HTMLTextAreaElement
@@ -1057,7 +1337,7 @@ describe("ThreadDetailPromptArea", () => {
       }),
     );
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
@@ -1107,7 +1387,7 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
@@ -1228,7 +1508,7 @@ describe("ThreadDetailPromptArea", () => {
       });
     });
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
@@ -1297,7 +1577,7 @@ describe("ThreadDetailPromptArea", () => {
     );
     await waitFor(() =>
       expect(
-        (
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
           screen.getByRole("textbox", {
             name: "Composer message",
           }) as HTMLInputElement
@@ -1313,7 +1593,7 @@ describe("ThreadDetailPromptArea", () => {
     view.rerender(buildPromptAreaElement());
     await waitFor(() =>
       expect(
-        (
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
           screen.getByRole("textbox", {
             name: "Composer message",
           }) as HTMLInputElement
@@ -1669,17 +1949,20 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByRole("button", { name: "Handoff to new thread" }),
     );
 
-    expect(mocks.navigate).toHaveBeenCalledWith("/projects/proj_source", {
-      state: {
-        focusPrompt: true,
-        reuseEnvironmentId: "env_1",
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_1",
-          projectId: "proj_source",
-          sourceThreadId: "thr_source",
-          sourceThreadTitle: "Source thread",
+    expect(screen.getByTestId("navigation-capture").textContent).toBe(
+      JSON.stringify({
+        pathname: "/projects/proj_source",
+        state: {
+          focusPrompt: true,
+          [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
+            environmentId: "env_1",
+            projectId: "proj_source",
+            sourceThreadId: "thr_source",
+            sourceThreadTitle: "Source thread",
+          },
+          reuseEnvironmentId: "env_1",
         },
-      },
-    });
+      }),
+    );
   });
 });

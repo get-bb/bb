@@ -112,14 +112,19 @@ describe("responsive list structure", () => {
   it("renders exactly one status and one priority editor per row with full metadata", async () => {
     const slot = renderList();
     await slot.findByText("TSK-1");
-    const row = slot.container.querySelector('[data-task-key="TSK-1"]')!;
+    const row = slot.container.querySelector<HTMLElement>(
+      '[data-task-key="TSK-1"]',
+    );
+    if (row === null) {
+      throw new Error("Expected the rendered task row");
+    }
     expect(
-      within(row as HTMLElement).getAllByRole("button", {
+      within(row).getAllByRole("button", {
         name: /Change status, currently/,
       }),
     ).toHaveLength(1);
     expect(
-      within(row as HTMLElement).getAllByRole("button", {
+      within(row).getAllByRole("button", {
         name: /Set priority, currently/,
       }),
     ).toHaveLength(1);

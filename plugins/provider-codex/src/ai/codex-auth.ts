@@ -54,22 +54,6 @@ function codexAuthPath(): string {
   );
 }
 
-function toJsonObject(value: JsonValue | undefined): JsonObject | null {
-  if (
-    value === undefined ||
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
-    return null;
-  }
-  return value;
-}
-
-function nonEmptyString(value: JsonValue | undefined): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.string(),
@@ -80,6 +64,18 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.record(z.string(), jsonValueSchema),
   ]),
 );
+
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+
+function toJsonObject(value: JsonValue | undefined): JsonObject | null {
+  const result = jsonObjectSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+function nonEmptyString(value: JsonValue | undefined): string | null {
+  const result = z.string().min(1).safeParse(value);
+  return result.success ? result.data : null;
+}
 
 export function parseJsonValue(raw: string): JsonValue {
   return jsonValueSchema.parse(JSON.parse(raw));
@@ -110,19 +106,13 @@ function accountEmail(token: string): string | null {
 
 function tokenExpired(token: string): boolean {
   const exp = decodeJwtPayload(token)?.exp;
-  return typeof exp === "number" && Date.now() >= exp * 1000;
+  const expiration = z.number().safeParse(exp);
+  return expiration.success && Date.now() >= expiration.data * 1000;
 }
 
-function errnoCode(error: unknown): string | null {
-  return error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string"
-    ? error.code
-    : null;
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
+function errnoCode(error: Error): string | null {
+  const result = z.object({ code: z.string().optional() }).safeParse(error);
+  return result.success ? (result.data.code ?? null) : null;
 }
 
 function classifyAuthJson(value: JsonValue): ClassifiedAuthJson {
@@ -180,23 +170,24 @@ export async function readCodexAuthFile(): Promise<CodexAuthFile> {
   try {
     raw = await fs.readFile(authPath, "utf8");
   } catch (error) {
-    return errnoCode(error) === "ENOENT"
+    const errorDetails =
+      error instanceof Error ? error : new Error(String(error));
+    return errnoCode(errorDetails) === "ENOENT"
       ? { state: "missing", authPath }
-      : { state: "unreadable", authPath, error: toError(error) };
+      : { state: "unreadable", authPath, error: errorDetails };
   }
   let value: JsonValue;
   try {
     value = parseJsonValue(raw);
   } catch (error) {
-    return { state: "malformed", authPath, error: toError(error) };
+    const errorDetails =
+      error instanceof Error ? error : new Error(String(error));
+    return { state: "malformed", authPath, error: errorDetails };
   }
   return { ...classifyAuthJson(value), authPath };
 }
 
-const UNUSABLE_AUTH_MESSAGES: Record<
-  CodexAuthUnusableReason,
-  (authPath: string) => string
-> = {
+const UNUSABLE_AUTH_MESSAGES = {
   not_object: (authPath) =>
     `Codex auth file at ${authPath} is not valid JSON. Run codex login on this host.`,
   api_key: (authPath) =>
@@ -205,7 +196,7 @@ const UNUSABLE_AUTH_MESSAGES: Record<
     `Codex auth file at ${authPath} does not contain a usable access token. Run codex login on this host.`,
   account_id: () =>
     "Codex auth tokens do not include a ChatGPT account id. Run codex login on this host.",
-};
+} satisfies Record<CodexAuthUnusableReason, (authPath: string) => string>;
 
 export async function readCodexAuthCredentials(): Promise<CodexAuthCredentials> {
   const auth = await readCodexAuthFile();

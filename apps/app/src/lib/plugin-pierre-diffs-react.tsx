@@ -96,7 +96,7 @@ function useHostWorkerPool(): ReturnType<typeof useWorkerPool> {
   return usePierreWorkerPool();
 }
 
-export function createGatedPierreDiffsReact(): Record<string, unknown> {
+export function createGatedPierreDiffsReact() {
   return {
     CodeView: GatedCodeView,
     File: GatedFile,

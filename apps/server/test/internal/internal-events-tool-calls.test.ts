@@ -16,6 +16,7 @@ import {
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { serve } from "@hono/node-server";
 import {
   internalAuthHeaders,
@@ -85,6 +86,7 @@ async function flushDeferredChildThreadNotifications(): Promise<void> {
 describe("internal event and tool-call routes", () => {
   it("returns the response head before a plugin tool completes", async () => {
     await withTestHarness(async (harness) => {
+      // SAFETY: The fixture uses only the record fields that the contribution seam reads.
       const record = {
         name: "wait_for_user",
       } as PluginAgentToolRecord;
@@ -125,10 +127,9 @@ describe("internal event and tool-call routes", () => {
         });
         try {
           if (!server.listening) await once(server, "listening");
-          const address = server.address();
-          if (address === null || typeof address === "string") {
-            throw new Error("Expected a TCP server address");
-          }
+          const address = z
+            .object({ port: z.number().int() })
+            .parse(server.address());
           const responsePromise = fetch(
             `http://127.0.0.1:${address.port}/internal/session/tool-call`,
             {
@@ -174,6 +175,7 @@ describe("internal event and tool-call routes", () => {
 
   it("persists a native plugin tool call as the bridge sent it: no server-side label enrichment", async () => {
     await withTestHarness(async (harness) => {
+      // SAFETY: The fixture uses only the record fields that the contribution seam reads.
       const record = {
         name: "repository_context",
         presentation: {

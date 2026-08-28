@@ -19,6 +19,21 @@ function selectionKey(value: ExperimentalProviderModelPickerValue): string {
   ].join("\0");
 }
 
+function selectionValue({
+  providerId,
+  model,
+  reasoningLevel,
+  serviceTier,
+}: ExperimentalProviderModelPickerValue): ExperimentalProviderModelPickerValue {
+  const next: ExperimentalProviderModelPickerValue = {
+    providerId,
+    model,
+    reasoningLevel,
+  };
+  if (serviceTier !== undefined) next.serviceTier = serviceTier;
+  return next;
+}
+
 export function PluginProviderModelPicker({
   value,
   onChange,
@@ -59,14 +74,14 @@ export function PluginProviderModelPicker({
     ) {
       return;
     }
-    emit({
-      providerId: controller.selectedProviderId,
-      model: controller.selectedModel,
-      reasoningLevel: controller.reasoningLevel,
-      ...(controller.serviceTier === undefined
-        ? {}
-        : { serviceTier: controller.serviceTier }),
-    });
+    emit(
+      selectionValue({
+        providerId: controller.selectedProviderId,
+        model: controller.selectedModel,
+        reasoningLevel: controller.reasoningLevel,
+        serviceTier: controller.serviceTier,
+      }),
+    );
   }, [
     controller.modelCatalogIsVerified,
     controller.reasoningLevel,
@@ -88,14 +103,14 @@ export function PluginProviderModelPicker({
       reasoningLevel: ExperimentalProviderModelPickerValue["reasoningLevel"],
     ) => {
       if (!controller.modelCatalogIsVerified) return;
-      emit({
-        providerId: controller.selectedProviderId,
-        model: controller.selectedModel,
-        reasoningLevel,
-        ...(controller.serviceTier === undefined
-          ? {}
-          : { serviceTier: controller.serviceTier }),
-      });
+      emit(
+        selectionValue({
+          providerId: controller.selectedProviderId,
+          model: controller.selectedModel,
+          reasoningLevel,
+          serviceTier: controller.serviceTier,
+        }),
+      );
     },
     [controller, emit],
   );
@@ -123,14 +138,15 @@ export function PluginProviderModelPicker({
       reasoningLevel: ExperimentalProviderModelPickerValue["reasoningLevel"];
       supportsServiceTier: boolean;
     }) => {
-      emit({
+      const next = selectionValue({
         providerId: selection.providerId,
         model: selection.model,
         reasoningLevel: selection.reasoningLevel,
-        ...(selection.supportsServiceTier && value.serviceTier !== undefined
-          ? { serviceTier: value.serviceTier }
-          : {}),
       });
+      if (selection.supportsServiceTier && value.serviceTier !== undefined) {
+        next.serviceTier = value.serviceTier;
+      }
+      emit(next);
     },
     [emit, value.serviceTier],
   );

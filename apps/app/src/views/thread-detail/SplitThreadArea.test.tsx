@@ -10,12 +10,22 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import * as React from "react";
 import { useContext, useMemo, useState, type ReactNode } from "react";
+import * as CompactViewport from "@bb/shared-ui/hooks/use-compact-viewport";
+import * as AppCommands from "@/components/commands/AppCommandProvider";
+import * as ResizablePanels from "react-resizable-panels";
+import * as Sidebar from "@/components/ui/sidebar.js";
+import * as RootCompose from "@/views/RootComposeView";
+import * as PluginPanel from "@/components/plugin/PluginPanelRightPanelHost";
+import * as ThreadQueries from "@/hooks/queries/thread-queries";
+import * as ThreadDetailViewModule from "./ThreadDetailView";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
+import type { ThreadResponse } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -34,6 +44,7 @@ import {
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
 import {
   resetPluginSlotStoreForTest,
@@ -52,43 +63,16 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const viewportState = vi.hoisted(() => ({ compact: false }));
-const sidebarState = vi.hoisted(() => {
-  const state = { showing: true };
-  return {
-    progress: {
-      get: () => (state.showing ? 1 : 0),
-      on: () => () => {},
-    },
-    set showing(showing: boolean) {
-      state.showing = showing;
-    },
-    get showing() {
-      return state.showing;
-    },
-  };
-});
+const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
-const panelCallbacks = vi.hoisted(
-  () =>
-    new Map<
-      string,
-      { onCollapse?: () => void; onResize?: (size: number) => void }
-    >(),
-);
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
-interface ShortcutPresentationFixture {
-  ariaKeyshortcuts: string;
-  label: string;
-}
-const commandPresentationState = vi.hoisted(
-  (): {
-    isModifierHeld: boolean;
-    shortcut: ShortcutPresentationFixture | null;
-  } => ({ isModifierHeld: false, shortcut: null }),
-);
+const commandPresentationState = vi.hoisted(() => ({
+  isModifierHeld: false,
+  shortcut: null,
+}));
 
 function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
   const composerHost = usePluginComposerHost();
@@ -123,255 +107,293 @@ function RootComposeFixture() {
   return <div data-testid="root-compose-view" />;
 }
 
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => viewportState.compact,
-}));
+vi.spyOn(CompactViewport, "useIsCompactViewport").mockImplementation(
+  () => viewportState.compact,
+);
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThread: (id: string) => {
-    const entry = threadStore.get(id);
-    if (entry === undefined) {
-      return { data: undefined, isSuccess: false, isError: false, error: null };
-    }
-    return {
-      data: { id, archivedAt: entry.archivedAt, deletedAt: entry.deletedAt },
-      isSuccess: true,
-      isError: false,
-      error: null,
-    };
-  },
-}));
-
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandContext: () => undefined,
-  useAppCommandHandler: (command: string, handler: () => boolean) => {
-    commandHandlers.set(command, handler);
-  },
-  useAppCommandShortcut: () => commandPresentationState.shortcut,
-  useIsAppCommandModifierHeld: () => commandPresentationState.isModifierHeld,
-  useIndexedAppCommandHandlers: () => undefined,
-}));
-
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    React.HTMLAttributes<HTMLDivElement> & { children?: ReactNode }
-  >(({ children, ...props }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({
-        getLayout: () => panelGroupLayoutState.layout,
-        setLayout: (layout: number[]) => {
-          panelGroupLayoutState.layout = layout;
-        },
-      }),
-      [],
-    );
-    return (
-      <div {...props} data-testid="workspace-panel-group">
-        {children}
-      </div>
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-  const Panel = ({
-    children,
-    id,
-    onCollapse,
-    onResize,
-  }: {
-    children?: ReactNode;
-    id?: string;
-    onCollapse?: () => void;
-    onResize?: (size: number) => void;
-  }) => {
-    if (id !== undefined) panelCallbacks.set(id, { onCollapse, onResize });
-    return (
-      <div data-testid="workspace-panel" data-panel-id={id}>
-        {children}
-      </div>
-    );
+vi.spyOn(ThreadQueries, "useThread").mockImplementation((id: string) => {
+  const entry = threadStore.get(id);
+  const data: ThreadResponse | undefined =
+    entry === undefined
+      ? undefined
+      : {
+          ...makeThreadListEntry({
+            archivedAt: entry.archivedAt,
+            deletedAt: entry.deletedAt,
+            id,
+          }),
+          activeBackgroundAgentCount: 0,
+          canSpawnChild: false,
+        };
+  const common = {
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    errorUpdateCount: 0,
+    isFetching: false,
+    isPaused: false,
+    isStale: false,
+    isEnabled: true,
+    refetch: vi.fn(),
+    fetchStatus: "idle" as const,
+    promise: Promise.resolve(
+      data ?? {
+        ...makeThreadListEntry({ id: "missing" }),
+        activeBackgroundAgentCount: 0,
+        canSpawnChild: false,
+      },
+    ),
   };
-  const PanelResizeHandle = ({
-    children,
-    className,
-    id,
-  }: {
-    children?: ReactNode;
-    className?: string;
-    id?: string;
-  }) => (
+  if (data === undefined) {
+    return {
+      ...common,
+      data: undefined,
+      error: null,
+      isError: false,
+      isFetched: false,
+      isFetchedAfterMount: false,
+      isLoading: true,
+      isLoadingError: false,
+      isInitialLoading: true,
+      isPending: true,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isSuccess: false,
+      status: "pending",
+    };
+  }
+  return {
+    ...common,
+    data,
+    error: null,
+    isError: false,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isLoading: false,
+    isLoadingError: false,
+    isInitialLoading: false,
+    isPending: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isSuccess: true,
+    status: "success",
+  };
+});
+
+vi.spyOn(AppCommands, "useAppCommandContext").mockImplementation(
+  () => undefined,
+);
+vi.spyOn(AppCommands, "useAppCommandHandler").mockImplementation(
+  (command, handler, _priority, enabled) => {
+    if (enabled !== false) {
+      commandHandlers.set(command, () => handler({ target: null }));
+    }
+  },
+);
+vi.spyOn(AppCommands, "useAppCommandShortcut").mockImplementation(
+  () => commandPresentationState.shortcut,
+);
+vi.spyOn(AppCommands, "useIsAppCommandModifierHeld").mockImplementation(
+  () => commandPresentationState.isModifierHeld,
+);
+vi.spyOn(AppCommands, "useIndexedAppCommandHandlers").mockImplementation(
+  () => undefined,
+);
+
+const panelGroupRenderDescriptor = Object.getOwnPropertyDescriptor(
+  ResizablePanels.PanelGroup,
+  "render",
+);
+if (!(panelGroupRenderDescriptor?.value instanceof Function)) {
+  throw new Error("PanelGroup render function is unavailable");
+}
+const actualPanelGroupRender: (
+  props: React.ComponentPropsWithoutRef<typeof ResizablePanels.PanelGroup>,
+  ref: React.ForwardedRef<React.ElementRef<typeof ResizablePanels.PanelGroup>>,
+) => React.ReactNode = panelGroupRenderDescriptor.value;
+
+function WrappedPanelGroupRender(
+  props: React.ComponentPropsWithoutRef<typeof ResizablePanels.PanelGroup>,
+  ref: React.ForwardedRef<React.ElementRef<typeof ResizablePanels.PanelGroup>>,
+) {
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      getId: () => "workspace-panel-group",
+      getLayout: () => panelGroupLayoutState.layout,
+      setLayout: (layout: number[]) => {
+        panelGroupLayoutState.layout = layout;
+      },
+    }),
+    [],
+  );
+  return (
+    <div data-split-resize-grid-root="" data-testid="workspace-panel-group">
+      {actualPanelGroupRender(props, null)}
+    </div>
+  );
+}
+
+Object.defineProperty(ResizablePanels.PanelGroup, "render", {
+  configurable: true,
+  value: WrappedPanelGroupRender,
+});
+
+vi.spyOn(RootCompose, "RootComposeView").mockImplementation(RootComposeFixture);
+
+const PluginPanelRightPanelHostFixture = ({
+  children,
+  flushPageInsets,
+  panelPath,
+  pluginId,
+}: {
+  children: ReactNode;
+  flushPageInsets?: boolean;
+  panelPath: string;
+  pluginId: string;
+}) => {
+  const pane = useContext(PaneContext);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const panelModel = useMemo(
+    () => ({
+      composerHost: null,
+      contentKey: `plugin-panel:${pluginId}:${panelPath}`,
+      isMainCollapsed: false,
+      isOpen: isPanelOpen,
+      panel: (
+        <div data-testid="hosted-plugin-app-panel">
+          <div data-testid="workspace-panel-resize-handle" className="z-[30]">
+            <span data-panel-resize-hit-target="" />
+          </div>
+        </div>
+      ),
+      onToggle: () => setIsPanelOpen((open) => !open),
+      transitionsReady: true,
+    }),
+    [isPanelOpen, panelPath, pluginId],
+  );
+  usePaneSecondaryPanelRegistration(
+    pane?.secondaryPanelHost ?? null,
+    panelModel,
+  );
+  return (
     <div
-      id={id}
-      className={className}
-      data-testid="workspace-panel-resize-handle"
+      data-testid="plugin-browser-host"
+      data-flush-page-insets={String(flushPageInsets === true)}
+      data-panel-path={panelPath}
+      data-plugin-id={pluginId}
     >
       {children}
     </div>
   );
-  return { Panel, PanelGroup, PanelResizeHandle };
-});
+};
 
-vi.mock("@/components/ui/sidebar.js", () => ({
-  useSidebarDesktopMotionProgress: () => sidebarState.progress,
-  useIsSidebarShowing: () => sidebarState.showing,
-}));
+vi.spyOn(PluginPanel, "PluginPanelRightPanelHost").mockImplementation(
+  PluginPanelRightPanelHostFixture,
+);
 
-vi.mock("@/views/RootComposeView", () => ({
-  RootComposeView: RootComposeFixture,
-}));
-
-vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
-  PluginPanelRightPanelHost: ({
-    children,
-    flushPageInsets,
-    panelPath,
-    pluginId,
-  }: {
-    children: ReactNode;
-    flushPageInsets?: boolean;
-    panelPath: string;
-    pluginId: string;
-  }) => {
-    const pane = useContext(PaneContext);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
-    const panelModel = useMemo(
-      () => ({
-        composerHost: null,
-        contentKey: `plugin-panel:${pluginId}:${panelPath}`,
-        isMainCollapsed: false,
-        isOpen: isPanelOpen,
-        panel: (
-          <div data-testid="hosted-plugin-app-panel">
-            <div data-testid="workspace-panel-resize-handle" className="z-[30]">
-              <span data-panel-resize-hit-target="" />
-            </div>
-          </div>
-        ),
-        onToggle: () => setIsPanelOpen((open) => !open),
-        transitionsReady: true,
-      }),
-      [isPanelOpen, panelPath, pluginId],
-    );
-    usePaneSecondaryPanelRegistration(
-      pane?.secondaryPanelHost ?? null,
-      panelModel,
-    );
-    return (
-      <div
-        data-testid="plugin-browser-host"
-        data-flush-page-insets={String(flushPageInsets === true)}
-        data-panel-path={panelPath}
-        data-plugin-id={pluginId}
-      >
-        {children}
-      </div>
-    );
-  },
-}));
-
-vi.mock("./ThreadDetailView", () => ({
-  ThreadDetailView: ({
-    projectId = "proj_personal",
-    threadId = "thr-a",
-  }: {
-    projectId: string;
-    threadId: string;
-  }) => {
-    const pane = useContext(PaneContext);
-    const [isPanelOpen, setIsPanelOpen] = useState(threadId === "thr-a");
-    const composerHost = useMemo<PluginComposerHost>(() => {
-      const draft = { attachments: [], mentions: [], text: "" };
-      return {
-        scope: { kind: "thread", threadId },
-        textEffectKey: `test-draft-${threadId}`,
-        getCurrent: () => draft,
-        subscribeDraft: () => () => {},
-        setDraft: () => undefined,
-        focus: () => undefined,
-      };
-    }, [threadId]);
-    const panelModel = useMemo(
-      () => ({
-        composerHost,
-        contentKey: threadId,
-        isMainCollapsed: panelFullScreenState.isMainCollapsed,
-        isOpen: isPanelOpen,
-        panel: (
-          <div data-testid={`hosted-panel-${threadId}`}>
-            <HostedComposerScopeProbe threadId={threadId} />
-          </div>
-        ),
-        onToggle: () => setIsPanelOpen((open) => !open),
-        transitionsReady: true,
-      }),
-      [composerHost, isPanelOpen, threadId],
-    );
-    usePaneSecondaryPanelRegistration(
-      pane?.secondaryPanelHost ?? null,
-      panelModel,
-    );
-    const draft = usePromptDraftStorage({
-      kind: "thread",
-      projectId,
-      threadId,
-    });
-    return (
-      <div
-        data-testid={`pane-${threadId}`}
-        data-focused={pane?.isFocused ? "true" : "false"}
-        data-window-top-left-owner={pane?.ownsWindowTopLeft ? "true" : "false"}
-      >
-        <div
-          data-testid={`drag-${threadId}`}
-          onPointerDown={(event) => pane?.beginPaneDrag?.(event, threadId)}
-        />
-        <textarea
-          data-testid={`draft-${threadId}`}
-          value={draft.text}
-          onChange={(event) => draft.setTextAndMentions(event.target.value, [])}
-        />
-        <div
-          data-testid={`scroll-${threadId}`}
-          style={{ height: 20, overflow: "auto" }}
-        >
-          <div style={{ height: 100 }} />
+const ThreadDetailViewFixture = (
+  props: Parameters<typeof ThreadDetailViewModule.ThreadDetailView>[0],
+) => {
+  const projectId =
+    props.surface === "pane" ? props.projectId : "proj_personal";
+  const threadId = props.surface === "pane" ? props.threadId : "thr-a";
+  const pane = useContext(PaneContext);
+  const [isPanelOpen, setIsPanelOpen] = useState(threadId === "thr-a");
+  const composerHost = useMemo<PluginComposerHost>(() => {
+    const draft = { attachments: [], mentions: [], text: "" };
+    return {
+      scope: { kind: "thread", threadId },
+      textEffectKey: `test-draft-${threadId}`,
+      getCurrent: () => draft,
+      subscribeDraft: () => () => {},
+      setDraft: () => undefined,
+      focus: () => undefined,
+    };
+  }, [threadId]);
+  const panelModel = useMemo(
+    () => ({
+      composerHost,
+      contentKey: threadId,
+      isMainCollapsed: panelFullScreenState.isMainCollapsed,
+      isOpen: isPanelOpen,
+      panel: (
+        <div data-testid={`hosted-panel-${threadId}`}>
+          <HostedComposerScopeProbe threadId={threadId} />
         </div>
-        {pane?.onRequestClose ? (
-          <button
-            type="button"
-            data-testid={`close-${threadId}`}
-            onClick={pane.onRequestClose}
-          >
-            close
-          </button>
-        ) : null}
-        {pane?.onToggleMaximize ? (
-          <button
-            type="button"
-            data-testid={`maximize-${threadId}`}
-            onClick={pane.onToggleMaximize}
-          >
-            {pane.isMaximized ? "restore" : "maximize"}
-          </button>
-        ) : null}
-        {pane?.onMoveToSide ? (
-          <button
-            type="button"
-            data-testid={`move-right-${threadId}`}
-            onClick={() => pane.onMoveToSide?.("right")}
-          >
-            move right
-          </button>
-        ) : null}
+      ),
+      onToggle: () => setIsPanelOpen((open) => !open),
+      transitionsReady: true,
+    }),
+    [composerHost, isPanelOpen, threadId],
+  );
+  usePaneSecondaryPanelRegistration(
+    pane?.secondaryPanelHost ?? null,
+    panelModel,
+  );
+  const draft = usePromptDraftStorage({
+    kind: "thread",
+    projectId,
+    threadId,
+  });
+  return (
+    <div
+      data-testid={`pane-${threadId}`}
+      data-focused={pane?.isFocused ? "true" : "false"}
+      data-window-top-left-owner={pane?.ownsWindowTopLeft ? "true" : "false"}
+    >
+      <div
+        data-testid={`drag-${threadId}`}
+        onPointerDown={(event) => pane?.beginPaneDrag?.(event, threadId)}
+      />
+      <textarea
+        data-testid={`draft-${threadId}`}
+        value={draft.text}
+        onChange={(event) => draft.setTextAndMentions(event.target.value, [])}
+      />
+      <div
+        data-testid={`scroll-${threadId}`}
+        style={{ height: 20, overflow: "auto" }}
+      >
+        <div style={{ height: 100 }} />
       </div>
-    );
-  },
-}));
+      {pane?.onRequestClose ? (
+        <button
+          type="button"
+          data-testid={`close-${threadId}`}
+          onClick={pane.onRequestClose}
+        >
+          close
+        </button>
+      ) : null}
+      {pane?.onToggleMaximize ? (
+        <button
+          type="button"
+          data-testid={`maximize-${threadId}`}
+          onClick={pane.onToggleMaximize}
+        >
+          {pane.isMaximized ? "restore" : "maximize"}
+        </button>
+      ) : null}
+      {pane?.onMoveToSide ? (
+        <button
+          type="button"
+          data-testid={`move-right-${threadId}`}
+          onClick={() => pane.onMoveToSide?.("right")}
+        >
+          move right
+        </button>
+      ) : null}
+    </div>
+  );
+};
+
+vi.spyOn(ThreadDetailViewModule, "ThreadDetailView").mockImplementation(
+  ThreadDetailViewFixture,
+);
 
 const { queryClient, wrapper: _wrapper } = createQueryClientTestHarness();
 void _wrapper;
@@ -579,21 +601,23 @@ function renderSplitArea(options: {
   }
   render(
     <TooltipProvider delayDuration={0}>
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={[options.path]}>
-            {options.routeAwareContent ? (
-              <RouteAwareSplitArea />
-            ) : (
-              <SplitThreadArea routeContent={options.routeContent} />
-            )}
-            <LocationProbe />
-            {options.externalTo !== undefined ? (
-              <ExternalNav to={options.externalTo} />
-            ) : null}
-          </MemoryRouter>
-        </QueryClientProvider>
-      </JotaiProvider>
+      <Sidebar.SidebarProvider open={sidebarState.showing}>
+        <JotaiProvider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={[options.path]}>
+              {options.routeAwareContent ? (
+                <RouteAwareSplitArea />
+              ) : (
+                <SplitThreadArea routeContent={options.routeContent} />
+              )}
+              <LocationProbe />
+              {options.externalTo !== undefined ? (
+                <ExternalNav to={options.externalTo} />
+              ) : null}
+            </MemoryRouter>
+          </QueryClientProvider>
+        </JotaiProvider>
+      </Sidebar.SidebarProvider>
     </TooltipProvider>,
   );
   return store;
@@ -614,7 +638,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   threadStore.clear();
-  panelCallbacks.clear();
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
   window.localStorage.clear();
@@ -719,7 +742,9 @@ describe("SplitThreadArea", () => {
     expect(paneB?.className).not.toContain("invisible");
     expect(paneB?.style.contentVisibility).toBe("");
     expect(
-      (screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByTestId("draft-thr-b") as HTMLTextAreaElement
+      ).value,
     ).toBe("preserve this hidden draft");
     expect(store.get(splitLayoutAtom)?.root).toEqual(initialLayout.root);
     expect(store.get(maximizedPaneIdAtom)).toBeNull();
@@ -886,9 +911,10 @@ describe("SplitThreadArea", () => {
     if (paneA === null || paneB === null)
       throw new Error("Missing split panes");
     const originalElementsFromPoint = document.elementsFromPoint;
-    document.elementsFromPoint = vi.fn((x: number) =>
-      x >= 500 ? [paneB] : [paneA],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        (x: number) => (x >= 500 ? [paneB] : [paneA]),
+      ) as typeof document.elementsFromPoint;
     Object.defineProperty(paneA, "getBoundingClientRect", {
       configurable: true,
       value: () => ({
@@ -967,9 +993,10 @@ describe("SplitThreadArea", () => {
     await screen.findByTestId("pane-thr-a");
 
     const originalElementsFromPoint = document.elementsFromPoint;
-    document.elementsFromPoint = vi.fn(
-      () => [],
-    ) as typeof document.elementsFromPoint;
+    document.elementsFromPoint =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ vi.fn(
+        () => [],
+      ) as typeof document.elementsFromPoint;
     try {
       fireEvent.pointerDown(screen.getByTestId("drag-thr-a"), {
         button: 0,
@@ -1666,10 +1693,14 @@ describe("SplitThreadArea", () => {
     });
 
     expect(
-      (screen.getByTestId("draft-thr-a") as HTMLTextAreaElement).value,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByTestId("draft-thr-a") as HTMLTextAreaElement
+      ).value,
     ).toBe("note for A");
     expect(
-      (screen.getByTestId("draft-thr-b") as HTMLTextAreaElement).value,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByTestId("draft-thr-b") as HTMLTextAreaElement
+      ).value,
     ).toBe("");
   });
 

@@ -6,11 +6,13 @@ import {
   normalizeProviderCommandOutput,
 } from "./adapter-utils.js";
 
+interface ChangedLineCounts {
+  added: number;
+  removed: number;
+}
+
 describe("adapter-utils", () => {
-  function countChangedLines(diff: string | undefined): {
-    added: number;
-    removed: number;
-  } {
+  function countChangedLines(diff: string | undefined): ChangedLineCounts {
     let added = 0;
     let removed = 0;
     for (const line of diff?.split("\n") ?? []) {

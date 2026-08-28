@@ -137,8 +137,9 @@ export function PromptBoxActionsMenu({
       selectedItemRef.current = false;
       pluginSelectionRef.current = null;
     };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(clear);
+    const animationFrame = globalThis.requestAnimationFrame;
+    if (animationFrame !== undefined) {
+      animationFrame(clear);
       return;
     }
     setTimeout(clear, 0);

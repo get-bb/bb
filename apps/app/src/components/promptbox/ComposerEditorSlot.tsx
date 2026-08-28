@@ -9,13 +9,10 @@ import {
 
 type ComposerEditorLayout = "thread" | "root-compose";
 
-const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
-  ComposerEditorLayout,
-  string
-> = {
+const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT = {
   thread: "calc(50dvh - 3rem)",
   "root-compose": "calc(70dvh - 3rem)",
-};
+} satisfies Record<ComposerEditorLayout, string>;
 
 function blurComposerEditor(editor: Editor): void {
   editor.view.dom.blur();

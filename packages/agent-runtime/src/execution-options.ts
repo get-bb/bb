@@ -47,19 +47,20 @@ export function toProviderExecutionContext(
   args: ToProviderExecutionContextArgs,
 ): ProviderExecutionContext {
   const permissionPolicy: RuntimePermissionPolicy = args.execOpts;
-  return {
+  const context: ProviderExecutionContext = {
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
-    ...(args.execOpts.promptMode !== undefined
-      ? { promptMode: args.execOpts.promptMode }
-      : {}),
     providerOptions: args.execOpts.providerOptions,
     ...permissionPolicy,
     instructions: args.instructions,
     envVars: args.envVars,
-    ...(args.skillRoots && args.skillRoots.length > 0
-      ? { skillRoots: args.skillRoots }
-      : {}),
   };
+  if (args.execOpts.promptMode !== undefined) {
+    context.promptMode = args.execOpts.promptMode;
+  }
+  if (args.skillRoots && args.skillRoots.length > 0) {
+    context.skillRoots = args.skillRoots;
+  }
+  return context;
 }

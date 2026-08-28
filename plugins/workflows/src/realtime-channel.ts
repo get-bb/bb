@@ -1,7 +1,13 @@
+import { z } from "zod";
+import type { JsonValue } from "@get-bb/plugin-sdk";
+
 export const WORKFLOW_RUNS_REALTIME_CHANNEL = "workflow-runs";
 
-export function workflowRunsSignalThreadId(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const threadId = (payload as { threadId?: unknown }).threadId;
-  return typeof threadId === "string" ? threadId : null;
+const workflowRunsSignalPayloadSchema = z
+  .object({ threadId: z.string().optional() })
+  .passthrough();
+
+export function workflowRunsSignalThreadId(payload: JsonValue): string | null {
+  const parsed = workflowRunsSignalPayloadSchema.safeParse(payload);
+  return parsed.success ? (parsed.data.threadId ?? null) : null;
 }

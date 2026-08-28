@@ -3,7 +3,9 @@
 Settings buckets are declared in `apps/app/src/components/settings/settings-nav.tsx:18-34`: general, appearance, keyboard, usage, files, machines, updates, marketplaces, experiments, community, archived; plus per-provider pages `codex`/`claude-code` (`:40-43`) and per-plugin pages `/settings/plugins/:pluginId` for enabled plugins with `hasSettings` or a `settingsSection` slot (`:130-142`). The `files` bucket is hidden unless a local daemon is reachable, loopback access is available, or a plugin file opener exists (`:120-127`). Route constants: `apps/app/src/lib/route-paths.ts:6-16` (`/settings`, `/settings/:section`, `/settings/plugins/:pluginId`, `/settings/providers/:providerId`, `/settings/machines/:hostId`). `SettingsView` dispatches per bucket at `apps/app/src/views/SettingsView.tsx:1068-1309`.
 
 ### Server-persisted (visible to any client)
+
 All served by `GET /system/config` (`packages/server-contract/src/api/system.ts:197-233`) and written by `PUT /settings/general|keyboard|experiments|appearance` (`packages/server-contract/src/public-api.ts:1332-1358`; SDK `packages/sdk/src/areas/system.ts:207-217`, `theme.ts:53`):
+
 - `AppSettings` (`packages/domain/src/app-settings.ts:7-51`): showKeyboardHints, steerActiveThreadOnEnter, showUnhandledProviderEvents, codexMemoryEnabled, claudeCodeMemoryEnabled, codexSubagentsDisabled, claudeCodeSubagentsDisabled, claudeCodeWorkflowsDisabled, onboardingCompletedAt. Used by General (`SettingsView.tsx:1256-1299`), Provider pages (`:930-991, 1107-1150`), Debug (`:903-917`).
 - Experiments (`packages/domain/src/experiments.ts:13-34`): claudeCodeMockCliTraffic, editMessages, newOnboarding, providerSessionReaping (`SettingsView.tsx:998-1066`).
 - Appearance palette + favicon color (`packages/domain/src/app-theme.ts:122-134, 145-160`); custom themes are server-resolved CSS strings; built-ins are CSS-with-`color-mix` in `apps/app/src/lib/themes/*.ts` (e.g. `nord.ts:9-45`).
@@ -14,9 +16,11 @@ All served by `GET /system/config` (`packages/server-contract/src/api/system.ts:
 - Archived threads: thread list/search/unarchive (`ArchivedThreadsSettingsSection.tsx:102-119`).
 
 ### Browser-local (NOT visible to native unless re-implemented)
+
 Backed by `window.localStorage` via `apps/app/src/lib/browser-storage.ts:32-45` (jotai `atomWithStorage`): light/dark mode `bb.theme` (`hooks/useTheme.ts:11`), `bb.openLinksInAppBrowser` (desktop-only toggle, `SettingsView.tsx:859-864`), `bb.rewriteLocalhostLinks`, `bb.promptbox.rich-text-editing`, `bb.root-compose.navigate-after-create`, `bb.fileOpenerByExtension`, `bb.voiceInput.audioInputDeviceId`, `bb.workspaceOpenTarget`/`bb.fileOpenTarget`, `bb.sidebar.threadListProvider`, `bb.splitLayout.*` (`lib/split-layout/atoms.ts:38-77`), sidebar collapse/order keys (`components/sidebar/sidebarCollapsedAtoms.ts:7-21`), prompt drafts, thread-creation selections, browser history. Voice input mic picker uses `navigator.mediaDevices` (`hooks/useAudioInputDevices.ts:17-109`).
 
 ## Host-daemon–coupled flows (cannot work from a phone)
+
 - Local daemon probe: loopback `http://127.0.0.1:<hostDaemonPort>` (`lib/api-host-daemon.ts:24-31`; `lib/system-config-atoms.ts:169-283`); requires browser local-network permission. Phones: "no helper; editor-launch actions are simply unavailable" (`docs/multiple-devices.md:70`).
 - Native folder picker `POST /hosts/:id/pick-folder` returns 409 unless `clientHostId === hostId` (`apps/server/src/routes/hosts.ts:266-284`; `hooks/useLocalPathPicker.tsx:110-125`).
 - Open in editor / workspace open targets via daemon `open-in-target` (`api-host-daemon.ts:51-84`; `hooks/useLocalOpenTargets.ts`); Files → "Local editor integration" section (`SettingsView.tsx:449-551`).
@@ -24,9 +28,11 @@ Backed by `window.localStorage` via `apps/app/src/lib/browser-storage.ts:32-45` 
 - Desktop-only: in-app browser toggle, Electron updater (`UpdatesSettingsSection.tsx:689-700`, `useDesktopUpdateInfo`).
 
 ## Onboarding
+
 `OnboardingHost.tsx:58-213`: shown only when `experiments.newOnboarding && onboardingCompletedAt === null && primaryHost` (`:76-79`); calls `GET /system/onboarding/agents|repos`, `POST /system/onboarding/event` (`system.ts:126-195`), installs CLIs via provider-cli runner, creates `local_path` projects (`:140-151`); `OnboardingFlow.tsx` is a Radix Dialog with `ProjectPathDialog` (`:21, 604-612`).
 
 ## Notifications / attention
+
 - Toasts: sonner wrapper `components/ui/app-toast.tsx`; global mutation error toast `lib/query-client.ts:121-136`; 29 call sites.
 - Unread model: `Thread.lastReadAt`/`latestAttentionAt` (`packages/domain/src/thread.ts:393-394`), `ThreadListEntry.hasPendingInteraction` (`:408`); `isThreadRead` (`lib/thread-read-state.ts:5-7`); read tracking depends on document visibility (`hooks/useThreadReadTracking.ts:42-46`); mark read/unread `POST /threads/:id/read|unread` (`public-api.ts:1203-1209`).
 - Favicon dot + `document.title` (`components/layout/AppLayout.tsx:731-740, 818-821`; pure logic in `faviconAttentionDot.ts:50-75`). Sidebar row glyphs unread-success/unread-error/pending (`components/sidebar/ThreadRow.tsx:282-310,408-432`). Updates badge in sidebar footer (`AppSidebar.tsx:342-400`, `SidebarUpdatesBadge.tsx`).
@@ -36,14 +42,17 @@ Backed by `window.localStorage` via `apps/app/src/lib/browser-storage.ts:32-45` 
 - Absent: no service worker/PushManager/`new Notification`/audio cues (grep negative; only `AudioContext` in `WaveformVisualizer.tsx:119`); desktop has no OS notifications either.
 
 ## Plugin frontends (what UI they add)
+
 Loaded as ESM bundles with shared react-dom runtime + CSS `<link>` (`lib/plugin-frontend.ts:2-3, 333-351, 917`) — not loadable in RN. Slots: automations navPanel (`plugins/automations/app.tsx:876`), tasks navPanel+threadPanelAction+messageDirective (`plugins/tasks/app.tsx:8-31`), docs navPanel+threadPanelAction+fileOpener(md)+messageDirective (`plugins/docs/app.tsx:2222-2250`), github navPanel+threadPanelAction (`plugins/github/app.tsx:2494-2507`), side-chat messageAction+threadPanelAction (`plugins/side-chat/app.tsx:322-337`), memory/custom-instructions/keep-awake settingsSection (`memory/app.tsx:399`, `custom-instructions/app.tsx:137`, `keep-awake/app.tsx:283`), connect settingsSection "Remote access" + sidebarFooterAction (`plugins/connect/app.tsx:1178-1190`; RPCs pair/status/disconnect/expose/unexpose/createMachineCode `plugins/connect/src/rpc.ts:110-135`). Backend RPCs are reachable via `POST /plugins/:id/rpc/:method` (`apps/server/src/routes/plugins.ts:610`) so native can build its own UI: automations_* (`plugins/automations/src/rpc.ts:23-75`), tasks contract (`plugins/tasks/shared/contract.ts:412-769`), memory listMemories/updateMemory/deleteMemory (`plugins/memory/server.ts:87-95`), custom-instructions get/save (`server.ts:21-22`), docs (`server.ts:267-455`), github (`server.ts:139-257`).
 
 ## Feature checklist for planner
+
 MVP: system config read (general/experiments/appearance/keybindings), toggle general+experiments+provider settings, light/dark (native-local), machines list/rename/remove/permission ceiling, usage limits, archived threads, unread/pending indicators + `/system/attention` badge, in-app toast for mutation errors, WS subscribe for thread/host/system, pending-interaction approval + user_question native forms.
 v1: add machine (join code + connect machine code), remote path browser + project sources, plugin list/enable/disable/settings form, marketplaces, updates inventory (version + provider CLI status/install stream), CLI skills install, palette picker (map built-in palettes to native tokens), voice transcription upload, native remote-access (connect status/pair) via plugin RPC, secrets interaction form, community links.
 Later: onboarding flow, keyboard shortcut editor, file openers/thread-list-provider preferences, plugin nav panels (automations/tasks/docs/github) as native screens or webview, push notifications (needs new server infra), custom CSS themes.
 
 ## Key files
+
 - apps/app/src/components/settings/settings-nav.tsx
 - apps/app/src/views/SettingsView.tsx
 - apps/app/src/views/MachineSettingsView.tsx
@@ -123,6 +132,7 @@ Later: onboarding flow, keyboard shortcut editor, file openers/thread-list-provi
 - docs/multiple-devices.md
 
 ## Reuse verdicts
+
 - @bb/sdk (packages/sdk/src/browser.ts, core.ts, areas/*): **reusable-with-small-changes** — Pure fetch+zod+hono/client; must pass explicit baseUrl and websocket factory (realtime-url.ts:44-48 falls back to global `location`; realtime-client.ts:163-166 uses global WebSocket which RN provides). Depends on @bb/core-ui (pure TS), @bb/templates/generated, @bb/config. transcribeVoice uses multipart FormData/Blob (system.ts:188). Verify hono/client + zod v4 on Hermes.
 - @bb/domain, @bb/server-contract, @bb/host-daemon-contract/local (schemas/types): **reusable-as-is** — zod-only schemas (app-settings.ts, experiments.ts, app-theme.ts, change-kinds.ts, pending-interactions.ts). server-contract imports hono types only for typing.
 - @bb/core-ui: **reusable-as-is** — Pure TS (assert-never, environment-display, pending-interaction formatting, unknown-helpers); only depends on @bb/domain.
@@ -142,6 +152,7 @@ Later: onboarding flow, keyboard shortcut editor, file openers/thread-list-provi
 - Server routes for settings/hosts/plugins/marketplaces/skills (apps/server/src/routes/*): **reusable-as-is** — All JSON over HTTP; provider CLI install returns NDJSON stream (hosts.ts:311-317) which needs a streaming fetch reader on RN.
 
 ## Risks
+
 - Authentication: the bb HTTP API is unauthenticated on loopback; remote access requires a bb connect account session (docs/multiple-devices.md:14-18,39-42). A native app needs a first-class credential flow (connect machine credential redeem + desktop-session cookie, packages/connect-client/src/redeem-machine.ts:76, desktop-session.ts:21-59, connect RPC createDesktopSession/createMachineCode plugins/connect/src/rpc.ts:130-131) — none of this exists in apps/app today.
 - No push infrastructure: no service worker, PushManager, web-push, APNs/FCM anywhere (grep negative across apps/app, apps/server, apps/connect, plugins/connect); background notifications require new server/connect work. Only in-session signals exist (WS changed messages, GET /system/attention).
 - Plugin UI parity: 14 plugin frontends (~10.7k lines: docs 2251, github 2508, automations ~2.6k, connect 1192, tasks multi-file) render through the DOM plugin runtime; native must reimplement key ones over plugin RPC or embed a webview, or accept feature gaps (automations, tasks, docs, github, side-chat, remote-access settings, memory, custom-instructions, keep-awake).
@@ -154,6 +165,7 @@ Later: onboarding flow, keyboard shortcut editor, file openers/thread-list-provi
 - Provider CLI install and voice transcription use NDJSON streaming and multipart uploads respectively; verify RN fetch streaming/FormData behavior.
 
 ## Open questions
+
 - Should the native app expose 'open in editor'/'open folder' at all, and if so target the primary/work machine (via new server routes) rather than the client device as the web app does?
 - Which plugin surfaces are must-have natively (automations, tasks, github, docs, side-chat, remote-access) versus deferred, given each needs a native reimplementation over POST /plugins/:id/rpc/:method?
 - How will a phone authenticate to a bb server: connect account session (cookie), a new machine-credential header flow, or a Tailscale/direct URL mode with no auth? Does the server need a bearer-token mode for native clients?

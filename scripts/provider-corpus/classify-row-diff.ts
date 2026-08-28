@@ -1,6 +1,7 @@
 #!/usr/bin/env -S pnpm exec tsx
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import {
   classifyRowSnapshotDiff,
   createRowDiffReport,
@@ -8,8 +9,61 @@ import {
   idleRowDiffClasses,
   readRowDiffClasses,
   type RowDiffClass,
+  type SnapshotRow,
+  type SnapshotValue,
   type RowSnapshotVariants,
 } from "../../apps/server/test/provider-corpus/row-diff-classes.js";
+
+const snapshotJsonValueSchema: z.ZodType<SnapshotValue> = z.lazy(() =>
+  z.union([
+    z.undefined(),
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(snapshotJsonValueSchema),
+    z.record(z.string(), snapshotJsonValueSchema),
+  ]),
+);
+const snapshotRowSchema: z.ZodType<SnapshotRow> = z.record(
+  z.string(),
+  snapshotJsonValueSchema,
+);
+const rowSnapshotVariantsSchema = z
+  .object({
+    variants: z
+      .record(
+        z.string(),
+        z
+          .object({
+            pages: z
+              .array(
+                z
+                  .object({ rows: z.array(snapshotRowSchema).optional() })
+                  .catchall(snapshotJsonValueSchema),
+              )
+              .optional(),
+          })
+          .catchall(snapshotJsonValueSchema),
+      )
+      .optional(),
+  })
+  .strict();
+
+function readSnapshotVariants(filePath: string): RowSnapshotVariants {
+  return rowSnapshotVariantsSchema.parse(
+    JSON.parse(fs.readFileSync(filePath, "utf8")),
+  );
+}
+
+function requireDirectories(values: string[]): readonly [string, string] {
+  const baseline = values[0];
+  const candidate = values[1];
+  if (baseline === undefined || candidate === undefined) {
+    throw new Error("two directory arguments are required");
+  }
+  return [baseline, candidate];
+}
 
 const args = process.argv.slice(2);
 const classesIndex = args.indexOf("--classes");
@@ -25,10 +79,9 @@ if (positional.length !== 2) {
   );
   process.exit(2);
 }
-const [baselineDir, candidateDir] = positional.map((p) => path.resolve(p)) as [
-  string,
-  string,
-];
+const [baselineArgument, candidateArgument] = requireDirectories(positional);
+const baselineDir = path.resolve(baselineArgument);
+const candidateDir = path.resolve(candidateArgument);
 const classes: RowDiffClass[] = classesPath
   ? readRowDiffClasses(classesPath)
   : [];
@@ -43,12 +96,8 @@ for (const provider of fs.readdirSync(baselineDir)) {
     const candidateFile = path.join(candidateDir, provider, file);
     if (!fs.existsSync(candidateFile)) continue;
     threads += 1;
-    const before = JSON.parse(
-      fs.readFileSync(path.join(providerDir, file), "utf8"),
-    ) as RowSnapshotVariants;
-    const after = JSON.parse(
-      fs.readFileSync(candidateFile, "utf8"),
-    ) as RowSnapshotVariants;
+    const before = readSnapshotVariants(path.join(providerDir, file));
+    const after = readSnapshotVariants(candidateFile);
     const thread = `${provider}/${file.replace(/\.json$/u, "")}`;
     if (classifyRowSnapshotDiff(thread, before, after, classes, report) > 0) {
       threadsWithChanges += 1;

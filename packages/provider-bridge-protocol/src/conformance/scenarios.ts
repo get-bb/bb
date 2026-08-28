@@ -1,7 +1,13 @@
-import type { PromptInput, ThreadEvent } from "@bb/domain";
+import type {
+  JsonObject,
+  JsonValue,
+  PromptInput,
+  ThreadEvent,
+} from "@bb/domain";
 import {
   getThreadEventScopeTurnId,
   isThreadEventWithItem,
+  jsonValueSchema,
   parseNamespacedGlyph,
   threadEventSchema,
 } from "@bb/domain";
@@ -31,7 +37,7 @@ export interface ConformanceSessionFixture {
   promptInput: PromptInput[];
   zeroWorkPromptInput?: PromptInput[];
   interruptiblePromptInput?: PromptInput[];
-  options?: Record<string, unknown>;
+  options?: JsonObject;
   icons?: { pluginId: string; names: readonly string[] };
 }
 
@@ -46,13 +52,21 @@ interface ScenarioContext {
   providerThreadId?: string;
 }
 
-const IDENTITY_RESULT_SHAPE = "{ providerThreadId, sessionRestorable? }";
+const THREAD_IDENTITY_RESULT_REQUIREMENT =
+  "{ providerThreadId, sessionRestorable? }";
+
+function resultForDiagnostic(
+  value: JsonRpcWireMessage["result"],
+): JsonValue | undefined {
+  const parsed = jsonValueSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
 
 function identityProblem(
   parsed: z.ZodSafeParseError<unknown>,
-  result: unknown,
+  result: JsonValue | undefined,
 ): string {
-  return `the result must be ${IDENTITY_RESULT_SHAPE} — the runtime adopts no session without providerThreadId on the result (a thread/identity notification does not substitute for it); issues: ${parsed.error.issues
+  return `the result must be ${THREAD_IDENTITY_RESULT_REQUIREMENT} — the runtime adopts no session without providerThreadId on the result (a thread/identity notification does not substitute for it); issues: ${parsed.error.issues
     .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
     .join("; ")} (got ${JSON.stringify(result)})`;
 }
@@ -77,9 +91,7 @@ function skipped(
   return { id, title, status: "skipped", detail };
 }
 
-function defaultOptions(
-  fixture: ConformanceSessionFixture,
-): Record<string, unknown> {
+function defaultOptions(fixture: ConformanceSessionFixture): JsonObject {
   return (
     fixture.options ?? {
       permissionMode: "full",
@@ -107,7 +119,8 @@ const persistedEventSchema = z.preprocess(
 
 function errorCode(message: JsonRpcWireMessage | null): number | undefined {
   const code = message?.error?.code;
-  return typeof code === "number" ? code : undefined;
+  const parsed = z.number().safeParse(code);
+  return parsed.success ? parsed.data : undefined;
 }
 
 const ITEM_OPENS_BEFORE_DELTA_TITLE =
@@ -443,7 +456,7 @@ export async function runSessionLifecycleScenarios(
           fail(
             "session/start-identity",
             title,
-            identityProblem(parsed, response.result),
+            identityProblem(parsed, resultForDiagnostic(response.result)),
           ),
         );
       } else {
@@ -624,7 +637,7 @@ export async function runSessionLifecycleScenarios(
         fail(
           RESUME_IDENTITY_ID,
           RESUME_IDENTITY_TITLE,
-          identityProblem(resumed, resumeResponse?.result),
+          identityProblem(resumed, resultForDiagnostic(resumeResponse?.result)),
         ),
         skipped(
           "session/resume-id-uniqueness",
@@ -778,7 +791,7 @@ async function runForkIdentityScenario(
       fail(
         FORK_IDENTITY_ID,
         FORK_IDENTITY_TITLE,
-        identityProblem(parsed, response.result),
+        identityProblem(parsed, resultForDiagnostic(response.result)),
       ),
     ];
   }
@@ -1093,7 +1106,7 @@ async function runArchivedResumeRecoveryScenario(
         fail(
           SESSION_ARCHIVED_RECOVERY_ID,
           SESSION_ARCHIVED_RECOVERY_TITLE,
-          `the archived session was resumed with a result the runtime cannot adopt: ${identityProblem(resumed, resumeResponse.result)}`,
+          `the archived session was resumed with a result the runtime cannot adopt: ${identityProblem(resumed, resultForDiagnostic(resumeResponse.result))}`,
         ),
       ];
     }
@@ -1138,7 +1151,9 @@ async function runArchivedResumeRecoveryScenario(
     reResumeResponse.result,
   );
   if (!reResumed.success) {
-    return notBack(identityProblem(reResumed, reResumeResponse.result));
+    return notBack(
+      identityProblem(reResumed, resultForDiagnostic(reResumeResponse.result)),
+    );
   }
   context.providerThreadId = reResumed.data.providerThreadId;
   return [pass(SESSION_ARCHIVED_RECOVERY_ID, SESSION_ARCHIVED_RECOVERY_TITLE)];

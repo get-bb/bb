@@ -26,7 +26,7 @@ export function describeServerUrl(serverUrl: string): string {
   return `the bb server at ${parsed.origin}`;
 }
 
-function formatLoadFailure(error: unknown): string {
+function formatLoadFailure(error: Error | string): string {
   const message = error instanceof Error ? error.message : String(error);
   return ELECTRON_LOAD_ERROR_CODE.exec(message)?.[0] ?? "the page load failed";
 }
@@ -43,7 +43,7 @@ export async function loadRemoteServerPage(
     }
     const label = describeServerUrl(args.serverUrl);
     args.logWarning(
-      `[desktop] could not load ${label}: ${formatLoadFailure(error)}`,
+      `[desktop] could not load ${label}: ${formatLoadFailure(error instanceof Error ? error : String(error))}`,
     );
     await args.loadStartupError({
       details:

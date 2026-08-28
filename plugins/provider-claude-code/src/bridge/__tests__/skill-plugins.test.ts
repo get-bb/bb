@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   CLAUDE_SKILL_PLUGIN_NAME,
   createClaudeSkillPluginsRoot,
@@ -46,9 +47,16 @@ describe("claude skill plugins", () => {
     });
 
     expect(pluginPath.startsWith(pluginsRoot)).toBe(true);
-    const manifest = JSON.parse(
-      readFileSync(join(pluginPath, ".claude-plugin", "plugin.json"), "utf8"),
-    ) as { name: string; skills: string };
+    const manifest = z
+      .object({ name: z.string(), skills: z.string() })
+      .parse(
+        JSON.parse(
+          readFileSync(
+            join(pluginPath, ".claude-plugin", "plugin.json"),
+            "utf8",
+          ),
+        ),
+      );
     expect(manifest.skills).toBe("./skills");
     expect(manifest.name).toBe(CLAUDE_SKILL_PLUGIN_NAME);
     expect(lstatSync(join(pluginPath, "skills")).isSymbolicLink()).toBe(true);
@@ -84,14 +92,16 @@ describe("claude skill plugins", () => {
     const first = stageSkills("a");
     const second = stageSkills("b");
     const nameOf = (pluginPath: string): string =>
-      (
-        JSON.parse(
-          readFileSync(
-            join(pluginPath, ".claude-plugin", "plugin.json"),
-            "utf8",
+      z
+        .object({ name: z.string() })
+        .parse(
+          JSON.parse(
+            readFileSync(
+              join(pluginPath, ".claude-plugin", "plugin.json"),
+              "utf8",
+            ),
           ),
-        ) as { name: string }
-      ).name;
+        ).name;
 
     expect(
       nameOf(

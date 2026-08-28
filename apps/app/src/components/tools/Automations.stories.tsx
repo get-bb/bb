@@ -476,7 +476,11 @@ export function DetailStates() {
   return (
     <main
       className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "232px" } as CSSProperties}
+      style={
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          "--story-doc-width": "232px",
+        } as CSSProperties
+      }
     >
       <header>
         <h1 className="text-lg font-semibold text-foreground">
@@ -582,7 +586,11 @@ export function ProviderIdentities() {
   return (
     <main
       className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "160px" } as CSSProperties}
+      style={
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          "--story-doc-width": "160px",
+        } as CSSProperties
+      }
     >
       <header>
         <h1 className="text-lg font-semibold text-foreground">

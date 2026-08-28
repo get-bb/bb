@@ -325,11 +325,11 @@ export type TimelineInvalidationPolicy =
   | "timeline-paced"
   | "timeline-terminal";
 
-const INVALIDATION_POLICY_RANK: Record<TimelineInvalidationPolicy, number> = {
+const INVALIDATION_POLICY_RANK = {
   "timeline-paced": 0,
   default: 1,
   "timeline-terminal": 2,
-};
+} satisfies Record<TimelineInvalidationPolicy, number>;
 
 function isTimelineQueryKey(queryKey: QueryKey): boolean {
   return queryKey[0] === threadTimelineQueryKey("")[0];

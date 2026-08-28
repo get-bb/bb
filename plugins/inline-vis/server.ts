@@ -10,18 +10,14 @@ interface PrepareHtmlPreviewResult {
   file: string;
 }
 
-function requireNonEmptyString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+function requireNonEmptyString(value: string, field: string): string {
+  if (value.trim().length === 0) {
     throw new Error(`"${field}" must be a non-empty string`);
   }
   return value.trim();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function requireWorkspaceHtmlFile(value: unknown): string {
+export function requireWorkspaceHtmlFile(value: string): string {
   const file = requireNonEmptyString(value, "file");
   if (path.isAbsolute(file)) {
     throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
@@ -69,13 +65,14 @@ export function resolveContainedHtmlPath(
   return absolute;
 }
 
-function httpStatus(error: unknown): number | null {
-  if (!isRecord(error)) {
-    return null;
-  }
-  const status = error.status;
-  return typeof status === "number" ? status : null;
-}
+const environmentPathSchema = z
+  .object({ path: z.string().min(1) })
+  .passthrough();
+const environmentHostSchema = z
+  .object({ hostId: z.string().min(1) })
+  .passthrough();
+
+const httpErrorSchema = z.object({ status: z.number() }).passthrough();
 
 export const inlineVisRpcContract = defineRpcContract({
   prepareHtmlPreview: {
@@ -106,21 +103,20 @@ export default async function plugin(bb: BbPluginApi) {
         );
       }
 
-      const environment = thread.environment;
-      const rootPath =
-        typeof environment?.path === "string" ? environment.path : null;
-      if (!rootPath) {
+      const environment = environmentPathSchema.safeParse(thread.environment);
+      if (!environment.success) {
         throw new Error(
           "This thread has no workspace path — inline-vis needs a live environment.",
         );
       }
-      const hostId =
-        typeof environment?.hostId === "string" ? environment.hostId : null;
-      if (!hostId) {
+      const host = environmentHostSchema.safeParse(environment.data);
+      if (!host.success) {
         throw new Error(
           "This thread's environment has no hostId — cannot read workspace files.",
         );
       }
+      const { path: rootPath } = environment.data;
+      const { hostId } = host.data;
 
       const absolutePath = resolveContainedHtmlPath(rootPath, file);
 
@@ -132,7 +128,8 @@ export default async function plugin(bb: BbPluginApi) {
           hostId,
         });
       } catch (error) {
-        if (httpStatus(error) === 404) {
+        const parsedError = httpErrorSchema.safeParse(error);
+        if (parsedError.success && parsedError.data.status === 404) {
           throw new Error(`HTML file not found: ${file}`);
         }
         throw error;

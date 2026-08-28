@@ -13,7 +13,9 @@ import {
 import { events } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
+  jsonValueSchema,
   toolCallResponseSchema,
+  type JsonObject,
   type ThreadEvent,
   type ToolCallRequest,
   type ToolCallResponse,
@@ -54,14 +56,20 @@ const STAMP_PRESENTATION = {
   tint: { light: "#1d4ed8", dark: "#93c5fd" },
 };
 
+const storedRowDataSchema = z
+  .object({
+    item: z.record(z.string(), jsonValueSchema).optional(),
+    parentToolCallId: z.string().optional(),
+  })
+  .catchall(jsonValueSchema);
+
+type StoredRowData = z.infer<typeof storedRowDataSchema> & JsonObject;
+
 interface StoredRow {
   type: string;
   itemKind: string | null;
   turnId: string | null;
-  data: Record<string, unknown> & {
-    item?: Record<string, unknown>;
-    parentToolCallId?: string;
-  };
+  data: StoredRowData;
 }
 
 function storedRows(harness: TestAppHarness, threadId: string): StoredRow[] {
@@ -80,7 +88,7 @@ function storedRows(harness: TestAppHarness, threadId: string): StoredRow[] {
       type: row.type,
       itemKind: row.itemKind,
       turnId: row.turnId,
-      data: JSON.parse(row.data) as StoredRow["data"],
+      data: storedRowDataSchema.parse(JSON.parse(row.data)),
     }));
 }
 
@@ -98,7 +106,10 @@ function itemOf(rows: StoredRow[], itemKind: string, tool?: string): StoredRow {
     row,
     `a completed ${itemKind}${tool ? ` ${tool}` : ""} row`,
   ).toBeDefined();
-  return row as StoredRow;
+  if (row === undefined) {
+    throw new Error(`Missing completed ${itemKind} row`);
+  }
+  return row;
 }
 
 function waitFor(
@@ -507,7 +518,8 @@ describe("echo-provider canary: plugin install → server command → runtime �
       (row) => row.type === "turn/started" && row.turnId !== null,
     );
     const providerThreadId = secondTurn?.data.providerThreadId;
-    if (secondTurn?.turnId == null || typeof providerThreadId !== "string") {
+    const parsedProviderThreadId = z.string().safeParse(providerThreadId);
+    if (secondTurn?.turnId == null || !parsedProviderThreadId.success) {
       throw new Error("expected the second turn's turn/started row");
     }
     const undeclared = await harness.app.request("/internal/session/events", {
@@ -521,7 +533,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
             event: {
               type: "item/completed",
               threadId: thread.id,
-              providerThreadId,
+              providerThreadId: parsedProviderThreadId.data,
               scope: { kind: "turn", turnId: secondTurn.turnId },
               item: {
                 type: "toolCall",

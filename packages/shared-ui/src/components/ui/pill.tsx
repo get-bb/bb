@@ -5,17 +5,17 @@ export type PillVariant = "secondary" | "destructive" | "outline" | "emphasis";
 
 export type PillSize = "default" | "sm";
 
-const PILL_VARIANT_CLASS: Record<PillVariant, string> = {
+const PILL_VARIANT_CLASS = {
   secondary: "border-transparent bg-secondary text-secondary-foreground",
   destructive: "border-transparent bg-destructive text-destructive-foreground",
   outline: "border-border bg-background text-foreground",
   emphasis: "border-transparent bg-foreground text-background",
-};
+} satisfies Record<PillVariant, string>;
 
-const PILL_SIZE_CLASS: Record<PillSize, string> = {
+const PILL_SIZE_CLASS = {
   default: "px-2 py-0.5",
   sm: "px-1.5 py-0",
-};
+} satisfies Record<PillSize, string>;
 
 export interface PillProps {
   variant: PillVariant;

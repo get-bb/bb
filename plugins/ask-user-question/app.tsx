@@ -311,7 +311,10 @@ function AskUserQuestionInteraction({
     () => interactionPayloadSchema.safeParse(interaction.payload),
     [interaction.payload],
   );
-  const questions = parsed.success ? parsed.data.questions : [];
+  const questions = useMemo(
+    () => (parsed.success ? parsed.data.questions : []),
+    [parsed],
+  );
   const [formState, setFormState] = useState<QuestionFormState>(() =>
     createInitialFormState(questions),
   );

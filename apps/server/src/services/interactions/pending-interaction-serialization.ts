@@ -1,4 +1,9 @@
-import { pendingInteractionSchema, type PendingInteraction } from "@bb/domain";
+import {
+  jsonValueSchema,
+  pendingInteractionSchema,
+  type JsonValue,
+  type PendingInteraction,
+} from "@bb/domain";
 import type { PendingInteractionRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 
@@ -20,13 +25,13 @@ export class PendingInteractionSerializationError extends ApiError {
 function parseStoredPendingInteractionJson(
   row: PendingInteractionRow,
   field: "payload" | "resolution",
-): unknown {
+): JsonValue {
   const value = field === "payload" ? row.payload : row.resolution;
   if (value === null) {
     throw new PendingInteractionSerializationError(row.id, field);
   }
   try {
-    return JSON.parse(value);
+    return jsonValueSchema.parse(JSON.parse(value));
   } catch {
     throw new PendingInteractionSerializationError(row.id, field);
   }
@@ -35,7 +40,7 @@ function parseStoredPendingInteractionJson(
 export function toPendingInteraction(
   row: PendingInteractionRow,
 ): PendingInteraction {
-  let payload: unknown;
+  let payload: JsonValue;
   try {
     payload = parseStoredPendingInteractionJson(row, "payload");
   } catch (error) {
@@ -45,7 +50,7 @@ export function toPendingInteraction(
     throw new PendingInteractionSerializationError(row.id, "payload");
   }
 
-  let resolution: unknown;
+  let resolution: JsonValue | null;
   try {
     resolution =
       row.resolution === null
@@ -59,30 +64,10 @@ export function toPendingInteraction(
   }
 
   try {
-    return pendingInteractionSchema.parse({
+    const data = {
       id: row.id,
       threadId: row.threadId,
       turnId: row.turnId,
-      ...(row.originKind === "provider"
-        ? {
-            providerId: row.providerId,
-            providerThreadId: row.providerThreadId,
-            providerRequestId: row.providerRequestId,
-          }
-        : {}),
-      origin:
-        row.originKind === "provider"
-          ? {
-              kind: "provider",
-              providerId: row.providerId,
-              providerThreadId: row.providerThreadId,
-              providerRequestId: row.providerRequestId,
-            }
-          : {
-              kind: "plugin",
-              pluginId: row.pluginId,
-              rendererId: row.rendererId,
-            },
       status: row.status,
       payload,
       resolution,
@@ -90,6 +75,28 @@ export function toPendingInteraction(
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
       resolvedAt: row.resolvedAt,
+    };
+    if (row.originKind === "provider") {
+      return pendingInteractionSchema.parse({
+        ...data,
+        providerId: row.providerId,
+        providerThreadId: row.providerThreadId,
+        providerRequestId: row.providerRequestId,
+        origin: {
+          kind: "provider",
+          providerId: row.providerId,
+          providerThreadId: row.providerThreadId,
+          providerRequestId: row.providerRequestId,
+        },
+      });
+    }
+    return pendingInteractionSchema.parse({
+      ...data,
+      origin: {
+        kind: "plugin",
+        pluginId: row.pluginId,
+        rendererId: row.rendererId,
+      },
     });
   } catch {
     throw new PendingInteractionSerializationError(row.id, "payload");

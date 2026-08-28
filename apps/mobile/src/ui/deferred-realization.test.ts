@@ -8,7 +8,6 @@ function fakeScheduler() {
   const frames = new Map<number, () => void>();
   const timers = new Map<ReturnType<typeof setTimeout>, () => void>();
   let nextFrame = 1;
-  let nextTimer = 1;
   const scheduler: FrameScheduler = {
     requestAnimationFrame: (cb) => {
       const id = nextFrame++;
@@ -17,7 +16,8 @@ function fakeScheduler() {
     },
     cancelAnimationFrame: (id) => void frames.delete(id),
     setTimeout: (cb) => {
-      const id = nextTimer++ as unknown as ReturnType<typeof setTimeout>;
+      const id = setTimeout(() => undefined, 2_147_483_647);
+      clearTimeout(id);
       timers.set(id, cb);
       return id;
     },

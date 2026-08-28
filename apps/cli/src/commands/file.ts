@@ -9,6 +9,11 @@ interface FileTargetOptions {
   root?: string;
 }
 
+interface FileTarget {
+  hostId?: string;
+  rootPath?: string;
+}
+
 interface FileListOptions extends FileTargetOptions {
   directories?: boolean;
   files?: boolean;
@@ -46,10 +51,10 @@ function parseLimit(value: string | undefined): number | undefined {
 }
 
 function commonTarget(opts: FileTargetOptions) {
-  return {
-    ...(opts.host ? { hostId: opts.host } : {}),
-    ...(opts.root ? { rootPath: opts.root } : {}),
-  };
+  const target: FileTarget = {};
+  if (opts.host) target.hostId = opts.host;
+  if (opts.root) target.rootPath = opts.root;
+  return target;
 }
 
 export function registerFileCommands(
@@ -98,15 +103,18 @@ export function registerFileCommands(
           throw new Error("Provide exactly one of --content or --stdin.");
         }
         const content = opts.stdin ? await readStdin() : (opts.content ?? "");
-        const result = await createCliBbSdk(getUrl()).files.write({
+        const writeOptions = {
           path,
           content,
           ...commonTarget(opts),
-          ...(opts.createParents ? { createParents: true } : {}),
-          ...(opts.expectedSha256
-            ? { expectedSha256: opts.expectedSha256 }
-            : {}),
-        });
+        };
+        if (opts.createParents) {
+          Object.assign(writeOptions, { createParents: true });
+        }
+        if (opts.expectedSha256) {
+          Object.assign(writeOptions, { expectedSha256: opts.expectedSha256 });
+        }
+        const result = await createCliBbSdk(getUrl()).files.write(writeOptions);
         if (outputJson(opts, result)) return;
         console.log(
           result.outcome === "written"
@@ -125,12 +133,12 @@ export function registerFileCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (path: string, opts: FileListOptions) => {
-        const result = await createCliBbSdk(getUrl()).files.list({
-          path,
-          ...(opts.host ? { hostId: opts.host } : {}),
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(parseLimit(opts.limit) ? { limit: parseLimit(opts.limit) } : {}),
-        });
+        const listOptions = { path };
+        if (opts.host) Object.assign(listOptions, { hostId: opts.host });
+        if (opts.query) Object.assign(listOptions, { query: opts.query });
+        const limit = parseLimit(opts.limit);
+        if (limit) Object.assign(listOptions, { limit });
+        const result = await createCliBbSdk(getUrl()).files.list(listOptions);
         if (outputJson(opts, result)) return;
         for (const entry of result.files) console.log(entry.path);
       }),
@@ -150,14 +158,16 @@ export function registerFileCommands(
         const includeFiles = opts.files || !opts.directories;
         const includeDirectories = opts.directories || !opts.files;
         const limit = parseLimit(opts.limit);
-        const result = await createCliBbSdk(getUrl()).files.listPaths({
+        const pathsOptions = {
           path,
           includeFiles,
           includeDirectories,
-          ...(opts.host ? { hostId: opts.host } : {}),
-          ...(opts.query ? { query: opts.query } : {}),
-          ...(limit ? { limit } : {}),
-        });
+        };
+        if (opts.host) Object.assign(pathsOptions, { hostId: opts.host });
+        if (opts.query) Object.assign(pathsOptions, { query: opts.query });
+        if (limit) Object.assign(pathsOptions, { limit });
+        const result =
+          await createCliBbSdk(getUrl()).files.listPaths(pathsOptions);
         if (outputJson(opts, result)) return;
         for (const entry of result.paths)
           console.log(`${entry.kind}\t${entry.path}`);

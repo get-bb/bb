@@ -15,10 +15,6 @@ type ConfigurationView = StandardSchemaV1InferOutput<
 type PersistedConfiguration = Pick<ConfigurationView, "enabled" | "selection">;
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function persistedConfiguration(
   view: ConfigurationView,
 ): PersistedConfiguration {
@@ -48,9 +44,11 @@ function KeepAwakeSettings() {
         setView(configuration);
         setSaveState("saved");
       })
-      .catch((loadError: unknown) => {
+      .catch((loadError) => {
         if (!loading || !activeRef.current) return;
-        setError(errorMessage(loadError));
+        setError(
+          loadError instanceof Error ? loadError.message : String(loadError),
+        );
         setSaveState("error");
       });
     return () => {
@@ -83,14 +81,16 @@ function KeepAwakeSettings() {
       setView(saved);
       setSaveState("saved");
     });
-    saveQueueRef.current = operation.catch((saveError: unknown) => {
+    saveQueueRef.current = operation.catch((saveError) => {
       if (!activeRef.current || latestRevisionRef.current !== revision) return;
       const confirmed = confirmedRef.current;
       if (confirmed !== null) {
         viewRef.current = confirmed;
         setView(confirmed);
       }
-      setError(errorMessage(saveError));
+      setError(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
       setSaveState("error");
     });
   }

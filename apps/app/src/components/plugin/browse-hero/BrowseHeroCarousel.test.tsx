@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import {
@@ -12,24 +14,23 @@ import { BrowseArchetypeCards } from "./BrowseArchetypeCards";
 import { BrowseHeroCarousel } from "./BrowseHeroCarousel";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { MINI_APP_SCENES } from "./MiniAppScenes";
-
-const openComposer = vi.fn<(seed: string | undefined) => void>();
-
-vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
-  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => {
-    openComposer(initialPrompt);
-    return <div data-testid="real-composer">{initialPrompt}</div>;
-  },
-}));
-vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
-  useCreateThread: () => ({ mutateAsync: vi.fn() }),
-}));
-vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 afterEach(() => {
   cleanup();
-  openComposer.mockClear();
 });
+
+function renderCarousel(element: ReactElement) {
+  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+  function TestWrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter>
+        <QueryClientWrapper>{children}</QueryClientWrapper>
+      </MemoryRouter>
+    );
+  }
+  return render(element, { wrapper: TestWrapper });
+}
 
 describe("BrowseHeroCarousel", () => {
   it("has a scene for every archetype", () => {
@@ -39,7 +40,7 @@ describe("BrowseHeroCarousel", () => {
   });
 
   it("dresses the shared engine in plugin copy, not another surface's", () => {
-    render(<BrowseHeroCarousel autoplay={false} />);
+    renderCarousel(<BrowseHeroCarousel autoplay={false} />);
 
     const heading = screen.getByRole("heading", { level: 2 });
     expect(heading.textContent).toContain("Turn bb into");
@@ -51,23 +52,36 @@ describe("BrowseHeroCarousel", () => {
   });
 
   it("moves between slides from the tablist and wraps at both ends", () => {
-    render(<BrowseHeroCarousel autoplay={false} />);
+    renderCarousel(<BrowseHeroCarousel autoplay={false} />);
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(BROWSE_ARCHETYPES.length);
     expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
 
-    fireEvent.keyDown(tabs[0] as HTMLElement, { key: "ArrowRight" });
+    fireEvent.keyDown(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ tabs[0] as HTMLElement,
+      { key: "ArrowRight" },
+    );
     expect(screen.getAllByRole("tab")[1]?.getAttribute("aria-selected")).toBe(
       "true",
     );
 
-    fireEvent.keyDown(screen.getAllByRole("tab")[1] as HTMLElement, {
-      key: "ArrowLeft",
-    });
-    fireEvent.keyDown(screen.getAllByRole("tab")[0] as HTMLElement, {
-      key: "ArrowLeft",
-    });
+    fireEvent.keyDown(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getAllByRole(
+        "tab",
+      )[1] as HTMLElement,
+      {
+        key: "ArrowLeft",
+      },
+    );
+    fireEvent.keyDown(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getAllByRole(
+        "tab",
+      )[0] as HTMLElement,
+      {
+        key: "ArrowLeft",
+      },
+    );
     const last = BROWSE_ARCHETYPES.length - 1;
     expect(
       screen.getAllByRole("tab")[last]?.getAttribute("aria-selected"),
@@ -75,10 +89,14 @@ describe("BrowseHeroCarousel", () => {
   });
 
   it("opens blank-seeded and closes through the openRequest channel", () => {
-    const { rerender } = render(
+    const { rerender } = renderCarousel(
       <BrowseHeroCarousel autoplay={false} openRequest={null} />,
     );
-    expect(screen.queryByTestId("real-composer")).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-placeholder="Describe the plugin you want to build…"]',
+      ),
+    ).toBeNull();
 
     rerender(
       <BrowseHeroCarousel
@@ -86,8 +104,11 @@ describe("BrowseHeroCarousel", () => {
         openRequest={{ nonce: 1, seed: CREATE_PLUGIN_PROMPT }}
       />,
     );
-    expect(screen.getByTestId("real-composer")).toBeTruthy();
-    expect(openComposer).toHaveBeenCalledWith(CREATE_PLUGIN_PROMPT);
+    expect(
+      document.querySelector(
+        '[data-placeholder="Describe the plugin you want to build…"]',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByRole("tab")).toBeNull();
 
     rerender(
@@ -96,13 +117,17 @@ describe("BrowseHeroCarousel", () => {
         openRequest={{ nonce: 2, close: true }}
       />,
     );
-    expect(screen.queryByTestId("real-composer")).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-placeholder="Describe the plugin you want to build…"]',
+      ),
+    ).toBeNull();
     expect(screen.getAllByRole("tab")).toHaveLength(BROWSE_ARCHETYPES.length);
   });
 
   it("reports composing transitions exactly once each", () => {
     const onComposingChange = vi.fn();
-    const { rerender } = render(
+    const { rerender } = renderCarousel(
       <BrowseHeroCarousel
         autoplay={false}
         openRequest={null}
@@ -134,10 +159,14 @@ describe("BrowseHeroCarousel", () => {
   it("opens and re-seeds from external requests, ignoring stale nonces", () => {
     const first = BROWSE_ARCHETYPES[0]!;
     const second = BROWSE_ARCHETYPES[1]!;
-    const { rerender } = render(
+    const { rerender } = renderCarousel(
       <BrowseHeroCarousel autoplay={false} openRequest={null} />,
     );
-    expect(screen.queryByTestId("real-composer")).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-placeholder="Describe the plugin you want to build…"]',
+      ),
+    ).toBeNull();
 
     rerender(
       <BrowseHeroCarousel
@@ -145,7 +174,7 @@ describe("BrowseHeroCarousel", () => {
         openRequest={{ nonce: 1, seed: archetypePrompt(first) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(first));
+    expect(document.body.textContent).toContain(archetypePrompt(first));
 
     rerender(
       <BrowseHeroCarousel
@@ -153,7 +182,7 @@ describe("BrowseHeroCarousel", () => {
         openRequest={{ nonce: 2, seed: archetypePrompt(second) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(second));
+    expect(document.body.textContent).toContain(archetypePrompt(second));
 
     rerender(
       <BrowseHeroCarousel
@@ -161,21 +190,22 @@ describe("BrowseHeroCarousel", () => {
         openRequest={{ nonce: 2, seed: archetypePrompt(second) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(second));
-    expect(screen.getByTestId("real-composer").textContent).toBe(
-      archetypePrompt(second),
-    );
+    expect(document.body.textContent).toContain(archetypePrompt(second));
   });
 
   it("ignores open requests while the composer is disabled for stories", () => {
-    render(
+    renderCarousel(
       <BrowseHeroCarousel
         autoplay={false}
         composerDisabled
         openRequest={{ nonce: 1, seed: CREATE_PLUGIN_PROMPT }}
       />,
     );
-    expect(screen.queryByTestId("real-composer")).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-placeholder="Describe the plugin you want to build…"]',
+      ),
+    ).toBeNull();
   });
 });
 

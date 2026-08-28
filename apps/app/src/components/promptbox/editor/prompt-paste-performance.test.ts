@@ -45,7 +45,7 @@ const TRIGGERS: readonly TypeaheadTrigger[] = [
 
 const FIXTURE_SIZES = [128 * 1024, 512 * 1024, 1024 * 1024] as const;
 
-function measureMs(iterations: number, run: () => unknown): number {
+function measureMs(iterations: number, run: () => void): number {
   const samples: number[] = [];
   for (let index = 0; index < iterations; index += 1) {
     const start = performance.now();

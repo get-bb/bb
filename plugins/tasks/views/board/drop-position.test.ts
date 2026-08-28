@@ -7,8 +7,10 @@ import {
   visibleBoardStatuses,
 } from "./drop-position.js";
 
+type BoardColumnFixtures = { [status in TaskStatus]: string[] };
+
 describe("visibleBoardStatuses", () => {
-  const columns = (canceled: number): Record<TaskStatus, unknown[]> => ({
+  const columns = (canceled: number): BoardColumnFixtures => ({
     backlog: [],
     todo: ["t1"],
     in_progress: [],

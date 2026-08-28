@@ -1,6 +1,5 @@
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +83,8 @@ import {
 const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 import { apiJsonCompression } from "./api-response-compression.js";
+
+const { readFile, stat } = process.getBuiltinModule("node:fs/promises");
 
 type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -236,20 +237,20 @@ export function ifNoneMatchSatisfied(
     .some((candidate) => opaque(candidate) === target);
 }
 
-const STATIC_MIME_TYPES: Record<string, string> = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".webp": "image/webp",
-  ".map": "application/json",
-};
+const STATIC_MIME_TYPES = new Map<string, string>([
+  [".html", "text/html"],
+  [".js", "application/javascript"],
+  [".css", "text/css"],
+  [".json", "application/json"],
+  [".webmanifest", "application/manifest+json"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".ico", "image/x-icon"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".webp", "image/webp"],
+  [".map", "application/json"],
+]);
 
 export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
   const root = resolve(staticDir);
@@ -314,7 +315,8 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
         return await serveStaticAppFile({
           acceptEncodingHeader: context.req.header("accept-encoding"),
           contentType:
-            STATIC_MIME_TYPES[extname(filePath)] ?? "application/octet-stream",
+            STATIC_MIME_TYPES.get(extname(filePath)) ??
+            "application/octet-stream",
           filePath,
           ifNoneMatchHeader: context.req.header("if-none-match"),
           urlPath,
@@ -629,8 +631,17 @@ export function createApp(
       }
       return {
         onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
-        onMessage: (event, socket) =>
-          onClientSocketMessage(deps, socket, event.data),
+        async onMessage(event, socket) {
+          let data: string | ArrayBuffer;
+          if (event.data instanceof Blob) {
+            data = await event.data.arrayBuffer();
+          } else if (event.data instanceof SharedArrayBuffer) {
+            data = new Uint8Array(event.data).slice().buffer;
+          } else {
+            data = event.data;
+          }
+          onClientSocketMessage(deps, socket, data);
+        },
         onClose: (_event, socket) => onClientSocketClose(deps, socket),
       };
     }),

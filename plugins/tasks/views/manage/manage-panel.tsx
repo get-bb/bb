@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Folder, Label, Preset } from "../../shared/contract.js";
 import {
   listAllTasks,
@@ -102,9 +102,7 @@ function LabelsSection() {
   const projectId = selectedProjectId ?? projectList[0]?.id ?? null;
   const labels = useTasksQuery(
     async (rpc) =>
-      projectId
-        ? (await rpc.call("listLabels", { projectId })).labels
-        : ([] as Label[]),
+      projectId ? (await rpc.call("listLabels", { projectId })).labels : [],
     ["projects:changed"],
     [projectId],
   );
@@ -115,7 +113,7 @@ function LabelsSection() {
     usedBy: number;
   } | null>(null);
 
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async <Value,>(action: () => Promise<Value>): Promise<void> => {
     setError(null);
     try {
       await action();
@@ -375,7 +373,7 @@ function PresetsSection() {
                           rpc
                             .call("deletePreset", { presetId: preset.id })
                             .then(() => presets.refresh())
-                            .catch((deleteError: unknown) =>
+                            .catch((deleteError) =>
                               setError(describeError(deleteError)),
                             );
                         }}
@@ -535,12 +533,11 @@ function FoldersSection() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Folder | null>(null);
   const folderList = folders.data ?? [];
-  const rootFolders = useMemo(
-    () => folderList.filter((folder) => folder.parentFolderId === null),
-    [folderList],
+  const rootFolders = folderList.filter(
+    (folder) => folder.parentFolderId === null,
   );
 
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async <Value,>(action: () => Promise<Value>): Promise<void> => {
     setError(null);
     try {
       await action();

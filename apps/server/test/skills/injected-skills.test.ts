@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import {
   hashSkillTreeEntries,
@@ -23,7 +24,7 @@ import {
 import type { ServerLogger } from "../../src/types.js";
 
 interface CapturedLog {
-  context: object;
+  context: Record<string, string | number | boolean | null>;
   message: string;
 }
 
@@ -68,19 +69,25 @@ function createCapturingLogger(): CapturingLogger {
   const debugs: CapturedLog[] = [];
   const infos: CapturedLog[] = [];
   const warnings: CapturedLog[] = [];
+  const contextSchema = z.record(
+    z.string(),
+    z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  );
+  const stringSchema = z.string();
   function captureTo(target: CapturedLog[]) {
     return (...args: Parameters<ServerLogger["warn"]>): void => {
       const firstArg = args[0];
       const secondArg = args[1];
+      const parsedContext = contextSchema.safeParse(firstArg);
+      const parsedMessage = stringSchema.safeParse(secondArg);
+      const parsedFirstMessage = stringSchema.safeParse(firstArg);
       target.push({
-        context:
-          typeof firstArg === "object" && firstArg !== null ? firstArg : {},
-        message:
-          typeof secondArg === "string"
-            ? secondArg
-            : typeof firstArg === "string"
-              ? firstArg
-              : "",
+        context: parsedContext.success ? parsedContext.data : {},
+        message: parsedMessage.success
+          ? parsedMessage.data
+          : parsedFirstMessage.success
+            ? parsedFirstMessage.data
+            : "",
       });
     };
   }

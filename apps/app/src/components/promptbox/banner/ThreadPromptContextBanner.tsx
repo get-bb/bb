@@ -137,17 +137,14 @@ interface ThreadPromptContextBannerProps {
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
 
-const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
+const KIND_PREFIX = {
   uncommitted: "Uncommitted",
   untracked: "Untracked",
   committed: "Committed",
-};
+} satisfies Record<WorkspaceChangedFilesSection["kind"], string>;
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
-const ENVIRONMENT_GONE_STATUS_COPY: Record<
-  ThreadPromptEnvironmentGoneSection["status"],
-  { ariaLabel: string; label: string }
-> = {
+const ENVIRONMENT_GONE_STATUS_COPY = {
   destroying: {
     ariaLabel: "This environment is being archived.",
     label: "Archiving environment...",
@@ -156,7 +153,10 @@ const ENVIRONMENT_GONE_STATUS_COPY: Record<
     ariaLabel: "This environment has been archived.",
     label: "Environment archived",
   },
-};
+} satisfies Record<
+  ThreadPromptEnvironmentGoneSection["status"],
+  { ariaLabel: string; label: string }
+>;
 const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
 const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
   "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
@@ -266,10 +266,7 @@ function SectionToggleButton({
   );
 }
 
-const PARENT_SECTION_COPY: Record<
-  ThreadPromptParentThreadSection["relationship"],
-  { verb: string; bodyLead: string; ariaPrefix: string }
-> = {
+const PARENT_SECTION_COPY = {
   parent: {
     verb: "Parent",
     bodyLead: "This thread is a child of ",
@@ -285,16 +282,16 @@ const PARENT_SECTION_COPY: Record<
     bodyLead: "This thread is a side chat of ",
     ariaPrefix: "Side chat of",
   },
-};
-
-const PARENT_SECTION_ICON: Record<
+} satisfies Record<
   ThreadPromptParentThreadSection["relationship"],
-  IconName
-> = {
+  { verb: string; bodyLead: string; ariaPrefix: string }
+>;
+
+const PARENT_SECTION_ICON = {
   parent: "UserRound",
   fork: "Fork",
   "side-chat": "SideChat",
-};
+} satisfies Record<ThreadPromptParentThreadSection["relationship"], IconName>;
 
 function parentSectionAriaLabel(
   section: ThreadPromptParentThreadSection,

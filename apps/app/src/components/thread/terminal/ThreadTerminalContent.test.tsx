@@ -3,6 +3,7 @@
 import type { TerminalSession } from "@bb/server-contract";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as threadTerminalViewModule from "./ThreadTerminalView";
 import { ThreadTerminalContent } from "./ThreadTerminalContent";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
@@ -15,9 +16,9 @@ const threadTerminalView = vi.hoisted(() =>
   )),
 );
 
-vi.mock("./ThreadTerminalView", () => ({
-  ThreadTerminalView: threadTerminalView,
-}));
+vi.spyOn(threadTerminalViewModule, "ThreadTerminalView").mockImplementation(
+  threadTerminalView,
+);
 
 const session: TerminalSession = {
   id: "term_1",

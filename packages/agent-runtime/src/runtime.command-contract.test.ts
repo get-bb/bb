@@ -79,24 +79,31 @@ describe("createAgentRuntime command contracts", () => {
     args: CreateContractRuntimeArgs = {},
   ): ContractRuntime {
     const record = createScriptedEchoRequestRecord();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: { ...record.env, ...args.env },
-        ...(args.additionalWorkspaceWriteRoots !== undefined
-          ? {
-              additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
-            }
-          : {}),
-        onEvent: args.onEvent ?? (() => {}),
-        ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-      },
-      ...(args.launch !== undefined ? { launch: args.launch } : {}),
-    });
+    const runtimeOptions: Parameters<
+      typeof createScriptedEchoRuntime
+    >[0]["runtime"] = {
+      workspacePath: tmpDir,
+      env: { ...record.env, ...args.env },
+      onEvent: args.onEvent ?? (() => {}),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+    };
+    if (args.additionalWorkspaceWriteRoots !== undefined) {
+      runtimeOptions.additionalWorkspaceWriteRoots =
+        args.additionalWorkspaceWriteRoots;
+    }
+    if (args.onStderr !== undefined) {
+      runtimeOptions.onStderr = args.onStderr;
+    }
+    const createOptions: Parameters<typeof createScriptedEchoRuntime>[0] = {
+      runtime: runtimeOptions,
+    };
+    if (args.launch !== undefined) {
+      createOptions.launch = args.launch;
+    }
+    const runtime = createScriptedEchoRuntime(createOptions);
     return { record, runtime };
   }
 
@@ -549,18 +556,18 @@ describe("createAgentRuntime command contracts", () => {
       onEvent?: (event: ThreadEvent) => void;
     } = {},
   ): ContractRuntime {
-    return createContractRuntime({
-      ...(args.env !== undefined ? { env: args.env } : {}),
-      ...(args.onEvent !== undefined ? { onEvent: args.onEvent } : {}),
-      launch: {
-        scripted: {
-          archivedSession: true,
-          ...(args.exitAfterArchivedError === true
-            ? { exitAfterArchivedError: true }
-            : {}),
-        },
-      },
-    });
+    const scripted: NonNullable<CreateScriptedEchoLaunchOptions["scripted"]> = {
+      archivedSession: true,
+    };
+    if (args.exitAfterArchivedError === true) {
+      scripted.exitAfterArchivedError = true;
+    }
+    const createArgs: CreateContractRuntimeArgs = {
+      launch: { scripted },
+    };
+    if (args.env !== undefined) createArgs.env = args.env;
+    if (args.onEvent !== undefined) createArgs.onEvent = args.onEvent;
+    return createContractRuntime(createArgs);
   }
 
   it("unarchives Codex sessions before retrying a turn", async () => {

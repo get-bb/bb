@@ -86,13 +86,10 @@ function toolCallAsDelegationMessage(
   ]);
   const description = getFirstStringField(toolArgs, ["description", "prompt"]);
   const model = getFirstStringField(toolArgs, ["model"]);
-  return {
+  const delegation: EventProjectionDelegationMessage = {
     ...shared,
     id: messageId(message.threadId, "delegation", message.callId),
     kind: "delegation",
-    ...(subagentType ? { subagentType } : {}),
-    ...(description ? { description } : {}),
-    ...(model ? { model } : {}),
     childRef: null,
     background: false,
     childProjection: {
@@ -104,6 +101,10 @@ function toolCallAsDelegationMessage(
       entries: [],
     },
   };
+  if (subagentType) delegation.subagentType = subagentType;
+  if (description) delegation.description = description;
+  if (model) delegation.model = model;
+  return delegation;
 }
 
 function maybeStartedAt(

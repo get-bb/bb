@@ -7,7 +7,7 @@ import type { FilePreviewLineRange } from "@bb/client-core";
 
 export function getExperimentalFileLocationStart(
   location: ExperimentalFileLocation | null,
-): { columnNumber: number | null; lineNumber: number | null } {
+) {
   if (location === null) return { columnNumber: null, lineNumber: null };
   if (location.kind === "line") {
     return { columnNumber: location.column, lineNumber: location.line };

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createRequire } from "node:module";
+import type { JsonValue } from "@bb/domain";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   type BbDesktopBrowserAttachRequest,
@@ -23,7 +25,6 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
-import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
 import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
 
 const electronMock = vi.hoisted(() => {
@@ -39,7 +40,7 @@ const electronMock = vi.hoisted(() => {
     sender: FakeWebContents;
   }
 
-  type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
+  type FakeIpcListener = (event: FakeIpcEvent, payload: JsonValue) => void;
 
   const listeners = new Map<string, FakeIpcListener>();
   const windowsBySender = new Map<FakeWebContents, FakeBrowserWindow>();
@@ -60,10 +61,50 @@ const electronMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("electron", () => ({
-  BrowserWindow: electronMock.BrowserWindow,
-  ipcMain: electronMock.ipcMain,
-}));
+const nodeRequire = createRequire(__filename);
+const electronModulePath = nodeRequire.resolve("electron");
+const originalElectronModule = nodeRequire.cache[electronModulePath];
+
+function installElectronTestAdapter(): void {
+  nodeRequire.cache[electronModulePath] = {
+    children: [],
+    exports: {
+      BrowserWindow: electronMock.BrowserWindow,
+      ipcMain: electronMock.ipcMain,
+    },
+    filename: electronModulePath,
+    id: electronModulePath,
+    isPreloading: false,
+    loaded: true,
+    parent: undefined,
+    path: electronModulePath.slice(0, electronModulePath.lastIndexOf("/")),
+    paths: [],
+    require: nodeRequire,
+  };
+}
+
+function restoreElectronModule(): void {
+  if (originalElectronModule === undefined) {
+    delete nodeRequire.cache[electronModulePath];
+    return;
+  }
+  nodeRequire.cache[electronModulePath] = originalElectronModule;
+}
+
+async function loadDesktopBrowserMainIpc() {
+  installElectronTestAdapter();
+  vi.resetModules();
+  try {
+    return await import("../src/desktop-browser-main-ipc.js");
+  } finally {
+    restoreElectronModule();
+  }
+}
+
+type RegisterDesktopBrowserIpc =
+  typeof import("../src/desktop-browser-main-ipc.js").registerDesktopBrowserIpc;
+
+let registerDesktopBrowserIpc: RegisterDesktopBrowserIpc;
 
 type AttachCall = Parameters<DesktopBrowserViewManager["attach"]>[0];
 type DetachCall = Parameters<DesktopBrowserViewManager["detach"]>[0];
@@ -94,7 +135,7 @@ interface FakeRenderer {
 
 interface SendBrowserIpcArgs {
   channel: string;
-  payload: unknown;
+  payload: JsonValue;
   sender: FakeWebContents;
 }
 
@@ -188,10 +229,12 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
 let nextWebContentsId = 1;
 
-beforeEach(() => {
+beforeEach(async () => {
   electronMock.listeners.clear();
   electronMock.windowsBySender.clear();
   nextWebContentsId = 1;
+  registerDesktopBrowserIpc = (await loadDesktopBrowserMainIpc())
+    .registerDesktopBrowserIpc;
 });
 
 function createTrustedRenderer(label: string): FakeRenderer {
@@ -360,11 +403,12 @@ describe("registerDesktopBrowserIpc", () => {
       });
     }
 
-    for (const payload of [
+    const invalidNavigatePayloads: JsonValue[] = [
       { tabId: "browser:a", url: "" },
       { tabId: "browser:a", url: oversizedBrowserUrl() },
       { tabId: "browser:a", url: "https://example.com/", extra: true },
-    ]) {
+    ];
+    for (const payload of invalidNavigatePayloads) {
       sendBrowserIpc({
         channel: BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
         payload,

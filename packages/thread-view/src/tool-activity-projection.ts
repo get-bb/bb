@@ -91,6 +91,22 @@ interface PendingExecutionOutput {
   outputBuffer: VisibleTextBuffer;
 }
 
+interface ExecutionMessageBase {
+  id: string;
+  threadId: string;
+  sourceSeqStart: number;
+  sourceSeqEnd: number;
+  createdAt: number;
+  startedAt: number;
+  scope: ThreadEventScope;
+  parentToolCallId?: string;
+  presentation?: ThreadEventItemPresentation;
+  callId: string;
+  output: string;
+  completedAt: number | null;
+  status: ViewProviderExecutionMessage["status"];
+}
+
 type BufferedExecutionOutput = RunningExecCall | PendingExecutionOutput;
 
 interface RunningCommandExecution extends RunningExecutionBase {
@@ -291,14 +307,10 @@ function createRunningExecutionBase({
     );
   }
 
-  return {
+  const base: RunningExecutionBase = {
     callId: incoming.callId,
     threadId,
     scope,
-    ...(incoming.parentToolCallId
-      ? { parentToolCallId: incoming.parentToolCallId }
-      : {}),
-    ...(incoming.presentation ? { presentation: incoming.presentation } : {}),
     output: getVisibleTextBufferText(outputBuffer) ?? "",
     completedAt: incoming.completedAt ?? null,
     status: incoming.status ?? "pending",
@@ -308,6 +320,13 @@ function createRunningExecutionBase({
     startedAt: meta.createdAt,
     outputBuffer,
   };
+  if (incoming.parentToolCallId) {
+    base.parentToolCallId = incoming.parentToolCallId;
+  }
+  if (incoming.presentation) {
+    base.presentation = incoming.presentation;
+  }
+  return base;
 }
 
 function createRunningExecCall(
@@ -612,11 +631,8 @@ function upsertPendingExecutionOutput(
 ): void {
   let pending = state.toolActivity.pendingOutputsByCallId.get(incoming.callId);
   if (!pending) {
-    pending = {
+    const createdPending: PendingExecutionOutput = {
       callId: incoming.callId,
-      ...(incoming.parentToolCallId
-        ? { parentToolCallId: incoming.parentToolCallId }
-        : {}),
       sourceSeqStart: meta.seq,
       sourceSeqEnd: meta.seq,
       createdAt: meta.createdAt,
@@ -625,6 +641,10 @@ function upsertPendingExecutionOutput(
       status: incoming.status,
       outputBuffer: createVisibleTextBuffer(),
     };
+    if (incoming.parentToolCallId) {
+      createdPending.parentToolCallId = incoming.parentToolCallId;
+    }
+    pending = createdPending;
     state.toolActivity.pendingOutputsByCallId.set(incoming.callId, pending);
   }
 
@@ -907,7 +927,7 @@ function createExecMessage(
   call: RunningExecCall,
 ): ViewProviderExecutionMessage {
   const rowKindForId = call.kind === "tool-call" ? "tool" : call.kind;
-  const base = {
+  const base: ExecutionMessageBase = {
     id: messageId(call.threadId, rowKindForId, call.callId),
     threadId: call.threadId,
     sourceSeqStart: call.sourceSeqStart,
@@ -915,15 +935,17 @@ function createExecMessage(
     createdAt: call.createdAt,
     startedAt: call.startedAt,
     scope: call.scope,
-    ...(call.parentToolCallId
-      ? { parentToolCallId: call.parentToolCallId }
-      : {}),
-    ...(call.presentation ? { presentation: call.presentation } : {}),
     callId: call.callId,
     output: call.output,
     completedAt: call.completedAt,
     status: call.status,
   };
+  if (call.parentToolCallId) {
+    base.parentToolCallId = call.parentToolCallId;
+  }
+  if (call.presentation) {
+    base.presentation = call.presentation;
+  }
 
   if (call.kind === "command") {
     return {

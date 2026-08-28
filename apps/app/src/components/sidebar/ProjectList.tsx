@@ -461,13 +461,13 @@ export function getSidebarThreadComparator(
 }
 
 function getSectionMutationErrorMessage(
-  error: unknown,
+  cause: Error,
   fallbackMessage: string,
 ): string {
-  if (error instanceof BbHttpError && error.code === "section_name_conflict") {
+  if (cause instanceof BbHttpError && cause.code === "section_name_conflict") {
     return "Section name already exists.";
   }
-  return getMutationErrorMessage({ error, fallbackMessage });
+  return getMutationErrorMessage({ error: cause, fallbackMessage });
 }
 
 export function ProjectListSectionIconButton({
@@ -1454,15 +1454,17 @@ function ProjectListComponent({
     },
     [reorderPinnedThreadMutate],
   );
+  type RootComposeFocusState = { focusPrompt: true; sectionId?: string };
   const openRootComposeForProject = useCallback(
     (projectId: string, sectionId?: string) => {
       setRootComposeProjectId(projectId);
       onProjectSelect?.();
+      const state: RootComposeFocusState = {
+        focusPrompt: true,
+      };
+      if (sectionId) state.sectionId = sectionId;
       navigate(getRootComposeRoutePath(), {
-        state: {
-          focusPrompt: true,
-          ...(sectionId ? { sectionId } : {}),
-        },
+        state,
       });
     },
     [navigate, onProjectSelect, setRootComposeProjectId],

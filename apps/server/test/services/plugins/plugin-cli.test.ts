@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { JsonObject } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
 import {
   generatedSkillsRootPath,
@@ -80,7 +81,7 @@ async function writePlugin(
 async function runCli(
   harness: TestAppHarness,
   id: string,
-  body: unknown,
+  body: JsonObject,
 ): Promise<Response> {
   return await harness.app.request(`${BASE}/api/v1/plugins/${id}/cli`, {
     method: "POST",
@@ -142,6 +143,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       projectId: "proj_456",
     });
     expect(response.status).toBe(200);
+    // SAFETY: The test request always returns the documented plugin CLI response fields.
     const result = (await response.json()) as {
       exitCode: number;
       stdout: string;
@@ -171,6 +173,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
           String(bytes),
           ...(jsonOutput ? ["--json"] : []),
         ];
+        // SAFETY: The test request always returns the documented plugin CLI response fields.
         const result = (await (
           await runCli(harness, "acme", { argv })
         ).json()) as {
@@ -191,6 +194,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
         String(PLUGIN_CLI_OUTPUT_MAX_BYTES + 1),
         ...(jsonOutput ? ["--json"] : []),
       ];
+      // SAFETY: The test request always returns the documented plugin CLI response fields.
       const result = (await (
         await runCli(harness, "acme", { argv })
       ).json()) as {
@@ -229,6 +233,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
   });
 
   it("maps a throwing handler to exitCode 1 with the error in stderr", async () => {
+    // SAFETY: The test request always returns the documented plugin CLI response fields.
     const result = (await (
       await runCli(harness, "acme", { argv: ["throw"] })
     ).json()) as { exitCode: number; stderr: string };
@@ -241,6 +246,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
   });
 
   it("maps a malformed handler result to exitCode 1", async () => {
+    // SAFETY: The test request always returns the documented plugin CLI response fields.
     const result = (await (
       await runCli(harness, "acme", { argv: ["malformed"] })
     ).json()) as { exitCode: number; stderr: string };
@@ -255,12 +261,14 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
 
   it("not-running and unknown plugins fail with helpful stderr", async () => {
     await harness.pluginService.setEnabled("acme", false);
+    // SAFETY: The test request always returns the documented plugin CLI response fields.
     const disabled = (await (
       await runCli(harness, "acme", { argv: [] })
     ).json()) as { exitCode: number; stderr: string };
     expect(disabled.exitCode).toBe(1);
     expect(disabled.stderr).toContain('plugin "acme" is not running');
 
+    // SAFETY: The test request always returns the documented plugin CLI response fields.
     const unknown = (await (
       await runCli(harness, "nope", { argv: [] })
     ).json()) as { exitCode: number; stderr: string };
@@ -282,6 +290,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const entry = await harness.pluginService.installPath(reserved);
     expect(entry.status).toBe("running");
+    // SAFETY: The plugin log lines use the documented JSONL fields.
     const warnings = (await harness.pluginService.readLogTail("shadower", 10))
       ?.map((line) => JSON.parse(line) as { level: string; message: string })
       .filter((line) => line.level === "warn")
@@ -389,6 +398,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const raw = await readFile(logFile, "utf8");
     const lines = raw.split("\n").filter((line) => line.length > 0);
+    // SAFETY: The plugin writes each log line with the documented JSONL fields.
     const parsed = JSON.parse(lines.at(-1) ?? "") as {
       ts: number;
       level: string;
@@ -396,12 +406,13 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     };
     expect(parsed.level).toBe("info");
     expect(parsed.message).toBe("cli plugin loaded");
-    expect(typeof parsed.ts).toBe("number");
+    expect(parsed.ts).toEqual(expect.any(Number));
 
     const response = await harness.app.request(
       `${BASE}/api/v1/plugins/acme/logs?tail=1`,
     );
     expect(response.status).toBe(200);
+    // SAFETY: The test request always returns the documented log response fields.
     const body = (await response.json()) as { ok: boolean; lines: string[] };
     expect(body.ok).toBe(true);
     expect(body.lines).toHaveLength(1);

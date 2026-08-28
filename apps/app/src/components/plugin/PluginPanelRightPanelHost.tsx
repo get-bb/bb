@@ -186,13 +186,22 @@ function findPluginRightPanelTogglePortal(
   return null;
 }
 
+interface TerminalHostPathScope {
+  kind: "host_path";
+  hostId: string;
+  cwd?: string;
+}
+
 function terminalScope(target: TerminalCreateTarget | null) {
   if (target?.kind !== "host_path") return target;
-  return {
+  const scope: TerminalHostPathScope = {
     kind: "host_path" as const,
     hostId: target.hostId,
-    ...(target.cwd === null ? {} : { cwd: target.cwd }),
   };
+  if (target.cwd !== null) {
+    scope.cwd = target.cwd;
+  }
+  return scope;
 }
 
 export function PluginPanelRightPanelHost({

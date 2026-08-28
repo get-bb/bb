@@ -344,7 +344,7 @@ export class ConnectTunnel {
     this.credential = null;
     this.teardown();
     this.publish();
-    void this.options.store.clear().catch((error: unknown) => {
+    void this.options.store.clear().catch((error) => {
       this.options.log.warn(
         `failed to clear the rejected credential: ${
           error instanceof Error ? error.message : String(error)

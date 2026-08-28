@@ -143,12 +143,18 @@ function buildAcpModelListCommand(
   if (!launchSpec.modelCli || launchSpec.modelCli.listArgs.length === 0) {
     return undefined;
   }
-  return {
+  const command: AcpAgentCommandParam = {
     command: launchSpec.command,
     args: [...launchSpec.modelCli.listArgs],
-    ...(launchSpec.cwd !== undefined ? { cwd: launchSpec.cwd } : {}),
-    ...launchEnvVars(launchSpec),
   };
+  if (launchSpec.cwd !== undefined) {
+    command.cwd = launchSpec.cwd;
+  }
+  const envVars = launchEnvVars(launchSpec).envVars;
+  if (envVars !== undefined) {
+    command.envVars = envVars;
+  }
+  return command;
 }
 
 function buildAcpModelDiscoveryAgentCommand(
@@ -157,12 +163,18 @@ function buildAcpModelDiscoveryAgentCommand(
   if (buildAcpModelListCommand(launchSpec) !== undefined) {
     return undefined;
   }
-  return {
+  const command: AcpAgentCommandParam = {
     command: launchSpec.command,
     args: [...launchSpec.args],
-    ...(launchSpec.cwd !== undefined ? { cwd: launchSpec.cwd } : {}),
-    ...launchEnvVars(launchSpec),
   };
+  if (launchSpec.cwd !== undefined) {
+    command.cwd = launchSpec.cwd;
+  }
+  const envVars = launchEnvVars(launchSpec).envVars;
+  if (envVars !== undefined) {
+    command.envVars = envVars;
+  }
+  return command;
 }
 
 interface AcpModelListOptions {
@@ -190,19 +202,24 @@ export function buildAcpModelListParams(
   }
   const listCommand = buildAcpModelListCommand(launchSpec);
   const agent = buildAcpModelDiscoveryAgentCommand(launchSpec);
-  return {
-    ...(listCommand !== undefined ? { listCommand } : {}),
-    ...(agent !== undefined ? { agent } : {}),
+  const params: AcpModelListParams = {
     primaryModels,
     reasoningProbePriorityModelIds,
     parameterizedModelPicker: options.parameterizedModelPicker,
-    ...(launchSpec.reasoningCli !== undefined
-      ? { reasoningCli: launchSpec.reasoningCli }
-      : {}),
-    ...(launchSpec.nativeReasoning !== undefined
-      ? { nativeReasoning: launchSpec.nativeReasoning }
-      : {}),
   };
+  if (listCommand !== undefined) {
+    params.listCommand = listCommand;
+  }
+  if (agent !== undefined) {
+    params.agent = agent;
+  }
+  if (launchSpec.reasoningCli !== undefined) {
+    params.reasoningCli = launchSpec.reasoningCli;
+  }
+  if (launchSpec.nativeReasoning !== undefined) {
+    params.nativeReasoning = launchSpec.nativeReasoning;
+  }
+  return params;
 }
 
 interface CursorParameterizedSelection {
@@ -210,9 +227,7 @@ interface CursorParameterizedSelection {
   reasoningLevel?: ReasoningLevel;
 }
 
-const CURSOR_LEGACY_FAMILY_SELECTIONS: Readonly<
-  Record<string, CursorParameterizedSelection>
-> = {
+const CURSOR_LEGACY_FAMILY_SELECTIONS = {
   "claude-4-sonnet": { modelId: "claude-sonnet-4" },
   "claude-4.5-opus": { modelId: "claude-opus-4-5" },
   "claude-4.5-sonnet": { modelId: "claude-sonnet-4-5" },
@@ -223,7 +238,13 @@ const CURSOR_LEGACY_FAMILY_SELECTIONS: Readonly<
     reasoningLevel: "low",
   },
   "gpt-5.1-codex-max": { modelId: "gpt-5.1" },
-};
+} satisfies Readonly<Record<string, CursorParameterizedSelection>>;
+
+function isCursorLegacyFamilyId(
+  value: string,
+): value is keyof typeof CURSOR_LEGACY_FAMILY_SELECTIONS {
+  return Object.hasOwn(CURSOR_LEGACY_FAMILY_SELECTIONS, value);
+}
 
 function cursorParameterizedSelection(
   model: string,
@@ -233,9 +254,11 @@ function cursorParameterizedSelection(
   const bareFamilyId = familyId.startsWith("cursor-")
     ? familyId.slice("cursor-".length)
     : familyId;
-  const selection = CURSOR_LEGACY_FAMILY_SELECTIONS[bareFamilyId] ?? {
-    modelId: bareFamilyId,
-  };
+  const selection: CursorParameterizedSelection = isCursorLegacyFamilyId(
+    bareFamilyId,
+  )
+    ? CURSOR_LEGACY_FAMILY_SELECTIONS[bareFamilyId]
+    : { modelId: bareFamilyId };
   return selection.reasoningLevel !== undefined || reasoningLevel === undefined
     ? selection
     : { ...selection, reasoningLevel };
@@ -246,7 +269,7 @@ function buildAcpModelSelectionParam(
   options: AcpSessionExecutionOptions,
   parameterizedModelPicker: boolean,
   dialectId: string | undefined,
-): { modelSelection?: AcpModelSelection } {
+) {
   const model = options.model;
   const listCommand = buildAcpModelListCommand(launchSpec);
   if (!model || model === ACP_DEFAULT_MODEL_ID) {
@@ -257,37 +280,43 @@ function buildAcpModelSelectionParam(
     !listCommand ||
     !launchSpec.modelCli?.selectFlag
   ) {
-    const modelSelection =
-      parameterizedModelPicker && dialectId === "cursor"
-        ? cursorParameterizedSelection(model, options.reasoningLevel)
-        : {
-            modelId: model,
-            ...(options.reasoningLevel !== undefined
-              ? { reasoningLevel: options.reasoningLevel }
-              : {}),
-          };
+    let modelSelection: AcpModelSelection;
+    if (parameterizedModelPicker && dialectId === "cursor") {
+      modelSelection = cursorParameterizedSelection(
+        model,
+        options.reasoningLevel,
+      );
+    } else {
+      const selection: Extract<AcpModelSelection, { modelId: string }> = {
+        modelId: model,
+      };
+      if (options.reasoningLevel !== undefined) {
+        selection.reasoningLevel = options.reasoningLevel;
+      }
+      modelSelection = selection;
+    }
+    if (parameterizedModelPicker && options.serviceTier !== undefined) {
+      modelSelection.serviceTier = options.serviceTier;
+    }
     return {
-      modelSelection: {
-        ...modelSelection,
-        ...(parameterizedModelPicker && options.serviceTier !== undefined
-          ? { serviceTier: options.serviceTier }
-          : {}),
-      },
+      modelSelection,
     };
   }
-  return {
-    modelSelection: {
-      listCommand,
-      selectFlag: launchSpec.modelCli.selectFlag,
-      model,
-      ...(options.reasoningLevel !== undefined
-        ? { reasoningLevel: options.reasoningLevel }
-        : {}),
-      ...(options.serviceTier === "fast"
-        ? { serviceTier: options.serviceTier }
-        : {}),
-    },
+  const modelSelection: Extract<
+    AcpModelSelection,
+    { listCommand: AcpAgentCommandParam }
+  > = {
+    listCommand,
+    selectFlag: launchSpec.modelCli.selectFlag,
+    model,
   };
+  if (options.reasoningLevel !== undefined) {
+    modelSelection.reasoningLevel = options.reasoningLevel;
+  }
+  if (options.serviceTier === "fast") {
+    modelSelection.serviceTier = options.serviceTier;
+  }
+  return { modelSelection };
 }
 
 interface BuildAcpSessionParamsArgs {
@@ -317,40 +346,52 @@ export function buildAcpSessionParams(
       `Provider "${args.providerLabel}" does not support permission mode "auto".`,
     );
   }
-  return {
+  const params: AcpSessionParams = {
     threadId: args.threadId,
     cwd,
     agent: {
       command: launchSpec.command,
       args: [...launchSpec.args],
     },
-    ...(args.dialectId === undefined ? {} : { dialectId: args.dialectId }),
-    ...buildAcpModelSelectionParam(
-      launchSpec,
-      options,
-      args.parameterizedModelPicker,
-      args.dialectId,
-    ),
     parameterizedModelPicker: args.parameterizedModelPicker,
-    ...(launchSpec.reasoningCli !== undefined
-      ? { reasoningCli: launchSpec.reasoningCli }
-      : {}),
-    ...(launchSpec.nativeReasoning !== undefined
-      ? { nativeReasoning: launchSpec.nativeReasoning }
-      : {}),
-    ...(launchSpec.permissionCli !== undefined
-      ? { permissionCli: launchSpec.permissionCli }
-      : {}),
-    ...(launchSpec.reasoningCli !== undefined &&
-    options.reasoningLevel !== undefined
-      ? { launchReasoningLevel: options.reasoningLevel }
-      : {}),
     permissionMode: options.permissionMode,
     workspaceWriteRoots: [cwd, ...args.additionalWorkspaceWriteRoots],
-    ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
-    ...(instructions ? { instructions } : {}),
-    ...(args.dynamicTools && args.dynamicTools.length > 0
-      ? { dynamicTools: args.dynamicTools }
-      : {}),
   };
+  if (args.dialectId !== undefined) {
+    params.dialectId = args.dialectId;
+  }
+  const modelSelection = buildAcpModelSelectionParam(
+    launchSpec,
+    options,
+    args.parameterizedModelPicker,
+    args.dialectId,
+  ).modelSelection;
+  if (modelSelection !== undefined) {
+    params.modelSelection = modelSelection;
+  }
+  if (launchSpec.reasoningCli !== undefined) {
+    params.reasoningCli = launchSpec.reasoningCli;
+  }
+  if (launchSpec.nativeReasoning !== undefined) {
+    params.nativeReasoning = launchSpec.nativeReasoning;
+  }
+  if (launchSpec.permissionCli !== undefined) {
+    params.permissionCli = launchSpec.permissionCli;
+  }
+  if (
+    launchSpec.reasoningCli !== undefined &&
+    options.reasoningLevel !== undefined
+  ) {
+    params.launchReasoningLevel = options.reasoningLevel;
+  }
+  if (Object.keys(envVars).length > 0) {
+    params.envVars = envVars;
+  }
+  if (instructions !== undefined) {
+    params.instructions = instructions;
+  }
+  if (args.dynamicTools !== undefined && args.dynamicTools.length > 0) {
+    params.dynamicTools = args.dynamicTools;
+  }
+  return params;
 }

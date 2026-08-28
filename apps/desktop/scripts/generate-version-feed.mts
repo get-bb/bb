@@ -48,9 +48,10 @@ const updateMetadataSchema = z.object({
   sha512: z.string().min(1),
   releaseDate: z.iso.datetime(),
 });
+const jsonValueSchema = z.json();
 
-function parseJson(text: string): unknown {
-  return JSON.parse(text);
+function parseJson(text: string): z.output<typeof jsonValueSchema> {
+  return jsonValueSchema.parse(JSON.parse(text));
 }
 
 const packageJson = packageJsonSchema.parse(

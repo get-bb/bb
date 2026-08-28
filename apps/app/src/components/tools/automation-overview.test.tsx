@@ -434,7 +434,11 @@ describe("AutomationOverviewView", () => {
     });
     expect(projectOption.getAttribute("aria-checked")).toBe("false");
     expect(projectOption.getAttribute("aria-disabled")).toBe("true");
-    expect((projectOption as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        projectOption as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     expect(nameOption.getAttribute("aria-checked")).toBe("true");
     expect(
       screen
@@ -482,7 +486,7 @@ describe("AutomationOverviewView", () => {
     ).toHaveLength(1);
 
     fireEvent.click(
-      container.querySelector(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ container.querySelector(
         '[data-resource-card-pointer-action=""]',
       ) as HTMLElement,
     );

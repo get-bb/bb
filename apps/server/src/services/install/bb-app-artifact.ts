@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
+const { mkdir, readFile, rename, rm } =
+  process.getBuiltinModule("node:fs/promises");
 
 export interface BbAppArtifactService {
   getTarballPath(): Promise<string>;
@@ -28,6 +30,11 @@ interface BbAppPackageJson {
   version: string;
 }
 
+const bbAppPackageJsonSchema: z.ZodType<BbAppPackageJson> = z.object({
+  name: z.literal("bb-app"),
+  version: z.string(),
+});
+
 async function defaultCommandRunner(
   command: string,
   args: readonly string[],
@@ -43,20 +50,13 @@ async function defaultCommandRunner(
 async function readBbAppPackageJson(
   packageRoot: string,
 ): Promise<BbAppPackageJson> {
-  const parsed: unknown = JSON.parse(
-    await readFile(join(packageRoot, "package.json"), "utf8"),
+  const parsed = bbAppPackageJsonSchema.safeParse(
+    JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")),
   );
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    !("name" in parsed) ||
-    parsed.name !== "bb-app" ||
-    !("version" in parsed) ||
-    typeof parsed.version !== "string"
-  ) {
+  if (!parsed.success) {
     throw new Error(`Expected a bb-app package at ${packageRoot}`);
   }
-  return { name: parsed.name, version: parsed.version };
+  return parsed.data;
 }
 
 interface ResolvedBbAppPackage {
@@ -144,7 +144,7 @@ export function createBbAppArtifactService(
 
   return {
     getTarballPath(): Promise<string> {
-      artifactPromise ??= buildTarball().catch((error: unknown) => {
+      artifactPromise ??= buildTarball().catch((error) => {
         artifactPromise = undefined;
         throw error;
       });

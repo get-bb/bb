@@ -72,10 +72,10 @@ function sleep(ms: number): Promise<void> {
 function normalizeWaitConditionConfig(
   config: RuntimeWaitConditionConfig | undefined,
 ): RuntimeWaitConditionOptions {
-  if (typeof config === "number") {
-    return { timeoutMs: config };
+  if (config instanceof Object) {
+    return config;
   }
-  return config ?? {};
+  return config === undefined ? {} : { timeoutMs: config };
 }
 
 function isRuntimeErrorEvent(event: ThreadEvent): event is RuntimeErrorEvent {
@@ -191,12 +191,13 @@ export async function waitForRuntimeConditionUnsafe(
 export async function waitForRuntimeState(
   args: RuntimeStateWaitArgs,
 ): Promise<void> {
-  await waitForRuntimeConditionUnsafe(args.predicate, {
+  const options: RuntimeWaitConditionOptions = {
     describeFailure: () => describeRuntimeFailure(args),
     failFast: () => failFastRuntimeFailure(args),
     label: args.label,
-    ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
-  });
+  };
+  if (args.timeoutMs !== undefined) options.timeoutMs = args.timeoutMs;
+  await waitForRuntimeConditionUnsafe(args.predicate, options);
 }
 
 export async function waitForRuntimeThreadEvent(

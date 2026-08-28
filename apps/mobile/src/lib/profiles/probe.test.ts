@@ -1,8 +1,9 @@
+import type { JsonValue } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { probeServer, type ProbeFetch } from "./probe";
 
 function fakeFetch(
-  routes: Record<string, { status?: number; body?: unknown; throws?: Error }>,
+  routes: Record<string, { status?: number; body?: JsonValue; throws?: Error }>,
 ): ProbeFetch & { calls: string[] } {
   const calls: string[] = [];
   const impl: ProbeFetch = async (url) => {

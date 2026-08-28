@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
+import type { JsonValue, ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import {
   ITEM_ID_PATTERN,
@@ -12,7 +12,48 @@ import {
 
 const THREAD_ID = "thr_claude_rate_limits";
 
-function sdkMessage(message: Record<string, unknown>): Record<string, unknown> {
+type ClaudeSdkMessage =
+  | {
+      type: "assistant";
+      message: JsonValue;
+    }
+  | {
+      type: "system";
+      subtype: "api_retry";
+      attempt: number;
+      max_retries: number;
+      retry_delay_ms: number;
+      error_status: number;
+      error: string;
+    }
+  | {
+      type: "rate_limit_event";
+      rate_limit_info: {
+        status: "rejected" | "allowed";
+        rateLimitType: string;
+        resetsAt?: number;
+      };
+    }
+  | {
+      type: "result";
+      subtype: "error_during_execution" | "success";
+      is_error: boolean;
+      api_error_status?: number;
+      result?: string;
+      usage: JsonValue;
+      modelUsage: JsonValue;
+    };
+
+interface ClaudeSdkEnvelope {
+  jsonrpc: "2.0";
+  method: "sdk/message";
+  params: {
+    threadId: string;
+    message: ClaudeSdkMessage;
+  };
+}
+
+function sdkMessage(message: ClaudeSdkMessage): ClaudeSdkEnvelope {
   return {
     jsonrpc: "2.0",
     method: "sdk/message",

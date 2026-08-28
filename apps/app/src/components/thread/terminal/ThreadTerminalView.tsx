@@ -268,14 +268,15 @@ export function buildTerminalThemeFromCssColors(
 }
 
 function buildTerminalTheme(): ITheme {
-  if (typeof document === "undefined") {
+  const currentDocument = globalThis.document;
+  if (currentDocument === undefined) {
     return {};
   }
-  const probe = document.createElement("span");
+  const probe = currentDocument.createElement("span");
   probe.style.position = "absolute";
   probe.style.visibility = "hidden";
   probe.style.pointerEvents = "none";
-  document.body.appendChild(probe);
+  currentDocument.body.appendChild(probe);
   const get = (name: string) => readResolvedCssColor(probe, name);
   const theme = buildTerminalThemeFromCssColors(get);
   probe.remove();

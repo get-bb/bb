@@ -20,6 +20,7 @@ export interface ChildChannel {
 }
 
 type ProxyLogLevel = "info" | "warn" | "error";
+type ProxyLogFields = Record<string, string | number>;
 
 interface ParcelWatcherProxyOptions {
   spawnChannel: () => ChildChannel;
@@ -30,14 +31,14 @@ interface ParcelWatcherProxyOptions {
   log?: (
     level: ProxyLogLevel,
     message: string,
-    fields?: Record<string, unknown>,
+    fields?: ProxyLogFields,
   ) => void;
 }
 
 type SubscribeCallback = (
   error: ParcelWatcherError,
   events: ParcelWatcherEventBatch,
-) => unknown;
+) => void;
 
 interface SubscriptionRecord {
   id: string;

@@ -75,8 +75,8 @@ function abortPatchRequests(controllers: Set<AbortController>): void {
   controllers.clear();
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
+function isAbortError(cause: unknown): boolean {
+  return cause instanceof Error && cause.name === "AbortError";
 }
 
 function dedupeOrderedPaths(args: PendingPaths): string[] {

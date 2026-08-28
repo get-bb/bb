@@ -208,7 +208,7 @@ function runInProcessQueue<T>(
         }
         resolve(value);
       },
-      (error: unknown) => {
+      (error) => {
         if (timeout) {
           clearTimeout(timeout);
           timeout = undefined;

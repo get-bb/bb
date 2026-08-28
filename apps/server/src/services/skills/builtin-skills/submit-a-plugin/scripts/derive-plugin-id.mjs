@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
+import { z } from "zod";
+
+const pluginManifestSchema = z.object({ name: z.string() });
 
 const manifestPath = process.argv[2];
 if (manifestPath === undefined) {
@@ -9,21 +12,18 @@ if (manifestPath === undefined) {
 
 let manifest;
 try {
-  manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const parsed = pluginManifestSchema.safeParse(
+    JSON.parse(await readFile(manifestPath, "utf8")),
+  );
+  if (!parsed.success) {
+    console.error("plugin manifest must contain a package name");
+    process.exit(1);
+  }
+  manifest = parsed.data;
 } catch (error) {
   console.error(
     `cannot read plugin manifest: ${error instanceof Error ? error.message : String(error)}`,
   );
-  process.exit(1);
-}
-
-if (
-  typeof manifest !== "object" ||
-  manifest === null ||
-  !("name" in manifest) ||
-  typeof manifest.name !== "string"
-) {
-  console.error("plugin manifest must contain a package name");
   process.exit(1);
 }
 

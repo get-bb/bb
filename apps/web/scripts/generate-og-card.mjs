@@ -64,7 +64,9 @@ async function readDevToolsPort(profileDir, chrome) {
   const portFile = join(profileDir, "DevToolsActivePort");
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (chrome.exitCode !== null) {
-      throw new Error(`Chrome exited (${chrome.exitCode}) before DevTools was ready`);
+      throw new Error(
+        `Chrome exited (${chrome.exitCode}) before DevTools was ready`,
+      );
     }
     try {
       const [port] = (await readFile(portFile, "utf8")).split("\n");
@@ -86,7 +88,9 @@ function connect(webSocketUrl) {
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (message.method) {
-      eventWaiters.get(message.method)?.forEach((resolve) => resolve(message.params));
+      eventWaiters
+        .get(message.method)
+        ?.forEach((resolve) => resolve(message.params));
       eventWaiters.delete(message.method);
       return;
     }
@@ -98,9 +102,13 @@ function connect(webSocketUrl) {
   });
   const ready = new Promise((resolve, reject) => {
     socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener("error", () => reject(new Error("DevTools connection failed")), {
-      once: true,
-    });
+    socket.addEventListener(
+      "error",
+      () => reject(new Error("DevTools connection failed")),
+      {
+        once: true,
+      },
+    );
   });
   return {
     ready,
@@ -124,9 +132,8 @@ function connect(webSocketUrl) {
 
 async function main() {
   const require = createRequire(import.meta.url);
-  const font = require.resolve(
-    "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
-  );
+  const font =
+    require.resolve("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2");
 
   // The font and logo are copied in beside the page rather than linked where
   // they live: a file:// document may only read its own directory, so absolute
@@ -168,7 +175,9 @@ async function main() {
 
   try {
     const port = await readDevToolsPort(profileDir, chrome);
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+    const targets = await (
+      await fetch(`http://127.0.0.1:${port}/json/list`)
+    ).json();
     const page = targets.find((target) => target.type === "page");
     if (!page) throw new Error("Chrome exposed no page target");
 
@@ -227,7 +236,12 @@ async function main() {
       chrome.kill();
       await exited;
     }
-    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await rm(workDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    });
   }
 }
 

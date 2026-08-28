@@ -19,21 +19,30 @@ interface EnvironmentLifecycleSupersessionPredicates {
   matchingDestroyAttempt?: true;
 }
 
-export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES: Record<
+type EnvironmentLifecycleEventPredicateTable = Record<
   EnvironmentLifecycleEventType,
   EnvironmentLifecycleSupersessionPredicates
-> = {
-  "provision.requested": {},
-  "provision.succeeded": {},
-  "provision.failed": {},
-  "provision.cancelled": {},
-  "retire.requested": { managed: true },
-  "retire.cancelled": {},
-  "destroy.started": { managed: true },
-  "destroy.completed": { matchingDestroyAttempt: true },
-  "destroy.failed": { matchingDestroyAttempt: true },
-  "destroy.lost": {},
-};
+>;
+
+function defineEnvironmentLifecycleEventPredicateTable(
+  table: EnvironmentLifecycleEventPredicateTable,
+): EnvironmentLifecycleEventPredicateTable {
+  return table;
+}
+
+export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES =
+  defineEnvironmentLifecycleEventPredicateTable({
+    "provision.requested": {},
+    "provision.succeeded": {},
+    "provision.failed": {},
+    "provision.cancelled": {},
+    "retire.requested": { managed: true },
+    "retire.cancelled": {},
+    "destroy.started": { managed: true },
+    "destroy.completed": { matchingDestroyAttempt: true },
+    "destroy.failed": { matchingDestroyAttempt: true },
+    "destroy.lost": {},
+  });
 
 export interface EnvironmentLifecyclePathDependentTarget {
   withWorkspacePath: EnvironmentStatus;
@@ -44,10 +53,24 @@ type EnvironmentLifecycleTarget =
   | EnvironmentStatus
   | EnvironmentLifecyclePathDependentTarget;
 
-export const ENVIRONMENT_LIFECYCLE: Record<
+type EnvironmentLifecycleTable = Record<
   EnvironmentStatus,
   Partial<Record<EnvironmentLifecycleEventType, EnvironmentLifecycleTarget>>
-> = {
+>;
+
+function defineEnvironmentLifecycleTable(
+  table: EnvironmentLifecycleTable,
+): EnvironmentLifecycleTable {
+  return table;
+}
+
+function isPathDependentTarget(
+  target: EnvironmentLifecycleTarget,
+): target is EnvironmentLifecyclePathDependentTarget {
+  return Object.prototype.hasOwnProperty.call(target, "withWorkspacePath");
+}
+
+export const ENVIRONMENT_LIFECYCLE = defineEnvironmentLifecycleTable({
   provisioning: {
     "provision.succeeded": "ready",
     "provision.failed": "error",
@@ -75,7 +98,7 @@ export const ENVIRONMENT_LIFECYCLE: Record<
     "destroy.lost": "error",
   },
   destroyed: {},
-};
+});
 
 export interface EnvironmentLifecycleRowState {
   destroyAttemptId: string | null;
@@ -120,13 +143,13 @@ export function evaluateEnvironmentLifecycleEvent(
       detail: `no transition for ${event.type} from status ${environment.status}`,
     };
   }
-  if (typeof target === "string") {
-    return { to: target };
+  if (isPathDependentTarget(target)) {
+    return {
+      to:
+        environment.path !== null
+          ? target.withWorkspacePath
+          : target.withoutWorkspacePath,
+    };
   }
-  return {
-    to:
-      environment.path !== null
-        ? target.withWorkspacePath
-        : target.withoutWorkspacePath,
-  };
+  return { to: target };
 }

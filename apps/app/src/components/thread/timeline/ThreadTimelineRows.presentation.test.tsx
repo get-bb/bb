@@ -212,7 +212,11 @@ describe("plugin timeline renderers", () => {
     thread,
     Original,
   }: PluginTimelineRendererProps) {
-    const receipt = payload as { prompt: string; itemCount: number };
+    const receipt =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ payload as {
+        prompt: string;
+        itemCount: number;
+      };
     return (
       <div data-testid="receipt-renderer">
         <span>

@@ -11,7 +11,6 @@ import {
   githubRepoForSource,
   hasLoadableSkillContent,
   isApiSkill,
-  isRecord,
   parsePublicDetailSkill,
   parsePublicDirectorySkills,
   parsePublicSkillMarkdown,
@@ -23,6 +22,7 @@ import {
   SKILLS_BASE_URL,
   type SkillsApiPage,
 } from "./registry-parse.js";
+import { z } from "zod";
 
 const MAX_SEARCH_RESULTS = 200;
 const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
@@ -31,6 +31,41 @@ const GITHUB_REPOSITORY_STARS_FAILURE_TTL_MS = 5 * 60 * 1000;
 const REGISTRY_ENTRY_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+
+const registryApiResponseSchema = z
+  .object({
+    data: z.array(z.json()),
+    count: z.number().nullable().optional().catch(null),
+    pagination: z
+      .object({
+        total: z.number().nullable().optional().catch(null),
+        hasMore: z.boolean().nullable().optional().catch(null),
+      })
+      .passthrough()
+      .optional()
+      .nullable()
+      .catch(null),
+  })
+  .passthrough();
+const registryDetailResponseSchema = z
+  .object({
+    files: z.json().nullable().optional(),
+    hash: z.string().nullable().optional().catch(null),
+  })
+  .passthrough();
+const githubTreeEntrySchema = z
+  .object({
+    type: z.string().optional().catch(undefined),
+    path: z.string().optional().catch(undefined),
+  })
+  .passthrough()
+  .catch({});
+const githubTreeResponseSchema = z
+  .object({ tree: z.array(githubTreeEntrySchema) })
+  .passthrough();
+const githubRepositorySchema = z
+  .object({ stargazers_count: z.number().int().nonnegative() })
+  .passthrough();
 
 const registryDetailCache = new Map<
   string,
@@ -69,22 +104,21 @@ async function fetchRegistryJson(url: URL): Promise<SkillsApiPage | null> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return null;
-  const body = (await response.json().catch(() => null)) as {
-    data?: unknown;
-    count?: unknown;
-    pagination?: unknown;
-  } | null;
-  if (!Array.isArray(body?.data)) return null;
+  const parsed = registryApiResponseSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success) return null;
+  const body = parsed.data;
   const skills = body.data.filter(isApiSkill);
-  const pagination = isRecord(body.pagination) ? body.pagination : null;
+  const pagination = body.pagination;
   const total =
-    pagination && typeof pagination.total === "number"
+    pagination?.total !== undefined && pagination.total !== null
       ? pagination.total
-      : typeof body.count === "number"
+      : body.count !== undefined && body.count !== null
         ? body.count
         : skills.length;
   const hasMore =
-    pagination && typeof pagination.hasMore === "boolean"
+    pagination?.hasMore !== undefined && pagination.hasMore !== null
       ? pagination.hasMore
       : false;
   return { skills, total, hasMore };
@@ -115,15 +149,20 @@ async function fetchAuthenticatedRegistryDetail(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return null;
-  const body: unknown = await response.json().catch(() => null);
-  if (!isRecord(body)) return null;
+  const parsed = registryDetailResponseSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success) return null;
+  const body = parsed.data;
   const files = parseRegistryDetailFiles(body.files);
-  if (body.files !== null && files === null) return null;
+  if (body.files === undefined || (body.files !== null && files === null)) {
+    return null;
+  }
   return {
     id,
     source,
     skillId,
-    hash: typeof body.hash === "string" ? body.hash : null,
+    hash: body.hash ?? null,
     files,
   };
 }
@@ -227,14 +266,13 @@ async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
         },
       );
       if (!response.ok) return null;
-      const body: unknown = await response.json().catch(() => null);
-      if (!isRecord(body) || !Array.isArray(body.tree)) return null;
+      const parsed = githubTreeResponseSchema.safeParse(
+        await response.json().catch(() => null),
+      );
+      if (!parsed.success) return null;
+      const body = parsed.data;
       const paths = body.tree.flatMap((entry) =>
-        isRecord(entry) &&
-        entry.type === "blob" &&
-        typeof entry.path === "string"
-          ? [entry.path]
-          : [],
+        entry.type === "blob" && entry.path !== undefined ? [entry.path] : [],
       );
       githubSkillPathCache.set(repo, {
         paths,
@@ -287,16 +325,13 @@ export async function fetchRegistryRepositoryStars(
         },
       );
       if (!response.ok) return cacheStars(null);
-      const body: unknown = await response.json().catch(() => null);
-      if (
-        !isRecord(body) ||
-        typeof body.stargazers_count !== "number" ||
-        !Number.isInteger(body.stargazers_count) ||
-        body.stargazers_count < 0
-      ) {
+      const parsed = githubRepositorySchema.safeParse(
+        await response.json().catch(() => null),
+      );
+      if (!parsed.success) {
         return cacheStars(null);
       }
-      return cacheStars(body.stargazers_count);
+      return cacheStars(parsed.data.stargazers_count);
     } catch {
       return cacheStars(null);
     } finally {

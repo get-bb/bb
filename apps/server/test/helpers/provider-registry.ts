@@ -117,16 +117,21 @@ export async function registerFirstPartyProviders(
         icon: declaration.icon,
         icons,
       });
-      registry.register({
+      const registration: ProviderRegistration = {
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
           pluginId,
           declaration,
           readSettings: NO_PLUGIN_SETTINGS,
         }),
-        ...(icon === null ? {} : { icon }),
         pluginId,
         iconNames: new Set(icons.keys()),
+      };
+      if (icon !== null) {
+        registration.icon = icon;
+      }
+      registry.register({
+        ...registration,
         installRank: {
           bundledIndex: FIRST_PARTY_PROVIDER_PLUGIN_IDS.indexOf(pluginId),
           installedAt: 0,
@@ -212,14 +217,10 @@ export async function recordFirstPartyProviderBridgeArtifacts(
 }
 
 async function hasHostEntry(rootDir: string): Promise<boolean> {
-  const raw = await readFile(join(rootDir, "package.json"), "utf8");
-  const parsed: unknown = JSON.parse(raw);
-  return (
-    typeof parsed === "object" &&
-    parsed !== null &&
-    typeof (parsed as { bb?: unknown }).bb === "object" &&
-    (parsed as { bb: { host?: unknown } }).bb.host !== undefined
+  const manifest = pluginPackageJsonSchema.parse(
+    JSON.parse(await readFile(join(rootDir, "package.json"), "utf8")),
   );
+  return manifest.bb.host !== undefined;
 }
 
 export function declaredNativeRootSet(

@@ -43,7 +43,10 @@ export function PromptStackCard({
   }
   return (
     <div
-      ref={rootRef as Ref<HTMLDivElement>}
+      ref={
+        /* SAFETY: A div is an HTMLElement, so this ref preserves the caller's HTMLElement target. */
+        rootRef as Ref<HTMLDivElement>
+      }
       className={cn(BASE_CHROME, className)}
       style={style}
     >

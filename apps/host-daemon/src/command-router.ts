@@ -309,15 +309,13 @@ export class CommandRouter {
       return;
     }
 
-    this.logger.debug?.(
-      {
-        commandType: args.commandType,
-        ...(args.errorCode ? { errorCode: args.errorCode } : {}),
-        handlerMs: roundDurationMs(args.handlerMs),
-        ok: args.ok,
-      },
-      "Online host RPC",
-    );
+    const fields = {
+      commandType: args.commandType,
+      handlerMs: roundDurationMs(args.handlerMs),
+      ok: args.ok,
+    };
+    if (args.errorCode) Object.assign(fields, { errorCode: args.errorCode });
+    this.logger.debug?.(fields, "Online host RPC");
   }
 
   private getOrCreateReadWriteLane(

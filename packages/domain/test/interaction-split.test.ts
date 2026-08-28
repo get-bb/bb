@@ -7,6 +7,7 @@ import {
   providerInteractionOutcomeSchema,
   toInteractionLifecycle,
 } from "../src/index.js";
+import type { JsonObject } from "../src/json-value.js";
 
 const presentation = {
   label: { pending: "Creating issue", completed: "Created issue" },
@@ -14,7 +15,7 @@ const presentation = {
   title: "Linear: create issue",
 };
 
-function approvalOf(subject: Record<string, unknown>) {
+function approvalOf(subject: JsonObject) {
   return pendingInteractionPayloadSchema.safeParse({
     kind: "approval",
     subject,

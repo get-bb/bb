@@ -23,13 +23,11 @@ export interface ShareIntentModule {
   }) => ShareIntentHookResult;
 }
 
-function isShareIntentModule(value: unknown): value is ShareIntentModule {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { useShareIntent?: unknown }).useShareIntent === "function"
-  );
-}
+const shareIntentModuleSchema = z.object({
+  useShareIntent: z.custom<ShareIntentModule["useShareIntent"]>(
+    (value) => value instanceof Function,
+  ),
+});
 
 let cached: ShareIntentModule | null | undefined;
 
@@ -37,7 +35,8 @@ export function loadShareIntentModule(): ShareIntentModule | null {
   if (cached !== undefined) return cached;
   try {
     const candidate: unknown = require("expo-share-intent");
-    cached = isShareIntentModule(candidate) ? candidate : null;
+    const parsed = shareIntentModuleSchema.safeParse(candidate);
+    cached = parsed.success ? parsed.data : null;
   } catch {
     cached = null;
   }
@@ -58,3 +57,4 @@ export function composeSeedFromShareIntent(
   if (parts.length === 0) return null;
   return { initialPrompt: parts.join("\n\n") };
 }
+import { z } from "zod";

@@ -13,7 +13,7 @@ class HeaderContentBoundary extends Component<
 > {
   override state = { crashed: false };
 
-  static getDerivedStateFromError(): { crashed: boolean } {
+  static getDerivedStateFromError() {
     return { crashed: true };
   }
 

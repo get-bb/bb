@@ -3,11 +3,24 @@ import type {
   TerminalServerMessage,
   TerminalSession,
 } from "@bb/server-contract";
+import { terminalClientMessageSchema } from "@bb/server-contract";
 import {
   TerminalWebSocketTransport,
   type TerminalBrowserSocket,
   type TerminalSocketConnectionState,
 } from "../src/terminal/terminal-websocket-transport.js";
+
+class FakeCloseEvent extends Event {
+  readonly code: number;
+  readonly reason: string;
+  readonly wasClean = false;
+
+  constructor(code: number, reason: string) {
+    super("close");
+    this.code = code;
+    this.reason = reason;
+  }
+}
 
 class FakeTerminalBrowserSocket implements TerminalBrowserSocket {
   bufferedAmount: number | undefined = 0;
@@ -26,7 +39,7 @@ class FakeTerminalBrowserSocket implements TerminalBrowserSocket {
       return;
     }
     this.readyState = 3;
-    this.onclose?.({ code: code ?? 1005, reason: reason ?? "" } as CloseEvent);
+    this.onclose?.(new FakeCloseEvent(code ?? 1005, reason ?? ""));
   }
 
   open(): void {
@@ -107,12 +120,11 @@ function terminalSession(): TerminalSession {
 }
 
 function inputMessages(socket: FakeTerminalBrowserSocket): string[] {
-  return socket.sent
-    .map(
-      (payload) => JSON.parse(payload) as { dataBase64?: string; type: string },
-    )
-    .filter((message) => message.type === "input")
-    .map((message) => message.dataBase64 ?? "");
+  return socket.sent.flatMap((payload) => {
+    const parsed = terminalClientMessageSchema.safeParse(JSON.parse(payload));
+    if (!parsed.success || parsed.data.type !== "input") return [];
+    return [parsed.data.dataBase64];
+  });
 }
 
 afterEach(() => {

@@ -107,11 +107,7 @@ function futureIso(minutesFromNow: number): string {
   return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
 }
 
-const usageFixture: {
-  codex: ProviderUsage;
-  "claude-code": ProviderUsage;
-  "acp-cursor": ProviderUsage;
-} = {
+const usageFixture = {
   codex: {
     status: "ok",
     accountEmail: "sawyer@example.com",
@@ -164,6 +160,10 @@ const usageFixture: {
       },
     ],
   },
+} satisfies {
+  codex: ProviderUsage;
+  "claude-code": ProviderUsage;
+  "acp-cursor": ProviderUsage;
 };
 
 const usageHosts: Host[] = [

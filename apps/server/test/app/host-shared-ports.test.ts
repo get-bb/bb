@@ -32,12 +32,15 @@ function setup(args: { enrolled?: boolean; online?: boolean } = {}) {
   migrate(db);
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
-  const host = upsertHost(db, noopNotifier, {
+  const hostOptions: Parameters<typeof upsertHost>[2] = {
     id: "host-1",
     name: "test-host",
     type: "persistent",
-    ...(args.enrolled === false ? {} : { connectMachineId: "machine-1" }),
-  });
+  };
+  if (args.enrolled !== false) {
+    Object.assign(hostOptions, { connectMachineId: "machine-1" });
+  }
+  const host = upsertHost(db, noopNotifier, hostOptions);
   if (args.enrolled !== false && args.online !== false) {
     const session = openSession(db, {
       hostId: host.id,

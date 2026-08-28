@@ -28,7 +28,7 @@ let loading = false;
 const pendingEvents: LandingEvent[] = [];
 
 export function initAnalytics(): void {
-  if (loading || typeof window === "undefined") {
+  if (loading || globalThis.window === undefined) {
     return;
   }
   const key = import.meta.env.VITE_POSTHOG_KEY;

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { TaskPullRequest, TaskThread } from "../../shared/contract";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -42,7 +43,11 @@ const task = {
   labelIds: [],
 };
 
-function taskThreadRow(id: string, threadId: string, title: string) {
+function taskThreadRow(
+  id: string,
+  threadId: string,
+  title: string,
+): TaskThread {
   return {
     id,
     taskId: TASK_ID,
@@ -55,7 +60,16 @@ function taskThreadRow(id: string, threadId: string, title: string) {
   };
 }
 
-function detailRpc(overrides: Record<string, unknown> = {}) {
+type DetailRpcOverrides = {
+  listTaskPullRequests?: () => {
+    pullRequests: TaskPullRequest[];
+    unavailableThreadIds: string[];
+  };
+  listTaskThreads?: () => { taskThreads: TaskThread[] };
+  taskThreadsDetach?: (input: { threadId: string }) => { threadId: string };
+};
+
+function detailRpc(overrides: DetailRpcOverrides = {}) {
   return {
     listProjects: () => ({
       projects: [
@@ -117,9 +131,9 @@ describe("task detail pull request pills", () => {
       },
     );
 
-    const link = (await slot.findByRole("link", {
+    const link = await slot.findByRole<HTMLAnchorElement>("link", {
       name: "Pull request #12: Ship the PR pill (Merged)",
-    })) as HTMLAnchorElement;
+    });
     expect(link.href).toBe("https://github.com/acme/bb/pull/12");
     expect(link.target).toBe("_blank");
     expect(link.rel).toContain("noopener");

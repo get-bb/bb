@@ -10,7 +10,12 @@ import {
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { derivePluginId } from "@bb/domain";
+import {
+  derivePluginId,
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import type { Metafile, Plugin } from "esbuild";
 import {
   PLUGIN_THEME_CSS,
@@ -167,7 +172,7 @@ type ScannerSource = {
   negated: boolean;
 };
 
-function readDependencyNames(pkg: Record<string, unknown>): string[] {
+function readDependencyNames(pkg: JsonObject): string[] {
   const names = new Set<string>();
   for (const field of ["dependencies", "devDependencies"] as const) {
     const dependencies = pkg[field];
@@ -179,9 +184,7 @@ function readDependencyNames(pkg: Record<string, unknown>): string[] {
   return [...names].sort();
 }
 
-async function readPackageJson(
-  filePath: string,
-): Promise<Record<string, unknown>> {
+async function readPackageJson(filePath: string): Promise<JsonObject> {
   let raw: string;
   try {
     raw = await readFile(filePath, "utf8");
@@ -194,14 +197,19 @@ async function readPackageJson(
   } catch {
     throw new Error(`package.json is not valid JSON at ${filePath}`);
   }
-  if (!isRecord(json)) {
+  const parsed = jsonObjectSchema.safeParse(json);
+  if (!parsed.success) {
     throw new Error(`package.json must contain an object at ${filePath}`);
   }
-  return json;
+  return parsed.data;
+}
+
+function isJsonString(value: JsonValue): value is string {
+  return value === String(value);
 }
 
 function readTailwindContentPatterns(
-  pkg: Record<string, unknown>,
+  pkg: JsonObject,
   packageJsonPath: string,
 ): string[] {
   const bb = pkg.bb;
@@ -209,10 +217,7 @@ function readTailwindContentPatterns(
     return [];
   }
   const patterns = bb.pluginTailwindContent;
-  if (
-    !Array.isArray(patterns) ||
-    !patterns.every((pattern) => typeof pattern === "string")
-  ) {
+  if (!Array.isArray(patterns) || !patterns.every(isJsonString)) {
     throw new Error(
       `bb.pluginTailwindContent must be an array of strings in ${packageJsonPath}`,
     );
@@ -306,9 +311,11 @@ async function buildTailwindCss(
   bundledInputs: ReadonlySet<string>,
 ): Promise<string> {
   const [{ compile }, { Scanner }] = await Promise.all([
+    // SAFETY: The toolchain URL resolves to the declared Tailwind node module contract.
     import(toolchain.tailwindNode) as Promise<
       typeof import("@tailwindcss/node")
     >,
+    // SAFETY: The toolchain URL resolves to the declared Tailwind Oxide module contract.
     import(toolchain.tailwindOxide) as Promise<
       typeof import("@tailwindcss/oxide")
     >,
@@ -420,6 +427,7 @@ export async function buildPluginApp(
     const stagedCssPath = join(stageDir, "app.css");
     const stagedMetaPath = join(stageDir, "app.meta.json");
 
+    // SAFETY: The toolchain URL resolves to the declared esbuild module contract.
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
@@ -448,7 +456,11 @@ export async function buildPluginApp(
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
     } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      ) {
+        throw error;
+      }
     }
     const tailwindCss = (
       await buildTailwindCss(
@@ -458,6 +470,7 @@ export async function buildPluginApp(
         await bundledInputPaths(bundle.metafile, rootDir),
       )
     ).trimEnd();
+    // SAFETY: The toolchain URL resolves to the declared Tailwind node module contract.
     const { optimize } = (await import(
       toolchain.tailwindNode
     )) as typeof import("@tailwindcss/node");

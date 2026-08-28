@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import matter from "gray-matter";
+import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import {
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
@@ -21,6 +21,7 @@ const MAX_SKILL_DEPTH = 24;
 const REGISTRY_SKILLS_CLI_VERSION = "1.5.19";
 const REGISTRY_SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const fs = process.getBuiltinModule("node:fs/promises");
 
 interface InstallCommandResult {
   ok: boolean;
@@ -28,20 +29,29 @@ interface InstallCommandResult {
   stdout: string;
 }
 
-function appendBounded(current: string, chunk: unknown): string {
+interface RegistrySkillsCliInvocation {
+  args: string[];
+  command: string;
+  options: { cwd: string; env: NodeJS.ProcessEnv };
+}
+
+type InstallOutputChunk = string | Buffer;
+
+const skillFrontmatterSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+});
+
+function appendBounded(current: string, chunk: InstallOutputChunk): string {
   if (current.length >= MAX_INSTALL_OUTPUT_BYTES) return current;
-  return `${current}${String(chunk)}`.slice(0, MAX_INSTALL_OUTPUT_BYTES);
+  return `${current}${chunk}`.slice(0, MAX_INSTALL_OUTPUT_BYTES);
 }
 
 function registrySkillsCliInvocation(args: {
   cwd: string;
   packageRef: string;
   skillId: string;
-}): {
-  args: string[];
-  command: string;
-  options: { cwd: string; env: NodeJS.ProcessEnv };
-} {
+}): RegistrySkillsCliInvocation {
   const allowedKeys =
     process.platform === "win32"
       ? [
@@ -144,9 +154,13 @@ async function validateSkillFile(
       "Skill is missing SKILL.md",
     );
   }
-  let data: Record<string, unknown>;
+  let data: z.infer<typeof skillFrontmatterSchema>;
   try {
-    data = matter(content).data;
+    const parsed = skillFrontmatterSchema.safeParse(matter(content).data);
+    if (!parsed.success) {
+      throw new Error("Skill frontmatter does not match its contract");
+    }
+    data = parsed.data;
   } catch {
     throw new ApiError(
       422,
@@ -156,7 +170,7 @@ async function validateSkillFile(
   }
   if (
     data.name !== skillId ||
-    typeof data.description !== "string" ||
+    data.description === undefined ||
     data.description.trim().length === 0 ||
     data.description.length > 1_024
   ) {

@@ -4,6 +4,14 @@ import {
   formatCustomAcpAgentProviderId,
   parseBbAppManagedConfig,
 } from "../src/bb-app-managed-config.js";
+import { z } from "zod";
+
+const configWarningSchema = z.object({
+  error: z.string(),
+  index: z.number(),
+  providerId: z.string().optional(),
+});
+type ConfigWarning = z.infer<typeof configWarningSchema>;
 
 describe("bbAppManagedConfigSchema", () => {
   it("parses shared user and project skill roots", () => {
@@ -65,7 +73,7 @@ describe("bbAppManagedConfigSchema", () => {
   });
 
   it("drops invalid custom model entries with warnings at the config boundary", () => {
-    const warnings: Record<string, unknown>[] = [];
+    const warnings: ConfigWarning[] = [];
     const parsed = parseBbAppManagedConfig(
       {
         customModels: [
@@ -77,7 +85,7 @@ describe("bbAppManagedConfigSchema", () => {
       {
         logger: {
           warn(fields): void {
-            warnings.push(fields);
+            warnings.push(configWarningSchema.parse(fields));
           },
         },
       },
@@ -319,7 +327,7 @@ describe("bbAppManagedConfigSchema", () => {
       }),
     ).toThrow(/Unrecognized key/u);
 
-    const warnings: Record<string, unknown>[] = [];
+    const warnings: ConfigWarning[] = [];
     const parsed = parseBbAppManagedConfig(
       {
         customAcpAgents: [
@@ -337,7 +345,7 @@ describe("bbAppManagedConfigSchema", () => {
       {
         logger: {
           warn(fields): void {
-            warnings.push(fields);
+            warnings.push(configWarningSchema.parse(fields));
           },
         },
       },
@@ -398,7 +406,7 @@ describe("bbAppManagedConfigSchema", () => {
   });
 
   it("drops invalid custom ACP agent entries with warnings at the config boundary", () => {
-    const warnings: Record<string, unknown>[] = [];
+    const warnings: ConfigWarning[] = [];
     const parsed = parseBbAppManagedConfig(
       {
         customAcpAgents: [
@@ -411,7 +419,7 @@ describe("bbAppManagedConfigSchema", () => {
       {
         logger: {
           warn(fields): void {
-            warnings.push(fields);
+            warnings.push(configWarningSchema.parse(fields));
           },
         },
       },

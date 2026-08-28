@@ -1,4 +1,5 @@
 import type { BrowserWindowConstructorOptions } from "electron";
+import type { JsonValue } from "@bb/domain";
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -44,7 +45,7 @@ export interface DesktopWindowOpenDevToolsOptions {
 export interface DesktopWindowWebContents extends DesktopContextMenuWebContents {
   id: number;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
-  send(channel: string, payload: unknown): void;
+  send(channel: string, payload: JsonValue): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
   setZoomFactor(factor: number): void;
 }
@@ -106,8 +107,8 @@ export interface DesktopWindowFactory {
   createWindow(args: CreateDesktopWindowArgs): Promise<DesktopBrowserWindow>;
   focusFirstWindow(): boolean;
   hasOpenWindows(): boolean;
-  sendToFocusedWindow(channel: string, payload: unknown): boolean;
-  sendToFirstWindow(channel: string, payload: unknown): boolean;
+  sendToFocusedWindow(channel: string, payload: JsonValue): boolean;
+  sendToFirstWindow(channel: string, payload: JsonValue): boolean;
   loadUrlInFirstWindow(args: LoadDesktopWindowsUrlArgs): Promise<boolean>;
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
   openDevTools(): void;
@@ -164,18 +165,7 @@ function resolveWindowStateKey(
 function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
-  return {
-    ...(args.isLinuxFrameless ? { frame: false } : {}),
-    ...(args.isLinuxTransparent
-      ? { backgroundColor: "#00000000", transparent: true }
-      : {}),
-    ...(args.isMac
-      ? {
-          frame: false,
-          titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
-        }
-      : {}),
+  const options: BrowserWindowConstructorOptions = {
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
@@ -193,6 +183,18 @@ function createWindowOptions(
     x: args.bounds.x,
     y: args.bounds.y,
   };
+  if (args.isLinuxFrameless || args.isMac) {
+    options.frame = false;
+  }
+  if (args.isLinuxTransparent) {
+    options.backgroundColor = "#00000000";
+    options.transparent = true;
+  }
+  if (args.isMac) {
+    options.titleBarStyle = "hiddenInset";
+    options.trafficLightPosition = MACOS_TRAFFIC_LIGHT_POSITION;
+  }
+  return options;
 }
 
 async function loadUrlIntoWindow(args: LoadUrlIntoWindowArgs): Promise<void> {
@@ -350,7 +352,7 @@ export function createDesktopWindowFactory(
     return false;
   }
 
-  function sendToFirstWindow(channel: string, payload: unknown): boolean {
+  function sendToFirstWindow(channel: string, payload: JsonValue): boolean {
     for (const browserWindow of activeWindows.values()) {
       if (browserWindow.isMinimized()) {
         browserWindow.restore();
@@ -362,7 +364,7 @@ export function createDesktopWindowFactory(
     return false;
   }
 
-  function sendToFocusedWindow(channel: string, payload: unknown): boolean {
+  function sendToFocusedWindow(channel: string, payload: JsonValue): boolean {
     for (const browserWindow of activeWindows.values()) {
       if (!browserWindow.isFocused()) {
         continue;

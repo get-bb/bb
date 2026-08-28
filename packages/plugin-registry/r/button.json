@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "button",
   "description": "BB ui \"button\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-slot",
-    "class-variance-authority"
-  ],
-  "registryDependencies": [
-    "@bb/motion",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/button.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/button.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-slot",
+    "class-variance-authority"
+  ],
+  "registryDependencies": [
+    "@bb/motion",
+    "@bb/utils"
   ]
 }

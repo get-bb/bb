@@ -8,8 +8,16 @@ import { isInsideNativeShell } from "@/lib/native-shell";
 
 const APP_SURFACE_MOBILE: RequestAppSurface = "mobile";
 
+function getBrowserWindow(): Window | undefined {
+  try {
+    return window;
+  } catch {
+    return globalThis.window;
+  }
+}
+
 export function getAppSurface(): RequestAppSurface {
-  if (typeof window !== "undefined" && window.bbDesktop !== undefined) {
+  if (getBrowserWindow()?.bbDesktop !== undefined) {
     return APP_SURFACE_DESKTOP;
   }
   if (isInsideNativeShell()) {

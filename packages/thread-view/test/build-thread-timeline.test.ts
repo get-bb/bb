@@ -7,6 +7,8 @@ import type {
   ProviderErrorInfo,
   ThreadEventBackgroundTaskItem,
   ThreadEventFileChange,
+  ThreadEvent,
+  ThreadEventItem,
   ThreadEventItemStatus,
   UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
@@ -61,6 +63,10 @@ interface ToolCallItemEventArgs {
   toolArgs?: JsonObject;
   type: "item/completed" | "item/started";
 }
+
+type LegacyToolCallItem = Extract<ThreadEventItem, { type: "toolCall" }> & {
+  statusLabels?: { pending: string; completed: string };
+};
 
 interface ImageViewItemEventArgs {
   itemId?: string;
@@ -294,22 +300,23 @@ function toolCallItemEvent({
   toolArgs,
   type,
 }: ToolCallItemEventArgs): ThreadEventWithMeta {
+  const item: LegacyToolCallItem = {
+    type: "toolCall",
+    id: itemId,
+    tool,
+    status: status ?? (type === "item/completed" ? "completed" : "pending"),
+  };
+  if (toolArgs) item.arguments = toolArgs;
+  if (parentToolCallId) item.parentToolCallId = parentToolCallId;
+  if (statusLabels) item.statusLabels = statusLabels;
+  if (result) item.result = result;
   return {
     event: {
       type,
       threadId: "thread-1",
       providerThreadId: "provider-thread-1",
       scope: turnScope("turn-1"),
-      item: {
-        type: "toolCall",
-        id: itemId,
-        tool,
-        ...(toolArgs ? { arguments: toolArgs } : {}),
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-        ...(statusLabels ? { statusLabels } : {}),
-        status: status ?? (type === "item/completed" ? "completed" : "pending"),
-        ...(result ? { result } : {}),
-      },
+      item,
     },
     meta: {
       id: `event-${seq}`,
@@ -413,15 +420,16 @@ function turnCompletedEvent({
   seq,
   status = "completed",
 }: TurnCompletedEventArgs): ThreadEventWithMeta {
+  const event: Extract<ThreadEvent, { type: "turn/completed" }> = {
+    type: "turn/completed",
+    threadId: "thread-1",
+    providerThreadId: "provider-thread-1",
+    scope: turnScope("turn-1"),
+    status,
+  };
+  if (errorMessage) event.error = { message: errorMessage };
   return {
-    event: {
-      type: "turn/completed",
-      threadId: "thread-1",
-      providerThreadId: "provider-thread-1",
-      scope: turnScope("turn-1"),
-      status,
-      ...(errorMessage ? { error: { message: errorMessage } } : {}),
-    },
+    event,
     meta: {
       id: `event-${seq}`,
       seq,
@@ -471,17 +479,18 @@ function systemOperationEvent({
   seq,
   status = "completed",
 }: SystemOperationEventArgs): ThreadEventWithMeta {
+  const event: Extract<ThreadEvent, { type: "system/operation" }> = {
+    type: "system/operation",
+    threadId: "thread-1",
+    scope: threadScope(),
+    message,
+    operation,
+    operationId,
+    status,
+  };
+  if (metadata) event.metadata = metadata;
   return {
-    event: {
-      type: "system/operation",
-      threadId: "thread-1",
-      scope: threadScope(),
-      message,
-      operation,
-      operationId,
-      status,
-      ...(metadata ? { metadata } : {}),
-    },
+    event,
     meta: {
       id: `event-${seq}`,
       seq,
@@ -496,15 +505,16 @@ function systemErrorEvent({
   message,
   seq,
 }: SystemErrorEventArgs): ThreadEventWithMeta {
+  const event: Extract<ThreadEvent, { type: "system/error" }> = {
+    type: "system/error",
+    threadId: "thread-1",
+    scope: threadScope(),
+    message,
+  };
+  if (code !== undefined) event.code = code;
+  if (detail !== undefined) event.detail = detail;
   return {
-    event: {
-      type: "system/error",
-      threadId: "thread-1",
-      scope: threadScope(),
-      message,
-      ...(code !== undefined ? { code } : {}),
-      ...(detail !== undefined ? { detail } : {}),
-    },
+    event,
     meta: {
       id: `event-${seq}`,
       seq,
@@ -558,17 +568,18 @@ function providerErrorEvent({
   seq,
   willRetry,
 }: ProviderErrorEventArgs): ThreadEventWithMeta {
+  const event: Extract<ThreadEvent, { type: "provider/error" }> = {
+    type: "provider/error",
+    threadId: "thread-1",
+    providerThreadId: "provider-thread-1",
+    scope: turnScope("turn-1"),
+    message,
+  };
+  if (detail !== undefined) event.detail = detail;
+  if (errorInfo !== undefined) event.errorInfo = errorInfo;
+  if (willRetry !== undefined) event.willRetry = willRetry;
   return {
-    event: {
-      type: "provider/error",
-      threadId: "thread-1",
-      providerThreadId: "provider-thread-1",
-      scope: turnScope("turn-1"),
-      message,
-      ...(detail !== undefined ? { detail } : {}),
-      ...(errorInfo !== undefined ? { errorInfo } : {}),
-      ...(willRetry !== undefined ? { willRetry } : {}),
-    },
+    event,
     meta: {
       id: `event-${seq}`,
       seq,
@@ -939,10 +950,14 @@ function collectSystemRows(rows: readonly TimelineRow[]): TimelineSystemRow[] {
   return systemRows;
 }
 
+interface FileChangeRowIds {
+  [path: string]: string;
+}
+
 function fileChangeRowIdByPath(
   rows: readonly TimelineFileChangeWorkRow[],
-): Record<string, string> {
-  const idByPath: Record<string, string> = {};
+): FileChangeRowIds {
+  const idByPath: FileChangeRowIds = {};
   for (const row of rows) {
     idByPath[row.change.path] = row.id;
   }

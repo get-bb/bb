@@ -22,6 +22,8 @@ interface BoardDropNeighbors {
   afterTaskId: string | null;
 }
 
+type MutableBoardColumns<T> = { [status in TaskStatus]: T[] };
+
 export function dropNeighborsForIndex(
   columnTaskIds: readonly string[],
   draggedTaskId: string,
@@ -51,16 +53,17 @@ export function applyBoardMove<T extends { id: string; status: TaskStatus }>(
   taskId: string,
   toStatus: TaskStatus,
   dropIndex: number,
-): Record<TaskStatus, T[]> {
+) {
   let moved: T | undefined;
-  const next: Record<TaskStatus, T[]> = {
-    backlog: [],
-    todo: [],
-    in_progress: [],
-    in_review: [],
-    done: [],
-    canceled: [],
-  };
+  const emptyColumn = (): T[] => [];
+  const next = {
+    backlog: emptyColumn(),
+    todo: emptyColumn(),
+    in_progress: emptyColumn(),
+    in_review: emptyColumn(),
+    done: emptyColumn(),
+    canceled: emptyColumn(),
+  } satisfies MutableBoardColumns<T>;
   for (const status of TASK_STATUSES) {
     next[status] = columns[status].filter((task) => {
       if (task.id !== taskId) return true;

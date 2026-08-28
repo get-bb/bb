@@ -177,7 +177,7 @@ async function resolveRootPathOrThrowMissingPath(
 
 async function throwMissingTargetOrRethrow(
   args: ReadFileForTransportArgs,
-  error: unknown,
+  error: NodeJS.ErrnoException,
 ): Promise<never> {
   if (!isFsErrorWithCode(error, "ENOENT")) {
     throw error;
@@ -210,7 +210,7 @@ async function resolveReadablePath(
   });
   const realResolvedPath = await fs
     .realpath(args.resolvedPath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+    .catch((error) => throwMissingTargetOrRethrow(args, error));
   if (!isPathWithinRoot(realResolvedPath, realRootPath)) {
     throw new CommandDispatchError(
       "invalid_path",
@@ -262,28 +262,30 @@ export async function readFileFromGitRef(
   }
 
   if (blob.contents === null) {
-    return {
+    const result: ReadFileForTransportResult = {
       path: args.resultPath,
       content: "",
       contentEncoding: "utf8",
-      ...(mimeType ? { mimeType } : {}),
       sha256: sha256Hex(Buffer.alloc(0)),
       sizeBytes: 0,
     };
+    if (mimeType) result.mimeType = mimeType;
+    return result;
   }
 
   const contentEncoding = getContentEncoding(blob.contents, mimeType);
-  return {
+  const result: ReadFileForTransportResult = {
     path: args.resultPath,
     content:
       contentEncoding === "utf8"
         ? blob.contents.toString("utf8")
         : blob.contents.toString("base64"),
     contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
     sha256: sha256Hex(blob.contents),
     sizeBytes: blob.sizeBytes,
   };
+  if (mimeType) result.mimeType = mimeType;
+  return result;
 }
 
 export async function readFileForTransport(
@@ -292,7 +294,7 @@ export async function readFileForTransport(
   const readablePath = await resolveReadablePath(args);
   const stat = await fs
     .stat(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+    .catch((error) => throwMissingTargetOrRethrow(args, error));
   if (stat.isDirectory()) {
     throw new CommandDispatchError(
       "invalid_path",
@@ -311,20 +313,21 @@ export async function readFileForTransport(
 
   const fileContents = await fs
     .readFile(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+    .catch((error) => throwMissingTargetOrRethrow(args, error));
   const contentEncoding = getContentEncoding(fileContents, mimeType);
-  return {
+  const result: ReadFileForTransportResult = {
     path: args.resultPath,
     content:
       contentEncoding === "utf8"
         ? fileContents.toString("utf8")
         : fileContents.toString("base64"),
     contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
     modifiedAtMs: stat.mtimeMs,
     sha256: sha256Hex(fileContents),
     sizeBytes: stat.size,
   };
+  if (mimeType) result.mimeType = mimeType;
+  return result;
 }
 
 export async function readRootRelativeFileForTransport(
@@ -347,7 +350,7 @@ export async function readRootRelativeFileForTransport(
   const readablePath = await resolveReadablePath(readArgs);
   const stat = await fs
     .stat(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));
+    .catch((error) => throwMissingTargetOrRethrow(readArgs, error));
   if (stat.isDirectory()) {
     throw new CommandDispatchError(
       "invalid_path",
@@ -358,20 +361,21 @@ export async function readRootRelativeFileForTransport(
   const mimeType = mimeTypes.lookup(relativePath.resultPath) || undefined;
   const fileContents = await fs
     .readFile(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));
+    .catch((error) => throwMissingTargetOrRethrow(readArgs, error));
   const contentEncoding = getContentEncoding(fileContents, mimeType);
-  return {
+  const result: ReadFileForTransportResult = {
     path: relativePath.resultPath,
     content:
       contentEncoding === "utf8"
         ? fileContents.toString("utf8")
         : fileContents.toString("base64"),
     contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
     modifiedAtMs: stat.mtimeMs,
     sha256: sha256Hex(fileContents),
     sizeBytes: stat.size,
   };
+  if (mimeType) result.mimeType = mimeType;
+  return result;
 }
 
 export async function readFileMetadataForTransport(
@@ -380,7 +384,7 @@ export async function readFileMetadataForTransport(
   const readablePath = await resolveReadablePath(args);
   const stat = await fs
     .stat(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
+    .catch((error) => throwMissingTargetOrRethrow(args, error));
   if (stat.isDirectory()) {
     throw new CommandDispatchError(
       "invalid_path",

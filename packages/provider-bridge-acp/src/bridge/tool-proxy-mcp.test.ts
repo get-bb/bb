@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { buildAcpMcpServerConfig } from "./tool-proxy-mcp.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +32,7 @@ async function listenFakeBridge(args: {
       buffer += chunk;
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
+      // SAFETY: The fake bridge receives one JSON object per newline in this test.
       const request = JSON.parse(buffer.slice(0, newline)) as {
         kind?: unknown;
       };
@@ -56,10 +58,13 @@ async function listenFakeBridge(args: {
       new Promise<void>((resolveClose) => server.close(() => resolveClose())),
   );
   const address = server.address();
-  if (!address || typeof address === "string") {
+  const parsedAddress = z
+    .object({ port: z.number().int().positive() })
+    .safeParse(address);
+  if (!parsedAddress.success) {
     throw new Error("fake bridge did not bind a port");
   }
-  return { port: address.port, server, requests };
+  return { port: parsedAddress.data.port, server, requests };
 }
 
 async function connectLikeOpenCode(port: number): Promise<Client> {

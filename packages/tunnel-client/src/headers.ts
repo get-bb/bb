@@ -8,11 +8,15 @@ interface LoopbackHeaderRewrite {
   host?: string;
 }
 
+interface LoopbackRequestHeaders {
+  [name: string]: string;
+}
+
 export function headersForLoopbackRequest(
   headers: HeaderPair[],
   rewrite: LoopbackHeaderRewrite,
-): Record<string, string> {
-  const forwarded: Record<string, string> = {};
+): LoopbackRequestHeaders {
+  const forwarded: LoopbackRequestHeaders = {};
   for (const [name, value] of headers) {
     const lowerName = name.toLowerCase();
     if (SKIP_REQUEST_HEADERS.has(lowerName)) continue;

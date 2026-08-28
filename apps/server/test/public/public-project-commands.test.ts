@@ -28,15 +28,13 @@ import { withTestHarness } from "../helpers/test-app.js";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
 const NO_RESOLVED_ROOTS = { skills: [], commands: [] };
+const nativeRootCategoryKey = "shape";
 
 function root(path: string) {
   return { path, recursive: false, ancestors: false, namePrefix: "" };
 }
 
-function resolvingProvider(id: string): {
-  declaration: PluginProviderDeclaration;
-  pluginId: string;
-} {
+function resolvingProvider(id: string) {
   return {
     pluginId: `provider-${id}`,
     declaration: {
@@ -56,6 +54,9 @@ function resolvingProvider(id: string): {
       composerActions: [],
       experimental_resolvesNativeRoots: true,
     },
+  } satisfies {
+    declaration: PluginProviderDeclaration;
+    pluginId: string;
   };
 }
 
@@ -336,7 +337,7 @@ describe("public project command typeahead route", () => {
                 recursive: false,
                 ancestors: false,
                 namePrefix: "",
-                shape: "skills",
+                [nativeRootCategoryKey]: "skills",
               },
               {
                 path: "/home/me/.vendor/plugins/tools/skills",
@@ -344,7 +345,7 @@ describe("public project command typeahead route", () => {
                 recursive: true,
                 ancestors: false,
                 namePrefix: "tools:",
-                shape: "skills",
+                [nativeRootCategoryKey]: "skills",
               },
             ],
             commands: [
@@ -354,7 +355,7 @@ describe("public project command typeahead route", () => {
                 recursive: false,
                 ancestors: true,
                 namePrefix: "",
-                shape: "commands",
+                [nativeRootCategoryKey]: "commands",
               },
             ],
           },

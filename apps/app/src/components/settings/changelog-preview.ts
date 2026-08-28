@@ -23,7 +23,7 @@ interface ChangelogReleaseMeta {
   headline: string;
 }
 
-export const CHANGELOG_RELEASE_META: Record<string, ChangelogReleaseMeta> = {
+export const CHANGELOG_RELEASE_META = {
   "0.39.0": {
     date: "August 19, 2026",
     headline: "Faster large threads and a long list of fixes",
@@ -58,7 +58,7 @@ export const CHANGELOG_RELEASE_META: Record<string, ChangelogReleaseMeta> = {
     date: "July 9, 2026",
     headline: "More agents, more models, redesigned Settings",
   },
-};
+} satisfies Record<string, ChangelogReleaseMeta>;
 
 export function parseChangelogEntries(source: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];

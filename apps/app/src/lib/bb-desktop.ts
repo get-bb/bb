@@ -31,10 +31,7 @@ export const DEFAULT_DESKTOP_WINDOW_STATE: BbDesktopWindowState = {
 };
 
 export function getBbDesktopInfo(): BbDesktopInfoResult {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return window.bbDesktop ?? null;
+  return globalThis.window?.bbDesktop ?? null;
 }
 
 export function shouldUseMacosDesktopChrome(

@@ -1,6 +1,9 @@
 import { recordEnvironmentCurrentBranch } from "@bb/db/internal-environment-lifecycle";
 import type { Environment } from "@bb/domain";
-import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonOnlineRpcResult,
+  HostDaemonRetryableOnlineRpcCommand,
+} from "@bb/host-daemon-contract";
 import {
   COMMAND_TIMEOUT_MS,
   WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
@@ -26,19 +29,23 @@ export async function callEnvironmentWorkspaceStatus(
   deps: AppDeps,
   args: CallEnvironmentWorkspaceStatusArgs,
 ): Promise<WorkspaceStatusResult> {
+  const command: Extract<
+    HostDaemonRetryableOnlineRpcCommand,
+    { type: "workspace.status" }
+  > = {
+    type: "workspace.status",
+    environmentId: args.target.environmentId,
+    workspaceContext: args.target.workspaceContext,
+    maxUntrackedLineStatFiles: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
+    maxUntrackedLineStatBytes: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
+  };
+  if (args.mergeBaseBranch) {
+    command.mergeBaseBranch = args.mergeBaseBranch;
+  }
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "workspace.status",
-      environmentId: args.target.environmentId,
-      workspaceContext: args.target.workspaceContext,
-      maxUntrackedLineStatFiles: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
-      maxUntrackedLineStatBytes: WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
-      ...(args.mergeBaseBranch
-        ? { mergeBaseBranch: args.mergeBaseBranch }
-        : {}),
-    },
+    command,
   });
 
   if (result.outcome === "available") {

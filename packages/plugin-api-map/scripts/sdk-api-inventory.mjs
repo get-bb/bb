@@ -10,9 +10,6 @@ const SDK_ROOT = resolve(PACKAGE_ROOT, "../plugin-sdk");
 export const INVENTORY_PATH = join(PACKAGE_ROOT, "sdk-public-api.json");
 
 export function hashDeclarationTokens(source) {
-  // build:types has already parsed and normalized these declarations. Scanning
-  // their tokens keeps the inventory insensitive to comments and formatting
-  // without repeating a full TypeScript parse and print for every subpath.
   const hash = createHash("sha256");
   const scanner = ts.createScanner(
     ts.ScriptTarget.Latest,
@@ -39,8 +36,11 @@ function publicTypeEntries() {
   return Object.entries(manifest.exports)
     .filter(([subpath]) => !subpath.startsWith("./internal/"))
     .map(([subpath, target]) => {
-      const types = typeof target === "string" ? target : target.types;
-      if (typeof types !== "string") {
+      const types =
+        Object.prototype.toString.call(target) === "[object String]"
+          ? target
+          : target.types;
+      if (Object.prototype.toString.call(types) !== "[object String]") {
         throw new Error(`Public SDK export ${subpath} has no types target`);
       }
       const path = resolve(SDK_ROOT, types);

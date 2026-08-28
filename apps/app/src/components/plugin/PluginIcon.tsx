@@ -3,10 +3,14 @@ import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { usePluginCompactBranding } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
+const ICON_NAME_SET: ReadonlySet<string> = new Set(ICON_NAMES);
+
+function isIconName(value: string): value is IconName {
+  return ICON_NAME_SET.has(value);
+}
+
 export function pluginIconName(icon: string | null): IconName {
-  return icon !== null && (ICON_NAMES as readonly string[]).includes(icon)
-    ? (icon as IconName)
-    : "Zap";
+  return icon !== null && isIconName(icon) ? icon : "Zap";
 }
 
 export function PluginCompactIconMask({

@@ -3,23 +3,29 @@ import type {
   ExperimentalFileOpenOptions,
   ExperimentalLiveFileTarget,
 } from "../app-contract.js";
+import type { JsonValue } from "../json-value.js";
+import { z } from "zod";
+
+type JsonObject = { [key: string]: JsonValue };
+
+const jsonObjectSchema = z.record(z.string(), z.json());
+const stringSchema = z.string();
+const positiveSafeIntegerSchema = z
+  .number()
+  .refine((value) => Number.isSafeInteger(value) && value > 0);
 
 const FILE_PATH_MAX_LENGTH = 32_768;
 const WINDOWS_DRIVE_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
 const WINDOWS_UNC_ABSOLUTE_PATH = /^\\\\/u;
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value);
+function isJsonObject<Value>(value: Value): value is Value & JsonObject {
+  const parsed = jsonObjectSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const prototype = Object.getPrototypeOf(parsed.data);
   return prototype === Object.prototype || prototype === null;
 }
 
-function hasExactKeys(
-  value: Record<string, unknown>,
-  keys: readonly string[],
-): boolean {
+function hasExactKeys(value: JsonObject, keys: readonly string[]): boolean {
   const actualKeys = Object.keys(value);
   return (
     actualKeys.length === keys.length &&
@@ -27,12 +33,13 @@ function hasExactKeys(
   );
 }
 
-function isNonEmptyIdentity(value: unknown): value is string {
+function isNonEmptyIdentity(value: JsonValue): value is string {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success) return false;
   return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= FILE_PATH_MAX_LENGTH &&
-    value.trim() === value
+    parsed.data.length > 0 &&
+    parsed.data.length <= FILE_PATH_MAX_LENGTH &&
+    parsed.data.trim() === parsed.data
   );
 }
 
@@ -63,61 +70,65 @@ function isValidPathSegment(segment: string): boolean {
   return segment.length > 0 && segment !== "." && segment !== "..";
 }
 
-function isPositiveSafeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+function isPositiveSafeInteger(value: JsonValue): value is number {
+  return positiveSafeIntegerSchema.safeParse(value).success;
 }
 
-function isValidRelativeFilePath(value: unknown): value is string {
+function isValidRelativeFilePath(value: JsonValue): value is string {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success) return false;
   if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > FILE_PATH_MAX_LENGTH ||
-    value.trim() !== value ||
-    value.includes("\\") ||
-    hasControlCharacter(value) ||
-    hasUnpairedSurrogate(value)
+    parsed.data.length === 0 ||
+    parsed.data.length > FILE_PATH_MAX_LENGTH ||
+    parsed.data.trim() !== parsed.data ||
+    parsed.data.includes("\\") ||
+    hasControlCharacter(parsed.data) ||
+    hasUnpairedSurrogate(parsed.data)
   ) {
     return false;
   }
-  return value.split("/").every(isValidPathSegment);
+  return parsed.data.split("/").every(isValidPathSegment);
 }
 
-function isValidAbsoluteHostFilePath(value: unknown): value is string {
+function isValidAbsoluteHostFilePath(value: JsonValue): value is string {
+  const parsed = stringSchema.safeParse(value);
+  if (!parsed.success) return false;
   if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > FILE_PATH_MAX_LENGTH ||
-    value.trim() !== value ||
-    hasControlCharacter(value) ||
-    hasUnpairedSurrogate(value)
+    parsed.data.length === 0 ||
+    parsed.data.length > FILE_PATH_MAX_LENGTH ||
+    parsed.data.trim() !== parsed.data ||
+    hasControlCharacter(parsed.data) ||
+    hasUnpairedSurrogate(parsed.data)
   ) {
     return false;
   }
 
-  if (value.startsWith("/") && !value.startsWith("//")) {
-    const segments = value.slice(1).split("/");
+  if (parsed.data.startsWith("/") && !parsed.data.startsWith("//")) {
+    const segments = parsed.data.slice(1).split("/");
     return segments.length > 0 && segments.every(isValidPathSegment);
   }
 
-  if (WINDOWS_DRIVE_ABSOLUTE_PATH.test(value)) {
-    const segments = value.slice(3).split(/[\\/]/u);
+  if (WINDOWS_DRIVE_ABSOLUTE_PATH.test(parsed.data)) {
+    const segments = parsed.data.slice(3).split(/[\\/]/u);
     return segments.length > 0 && segments.every(isValidPathSegment);
   }
 
-  if (WINDOWS_UNC_ABSOLUTE_PATH.test(value)) {
-    const segments = value.slice(2).split(/[\\/]/u);
+  if (WINDOWS_UNC_ABSOLUTE_PATH.test(parsed.data)) {
+    const segments = parsed.data.slice(2).split(/[\\/]/u);
     return segments.length >= 3 && segments.every(isValidPathSegment);
   }
 
   return false;
 }
 
-export function normalizeExperimentalLiveFileTarget(
-  value: unknown,
+export function normalizeExperimentalLiveFileTarget<Value>(
+  value: Value,
 ): ExperimentalLiveFileTarget | null {
-  if (!isJsonObject(value) || typeof value.kind !== "string") return null;
+  if (!isJsonObject(value)) return null;
+  const kind = stringSchema.safeParse(value.kind);
+  if (!kind.success) return null;
 
-  switch (value.kind) {
+  switch (kind.data) {
     case "workspace":
       if (
         !hasExactKeys(value, ["kind", "environmentId", "path"]) ||
@@ -127,7 +138,7 @@ export function normalizeExperimentalLiveFileTarget(
         return null;
       }
       return {
-        kind: value.kind,
+        kind: "workspace",
         environmentId: value.environmentId,
         path: value.path,
       };
@@ -139,7 +150,7 @@ export function normalizeExperimentalLiveFileTarget(
       ) {
         return null;
       }
-      return { kind: value.kind, hostId: value.hostId, path: value.path };
+      return { kind: "host", hostId: value.hostId, path: value.path };
     case "thread-storage":
       if (
         !hasExactKeys(value, ["kind", "threadId", "path"]) ||
@@ -148,19 +159,25 @@ export function normalizeExperimentalLiveFileTarget(
       ) {
         return null;
       }
-      return { kind: value.kind, threadId: value.threadId, path: value.path };
+      return {
+        kind: "thread-storage",
+        threadId: value.threadId,
+        path: value.path,
+      };
     default:
       return null;
   }
 }
 
-export function normalizeExperimentalFileLocation(
-  value: unknown,
+export function normalizeExperimentalFileLocation<Value>(
+  value: Value,
 ): ExperimentalFileLocation | null | undefined {
   if (value === null) return null;
-  if (!isJsonObject(value) || typeof value.kind !== "string") return undefined;
+  if (!isJsonObject(value)) return undefined;
+  const kind = stringSchema.safeParse(value.kind);
+  if (!kind.success) return undefined;
 
-  switch (value.kind) {
+  switch (kind.data) {
     case "line":
       if (
         !hasExactKeys(value, ["kind", "line", "column"]) ||
@@ -170,7 +187,7 @@ export function normalizeExperimentalFileLocation(
         return undefined;
       }
       return {
-        kind: value.kind,
+        kind: "line",
         line: value.line,
         column: value.column,
       };
@@ -184,7 +201,7 @@ export function normalizeExperimentalFileLocation(
         return undefined;
       }
       return {
-        kind: value.kind,
+        kind: "range",
         startLine: value.startLine,
         endLine: value.endLine,
       };
@@ -193,8 +210,8 @@ export function normalizeExperimentalFileLocation(
   }
 }
 
-export function normalizeExperimentalFileOpenOptions(
-  value: unknown,
+export function normalizeExperimentalFileOpenOptions<Value>(
+  value: Value,
 ): ExperimentalFileOpenOptions | null {
   if (!isJsonObject(value) || !hasExactKeys(value, ["target", "location"])) {
     return null;

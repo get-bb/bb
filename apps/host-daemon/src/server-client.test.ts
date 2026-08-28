@@ -119,14 +119,17 @@ describe("createServerClient", () => {
           { status: 201 },
         );
       });
-      const client = createServerClient({
+      const clientOptions: Parameters<typeof createServerClient>[0] = {
         fetchFn,
         getSessionId: () => "session-1",
         hostKey: "host-key",
         logger: createLogger(),
-        ...(machineCredential !== undefined ? { machineCredential } : {}),
         serverUrl: "https://bb.example.test",
-      });
+      };
+      if (machineCredential !== undefined) {
+        clientOptions.machineCredential = machineCredential;
+      }
+      const client = createServerClient(clientOptions);
 
       await client.openSession({
         hostId: "host-1",

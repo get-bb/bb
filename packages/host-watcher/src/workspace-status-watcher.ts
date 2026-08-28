@@ -132,7 +132,7 @@ async function resolveWorkspaceRootIgnores(cwd: string): Promise<string[]> {
 
 function createWorkspaceStatusCallbackError(
   cwd: string,
-  error: unknown,
+  error: Error,
 ): WorkspaceStatusWatchError {
   return {
     message: `Workspace status callback failed: ${toWatchErrorMessage(error)}`,
@@ -197,8 +197,10 @@ class WorkspaceStatusWatcher {
             changeKinds,
           });
         } catch (error) {
+          const callbackError =
+            error instanceof Error ? error : new Error(String(error));
           this.args.onWatchError(
-            createWorkspaceStatusCallbackError(this.args.cwd, error),
+            createWorkspaceStatusCallbackError(this.args.cwd, callbackError),
           );
         }
       },
@@ -244,10 +246,7 @@ class WorkspaceStatusWatcher {
     this.startMetadataWatchSubscriptions();
   }
 
-  private reportWorkspaceRootSetupError(
-    rootPath: string,
-    error: unknown,
-  ): void {
+  private reportWorkspaceRootSetupError(rootPath: string, error: Error): void {
     this.args.onWatchError({
       message: `Workspace root ignore discovery failed: ${toWatchErrorMessage(error)}`,
       rootPath,
@@ -277,7 +276,9 @@ class WorkspaceStatusWatcher {
       if (this.disposed) {
         return;
       }
-      this.reportWorkspaceRootSetupError(rootPath, error);
+      const setupError =
+        error instanceof Error ? error : new Error(String(error));
+      this.reportWorkspaceRootSetupError(rootPath, setupError);
       this.startWatchSubscription({
         kind: "workspace-root",
         options: { ignore: createGitWorkspaceRootIgnores() },

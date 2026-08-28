@@ -3,6 +3,7 @@ import { networkInterfaces } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PendingInteraction } from "@bb/domain";
+import { z } from "zod";
 import { createIntegrationHarness } from "../helpers/harness.js";
 import type { IntegrationHarness } from "../helpers/harness.js";
 import {
@@ -17,6 +18,7 @@ import {
 import { waitForThreadStatus } from "../helpers/assertions.js";
 
 const DEFAULT_PORT = 41999;
+const threadIdResponseSchema = z.object({ id: z.string() });
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -273,7 +275,9 @@ async function main(): Promise<void> {
       `create rows thread failed: ${rowsThreadResponse.status} ${await rowsThreadResponse.text()}`,
     );
   }
-  const rowsThread = (await rowsThreadResponse.json()) as { id: string };
+  const rowsThread = threadIdResponseSchema.parse(
+    await rowsThreadResponse.json(),
+  );
   await waitForThreadStatus(
     harness.api,
     rowsThread.id,

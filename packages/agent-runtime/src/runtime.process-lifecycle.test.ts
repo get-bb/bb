@@ -70,18 +70,19 @@ describe("createAgentRuntime process lifecycle", () => {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: createScriptedEchoLaunch(),
     });
-    const process =
-      args.rawScriptPath === undefined
-        ? adapter.process
-        : { command: adapter.process.command, args: [args.rawScriptPath] };
+    const processConfig: BridgeProtocolAdapter["process"] = {
+      command: adapter.process.command,
+      args:
+        args.rawScriptPath === undefined
+          ? adapter.process.args
+          : [args.rawScriptPath],
+    };
+    if (args.adapterProcessEnv !== undefined) {
+      processConfig.env = args.adapterProcessEnv;
+    }
     return {
       ...adapter,
-      process: {
-        ...process,
-        ...(args.adapterProcessEnv !== undefined
-          ? { env: args.adapterProcessEnv }
-          : {}),
-      },
+      process: processConfig,
     };
   }
 

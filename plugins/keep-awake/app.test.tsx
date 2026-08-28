@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { z } from "zod";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -12,33 +13,18 @@ const hosts = [
   { id: "host-2", name: "Studio", status: "disconnected" as const },
 ];
 
-function response(configuration: unknown) {
-  if (typeof configuration !== "object" || configuration === null) {
-    throw new Error("Expected a Keep Awake configuration");
-  }
-  const enabled = Reflect.get(configuration, "enabled");
-  const selection = Reflect.get(configuration, "selection");
-  if (
-    typeof enabled !== "boolean" ||
-    typeof selection !== "object" ||
-    selection === null
-  ) {
-    throw new Error("Expected a Keep Awake configuration");
-  }
-  const mode = Reflect.get(selection, "mode");
-  if (mode === "all") {
-    const allSelection: { mode: "all" } = { mode };
-    return { enabled, selection: allSelection, hosts };
-  }
-  const hostIds = Reflect.get(selection, "hostIds");
-  if (
-    mode !== "selected" ||
-    !Array.isArray(hostIds) ||
-    !hostIds.every((hostId) => typeof hostId === "string")
-  ) {
-    throw new Error("Expected a Keep Awake configuration");
-  }
-  return { enabled, selection: { mode, hostIds }, hosts };
+const keepAwakeConfigurationSchema = z.object({
+  enabled: z.boolean(),
+  selection: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("all") }),
+    z.object({ mode: z.literal("selected"), hostIds: z.array(z.string()) }),
+  ]),
+});
+
+type KeepAwakeConfiguration = z.infer<typeof keepAwakeConfigurationSchema>;
+
+function response(configuration: KeepAwakeConfiguration) {
+  return { ...configuration, hosts };
 }
 
 function deferred<T>() {
@@ -58,7 +44,8 @@ describe("Keep Awake settings", () => {
         rpc: {
           getConfiguration: () =>
             response({ enabled: false, selection: { mode: "all" } }),
-          setConfiguration: (configuration) => response(configuration),
+          setConfiguration: (configuration) =>
+            response(keepAwakeConfigurationSchema.parse(configuration)),
         },
       },
     );
@@ -178,11 +165,9 @@ describe("Keep Awake settings", () => {
       expect(slot.getByRole("status").textContent).toBe("Saved"),
     );
     expect(
-      (
-        slot.getByRole("radio", {
-          name: "Specific hosts",
-        }) as HTMLButtonElement
-      ).getAttribute("data-state"),
+      slot
+        .getByRole("radio", { name: "Specific hosts" })
+        .getAttribute("data-state"),
     ).toBe("checked");
   });
 });

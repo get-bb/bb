@@ -16,8 +16,8 @@ function publish(): void {
 }
 
 function writeDocumentDataset(resolved: ResolvedCodeTheme): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
+  const root = globalThis.document?.documentElement;
+  if (root === undefined) return;
   if (
     root.dataset[CODE_THEME_DARK_DATASET] === resolved.dark &&
     root.dataset[CODE_THEME_LIGHT_DATASET] === resolved.light

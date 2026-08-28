@@ -6,6 +6,8 @@ import {
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
+  jsonValueSchema,
+  type JsonValue,
   sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -75,6 +77,7 @@ import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "../translator.js";
+import type { CodexInjectedTool } from "../delta-translation.js";
 import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
@@ -157,8 +160,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
 
 type CodexBridgeCommand = z.infer<typeof codexBridgeCommandSchema>;
 
-const codexBridgeCommandMethodValues = codexBridgeCommandSchema.options.map(
-  (option) => option.shape.method.value,
+const codexBridgeCommandMethodValues = new Set<string>(
+  codexBridgeCommandSchema.options.map(
+    (option) => option["shape"].method.value,
+  ),
 );
 
 type DecodedCodexBridgeRequest =
@@ -173,7 +178,7 @@ type DecodedCodexBridgeRequest =
   | { kind: "ignored" };
 
 function decodeCodexBridgeJsonRpcRequest(
-  raw: unknown,
+  raw: JsonValue,
 ): DecodedCodexBridgeRequest {
   const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) {
@@ -190,11 +195,7 @@ function decodeCodexBridgeJsonRpcRequest(
       request: { ...command.data, id: envelope.data.id },
     };
   }
-  if (
-    !(codexBridgeCommandMethodValues as readonly string[]).includes(
-      envelope.data.method,
-    )
-  ) {
+  if (!codexBridgeCommandMethodValues.has(envelope.data.method)) {
     return {
       kind: "unknown-method",
       id: envelope.data.id,
@@ -211,27 +212,26 @@ function decodeCodexBridgeJsonRpcRequest(
   };
 }
 
+type BridgeParams = Record<string, JsonValue>;
+
 interface BridgeNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: JsonValue;
 }
 
 interface BridgeRuntimeRequest {
   jsonrpc: "2.0";
   id: number;
   method: string;
-  params: Record<string, unknown>;
+  params: BridgeParams;
 }
 
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeNotification | BridgeRuntimeRequest
 >();
 
-function sendNotification(
-  method: string,
-  params: Record<string, unknown>,
-): void {
+function sendNotification(method: string, params: JsonValue): void {
   send({ jsonrpc: "2.0", method, params });
 }
 
@@ -243,11 +243,11 @@ let runtimeRequestIdCounter = 0;
 
 function sendRuntimeRequest(
   method: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
+  params: BridgeParams,
+): Promise<JsonValue> {
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
-  const responsePromise = new Promise<unknown>(
+  const responsePromise = new Promise<JsonValue>(
     (resolveResponse, rejectResponse) => {
       pendingRuntimeRequests.set(requestId, (response) => {
         if ("error" in response) {
@@ -256,7 +256,7 @@ function sendRuntimeRequest(
           );
           return;
         }
-        resolveResponse(response.result);
+        resolveResponse(jsonValueSchema.parse(response.result));
       });
     },
   );
@@ -326,7 +326,12 @@ async function delay(ms: number): Promise<void> {
 const MISSING_CODEX_CLI_GUIDANCE =
   "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.";
 
-function resolveAppServerLaunch(): { command: string; args: string[] } {
+interface CodexAppServerLaunch {
+  command: string;
+  args: string[];
+}
+
+function resolveAppServerLaunch(): CodexAppServerLaunch {
   const command = process.env[CODEX_APP_SERVER_COMMAND_ENV];
   if (!command) {
     return { command: "codex", args: ["app-server"] };
@@ -344,11 +349,11 @@ function buildAppServerEnv(): NodeJS.ProcessEnv {
   );
 }
 
-function describeCodexLaunchError(error: unknown): string {
+function describeCodexLaunchError(error: Error | string): string {
   if (error instanceof CodexAppServerExitedError && error.spawnFailed) {
     return MISSING_CODEX_CLI_GUIDANCE;
   }
-  return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : error;
 }
 
 interface CodexSessionConstruction {
@@ -427,16 +432,15 @@ function decodeCodexOptions(
   const decoded = codexProviderOptionsSchema.parse(
     options.providerOptions ?? {},
   );
+  const sessionOptions: CodexSessionOptions = { ...options };
+  if (decoded.memoryEnabled !== undefined) {
+    sessionOptions.memoryEnabled = decoded.memoryEnabled;
+  }
+  if (decoded.providerSubagentsEnabled !== undefined) {
+    sessionOptions.providerSubagentsEnabled = decoded.providerSubagentsEnabled;
+  }
   return {
-    sessionOptions: {
-      ...options,
-      ...(decoded.memoryEnabled !== undefined
-        ? { memoryEnabled: decoded.memoryEnabled }
-        : {}),
-      ...(decoded.providerSubagentsEnabled !== undefined
-        ? { providerSubagentsEnabled: decoded.providerSubagentsEnabled }
-        : {}),
-    },
+    sessionOptions,
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots ?? [],
   };
 }
@@ -498,10 +502,13 @@ function sendThreadDeltas(
     session.pendingPreIdentityDeltas.push(...outDeltas);
     return;
   }
-  sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
-    threadId: session.bbThreadId,
-    deltas: outDeltas,
-  });
+  sendNotification(
+    THREAD_DELTA_NOTIFICATION_METHOD,
+    jsonValueSchema.parse({
+      threadId: session.bbThreadId,
+      deltas: outDeltas,
+    }),
+  );
 }
 
 function announceSessionIdentity(
@@ -515,11 +522,14 @@ function announceSessionIdentity(
     return;
   }
   session.identityAnnounced = true;
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
-    threadId: session.bbThreadId,
-    providerThreadId: codexThreadId,
-    sessionRestorable: true,
-  });
+  sendNotification(
+    BRIDGE_NOTIFICATION_METHODS.threadIdentity,
+    jsonValueSchema.parse({
+      threadId: session.bbThreadId,
+      providerThreadId: codexThreadId,
+      sessionRestorable: true,
+    }),
+  );
   const buffered = session.pendingPreIdentityDeltas;
   session.pendingPreIdentityDeltas = [];
   sendThreadDeltas(session, buffered);
@@ -531,20 +541,25 @@ const codexThreadStartedNotificationSchema = z
 
 function toProviderRuntimeEvent(
   method: string,
-  params: unknown,
+  params: JsonValue | undefined,
 ): ProviderRuntimeEvent {
-  return {
+  const event: ProviderRuntimeEvent = {
     jsonrpc: "2.0",
     method,
-    ...(params !== undefined ? { params } : {}),
-  } as ProviderRuntimeEvent;
+  };
+  if (params !== undefined) {
+    event.params = params;
+  }
+  return event;
 }
+
+type CodexChildParams = JsonValue | undefined;
 
 function handleChildNotification(
   bbThreadId: string,
   serial: number,
   method: string,
-  params: unknown,
+  params: CodexChildParams,
 ): void {
   const session = currentSession(bbThreadId, serial);
   if (!session) {
@@ -580,12 +595,15 @@ function emitTerminalAccountErrorHint(
     kind === "authRequired"
       ? "codex session restarted after an authentication failure so a new login can take effect."
       : "codex session restarted after a rate limit so a refreshed account state can take effect.";
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
-    threadId: session.bbThreadId,
-    kind,
-    message,
-    retryable: false,
-  });
+  sendNotification(
+    BRIDGE_NOTIFICATION_METHODS.providerRecovery,
+    jsonValueSchema.parse({
+      threadId: session.bbThreadId,
+      kind,
+      message,
+      retryable: false,
+    }),
+  );
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -593,14 +611,14 @@ const codexChildToolCallParamsSchema = z.object({
   turnId: z.union([z.string().min(1), z.null()]),
   callId: z.string().min(1),
   tool: z.string().min(1),
-  arguments: z.unknown(),
+  arguments: jsonValueSchema,
 });
 
 function handleChildRequest(
   bbThreadId: string,
   serial: number,
   method: string,
-  params: unknown,
+  params: CodexChildParams,
   responder: CodexAppServerRequestResponder,
 ): void {
   const session = currentSession(bbThreadId, serial);
@@ -633,7 +651,7 @@ function handleChildRequest(
       .then((result) => {
         responder.result(result);
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         responder.error(
           BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
           error instanceof Error ? error.message : String(error),
@@ -684,7 +702,7 @@ function handleChildRequest(
       });
       responder.result(buildCodexInteractiveResponse(outcome));
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       responder.error(
         BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
         error instanceof Error ? error.message : String(error),
@@ -736,13 +754,18 @@ function handleChildExit(
     })),
   );
   session.openCodexTurnIds.clear();
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
-    threadId: session.bbThreadId,
-    ...(session.codexThreadId !== null
-      ? { providerThreadId: session.codexThreadId }
-      : {}),
-    message,
-  });
+  const errorParams =
+    session.codexThreadId === null
+      ? { threadId: session.bbThreadId, message }
+      : {
+          threadId: session.bbThreadId,
+          providerThreadId: session.codexThreadId,
+          message,
+        };
+  sendNotification(
+    BRIDGE_NOTIFICATION_METHODS.error,
+    jsonValueSchema.parse(errorParams),
+  );
   if (session.codexThreadId !== null) {
     sendThreadDeltas(
       session,
@@ -755,10 +778,10 @@ function handleChildExit(
 
 function spawnChildConnection(callbacks: {
   recordThreadId: string | null;
-  onNotification: (method: string, params: unknown) => void;
+  onNotification: (method: string, params: CodexChildParams) => void;
   onRequest: (
     method: string,
-    params: unknown,
+    params: CodexChildParams,
     responder: CodexAppServerRequestResponder,
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
@@ -769,11 +792,30 @@ function spawnChildConnection(callbacks: {
     args: launch.args,
     cwd: process.cwd(),
     env: buildAppServerEnv(),
-    ...callbacks,
+    recordThreadId: callbacks.recordThreadId,
+    onExit: callbacks.onExit,
+    onNotification: (method, params) =>
+      callbacks.onNotification(
+        method,
+        jsonValueSchema.optional().parse(params),
+      ),
+    onRequest: (method, params, responder) =>
+      callbacks.onRequest(
+        method,
+        jsonValueSchema.optional().parse(params),
+        responder,
+      ),
   });
 }
 
-const ignoredChildResultSchema = z.unknown();
+const ignoredChildResultSchema = jsonValueSchema.optional();
+
+interface ChildRequestArgs {
+  method: string;
+  params?: JsonValue;
+  resultSchema: typeof ignoredChildResultSchema;
+  timeoutMs: number;
+}
 
 async function initializeChild(
   connection: CodexAppServerConnection,
@@ -787,14 +829,15 @@ async function initializeChild(
   });
   for (const request of postInitializeRequests ?? []) {
     try {
-      const result = await connection.request({
+      const requestArgs: ChildRequestArgs = {
         method: request.plan.method,
-        ...("params" in request.plan && request.plan.params !== undefined
-          ? { params: request.plan.params }
-          : {}),
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      });
+      };
+      if (request.plan.params !== undefined) {
+        requestArgs.params = jsonValueSchema.parse(request.plan.params);
+      }
+      const result = await connection.request(requestArgs);
       request.onResult(result);
     } catch (error) {
       if (request.required) {
@@ -854,12 +897,13 @@ async function constructThreadSession(
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
   });
   translator.configureInjectedTools(
-    (args.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
+    (args.dynamicTools ?? []).map((tool): CodexInjectedTool => {
+      const injectedTool: CodexInjectedTool = { name: tool.name };
+      if (tool.presentation !== undefined) {
+        injectedTool.presentation = tool.presentation;
+      }
+      return injectedTool;
+    }),
   );
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
@@ -916,17 +960,29 @@ async function constructThreadSession(
       instructionMode: args.instructionMode,
       options: decoded.sessionOptions,
     });
-    const sharedConstructionParams = {
+    const sharedConstructionParams: Omit<
+      BbThreadStartParams,
+      "ephemeral" | "experimentalRawEvents"
+    > = {
       approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
       approvalsReviewer: preparedGitRoots.permissionSettings.approvalsReviewer,
       sandbox: preparedGitRoots.permissionSettings.sandbox,
       cwd: args.cwd,
       ...instructionOverrides,
-      model: decoded.sessionOptions.model ?? undefined,
-      serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
-      config: preparedGitRoots.config ?? undefined,
-      ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
     };
+    if (decoded.sessionOptions.model !== undefined) {
+      sharedConstructionParams.model = decoded.sessionOptions.model;
+    }
+    const serviceTier = toCodexServiceTier(decoded.sessionOptions.serviceTier);
+    if (serviceTier !== undefined) {
+      sharedConstructionParams.serviceTier = serviceTier;
+    }
+    if (preparedGitRoots.config !== undefined) {
+      sharedConstructionParams.config = preparedGitRoots.config;
+    }
+    if (dynamicTools !== undefined && dynamicTools.length > 0) {
+      sharedConstructionParams.dynamicTools = dynamicTools;
+    }
 
     let method: string;
     let params: BbThreadStartParams | ThreadResumeParams | BbThreadForkParams;
@@ -954,15 +1010,13 @@ async function constructThreadSession(
         method = "thread/fork";
         const forkParams: BbThreadForkParams = {
           threadId: args.request.sourceProviderThreadId,
-          ...(args.request.sourceProviderCheckpointId !== undefined
-            ? {
-                lastTurnId: stripLegacyBridgeIdPrefix(
-                  args.request.sourceProviderCheckpointId,
-                ),
-              }
-            : {}),
           ...sharedConstructionParams,
         };
+        if (args.request.sourceProviderCheckpointId !== undefined) {
+          forkParams.lastTurnId = stripLegacyBridgeIdPrefix(
+            args.request.sourceProviderCheckpointId,
+          );
+        }
         params = forkParams;
         break;
       }
@@ -970,7 +1024,7 @@ async function constructThreadSession(
 
     const result = await connection.request({
       method,
-      params,
+      params: jsonValueSchema.parse(params),
       resultSchema: codexThreadIdentityResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
@@ -1039,28 +1093,32 @@ async function rebuildThreadSession(
   }
   let replacement: ConstructedCodexSession;
   try {
-    replacement = await constructThreadSession({
+    const constructionArgs: ConstructThreadSessionArgs = {
       threadId: session.bbThreadId,
       cwd: session.construction.cwd,
       options,
       instructionMode: session.construction.instructionMode,
-      ...(session.construction.dynamicTools !== undefined
-        ? { dynamicTools: session.construction.dynamicTools }
-        : {}),
       request: { kind: "resume", providerThreadId: codexThreadId },
-    });
+    };
+    if (session.construction.dynamicTools !== undefined) {
+      constructionArgs.dynamicTools = session.construction.dynamicTools;
+    }
+    replacement = await constructThreadSession(constructionArgs);
   } catch (error) {
     if (!(error instanceof CodexSessionReleasedError)) {
       registerResumableSession(session);
     }
     throw error;
   }
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
-    threadId: replacement.session.bbThreadId,
-    providerThreadId: replacement.codexThreadId,
-    reason,
-    contextLost: false,
-  });
+  sendNotification(
+    BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
+    jsonValueSchema.parse({
+      threadId: replacement.session.bbThreadId,
+      providerThreadId: replacement.codexThreadId,
+      reason,
+      contextLost: false,
+    }),
+  );
   return replacement.session;
 }
 
@@ -1158,10 +1216,10 @@ async function withChildForThread<T>(
   return withMaintenanceChild(fn);
 }
 
-type ThreadStartParamsShape = z.infer<typeof threadStartParamsSchema>;
-type TurnStartParamsShape = z.infer<typeof turnStartParamsSchema>;
-type TurnSteerParamsShape = z.infer<typeof turnSteerParamsSchema>;
-type ThreadStopParamsShape = z.infer<typeof threadStopParamsSchema>;
+type ThreadStartRequestParams = z.infer<typeof threadStartParamsSchema>;
+type TurnStartRequestParams = z.infer<typeof turnStartParamsSchema>;
+type TurnSteerRequestParams = z.infer<typeof turnSteerParamsSchema>;
+type ThreadStopRequestParams = z.infer<typeof threadStopParamsSchema>;
 
 function handleInitialize(id: string | number): void {
   const result: InitializeResult = {
@@ -1202,14 +1260,14 @@ async function handleModelList(id: string | number): Promise<void> {
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      describeCodexLaunchError(error),
+      describeCodexLaunchError(error instanceof Error ? error : String(error)),
     );
   }
 }
 
 function sendConstructionError(
   id: string | number,
-  error: unknown,
+  error: Error | string,
   resumable: boolean,
 ): void {
   const message = describeCodexLaunchError(error);
@@ -1226,26 +1284,31 @@ function sendConstructionError(
 
 async function handleThreadConstruction(
   id: string | number,
-  params: ThreadStartParamsShape,
+  params: ThreadStartRequestParams,
   request: CodexSessionConstructionRequest,
 ): Promise<void> {
   try {
-    const constructed = await constructThreadSession({
+    const constructionArgs: ConstructThreadSessionArgs = {
       threadId: params.threadId,
       cwd: params.cwd,
       options: params.options,
       instructionMode: params.instructionMode,
-      ...(params.dynamicTools !== undefined
-        ? { dynamicTools: params.dynamicTools }
-        : {}),
       request,
-    });
+    };
+    if (params.dynamicTools !== undefined) {
+      constructionArgs.dynamicTools = params.dynamicTools;
+    }
+    const constructed = await constructThreadSession(constructionArgs);
     sendResult(id, {
       providerThreadId: constructed.codexThreadId,
       sessionRestorable: true,
     });
   } catch (error) {
-    sendConstructionError(id, error, request.kind === "resume");
+    sendConstructionError(
+      id,
+      error instanceof Error ? error : String(error),
+      request.kind === "resume",
+    );
   }
 }
 
@@ -1255,7 +1318,7 @@ interface LiveSessionForTurn {
 }
 
 async function requireLiveSessionForTurn(
-  params: TurnStartParamsShape,
+  params: TurnStartRequestParams,
 ): Promise<LiveSessionForTurn> {
   let session = sessionsByBbThreadId.get(params.threadId);
   if (!session || session.closing) {
@@ -1297,7 +1360,7 @@ const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
 let syntheticZeroWorkTurnCounter = 0;
 
 function scheduleZeroWorkTurnSettlement(args: {
-  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  clientRequestId: TurnStartRequestParams["clientRequestId"];
   prepared: PreparedProviderCommandDispatch | null;
   session: CodexBridgeSession;
 }): void {
@@ -1327,13 +1390,13 @@ function scheduleZeroWorkTurnSettlement(args: {
 
 async function handleTurnStart(
   id: string | number,
-  params: TurnStartParamsShape,
+  params: TurnStartRequestParams,
 ): Promise<void> {
   let live: LiveSessionForTurn;
   try {
     live = await requireLiveSessionForTurn(params);
   } catch (error) {
-    rejectWithCodexError(id, error);
+    rejectWithCodexError(id, error instanceof Error ? error : String(error));
     return;
   }
   const { session, connection } = live;
@@ -1371,17 +1434,34 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
+      interface CodexTurnStartParams {
+        threadId: string;
+        input: ReturnType<typeof toCodexUserInput>;
+        approvalPolicy: typeof permissionSettings.approvalPolicy;
+        approvalsReviewer: typeof permissionSettings.approvalsReviewer;
+        sandboxPolicy: typeof permissionSettings.sandboxPolicy;
+        model?: string;
+        serviceTier?: "fast";
+      }
+      const turnParams: CodexTurnStartParams = {
+        threadId: codexThreadId,
+        input: toCodexUserInput(input),
+        approvalPolicy: permissionSettings.approvalPolicy,
+        approvalsReviewer: permissionSettings.approvalsReviewer,
+        sandboxPolicy: permissionSettings.sandboxPolicy,
+      };
+      if (decoded.sessionOptions.model !== undefined) {
+        turnParams.model = decoded.sessionOptions.model;
+      }
+      const serviceTier = toCodexServiceTier(
+        decoded.sessionOptions.serviceTier,
+      );
+      if (serviceTier !== undefined) {
+        turnParams.serviceTier = serviceTier;
+      }
       await connection.request({
         method: "turn/start",
-        params: {
-          threadId: codexThreadId,
-          input: toCodexUserInput(input),
-          approvalPolicy: permissionSettings.approvalPolicy,
-          approvalsReviewer: permissionSettings.approvalsReviewer,
-          sandboxPolicy: permissionSettings.sandboxPolicy,
-          model: decoded.sessionOptions.model ?? undefined,
-          serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
-        },
+        params: jsonValueSchema.parse(turnParams),
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       });
@@ -1404,7 +1484,7 @@ async function handleTurnStart(
 
 async function handleTurnSteer(
   id: string | number,
-  params: TurnSteerParamsShape,
+  params: TurnSteerRequestParams,
 ): Promise<void> {
   const session = sessionsByBbThreadId.get(params.threadId);
   if (
@@ -1441,13 +1521,13 @@ async function handleTurnSteer(
     ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    rejectWithCodexError(id, error);
+    rejectWithCodexError(id, error instanceof Error ? error : String(error));
   }
 }
 
 async function handleThreadStop(
   id: string | number,
-  params: ThreadStopParamsShape,
+  params: ThreadStopRequestParams,
 ): Promise<void> {
   const session = sessionsByBbThreadId.get(params.threadId);
 
@@ -1543,15 +1623,15 @@ function waitForCodexTurnSettlement(
   });
 }
 
-interface ThreadRefParamsShape {
+interface ThreadReferenceParams {
   threadId: string;
   providerThreadId: string;
 }
 
 async function handleThreadMaintenance(
   id: string | number,
-  params: ThreadRefParamsShape,
-  request: { method: string; params: Record<string, unknown> },
+  params: ThreadReferenceParams,
+  request: { method: string; params: BridgeParams },
   options?: {
     releaseAfter?: boolean;
     alreadyInRequestedState?: RegExp;
@@ -1579,11 +1659,14 @@ async function handleThreadMaintenance(
       settle();
       return;
     }
-    rejectWithCodexError(id, error);
+    rejectWithCodexError(id, error instanceof Error ? error : String(error));
   }
 }
 
-function rejectWithCodexError(id: string | number, error: unknown): void {
+function rejectWithCodexError(
+  id: string | number,
+  error: Error | string,
+): void {
   const message = describeCodexLaunchError(error);
   const recovery = archivedSessionHint(message);
   if (recovery !== null) {
@@ -1595,15 +1678,16 @@ function rejectWithCodexError(id: string | number, error: unknown): void {
 
 async function sendMaintenanceRequestWithRetries(
   connection: CodexAppServerConnection,
-  request: { method: string; params: Record<string, unknown> },
+  request: { method: string; params: BridgeParams },
 ): Promise<void> {
-  const sendOnce = (): Promise<unknown> =>
-    connection.request({
+  const sendOnce = async (): Promise<void> => {
+    await connection.request({
       method: request.method,
       params: request.params,
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
+  };
   if (request.method !== "thread/name/set") {
     await sendOnce();
     return;
@@ -1698,18 +1782,18 @@ async function handleRequest(
         providerThreadId: request.params.providerThreadId,
       });
       break;
-    case "thread/fork":
-      await handleThreadConstruction(request.id, request.params, {
+    case "thread/fork": {
+      const forkRequest: CodexSessionConstructionRequest = {
         kind: "fork",
         sourceProviderThreadId: request.params.sourceProviderThreadId,
-        ...(request.params.sourceProviderCheckpointId !== undefined
-          ? {
-              sourceProviderCheckpointId:
-                request.params.sourceProviderCheckpointId,
-            }
-          : {}),
-      });
+      };
+      if (request.params.sourceProviderCheckpointId !== undefined) {
+        forkRequest.sourceProviderCheckpointId =
+          request.params.sourceProviderCheckpointId;
+      }
+      await handleThreadConstruction(request.id, request.params, forkRequest);
       break;
+    }
     case "turn/start":
       await handleTurnStart(request.id, request.params);
       break;
@@ -1776,12 +1860,18 @@ async function handleRequest(
   }
 }
 
-function handleParsedMessage(parsed: unknown): void {
+const numericBridgeResponseIdSchema = z.number();
+
+function handleParsedMessage(parsed: JsonValue): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && typeof response.id === "number") {
-    const pending = pendingRuntimeRequests.get(response.id);
+  const responseId =
+    response === null
+      ? null
+      : numericBridgeResponseIdSchema.safeParse(response.id);
+  if (response !== null && responseId !== null && responseId.success) {
+    const pending = pendingRuntimeRequests.get(responseId.data);
     if (pending) {
-      pendingRuntimeRequests.delete(response.id);
+      pendingRuntimeRequests.delete(responseId.data);
       pending(response);
       return;
     }
@@ -1810,7 +1900,14 @@ function handleParsedMessage(parsed: unknown): void {
   runBridgeRequest({ request: decoded.request, handleRequest, sendError });
 }
 
-export const handleLine = createBridgeLineHandler({ handleParsedMessage });
+export const handleLine = createBridgeLineHandler({
+  handleParsedMessage: (message) => {
+    const parsed = jsonValueSchema.safeParse(message);
+    if (parsed.success) {
+      handleParsedMessage(parsed.data);
+    }
+  },
+});
 
 function killAllChildren(): void {
   for (const session of sessionsByBbThreadId.values()) {

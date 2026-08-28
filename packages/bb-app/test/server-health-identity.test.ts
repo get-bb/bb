@@ -8,6 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type {
   BbAppStartContext,
   ManagedFullStackProcesses,
@@ -28,18 +29,21 @@ type RequestHandler = (
   response: ServerResponse,
 ) => void;
 
+const listeningAddressSchema = z.object({ port: z.number().int().positive() });
+type HealthBody = { ok: boolean; launchId?: string };
+
 async function listen(handler: RequestHandler): Promise<ListeningServer> {
   const server = createServer(handler);
   await new Promise<void>((resolvePromise, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolvePromise);
   });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
+  const address = listeningAddressSchema.safeParse(server.address());
+  if (!address.success) {
     throw new Error("Expected the test server to have a TCP address");
   }
   return {
-    port: address.port,
+    port: address.data.port,
     close: () =>
       new Promise<void>((resolvePromise, reject) => {
         server.close((error) => (error ? reject(error) : resolvePromise()));
@@ -53,7 +57,7 @@ async function reserveFreePort(): Promise<number> {
   return server.port;
 }
 
-function answerHealth(response: ServerResponse, body: object): void {
+function answerHealth(response: ServerResponse, body: HealthBody): void {
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
 }
@@ -121,8 +125,7 @@ describe("waitForServerHealth", () => {
         url: `http://127.0.0.1:${foreign.port}/health`,
       }).then(
         () => "healthy" as const,
-        (error: unknown) =>
-          error instanceof Error ? error.message : String(error),
+        (error: Error) => error.message,
       );
       await waitForProcessExit(child);
 

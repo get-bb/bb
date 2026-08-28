@@ -114,7 +114,7 @@ export function resolveRootComposeProjectFileRouting({
   fileOpenerSource: PluginFileOpenerSource | null;
   selectedEnvironmentId: string | null;
   selectedHostId: string | null;
-}): { environmentId: string | null; hostId: string | null } {
+}) {
   if (
     fileOpenerSource?.kind === "workspace" &&
     fileOpenerSource.environmentId === null &&
@@ -365,10 +365,11 @@ function RootComposeFilePreviewTabContent({
       ? projectOpenContext
       : environmentOpenContext;
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({
-      enabled: openContext !== null,
-      ...(openContext ? { openContext } : {}),
-    });
+    useLocalOpenTargets(
+      openContext === null
+        ? { enabled: false }
+        : { enabled: true, openContext },
+    );
   const workspaceRootPath = environment?.path ?? null;
   const relativeFileRootPath =
     tab.kind === "workspace-file-preview"

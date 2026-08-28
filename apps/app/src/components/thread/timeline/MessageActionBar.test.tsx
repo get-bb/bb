@@ -26,34 +26,41 @@ afterEach(() => {
 });
 
 function installControlledResizeObserver() {
-  const observations: { callback: ResizeObserverCallback; node: Element }[] =
-    [];
-  class ControlledResizeObserver {
+  const observations: {
+    callback: ResizeObserverCallback;
+    node: Element;
+    observer: ResizeObserver;
+  }[] = [];
+  class ControlledResizeObserver implements ResizeObserver {
     readonly #callback: ResizeObserverCallback;
     constructor(callback: ResizeObserverCallback) {
       this.#callback = callback;
     }
     observe(node: Element) {
-      observations.push({ callback: this.#callback, node });
+      observations.push({ callback: this.#callback, node, observer: this });
     }
-    unobserve() {}
+    unobserve(_node: Element) {}
     disconnect() {}
   }
   vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
   const report = (widths: { slot: number; column: number }) => {
     act(() => {
-      for (const { callback, node } of observations) {
+      for (const { callback, node, observer } of observations) {
         const width = node.hasAttribute("data-message-column")
           ? widths.column
           : widths.slot;
+        const size = { inlineSize: width, blockSize: 20 };
         callback(
           [
             {
               target: node,
-              contentRect: { width, height: 20 },
-            } as unknown as ResizeObserverEntry,
+              contentRect: new DOMRect(0, 0, width, 20),
+              borderBoxSize: [size],
+              contentBoxSize: [size],
+              devicePixelContentBoxSize: [size],
+            },
           ],
-          undefined as unknown as ResizeObserver,
+          observer,
         );
       }
     });

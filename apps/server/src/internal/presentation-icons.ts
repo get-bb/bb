@@ -76,7 +76,7 @@ function toUnhandledEvent(
   reason: string,
 ): ThreadEvent {
   const { event } = site;
-  return {
+  const unhandledEvent: Extract<ThreadEvent, { type: "provider/unhandled" }> = {
     type: "provider/unhandled",
     threadId: event.threadId,
     providerThreadId: event.providerThreadId,
@@ -93,10 +93,14 @@ function toUnhandledEvent(
       },
     },
     scope: event.scope,
-    ...(event.item.parentToolCallId === undefined
-      ? {}
-      : { parentToolCallId: event.item.parentToolCallId }),
   };
+  if (event.item.parentToolCallId !== undefined) {
+    return {
+      ...unhandledEvent,
+      parentToolCallId: event.item.parentToolCallId,
+    };
+  }
+  return unhandledEvent;
 }
 
 export function validatePresentationIcons(

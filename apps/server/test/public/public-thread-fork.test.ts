@@ -17,6 +17,7 @@ import {
 import {
   threadResponseSchema,
   threadTimelineResponseSchema,
+  type ForkThreadRequest,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
@@ -66,19 +67,20 @@ function seedForkSource(
     environmentId: environment.id,
     projectId: project.id,
   });
-  seedThreadRuntimeState(harness.deps, {
+  const runtimeState: Parameters<typeof seedThreadRuntimeState>[1] = {
     environmentId: environment.id,
-    ...(args.model === undefined ? {} : { model: args.model }),
     permissionMode: args.permissionMode ?? "full",
     providerThreadId: "provider-fork-source",
-    ...(args.reasoningLevel === undefined
-      ? {}
-      : { reasoningLevel: args.reasoningLevel }),
-    ...(args.serviceTier === undefined
-      ? {}
-      : { serviceTier: args.serviceTier }),
     threadId: sourceThread.id,
-  });
+  };
+  if (args.model !== undefined) runtimeState.model = args.model;
+  if (args.reasoningLevel !== undefined) {
+    runtimeState.reasoningLevel = args.reasoningLevel;
+  }
+  if (args.serviceTier !== undefined) {
+    runtimeState.serviceTier = args.serviceTier;
+  }
+  seedThreadRuntimeState(harness.deps, runtimeState);
   seedTurnStarted(harness.deps, {
     environmentId: environment.id,
     providerThreadId: "provider-fork-source",
@@ -118,10 +120,10 @@ function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
   return { environment, sourceThread };
 }
 
-async function postFork(
-  harness: TestAppHarness,
-  body: Record<string, unknown>,
-) {
+type ForkThreadRequestInput = Omit<ForkThreadRequest, "origin" | "visibility"> &
+  Partial<Pick<ForkThreadRequest, "origin" | "visibility">>;
+
+async function postFork(harness: TestAppHarness, body: ForkThreadRequestInput) {
   return harness.app.request("/api/v1/threads/fork", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -891,11 +893,12 @@ function seedConversationForkSource(
     projectId: project.id,
     path: "/tmp/public-thread-fork-history",
   });
-  const sourceThread = seedThread(harness.deps, {
+  const threadArgs: Parameters<typeof seedThread>[1] = {
     environmentId: environment.id,
     projectId: project.id,
-    ...(args.providerId === undefined ? {} : { providerId: args.providerId }),
-  });
+  };
+  if (args.providerId !== undefined) threadArgs.providerId = args.providerId;
+  const sourceThread = seedThread(harness.deps, threadArgs);
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
     inputText: "Reply only with ok.",

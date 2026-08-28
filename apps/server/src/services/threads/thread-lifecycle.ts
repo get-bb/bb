@@ -517,19 +517,23 @@ function applyActiveTurnInterruptionInTransaction(
   deps: ThreadLifecycleTransactionDeps,
   args: ApplyActiveTurnInterruptionArgs,
 ): boolean {
+  const eventData: Extract<
+    ThreadEventAppendArgs,
+    { type: "turn/completed" }
+  >["data"] = {
+    providerThreadId: args.providerThreadId,
+    status: "interrupted",
+  };
+  if (args.providerCheckpointId !== undefined) {
+    eventData.providerCheckpointId = args.providerCheckpointId;
+  }
   appendThreadEventInTransaction(deps.db, {
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId: args.providerThreadId,
     type: "turn/completed",
     scope: turnScope(args.activeTurnId),
-    data: {
-      providerThreadId: args.providerThreadId,
-      status: "interrupted",
-      ...(args.providerCheckpointId !== undefined
-        ? { providerCheckpointId: args.providerCheckpointId }
-        : {}),
-    },
+    data: eventData,
   });
   const appendedThreadInterruptedEvent =
     appendThreadInterruptedEventIfMissingInTransaction(deps, args);
@@ -898,18 +902,22 @@ export async function prepareReadyThreadTurnCommand(
   });
   const providerThreadId = getLastProviderThreadId(deps, args.thread.id);
   if (providerThreadId) {
-    const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+    const prepareArgs: Parameters<typeof prepareTurnSubmitCommandPayload>[1] = {
       environment: args.environment,
       execution: args.execution,
       input: args.input,
-      ...(args.inputGroups !== undefined
-        ? { inputGroups: args.inputGroups }
-        : {}),
       permissionEscalation: args.permissionEscalation,
       providerThreadId,
       target: { mode: "start" },
       thread: args.thread,
-    });
+    };
+    if (args.inputGroups !== undefined) {
+      prepareArgs.inputGroups = args.inputGroups;
+    }
+    const preparedCommand = await prepareTurnSubmitCommandPayload(
+      deps,
+      prepareArgs,
+    );
     return {
       command: addRequestIdToTurnSubmitCommandPayload({
         preparedCommand,
@@ -958,12 +966,13 @@ export function settleThreadStopCommandResult(
     };
   }
 
-  finalizeStoppedThreadInTransaction(args.deps, {
-    ...(args.report.result.providerCheckpointId !== null
-      ? { providerCheckpointId: args.report.result.providerCheckpointId }
-      : {}),
+  const finalizeArgs: FinalizeStoppedThreadArgs = {
     threadId: args.command.threadId,
-  });
+  };
+  if (args.report.result.providerCheckpointId !== null) {
+    finalizeArgs.providerCheckpointId = args.report.result.providerCheckpointId;
+  }
+  finalizeStoppedThreadInTransaction(args.deps, finalizeArgs);
 
   return {
     postCommitActions: [
@@ -1448,17 +1457,18 @@ function interruptActiveTurnForThreadInTransaction(
 
   const providerThreadId = getLastProviderThreadId(deps, args.threadId);
 
+  const interruptionArgs: ApplyActiveTurnInterruptionArgs = {
+    activeTurnId,
+    environmentId: args.environmentId,
+    providerThreadId,
+    reason: args.reason,
+    threadId: args.threadId,
+  };
+  if (args.providerCheckpointId !== undefined) {
+    interruptionArgs.providerCheckpointId = args.providerCheckpointId;
+  }
   const appendedThreadInterruptedEvent =
-    applyActiveTurnInterruptionInTransaction(deps, {
-      activeTurnId,
-      environmentId: args.environmentId,
-      ...(args.providerCheckpointId !== undefined
-        ? { providerCheckpointId: args.providerCheckpointId }
-        : {}),
-      providerThreadId,
-      reason: args.reason,
-      threadId: args.threadId,
-    });
+    applyActiveTurnInterruptionInTransaction(deps, interruptionArgs);
   const eventTypes: ThreadEventType[] = ["turn/completed"];
   if (appendedThreadInterruptedEvent) {
     eventTypes.push("system/thread/interrupted");
@@ -1572,13 +1582,13 @@ function interruptActiveThreads(
       eventTypes.unshift("turn/completed");
     }
     const thread = getThread(deps.db, result.threadId);
+    const statusMetadata = thread
+      ? buildThreadStatusChangeMetadata(deps, thread)
+      : {};
     deps.hub.notifyThread(
       result.threadId,
       ["events-appended", "status-changed"],
-      {
-        eventTypes,
-        ...(thread ? buildThreadStatusChangeMetadata(deps, thread) : {}),
-      },
+      { eventTypes, ...statusMetadata },
     );
   }
 
@@ -1655,16 +1665,17 @@ export function finalizeStoppedThreadInTransaction(
     currentThread.status === "active" ||
     currentThread.status === "stopping"
   ) {
+    const interruptionArgs: InterruptActiveTurnForThreadArgs = {
+      environmentId: currentThread.environmentId,
+      threadId: currentThread.id,
+      reason: interruptionReason,
+    };
+    if (args.providerCheckpointId !== undefined) {
+      interruptionArgs.providerCheckpointId = args.providerCheckpointId;
+    }
     appendedThreadInterruptedEvent = interruptActiveTurnForThreadInTransaction(
       deps,
-      {
-        environmentId: currentThread.environmentId,
-        ...(args.providerCheckpointId !== undefined
-          ? { providerCheckpointId: args.providerCheckpointId }
-          : {}),
-        threadId: currentThread.id,
-        reason: interruptionReason,
-      },
+      interruptionArgs,
     );
     if (!appendedThreadInterruptedEvent) {
       const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {

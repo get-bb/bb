@@ -12,6 +12,19 @@ const BASE = "http://127.0.0.1:3334";
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16v16H4z"/></svg>`;
 const OTHER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle fill="currentColor" r="8" cx="12" cy="12"/></svg>`;
 
+interface IconFixtureBranding {
+  icon: string;
+  experimental_icons?: Record<string, string>;
+}
+
+interface IconFixtureManifest {
+  name: string;
+  description: string;
+  branding: IconFixtureBranding;
+  server: string;
+  host?: string;
+}
+
 async function writeIconPluginFixture(
   rootDir: string,
   options: {
@@ -23,24 +36,28 @@ async function writeIconPluginFixture(
     withHost?: boolean;
   },
 ): Promise<void> {
+  const branding: IconFixtureBranding = {
+    icon: options.brandingIcon ?? "Zap",
+  };
+  if (options.icons !== undefined) {
+    branding.experimental_icons = options.icons;
+  }
+  const bb: IconFixtureManifest = {
+    name: "Icons fixture",
+    description: "Declares icons.",
+    branding,
+    server: "./server.ts",
+  };
+  if (options.withHost) {
+    bb.host = "./bridge.ts";
+  }
   await mkdir(rootDir, { recursive: true });
   await writeFile(
     join(rootDir, "package.json"),
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      bb: {
-        name: "Icons fixture",
-        description: "Declares icons.",
-        branding: {
-          icon: options.brandingIcon ?? "Zap",
-          ...(options.icons === undefined
-            ? {}
-            : { experimental_icons: options.icons }),
-        },
-        server: "./server.ts",
-        ...(options.withHost ? { host: "./bridge.ts" } : {}),
-      },
+      bb,
     }),
   );
   await writeFile(

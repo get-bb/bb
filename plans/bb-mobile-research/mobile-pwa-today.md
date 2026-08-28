@@ -26,25 +26,26 @@
 
 ## 2. Limitations accepted / worked around → 3. Native replacement
 
-| Limitation | Evidence | Expo replacement |
-|---|---|---|
-| Keyboard/viewport geometry guessing, UA sniffing | `useMobileVisualViewportHeight.ts`, `FollowUpPromptBox.tsx:417-579`, `app.css:14-46` | `react-native-keyboard-controller` / `KeyboardAvoidingView`, `react-native-safe-area-context`, `expo-status-bar` |
-| iOS style-recalc stalls from `inert`/modal drawers | `responsive-overlay.tsx` comments, `sidebar.tsx:988-995` | `@gorhom/bottom-sheet` / `react-native-screens` modals, `react-native-gesture-handler` drawer |
-| No push, no background, no badge | grep results; read tracking needs foreground | `expo-notifications` (APNs/FCM) + new server push-subscription table & sender keyed on `latestAttentionAt`/pending interactions; `expo-notifications` badge |
-| Socket dies in background; resume invalidation | `ws.ts`, `query-client.ts:61-95` | `AppState` → reconnect + `focusManager`; `expo-background-task` for periodic sync; push for wake |
-| Wake lock only during recording | `useVoiceInput.ts:139-197` | `expo-keep-awake` |
-| Voice: MediaRecorder + wake lock + mic pref | `useVoiceInput.ts` | `expo-audio` (record m4a/wav) → same multipart route; `expo-av` fallback |
-| Clipboard needs HTTPS or execCommand hack | `clipboard.ts` | `expo-clipboard` |
-| No haptics | none | `expo-haptics` on send/long-press/drawer snap |
-| File attach via `<input type=file>`; no camera/photos/share | `PromptBoxInternal.tsx:3095` | `expo-image-picker`, `expo-document-picker`, `expo-sharing`, `expo-file-system` |
-| Terminal: xterm DOM/WebGL, no modifier keys | `ThreadTerminalView.tsx` | WebView-hosted xterm or native VT (e.g. `react-native-xtermjs`/custom) + accessory keyboard bar; reuse `terminal-websocket-transport.ts` |
-| Auth = cookie via getbb.app browser session | `servers.ts:178-209` | Enroll as connect machine, store credential in `expo-secure-store`, send `x-bb-connect-machine` header on fetch + WebSocket |
-| No deep links / custom scheme | routes only http | `expo-linking` scheme + universal links to `/projects/:id/threads/:id` |
-| Storage = localStorage (theme, favicon color, mic id, prefs) | `browser-storage.ts` (17 files) | `@react-native-async-storage`/MMKV via jotai `atomWithStorage` |
-| Theme = CSS vars/oklch, meta theme-color | `useTheme.ts`, `theme.css` | `Appearance`/`useColorScheme`, `expo-system-ui`, port tokens to JS |
-| No offline/PWA cache | no SW | Bundled assets; react-query persist (`@tanstack/query-async-storage-persister`) |
+| Limitation                                                   | Evidence                                                                             | Expo replacement                                                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keyboard/viewport geometry guessing, UA sniffing             | `useMobileVisualViewportHeight.ts`, `FollowUpPromptBox.tsx:417-579`, `app.css:14-46` | `react-native-keyboard-controller` / `KeyboardAvoidingView`, `react-native-safe-area-context`, `expo-status-bar`                                            |
+| iOS style-recalc stalls from `inert`/modal drawers           | `responsive-overlay.tsx` comments, `sidebar.tsx:988-995`                             | `@gorhom/bottom-sheet` / `react-native-screens` modals, `react-native-gesture-handler` drawer                                                               |
+| No push, no background, no badge                             | grep results; read tracking needs foreground                                         | `expo-notifications` (APNs/FCM) + new server push-subscription table & sender keyed on `latestAttentionAt`/pending interactions; `expo-notifications` badge |
+| Socket dies in background; resume invalidation               | `ws.ts`, `query-client.ts:61-95`                                                     | `AppState` → reconnect + `focusManager`; `expo-background-task` for periodic sync; push for wake                                                            |
+| Wake lock only during recording                              | `useVoiceInput.ts:139-197`                                                           | `expo-keep-awake`                                                                                                                                           |
+| Voice: MediaRecorder + wake lock + mic pref                  | `useVoiceInput.ts`                                                                   | `expo-audio` (record m4a/wav) → same multipart route; `expo-av` fallback                                                                                    |
+| Clipboard needs HTTPS or execCommand hack                    | `clipboard.ts`                                                                       | `expo-clipboard`                                                                                                                                            |
+| No haptics                                                   | none                                                                                 | `expo-haptics` on send/long-press/drawer snap                                                                                                               |
+| File attach via `<input type=file>`; no camera/photos/share  | `PromptBoxInternal.tsx:3095`                                                         | `expo-image-picker`, `expo-document-picker`, `expo-sharing`, `expo-file-system`                                                                             |
+| Terminal: xterm DOM/WebGL, no modifier keys                  | `ThreadTerminalView.tsx`                                                             | WebView-hosted xterm or native VT (e.g. `react-native-xtermjs`/custom) + accessory keyboard bar; reuse `terminal-websocket-transport.ts`                    |
+| Auth = cookie via getbb.app browser session                  | `servers.ts:178-209`                                                                 | Enroll as connect machine, store credential in `expo-secure-store`, send `x-bb-connect-machine` header on fetch + WebSocket                                 |
+| No deep links / custom scheme                                | routes only http                                                                     | `expo-linking` scheme + universal links to `/projects/:id/threads/:id`                                                                                      |
+| Storage = localStorage (theme, favicon color, mic id, prefs) | `browser-storage.ts` (17 files)                                                      | `@react-native-async-storage`/MMKV via jotai `atomWithStorage`                                                                                              |
+| Theme = CSS vars/oklch, meta theme-color                     | `useTheme.ts`, `theme.css`                                                           | `Appearance`/`useColorScheme`, `expo-system-ui`, port tokens to JS                                                                                          |
+| No offline/PWA cache                                         | no SW                                                                                | Bundled assets; react-query persist (`@tanstack/query-async-storage-persister`)                                                                             |
 
 ## Key files
+
 - apps/app/index.html
 - apps/app/public/manifest.webmanifest
 - apps/app/scripts/generate-pwa-icons.mjs
@@ -94,6 +95,7 @@
 - docs/multiple-devices.md
 
 ## Reuse verdicts
+
 - packages/shared-ui hooks/use-media-query.ts + use-compact-viewport.tsx + use-pointer-coarse.ts: **reusable-with-small-changes** — window.matchMedia/MediaQueryList (use-media-query.ts:15-46). CompactViewportOverrideProvider is plain React context. Replace snapshot/subscribe with Dimensions/useWindowDimensions; coarse pointer is always true on phones.
 - packages/shared-ui responsive-overlay.tsx (ResponsiveDrawerShell / PersistentResponsiveDrawerShell): **not-reusable** — react-dom createPortal to document.body, HTMLElement queries, keydown listeners on Document, inline CSS transforms, PointerEvent drag, inert attribute. Only the two-rAF+120ms realization idea and drag thresholds (25 %, 450 px/s) transfer.
 - packages/shared-ui drawer.tsx (vaul): **not-reusable** — vaul is DOM-only; also Radix-based.
@@ -116,6 +118,7 @@
 - apps/server voice transcription route + connect gate auth: **reusable-as-is** — HTTP contracts are client-agnostic; RN fetch supports multipart FormData with {uri,name,type}. Connect gate accepts x-bb-connect-machine header (servers.ts:178-209), which RN fetch and RN WebSocket (headers option) can send.
 
 ## Risks
+
 - Push notifications require net-new server + connect infrastructure: there is no device-token table, no sender, no webpush/APNs/FCM code, and no per-user notification preferences anywhere in apps/server or packages/server-contract; only DB change-notifier plumbing exists (notification-buffer.ts, ws/hub.ts). Deciding what triggers a push (thread attention, pending interaction, run finished) is product policy the server must own per AGENTS.md.
 - Auth: the loopback API is unauthenticated and the getbb.app gate relies on a browser session cookie or a machine credential; a native app must implement connect-machine enrollment (mirroring apps/desktop connect-machine-enrollment.ts) and send x-bb-connect-machine on both fetch and WebSocket. Machine enrollment counts against the account machine limit (EnrollDesktopMachineFailureCode 'machine_limit').
 - Prompt editor is TipTap/ProseMirror with mention pills, slash commands, ultracode decorations, compact single-line CSS transforms; there is no headless editor model separated from the DOM component, so the composer must be re-implemented (RN TextInput or WebView) and mention/attachment serialization extracted.
@@ -128,6 +131,7 @@
 - The app-surface header enum (desktop|web) is enforced server-side; introducing 'mobile' touches telemetry and request-context and any surface-conditional server behavior.
 
 ## Open questions
+
 - Should the native app enroll as a bb connect 'machine' (like desktop) or should connect gain a first-class 'device' credential type with push-token registration? Where does the push-token → account/server mapping live (getbb.app connect worker vs each bb server)?
 - Which server events should generate a push: thread latestAttentionAt changes, pending interactions (ask-user-question, permission prompts), run completion, automation failures? Does the server already have a single 'attention' emission point to hook (services/threads/thread-runtime-display.ts references latestAttentionAt)?
 - Does the main /ws protocol support resume-from-sequence like the terminal transport (sinceSeq), or does every reconnect require full re-subscribe + refetch? This determines background/resume cost on mobile.

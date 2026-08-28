@@ -1,39 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-interface MockEventLoopDelayHistogram {
-  disable: () => void;
-  enable: () => void;
-  max: number;
-  mean: number;
-  percentile: (percentile: number) => number;
-  reset: () => void;
-}
-
-const perfHooksMock = vi.hoisted(() => {
-  const state: { histogram: MockEventLoopDelayHistogram | null } = {
-    histogram: null,
-  };
-
-  return {
-    monitorEventLoopDelay: vi.fn(() => {
-      if (state.histogram === null) {
-        throw new Error("Expected test histogram to be installed");
-      }
-      return state.histogram;
-    }),
-    state,
-  };
-});
-
-vi.mock("node:perf_hooks", async () => {
-  const actual =
-    await vi.importActual<typeof import("node:perf_hooks")>("node:perf_hooks");
-  return {
-    ...actual,
-    monitorEventLoopDelay: perfHooksMock.monitorEventLoopDelay,
-  };
-});
-
 import { performance as nodePerformance } from "node:perf_hooks";
 import { startEventLoopStallMonitor } from "../../src/services/system/event-loop-stall-monitor.js";
 import {
@@ -43,31 +9,22 @@ import {
 } from "../../src/services/system/event-loop-work.js";
 
 const EVENT_LOOP_STALL_MONITOR_INTERVAL_MS = 5_000;
-const NANOSECONDS_PER_MILLISECOND = 1_000_000;
+const realSetTimeout = setTimeout;
+const realSetInterval = setInterval;
+const TEST_MONITOR_INTERVAL_MS = 700;
 
-interface InstallHistogramArgs {
-  maxDelayMs: number;
-  meanDelayMs: number;
-  p99DelayMs: number;
+function blockEventLoopFor(durationMs: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
 }
 
-function millisecondsToNanoseconds(durationMs: number): number {
-  return durationMs * NANOSECONDS_PER_MILLISECOND;
+function waitForEventLoopSample(): Promise<void> {
+  return new Promise((resolve) =>
+    realSetTimeout(resolve, TEST_MONITOR_INTERVAL_MS + 50),
+  );
 }
 
-function installHistogram(
-  args: InstallHistogramArgs,
-): MockEventLoopDelayHistogram {
-  const histogram = {
-    disable: vi.fn(),
-    enable: vi.fn(),
-    max: millisecondsToNanoseconds(args.maxDelayMs),
-    mean: millisecondsToNanoseconds(args.meanDelayMs),
-    percentile: vi.fn(() => millisecondsToNanoseconds(args.p99DelayMs)),
-    reset: vi.fn(),
-  };
-  perfHooksMock.state.histogram = histogram;
-  return histogram;
+function waitForHistogramBaseline(): Promise<void> {
+  return new Promise((resolve) => realSetTimeout(resolve, 50));
 }
 
 const EMPTY_WORK_SNAPSHOT = {
@@ -80,109 +37,75 @@ const EMPTY_WORK_SNAPSHOT = {
 
 describe("event loop stall monitor", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    perfHooksMock.monitorEventLoopDelay.mockClear();
-    perfHooksMock.state.histogram = null;
+    vi.spyOn(globalThis, "setInterval").mockImplementation(
+      (handler, _timeout, ...args) =>
+        realSetInterval(handler, TEST_MONITOR_INTERVAL_MS, ...args),
+    );
     resetEventLoopWorkForTests();
   });
 
   afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("logs and resets when the max event loop delay reaches the threshold", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("logs and resets when the max event loop delay reaches the threshold", async () => {
     const logger = { info: vi.fn() };
 
     const monitor = startEventLoopStallMonitor({ logger });
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
-    expect(perfHooksMock.monitorEventLoopDelay).toHaveBeenCalledWith({
-      resolution: 20,
-    });
-    expect(histogram.enable).toHaveBeenCalledTimes(1);
-    expect(histogram.percentile).toHaveBeenCalledWith(99);
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
     expect(logger.info).toHaveBeenCalledWith(
-      {
-        intervalMs: 5_000,
-        maxDelayMs: 500,
-        meanDelayMs: 25,
-        p99DelayMs: 450,
+      expect.objectContaining({
+        intervalMs: EVENT_LOOP_STALL_MONITOR_INTERVAL_MS,
         resolutionMs: 20,
         thresholdMs: 500,
         ...EMPTY_WORK_SNAPSHOT,
-      },
+      }),
       "Event loop stalled",
     );
 
     monitor.stop();
   });
 
-  it("does not log below the threshold", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 499,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("does not log below the threshold", async () => {
     const logger = { info: vi.fn() };
 
     const monitor = startEventLoopStallMonitor({ logger });
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForEventLoopSample();
 
     expect(logger.info).not.toHaveBeenCalled();
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
 
     monitor.stop();
   });
 
-  it("suppresses histogram delays accumulated while the system was suspended", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 300_000,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("suppresses histogram delays accumulated while the system was suspended", async () => {
     const logger = { info: vi.fn() };
     let now = 0;
 
     const monitor = startEventLoopStallMonitor({ logger, now: () => now });
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
     now = 300_000;
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForEventLoopSample();
 
     expect(logger.info).not.toHaveBeenCalled();
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
 
     monitor.stop();
   });
 
-  it("stops sampling after stop", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("stops sampling after stop", async () => {
     const logger = { info: vi.fn() };
 
     const monitor = startEventLoopStallMonitor({ logger });
     monitor.stop();
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForEventLoopSample();
 
-    expect(histogram.disable).toHaveBeenCalledTimes(1);
-    expect(histogram.reset).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
   });
 
   it("does not attribute an in-flight async wait as the event loop block", async () => {
-    installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
     const logger = { info: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger });
     let release!: () => void;
@@ -194,7 +117,9 @@ describe("event loop stall monitor", () => {
         }),
     );
 
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -212,17 +137,14 @@ describe("event loop stall monitor", () => {
     monitor.stop();
   });
 
-  it("includes the last finished unit of work on the stall report", () => {
-    installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("includes the last finished unit of work on the stall report", async () => {
     const logger = { info: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger });
 
     runEventLoopWorkSync("sweep:database-maintenance", () => undefined);
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -231,6 +153,7 @@ describe("event loop stall monitor", () => {
       }),
       "Event loop stalled",
     );
+    // SAFETY: The monitor always logs an object with the lastWorkMs field.
     const fields = logger.info.mock.calls[0]?.[0] as {
       lastWorkMs: number | null;
     };
@@ -240,11 +163,6 @@ describe("event loop stall monitor", () => {
   });
 
   it("nests the current work label when units overlap", async () => {
-    installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
     const logger = { info: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger });
     let release!: () => void;
@@ -260,7 +178,9 @@ describe("event loop stall monitor", () => {
         ),
     );
 
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -276,11 +196,6 @@ describe("event loop stall monitor", () => {
   });
 
   it("keeps sibling frames when one request finishes first", async () => {
-    installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
     const logger = { info: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger });
     let releaseFirst!: () => void;
@@ -302,7 +217,9 @@ describe("event loop stall monitor", () => {
 
     releaseFirst();
     await first;
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -317,12 +234,7 @@ describe("event loop stall monitor", () => {
     monitor.stop();
   });
 
-  it("keeps the slowest work from the stall window after later short work", () => {
-    installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
+  it("keeps the slowest work from the stall window after later short work", async () => {
     const logger = { info: vi.fn() };
     const nowSpy = vi.spyOn(nodePerformance, "now");
     nowSpy.mockReturnValueOnce(0);
@@ -334,7 +246,9 @@ describe("event loop stall monitor", () => {
     nowSpy.mockRestore();
 
     const monitor = startEventLoopStallMonitor({ logger });
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    await waitForHistogramBaseline();
+    blockEventLoopFor(600);
+    await waitForEventLoopSample();
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({

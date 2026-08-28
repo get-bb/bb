@@ -7,8 +7,16 @@ const packageRoot = process.cwd();
 const packageJsonPath = path.join(packageRoot, "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 
+function isString(value) {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isObject(value) {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
 function sourceFromDistJs(distPath) {
-  if (typeof distPath !== "string") {
+  if (!isString(distPath)) {
     return undefined;
   }
 
@@ -19,17 +27,17 @@ function sourceFromDistJs(distPath) {
 }
 
 function collectExportEntries() {
-  if (!packageJson.exports || typeof packageJson.exports !== "object") {
+  if (!isObject(packageJson.exports)) {
     return [];
   }
 
   return Object.values(packageJson.exports).flatMap((exportValue) => {
     if (
       !exportValue ||
-      typeof exportValue !== "object" ||
+      !isObject(exportValue) ||
       Array.isArray(exportValue) ||
-      typeof exportValue.source !== "string" ||
-      typeof exportValue.import !== "string"
+      !isString(exportValue.source) ||
+      !isString(exportValue.import)
     ) {
       return [];
     }
@@ -66,10 +74,9 @@ function collectDefaultEntry() {
 }
 
 function collectBinEntries() {
-  const rawBinEntries =
-    typeof packageJson.bin === "string"
-      ? [[packageJson.name, packageJson.bin]]
-      : Object.entries(packageJson.bin ?? {});
+  const rawBinEntries = isString(packageJson.bin)
+    ? [[packageJson.name, packageJson.bin]]
+    : Object.entries(packageJson.bin ?? {});
 
   return rawBinEntries.flatMap(([, binPath]) => {
     const sourcePath = sourceFromDistJs(binPath);

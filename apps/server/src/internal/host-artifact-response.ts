@@ -1,5 +1,3 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 
 export async function hostArtifactFileResponse(args: {
@@ -7,13 +5,15 @@ export async function hostArtifactFileResponse(args: {
   byteLength: number;
   digest: string;
 }): Promise<Response | null> {
+  const { createReadStream } = process.getBuiltinModule("node:fs");
+  const { stat } = process.getBuiltinModule("node:fs/promises");
   const stats = await stat(args.path).catch(() => null);
   if (stats === null || !stats.isFile() || stats.size !== args.byteLength) {
     return null;
   }
-  const body = Readable.toWeb(
-    createReadStream(args.path),
-  ) as ReadableStream<Uint8Array>;
+  const body =
+    /* SAFETY: Node's web adapter returns a WHATWG stream accepted by Response. */
+    Readable.toWeb(createReadStream(args.path)) as ReadableStream<Uint8Array>;
   return new Response(body, {
     status: 200,
     headers: {

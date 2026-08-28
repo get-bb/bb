@@ -11,6 +11,7 @@ import { ApiError } from "../../errors.js";
 import { resolveExistingThreadPermissionMode } from "./thread-execution-plan.js";
 import { getLastExecutionOptions } from "./thread-events.js";
 import { createThreadFromRequest } from "./thread-create.js";
+import type { ThreadCreateServiceRequestInput } from "./thread-create-request.js";
 
 type ThreadForkDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -110,44 +111,49 @@ export async function createThreadForkFromRequest(
   const isSeedOnlyIdleFork =
     visibleInput.length === 0 && agentContextSeed.length > 0;
 
-  return createThreadFromRequest(
-    deps,
-    {
-      environment: resolveForkEnvironment(sourceEnvironment, {
-        projectId: sourceThread.projectId,
-        workspace: request.workspace,
-      }),
-      input,
-      origin: request.origin,
-      ...(request.originPluginId === undefined
-        ? {}
-        : { originPluginId: request.originPluginId }),
-      originKind: "fork",
-      permissionMode:
-        request.permissionMode ??
-        resolveExistingThreadPermissionMode(deps, sourceThread.id),
-      ...(sourceExecution?.model ? { model: sourceExecution.model } : {}),
-      ...(sourceExecution?.reasoningLevel
-        ? { reasoningLevel: sourceExecution.reasoningLevel }
-        : {}),
-      ...(sourceExecution?.serviceTier
-        ? { serviceTier: sourceExecution.serviceTier }
-        : {}),
+  const threadRequest: ThreadCreateServiceRequestInput = {
+    environment: resolveForkEnvironment(sourceEnvironment, {
       projectId: sourceThread.projectId,
-      providerId: sourceThread.providerId,
-      ...(request.sourceSeqEnd === undefined
-        ? {}
-        : { sourceSeqEnd: request.sourceSeqEnd }),
-      sourceThreadId: sourceThread.id,
-      startedOnBehalfOf: isSeedOnlyIdleFork
-        ? { initiator: "agent", senderThreadId: sourceThread.id }
-        : null,
-      ...(request.title === undefined ? {} : { title: request.title }),
-      visibility: request.visibility,
-    },
-    {
-      forkSourceEnvironmentId: sourceEnvironment.id,
-      ...(isSeedOnlyIdleFork ? { providerInput: [] } : {}),
-    },
-  );
+      workspace: request.workspace,
+    }),
+    input,
+    origin: request.origin,
+    originKind: "fork",
+    permissionMode:
+      request.permissionMode ??
+      resolveExistingThreadPermissionMode(deps, sourceThread.id),
+    projectId: sourceThread.projectId,
+    providerId: sourceThread.providerId,
+    sourceThreadId: sourceThread.id,
+    startedOnBehalfOf: isSeedOnlyIdleFork
+      ? { initiator: "agent", senderThreadId: sourceThread.id }
+      : null,
+    visibility: request.visibility,
+  };
+  if (request.originPluginId !== undefined) {
+    threadRequest.originPluginId = request.originPluginId;
+  }
+  if (sourceExecution?.model) {
+    threadRequest.model = sourceExecution.model;
+  }
+  if (sourceExecution?.reasoningLevel) {
+    threadRequest.reasoningLevel = sourceExecution.reasoningLevel;
+  }
+  if (sourceExecution?.serviceTier) {
+    threadRequest.serviceTier = sourceExecution.serviceTier;
+  }
+  if (request.sourceSeqEnd !== undefined) {
+    threadRequest.sourceSeqEnd = request.sourceSeqEnd;
+  }
+  if (request.title !== undefined) {
+    threadRequest.title = request.title;
+  }
+
+  const options: Parameters<typeof createThreadFromRequest>[2] = {
+    forkSourceEnvironmentId: sourceEnvironment.id,
+  };
+  if (isSeedOnlyIdleFork) {
+    options.providerInput = [];
+  }
+  return createThreadFromRequest(deps, threadRequest, options);
 }

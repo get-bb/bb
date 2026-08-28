@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   collectLogPayloads,
   getHelpOutput,
@@ -98,7 +99,23 @@ const installedPlugin = {
   icons: {},
 };
 
-function json(value: object, status = 200): Response {
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const pluginInstallSelectionSchema = z.object({
+  selection: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("entry"), name: z.string() }),
+    z.object({ kind: z.literal("subdirectory"), path: z.string() }),
+  ]),
+});
+const pluginInstallSourceSchema = z.object({ source: z.string() });
+
+function json(value: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: { "content-type": "application/json" },
@@ -232,8 +249,8 @@ describe("bb plugin catalog", () => {
     expect(
       vi
         .mocked(fetch)
-        .mock.calls.map(
-          (call) => JSON.parse(String(call[1]?.body)) as { selection: unknown },
+        .mock.calls.map((call) =>
+          pluginInstallSelectionSchema.parse(JSON.parse(String(call[1]?.body))),
         )
         .map((body) => body.selection),
     ).toEqual([
@@ -263,7 +280,8 @@ describe("bb plugin catalog", () => {
         .mocked(fetch)
         .mock.calls.map(
           (call) =>
-            (JSON.parse(String(call[1]?.body)) as { source: string }).source,
+            pluginInstallSourceSchema.parse(JSON.parse(String(call[1]?.body)))
+              .source,
         ),
     ).toEqual(["git:github.com/acme/bb-plugins@semver:linear/:^1.2.0"]);
 

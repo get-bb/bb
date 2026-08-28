@@ -646,25 +646,26 @@ const fullProjectAChildSpecs: FullChildSpec[] = [
 
 const fullProjectAThreads: ThreadListEntry[] = [
   fullParentA,
-  ...fullProjectAChildSpecs.map((spec, index) =>
-    makeThread({
+  ...fullProjectAChildSpecs.map((spec, index) => {
+    const overrides: Partial<ThreadListEntry> = {
       id: `thr_full_a_child_${index}`,
       projectId: "proj_full_a",
       title: spec.title,
       titleFallback: spec.title,
       parentThreadId: fullParentA.id,
-      ...(spec.busy
-        ? {
-            status: "active",
-            runtime: {
-              displayStatus: "active",
-              hostReconnectGraceExpiresAt: null,
-            },
-          }
-        : {}),
-      ...(spec.pending ? { hasPendingInteraction: true } : {}),
-    }),
-  ),
+    };
+    if (spec.busy) {
+      overrides.status = "active";
+      overrides.runtime = {
+        displayStatus: "active",
+        hostReconnectGraceExpiresAt: null,
+      };
+    }
+    if (spec.pending) {
+      overrides.hasPendingInteraction = true;
+    }
+    return makeThread(overrides);
+  }),
   makeThread({
     id: "thr_full_a_worktree_env_group_1",
     projectId: "proj_full_a",

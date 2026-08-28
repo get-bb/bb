@@ -39,7 +39,7 @@ interface CreateAssistantTextMessageArgs {
 function createAssistantTextMessage(
   args: CreateAssistantTextMessageArgs,
 ): EventProjectionAssistantTextMessage {
-  return {
+  const message: EventProjectionAssistantTextMessage = {
     kind: "assistant-text",
     id: messageId(args.decoded.threadId, "assistant", args.messageKey),
     threadId: args.decoded.threadId,
@@ -48,12 +48,13 @@ function createAssistantTextMessage(
     createdAt: args.meta.createdAt,
     startedAt: args.meta.createdAt,
     scope: args.decoded.scope,
-    ...(args.eventParentToolCallId
-      ? { parentToolCallId: args.eventParentToolCallId }
-      : {}),
     text: "",
     status: "streaming",
   };
+  if (args.eventParentToolCallId) {
+    message.parentToolCallId = args.eventParentToolCallId;
+  }
+  return message;
 }
 
 export function projectAssistantAndReasoningEvent(

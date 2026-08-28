@@ -186,8 +186,8 @@ export const repoRoot = path.resolve(
   "../../..",
 );
 
-function isNodeError(error: unknown): error is ExecFileException {
-  return error instanceof Error;
+function isNodeError(error: Error): error is ExecFileException {
+  return "code" in error;
 }
 
 function isRestrictedProcessScanError(error: ExecFileException): boolean {
@@ -238,7 +238,7 @@ export function buildStandaloneRuntimeEnv(
     delete env[key];
   }
   const qaOpenAiApiKey = env[STANDALONE_OPENAI_API_KEY_ENV];
-  if (typeof qaOpenAiApiKey === "string" && qaOpenAiApiKey.trim().length > 0) {
+  if (qaOpenAiApiKey !== undefined && qaOpenAiApiKey.trim().length > 0) {
     env.OPENAI_API_KEY = qaOpenAiApiKey;
   } else {
     delete env.OPENAI_API_KEY;
@@ -295,7 +295,11 @@ async function resolveProjectEnvCandidates(): Promise<string[]> {
     const commonGitDir = path.dirname(path.dirname(worktreeGitDir));
     candidates.add(path.join(path.dirname(commonGitDir), ".env"));
   } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "ENOENT"
+    ) {
       return [...candidates];
     }
     throw error;
@@ -410,7 +414,11 @@ export async function loadDotEnv(): Promise<LoadDotEnvResult> {
         path: candidate,
       };
     } catch (error) {
-      if (isNodeError(error) && error.code === "ENOENT") {
+      if (
+        error instanceof Error &&
+        isNodeError(error) &&
+        error.code === "ENOENT"
+      ) {
         continue;
       }
       throw error;
@@ -429,11 +437,14 @@ export async function reservePort(): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      if (!address || typeof address === "string") {
+      const parsedAddress = z
+        .object({ port: z.number().int().nonnegative() })
+        .safeParse(address);
+      if (!parsedAddress.success) {
         reject(new Error("Failed to reserve port"));
         return;
       }
-      const port = address.port;
+      const port = parsedAddress.data.port;
       server.close((error) => {
         if (error) {
           reject(error);
@@ -476,7 +487,11 @@ async function readLogExcerpt(logPath: string): Promise<string | null> {
     const content = await fs.readFile(logPath, "utf8");
     return content.slice(-4_000);
   } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "ENOENT"
+    ) {
       return null;
     }
     throw error;
@@ -534,7 +549,11 @@ async function readJsonIfExists(
     const raw = await fs.readFile(filePath, "utf8");
     return parseStandaloneState(raw);
   } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "ENOENT"
+    ) {
       return null;
     }
     throw error;
@@ -561,7 +580,11 @@ async function listOpenFilePids(targetPath: string): Promise<number[]> {
       .map((value) => Number.parseInt(value.trim(), 10))
       .filter((value) => Number.isInteger(value) && value > 0);
   } catch (error) {
-    if (isNodeError(error) && (error.code === "ENOENT" || error.code === 1)) {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      (error.code === "ENOENT" || error.code === 1)
+    ) {
       return [];
     }
     throw error;
@@ -578,7 +601,11 @@ async function readPidFile(pidPath: string | null): Promise<number | null> {
     const pid = Number.parseInt(rawPid.trim(), 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "ENOENT"
+    ) {
       return null;
     }
     throw error;
@@ -608,7 +635,11 @@ async function listStandaloneProcesses(): Promise<StandaloneProcessInfo[]> {
     });
     stdout = result.stdout;
   } catch (error) {
-    if (isNodeError(error) && isRestrictedProcessScanError(error)) {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      isRestrictedProcessScanError(error)
+    ) {
       warnProcessEnumerationSkipped(error);
       return [];
     }
@@ -654,10 +685,18 @@ function getProcessSignalStatus(pid: number): ProcessSignalStatus {
     process.kill(pid, 0);
     return "running";
   } catch (error) {
-    if (isNodeError(error) && error.code === "ESRCH") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "ESRCH"
+    ) {
       return "missing";
     }
-    if (isNodeError(error) && error.code === "EPERM") {
+    if (
+      error instanceof Error &&
+      isNodeError(error) &&
+      error.code === "EPERM"
+    ) {
       return "permission-denied";
     }
     throw error;

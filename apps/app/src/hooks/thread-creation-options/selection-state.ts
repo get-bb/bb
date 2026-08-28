@@ -276,21 +276,21 @@ export function buildExecutionInputSources({
   });
 
   if (scope === "component-local") {
-    return {
-      ...(modelSource ? { model: modelSource } : {}),
-      ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
-      ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
-      ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
-    };
+    const sources: CreateExecutionInputSources = {};
+    if (modelSource) sources.model = modelSource;
+    if (serviceTierSource) sources.serviceTier = serviceTierSource;
+    if (reasoningLevelSource) sources.reasoningLevel = reasoningLevelSource;
+    if (permissionModeSource) sources.permissionMode = permissionModeSource;
+    return sources;
   }
 
-  return {
-    ...(providerSource ? { providerId: providerSource } : {}),
-    ...(modelSource ? { model: modelSource } : {}),
-    ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
-    ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
-    ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
-  };
+  const sources: CreateExecutionInputSources = {};
+  if (providerSource) sources.providerId = providerSource;
+  if (modelSource) sources.model = modelSource;
+  if (serviceTierSource) sources.serviceTier = serviceTierSource;
+  if (reasoningLevelSource) sources.reasoningLevel = reasoningLevelSource;
+  if (permissionModeSource) sources.permissionMode = permissionModeSource;
+  return sources;
 }
 
 export function resolvePermissionModeSelection({

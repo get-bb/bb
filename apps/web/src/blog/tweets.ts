@@ -20,7 +20,7 @@ export type Tweet = {
   media?: TweetMedia;
 };
 
-const TWEETS: Record<string, Tweet> = {
+const TWEETS = {
   "2084345751266857079": {
     id: "2084345751266857079",
     href: "https://x.com/brian_lovin/status/2084345751266857079",
@@ -48,8 +48,12 @@ const TWEETS: Record<string, Tweet> = {
       height: 720,
     },
   },
-};
+} satisfies Record<string, Tweet>;
+
+function isTweetId(id: string): id is keyof typeof TWEETS {
+  return Object.hasOwn(TWEETS, id);
+}
 
 export function getTweet(id: string): Tweet | undefined {
-  return TWEETS[id];
+  return isTweetId(id) ? TWEETS[id] : undefined;
 }

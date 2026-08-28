@@ -1,6 +1,15 @@
 import type { AvailableModel } from "@bb/domain";
 
-const PREFERRED_TEST_MODELS_BY_PROVIDER: Record<string, readonly string[]> = {
+interface ResolvePreferredTestModelArgs {
+  models: AvailableModel[];
+  providerId: string;
+}
+
+interface PreferredTestModelsByProvider {
+  readonly [providerId: string]: readonly string[] | undefined;
+}
+
+const PREFERRED_TEST_MODELS_BY_PROVIDER: PreferredTestModelsByProvider = {
   codex: ["gpt-5.4"],
   "claude-code": ["claude-haiku-4-5"],
   pi: [
@@ -13,11 +22,6 @@ const PREFERRED_TEST_MODELS_BY_PROVIDER: Record<string, readonly string[]> = {
     "anthropic/claude-opus-4-7",
   ],
 };
-
-interface ResolvePreferredTestModelArgs {
-  models: AvailableModel[];
-  providerId: string;
-}
 
 export function listPreferredTestModels(providerId: string): readonly string[] {
   return PREFERRED_TEST_MODELS_BY_PROVIDER[providerId] ?? [];

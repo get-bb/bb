@@ -1,4 +1,8 @@
-import type { ThreadEventPlanStep } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  jsonValueSchema,
+  type JsonValue,
+  type ThreadEventPlanStep,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
 const taskStatusSchema = z.enum(["pending", "in_progress", "completed"]);
@@ -68,10 +72,15 @@ export const CLAUDE_TASK_PLAN_TOOL_NAMES: ReadonlySet<string> = new Set([
   "TaskGet",
 ]);
 
-function parseMaybeJson(value: unknown): unknown {
-  if (typeof value !== "string") return value;
+function isTextValue<T>(value: T): value is T & string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function parseMaybeJson<T>(value: T): T | JsonValue {
+  if (!isTextValue(value)) return value;
   try {
-    return JSON.parse(value) as unknown;
+    const parsed = jsonValueSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : value;
   } catch {
     return value;
   }

@@ -119,15 +119,20 @@ export function useProjectSourceBranches(
         remoteRefresh.requested = false;
         remoteRefresh.blockingSignal = signal;
       }
-      return sdk.projects.branches({
+      const request: Parameters<typeof sdk.projects.branches>[0] = {
         projectId: requireProjectId(projectId, "useProjectSourceBranches"),
         hostId: hostId ?? "",
-        ...(query ? { query } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
         limit: String(limit),
         refresh,
         signal,
-      });
+      };
+      if (query) {
+        request.query = query;
+      }
+      if (selectedBranch) {
+        request.selectedBranch = selectedBranch;
+      }
+      return sdk.projects.branches(request);
     },
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,

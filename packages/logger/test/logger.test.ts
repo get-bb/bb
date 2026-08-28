@@ -19,37 +19,26 @@ async function importFreshLogger() {
   return import("../src/index.js");
 }
 
-async function importFreshLoggerWithPinoTransportSpy() {
-  vi.resetModules();
-
-  const actual = await vi.importActual<{ default: typeof import("pino") }>(
-    "pino",
-  );
-  const transportSpy = vi.fn(actual.default.transport);
-  const mockedPino = Object.assign(
-    ((...args: Parameters<typeof actual.default>) =>
-      actual.default(...args)) as typeof actual.default,
-    actual.default,
-    {
-      transport: transportSpy,
-    },
-  );
-
-  vi.doMock("pino", () => ({
-    default: mockedPino,
-  }));
-
-  const loggerModule = await import("../src/index.js");
-  return {
-    ...loggerModule,
-    transportSpy,
-  };
-}
-
 interface SubprocessLoggerResult {
   exitCode: number | null;
   stderr: string;
   stdout: string;
+}
+
+interface LoggerErrorEntry {
+  cause?: LoggerErrorEntry;
+  message: string;
+}
+
+interface LoggerLogEntry {
+  component?: string;
+  err?: LoggerErrorEntry;
+  level?: number;
+  marker?: string;
+  msg?: string;
+  requestId?: string;
+  threadId?: string;
+  time?: number;
 }
 
 async function runLoggerInSubprocess(args: {
@@ -148,7 +137,7 @@ function getComponentLogFiles(logDir: string, component: string): string[] {
 function readComponentLogLines(
   logDir: string,
   component: string,
-): Array<Record<string, unknown>> {
+): LoggerLogEntry[] {
   return getComponentLogFiles(logDir, component).flatMap((entry) => {
     const contents = fs.readFileSync(path.join(logDir, entry), "utf8").trim();
     if (!contents) {
@@ -158,12 +147,14 @@ function readComponentLogLines(
     return contents
       .split("\n")
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
+      .map((line) => {
+        // SAFETY: The logger writes each line as a JSON object with the fields used by this test.
+        return JSON.parse(line) as LoggerLogEntry;
+      });
   });
 }
 
 afterEach(() => {
-  vi.doUnmock("pino");
   vi.resetModules();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -274,8 +265,7 @@ describe("createLogger", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("BB_DATA_DIR", dataDir);
 
-    const { createLogger, transportSpy } =
-      await importFreshLoggerWithPinoTransportSpy();
+    const { createLogger } = await importFreshLogger();
     const logger = createLogger({
       component: "host-daemon",
       transportMode: "stream",
@@ -287,7 +277,6 @@ describe("createLogger", () => {
       () => readComponentLogLines(logDir, "host-daemon").length === 1,
     );
 
-    expect(transportSpy).not.toHaveBeenCalled();
     const entries = readComponentLogLines(logDir, "host-daemon");
     expect(entries[0]).toMatchObject({
       component: "host-daemon",

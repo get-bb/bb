@@ -1,5 +1,6 @@
 import type { PluginFileOpenerProps } from "@get-bb/plugin-sdk";
 import type { ThreadTabFileOpenerOwner } from "@bb/server-contract";
+import { z } from "zod";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
@@ -16,6 +17,17 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
 const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 
 type PluginFileOpenerFile = Pick<PluginFileOpenerProps, "path" | "source">;
+
+const fileOpenerParamsSchema = z.object({
+  path: z.string().min(1),
+  source: z.object({
+    kind: z.enum(["workspace", "host", "thread-storage"]),
+    threadId: z.string().nullable().default(null),
+    environmentId: z.string().nullable().default(null),
+    projectId: z.string().nullable().default(null),
+    experimental_hostId: z.string().optional(),
+  }),
+});
 
 export type FileOpenerOriginalTab = Extract<
   SecondaryFileFixedPanelTab,
@@ -53,39 +65,12 @@ export function parseFileOpenerParams(
   paramsJson: string | null,
 ): PluginFileOpenerFile | null {
   if (paramsJson === null) return null;
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(paramsJson);
+    const parsed = fileOpenerParamsSchema.safeParse(JSON.parse(paramsJson));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const { path, source } = parsed as { path?: unknown; source?: unknown };
-  if (typeof path !== "string" || path.length === 0) return null;
-  if (typeof source !== "object" || source === null) return null;
-  const { kind, threadId, environmentId, projectId, experimental_hostId } =
-    source as {
-      kind?: unknown;
-      threadId?: unknown;
-      environmentId?: unknown;
-      projectId?: unknown;
-      experimental_hostId?: unknown;
-    };
-  if (kind !== "workspace" && kind !== "host" && kind !== "thread-storage") {
-    return null;
-  }
-  return {
-    path,
-    source: {
-      kind,
-      threadId: typeof threadId === "string" ? threadId : null,
-      environmentId: typeof environmentId === "string" ? environmentId : null,
-      projectId: typeof projectId === "string" ? projectId : null,
-      ...(typeof experimental_hostId === "string"
-        ? { experimental_hostId }
-        : {}),
-    },
-  };
 }
 
 export function createFileOpenerOriginalTab(
@@ -179,12 +164,15 @@ export function createFileOpenerTabForRequest({
           },
         }
       : file;
-  const resolved = resolveFileOpenerReplacement({
+  const resolveArgs: Parameters<typeof resolveFileOpenerReplacement>[0] = {
     registrations: fileOpeners,
     preference,
     path: routedFile.path,
-    ...(viewer !== undefined ? { override: viewer } : {}),
-  });
+  };
+  if (viewer !== undefined) {
+    resolveArgs.override = viewer;
+  }
+  const resolved = resolveFileOpenerReplacement(resolveArgs);
   return resolved.kind === "plugin"
     ? buildFileOpenerPanelTab(resolved.registration, routedFile, owner)
     : null;
@@ -267,19 +255,21 @@ function fileForOwnerRequest(
           threadId: owner.threadId,
         },
       };
-    case "host-file-preview":
+    case "host-file-preview": {
+      const source: PluginFileOpenerFile["source"] = {
+        kind: "host",
+        environmentId: owner.environmentId,
+        projectId: null,
+        threadId: owner.threadId,
+      };
+      if (owner.hostId !== null) {
+        source.experimental_hostId = owner.hostId;
+      }
       return {
         path: owner.tab.path,
-        source: {
-          kind: "host",
-          environmentId: owner.environmentId,
-          ...(owner.hostId === null
-            ? {}
-            : { experimental_hostId: owner.hostId }),
-          projectId: null,
-          threadId: owner.threadId,
-        },
+        source,
       };
+    }
     case "thread-storage-file-preview":
       return {
         path: owner.tab.path,

@@ -1,5 +1,12 @@
 import type { ComponentType } from "react";
-import type { InlineCode, Nodes, Parent, PhrasingContent, Text } from "mdast";
+import type {
+  InlineCode,
+  Node,
+  Nodes,
+  Parent,
+  PhrasingContent,
+  Text,
+} from "mdast";
 import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
 import {
@@ -36,23 +43,33 @@ const THREAD_MENTION_THREAD_ID_PROPERTY = "dataThreadId";
 const RAW_THREAD_ID_PROPERTY = "dataRawThreadId";
 const RAW_THREAD_INLINE_CODE_PROPERTY = "dataRawThreadInlineCode";
 
+interface ThreadMentionHProperties {
+  [property: string]: string | number | boolean | null | undefined;
+  dataRawThreadId?: string;
+  dataRawThreadInlineCode?: string;
+  dataThreadId: string;
+}
+
 function threadMentionNode(
   threadId: string,
   rawThreadId = false,
   rawThreadInlineCode = false,
 ): Text {
+  const hProperties: ThreadMentionHProperties = {
+    [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId,
+  };
+  if (rawThreadId) {
+    hProperties[RAW_THREAD_ID_PROPERTY] = threadId;
+  }
+  if (rawThreadInlineCode) {
+    hProperties[RAW_THREAD_INLINE_CODE_PROPERTY] = "true";
+  }
   return {
     type: "text",
     value: "",
     data: {
       hName: THREAD_MENTION_HAST_NAME,
-      hProperties: {
-        [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId,
-        ...(rawThreadId ? { [RAW_THREAD_ID_PROPERTY]: threadId } : {}),
-        ...(rawThreadInlineCode
-          ? { [RAW_THREAD_INLINE_CODE_PROPERTY]: "true" }
-          : {}),
-      },
+      hProperties,
     },
   };
 }
@@ -147,42 +164,21 @@ function splitTextNodeOnMentions(
   return replacements;
 }
 
-interface ParsedTextDirective {
-  attributes: unknown;
-  children: unknown;
+interface TextDirectiveNode extends Node {
+  attributes?: Record<string, string | null | undefined> | null;
+  children: PhrasingContent[];
   name: string;
   type: "textDirective";
 }
 
-function parseTextDirective(node: unknown): ParsedTextDirective | null {
-  if (typeof node !== "object" || node === null) {
-    return null;
-  }
-  const candidate = node as {
-    attributes?: unknown;
-    children?: unknown;
-    name?: unknown;
-    type?: unknown;
-  };
-  return candidate.type === "textDirective" &&
-    typeof candidate.name === "string"
-    ? {
-        type: candidate.type,
-        name: candidate.name,
-        attributes: candidate.attributes,
-        children: candidate.children,
-      }
-    : null;
+function isTextDirectiveNode(node: Node): node is TextDirectiveNode {
+  return node.type === "textDirective";
 }
 
-function isUndecoratedTextDirective(directive: ParsedTextDirective): boolean {
+function isUndecoratedTextDirective(directive: TextDirectiveNode): boolean {
   return (
-    Array.isArray(directive.children) &&
     directive.children.length === 0 &&
-    typeof directive.attributes === "object" &&
-    directive.attributes !== null &&
-    !Array.isArray(directive.attributes) &&
-    Object.keys(directive.attributes).length === 0
+    Object.keys(directive.attributes ?? {}).length === 0
   );
 }
 
@@ -293,7 +289,10 @@ export function remarkThreadMentions() {
       return index + replacements.length;
     });
     visit(tree, (node, index, parent: Parent | undefined) => {
-      const directive = parseTextDirective(node);
+      if (!isTextDirectiveNode(node)) {
+        return;
+      }
+      const directive = node;
       if (
         directive === null ||
         index === undefined ||

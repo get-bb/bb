@@ -18,6 +18,11 @@ const tasksRpcContract = defineRpcContract({
   },
 });
 
+interface TasksPingResponse {
+  ok: true;
+  version: string;
+}
+
 function statusPayload() {
   return { name: TASKS_PLUGIN_NAME, version: TASKS_PLUGIN_VERSION };
 }
@@ -34,7 +39,7 @@ export default async function plugin(bb: BbPluginApi) {
   await registerLifecycle(bb, store);
 
   bb.rpc.register(tasksRpcContract, {
-    ping(): { ok: true; version: string } {
+    ping(): TasksPingResponse {
       return { ok: true, version: TASKS_PLUGIN_VERSION };
     },
   });

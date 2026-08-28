@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import type {
   ExperimentalAppPanel,
@@ -6,6 +7,11 @@ import type {
 } from "../app.js";
 
 type RecordTarget = { kind: "record"; recordId: string };
+
+const recordTargetSchema = z.object({
+  kind: z.literal("record"),
+  recordId: z.string(),
+});
 
 const untargetedTab = {
   panelId: "tasks",
@@ -17,13 +23,7 @@ const targetedTab = {
   id: "details",
   experimental_target: {
     validate(value: JsonValue): value is RecordTarget {
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        value.kind === "record" &&
-        typeof value.recordId === "string"
-      );
+      return recordTargetSchema.safeParse(value).success;
     },
   },
 } satisfies ExperimentalPluginFixedTabReference<RecordTarget>;

@@ -188,11 +188,11 @@ export const STORY_CLAUDE_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "max", label: "Max" },
 ];
 
-export const STORY_SERVICE_TIER_SUPPORT: Record<string, boolean> = {
+export const STORY_SERVICE_TIER_SUPPORT = {
   codex: true,
   "claude-code": false,
   pi: false,
-};
+} as const satisfies Record<string, boolean>;
 
 export const STORY_PROJECT_SOURCES: readonly ProjectSource[] = [
   {

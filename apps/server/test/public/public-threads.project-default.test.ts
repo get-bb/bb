@@ -4,6 +4,7 @@ import {
   threadSchema,
   type GitSourceInspection,
 } from "@bb/domain";
+import { apiErrorSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
 import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
@@ -28,24 +29,34 @@ interface CreateThreadBodyOverrides {
   originPluginId?: string;
 }
 
+interface CreateThreadRequestBody {
+  environment: unknown;
+  input: [{ text: string; type: "text" }];
+  origin: string;
+  originPluginId?: string;
+  projectId: string;
+  providerId: string;
+}
+
 async function postCreateThread(
   harness: TestAppHarness,
   projectId: string,
   overrides: CreateThreadBodyOverrides,
 ): Promise<Response> {
+  const body: CreateThreadRequestBody = {
+    origin: overrides.origin ?? "sdk",
+    projectId,
+    providerId: "codex",
+    input: [{ type: "text", text: "Spawn a thread" }],
+    environment: overrides.environment,
+  };
+  if (overrides.originPluginId !== undefined) {
+    body.originPluginId = overrides.originPluginId;
+  }
   return harness.app.request("/api/v1/threads", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      origin: overrides.origin ?? "sdk",
-      ...(overrides.originPluginId !== undefined
-        ? { originPluginId: overrides.originPluginId }
-        : {}),
-      projectId,
-      providerId: "codex",
-      input: [{ type: "text", text: "Spawn a thread" }],
-      environment: overrides.environment,
-    }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -217,10 +228,7 @@ describe("project-default thread environment", () => {
         environment: { type: "project-default" },
       });
       expect(response.status).toBe(502);
-      const body = (await readJson(response)) as {
-        code: string;
-        message: string;
-      };
+      const body = apiErrorSchema.parse(await readJson(response));
       expect(body.code).toBe("host_unavailable");
       expect(body.message).toBe("Host is not connected");
     });

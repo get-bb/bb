@@ -30,6 +30,7 @@ Sign-in is GitHub OAuth via `POST /api/auth/sign-in/social {provider:"github", c
 The PWA stores no server URL: API base = `window.location.origin` (`apps/app/src/lib/api-server.ts:4-8`, `lib/sdk.ts:5-10`), realtime = same host `/ws` (`lib/ws.ts:56-60`, dev override `lib/dev-websocket-url.ts`), adds `x-bb-app-surface` header (`lib/app-surface.ts:15-29`). Connect state comes from the plugin `status` RPC + realtime (`plugins/connect/app.tsx:3,11,407`, contract `plugins/connect/src/rpc.ts:109-136`, `ConnectStatus` fields 45-59). Persistent prefs are jotai `atomWithStorage` on localStorage (`lib/browser-storage.ts`). Desktop persists target in `server-target.json` (`apps/desktop/src/server-target.ts:5-18,61-77`).
 
 ## Key files
+
 - apps/connect/src/worker.ts
 - apps/connect/src/session.ts
 - apps/connect/src/servers.ts
@@ -85,6 +86,7 @@ The PWA stores no server URL: API base = `window.location.origin` (`apps/app/src
 - docs/configuration.md
 
 ## Reuse verdicts
+
 - packages/connect-client (@bb/connect-client): **reusable-as-is** — Only imports zod and uses global fetch + WHATWG URL (`credential.ts:22-38`, `redeem-machine.ts:53-69`). Needs a full URL implementation (`.origin/.host/.hostname/.port`), so install react-native-url-polyfill; otherwise no DOM/node deps.
 - packages/tunnel-contract (@bb/tunnel-contract): **reusable-as-is** — Pure frame codec (TextEncoder/DataView). Not needed by a client app; only the tunnel client/DO use it.
 - packages/tunnel-client (@bb/tunnel-client): **not-reusable** — Imports node:http, node:https and `ws` (`session.ts:3-9`). Also not needed: a phone is a visitor, not a tunnel host. `headers.ts` alone is pure.
@@ -96,6 +98,7 @@ The PWA stores no server URL: API base = `window.location.origin` (`apps/app/src
 - apps/server browser-request-guard / CORS: **not-reusable** — Server-side, but relevant: native clients that send no Origin pass; on iOS RN WebSocket may send Origin equal to the ws URL origin, which is accepted because it matches the request origin (`browser-request-guard.ts:127-129`).
 
 ## Risks
+
 - The gate accepts machine credentials only on /api/v1/* and /internal/* (worker.ts:393-425); /ws and /ws/terminals/* require a session cookie, so a native app must run the desktop-session-cookie exchange (1h TTL, servers.ts:18) and renew it, or realtime breaks silently with a 401 HTML body.
 - Better-auth session cookie is httpOnly (better-auth default; not overridden in apps/web/src/server/auth.ts) — WebView JS cannot read it; must use a native cookie manager (WKHTTPCookieStore / android CookieManager). iOS WKWebView vs NSHTTPCookieStorage sync semantics for `.getbb.app` cookies need verification.
 - React Native fetch/WebSocket cookie behaviour: manual `Cookie:` headers can be overridden by the native cookie jar on iOS; safest is to install the cookie into the native jar for domain `.getbb.app` (as Electron does, connect-desktop-session.ts:174-192).
@@ -108,7 +111,8 @@ The PWA stores no server URL: API base = `window.location.origin` (`apps/app/src
 - Tunnel WS visitor upgrade echoes only the first offered subprotocol (tunnel-do.ts:341-347); keep to one subprotocol on the native realtime socket.
 
 ## Open questions
-- Should the native app enroll as a connect *machine* (own revocable bbcm_ credential, desktop model) or hold the better-auth session cookie directly (7-day default lifetime, not renewable without a browser)? The former needs a bootstrap that can reach `createMachineCode` (owner session through the gate, or LAN/loopback), the latter needs a native cookie manager to read httpOnly cookies from a WebView.
+
+- Should the native app enroll as a connect _machine_ (own revocable bbcm_ credential, desktop model) or hold the better-auth session cookie directly (7-day default lifetime, not renewable without a browser)? The former needs a bootstrap that can reach `createMachineCode` (owner session through the gate, or LAN/loopback), the latter needs a native cookie manager to read httpOnly cookies from a WebView.
 - Would a bearer/token path be added at the gate (e.g. accept `Authorization: Bearer <desktop-session>` or a machine credential on /ws) to avoid cookie-jar juggling in RN? Today no such path exists (worker.ts:433-456).
 - Is a new `AppSurface` value (e.g. `mobile`) desired for telemetry/policy? `packages/config/src/app-surface.ts` only knows desktop|web and the server parses the header (request-context.ts:56-64).
 - For direct LAN/Tailscale mode, is any authentication acceptable/desired on the bb server, or does the app rely on the user's network boundary as docs prescribe (docs/multiple-devices.md:38-41)?

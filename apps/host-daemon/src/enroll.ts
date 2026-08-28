@@ -19,6 +19,11 @@ interface EnrollHostResult {
   hostKey: string;
 }
 
+interface EnrollHeaders extends Record<string, string> {
+  authorization: string;
+  "content-type": string;
+}
+
 function buildEnrollUrl(serverUrl: string): string {
   return new URL("/internal/hosts/enroll", serverUrl).toString();
 }
@@ -35,23 +40,25 @@ export async function enrollDaemonHost(
   args: EnrollHostArgs,
 ): Promise<EnrollHostResult> {
   const fetchFn = args.fetchFn ?? fetch;
+  const headers: EnrollHeaders = {
+    authorization: `Bearer ${args.token}`,
+    "content-type": "application/json",
+  };
+  if (args.machineCredential !== undefined) {
+    headers["x-bb-connect-machine"] = args.machineCredential;
+  }
+  const body: HostDaemonEnrollRequest = {
+    hostId: args.hostId,
+    hostName: args.hostName,
+    hostType: args.hostType,
+  };
+  if (args.connectMachineId !== undefined) {
+    body.connectMachineId = args.connectMachineId;
+  }
   const response = await fetchFn(buildEnrollUrl(args.serverUrl), {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${args.token}`,
-      "content-type": "application/json",
-      ...(args.machineCredential !== undefined
-        ? { "x-bb-connect-machine": args.machineCredential }
-        : {}),
-    },
-    body: JSON.stringify({
-      hostId: args.hostId,
-      hostName: args.hostName,
-      hostType: args.hostType,
-      ...(args.connectMachineId !== undefined
-        ? { connectMachineId: args.connectMachineId }
-        : {}),
-    }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (response.status !== 201) {

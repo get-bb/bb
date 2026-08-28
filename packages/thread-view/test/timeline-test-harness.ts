@@ -494,6 +494,15 @@ function clientRequestIdForSequence(sequence: number): ClientTurnRequestId {
   return encodeClientTurnRequestIdNumber({ value: sequence });
 }
 
+function addOptionalProperty<T extends object, K extends string, V>(
+  object: T,
+  key: K,
+  value: V | undefined,
+): T & Partial<Record<K, V>> {
+  if (value === undefined) return object;
+  return Object.assign(object, { [key]: value });
+}
+
 export function createTimelineEventFactory(
   defaults: TimelineEventFactoryDefaults,
 ): TimelineEventFactory {
@@ -571,9 +580,11 @@ export function createTimelineEventFactory(
           ...providerFields(args),
           itemId: args.itemId ?? `assistant-${base.seq}`,
           delta: args.delta,
-          ...(args.parentToolCallId
-            ? { parentToolCallId: args.parentToolCallId }
-            : {}),
+          ...addOptionalProperty(
+            {},
+            "parentToolCallId",
+            args.parentToolCallId || undefined,
+          ),
         },
       };
     },
@@ -588,9 +599,11 @@ export function createTimelineEventFactory(
             type: "agentMessage",
             id: args.itemId ?? `assistant-${base.seq}`,
             text: args.text,
-            ...(args.parentToolCallId
-              ? { parentToolCallId: args.parentToolCallId }
-              : {}),
+            ...addOptionalProperty(
+              {},
+              "parentToolCallId",
+              args.parentToolCallId || undefined,
+            ),
           },
         },
       };
@@ -606,9 +619,11 @@ export function createTimelineEventFactory(
             type: "userMessage",
             id: args.itemId ?? `provider-input-${base.seq}`,
             content: [{ type: "text", text: args.text }],
-            ...(args.parentToolCallId
-              ? { parentToolCallId: args.parentToolCallId }
-              : {}),
+            ...addOptionalProperty(
+              {},
+              "parentToolCallId",
+              args.parentToolCallId || undefined,
+            ),
           },
         },
       };
@@ -634,9 +649,7 @@ export function createTimelineEventFactory(
           input: args.input ?? [
             { type: "text", text: args.text, mentions: [] },
           ],
-          ...(args.inputGroups !== undefined
-            ? { inputGroups: args.inputGroups }
-            : {}),
+          ...addOptionalProperty({}, "inputGroups", args.inputGroups),
           target: args.target ?? { kind: "new-turn" },
           request: {
             method: args.requestMethod ?? "turn/start",
@@ -670,8 +683,12 @@ export function createTimelineEventFactory(
             id: args.itemId ?? `command-${base.seq}`,
             command: args.command,
             cwd: args.cwd ?? "/repo",
-            aggregatedOutput: args.aggregatedOutput,
-            exitCode: args.exitCode,
+            ...addOptionalProperty(
+              {},
+              "aggregatedOutput",
+              args.aggregatedOutput,
+            ),
+            ...addOptionalProperty({}, "exitCode", args.exitCode),
             status: args.status ?? "completed",
             approvalStatus: args.approvalStatus ?? null,
           },
@@ -687,7 +704,7 @@ export function createTimelineEventFactory(
           ...providerFields(args),
           itemId: args.itemId,
           delta: args.delta,
-          ...(args.reset ? { reset: true } : {}),
+          ...addOptionalProperty({}, "reset", args.reset ? true : undefined),
         },
       };
     },
@@ -703,8 +720,12 @@ export function createTimelineEventFactory(
             id: args.itemId ?? `command-${base.seq}`,
             command: args.command,
             cwd: args.cwd ?? "/repo",
-            aggregatedOutput: args.aggregatedOutput,
-            exitCode: args.exitCode,
+            ...addOptionalProperty(
+              {},
+              "aggregatedOutput",
+              args.aggregatedOutput,
+            ),
+            ...addOptionalProperty({}, "exitCode", args.exitCode),
             status: args.status ?? "pending",
             approvalStatus: args.approvalStatus ?? null,
           },
@@ -851,8 +872,8 @@ export function createTimelineEventFactory(
         data: {
           ...providerFields(args),
           message: args.message,
-          detail: args.detail,
-          willRetry: args.willRetry,
+          ...addOptionalProperty({}, "detail", args.detail),
+          ...addOptionalProperty({}, "willRetry", args.willRetry),
         },
       };
     },
@@ -864,8 +885,8 @@ export function createTimelineEventFactory(
         data: {
           ...providerFields(args),
           category: args.category ?? "general",
-          summary: args.summary,
-          details: args.details,
+          ...addOptionalProperty({}, "summary", args.summary),
+          ...addOptionalProperty({}, "details", args.details),
         },
       };
     },
@@ -891,9 +912,9 @@ export function createTimelineEventFactory(
         ...base,
         type: "system/error",
         data: {
-          code: args.code,
+          ...addOptionalProperty({}, "code", args.code),
           message: args.message,
-          detail: args.detail,
+          ...addOptionalProperty({}, "detail", args.detail),
         },
       };
     },
@@ -913,7 +934,7 @@ export function createTimelineEventFactory(
           operationId: args.operationId ?? "op-test",
           status: args.status ?? "running",
           message: args.message,
-          ...(args.metadata ? { metadata: args.metadata } : {}),
+          ...addOptionalProperty({}, "metadata", args.metadata),
         },
       };
     },
@@ -951,13 +972,11 @@ export function createTimelineEventFactory(
             type: "toolCall",
             id: args.itemId ?? `tool-${base.seq}`,
             tool: args.tool ?? "exec_command",
-            arguments: args.arguments,
-            result: args.result,
-            error: args.error,
+            ...addOptionalProperty({}, "arguments", args.arguments),
+            ...addOptionalProperty({}, "result", args.result),
+            ...addOptionalProperty({}, "error", args.error),
             status: args.status ?? "completed",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -976,10 +995,8 @@ export function createTimelineEventFactory(
             label: args.label,
             status: args.status ?? "pending",
             background: args.background ?? false,
-            ...(args.summary === undefined ? {} : { summary: args.summary }),
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "summary", args.summary),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -998,10 +1015,8 @@ export function createTimelineEventFactory(
             label: args.label,
             status: args.status ?? "completed",
             background: args.background ?? false,
-            ...(args.summary === undefined ? {} : { summary: args.summary }),
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "summary", args.summary),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1017,13 +1032,11 @@ export function createTimelineEventFactory(
             type: "toolCall",
             id: args.itemId ?? `tool-${base.seq}`,
             tool: args.tool ?? "exec_command",
-            arguments: args.arguments,
-            result: args.result,
-            error: args.error,
+            ...addOptionalProperty({}, "arguments", args.arguments),
+            ...addOptionalProperty({}, "result", args.result),
+            ...addOptionalProperty({}, "error", args.error),
             status: args.status ?? "pending",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1039,11 +1052,9 @@ export function createTimelineEventFactory(
             type: "fileRead",
             id: args.itemId ?? `file-read-${base.seq}`,
             path: args.path,
-            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            ...addOptionalProperty({}, "cmd", args.cmd),
             status: args.status ?? "pending",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1059,11 +1070,9 @@ export function createTimelineEventFactory(
             type: "fileRead",
             id: args.itemId ?? `file-read-${base.seq}`,
             path: args.path,
-            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            ...addOptionalProperty({}, "cmd", args.cmd),
             status: args.status ?? "completed",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1080,12 +1089,10 @@ export function createTimelineEventFactory(
             id: args.itemId ?? `search-${base.seq}`,
             mode: args.mode,
             query: args.query,
-            ...(args.path === undefined ? {} : { path: args.path }),
-            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            ...addOptionalProperty({}, "path", args.path),
+            ...addOptionalProperty({}, "cmd", args.cmd),
             status: args.status ?? "pending",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1102,12 +1109,10 @@ export function createTimelineEventFactory(
             id: args.itemId ?? `search-${base.seq}`,
             mode: args.mode,
             query: args.query,
-            ...(args.path === undefined ? {} : { path: args.path }),
-            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            ...addOptionalProperty({}, "path", args.path),
+            ...addOptionalProperty({}, "cmd", args.cmd),
             status: args.status ?? "completed",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1123,13 +1128,9 @@ export function createTimelineEventFactory(
             type: "planSteps",
             id: args.itemId ?? `plan-steps-${base.seq}`,
             steps: args.steps,
-            ...(args.explanation === undefined
-              ? {}
-              : { explanation: args.explanation }),
+            ...addOptionalProperty({}, "explanation", args.explanation),
             status: args.status ?? "pending",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1145,13 +1146,9 @@ export function createTimelineEventFactory(
             type: "planSteps",
             id: args.itemId ?? `plan-steps-${base.seq}`,
             steps: args.steps,
-            ...(args.explanation === undefined
-              ? {}
-              : { explanation: args.explanation }),
+            ...addOptionalProperty({}, "explanation", args.explanation),
             status: args.status ?? "completed",
-            ...(args.presentation === undefined
-              ? {}
-              : { presentation: args.presentation }),
+            ...addOptionalProperty({}, "presentation", args.presentation),
           },
         },
       };
@@ -1246,9 +1243,11 @@ export function createTimelineEventFactory(
         type: "turn/started",
         data: {
           ...providerFields(args),
-          ...(args?.parentToolCallId
-            ? { parentToolCallId: args.parentToolCallId }
-            : {}),
+          ...addOptionalProperty(
+            {},
+            "parentToolCallId",
+            args?.parentToolCallId || undefined,
+          ),
         },
       };
     },
@@ -1356,8 +1355,8 @@ export function createTimelineEventFactory(
         data: {
           providerThreadId: defaults.providerThreadId ?? "provider-thread-1",
           category: args.category ?? "general",
-          summary: args.summary,
-          details: args.details,
+          ...addOptionalProperty({}, "summary", args.summary),
+          ...addOptionalProperty({}, "details", args.details),
         },
       };
     },

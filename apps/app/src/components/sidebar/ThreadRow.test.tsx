@@ -9,26 +9,31 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as threadActionsProvider from "@/components/thread/ThreadActionsProvider";
+import type { ThreadActionsContextValue } from "@/components/thread/ThreadActionsProvider";
 import {
   resetSidebarTitleDoubleClickForTest,
   ThreadRow,
   type ThreadRowOptions,
 } from "./ThreadRow";
 
-const mocks = vi.hoisted(() => ({
-  renameThread: vi.fn(),
-}));
-
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    renameThread: mocks.renameThread,
-  }),
-}));
+const renameThreadMock = vi.fn<ThreadActionsContextValue["renameThread"]>();
+const threadActionsMock: ThreadActionsContextValue = {
+  archiveThreadAndChildren: vi.fn(),
+  renameThread: renameThreadMock,
+  requestRename: vi.fn(),
+  requestDelete: vi.fn(),
+  unarchiveThread: vi.fn(),
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+};
+vi.spyOn(threadActionsProvider, "useThreadActions").mockReturnValue(
+  threadActionsMock,
+);
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
@@ -47,14 +52,6 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
-
-vi.mock("@/components/thread/ThreadActionsMenu", () => ({
-  ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  ThreadActionsMenu: () => null,
-  ThreadArchiveQuickAction: () => null,
-}));
 
 function createThread(
   overrides: Partial<ThreadListEntry> = {},
@@ -243,7 +240,7 @@ function renderSplitThreadRow({
 
 afterEach(() => {
   cleanup();
-  mocks.renameThread.mockReset();
+  renameThreadMock.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
@@ -1357,10 +1354,7 @@ describe("ThreadRow", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(
-      "thr_test",
-      "Renamed thread",
-    );
+    expect(renameThreadMock).toHaveBeenCalledWith("thr_test", "Renamed thread");
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Thread")).not.toBeNull();
   });
@@ -1375,7 +1369,7 @@ describe("ThreadRow", () => {
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
-    expect(mocks.renameThread).not.toHaveBeenCalled();
+    expect(renameThreadMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Thread")).not.toBeNull();
   });

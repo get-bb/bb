@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
+import type { ThreadListArgs } from "@bb/sdk";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
@@ -48,14 +49,14 @@ export function registerListCommand(
           flagName: "--section",
           value: opts.section,
         });
-        const threads = await sdk.threads.list({
-          ...(projectId ? { projectId } : {}),
-          ...(parentThreadId ? { parentThreadId } : {}),
-          ...(opts.archived ? { archived: true } : {}),
-          ...(sectionId ? { sectionId } : {}),
-          ...(opts.unsectioned ? { unsectioned: true } : {}),
-          ...(opts.includeHidden ? { includeHidden: true } : {}),
-        });
+        const listOptions: ThreadListArgs = {};
+        if (projectId) listOptions.projectId = projectId;
+        if (parentThreadId) listOptions.parentThreadId = parentThreadId;
+        if (opts.archived) listOptions.archived = true;
+        if (sectionId) listOptions.sectionId = sectionId;
+        if (opts.unsectioned) listOptions.unsectioned = true;
+        if (opts.includeHidden) listOptions.includeHidden = true;
+        const threads = await sdk.threads.list(listOptions);
         if (outputJson(opts, threads)) return;
         if (threads.length === 0) {
           console.log("No threads found");

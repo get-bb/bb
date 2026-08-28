@@ -43,7 +43,47 @@ interface MemoryRecord {
   updatedAt: number;
 }
 
+type DatabaseScalar = string | number | null;
+type DatabaseRow = Record<string, DatabaseScalar>;
+
+interface MemoryScopeSelection {
+  scope: MemoryScope;
+  projectId: string | null;
+}
+
+interface ScopeSqlClause {
+  sql: string;
+  params: string[];
+}
+
+interface MemorySnapshot {
+  id: string;
+  scope: MemoryScope;
+  projectId: string | null;
+  name: string;
+  summary: string;
+  details: string;
+  kind: MemoryKind;
+  tags: string[];
+  importance: number;
+  pinned: boolean;
+  sourceThreadId: string | null;
+  writeReason: string;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface MemoryListResult {
+  memories: MemoryRecord[];
+  total: number;
+}
+
 const memoryKindSchema = z.enum(MEMORY_KINDS);
+const databaseRowSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.null()]),
+);
 const memoryRecordSchema: z.ZodType<MemoryRecord> = z
   .object({
     id: z.string(),
@@ -142,51 +182,61 @@ interface ParsedArgv {
 
 class CliError extends Error {}
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function parseDatabaseRow<T>(row: T): DatabaseRow {
+  const parsed = databaseRowSchema.safeParse(row);
+  if (!parsed.success) {
+    throw new Error("memory database returned an invalid row");
+  }
+  return parsed.data;
 }
 
-function parseTags(raw: unknown): string[] {
-  if (typeof raw !== "string") return [];
+function parseTags(raw: DatabaseScalar): string[] {
+  const rawText = z.string().safeParse(raw);
+  if (!rawText.success) return [];
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((tag): tag is string => typeof tag === "string")
-      : [];
+    const parsed = z.array(z.string()).safeParse(JSON.parse(rawText.data));
+    return parsed.success ? parsed.data : [];
   } catch {
     return [];
   }
 }
 
-function parseMemoryRow(row: unknown): MemoryRecord {
-  if (!isRecord(row))
-    throw new Error("memory database returned an invalid row");
-  const scope: MemoryScope = row.scope === "project" ? "project" : "global";
-  const kind = isMemoryKind(row.kind) ? row.kind : "fact";
-  return {
-    id: String(row.id),
-    scope,
-    projectId: typeof row.project_id === "string" ? row.project_id : null,
-    name: String(row.name),
-    summary: String(row.summary),
-    details: String(row.details),
-    kind,
-    tags: parseTags(row.tags_json),
-    importance: Number(row.importance),
-    pinned: Number(row.pinned) === 1,
-    sourceThreadId:
-      typeof row.source_thread_id === "string" ? row.source_thread_id : null,
-    writeReason: String(row.write_reason),
-    version: Number(row.version),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  };
+function nullableString(value: DatabaseScalar): string | null {
+  const parsed = z.string().nullable().safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
-function isMemoryKind(value: unknown): value is MemoryKind {
-  return (
-    typeof value === "string" && MEMORY_KINDS.some((kind) => kind === value)
-  );
+function parseMemoryKind(value: DatabaseScalar): MemoryKind {
+  const parsed = memoryKindSchema.safeParse(value);
+  return parsed.success ? parsed.data : "fact";
+}
+
+function isMemoryKind(value: string): value is MemoryKind {
+  return memoryKindSchema.safeParse(value).success;
+}
+
+function parseMemoryRow<T>(row: T): MemoryRecord {
+  const parsedRow = parseDatabaseRow(row);
+  const kind = parseMemoryKind(parsedRow.kind);
+  const scope: MemoryScope =
+    parsedRow.scope === "project" ? "project" : "global";
+  return {
+    id: String(parsedRow.id),
+    scope,
+    projectId: nullableString(parsedRow.project_id),
+    name: String(parsedRow.name),
+    summary: String(parsedRow.summary),
+    details: String(parsedRow.details),
+    kind,
+    tags: parseTags(parsedRow.tags_json),
+    importance: Number(parsedRow.importance),
+    pinned: Number(parsedRow.pinned) === 1,
+    sourceThreadId: nullableString(parsedRow.source_thread_id),
+    writeReason: String(parsedRow.write_reason),
+    version: Number(parsedRow.version),
+    createdAt: Number(parsedRow.created_at),
+    updatedAt: Number(parsedRow.updated_at),
+  };
 }
 
 function toMemorySummary(memory: MemoryRecord): MemorySummary {
@@ -367,10 +417,7 @@ function readScope(
 function writeScope(
   args: ParsedArgv,
   ctx: PluginCliContext,
-): {
-  scope: MemoryScope;
-  projectId: string | null;
-} {
+): MemoryScopeSelection {
   const value = requireOption(args, "scope");
   if (value === "global") return { scope: "global", projectId: null };
   if (value !== "project")
@@ -387,7 +434,7 @@ function scopeSql(
   scope: ReadScope,
   projectId: string | undefined,
   columnPrefix = "m.",
-): { sql: string; params: string[] } {
+): ScopeSqlClause {
   if (scope === "global") {
     return { sql: `${columnPrefix}scope = 'global'`, params: [] };
   }
@@ -416,7 +463,7 @@ function searchExpression(query: string): string {
     .join(" OR ");
 }
 
-function memorySnapshot(memory: MemoryRecord): Record<string, unknown> {
+function memorySnapshot(memory: MemoryRecord): MemorySnapshot {
   return {
     id: memory.id,
     scope: memory.scope,
@@ -652,10 +699,7 @@ class MemoryStore {
     scope: ReadScope,
     projectId: string | undefined,
     limit: number,
-  ): {
-    memories: MemoryRecord[];
-    total: number;
-  } {
+  ): MemoryListResult {
     const scoped = scopeSql(scope, projectId);
     const rows: unknown[] = this.db
       .prepare(
@@ -674,7 +718,10 @@ class MemoryStore {
          WHERE m.deleted_at IS NULL AND ${scoped.sql}`,
       )
       .get(...scoped.params);
-    const total = isRecord(countRow) ? Number(countRow.count) : 0;
+    const parsedCountRow = databaseRowSchema.safeParse(countRow);
+    const total = parsedCountRow.success
+      ? Number(parsedCountRow.data.count)
+      : 0;
     return { memories: rows.map(parseMemoryRow), total };
   }
 
@@ -823,7 +870,7 @@ const USAGE = [
   "  bb memory history <id> [--limit N] [--json]",
 ].join("\n");
 
-function jsonOutput(value: unknown): string {
+function jsonOutput<T>(value: T): string {
   return JSON.stringify(value, null, 2);
 }
 
@@ -896,17 +943,13 @@ export default async function plugin(bb: BbPluginApi) {
       const { id } = input;
       const current = store.getAdmin(id);
       if (!current) throw new Error(`memory "${id}" was not found`);
-      const kindValue = input.kind;
-      if (!isMemoryKind(kindValue)) {
-        throw new Error(`kind must be one of: ${MEMORY_KINDS.join(", ")}`);
-      }
       const memory = store.update(
         id,
         {
           expectedVersion: input.expectedVersion,
           summary: input.summary,
           details: input.details,
-          kind: kindValue,
+          kind: input.kind,
           tags: input.tags,
           importance: input.importance,
           pinned: input.pinned,

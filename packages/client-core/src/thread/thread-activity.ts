@@ -3,44 +3,44 @@ import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import { isRunningThreadRuntimeDisplayStatus } from "../timeline/thread-runtime-status.js";
 import { isThreadRead } from "./thread-read-state.js";
 
-type ThreadStatusShape = Pick<
+type ThreadStatusContract = Pick<
   Thread,
   "status" | "lastReadAt" | "latestAttentionAt" | "parentThreadId"
 >;
 
-type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
-type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
+type ThreadRuntimeContract = Pick<ThreadWithRuntime, "runtime">;
+type ThreadActivityStateContract = Pick<ThreadListEntry, "activity">;
 
-export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
+export function isRuntimeBusyThread(thread: ThreadRuntimeContract): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
 }
 
 export function hasActiveWorkflowActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadActivityStateContract,
 ): boolean {
   return thread.activity.activeWorkflowCount > 0;
 }
 
 export function hasActiveBackgroundAgentActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadActivityStateContract,
 ): boolean {
   return thread.activity.activeBackgroundAgentCount > 0;
 }
 
 export function hasActiveBackgroundCommandActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadActivityStateContract,
 ): boolean {
   return thread.activity.activeBackgroundCommandCount > 0;
 }
 
 export function hasActivePlanModeActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadActivityStateContract,
 ): boolean {
   return thread.activity.activePlanModeCount > 0;
 }
 
 export function hasActiveGoalActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadActivityStateContract,
 ): boolean {
   return thread.activity.activeGoalCount > 0;
 }
@@ -72,10 +72,7 @@ export type ThreadListIndicatorKind =
   | "unread-success"
   | "none";
 
-const THREAD_LIST_INDICATOR_LABELS: Record<
-  Exclude<ThreadListIndicatorKind, "none">,
-  string
-> = {
+const THREAD_LIST_INDICATOR_LABELS = {
   "unread-error": "Unread thread failed",
   "waiting-for-input": "Thread needs user input",
   "working-draft": "Thread working with unsubmitted draft",
@@ -87,7 +84,7 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   runtime: "Thread working",
   draft: "Thread has unsubmitted draft",
   "unread-success": "Unread thread succeeded",
-};
+} satisfies Record<Exclude<ThreadListIndicatorKind, "none">, string>;
 
 export function getThreadListIndicatorLabel(
   kind: ThreadListIndicatorKind,
@@ -157,14 +154,14 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   unreadError: false,
 };
 
-type ThreadActivityShape = ThreadStatusShape &
-  ThreadRuntimeShape &
+type ThreadActivityContract = ThreadStatusContract &
+  ThreadRuntimeContract &
   Pick<ThreadListEntry, "id" | "activity" | "hasPendingInteraction">;
 
 const EMPTY_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
 
 export function getCollapsedChildActivity(
-  threads: readonly ThreadActivityShape[],
+  threads: readonly ThreadActivityContract[],
   draftThreadIds: ReadonlySet<string> = EMPTY_DRAFT_THREAD_IDS,
 ): CollapsedChildActivity {
   let pending = false;
@@ -239,7 +236,7 @@ export function getCollapsedChildActivity(
   };
 }
 
-export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
+export function isUnreadDoneThread(thread: ThreadStatusContract): boolean {
   if (thread.parentThreadId != null) {
     return false;
   }

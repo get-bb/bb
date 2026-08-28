@@ -1,46 +1,4 @@
 #!/usr/bin/env node
-/**
- * Convert a Claude Code session transcript (`~/.claude/projects/<project>/
- * <session>.jsonl` plus its `<session>/subagents/agent-*.jsonl` sidechains)
- * into the Claude Agent SDK message stream the claude-code bridge consumes.
- *
- *   node scripts/provider-recordings/convert-claude-transcript.mjs \
- *     <session.jsonl> <out.ndjson> [--turns A-B] [--manifest <out.json>]
- *
- * A transcript is a persisted conversation: `user`/`assistant` records whose
- * `message` is the API message (tool_use / tool_result blocks included), a
- * few `system` records (api_error, model_refusal_fallback, compact_boundary)
- * and bookkeeping rows (attachment, queue-operation, ai-title, …) the SDK
- * never streams. It has NO `result` messages, no `system/init`, and no
- * `system/task_*` family: turn ends and background-task lifecycle are
- * implicit in the records. This script makes them explicit so the NON-streaming
- * translator paths (assistant tool_use blocks, user tool_result blocks,
- * subagent sidechains, task notifications) can be driven from real sessions:
- *
- *   - every record becomes the SDK envelope of its type (`parent_tool_use_id`
- *     from the subagent's `toolUseId`, `tool_use_result` from the record's
- *     `toolUseResult`), interleaved with the sidechains by timestamp — except
- *     the human's own prompts, which a live stream never echoes (they only
- *     delimit turns here);
- *   - a `result` is SYNTHESIZED when a root assistant message stops with a
- *     non-tool-use stop reason, before the next root prompt, and at EOF;
- *   - `system/task_started`, `task_updated` and `task_notification` are
- *     SYNTHESIZED for Agent calls from the call, its result
- *     (`toolUseResult.status === "async_launched"` ⇒ backgrounded) and the
- *     `<task-notification>` prompt that resumes the parent;
- *   - `system/init` is SYNTHESIZED from the first record (cwd, version, model,
- *     the tool names the session used).
- *
- * Every synthesized message is deterministic from the transcript (ids are
- * counters, timestamps are the neighbouring record's), so a rerun produces the
- * same stream. `--turns A-B` keeps the human-prompt turns A..B (1-based,
- * inclusive) and the sidechains they spawned; task-notification prompts
- * continue the turn they interrupt rather than starting one.
- *
- * The output is one SDK message per line (the `loadSessionFixture` format of
- * the claude-code plugin tests). Redact it with `redact.mjs` before it is
- * committed.
- */
 import {
   existsSync,
   readdirSync,
@@ -78,30 +36,38 @@ function parseArgs(argv) {
   return { input: positional[0], output: positional[1], turns, manifestPath };
 }
 
-// ---------------------------------------------------------------------------
-// Reading
-// ---------------------------------------------------------------------------
-
 const STREAMED_RECORD_TYPES = new Set(["user", "assistant", "system"]);
+const objectTag = Object.prototype.toString;
+
+function readObject(value) {
+  return value !== null && objectTag.call(value) === "[object Object]"
+    ? value
+    : null;
+}
+
+function readString(value) {
+  return value?.constructor === String ? value : null;
+}
+
+function readNumber(value) {
+  return value?.constructor === Number ? value : null;
+}
+
+function parseJsonRecord(text) {
+  try {
+    return readObject(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
 
 function readRecords(path) {
   const records = [];
   let lastTimestamp = 0;
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (line.length === 0) continue;
-    let record;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (
-      record === null ||
-      typeof record !== "object" ||
-      !STREAMED_RECORD_TYPES.has(record.type)
-    ) {
-      continue;
-    }
+    const record = parseJsonRecord(line);
+    if (record === null || !STREAMED_RECORD_TYPES.has(record.type)) continue;
     const parsed = Date.parse(record.timestamp ?? "");
     const at = Number.isNaN(parsed) ? lastTimestamp : parsed;
     lastTimestamp = at;
@@ -121,23 +87,18 @@ function readSubagents(sessionPath) {
     const agentId = match[1];
     const metaPath = join(dir, `agent-${agentId}.meta.json`);
     const meta = existsSync(metaPath)
-      ? JSON.parse(readFileSync(metaPath, "utf8"))
+      ? (parseJsonRecord(readFileSync(metaPath, "utf8")) ?? {})
       : {};
     agents.push({
       agentId,
-      toolUseId: typeof meta.toolUseId === "string" ? meta.toolUseId : null,
-      agentType: typeof meta.agentType === "string" ? meta.agentType : null,
-      description:
-        typeof meta.description === "string" ? meta.description : null,
+      toolUseId: readString(meta.toolUseId),
+      agentType: readString(meta.agentType),
+      description: readString(meta.description),
       records: readRecords(join(dir, name)),
     });
   }
   return agents;
 }
-
-// ---------------------------------------------------------------------------
-// Record helpers
-// ---------------------------------------------------------------------------
 
 function contentBlocks(record) {
   const content = record.message?.content;
@@ -152,11 +113,6 @@ function toolResultBlocks(record) {
   return contentBlocks(record).filter((block) => block?.type === "tool_result");
 }
 
-/**
- * A root prompt opens a turn. `isMeta` user records are context a tool
- * injected mid-turn (a Skill's instructions, a local-command caveat) and
- * stream as plain user messages without turn semantics.
- */
 function isRootPrompt(record) {
   return (
     record.type === "user" &&
@@ -172,7 +128,9 @@ function isTaskNotificationPrompt(record) {
 
 function assistantText(record) {
   return contentBlocks(record)
-    .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .filter(
+      (block) => block?.type === "text" && readString(block.text) !== null,
+    )
     .map((block) => block.text)
     .join("\n");
 }
@@ -186,11 +144,12 @@ function isApiErrorAssistant(record) {
 }
 
 function textOf(value) {
-  if (typeof value === "string") return value;
+  const text = readString(value);
+  if (text !== null) return text;
   if (Array.isArray(value)) {
     return value
       .filter(
-        (block) => block?.type === "text" && typeof block.text === "string",
+        (block) => block?.type === "text" && readString(block.text) !== null,
       )
       .map((block) => block.text)
       .join("\n");
@@ -198,7 +157,6 @@ function textOf(value) {
   return "";
 }
 
-/** `<task-notification>` prompt fields (the parent's resume after a background agent settles). */
 function parseTaskNotification(text) {
   const field = (name) => {
     const match = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text);
@@ -225,19 +183,11 @@ function apiErrorCode(status) {
   if (status === 429) return "rate_limit";
   if (status === 400) return "invalid_request";
   if (status === 404) return "model_not_found";
-  if (typeof status === "number" && status >= 500) return "server_error";
+  const numericStatus = readNumber(status);
+  if (numericStatus !== null && numericStatus >= 500) return "server_error";
   return "unknown";
 }
 
-// ---------------------------------------------------------------------------
-// Turn slicing
-// ---------------------------------------------------------------------------
-
-/**
- * Human-prompt turn index per root record (1-based). A task-notification
- * prompt continues the turn it interrupts. Records before the first prompt
- * belong to turn 1.
- */
 function assignTurns(records) {
   let turn = 0;
   const turnByIndex = [];
@@ -250,10 +200,6 @@ function assignTurns(records) {
   return { turnByIndex, turnCount: Math.max(turn, 1) };
 }
 
-// ---------------------------------------------------------------------------
-// Conversion
-// ---------------------------------------------------------------------------
-
 function convert(sessionPath, options) {
   const sessionId = basename(sessionPath, ".jsonl");
   const main = readRecords(sessionPath);
@@ -262,9 +208,6 @@ function convert(sessionPath, options) {
     throw new Error(`${sessionPath}: no user/assistant/system records`);
   }
 
-  // Agent call id ↔ agent id, from the subagent metadata and the Agent tool
-  // results (`toolUseResult.agentId`), so synthesized task messages name the
-  // same task id the sidechain carries.
   const agentIdByToolUseId = new Map();
   const agentByToolUseId = new Map();
   for (const agent of agents) {
@@ -277,10 +220,11 @@ function convert(sessionPath, options) {
   for (const { record } of main) {
     if (record.type !== "user") continue;
     const result = record.toolUseResult;
-    if (result === null || typeof result !== "object") continue;
+    if (readObject(result) === null) continue;
     for (const block of toolResultBlocks(record)) {
-      if (typeof result.agentId === "string") {
-        agentIdByToolUseId.set(block.tool_use_id, result.agentId);
+      const agentId = readString(result.agentId);
+      if (agentId !== null) {
+        agentIdByToolUseId.set(block.tool_use_id, agentId);
       }
       if (result.status === "async_launched" || result.isAsync === true) {
         backgroundedToolUseIds.add(block.tool_use_id);
@@ -288,7 +232,6 @@ function convert(sessionPath, options) {
     }
   }
 
-  // Agent call metadata (subagent type, description) by call id.
   const agentCallByToolUseId = new Map();
   for (const { record } of main) {
     if (record.type !== "assistant") continue;
@@ -299,7 +242,6 @@ function convert(sessionPath, options) {
     }
   }
 
-  // Slice by human-prompt turn.
   const { turnByIndex, turnCount } = assignTurns(main);
   const from = options.turns?.from ?? 1;
   const to = options.turns?.to ?? turnCount;
@@ -316,8 +258,6 @@ function convert(sessionPath, options) {
     for (const block of toolUseBlocks(record)) selectedToolUseIds.add(block.id);
   }
 
-  // Merge the sidechains whose spawning call is in the window, by timestamp
-  // (stable: main before sidechain at equal instants, file order otherwise).
   const merged = selected.map((entry, order) => ({
     ...entry,
     order,
@@ -335,14 +275,13 @@ function convert(sessionPath, options) {
     });
   }
   merged.sort((a, b) => a.at - b.at || a.lane - b.lane || a.order - b.order);
-  // Per-block records of one root assistant message: only the last closes.
   let previousRoot = null;
   for (const entry of merged) {
     if (entry.lane !== 0 || entry.record.type !== "assistant") continue;
     entry.continuesInNextRootAssistant = false;
     if (
       previousRoot !== null &&
-      typeof entry.record.message?.id === "string" &&
+      readString(entry.record.message?.id) !== null &&
       previousRoot.record.message?.id === entry.record.message.id
     ) {
       previousRoot.continuesInNextRootAssistant = true;
@@ -373,8 +312,9 @@ function convert(sessionPath, options) {
   let model = null;
   for (const { record } of merged) {
     if (record.type !== "assistant") continue;
-    if (model === null && typeof record.message?.model === "string") {
-      model = record.message.model;
+    const recordModel = readString(record.message?.model);
+    if (model === null && recordModel !== null) {
+      model = recordModel;
     }
     for (const block of toolUseBlocks(record)) toolNames.add(block.name);
   }
@@ -401,7 +341,6 @@ function convert(sessionPath, options) {
     { synthetic: true },
   );
 
-  // Per-turn state for result synthesis.
   let turnOpen = false;
   let turnStartedAt = 0;
   let turnOrigin = null;
@@ -432,32 +371,31 @@ function convert(sessionPath, options) {
       lastRootAssistant !== null && isApiErrorAssistant(lastRootAssistant);
     const text =
       lastRootAssistant === null ? "" : assistantText(lastRootAssistant);
-    emit(
-      {
-        type: "result",
-        subtype: failed ? "error_during_execution" : "success",
-        is_error: failed,
-        duration_ms: Math.max(0, at - turnStartedAt),
-        duration_api_ms: Math.max(0, at - turnStartedAt),
-        num_turns: turnAssistantCount,
-        result: text,
-        ...(failed ? { errors: [text] } : {}),
-        session_id: sessionId,
-        total_cost_usd: 0,
-        usage: { ...usage },
-        permission_denials: [],
-        ...(turnOrigin === null ? {} : { origin: turnOrigin }),
-        uuid: syntheticUuid(),
-      },
-      { synthetic: true },
-    );
+    const resultMessage = {
+      type: "result",
+      subtype: failed ? "error_during_execution" : "success",
+      is_error: failed,
+      duration_ms: Math.max(0, at - turnStartedAt),
+      duration_api_ms: Math.max(0, at - turnStartedAt),
+      num_turns: turnAssistantCount,
+      result: text,
+      session_id: sessionId,
+      total_cost_usd: 0,
+      usage: { ...usage },
+      permission_denials: [],
+      uuid: syntheticUuid(),
+    };
+    if (failed) resultMessage.errors = [text];
+    if (turnOrigin !== null) resultMessage.origin = turnOrigin;
+    emit(resultMessage, { synthetic: true });
     turnOpen = false;
   };
   const addUsage = (messageUsage) => {
-    if (messageUsage === null || typeof messageUsage !== "object") return;
+    const parsedUsage = readObject(messageUsage);
+    if (parsedUsage === null) return;
     for (const key of Object.keys(usage)) {
-      if (typeof messageUsage[key] === "number")
-        usage[key] += messageUsage[key];
+      const amount = readNumber(parsedUsage[key]);
+      if (amount !== null) usage[key] += amount;
     }
   };
 
@@ -467,29 +405,26 @@ function convert(sessionPath, options) {
     if (taskId === undefined) return null;
     const call = agentCallByToolUseId.get(toolUseId) ?? {};
     const agent = agentByToolUseId.get(toolUseId);
-    emit(
-      {
-        type: "system",
-        subtype: "task_started",
-        task_id: taskId,
-        tool_use_id: toolUseId,
-        description:
-          typeof call.description === "string"
-            ? call.description
-            : (agent?.description ?? ""),
-        subagent_type:
-          typeof call.subagent_type === "string"
-            ? call.subagent_type
-            : (agent?.agentType ?? "general-purpose"),
-        is_backgrounded: backgrounded,
-        spawn_depth: 1,
-        task_type: "local_agent",
-        ...(typeof call.prompt === "string" ? { prompt: call.prompt } : {}),
-        uuid: syntheticUuid(),
-        session_id: sessionId,
-      },
-      { synthetic: true },
-    );
+    const description =
+      readString(call.description) ?? agent?.description ?? "";
+    const subagentType =
+      readString(call.subagent_type) ?? agent?.agentType ?? "general-purpose";
+    const prompt = readString(call.prompt);
+    const taskMessage = {
+      type: "system",
+      subtype: "task_started",
+      task_id: taskId,
+      tool_use_id: toolUseId,
+      description,
+      subagent_type: subagentType,
+      is_backgrounded: backgrounded,
+      spawn_depth: 1,
+      task_type: "local_agent",
+      uuid: syntheticUuid(),
+      session_id: sessionId,
+    };
+    if (prompt !== null) taskMessage.prompt = prompt;
+    emit(taskMessage, { synthetic: true });
     return taskId;
   };
   const emitTaskSettled = (taskId, toolUseId, status, summary, outputFile) => {
@@ -526,10 +461,8 @@ function convert(sessionPath, options) {
     const { record, at, agent } = entry;
     lastAt = at;
     const parentToolUseId = agent === null ? null : agent.toolUseId;
-    const uuid =
-      typeof record.uuid === "string" ? record.uuid : syntheticUuid();
-    const timestamp =
-      typeof record.timestamp === "string" ? record.timestamp : undefined;
+    const uuid = readString(record.uuid) ?? syntheticUuid();
+    const timestamp = readString(record.timestamp);
 
     if (record.type === "system") {
       if (record.subtype === "api_error" && record.source === "request_retry") {
@@ -549,17 +482,17 @@ function convert(sessionPath, options) {
         record.subtype === "model_refusal_fallback" ||
         record.subtype === "model_fallback"
       ) {
-        emit({
+        const content = readString(record.content);
+        const fallbackMessage = {
           type: "system",
           subtype: record.subtype,
           original_model: record.originalModel,
           fallback_model: record.fallbackModel,
-          ...(typeof record.content === "string"
-            ? { content: record.content }
-            : {}),
           uuid,
           session_id: sessionId,
-        });
+        };
+        if (content !== null) fallbackMessage.content = content;
+        emit(fallbackMessage);
       } else if (record.subtype === "compact_boundary") {
         emit({
           type: "system",
@@ -582,26 +515,23 @@ function convert(sessionPath, options) {
         lastRootAssistant = record;
         addUsage(record.message?.usage);
       }
-      emit({
+      const assistantMessage = {
         type: "assistant",
         message: record.message,
         parent_tool_use_id: parentToolUseId,
-        ...(typeof record.requestId === "string"
-          ? { request_id: record.requestId }
-          : {}),
         session_id: sessionId,
         uuid,
-        ...(timestamp === undefined ? {} : { timestamp }),
-      });
+      };
+      const requestId = readString(record.requestId);
+      if (requestId !== null) assistantMessage.request_id = requestId;
+      if (timestamp !== null) assistantMessage.timestamp = timestamp;
+      emit(assistantMessage);
       if (agent === null) {
         for (const block of toolUseBlocks(record)) {
           if (block.name === "Agent" || block.name === "Task") {
             emitTaskStarted(block.id, backgroundedToolUseIds.has(block.id));
           }
         }
-        // The transcript writes one record per content block and stamps the
-        // message's final stop reason on each of them; the turn ends once,
-        // after the message's last block.
         const stopReason = record.message?.stop_reason;
         if (
           (stopReason === "end_turn" ||
@@ -615,35 +545,29 @@ function convert(sessionPath, options) {
       continue;
     }
 
-    // user
     const results = toolResultBlocks(record);
     if (results.length === 0) {
       if (agent !== null) {
-        // The subagent's prompt, as the SDK surfaces it under the call.
-        emit({
+        const subagentMessage = {
           type: "user",
           message: record.message,
           parent_tool_use_id: parentToolUseId,
           session_id: sessionId,
           uuid,
-          ...(timestamp === undefined ? {} : { timestamp }),
-          ...(agent.agentType === null
-            ? {}
-            : { subagent_type: agent.agentType }),
-          ...(agent.description === null
-            ? {}
-            : { task_description: agent.description }),
-        });
+        };
+        if (timestamp !== null) subagentMessage.timestamp = timestamp;
+        if (agent.agentType !== null)
+          subagentMessage.subagent_type = agent.agentType;
+        if (agent.description !== null)
+          subagentMessage.task_description = agent.description;
+        emit(subagentMessage);
         continue;
       }
       const notification = isTaskNotificationPrompt(record)
         ? parseTaskNotification(textOf(record.message?.content))
         : null;
       if (!isRootPrompt(record)) {
-        // Injected context (isMeta): no turn transition.
       } else if (notification !== null) {
-        // The background agent settled: its task lifecycle closes before the
-        // parent is resumed, and the resuming segment's result says so.
         closeTurn(at);
         emitTaskSettled(
           notification.taskId,
@@ -654,21 +578,19 @@ function convert(sessionPath, options) {
         );
         openTurn(at, { kind: "task-notification" });
       } else {
-        // The human's prompt is the SDK's INPUT: a live stream never echoes
-        // it. It only moves the turn; the CLI-injected user messages
-        // (task notifications, isMeta context) do stream and are emitted.
         closeTurn(at);
         openTurn(at, null);
         continue;
       }
-      emit({
+      const userMessage = {
         type: "user",
         message: record.message,
         parent_tool_use_id: null,
         session_id: sessionId,
         uuid,
-        ...(timestamp === undefined ? {} : { timestamp }),
-      });
+      };
+      if (timestamp !== null) userMessage.timestamp = timestamp;
+      emit(userMessage);
       continue;
     }
 
@@ -678,8 +600,6 @@ function convert(sessionPath, options) {
           agentCallByToolUseId.has(block.tool_use_id) &&
           !backgroundedToolUseIds.has(block.tool_use_id)
         ) {
-          // A foreground agent settles before its call's result lands; a
-          // backgrounded one settles at the <task-notification> prompt.
           const taskId = agentIdByToolUseId.get(block.tool_use_id);
           if (taskId !== undefined) {
             emitTaskSettled(
@@ -693,17 +613,18 @@ function convert(sessionPath, options) {
         }
       }
     }
-    emit({
+    const toolResultMessage = {
       type: "user",
       message: record.message,
       parent_tool_use_id: parentToolUseId,
       session_id: sessionId,
       uuid,
-      ...(timestamp === undefined ? {} : { timestamp }),
-      ...(record.toolUseResult === undefined
-        ? {}
-        : { tool_use_result: record.toolUseResult }),
-    });
+    };
+    if (timestamp !== null) toolResultMessage.timestamp = timestamp;
+    if (record.toolUseResult !== undefined) {
+      toolResultMessage.tool_use_result = record.toolUseResult;
+    }
+    emit(toolResultMessage);
   }
   closeTurn(lastAt);
 

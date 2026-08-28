@@ -41,6 +41,8 @@ export type CreateReconnectingWebSocket = (
   options: ReconnectingWebSocketOptions,
 ) => ReconnectingWebSocketLike;
 
+type WebSocketMessageData = string | Buffer | Buffer[] | ArrayBuffer;
+
 export type HostDaemonServerTerminalMessage = Exclude<
   HostDaemonServerWsMessage,
   | { type: "session-close" }
@@ -109,10 +111,7 @@ export function createDefaultReconnectingWebSocket(
   });
 }
 
-export function decodeWebSocketMessageData(data: unknown): string {
-  if (typeof data === "string") {
-    return data;
-  }
+export function decodeWebSocketMessageData(data: WebSocketMessageData): string {
   if (Array.isArray(data)) {
     return Buffer.concat(data).toString("utf8");
   }

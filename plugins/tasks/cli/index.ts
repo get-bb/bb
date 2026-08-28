@@ -54,6 +54,14 @@ const ACTIVE_THREAD_STATUSES = new Set(["starting", "working"]);
 const DEFAULT_PROJECT_COLOR = "blue";
 const DEFAULT_LABEL_COLOR = "gray";
 
+interface TasksCliDependencies {
+  saveAttachmentFromBytes: typeof saveAttachmentFromBytes;
+}
+
+const defaultTasksCliDependencies: TasksCliDependencies = {
+  saveAttachmentFromBytes,
+};
+
 const ROOT_HELP = `Usage: bb tasks <command> [options]
 
 Commands:
@@ -160,7 +168,7 @@ async function resolveClientHostId(
   return environment.hostId;
 }
 
-function isMissingClientFileError(error: unknown): boolean {
+function isMissingClientFileError(error: Error): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /\bENOENT\b|does not exist|not found|is a directory/i.test(message);
 }
@@ -170,10 +178,9 @@ async function readClientFile(
   hostId: string | undefined,
   path: string,
 ): Promise<{ bytes: Buffer; text: string | null }> {
-  const file = await bb.sdk.files.read({
-    ...(hostId ? { hostId } : {}),
-    path,
-  });
+  const file = hostId
+    ? await bb.sdk.files.read({ hostId, path })
+    : await bb.sdk.files.read({ path });
   return {
     bytes: Buffer.from(
       file.content,
@@ -191,7 +198,7 @@ async function readAttachmentSource(
   try {
     return (await readClientFile(bb, hostId, path)).bytes;
   } catch (error) {
-    if (isMissingClientFileError(error)) {
+    if (error instanceof Error && isMissingClientFileError(error)) {
       throw new CliError(`attachment source is not a file: ${path}`);
     }
     throw error;
@@ -204,8 +211,17 @@ async function writeClientFile(
   path: string,
   content: Buffer,
 ): Promise<void> {
+  if (hostId) {
+    await bb.sdk.files.write({
+      hostId,
+      path,
+      content: content.toString("base64"),
+      contentEncoding: "base64",
+      createParents: true,
+    });
+    return;
+  }
   await bb.sdk.files.write({
-    ...(hostId ? { hostId } : {}),
     path,
     content: content.toString("base64"),
     contentEncoding: "base64",
@@ -383,14 +399,10 @@ async function listAllTasks(
   const tasks: Task[] = [];
   let cursor = input.cursor;
   do {
+    const pageInput = { ...input, limit: TASKS_PAGE_MAX_LIMIT };
+    if (cursor !== undefined) pageInput.cursor = cursor;
     const page = tasksRpcContract.listTasks.output.parse(
-      await domain.listTasks(
-        tasksRpcContract.listTasks.input.parse({
-          ...input,
-          limit: TASKS_PAGE_MAX_LIMIT,
-          ...(cursor === undefined ? {} : { cursor }),
-        }),
-      ),
+      await domain.listTasks(tasksRpcContract.listTasks.input.parse(pageInput)),
     );
     tasks.push(...page.tasks);
     cursor = page.nextCursor ?? undefined;
@@ -863,9 +875,10 @@ async function runCreate(
   domain: TasksDomain,
   ctx: PluginCliContext,
   argv: string[],
-): Promise<string | PluginCliResult> {
+  dependencies: TasksCliDependencies,
+): Promise<PluginCliResult> {
   const args = parseArgs(argv);
-  if (args.flags.has("help")) return CREATE_HELP;
+  if (args.flags.has("help")) return { exitCode: 0, stdout: CREATE_HELP };
   assertAllowed(args, [
     "project",
     "title",
@@ -936,7 +949,7 @@ async function runCreate(
   const failedAttachments: Array<{ path: string; error: string }> = [];
   for (const source of attachSources) {
     try {
-      const attachment = await saveAttachmentFromBytes(
+      const attachment = await dependencies.saveAttachmentFromBytes(
         store.tasks,
         source.bytes,
         {
@@ -970,7 +983,7 @@ async function runCreate(
             )
           : []),
       ].join("\n");
-  if (failedAttachments.length === 0) return stdout;
+  if (failedAttachments.length === 0) return { exitCode: 0, stdout };
   return {
     exitCode: 1,
     stdout,
@@ -1923,7 +1936,7 @@ async function runThreads(
       );
 }
 
-function friendlyError(error: unknown): string {
+function friendlyError(error: Error): string {
   if (error instanceof CliError) return error.message;
   if (error instanceof z.ZodError) {
     const issue = error.issues[0];
@@ -1953,7 +1966,9 @@ export function registerTasksCli(
   bb: BbPluginApi,
   store: TasksApiStore,
   status: PluginStatus,
+  dependencies?: TasksCliDependencies,
 ): void {
+  const resolvedDependencies = dependencies ?? defaultTasksCliDependencies;
   const domain = registerHandlers(bb, store);
   bb.cli.register({
     name: "tasks",
@@ -2065,10 +2080,15 @@ export function registerTasksCli(
             stdout = await runFolder(bb, store, domain, rest);
             break;
           case "create": {
-            const result = await runCreate(bb, store, domain, ctx, rest);
-            if (typeof result !== "string") return result;
-            stdout = result;
-            break;
+            const result = await runCreate(
+              bb,
+              store,
+              domain,
+              ctx,
+              rest,
+              resolvedDependencies,
+            );
+            return result;
           }
           case "list":
             stdout = await runList(domain, ctx, rest);
@@ -2133,7 +2153,9 @@ export function registerTasksCli(
         }
         return { exitCode: 0, stdout };
       } catch (error) {
-        return { exitCode: 1, stderr: singleLine(friendlyError(error)) };
+        const stderr =
+          error instanceof Error ? friendlyError(error) : String(error);
+        return { exitCode: 1, stderr: singleLine(stderr) };
       }
     },
   });

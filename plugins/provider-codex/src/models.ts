@@ -10,19 +10,40 @@ import { z } from "zod";
 const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
   reasoningEffortsForLevels(["low", "medium", "high", "xhigh"]);
 
+type CodexReasoningLevelInput = string | number | boolean | null | undefined;
+
+const codexReasoningEffortOptionSchema = z
+  .object({
+    reasoningEffort: z.string(),
+    description: z.string().optional().catch(undefined),
+  })
+  .catch({ reasoningEffort: "" });
+
 const codexModelIdentitySchema = z
   .object({
     id: z.string().min(1),
     model: z.string().min(1),
+    displayName: z.string().optional().catch(undefined),
+    description: z.string().optional().catch(undefined),
+    supportedReasoningEfforts: z
+      .array(codexReasoningEffortOptionSchema)
+      .optional()
+      .catch(undefined),
+    defaultReasoningEffort: z.string().optional().catch(undefined),
+    isDefault: z.boolean().optional().catch(undefined),
   })
-  .passthrough();
+  .strip();
+
+const codexModelsResponseSchema = z.object({ data: z.array(z.unknown()) });
+
+type CodexReasoningEffortOption = z.infer<
+  typeof codexReasoningEffortOptionSchema
+>;
+type CodexModelIdentity = z.infer<typeof codexModelIdentitySchema>;
 
 export function mapCodexReasoningLevelToBb(
-  value: unknown,
+  value: CodexReasoningLevelInput,
 ): ReasoningLevel | null {
-  if (typeof value !== "string") {
-    return null;
-  }
   const parsed = reasoningLevelSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
@@ -48,18 +69,16 @@ function cloneDefaultReasoningEfforts(): ModelReasoningEffort[] {
   return DEFAULT_REASONING_EFFORTS.map((effort) => ({ ...effort }));
 }
 
-function parseReasoningEffortOption(raw: unknown): ModelReasoningEffort | null {
-  if (raw == null || typeof raw !== "object") {
-    return null;
-  }
-  const record = raw as Record<string, unknown>;
-  const level = mapCodexReasoningLevelToBb(record.reasoningEffort);
+function parseReasoningEffortOption(
+  raw: CodexReasoningEffortOption,
+): ModelReasoningEffort | null {
+  const level = mapCodexReasoningLevelToBb(raw.reasoningEffort);
   if (!level) {
     return null;
   }
   const description =
-    typeof record.description === "string" && record.description.length > 0
-      ? record.description
+    raw.description !== undefined && raw.description.length > 0
+      ? raw.description
       : reasoningEffortsForLevels([level])[0].description;
   return {
     reasoningEffort: level,
@@ -67,8 +86,10 @@ function parseReasoningEffortOption(raw: unknown): ModelReasoningEffort | null {
   };
 }
 
-function parseSupportedReasoningEfforts(raw: unknown): ModelReasoningEffort[] {
-  if (!Array.isArray(raw) || raw.length === 0) {
+function parseSupportedReasoningEfforts(
+  raw: readonly CodexReasoningEffortOption[] | undefined,
+): ModelReasoningEffort[] {
+  if (raw === undefined || raw.length === 0) {
     return cloneDefaultReasoningEfforts();
   }
 
@@ -86,9 +107,7 @@ function parseSupportedReasoningEfforts(raw: unknown): ModelReasoningEffort[] {
   return efforts.length > 0 ? efforts : cloneDefaultReasoningEfforts();
 }
 
-function toAvailableModel(
-  raw: z.infer<typeof codexModelIdentitySchema>,
-): AvailableModel {
+function toAvailableModel(raw: CodexModelIdentity): AvailableModel {
   const efforts = parseSupportedReasoningEfforts(raw.supportedReasoningEfforts);
   const mappedDefault = mapCodexReasoningLevelToBb(raw.defaultReasoningEffort);
   const defaultReasoningEffort =
@@ -101,28 +120,24 @@ function toAvailableModel(
     id: raw.id,
     model: raw.model,
     displayName:
-      typeof raw.displayName === "string" && raw.displayName.length > 0
+      raw.displayName !== undefined && raw.displayName.length > 0
         ? raw.displayName
         : raw.model,
-    description: typeof raw.description === "string" ? raw.description : "",
+    description: raw.description ?? "",
     supportedReasoningEfforts: efforts,
     defaultReasoningEffort,
     isDefault: raw.isDefault === true,
   };
 }
 
-export function parseModelsResponse(result: unknown): AvailableModel[] {
-  if (result == null || typeof result !== "object") {
-    throw new Error("Invalid response from codex model/list.");
-  }
-
-  const data = (result as { data?: unknown }).data;
-  if (!Array.isArray(data)) {
+export function parseModelsResponse<T>(result: T): AvailableModel[] {
+  const parsedResult = codexModelsResponseSchema.safeParse(result);
+  if (!parsedResult.success) {
     throw new Error("Invalid response from codex model/list.");
   }
 
   const models: AvailableModel[] = [];
-  for (const entry of data) {
+  for (const entry of parsedResult.data.data) {
     const identity = codexModelIdentitySchema.safeParse(entry);
     if (!identity.success) {
       continue;

@@ -237,8 +237,8 @@ export function TimelineWindowedItems({
     }
     updateRootUsability();
     updateScrollGeometry();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
+    if (globalThis.ResizeObserver === undefined) return;
+    const observer = new globalThis.ResizeObserver(() => {
       updateRootUsability();
       updateScrollGeometry();
     });

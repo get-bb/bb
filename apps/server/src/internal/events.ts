@@ -28,6 +28,7 @@ import {
   type ThreadEventTurnStatus,
 } from "@bb/domain";
 import type { Hono } from "hono";
+import { z } from "zod";
 import { ApiError } from "../errors.js";
 import type {
   AppDeps,
@@ -97,15 +98,11 @@ interface NotifyInsertedEventThreadsArgs {
 }
 
 function parseStoredBackgroundTaskItemStatus(data: string): string | undefined {
-  const parsed: unknown = JSON.parse(data);
-  if (parsed === null || typeof parsed !== "object" || !("item" in parsed)) {
-    return undefined;
-  }
-  const item = parsed.item;
-  if (item === null || typeof item !== "object" || !("status" in item)) {
-    return undefined;
-  }
-  return typeof item.status === "string" ? item.status : undefined;
+  const parsed = z
+    .object({ item: z.object({ status: z.string() }).passthrough() })
+    .passthrough()
+    .safeParse(JSON.parse(data));
+  return parsed.success ? parsed.data.item.status : undefined;
 }
 
 function eventInputChangesBackgroundActivity(
@@ -189,6 +186,15 @@ interface ParentTurnNotificationFollowUp {
   turnStatus: ThreadEventTurnStatus;
 }
 
+interface ProviderIdentifiers {
+  providerThreadId: string | null;
+}
+
+interface DropInteractionLifecycleEventsResult {
+  entries: PostableEventBatchEntry[];
+  droppedLifecycleEvents: DroppedLifecycleEvent[];
+}
+
 interface QueuedMessageAutoSendFollowUp {
   kind: "queued-message-auto-send";
   threadId: string;
@@ -204,9 +210,9 @@ function isRootTurnStartedEvent(
   return !event.parentToolCallId;
 }
 
-function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
-  providerThreadId: string | null;
-} {
+function resolveProviderIdentifiers(
+  event: HostDaemonEventEnvelope["event"],
+): ProviderIdentifiers {
   switch (event.type) {
     case "thread/started":
     case "client/thread/start":
@@ -265,7 +271,10 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     default: {
       const exhaustive: never = event;
       throw new Error(
-        `Unsupported event type: ${String((exhaustive as { type?: string }).type)}`,
+        `Unsupported event type: ${String(
+          /* SAFETY: The switch covers every HostDaemonEventEnvelope event type. */
+          (exhaustive as { type?: string }).type,
+        )}`,
       );
     }
   }
@@ -305,11 +314,16 @@ function notifyInsertedEventThreads(
     }
   }
   for (const [threadId, eventTypes] of eventTypesByThreadId) {
+    const eventTypesPayload = Array.from(eventTypes);
+    if (backgroundActivityThreadIds.has(threadId)) {
+      deps.hub.notifyThread(threadId, ["events-appended"], {
+        backgroundActivityChanged: true,
+        eventTypes: eventTypesPayload,
+      });
+      continue;
+    }
     deps.hub.notifyThread(threadId, ["events-appended"], {
-      ...(backgroundActivityThreadIds.has(threadId)
-        ? { backgroundActivityChanged: true }
-        : {}),
-      eventTypes: Array.from(eventTypes),
+      eventTypes: eventTypesPayload,
     });
   }
 }
@@ -838,10 +852,9 @@ function lifecycleInteractionId(
   }
 }
 
-function dropInteractionLifecycleEvents(entries: PostableEventBatchEntry[]): {
-  entries: PostableEventBatchEntry[];
-  droppedLifecycleEvents: DroppedLifecycleEvent[];
-} {
+function dropInteractionLifecycleEvents(
+  entries: PostableEventBatchEntry[],
+): DropInteractionLifecycleEventsResult {
   const kept: PostableEventBatchEntry[] = [];
   const droppedLifecycleEvents: DroppedLifecycleEvent[] = [];
   for (const entry of entries) {

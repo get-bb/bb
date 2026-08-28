@@ -1,23 +1,26 @@
 import { access, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
-interface PackageExport {
-  source: string;
-  types: string;
-  import: string;
-  default: string;
-}
+const packageExportSchema = z.object({
+  source: z.string(),
+  types: z.string(),
+  import: z.string(),
+  default: z.string(),
+});
+
+const packageJsonSchema = z.object({
+  files: z.array(z.string()),
+  private: z.boolean().optional(),
+  exports: z.record(z.string(), packageExportSchema),
+});
 
 describe("packed plugin SDK exports", () => {
   it("maps every packed subpath to runtime JavaScript and portable declarations", async () => {
     const packageRoot = new URL("../../", import.meta.url);
-    const packageJson = JSON.parse(
-      await readFile(new URL("package.json", packageRoot), "utf8"),
-    ) as {
-      files: string[];
-      private?: boolean;
-      exports: Record<string, PackageExport>;
-    };
+    const packageJson = packageJsonSchema.parse(
+      JSON.parse(await readFile(new URL("package.json", packageRoot), "utf8")),
+    );
 
     expect(packageJson.private).not.toBe(true);
     expect(packageJson.files).toEqual(["bundled-types", "dist", "README.md"]);

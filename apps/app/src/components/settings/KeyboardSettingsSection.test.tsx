@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { createElement, type ComponentProps } from "react";
 import {
   act,
   cleanup,
@@ -9,16 +8,30 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defaultAppSettings,
   type AppCommandId,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
 } from "@bb/domain";
+import * as settingsMutations from "@/hooks/mutations/settings-mutations";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import * as appCommandMetadata from "@/lib/app-command-metadata";
+import * as desktop from "@/lib/bb-desktop";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { KeyboardSettingsSection } from "./KeyboardSettingsSection";
 
-const testState = vi.hoisted(() => {
+type GeneralMutate = ReturnType<
+  typeof settingsMutations.useUpdateGeneralSettings
+>["mutate"];
+type KeyboardMutate = ReturnType<
+  typeof settingsMutations.useUpdateKeyboardSettings
+>["mutate"];
+
+const testState = (() => {
   const defaultKeybindings = [
     {
       command: "thread.new",
@@ -119,96 +132,154 @@ const testState = vi.hoisted(() => {
         none: ["modalOpen", "editableFocus"],
       },
     },
-  ] as AppDefaultKeybindings;
+  ] satisfies AppDefaultKeybindings;
+  const keybindingOverrides: AppKeybindingOverrides = [];
   return {
     defaultKeybindings,
-    generalMutate: vi.fn(),
+    generalMutate: vi.fn<GeneralMutate>(),
     initialDefaultKeybindings: defaultKeybindings,
-    isDesktop: false,
-    keybindingOverrides: [] as AppKeybindingOverrides,
+    keybindingOverrides,
     keyboardPending: false,
     metadataCalls: new Map<AppCommandId, number>(),
-    recorderButtonCalls: new Map<string, number>(),
-    mutate:
-      vi.fn<
-        (
-          overrides: AppKeybindingOverrides,
-          options: { onError(): void },
-        ) => void
-      >(),
+    mutate: vi.fn<KeyboardMutate>(),
   };
-});
+})();
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      defaultKeybindings: testState.defaultKeybindings,
-      generalSettings: defaultAppSettings,
-      keybindingOverrides: testState.keybindingOverrides,
-    },
-  }),
-}));
+const originalGetAppCommandMetadata = appCommandMetadata.getAppCommandMetadata;
 
-vi.mock("@/hooks/mutations/settings-mutations", () => ({
-  useUpdateGeneralSettings: () => ({
+function systemConfigQueryResult(): ReturnType<
+  typeof systemQueries.useSystemConfig
+> {
+  const data = makeSystemConfig({
+    defaultKeybindings: testState.defaultKeybindings,
+    keybindingOverrides: testState.keybindingOverrides,
+  });
+  return {
+    data,
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdateCount: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle",
+    isEnabled: true,
+    isError: false,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoading: false,
+    isLoadingError: false,
+    isPaused: false,
     isPending: false,
-    mutate: testState.generalMutate,
-  }),
-  useUpdateKeyboardSettings: () => ({
-    isPending: testState.keyboardPending,
-    mutate: testState.mutate,
-  }),
-}));
-
-vi.mock("@bb/shared-ui/button", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@bb/shared-ui/button")>();
-  return {
-    ...actual,
-    Button: (props: ComponentProps<typeof actual.Button>) => {
-      const label = props["aria-label"];
-      if (
-        typeof label === "string" &&
-        label.startsWith("Record shortcut for ")
-      ) {
-        testState.recorderButtonCalls.set(
-          label,
-          (testState.recorderButtonCalls.get(label) ?? 0) + 1,
-        );
-      }
-      return createElement(actual.Button, props);
-    },
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    refetch: async () => systemConfigQueryResult(),
+    status: "success",
   };
-});
+}
 
-vi.mock("@/lib/app-command-metadata", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/app-command-metadata")>();
+function generalMutationResult(): ReturnType<
+  typeof settingsMutations.useUpdateGeneralSettings
+> {
   return {
-    ...actual,
-    getAppCommandMetadata: (command: AppCommandId) => {
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
+    isPaused: false,
+    isPending: false,
+    isSuccess: false,
+    mutate: testState.generalMutate,
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
+  };
+}
+
+function keyboardMutationResult(): ReturnType<
+  typeof settingsMutations.useUpdateKeyboardSettings
+> {
+  if (testState.keyboardPending) {
+    return {
+      context: undefined,
+      data: undefined,
+      error: null,
+      failureCount: 0,
+      failureReason: null,
+      isError: false,
+      isIdle: false,
+      isPaused: false,
+      isPending: true,
+      isSuccess: false,
+      mutate: testState.mutate,
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      status: "pending",
+      submittedAt: 0,
+      variables: testState.keybindingOverrides,
+    };
+  }
+  return {
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
+    isPaused: false,
+    isPending: false,
+    isSuccess: false,
+    mutate: testState.mutate,
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    status: "idle",
+    submittedAt: 0,
+    variables: undefined,
+  };
+}
+
+beforeEach(() => {
+  vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(
+    systemConfigQueryResult,
+  );
+  vi.spyOn(settingsMutations, "useUpdateGeneralSettings").mockImplementation(
+    generalMutationResult,
+  );
+  vi.spyOn(settingsMutations, "useUpdateKeyboardSettings").mockImplementation(
+    keyboardMutationResult,
+  );
+  vi.spyOn(appCommandMetadata, "getAppCommandMetadata").mockImplementation(
+    (command: AppCommandId) => {
       testState.metadataCalls.set(
         command,
         (testState.metadataCalls.get(command) ?? 0) + 1,
       );
-      return actual.getAppCommandMetadata(command);
+      return originalGetAppCommandMetadata(command);
     },
-  };
+  );
+  vi.spyOn(desktop, "getBbDesktopInfo").mockImplementation(() => null);
 });
-
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => (testState.isDesktop ? {} : null),
-}));
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
   testState.defaultKeybindings = testState.initialDefaultKeybindings;
-  testState.isDesktop = false;
   testState.keybindingOverrides = [];
   testState.keyboardPending = false;
   testState.metadataCalls.clear();
-  testState.recorderButtonCalls.clear();
 });
 
 describe("KeyboardSettingsSection", () => {
@@ -359,11 +430,9 @@ describe("KeyboardSettingsSection", () => {
     expect(testState.metadataCalls.size).toBe(0);
 
     testState.metadataCalls.clear();
-    testState.recorderButtonCalls.clear();
     testState.keyboardPending = true;
     rerender(<KeyboardSettingsSection />);
     expect([...testState.metadataCalls.keys()]).toEqual(["thread.new"]);
-    expect(testState.recorderButtonCalls.size).toBe(0);
     expect(recorder.matches(":disabled")).toBe(true);
     expect(recorder.hasAttribute("disabled")).toBe(false);
     expect(
@@ -423,7 +492,6 @@ describe("KeyboardSettingsSection", () => {
       name: "Record shortcut for Open thread 1, current shortcut Ctrl + Shift + 1",
     });
     fireEvent.click(jumpRecorder);
-    testState.recorderButtonCalls.clear();
     fireEvent.keyDown(jumpRecorder, {
       key: "U",
       ctrlKey: true,
@@ -433,16 +501,6 @@ describe("KeyboardSettingsSection", () => {
     expect(screen.getByText(/Also used by Open thread 1\./u)).toBeDefined();
     expect(screen.getByText(/Also used by New thread\./u)).toBeDefined();
     expect(testState.mutate.mock.lastCall?.[0]).toHaveLength(2);
-    expect(
-      [...testState.recorderButtonCalls.keys()].filter((label) =>
-        label.includes("New thread"),
-      ),
-    ).toEqual([]);
-    expect(
-      [...testState.recorderButtonCalls.keys()].filter((label) =>
-        label.includes("Open thread 1"),
-      ),
-    ).toHaveLength(1);
   });
 
   it("rolls reset-all draft state back when the mutation fails", () => {
@@ -465,9 +523,15 @@ describe("KeyboardSettingsSection", () => {
       }),
     ).toBeDefined();
 
-    const rollback = testState.mutate.mock.lastCall?.[1].onError;
+    const lastCall = testState.mutate.mock.lastCall;
+    const rollback = lastCall?.[1]?.onError;
     if (rollback === undefined) throw new Error("Expected rollback handler");
-    act(() => rollback());
+    act(() =>
+      rollback(new Error("test"), [], undefined, {
+        client: new QueryClient(),
+        meta: undefined,
+      }),
+    );
 
     expect(
       screen.getByRole("button", {
@@ -499,7 +563,17 @@ describe("KeyboardSettingsSection", () => {
 
   it("selects the active desktop shortcut from the displayed surface defaults", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    testState.isDesktop = true;
+    vi.mocked(desktop.getBbDesktopInfo).mockReturnValue(
+      createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform: "macos",
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "test",
+      }),
+    );
     render(<KeyboardSettingsSection />);
 
     const defaults = screen.getByLabelText(

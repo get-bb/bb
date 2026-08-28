@@ -40,10 +40,11 @@ interface PluginRuntimeHost {
   __bbPluginRuntime?: { pluginSdkApp?: unknown };
 }
 
-// The global is the genuinely unknowable boundary here: the host app
-// guarantees the shape via its own `satisfies PluginSdkApp` check.
-const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
-  ?.pluginSdkApp ?? {}) as Partial<PluginSdkApp> as PluginSdkApp;
+// SAFETY: The host app owns the optional plugin runtime field on the global object.
+const runtimeHost = globalThis as PluginRuntimeHost;
+// SAFETY: The host app installs a value that satisfies PluginSdkApp before this module loads.
+const runtime = (runtimeHost.__bbPluginRuntime?.pluginSdkApp ??
+  {}) as PluginSdkApp;
 
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;

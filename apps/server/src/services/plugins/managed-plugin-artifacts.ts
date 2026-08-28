@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
+import { z } from "zod";
 import { derivePluginId } from "@bb/domain";
 import {
   createPluginArtifact,
@@ -63,6 +63,26 @@ import {
   type NpmSourceIntentForResolution,
   type NpmSpecKind,
 } from "./update-resolver.js";
+
+const { mkdir, readFile, rm, stat } =
+  process.getBuiltinModule("node:fs/promises");
+
+const packageLockSchema = z
+  .object({
+    packages: z
+      .record(
+        z.string(),
+        z.object({ integrity: z.string().nullable().optional() }).passthrough(),
+      )
+      .optional(),
+    dependencies: z
+      .record(
+        z.string(),
+        z.object({ integrity: z.string().nullable().optional() }).passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 export interface InstallRegistrationIdentity {
   provenance: PluginProvenance;
@@ -361,38 +381,23 @@ export function createManagedPluginArtifacts(
     prefix: string,
     packageName: string,
   ): Promise<string | null> {
-    let value: unknown;
+    let parsed: ReturnType<typeof packageLockSchema.safeParse>;
     try {
-      value = JSON.parse(
-        await readFile(join(prefix, "package-lock.json"), "utf8"),
+      parsed = packageLockSchema.safeParse(
+        JSON.parse(await readFile(join(prefix, "package-lock.json"), "utf8")),
       );
     } catch {
       return null;
     }
-    if (typeof value !== "object" || value === null) return null;
-    const lock = value as Record<string, unknown>;
-    const packages = lock.packages;
-    if (typeof packages === "object" && packages !== null) {
-      const entry = (packages as Record<string, unknown>)[
-        `node_modules/${packageName}`
-      ];
-      if (typeof entry === "object" && entry !== null && "integrity" in entry) {
-        if (typeof entry.integrity === "string") return entry.integrity;
-      }
+
+    if (!parsed.success) return null;
+    const entry = parsed.data.packages?.[`node_modules/${packageName}`];
+    if (entry?.integrity !== undefined && entry.integrity !== null) {
+      return entry.integrity;
     }
-    const dependencies = lock.dependencies;
-    if (typeof dependencies !== "object" || dependencies === null) return null;
-    const dependency = (dependencies as Record<string, unknown>)[packageName];
-    if (
-      typeof dependency !== "object" ||
-      dependency === null ||
-      !("integrity" in dependency)
-    ) {
-      return null;
-    }
-    return typeof dependency.integrity === "string"
-      ? dependency.integrity
-      : null;
+
+    const dependency = parsed.data.dependencies?.[packageName];
+    return dependency?.integrity ?? null;
   }
 
   async function resolveNpmRegistry(

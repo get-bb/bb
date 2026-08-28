@@ -9,6 +9,10 @@ import {
   type PluginRuntimeStatus,
   type PluginSourceDetail,
 } from "@bb/server-contract";
+import type {
+  StandardSchemaV1,
+  StandardSchemaV1InferOutput,
+} from "@get-bb/plugin-sdk";
 import type { ServerLogger } from "../../types.js";
 import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -31,6 +35,9 @@ export type {
 type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
+
+export type PluginHostCallResult =
+  StandardSchemaV1InferOutput<StandardSchemaV1>;
 
 export interface ServiceRuntime {
   record: PluginBackgroundServiceRecord;
@@ -120,7 +127,7 @@ export interface PluginServiceDeps {
     signal?: AbortSignal;
     timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
-  }) => Promise<unknown>;
+  }) => Promise<PluginHostCallResult>;
   disposePluginHost?: (args: {
     pluginId: string;
     generation: string;

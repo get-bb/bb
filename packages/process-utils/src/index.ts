@@ -49,7 +49,7 @@ interface PortableOutputChildProcess extends PortableChildProcess {
 interface KillProcessGroupArgs {
   child: {
     pid?: number | undefined;
-    kill: (signal: NodeJS.Signals) => unknown;
+    kill: (signal: NodeJS.Signals) => void;
   };
   signal: NodeJS.Signals;
 }
@@ -97,6 +97,9 @@ interface WriteSafeProcessDiagnosticReportArgs extends SafeProcessDiagnosticsOpt
   now?: () => Date;
   createReportId?: () => string;
 }
+
+type DiagnosticInput = WriteSafeProcessDiagnosticReportArgs["error"];
+type ParsedDiagnosticInput = Error | string;
 
 const MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH = 8;
 const MAX_DIAGNOSTIC_AGGREGATE_ERRORS = 8;
@@ -509,8 +512,16 @@ function createTruncatedDiagnosticError(
   };
 }
 
+function parseDiagnosticInput(error: DiagnosticInput): ParsedDiagnosticInput {
+  return error instanceof Error ? error : String(error);
+}
+
+function isDiagnosticString(value: DiagnosticInput): value is string {
+  return String(value) === value;
+}
+
 function serializeDiagnosticError(
-  error: unknown,
+  error: ParsedDiagnosticInput,
   seenErrors: Set<Error> = new Set(),
   depth = 0,
 ): SafeProcessDiagnosticError {
@@ -530,12 +541,13 @@ function serializeDiagnosticError(
     if (error.stack !== undefined) {
       serialized.stack = error.stack;
     }
-    if ("code" in error && typeof error.code === "string") {
-      serialized.code = error.code;
+    const code = "code" in error ? error.code : undefined;
+    if (isDiagnosticString(code)) {
+      serialized.code = code;
     }
     if (error.cause !== undefined) {
       serialized.cause = serializeDiagnosticError(
-        error.cause,
+        parseDiagnosticInput(error.cause),
         seenErrors,
         depth + 1,
       );
@@ -546,7 +558,11 @@ function serializeDiagnosticError(
         MAX_DIAGNOSTIC_AGGREGATE_ERRORS,
       );
       serialized.errors = aggregateErrors.map((aggregateError) =>
-        serializeDiagnosticError(aggregateError, seenErrors, depth + 1),
+        serializeDiagnosticError(
+          parseDiagnosticInput(aggregateError),
+          seenErrors,
+          depth + 1,
+        ),
       );
       const errorsTruncated = error.errors.length - aggregateErrors.length;
       if (errorsTruncated > 0) {
@@ -590,7 +606,7 @@ export function writeSafeProcessDiagnosticReport(
       arch: process.arch,
       execPath: process.execPath,
     },
-    error: serializeDiagnosticError(args.error),
+    error: serializeDiagnosticError(parseDiagnosticInput(args.error)),
   };
 
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, {

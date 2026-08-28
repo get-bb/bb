@@ -5,10 +5,12 @@ import {
   type ServerTargetFs,
 } from "../src/server-target.js";
 
-function createMemoryFs(initial: Record<string, string> = {}): {
+interface MemoryFs {
   files: Map<string, string>;
   fs: ServerTargetFs;
-} {
+}
+
+function createMemoryFs(initial: Record<string, string> = {}): MemoryFs {
   const files = new Map(Object.entries(initial));
   return {
     files,

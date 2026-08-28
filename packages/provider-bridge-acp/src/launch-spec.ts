@@ -73,20 +73,25 @@ export function normalizeAcpLaunchSpec(spec: AcpLaunchSpec): AcpLaunchSpec {
     permissionCli?.full !== undefined ||
     permissionCli?.workspaceWrite !== undefined ||
     permissionCli?.readonly !== undefined;
-  return {
+  const normalized: AcpLaunchSpec = {
     displayName,
     command,
     args,
     env,
-    ...(cwd !== undefined ? { cwd } : {}),
-    ...(modelCli !== undefined && modelCli.listArgs.length > 0
-      ? { modelCli }
-      : {}),
-    ...(reasoningCli !== undefined ? { reasoningCli } : {}),
-    ...(nativeReasoning !== undefined ? { nativeReasoning } : {}),
-    ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
-    ...(permissionCli !== undefined && permissionCliHasMode
-      ? { permissionCli }
-      : {}),
   };
+  if (cwd !== undefined) normalized.cwd = cwd;
+  if (modelCli !== undefined && modelCli.listArgs.length > 0) {
+    normalized.modelCli = modelCli;
+  }
+  if (reasoningCli !== undefined) normalized.reasoningCli = reasoningCli;
+  if (nativeReasoning !== undefined) {
+    normalized.nativeReasoning = nativeReasoning;
+  }
+  if (nativeSkillRoots !== undefined) {
+    normalized.nativeSkillRoots = nativeSkillRoots;
+  }
+  if (permissionCli !== undefined && permissionCliHasMode) {
+    normalized.permissionCli = permissionCli;
+  }
+  return normalized;
 }

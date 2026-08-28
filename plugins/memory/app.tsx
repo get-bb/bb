@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   definePluginApp,
   useRpc,
@@ -27,10 +27,6 @@ function isMemoryKind(value: string): value is MemoryKind {
 type MemoryRecord = PluginRpcResult<
   (typeof memoryRpcContract)["listMemories"]
 >["memories"][number];
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function MemoryEditor({
   memory,
@@ -156,7 +152,13 @@ function MemoryEditor({
               })
               .then((result) => result.memory)
               .then(onSaved)
-              .catch((saveError: unknown) => setError(errorMessage(saveError)))
+              .catch((saveError) =>
+                setError(
+                  saveError instanceof Error
+                    ? saveError.message
+                    : String(saveError),
+                ),
+              )
               .finally(() => setSaving(false));
           }}
         >
@@ -169,31 +171,35 @@ function MemoryEditor({
 
 function MemorySettings() {
   const rpc = useRpc<typeof memoryRpcContract>();
-  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const [memories, setMemories] = useState<MemoryRecord[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setMemories((await rpc.call("listMemories")).memories);
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    void rpc
+      .call("listMemories")
+      .then(({ memories: nextMemories }) => {
+        if (active) setMemories(nextMemories);
+      })
+      .catch((loadError) => {
+        if (active) {
+          setError(
+            loadError instanceof Error ? loadError.message : String(loadError),
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [rpc]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
+  if (memories === null && error === null) {
     return <p className="text-sm text-muted-foreground">Loading memories…</p>;
   }
+
+  const listedMemories = memories ?? [];
 
   return (
     <div className="space-y-4">
@@ -207,7 +213,7 @@ function MemorySettings() {
           {error}
         </p>
       ) : null}
-      {memories.length === 0 ? (
+      {listedMemories.length === 0 ? (
         <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           No memories stored yet.
         </div>
@@ -224,7 +230,7 @@ function MemorySettings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {memories.map((memory) => (
+              {listedMemories.map((memory) => (
                 <Fragment key={memory.id}>
                   <tr className="align-top">
                     <td className="min-w-0 px-3 py-3">
@@ -288,7 +294,7 @@ function MemorySettings() {
                               })
                               .then(() => {
                                 setMemories((current) =>
-                                  current.filter(
+                                  (current ?? []).filter(
                                     (entry) => entry.id !== memory.id,
                                   ),
                                 );
@@ -296,8 +302,12 @@ function MemorySettings() {
                                   current === memory.id ? null : current,
                                 );
                               })
-                              .catch((deleteError: unknown) =>
-                                setError(errorMessage(deleteError)),
+                              .catch((deleteError) =>
+                                setError(
+                                  deleteError instanceof Error
+                                    ? deleteError.message
+                                    : String(deleteError),
+                                ),
                               )
                               .finally(() => setDeletingId(null));
                           }}
@@ -315,7 +325,7 @@ function MemorySettings() {
                           onCancel={() => setEditingId(null)}
                           onSaved={(updated) => {
                             setMemories((current) =>
-                              current.map((entry) =>
+                              (current ?? []).map((entry) =>
                                 entry.id === updated.id ? updated : entry,
                               ),
                             );

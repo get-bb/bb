@@ -174,10 +174,12 @@ function captureStatements(
       const originalAll = statement.all.bind(statement);
       const originalGet = statement.get.bind(statement);
       statement.all = (...params: unknown[]) => {
+        /* SAFETY: The wrapped better-sqlite methods receive only SQLite parameters from this test. */
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalAll(...params);
       };
       statement.get = (...params: unknown[]) => {
+        /* SAFETY: The wrapped better-sqlite methods receive only SQLite parameters from this test. */
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalGet(...params);
       };

@@ -15,7 +15,12 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
-import type { Thread, ThreadEventScope, ThreadEventType } from "@bb/domain";
+import type {
+  JsonObject,
+  Thread,
+  ThreadEventScope,
+  ThreadEventType,
+} from "@bb/domain";
 
 type InsertEventInput = Parameters<typeof insertEvents>[2][number];
 
@@ -36,7 +41,7 @@ interface SyntheticEventBuilder {
   push(args: {
     type: ThreadEventType;
     scope: ThreadEventScope;
-    data: Record<string, unknown>;
+    data: JsonObject;
     providerThreadId?: string | null;
   }): void;
 }
@@ -82,8 +87,8 @@ function commandOutput(turn: number, item: number): string {
 function pushItemPair(
   builder: SyntheticEventBuilder,
   scope: ThreadEventScope,
-  started: Record<string, unknown>,
-  completed: Record<string, unknown>,
+  started: JsonObject,
+  completed: JsonObject,
 ): void {
   builder.push({ type: "item/started", scope, data: { item: started } });
   builder.push({ type: "item/completed", scope, data: { item: completed } });

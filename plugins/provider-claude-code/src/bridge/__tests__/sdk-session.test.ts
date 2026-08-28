@@ -1,9 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
   Options,
+  Query,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
 const mockQueryInstance = {
   applyFlagSettings: vi.fn(),
@@ -13,47 +24,39 @@ const mockQueryInstance = {
   setPermissionMode: vi.fn(),
   [Symbol.asyncIterator]: vi.fn(),
 };
-const { queryMock } = vi.hoisted(() => ({
-  queryMock: vi.fn(),
-}));
-
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
-}));
-
 import { SdkSession, type SdkSessionOptions } from "../sdk-session.js";
+
+const queryMock = vi.fn();
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    const query = queryMock(params);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+});
+
+afterAll(restoreClaudeSdkDependencies);
 
 const defaultOptions: SdkSessionOptions = {
   cwd: "/tmp/test",
   systemPrompt: "You are a test assistant.",
 };
 
-interface ClaudeQueryPromptCall {
-  options: Options;
-  prompt: AsyncIterable<SDKUserMessage>;
-}
+const claudeQueryPromptCallSchema = z.object({
+  options: z.custom<Options>(),
+  prompt: z.custom<AsyncIterable<SDKUserMessage>>(),
+});
 
 interface RejectSdkStreamArgs {
   error: Error;
 }
 
-function isClaudeQueryPromptCall(
-  value: unknown,
-): value is ClaudeQueryPromptCall {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "options" in value &&
-    "prompt" in value
-  );
-}
-
-function getLatestQueryCall(): ClaudeQueryPromptCall {
+function getLatestQueryCall(): {
+  options: Options;
+  prompt: AsyncIterable<SDKUserMessage>;
+} {
   const latestCall = queryMock.mock.calls.at(-1)?.[0];
-  if (!isClaudeQueryPromptCall(latestCall)) {
-    throw new Error("Expected Claude SDK query call");
-  }
-  return latestCall;
+  return claudeQueryPromptCallSchema.parse(latestCall);
 }
 
 function getLatestPrompt(): AsyncIterable<SDKUserMessage> {

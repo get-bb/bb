@@ -1,4 +1,7 @@
-import type { PendingInteraction } from "@bb/domain";
+import type {
+  PendingInteraction,
+  ThreadEventItemPresentation,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   describePendingInteractionToolUse,
@@ -12,6 +15,14 @@ function toolUseInteraction(args: {
   detail?: string;
   tint?: { light: string; dark: string };
 }): PendingInteraction {
+  const presentation: ThreadEventItemPresentation = {
+    label: { pending: "Creating issue", completed: "Created issue" },
+    icon: { glyph: "Globe" },
+  };
+  if (args.title !== undefined) presentation.title = args.title;
+  if (args.detail !== undefined) presentation.detail = args.detail;
+  if (args.tint !== undefined) presentation.tint = args.tint;
+
   return {
     id: "pint_tool",
     threadId: "thr_1",
@@ -32,13 +43,7 @@ function toolUseInteraction(args: {
         kind: "tool_use",
         itemId: "call_1",
         tool: "mcp__github__create_issue",
-        presentation: {
-          label: { pending: "Creating issue", completed: "Created issue" },
-          icon: { glyph: "Globe" },
-          ...(args.title === undefined ? {} : { title: args.title }),
-          ...(args.detail === undefined ? {} : { detail: args.detail }),
-          ...(args.tint === undefined ? {} : { tint: args.tint }),
-        },
+        presentation,
       },
     },
   };

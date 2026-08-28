@@ -49,7 +49,7 @@ const codexThreadGoalSchema = z
   })
   .passthrough();
 
-type ZodObjectSchema = z.ZodObject<z.ZodRawShape>;
+type CodexEventParamsSchema = z.ZodObject;
 
 const codexStringArraySchema = z.array(z.string());
 
@@ -734,7 +734,7 @@ export const codexBridgeEnvelopeSchema = z.union([
 
 function createCodexEventSchema<
   TMethod extends string,
-  TParams extends ZodObjectSchema,
+  TParams extends CodexEventParamsSchema,
 >(method: TMethod, params: TParams) {
   return z.object({
     method: z.literal(method),
@@ -997,12 +997,39 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
 export type CodexHandledEvent = z.infer<typeof codexHandledEventSchema>;
 type HandledCodexMethod = CodexHandledEvent["method"];
 
-const handledCodexMethodSet = new Set<string>(
-  codexHandledEventSchema.options.map((option) => option.shape.method.value),
-);
+const handledCodexMethodSet = new Set<HandledCodexMethod>([
+  "account/rateLimits/updated",
+  "thread/archived",
+  "thread/unarchived",
+  "thread/name/updated",
+  "thread/compacted",
+  "thread/goal/updated",
+  "thread/goal/cleared",
+  "turn/started",
+  "turn/completed",
+  "thread/started",
+  "item/started",
+  "item/completed",
+  "item/agentMessage/delta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+  "item/plan/delta",
+  "item/mcpToolCall/progress",
+  "thread/tokenUsage/updated",
+  "turn/plan/updated",
+  "turn/diff/updated",
+  "error",
+  "deprecationNotice",
+  "configWarning",
+]);
 
 export function isHandledCodexMethod(
   method: string,
 ): method is HandledCodexMethod {
-  return handledCodexMethodSet.has(method);
+  for (const handledMethod of handledCodexMethodSet) {
+    if (handledMethod === method) return true;
+  }
+  return false;
 }

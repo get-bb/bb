@@ -2,7 +2,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { threadEventSchema, type ThreadEvent } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  threadEventSchema,
+  type ThreadEvent,
+} from "@bb/domain";
 import { replayRecording } from "./parity.js";
 
 function writeLane(
@@ -139,15 +143,11 @@ it("waits for the exact planned tail and a quiet period before closing", async (
       },
       createAssembler: () => ({
         assembleMessage: (message) => {
-          const params = message.params;
-          if (
-            typeof params !== "object" ||
-            params === null ||
-            !("events" in params)
-          ) {
+          const parsedParams = jsonObjectSchema.safeParse(message.params);
+          if (!parsedParams.success) {
             return [];
           }
-          return threadEventSchema.array().parse(params.events);
+          return threadEventSchema.array().parse(parsedParams.data.events);
         },
       }),
       planFromCurrentLane: true,

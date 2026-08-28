@@ -1,32 +1,45 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
+import {
+  createElement,
+  forwardRef,
+  useImperativeHandle,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
+import { createPortal } from "react-dom";
+import { Panel, type ImperativePanelHandle } from "react-resizable-panels";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   PaneContext,
   type PaneContextValue,
 } from "./thread-detail/PaneContext";
 import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
-  RootComposeSecondaryContent,
+  RootComposeSecondaryContent as RootComposeSecondaryContentSurface,
 } from "./RootComposeSecondaryContent";
+import type { SecondaryPanelLayoutDependencies } from "@/components/secondary-panel/SecondaryPanelLayout";
+import {
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 
 type RootComposeSecondaryContentProps = ComponentProps<
-  typeof RootComposeSecondaryContent
+  typeof RootComposeSecondaryContentSurface
 >;
 
 interface PanelGroupHandle {
+  getId: () => string;
   getLayout: () => number[];
   setLayout: (layout: number[]) => void;
 }
 
 interface PanelGroupProps {
-  children?: ReactNode;
-}
-
-interface PanelProps {
   children?: ReactNode;
 }
 
@@ -48,109 +61,108 @@ const panelGroupState = vi.hoisted(() => ({
 const noop = () => {};
 
 function setMacosDesktopChrome(): void {
-  (window as unknown as TestDesktopWindow).bbDesktop = { platform: "macos" };
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+    window as TestDesktopWindow
+  ).bbDesktop = { platform: "macos" };
 }
 
 function clearDesktopChrome(): void {
-  delete (window as unknown as TestDesktopWindow).bbDesktop;
+  delete (
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+      window as TestDesktopWindow
+    ).bbDesktop
+  );
 }
 
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 40,
-}));
-
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<PanelGroupHandle, PanelGroupProps>(
-    ({ children }, ref) => {
-      React.useImperativeHandle(
-        ref,
-        () => ({
-          getLayout: panelGroupState.getLayout,
-          setLayout: panelGroupState.setLayout,
-        }),
-        [],
-      );
-      return React.createElement(
-        "div",
-        { "data-testid": "panel-group" },
-        children,
-      );
-    },
-  );
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: PanelProps) =>
-    React.createElement("div", { "data-testid": "panel" }, children);
-
-  return { Panel, PanelGroup };
-});
-
-vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
-  const React = await import("react");
-  const actual =
-    await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
-
-  const PersistentResponsiveDrawerShell = ({
-    children,
-    open,
-  }: {
-    children?: ReactNode;
-    open: boolean;
-  }) =>
-    React.createElement(
+const TestPanelGroup = forwardRef<PanelGroupHandle, PanelGroupProps>(
+  ({ children }, ref) => {
+    useImperativeHandle(
+      ref,
+      () => ({
+        getId: () => "test-panel-group",
+        getLayout: panelGroupState.getLayout,
+        setLayout: panelGroupState.setLayout,
+      }),
+      [],
+    );
+    return createElement("div", { "data-testid": "panel-group" }, children);
+  },
+);
+const TestPanel = forwardRef<
+  ImperativePanelHandle,
+  ComponentProps<typeof Panel>
+>(({ children }, _ref) =>
+  createElement("div", { "data-testid": "panel" }, children),
+);
+const TestDrawer = ({
+  children,
+  open,
+}: Parameters<SecondaryPanelLayoutDependencies["ResponsiveDrawerShell"]>[0]) =>
+  createPortal(
+    createElement(
       "div",
       {
         "data-open": String(open),
         "data-testid": "responsive-drawer-shell",
       },
       children,
-    );
-
-  return { ...actual, PersistentResponsiveDrawerShell };
-});
-
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
-  const React = await import("react");
-
-  const ThreadSecondaryPanel = ({
+    ),
+    document.body,
+  );
+const TestSecondaryPanel = ({
+  browserDeck,
+  inlinePanelToggle,
+  isOpen,
+  renderAsDrawer,
+  showNewTabButton,
+}: {
+  browserDeck?: ReactNode;
+  inlinePanelToggle?: "button" | "reserved" | "hidden";
+  isOpen: boolean;
+  renderAsDrawer: boolean;
+  showNewTabButton?: boolean;
+}) =>
+  createElement(
+    "section",
+    {
+      "data-open": String(isOpen),
+      "data-inline-panel-toggle": inlinePanelToggle,
+      "data-show-new-tab-button": String(showNewTabButton),
+      "data-testid": renderAsDrawer
+        ? "drawer-secondary-panel"
+        : "inline-secondary-panel",
+    },
     browserDeck,
-    inlinePanelToggle,
-    isOpen,
-    renderAsDrawer,
-    showNewTabButton,
-  }: {
-    browserDeck?: ReactNode;
-    inlinePanelToggle?: "button" | "reserved" | "hidden";
-    isOpen: boolean;
-    renderAsDrawer: boolean;
-    showNewTabButton?: boolean;
-  }) =>
-    React.createElement(
-      "section",
-      {
-        "data-open": String(isOpen),
-        "data-inline-panel-toggle": inlinePanelToggle,
-        "data-show-new-tab-button": String(showNewTabButton),
-        "data-testid": renderAsDrawer
-          ? "drawer-secondary-panel"
-          : "inline-secondary-panel",
-      },
-      browserDeck,
-    );
+  );
+const TestHomepageSections = () =>
+  createElement("div", { "data-testid": "plugin-homepage-sections" });
 
-  return { ThreadSecondaryPanel };
-});
+const testLayoutDependencies: SecondaryPanelLayoutDependencies = {
+  Panel: TestPanel,
+  PanelGroup: TestPanelGroup,
+  ResponsiveDrawerShell: TestDrawer,
+  dispatchBrowserViewBoundsSync: vi.fn(),
+};
 
-vi.mock("@/components/plugin/PluginHomepageSections", async () => {
-  const React = await import("react");
-  return {
-    PluginHomepageSections: () =>
-      React.createElement("div", { "data-testid": "plugin-homepage-sections" }),
-  };
-});
+function TestRootComposeSecondaryContent(
+  props: RootComposeSecondaryContentProps,
+) {
+  return (
+    <RootComposeSecondaryContentSurface
+      {...props}
+      dependencies={{
+        LazyThreadSecondaryPanel: TestSecondaryPanel,
+        PluginHomepageSections: TestHomepageSections,
+        secondaryPanelLayout: SecondaryPanelLayout,
+        secondaryPanelLayoutDependencies: testLayoutDependencies,
+        getBbDesktopInfo,
+        shouldUseMacosDesktopChrome,
+      }}
+    />
+  );
+}
+
+const RootComposeSecondaryContent = TestRootComposeSecondaryContent;
 
 function createSecondaryPanel(
   isOpen: boolean,
@@ -194,18 +206,22 @@ function withPaneContext(
 
 function renderRootCompose(args: RenderRootComposeArgs) {
   let renderArgs = args;
+  const store = createStore();
+  store.set(secondaryPanelWidthPercentAtom, 40);
   const content = (
-    <CompactViewportOverrideProvider
-      isCompactViewport={renderArgs.isCompactViewport}
-    >
-      <RootComposeSecondaryContent
-        isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
-        onToggleSecondaryPanel={() => undefined}
-        secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
+    <Provider store={store}>
+      <CompactViewportOverrideProvider
+        isCompactViewport={renderArgs.isCompactViewport}
       >
-        <div data-testid="root-compose-content" />
-      </RootComposeSecondaryContent>
-    </CompactViewportOverrideProvider>
+        <RootComposeSecondaryContent
+          isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+          onToggleSecondaryPanel={() => undefined}
+          secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
+        >
+          <div data-testid="root-compose-content" />
+        </RootComposeSecondaryContent>
+      </CompactViewportOverrideProvider>
+    </Provider>
   );
   const view = render(withPaneContext(content, renderArgs.isTopRow));
 
@@ -214,19 +230,21 @@ function renderRootCompose(args: RenderRootComposeArgs) {
     rerenderWith(nextArgs: Partial<RenderRootComposeArgs>) {
       renderArgs = { ...renderArgs, ...nextArgs };
       const nextContent = (
-        <CompactViewportOverrideProvider
-          isCompactViewport={renderArgs.isCompactViewport}
-        >
-          <RootComposeSecondaryContent
-            isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
-            onToggleSecondaryPanel={() => undefined}
-            secondaryPanel={createSecondaryPanel(
-              renderArgs.isSecondaryPanelOpen,
-            )}
+        <Provider store={store}>
+          <CompactViewportOverrideProvider
+            isCompactViewport={renderArgs.isCompactViewport}
           >
-            <div data-testid="root-compose-content" />
-          </RootComposeSecondaryContent>
-        </CompactViewportOverrideProvider>
+            <RootComposeSecondaryContent
+              isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
+              onToggleSecondaryPanel={() => undefined}
+              secondaryPanel={createSecondaryPanel(
+                renderArgs.isSecondaryPanelOpen,
+              )}
+            >
+              <div data-testid="root-compose-content" />
+            </RootComposeSecondaryContent>
+          </CompactViewportOverrideProvider>
+        </Provider>
       );
       view.rerender(withPaneContext(nextContent, renderArgs.isTopRow));
     },

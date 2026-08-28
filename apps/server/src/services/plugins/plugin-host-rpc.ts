@@ -1,24 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { listPublicHosts } from "@bb/db";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type {
   PluginRpcContract,
   StandardSchemaV1,
   StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
-import type { JsonValue } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
-import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
+import type {
+  PluginHostArtifactSnapshot,
+  PluginHostCallResult,
+} from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
 const HOST_RPC_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 async function validateValue(
   schema: StandardSchemaV1,
-  value: unknown,
+  value: JsonValue,
   phase: "input" | "output",
-): Promise<unknown> {
+): Promise<PluginHostCallResult> {
   let result: StandardSchemaV1Result<unknown>;
   try {
     result = await schema["~standard"].validate(value);
@@ -35,7 +38,7 @@ async function validateValue(
   return result.value;
 }
 
-function normalizeJson(value: unknown, label: string): JsonValue {
+function normalizeJson<T>(value: T, label: string): JsonValue {
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(value);
@@ -48,7 +51,7 @@ function normalizeJson(value: unknown, label: string): JsonValue {
   if (Buffer.byteLength(serialized) > HOST_RPC_PAYLOAD_MAX_BYTES) {
     throw new Error(`${label} exceeds ${HOST_RPC_PAYLOAD_MAX_BYTES} bytes`);
   }
-  return JSON.parse(serialized) as JsonValue;
+  return jsonValueSchema.parse(JSON.parse(serialized));
 }
 
 function abortError(): Error {
@@ -69,14 +72,18 @@ export async function callPluginHostRpc(
     timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   },
-): Promise<unknown> {
+): Promise<PluginHostCallResult> {
   const method = args.contract[args.method];
   if (method === undefined) {
     throw new Error(`unknown host rpc method "${args.method}"`);
   }
   if (args.signal?.aborted) throw abortError();
   const input = normalizeJson(
-    await validateValue(method.input, args.input, "input"),
+    await validateValue(
+      method.input,
+      jsonValueSchema.parse(args.input),
+      "input",
+    ),
     `host rpc input for ${args.method}`,
   );
   const callId = randomUUID();

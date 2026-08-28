@@ -7,50 +7,30 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ReactNode, Ref } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { motionValue } from "motion";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
+import * as Sidebar from "@/components/ui/sidebar.js";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { sdk } from "@/lib/sdk";
+import * as ThreadActionsProvider from "@/components/thread/ThreadActionsProvider";
+import * as CompactViewport from "@bb/shared-ui/hooks/use-compact-viewport";
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   renameThread: vi.fn(),
-}));
-
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    renameThread: mocks.renameThread,
-  }),
-}));
-
-vi.mock("@/components/layout/AppPageHeader", () => ({
-  HEADER_ICON_BUTTON_CLASS: "header-icon-button",
-  HEADER_PANE_ACTION_ICON_BUTTON_CLASS: "header-pane-action-button",
-  AppPageHeader: ({
-    actions,
-    center,
-    className,
-    headerRef,
-  }: {
-    actions?: ReactNode;
-    center?: ReactNode;
-    className?: string;
-    headerRef?: Ref<HTMLElement>;
-  }) => (
-    <header ref={headerRef} className={className}>
-      {center}
-      {actions}
-    </header>
-  ),
-}));
-
-const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
-
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => viewportState.isCompactViewport,
-}));
+};
+const viewportState = { isCompactViewport: false };
+const threadActions = {
+  archiveThreadAndChildren: vi.fn(),
+  renameThread: mocks.renameThread,
+  requestDelete: vi.fn(),
+  requestRename: vi.fn(),
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+  unarchiveThread: vi.fn(),
+};
 
 const THREAD_ID = "thr_header";
 
@@ -75,6 +55,19 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
+});
+
+beforeEach(() => {
+  vi.spyOn(Sidebar, "useIsSidebarShowing").mockImplementation(() => true);
+  vi.spyOn(Sidebar, "useSidebarDesktopMotionProgress").mockReturnValue(
+    motionValue(1),
+  );
+  vi.spyOn(ThreadActionsProvider, "useThreadActions").mockReturnValue(
+    threadActions,
+  );
+  vi.spyOn(CompactViewport, "useIsCompactViewport").mockImplementation(
+    () => viewportState.isCompactViewport,
+  );
 });
 
 describe("ThreadDetailHeader", () => {
@@ -123,7 +116,7 @@ describe("ThreadDetailHeader", () => {
     const reserve = document.querySelector(
       "[data-thread-header-panel-toggle-reserve]",
     );
-    expect(reserve?.classList).toContain("header-icon-button");
+    expect(reserve?.classList).toContain("h-[28px]");
   });
 
   it("does not reserve toggle space for the compact drawer trigger", () => {
@@ -287,7 +280,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
-    expect(closePane.classList).toContain("header-pane-action-button");
+    expect(closePane.classList).toContain("h-[28px]");
     const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');
     expect(closeIcon).not.toBeNull();
     expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);

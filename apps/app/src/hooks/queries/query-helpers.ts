@@ -1,6 +1,6 @@
-import { toRecord } from "@bb/core-ui";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@/lib/sdk";
+import { z } from "zod";
 
 export const PROMPT_HISTORY_STALE_TIME_MS = 10_000;
 const TRANSIENT_READ_RETRY_COUNT = 2;
@@ -48,20 +48,36 @@ function normalizeErrorMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-export function isTransientReadError(error: unknown): boolean {
-  if (toRecord(error)?.name === "AbortError") {
+const transientErrorSchema = z.object({
+  message: z.string().optional(),
+  name: z.string().optional(),
+});
+
+function parseTransientError(cause: unknown) {
+  const parsed = transientErrorSchema.safeParse(cause);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  if (cause instanceof Error) {
+    return { message: cause.message, name: cause.name };
+  }
+  return null;
+}
+
+export function isTransientReadError(cause: unknown): boolean {
+  const parsed = parseTransientError(cause);
+  if (parsed?.name === "AbortError") {
     return true;
   }
-  if (error instanceof HttpError || error instanceof BbHttpError) {
+  if (cause instanceof HttpError || cause instanceof BbHttpError) {
     return false;
   }
 
-  const record = toRecord(error);
-  if (!record || typeof record.message !== "string") {
+  if (parsed?.message === undefined) {
     return false;
   }
 
-  const message = normalizeErrorMessage(record.message);
+  const message = normalizeErrorMessage(parsed.message);
   return (
     message.includes("failed to fetch") ||
     message.includes("load failed") ||
@@ -71,11 +87,11 @@ export function isTransientReadError(error: unknown): boolean {
 
 export function shouldRetryTransientReadQuery(
   failureCount: number,
-  error: unknown,
+  cause: unknown,
 ): boolean {
   if (failureCount >= TRANSIENT_READ_RETRY_COUNT) {
     return false;
   }
 
-  return isTransientReadError(error);
+  return isTransientReadError(cause);
 }

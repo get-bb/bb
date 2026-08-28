@@ -17,20 +17,17 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
+const STATUS_SORT_RANK = {
   in_progress: 0,
   pending: 1,
   completed: 2,
-};
+} satisfies Record<ThreadTimelinePendingTodoItemStatus, number>;
 
-const STATUS_ACTIVITY_STATE: Record<
-  ThreadTimelinePendingTodoItemStatus,
-  ActivityRowState
-> = {
+const STATUS_ACTIVITY_STATE = {
   in_progress: "active",
   pending: "pending",
   completed: "completed",
-};
+} satisfies Record<ThreadTimelinePendingTodoItemStatus, ActivityRowState>;
 
 interface ThreadTodoCardProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -47,10 +44,7 @@ const TODO_HEADER_BUTTON_CLASS = activityRowClass(
 const TODO_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const TODO_ACTIVE_ICON_CLASS = "text-foreground";
 
-function getTodoSummary(items: readonly ThreadTimelinePendingTodoItem[]): {
-  visible: string;
-  aria: string;
-} {
+function getTodoSummary(items: readonly ThreadTimelinePendingTodoItem[]) {
   let completedCount = 0;
   for (const item of items) {
     if (item.status === "completed") completedCount += 1;

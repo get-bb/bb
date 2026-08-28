@@ -13,12 +13,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { promisify } from "node:util";
+import type { JsonObject, JsonValue } from "@bb/domain";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(__filename);
-const electronBinary = require("electron") as string;
+const electronBinary = z.string().parse(require("electron"));
 const desktopPackageRoot = process.cwd();
 const ELECTRON_STARTUP_TIMEOUT_MS = 15_000;
 const ELECTRON_EXIT_TIMEOUT_MS = 5_000;
@@ -44,7 +45,14 @@ interface StartDesktopSmokeServerArgs {
   expectedDesktopVersion: string;
 }
 
-function writeJson(response: ServerResponse, body: unknown): void {
+function tcpPortOf(address: string | { port: number } | null): number | null {
+  const parsed = z.object({ port: z.number() }).safeParse(address);
+  return parsed.success ? parsed.data.port : null;
+}
+
+type PreloadReadyRejection = Error | JsonValue;
+
+function writeJson(response: ServerResponse, body: JsonObject): void {
   response.writeHead(200, {
     "content-type": "application/json",
   });
@@ -168,7 +176,8 @@ async function startDesktopSmokeServer(
     server.listen(0, "127.0.0.1", resolvePromise);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  const port = tcpPortOf(address);
+  if (port === null) {
     throw new Error("Expected desktop smoke server to listen on a TCP port");
   }
 
@@ -184,7 +193,7 @@ async function startDesktopSmokeServer(
         });
       });
     },
-    port: address.port,
+    port,
     preloadReady,
   };
 }
@@ -248,7 +257,7 @@ async function waitForPreloadReady(args: {
           cleanup();
           resolvePromise(result);
         },
-        (error: unknown) => {
+        (error: PreloadReadyRejection) => {
           cleanup();
           rejectPromise(error);
         },

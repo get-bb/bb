@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { JsonValue } from "../src/json-value.js";
 import {
   isNamespacedGlyph,
   parseNamespacedGlyph,
@@ -69,7 +70,7 @@ describe("bb.branding.icon grammar", () => {
 });
 
 describe("bb.branding.experimental_icons grammar", () => {
-  function manifest(icons: unknown) {
+  function manifest(icons: JsonValue) {
     return pluginPackageJsonSchema.safeParse({
       name: "bb-plugin-icons",
       version: "0.1.0",

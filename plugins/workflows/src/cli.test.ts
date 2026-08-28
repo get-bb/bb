@@ -2,6 +2,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import plugin from "./server.js";
 
 const DOCUMENTATION_EXTENSIONS = new Set([
@@ -20,6 +21,9 @@ const IGNORED_DOCUMENTATION_DIRECTORIES = new Set([
   "dist",
   "node_modules",
 ]);
+const fileNotFoundErrorSchema = z
+  .object({ code: z.literal("ENOENT") })
+  .passthrough();
 
 function isScannableDirectory(name: string): boolean {
   return !name.startsWith(".") && !IGNORED_DOCUMENTATION_DIRECTORIES.has(name);
@@ -29,7 +33,7 @@ function readIfPresent(path: string): string {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    if (fileNotFoundErrorSchema.safeParse(error).success) return "";
     throw error;
   }
 }

@@ -114,10 +114,14 @@ function normalizeGeneratedThreadMetadata(
     return null;
   }
 
-  return {
-    ...(branchSlug ? { branchSlug } : {}),
-    ...(title ? { title } : {}),
-  };
+  const metadata: GeneratedThreadMetadata = {};
+  if (branchSlug) {
+    metadata.branchSlug = branchSlug;
+  }
+  if (title) {
+    metadata.title = title;
+  }
+  return metadata;
 }
 
 export async function generateThreadMetadataWithOutcome(
@@ -129,11 +133,16 @@ export async function generateThreadMetadataWithOutcome(
   const complete = (
     metadata: GeneratedThreadMetadata | null,
     reason?: ThreadMetadataGenerationOutcomeReason,
-  ): ThreadMetadataGenerationOutcome => ({
-    durationMs: Date.now() - startedAt,
-    metadata,
-    ...(reason ? { reason } : {}),
-  });
+  ): ThreadMetadataGenerationOutcome => {
+    const outcome: ThreadMetadataGenerationOutcome = {
+      durationMs: Date.now() - startedAt,
+      metadata,
+    };
+    if (reason !== undefined) {
+      outcome.reason = reason;
+    }
+    return outcome;
+  };
 
   if (!fallback) {
     return complete(null, "empty-input");

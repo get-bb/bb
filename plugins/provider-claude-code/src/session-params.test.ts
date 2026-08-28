@@ -294,10 +294,8 @@ describe("claude session option passthrough", () => {
         envVars: { TEST_VAR: "123" },
       },
     });
-    expect(
-      (params as { config: { envVars: Record<string, string> } }).config
-        .envVars,
-    ).not.toHaveProperty("BAD.KEY");
+    expect(params.config).toBeDefined();
+    expect(params.config?.envVars).not.toHaveProperty("BAD.KEY");
   });
 
   it("maps automatic review to Claude auto", () => {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createConnection, migrate } from "@bb/db";
-import { parseStoredThreadEvent } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  parseStoredThreadEvent,
+  threadEventTypeSchema,
+} from "@bb/domain";
 import { seedPerfFixture } from "../src/lib/seed-perf-fixture.js";
 
 interface SeededEventRow {
@@ -33,7 +37,7 @@ describe("seedPerfFixture", () => {
     expect(foreignKeyViolations).toEqual([]);
 
     const scopeViolations = db.$client
-      .prepare(
+      .prepare<[], SeededEventRow>(
         `SELECT COUNT(*) AS violations FROM events
          WHERE (scope_kind = 'turn') != (turn_id IS NOT NULL)`,
       )
@@ -51,26 +55,27 @@ describe("seedPerfFixture", () => {
     expect(duplicateSequences).toEqual({ duplicates: 0 });
 
     const eventRows = db.$client
-      .prepare(
+      .prepare<[], SeededEventRow>(
         `SELECT thread_id AS threadId, turn_id AS turnId, type,
                 provider_thread_id AS providerThreadId, data
          FROM events`,
       )
-      .all() as SeededEventRow[];
+      .all();
     expect(eventRows.length).toBeGreaterThan(0);
     const parseFailuresByType = new Map<string, string>();
     for (const row of eventRows) {
-      const parsedData: unknown = JSON.parse(row.data);
       try {
+        const parsedData = jsonObjectSchema.parse(JSON.parse(row.data));
+        const parsedType = threadEventTypeSchema.parse(row.type);
         parseStoredThreadEvent({
-          data: parsedData as Record<string, unknown>,
+          data: parsedData,
           providerThreadId: row.providerThreadId,
           scope:
             row.turnId === null
               ? { kind: "thread" }
               : { kind: "turn", turnId: row.turnId },
           threadId: row.threadId,
-          type: row.type as never,
+          type: parsedType,
         });
       } catch (error) {
         if (!parseFailuresByType.has(row.type)) {

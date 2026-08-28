@@ -67,7 +67,9 @@ describe("buildAppCommandActions", () => {
   it("carries the group label and the command's current shortcut", () => {
     const { actions } = build(
       ["thread.new"],
-      new Map([["thread.new" as AppCommandId, SHORTCUT]]),
+      new Map<AppCommandId, AppShortcutPresentation>([
+        ["thread.new", SHORTCUT],
+      ]),
     );
     expect(actions[0]).toMatchObject({
       id: "app:thread.new",
@@ -82,7 +84,7 @@ describe("buildAppCommandActions", () => {
   });
 
   it("dispatches with the element that was focused before the palette opened", () => {
-    const target = { id: "composer" } as unknown as EventTarget;
+    const target = new EventTarget();
     const dispatch = vi.fn();
     const actions = buildAppCommandActions({
       target,

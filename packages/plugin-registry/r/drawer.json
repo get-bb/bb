@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "drawer",
   "description": "BB ui \"drawer\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "vaul"
-  ],
-  "registryDependencies": [
-    "@bb/overlay-trigger",
-    "@bb/portal-scope",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/drawer.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/drawer.tsx"
     }
+  ],
+  "dependencies": [
+    "vaul"
+  ],
+  "registryDependencies": [
+    "@bb/overlay-trigger",
+    "@bb/portal-scope",
+    "@bb/utils"
   ]
 }

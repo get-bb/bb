@@ -20,62 +20,47 @@ import {
   type ProjectThreadListState,
 } from "./ProjectRow";
 import { buildSidebarEntitySectionId } from "@bb/client-core";
+import * as localPathPicker from "@/hooks/useLocalPathPicker";
+import * as createThreadInWorktree from "@/hooks/useCreateThreadInWorktree";
+import * as promptDraftStorage from "@/hooks/usePromptDraftStorage";
+import * as projectActions from "@/components/project/ProjectActionsProvider";
+import * as threadActions from "@/components/thread/ThreadActionsProvider";
 
-const mockUpdateEnvironment = vi.hoisted(() => ({
-  mutate: vi.fn(),
-  reset: vi.fn(),
-}));
-const mockDraftThreadIds = vi.hoisted(() => ({
+interface DraftThreadIdsTestState {
+  current: ReadonlySet<string>;
+}
+
+const mockDraftThreadIds: DraftThreadIdsTestState = {
   current: new Set<string>(),
-}));
+};
 
-vi.mock("@/hooks/useLocalPathPicker", () => ({
-  usePathPickerHost: () => ({ hostId: null, hostName: null }),
-}));
-
-vi.mock("@/hooks/mutations/environment-mutations", () => ({
-  useArchiveEnvironmentThreads: () => ({
-    isPending: false,
-    mutate: vi.fn(),
-    variables: undefined,
-  }),
-  useUpdateEnvironment: () => ({
-    error: null,
-    isPending: false,
-    mutate: mockUpdateEnvironment.mutate,
-    reset: mockUpdateEnvironment.reset,
-    variables: undefined,
-  }),
-}));
-
-vi.mock("@/hooks/useCreateThreadInWorktree", () => ({
-  useCreateThreadInWorktree: () => vi.fn(),
-}));
-
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftHasInput: () => false,
-  usePromptDraftInputThreadIds: () => mockDraftThreadIds.current,
-}));
-
-vi.mock("@/components/project/ProjectActionsProvider", () => ({
-  useProjectActions: () => ({
-    requestRename: vi.fn(),
-    requestDelete: vi.fn(),
-    requestAddLocalPath: vi.fn(),
-  }),
-}));
-
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  useThreadActions: () => ({
-    renameThread: vi.fn(),
-    requestRename: vi.fn(),
-    requestDelete: vi.fn(),
-    archiveThreadAndChildren: vi.fn(),
-    unarchiveThread: vi.fn(),
-    togglePin: vi.fn(),
-    toggleRead: vi.fn(),
-  }),
-}));
+vi.spyOn(localPathPicker, "usePathPickerHost").mockReturnValue({
+  canUseNativeFolderPicker: false,
+  clientHostId: null,
+  hostId: null,
+  hostName: null,
+});
+vi.spyOn(createThreadInWorktree, "useCreateThreadInWorktree").mockReturnValue(
+  vi.fn(),
+);
+vi.spyOn(promptDraftStorage, "usePromptDraftHasInput").mockReturnValue(false);
+vi.spyOn(promptDraftStorage, "usePromptDraftInputThreadIds").mockImplementation(
+  () => mockDraftThreadIds.current,
+);
+vi.spyOn(projectActions, "useProjectActions").mockReturnValue({
+  requestRename: vi.fn(),
+  requestDelete: vi.fn(),
+  requestAddLocalPath: vi.fn(),
+});
+vi.spyOn(threadActions, "useThreadActions").mockReturnValue({
+  renameThread: vi.fn(),
+  requestRename: vi.fn(),
+  requestDelete: vi.fn(),
+  archiveThreadAndChildren: vi.fn(),
+  unarchiveThread: vi.fn(),
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+});
 
 function makeProject(): ProjectResponse {
   return {
@@ -137,23 +122,26 @@ function renderProjectRow(
   isCollapsed = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
+  const queryClient = new QueryClient();
   const result = render(
     <TooltipProvider>
-      <MemoryRouter>
-        <ProjectRow
-          project={makeProject()}
-          threadListState={threadListState}
-          isActive={isActive}
-          isCollapsed={isCollapsed}
-          compareThreads={() => 0}
-          collapsedThreadIds={new Set()}
-          collapsedEnvironmentIds={collapsedEnvironmentIds}
-          isLocalPathInvalid={false}
-          onToggleProjectCollapsed={onToggleProjectCollapsed}
-          onToggleThreadCollapsed={vi.fn()}
-          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        />
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ProjectRow
+            project={makeProject()}
+            threadListState={threadListState}
+            isActive={isActive}
+            isCollapsed={isCollapsed}
+            compareThreads={() => 0}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            isLocalPathInvalid={false}
+            onToggleProjectCollapsed={onToggleProjectCollapsed}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
     </TooltipProvider>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
@@ -199,7 +187,9 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        threadLink?.parentElement as HTMLElement | null
+      )?.style.paddingLeft,
     ).toBe("8px");
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",

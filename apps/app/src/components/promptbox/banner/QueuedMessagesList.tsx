@@ -431,7 +431,7 @@ export function snapGroupBoundaryDragTransform({
 
 function collisionDistance(collision: Collision): number {
   const value = collision.data?.value;
-  return typeof value === "number" ? value : Number.POSITIVE_INFINITY;
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
 }
 
 export const queuedMessageCollisionDetection: CollisionDetection = (args) => {
@@ -999,8 +999,8 @@ export function QueuedMessagesList({
     const followingRow = items
       .slice(editorIndex + 1)
       .find((item) => item.hasAttribute("data-queued-message-row"));
-    const firstElement = (previousRow ?? editorElement) as HTMLElement;
-    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const firstElement = previousRow ?? editorElement;
+    const lastElement = followingRow ?? editorElement;
     const viewportRect = scroll.getBoundingClientRect();
     const firstRect = firstElement.getBoundingClientRect();
     const lastRect = lastElement.getBoundingClientRect();
@@ -1070,8 +1070,8 @@ export function QueuedMessagesList({
     const followingRow = items
       .slice(editorIndex + 1)
       .find((item) => item.hasAttribute("data-queued-message-row"));
-    const firstElement = (previousRow ?? editorElement) as HTMLElement;
-    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const firstElement = previousRow ?? editorElement;
+    const lastElement = followingRow ?? editorElement;
     const surfaceRect = surface.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
     const contentHeight =
@@ -1105,9 +1105,9 @@ export function QueuedMessagesList({
       measureInlineEditorMaxHeight,
     );
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(measureInlineEditorMaxHeight);
+      "ResizeObserver" in globalThis
+        ? new ResizeObserver(measureInlineEditorMaxHeight)
+        : null;
     if (viewport) resizeObserver?.observe(viewport);
     if (surface) resizeObserver?.observe(surface);
     if (listRef.current) resizeObserver?.observe(listRef.current);

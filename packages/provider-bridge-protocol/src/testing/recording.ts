@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import {
   BRIDGE_RECORDING_DIRECTIONS,
   bridgeRecordingFileName,
@@ -35,6 +36,29 @@ export interface BridgeRecording {
   entries: BridgeRecordingEntry[];
 }
 
+const bridgeRecordingEntrySchema = z
+  .object({
+    ts: z.number(),
+    run: z.number().default(0),
+    seq: z.number(),
+    dir: z.enum(BRIDGE_RECORDING_DIRECTIONS),
+    line: z.string(),
+  })
+  .passthrough();
+
+const bridgeRecordingManifestSchema = z.object({
+  provider: z.string(),
+  cell: z.string(),
+  threadId: z.string().nullable(),
+  scope: z.enum(["thread", "process"]),
+  cliVersion: z.string(),
+  recordedAt: z.string(),
+  description: z.string(),
+  note: z.string(),
+  bridgeRuns: z.number(),
+  lines: z.record(z.string(), z.number()),
+});
+
 export function compareRecordingEntries(
   left: BridgeRecordingEntry,
   right: BridgeRecordingEntry,
@@ -55,17 +79,11 @@ function parseEntry(
       `${file}:${lineNumber}: not JSON (${error instanceof Error ? error.message : String(error)})`,
     );
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as BridgeRecordingEntry).line !== "string" ||
-    typeof (parsed as BridgeRecordingEntry).seq !== "number" ||
-    typeof (parsed as BridgeRecordingEntry).dir !== "string"
-  ) {
+  const result = bridgeRecordingEntrySchema.safeParse(parsed);
+  if (!result.success) {
     throw new Error(`${file}:${lineNumber}: not a recording entry`);
   }
-  const entry = parsed as BridgeRecordingEntry & { run?: number };
-  return { ...entry, run: typeof entry.run === "number" ? entry.run : 0 };
+  return result.data;
 }
 
 export function readBridgeRecordingLane(
@@ -133,9 +151,9 @@ export function withCurrentBridgeLane(
 export function readBridgeRecording(dir: string): BridgeRecording {
   const manifestPath = join(dir, "manifest.json");
   const manifest = existsSync(manifestPath)
-    ? (JSON.parse(
-        readFileSync(manifestPath, "utf8"),
-      ) as BridgeRecordingManifest)
+    ? bridgeRecordingManifestSchema.parse(
+        JSON.parse(readFileSync(manifestPath, "utf8")),
+      )
     : null;
   const entries: BridgeRecordingEntry[] = [];
   for (const direction of BRIDGE_RECORDING_DIRECTIONS) {

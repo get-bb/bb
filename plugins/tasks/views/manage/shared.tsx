@@ -31,7 +31,7 @@ export function derivePrefix(name: string): string {
   return raw.replace(/^[0-9]+/, "").slice(0, 10);
 }
 
-export function describeCreateProjectError(error: unknown): string {
+export function describeCreateProjectError<TError>(error: TError): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("UNIQUE") && message.includes("prefix")) {
     return "That prefix is already used by another project.";

@@ -192,17 +192,17 @@ const VOICE_ACTION_TRANSITION_MS = 180;
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
 function prefersReducedMotion(): boolean {
+  const browserWindow = globalThis.window;
   return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    browserWindow?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ??
+    false
   );
 }
 
 function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
+  const browserDocument = globalThis.document;
   return (
-    prefersReducedMotion() ||
-    (typeof document !== "undefined" && document.visibilityState === "hidden")
+    prefersReducedMotion() || browserDocument?.visibilityState === "hidden"
   );
 }
 
@@ -767,8 +767,9 @@ function promptEditorValueFromClipboardPaste(
 }
 
 function runAfterClipboardCut(callback: () => void): void {
-  if (typeof queueMicrotask === "function") {
-    queueMicrotask(callback);
+  const microtask = globalThis.queueMicrotask;
+  if (microtask) {
+    microtask(callback);
     return;
   }
 
@@ -1059,21 +1060,21 @@ function focusEditorAtEnd(editor: Editor): void {
 const SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS = 500;
 
 function isIPadOSWebKit(): boolean {
-  if (typeof navigator === "undefined") return false;
+  const browserNavigator = globalThis.navigator;
+  if (!browserNavigator) return false;
 
   const isAppleWebKit =
-    /Apple Computer/u.test(navigator.vendor) &&
-    /\bAppleWebKit\//u.test(navigator.userAgent);
+    /Apple Computer/u.test(browserNavigator.vendor) &&
+    /\bAppleWebKit\//u.test(browserNavigator.userAgent);
   const isIPad =
-    navigator.platform === "iPad" ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 2);
+    browserNavigator.platform === "iPad" ||
+    (browserNavigator.platform === "MacIntel" &&
+      browserNavigator.maxTouchPoints > 2);
   return isAppleWebKit && isIPad;
 }
 
 function usePostCompositionKeyDownEvents(): WeakSet<KeyboardEvent> {
-  const ref = useRef<WeakSet<KeyboardEvent> | null>(null);
-  ref.current ??= new WeakSet<KeyboardEvent>();
-  return ref.current;
+  return useMemo(() => new WeakSet<KeyboardEvent>(), []);
 }
 
 function isIPadHardwareEnterCandidate(event: KeyboardEvent): boolean {
@@ -1440,7 +1441,8 @@ export function PromptBoxInternal({
   }, []);
 
   const scheduleRevealEditorSelection = useCallback(() => {
-    if (typeof requestAnimationFrame !== "function") {
+    const browserWindow = globalThis.window;
+    if (!browserWindow?.requestAnimationFrame) {
       revealEditorSelection();
       return;
     }
@@ -1449,10 +1451,12 @@ export function PromptBoxInternal({
       cancelAnimationFrame(revealSelectionFrameRef.current);
     }
 
-    revealSelectionFrameRef.current = requestAnimationFrame(() => {
-      revealSelectionFrameRef.current = null;
-      revealEditorSelection();
-    });
+    revealSelectionFrameRef.current = browserWindow.requestAnimationFrame(
+      () => {
+        revealSelectionFrameRef.current = null;
+        revealEditorSelection();
+      },
+    );
   }, [revealEditorSelection]);
 
   useEffect(() => {
@@ -1583,25 +1587,31 @@ export function PromptBoxInternal({
     // oxlint-disable-next-line react/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
   }, [richTextEditing]);
 
+  const editorAttributes = {
+    "aria-label": effectivePlaceholder,
+    "data-placeholder": effectivePlaceholder,
+    autocomplete: "off",
+    class: cn(
+      "min-h-full whitespace-pre-wrap break-words outline-none",
+      "placeholder:select-none placeholder:text-subtle-foreground",
+    ),
+    enterkeyhint: editorEnterKeyHint,
+    role: "textbox",
+  };
+  if (onModifierSubmit) {
+    Object.assign(editorAttributes, { "aria-keyshortcuts": "Meta+Enter" });
+  }
+  if (id) {
+    Object.assign(editorAttributes, { id });
+  }
+
   const editor = useEditor(
     {
       extensions: editorExtensions,
       content: initialEditorContent.content,
       immediatelyRender: false,
       editorProps: {
-        attributes: {
-          "aria-label": effectivePlaceholder,
-          "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
-          autocomplete: "off",
-          class: cn(
-            "min-h-full whitespace-pre-wrap break-words outline-none",
-            "placeholder:select-none placeholder:text-subtle-foreground",
-          ),
-          enterkeyhint: editorEnterKeyHint,
-          ...(id ? { id } : {}),
-          role: "textbox",
-        },
+        attributes: editorAttributes,
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {
@@ -1839,13 +1849,14 @@ export function PromptBoxInternal({
       scheduleRevealEditorSelection();
     };
 
-    if (typeof window.requestAnimationFrame !== "function") {
+    const browserWindow = globalThis.window;
+    if (!browserWindow?.requestAnimationFrame) {
       focusEditor();
       return;
     }
 
-    const handle = window.requestAnimationFrame(focusEditor);
-    return () => window.cancelAnimationFrame(handle);
+    const handle = browserWindow.requestAnimationFrame(focusEditor);
+    return () => browserWindow.cancelAnimationFrame(handle);
   }, [
     autoFocus,
     editor,
@@ -2094,10 +2105,10 @@ export function PromptBoxInternal({
       });
     };
     reportOpenLayout();
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(reportOpenLayout);
+    const ResizeObserverConstructor = globalThis.ResizeObserver;
+    const resizeObserver = ResizeObserverConstructor
+      ? new ResizeObserverConstructor(reportOpenLayout)
+      : null;
     resizeObserver?.observe(menu);
     return () => {
       resizeObserver?.disconnect();
@@ -2355,7 +2366,8 @@ export function PromptBoxInternal({
         scheduleRevealEditorSelection();
       };
 
-      if (typeof requestAnimationFrame !== "function") {
+      const browserWindow = globalThis.window;
+      if (!browserWindow?.requestAnimationFrame) {
         focusEditor();
         return;
       }
@@ -2363,7 +2375,8 @@ export function PromptBoxInternal({
       if (promptActionFocusFrameRef.current !== null) {
         cancelAnimationFrame(promptActionFocusFrameRef.current);
       }
-      promptActionFocusFrameRef.current = requestAnimationFrame(focusEditor);
+      promptActionFocusFrameRef.current =
+        browserWindow.requestAnimationFrame(focusEditor);
     },
     [scheduleRevealEditorSelection, syncTriggerState],
   );

@@ -1,5 +1,5 @@
 import type { SFSymbol } from "sf-symbols-typescript";
-import type { IconName } from "./icon-map";
+import { isIconName, type IconName } from "./icon-map";
 
 export type { SFSymbol };
 
@@ -163,8 +163,11 @@ export const SF_SYMBOL_MAP = {
   ZoomOut: "minus.magnifyingglass",
 } as const satisfies Partial<Record<IconName, SFSymbol>>;
 
-const SYMBOL_BY_NAME: Partial<Record<IconName, SFSymbol>> = SF_SYMBOL_MAP;
+const SYMBOL_BY_NAME = new Map<IconName, SFSymbol>();
+for (const [name, symbol] of Object.entries(SF_SYMBOL_MAP)) {
+  if (isIconName(name)) SYMBOL_BY_NAME.set(name, symbol);
+}
 
 export function sfSymbolFor(name: IconName): SFSymbol | undefined {
-  return SYMBOL_BY_NAME[name];
+  return SYMBOL_BY_NAME.get(name);
 }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import type { WorkflowReference } from "./types.js";
 import { MAX_WORKFLOW_SOURCE_BYTES } from "./validation.js";
 
@@ -33,6 +34,12 @@ export type WorkflowSourceContext =
   | { projectId: string; threadId: string }
   | { projectId: string; environmentId: string };
 
+const workflowReferenceObjectSchema = z.union([
+  z.object({ name: z.string() }).strict(),
+  z.object({ script: z.string() }).strict(),
+  z.object({ scriptPath: z.string() }).strict(),
+]);
+
 export interface ResolvedWorkflowSource {
   source: string;
   environmentId: string;
@@ -45,8 +52,12 @@ export interface ResolvedWorkflowSource {
 export function workflowReferenceToSourceInput(
   reference: WorkflowReference,
 ): WorkflowSourceInput {
-  if (typeof reference === "string") return { name: reference };
-  return reference;
+  const stringReference = z.string().safeParse(reference);
+  if (stringReference.success) return { name: stringReference.data };
+  const objectReference = workflowReferenceObjectSchema.parse(reference);
+  if ("name" in objectReference) return { name: objectReference.name };
+  if ("script" in objectReference) return { script: objectReference.script };
+  return { scriptPath: objectReference.scriptPath };
 }
 
 function nonEmpty(value: string | undefined, field: string): string | null {

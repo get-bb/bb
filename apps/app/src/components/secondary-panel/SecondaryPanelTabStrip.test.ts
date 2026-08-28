@@ -132,7 +132,10 @@ describe("secondary panel tab-strip edge fades", () => {
       value: 240,
     });
     act(() => {
-      resizeCallback?.([], {} as ResizeObserver);
+      resizeCallback?.(
+        [],
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as ResizeObserver,
+      );
     });
     expect(rightFade?.classList.contains("opacity-100")).toBe(true);
 
@@ -178,7 +181,10 @@ describe("secondary panel tab-strip edge fades", () => {
       value: 100,
     });
     act(() => {
-      resizeCallback?.([], {} as ResizeObserver);
+      resizeCallback?.(
+        [],
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as ResizeObserver,
+      );
     });
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);

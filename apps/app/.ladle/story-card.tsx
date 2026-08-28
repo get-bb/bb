@@ -13,6 +13,7 @@ function labelWidthStyle(
   labelWidth: string | undefined,
 ): CSSProperties | undefined {
   if (!labelWidth) return undefined;
+  // SAFETY: React accepts custom CSS property names in CSSProperties style objects.
   return { "--story-label-width": labelWidth } as CSSProperties;
 }
 
@@ -42,6 +43,7 @@ export function StoryCard({
   valueAlign = "start",
 }: StoryCardProps) {
   if (columns && columns.length > 0) {
+    // SAFETY: React accepts custom CSS property names in CSSProperties style objects.
     const style: CSSProperties = {
       "--story-label-width": labelWidth ?? "210px",
       gridTemplateColumns: `var(--story-label-width) repeat(${columns.length}, minmax(max-content, 1fr))`,

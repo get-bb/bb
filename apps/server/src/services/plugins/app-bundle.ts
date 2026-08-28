@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
@@ -7,6 +6,9 @@ import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
 } from "@bb/plugin-build";
+import { z } from "zod";
+
+const { readFile } = process.getBuiltinModule("node:fs/promises");
 
 interface PluginArtifactMeta {
   sdkMajor: number;
@@ -51,11 +53,16 @@ export interface PluginAppBundleSnapshot {
   assets: PluginAppAssets | null;
 }
 
-const BRANDING_ASSET_CONTENT_TYPES: Record<string, string> = {
+const brandingAssetExtensionSchema = z.enum(["svg", "png", "webp"]);
+const BRANDING_ASSET_CONTENT_TYPES = {
   svg: "image/svg+xml",
   png: "image/png",
   webp: "image/webp",
-};
+} satisfies Record<z.infer<typeof brandingAssetExtensionSchema>, string>;
+
+const jsonObjectSchema = z.record(z.string(), z.unknown());
+const nonNegativeIntegerSchema = z.number().int().nonnegative();
+const nonEmptyStringSchema = z.string().min(1);
 
 export type PluginBrandingAssetVariant = "icon" | "logo" | "logo-dark";
 
@@ -90,8 +97,9 @@ async function loadPluginBrandingAsset(
   const extension = manifestPath
     .slice(manifestPath.lastIndexOf(".") + 1)
     .toLowerCase();
-  const contentType = BRANDING_ASSET_CONTENT_TYPES[extension];
-  if (contentType === undefined) return null;
+  const extensionResult = brandingAssetExtensionSchema.safeParse(extension);
+  if (!extensionResult.success) return null;
+  const contentType = BRANDING_ASSET_CONTENT_TYPES[extensionResult.data];
   const hash = brandingAssetHash(bytes);
   return {
     url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${variant}?h=${hash}`,
@@ -158,17 +166,18 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   } catch {
     return { meta: null, error: "metadata is not valid JSON" };
   }
-  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+  const objectResult = jsonObjectSchema.safeParse(json);
+  if (!objectResult.success) {
     return { meta: null, error: "metadata must be a JSON object" };
   }
-  const meta = Object.fromEntries(Object.entries(json));
+  const meta = objectResult.data;
+  const sdkMajorResult = nonNegativeIntegerSchema.safeParse(meta.sdkMajor);
+  const sdkVersionResult = nonEmptyStringSchema.safeParse(meta.sdkVersion);
   if (
-    typeof meta.sdkMajor !== "number" ||
-    !Number.isSafeInteger(meta.sdkMajor) ||
-    meta.sdkMajor < 0 ||
-    typeof meta.sdkVersion !== "string" ||
-    semver.valid(meta.sdkVersion) === null ||
-    semver.major(meta.sdkVersion) !== meta.sdkMajor
+    !sdkMajorResult.success ||
+    !sdkVersionResult.success ||
+    semver.valid(sdkVersionResult.data) === null ||
+    semver.major(sdkVersionResult.data) !== sdkMajorResult.data
   ) {
     return {
       meta: null,
@@ -185,7 +194,10 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   const hasAuthoritativeField = authoritativeKeys.some((key) => key in meta);
   if (!hasAuthoritativeField) {
     return {
-      meta: { sdkMajor: meta.sdkMajor, sdkVersion: meta.sdkVersion },
+      meta: {
+        sdkMajor: sdkMajorResult.data,
+        sdkVersion: sdkVersionResult.data,
+      },
       error: null,
     };
   }
@@ -195,28 +207,29 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
       error: `unknown artifactFormatVersion ${JSON.stringify(meta.artifactFormatVersion)}; supported value is 1`,
     };
   }
-  if (typeof meta.pluginId !== "string" || meta.pluginId.length === 0) {
+  const pluginIdResult = nonEmptyStringSchema.safeParse(meta.pluginId);
+  if (!pluginIdResult.success) {
     return { meta: null, error: "pluginId must be a non-empty string" };
   }
-  if (
-    typeof meta.pluginVersion !== "string" ||
-    meta.pluginVersion.length === 0
-  ) {
+  const pluginVersionResult = nonEmptyStringSchema.safeParse(
+    meta.pluginVersion,
+  );
+  if (!pluginVersionResult.success) {
     return { meta: null, error: "pluginVersion must be a non-empty string" };
   }
-  if (
-    typeof meta.builtWith !== "object" ||
-    meta.builtWith === null ||
-    Array.isArray(meta.builtWith)
-  ) {
+  const builtWithResult = jsonObjectSchema.safeParse(meta.builtWith);
+  if (!builtWithResult.success) {
     return { meta: null, error: "builtWith must be an object" };
   }
-  const builtWith = Object.fromEntries(Object.entries(meta.builtWith));
+  const builtWith = builtWithResult.data;
+  const bbVersionResult = nonEmptyStringSchema.safeParse(builtWith.bbVersion);
+  const pluginSdkVersionResult = nonEmptyStringSchema.safeParse(
+    builtWith.pluginSdkVersion,
+  );
   if (
-    typeof builtWith.bbVersion !== "string" ||
-    builtWith.bbVersion.length === 0 ||
-    typeof builtWith.pluginSdkVersion !== "string" ||
-    semver.valid(builtWith.pluginSdkVersion) === null
+    !bbVersionResult.success ||
+    !pluginSdkVersionResult.success ||
+    semver.valid(pluginSdkVersionResult.data) === null
   ) {
     return {
       meta: null,
@@ -224,22 +237,22 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         "builtWith.bbVersion must be non-empty and builtWith.pluginSdkVersion must be a valid semver",
     };
   }
-  if (builtWith.pluginSdkVersion !== meta.sdkVersion) {
+  if (pluginSdkVersionResult.data !== sdkVersionResult.data) {
     return {
       meta: null,
-      error: `builtWith.pluginSdkVersion ${builtWith.pluginSdkVersion} does not match sdkVersion ${meta.sdkVersion}`,
+      error: `builtWith.pluginSdkVersion ${pluginSdkVersionResult.data} does not match sdkVersion ${sdkVersionResult.data}`,
     };
   }
   return {
     meta: {
-      sdkMajor: meta.sdkMajor,
-      sdkVersion: meta.sdkVersion,
+      sdkMajor: sdkMajorResult.data,
+      sdkVersion: sdkVersionResult.data,
       artifactFormatVersion: 1,
-      pluginId: meta.pluginId,
-      pluginVersion: meta.pluginVersion,
+      pluginId: pluginIdResult.data,
+      pluginVersion: pluginVersionResult.data,
       builtWith: {
-        bbVersion: builtWith.bbVersion,
-        pluginSdkVersion: builtWith.pluginSdkVersion,
+        bbVersion: bbVersionResult.data,
+        pluginSdkVersion: pluginSdkVersionResult.data,
       },
     },
     error: null,

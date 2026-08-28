@@ -137,11 +137,8 @@ function requireListeningAddress(
   return address;
 }
 
-function isRetryableSessionOpenFailure(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.startsWith("Failed to open session: 401 Unauthorized")
-  );
+function isRetryableSessionOpenFailure(error: Error): boolean {
+  return error.message.startsWith("Failed to open session: 401 Unauthorized");
 }
 
 async function resolveProjectEnvCandidates(): Promise<string[]> {
@@ -384,9 +381,11 @@ async function startHarnessDaemon(
         await daemonApp.daemon.start();
         break;
       } catch (error) {
+        const parsedError =
+          error instanceof Error ? error : new Error(String(error));
         if (
           attempt === HARNESS_DAEMON_START_MAX_ATTEMPTS ||
-          !isRetryableSessionOpenFailure(error)
+          !isRetryableSessionOpenFailure(parsedError)
         ) {
           throw error;
         }
@@ -561,15 +560,24 @@ export async function withHarness<T>(
   arg1: WithHarnessInvocation<T>,
   arg2?: WithHarnessCallback<T>,
 ): Promise<T> {
-  const options = typeof arg1 === "function" ? {} : arg1;
-  const run = typeof arg1 === "function" ? arg1 : arg2;
-  if (!run) {
-    throw new Error("withHarness requires a callback");
+  if (arg1 instanceof Function) {
+    if (arg2 !== undefined) {
+      throw new Error("withHarness received two callbacks");
+    }
+    const harness = await createIntegrationHarness({});
+    try {
+      return await arg1(harness);
+    } finally {
+      await harness.cleanup();
+    }
   }
 
-  const harness = await createIntegrationHarness(options);
+  if (arg2 === undefined) {
+    throw new Error("withHarness requires a callback");
+  }
+  const harness = await createIntegrationHarness(arg1);
   try {
-    return await run(harness);
+    return await arg2(harness);
   } finally {
     await harness.cleanup();
   }

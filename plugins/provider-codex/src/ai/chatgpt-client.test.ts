@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   completeCodexInference,
   transcribeCodexVoice,
@@ -129,10 +130,12 @@ function stalledSseResponse(): Response {
   });
 }
 
-function openSseResponse(events: JsonValue[]): {
+interface OpenSseResponse {
   response: Response;
   wasCanceled: () => boolean;
-} {
+}
+
+function openSseResponse(events: JsonValue[]): OpenSseResponse {
   let canceled = false;
   const bytes = new TextEncoder().encode(
     `${events.map((event) => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\n`,
@@ -200,10 +203,11 @@ function headersFromInit(init: RequestInit | undefined): Headers {
 
 function textBodyFromInit(init: RequestInit | undefined): string {
   const body = init?.body;
-  if (typeof body !== "string") {
+  const parsedBody = z.string().safeParse(body);
+  if (!parsedBody.success) {
     throw new Error("Expected request body to be a string");
   }
-  return body;
+  return parsedBody.data;
 }
 
 function formDataBodyFromInit(init: RequestInit | undefined): FormData {

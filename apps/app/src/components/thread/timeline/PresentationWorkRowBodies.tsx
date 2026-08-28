@@ -31,19 +31,19 @@ export function PresentationDetail({
 
 type PlanStepStatus = NonNullable<ThreadEventPlanStep["status"]>;
 
-const PLAN_STEP_ACTIVITY_STATE: Record<PlanStepStatus, ActivityRowState> = {
+const PLAN_STEP_ACTIVITY_STATE = {
   pending: "pending",
   active: "active",
   completed: "completed",
   failed: "completed",
-};
+} satisfies Record<PlanStepStatus, ActivityRowState>;
 
-const PLAN_STEP_ICON: Record<PlanStepStatus, IconName> = {
+const PLAN_STEP_ICON = {
   pending: "Square",
   active: "Square",
   completed: "Check",
   failed: "X",
-};
+} satisfies Record<PlanStepStatus, IconName>;
 
 export function PlanStepsWorkRowBody({
   row,

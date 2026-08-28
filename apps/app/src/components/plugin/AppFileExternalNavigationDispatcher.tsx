@@ -16,13 +16,14 @@ export function AppFileExternalNavigationDispatcher({
   const resolvedTarget = useResolvedLiveFileTarget(intent.target, {
     enabled: true,
   });
+  const localOpenTargetsOptions: Parameters<typeof useLocalOpenTargets>[0] = {
+    enabled: resolvedTarget.status === "available",
+  };
+  if (resolvedTarget.status === "available") {
+    localOpenTargetsOptions.openContext = resolvedTarget.openContext;
+  }
   const { isLoading: areLocalTargetsLoading, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({
-      enabled: resolvedTarget.status === "available",
-      ...(resolvedTarget.status === "available"
-        ? { openContext: resolvedTarget.openContext }
-        : {}),
-    });
+    useLocalOpenTargets(localOpenTargetsOptions);
 
   useEffect(() => {
     if (

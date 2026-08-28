@@ -364,7 +364,7 @@ export function usePierreLineSelectionActions({
   );
 
   useEffect(() => {
-    if (!enabled || typeof document === "undefined") {
+    if (!enabled || !("document" in globalThis)) {
       return;
     }
 

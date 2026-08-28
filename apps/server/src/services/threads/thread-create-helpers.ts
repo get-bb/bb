@@ -115,17 +115,18 @@ export function buildEnvironmentProvisionCommand(
 ): EnvironmentProvisionCommand {
   switch (args.workspaceProvisionType) {
     case "unmanaged":
-      return {
-        type: "environment.provision" as const,
+      const command: EnvironmentProvisionCommand = {
+        type: "environment.provision",
         environmentId: args.environmentId,
         initiator: args.initiator,
         workspaceProvisionType: args.workspaceProvisionType,
         path: args.path,
-        ...(args.checkout ? { checkout: args.checkout } : {}),
       };
+      if (args.checkout) command.checkout = args.checkout;
+      return command;
     case "managed-worktree":
       return {
-        type: "environment.provision" as const,
+        type: "environment.provision",
         environmentId: args.environmentId,
         initiator: args.initiator,
         workspaceProvisionType: args.workspaceProvisionType,
@@ -137,7 +138,7 @@ export function buildEnvironmentProvisionCommand(
       };
     case "personal":
       return {
-        type: "environment.provision" as const,
+        type: "environment.provision",
         environmentId: args.environmentId,
         initiator: args.initiator,
         workspaceProvisionType: args.workspaceProvisionType,

@@ -465,9 +465,16 @@ describe("permission decision matrix", () => {
         `subject kind ${kind}`,
       ).toBe(true);
     }
+    for (const enforcer of ENFORCERS) {
+      expect(
+        bridgeCapabilitiesSchema.safeParse({ approvalEnforcedBy: enforcer })
+          .success,
+      ).toBe(true);
+    }
     expect(
-      bridgeCapabilitiesSchema.shape.approvalEnforcedBy.def.innerType.options,
-    ).toEqual([...ENFORCERS]);
+      bridgeCapabilitiesSchema.safeParse({ approvalEnforcedBy: "other" })
+        .success,
+    ).toBe(false);
     expect(permissionEscalationValues).toEqual(["ask", "deny"]);
     expect(permissionModeValues).toEqual(["accept-edits", "auto", "full"]);
     expect(runtimePermissionPolicySchema.options).toHaveLength(3);

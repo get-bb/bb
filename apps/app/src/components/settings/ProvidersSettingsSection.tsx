@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { z } from "zod";
 import type { AppSettings, ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -35,7 +36,7 @@ import { ProviderIconMark } from "./ProviderIconMark";
 interface ProvidersSettingsSectionProps {
   disabled: boolean;
   generalSettings: AppSettings;
-  onGeneralSettingsChange: (next: AppSettings) => Promise<unknown> | void;
+  onGeneralSettingsChange: (next: AppSettings) => Promise<AppSettings> | void;
 }
 
 const restrictProviderDragToVerticalAxis: Modifier = ({ transform }) => ({
@@ -195,15 +196,17 @@ export function ProvidersSettingsSection({
   const handleDragEnd = (event: DragEndEvent): void => {
     if (
       disabled ||
-      typeof event.active.id !== "string" ||
-      typeof event.over?.id !== "string"
+      !z.string().safeParse(event.active.id).success ||
+      !z.string().safeParse(event.over?.id).success
     ) {
       return;
     }
-    const next = reorderProviderIds(ids, event.active.id, event.over.id);
+    const activeId = z.string().parse(event.active.id);
+    const overId = z.string().parse(event.over?.id);
+    const next = reorderProviderIds(ids, activeId, overId);
     if (next === null) return;
     setOptimisticOrder(next);
-    let write: Promise<unknown> | void;
+    let write: Promise<AppSettings> | void;
     try {
       write = onGeneralSettingsChange({
         ...generalSettings,

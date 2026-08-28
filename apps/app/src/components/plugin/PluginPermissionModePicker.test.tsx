@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import type { PermissionMode, ProviderInfo } from "@bb/domain";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import {
   modelCatalogCacheKey,
@@ -22,23 +22,8 @@ import {
 } from "@/lib/provider-list-cache";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { PluginPermissionModePicker } from "./PluginPermissionModePicker";
-
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return {
-    ...actual,
-    sdk: {
-      ...actual.sdk,
-      hosts: { list: vi.fn().mockResolvedValue([]) },
-      system: {
-        ...actual.sdk.system,
-        config: vi.fn().mockResolvedValue({ primaryHostId: null }),
-        executionOptions: vi.fn(),
-      },
-    },
-  };
-});
 
 function provider(
   id: string,
@@ -87,6 +72,20 @@ function executionOptions(
     modelLoadError: null,
   };
 }
+
+const sdkSpies = {
+  hostsList: vi.spyOn(sdk.hosts, "list"),
+  systemConfig: vi.spyOn(sdk.system, "config"),
+  executionOptions: vi.spyOn(sdk.system, "executionOptions"),
+};
+
+beforeEach(() => {
+  sdkSpies.hostsList.mockReset().mockResolvedValue([]);
+  sdkSpies.systemConfig.mockReset().mockResolvedValue(makeSystemConfig());
+  sdkSpies.executionOptions
+    .mockReset()
+    .mockResolvedValue(executionOptions("full"));
+});
 
 function cacheOptions(
   queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
@@ -247,9 +246,7 @@ describe("PluginPermissionModePicker", () => {
       }),
       { models: [], selectedOnlyModels: [] },
     );
-    vi.mocked(sdk.system.executionOptions).mockRejectedValue(
-      new Error("offline"),
-    );
+    sdkSpies.executionOptions.mockRejectedValue(new Error("offline"));
     const onChange = vi.fn();
 
     render(
@@ -266,7 +263,7 @@ describe("PluginPermissionModePicker", () => {
     });
     expect(trigger.hasAttribute("disabled")).toBe(true);
     await waitFor(() =>
-      expect(sdk.system.executionOptions).toHaveBeenCalledTimes(2),
+      expect(sdkSpies.executionOptions).toHaveBeenCalledTimes(2),
     );
     expect(onChange).not.toHaveBeenCalled();
   });

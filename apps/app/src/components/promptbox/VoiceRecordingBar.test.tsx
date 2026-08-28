@@ -2,13 +2,17 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as waveformVisualizerModule from "./WaveformVisualizer.js";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 
-vi.mock("./WaveformVisualizer.js", () => ({
-  WaveformVisualizer: () => <div data-testid="waveform" />,
-}));
+vi.spyOn(waveformVisualizerModule, "WaveformVisualizer").mockImplementation(
+  () => <div data-testid="waveform" />,
+);
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("VoiceRecordingBar", () => {
   it("disables confirm while transcribing", () => {

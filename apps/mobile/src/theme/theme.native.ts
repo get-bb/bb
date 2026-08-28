@@ -107,7 +107,7 @@ export interface NativeThemeModes {
   dark: NativeThemeTokens;
 }
 
-export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
+export const nativeThemes = {
   catppuccin: {
     light: {
       accent: "#e2e3e9",
@@ -1332,7 +1332,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       warningText: "#e07a4e",
     },
   },
-};
+} satisfies Record<BuiltInThemeId, NativeThemeModes>;
 
 export const nativeRadii = {
   base: 8,

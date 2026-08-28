@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -44,7 +43,10 @@ import {
   resolveGitRef,
   selectGitSemverTag,
 } from "../plugins/update-resolver.js";
-import { fetchMarketplaceIcons } from "./marketplace-icons.js";
+import {
+  fetchMarketplaceIcons,
+  readBoundedMarketplaceIconFile,
+} from "./marketplace-icons.js";
 import {
   fetchMarketplaceStats,
   installCountsFromStatsJson,
@@ -76,6 +78,8 @@ import {
 } from "./marketplace-source.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
+
+const { mkdir, rm } = process.getBuiltinModule("node:fs/promises");
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
@@ -125,6 +129,9 @@ type ResolvedCatalogEntry =
       kind: "bundled";
       entry: BundledPluginRegistration & { category: string };
     };
+
+type CatalogGitSource = Extract<PluginCatalogResolvedSource, { kind: "git" }>;
+type CatalogNpmSource = Extract<PluginCatalogResolvedSource, { kind: "npm" }>;
 
 export function createPluginCatalogService(deps: {
   db: DbConnection;
@@ -299,7 +306,7 @@ export function createPluginCatalogService(deps: {
   function entryManifest(
     entry: BundledPluginRegistration,
   ): Promise<PluginManifest | null> {
-    return readPluginManifest(entry.rootDir).catch((error: unknown) => {
+    return readPluginManifest(entry.rootDir).catch((error) => {
       deps.warn?.(
         `official plugin ${entry.name} is unavailable: ${
           error instanceof Error ? error.message : String(error)
@@ -315,7 +322,7 @@ export function createPluginCatalogService(deps: {
     const path = manifest.branding.compactIconPath;
     if (path === undefined) return null;
     try {
-      const bytes = await readFile(path);
+      const bytes = Buffer.from(await readBoundedMarketplaceIconFile(path));
       return {
         bytes,
         hash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
@@ -438,10 +445,14 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  function rejectBundledIdCollisions(catalog: MarketplaceManifest): {
+  interface BundledCollisionRejection {
     catalog: MarketplaceManifest;
     error: string | null;
-  } {
+  }
+
+  function rejectBundledIdCollisions(
+    catalog: MarketplaceManifest,
+  ): BundledCollisionRejection {
     const bundledIds = new Set(bundledPlugins.map((plugin) => plugin.pluginId));
     const colliding = catalog.plugins.filter((entry) =>
       bundledIds.has(entry.id),
@@ -510,15 +521,16 @@ export function createPluginCatalogService(deps: {
         collisionError === null
           ? materialized.manifestJson
           : JSON.stringify(catalog);
-      const icons = await fetchMarketplaceIcons({
+      const iconArgs: Parameters<typeof fetchMarketplaceIcons>[0] = {
         db: deps.db,
         marketplaceName: row.name,
         base: materialized.iconBase,
         entries: catalog.plugins,
         onlyMissing: materialized.unchanged,
         fetch: fetchMarketplace,
-        ...(deps.warn === undefined ? {} : { warn: deps.warn }),
-      });
+      };
+      if (deps.warn !== undefined) iconArgs.warn = deps.warn;
+      const icons = await fetchMarketplaceIcons(iconArgs);
       const statsJson = await refreshedStatsJson(row);
       deps.db.transaction((tx) => {
         upsertPluginMarketplace(tx, {
@@ -617,7 +629,7 @@ export function createPluginCatalogService(deps: {
           );
         }
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         deps.warn?.(
           `periodic catalog refresh failed: ${marketplaceErrorMessage(error)}`,
         );
@@ -676,11 +688,8 @@ export function createPluginCatalogService(deps: {
   async function resolveGitEntrySource(
     git: Extract<MarketplaceEntry["source"], { git: unknown }>["git"],
   ): Promise<PluginCatalogResolvedSource> {
-    const base = {
-      kind: "git" as const,
-      url: git.url,
-      ...(git.subdir === undefined ? {} : { subdir: git.subdir }),
-    };
+    const base: CatalogGitSource = { kind: "git", url: git.url };
+    if (git.subdir !== undefined) base.subdir = git.subdir;
     try {
       if ("ref" in git) {
         const resolved = await resolveGitRef({ url: git.url, ref: git.ref });
@@ -691,11 +700,8 @@ export function createPluginCatalogService(deps: {
       const tagPrefix = git.tagPrefix ?? "";
       const tags = await listGitSemverTags({ url: git.url, tagPrefix });
       const selected = selectGitSemverTag({ tags, range: git.range });
-      const ranged = {
-        ...base,
-        range: git.range,
-        ...(git.tagPrefix === undefined ? {} : { tagPrefix: git.tagPrefix }),
-      };
+      const ranged: CatalogGitSource = { ...base, range: git.range };
+      if (git.tagPrefix !== undefined) ranged.tagPrefix = git.tagPrefix;
       return selected === null
         ? {
             ...ranged,
@@ -707,35 +713,32 @@ export function createPluginCatalogService(deps: {
             resolvedCommit: selected.commit,
           };
     } catch (error) {
-      return {
+      const unresolved: CatalogGitSource = {
         ...base,
-        ...("ref" in git
-          ? { ref: git.ref }
-          : {
-              range: git.range,
-              ...(git.tagPrefix === undefined
-                ? {}
-                : { tagPrefix: git.tagPrefix }),
-            }),
         unresolvedReason: marketplaceErrorMessage(error),
       };
+      if ("ref" in git) {
+        unresolved.ref = git.ref;
+      } else {
+        unresolved.range = git.range;
+        if (git.tagPrefix !== undefined) unresolved.tagPrefix = git.tagPrefix;
+      }
+      return unresolved;
     }
   }
 
   async function resolveNpmEntrySource(
     npm: Extract<MarketplaceEntry["source"], { npm: unknown }>["npm"],
   ): Promise<PluginCatalogResolvedSource> {
-    const base = {
-      kind: "npm" as const,
-      package: npm.package,
-      ...(npm.range === undefined ? {} : { range: npm.range }),
-      ...(npm.tag === undefined ? {} : { tag: npm.tag }),
-      ...(npm.registry === undefined ? {} : { registry: npm.registry }),
-    };
+    const base: CatalogNpmSource = { kind: "npm", package: npm.package };
+    if (npm.range !== undefined) base.range = npm.range;
+    if (npm.tag !== undefined) base.tag = npm.tag;
+    if (npm.registry !== undefined) base.registry = npm.registry;
     try {
-      const resolved = await deps.plugins.resolveCatalogNpmSource({
+      const resolveArgs: Parameters<
+        PluginService["resolveCatalogNpmSource"]
+      >[0] = {
         packageName: npm.package,
-        ...(npm.registry === undefined ? {} : { registry: npm.registry }),
         requestedSpec: npm.range ?? npm.tag ?? "",
         specKind:
           npm.range !== undefined
@@ -743,17 +746,20 @@ export function createPluginCatalogService(deps: {
             : npm.tag !== undefined
               ? "tag"
               : "default",
-      });
+      };
+      if (npm.registry !== undefined) resolveArgs.registry = npm.registry;
+      const resolved = await deps.plugins.resolveCatalogNpmSource(resolveArgs);
       if (resolved.outcome === "unavailable") {
         return { ...base, unresolvedReason: resolved.detail };
       }
-      return {
+      const resolvedSource: CatalogNpmSource = {
         ...base,
         resolvedVersion: resolved.version,
-        ...(resolved.integrity.length === 0
-          ? {}
-          : { resolvedIntegrity: resolved.integrity }),
       };
+      if (resolved.integrity.length > 0) {
+        resolvedSource.resolvedIntegrity = resolved.integrity;
+      }
+      return resolvedSource;
     } catch (error) {
       return { ...base, unresolvedReason: marketplaceErrorMessage(error) };
     }
@@ -766,31 +772,28 @@ export function createPluginCatalogService(deps: {
     if ("npm" in entry.source) {
       const npm = entry.source.npm;
       if (official) {
-        return {
+        const source: CatalogNpmSource = {
           kind: "npm",
           package: npm.package,
-          ...(npm.range === undefined ? {} : { range: npm.range }),
-          ...(npm.tag === undefined ? {} : { tag: npm.tag }),
-          ...(npm.registry === undefined ? {} : { registry: npm.registry }),
         };
+        if (npm.range !== undefined) source.range = npm.range;
+        if (npm.tag !== undefined) source.tag = npm.tag;
+        if (npm.registry !== undefined) source.registry = npm.registry;
+        return source;
       }
       return resolveNpmEntrySource(npm);
     }
     const git = entry.source.git;
     if (official) {
-      return {
-        kind: "git",
-        url: git.url,
-        ...(git.subdir === undefined ? {} : { subdir: git.subdir }),
-        ...("ref" in git
-          ? { ref: git.ref }
-          : {
-              range: git.range,
-              ...(git.tagPrefix === undefined
-                ? {}
-                : { tagPrefix: git.tagPrefix }),
-            }),
-      };
+      const source: CatalogGitSource = { kind: "git", url: git.url };
+      if (git.subdir !== undefined) source.subdir = git.subdir;
+      if ("ref" in git) {
+        source.ref = git.ref;
+      } else {
+        source.range = git.range;
+        if (git.tagPrefix !== undefined) source.tagPrefix = git.tagPrefix;
+      }
+      return source;
     }
     return resolveGitEntrySource(git);
   }
@@ -805,25 +808,26 @@ export function createPluginCatalogService(deps: {
     binding?: ConfirmedEntryBinding,
   ): Promise<InstalledPlugin> {
     const resolved = resolvedEntrySource(entry);
-    return deps.plugins.installCatalogPlugin({
+    const installArgs: Parameters<PluginService["installCatalogPlugin"]>[0] = {
       marketplace: row.name,
       entryId: entry.id,
       pluginId: entry.id,
       source: resolved.source,
       selection: resolved.selection,
-      ...(resolved.npmRegistry === undefined
-        ? {}
-        : { npmRegistry: resolved.npmRegistry }),
-      ...(binding?.kind === "git" ? { expectedGitCommit: binding.commit } : {}),
-      ...(binding?.kind === "npm"
-        ? {
-            expectedNpmVersion: binding.version,
-            ...(binding.integrity === undefined
-              ? {}
-              : { expectedNpmIntegrity: binding.integrity }),
-          }
-        : {}),
-    });
+    };
+    if (resolved.npmRegistry !== undefined) {
+      installArgs.npmRegistry = resolved.npmRegistry;
+    }
+    if (binding?.kind === "git") {
+      installArgs.expectedGitCommit = binding.commit;
+    }
+    if (binding?.kind === "npm") {
+      installArgs.expectedNpmVersion = binding.version;
+      if (binding.integrity !== undefined) {
+        installArgs.expectedNpmIntegrity = binding.integrity;
+      }
+    }
+    return deps.plugins.installCatalogPlugin(installArgs);
   }
 
   async function confirmedThirdPartySource(args: {
@@ -938,15 +942,16 @@ export function createPluginCatalogService(deps: {
           if (getPluginMarketplace(deps.db, name) !== undefined) {
             throw new Error(`marketplace "${name}" is already added`);
           }
-          const icons = await fetchMarketplaceIcons({
+          const iconArgs: Parameters<typeof fetchMarketplaceIcons>[0] = {
             db: deps.db,
             marketplaceName: name,
             base: materialized.iconBase,
             entries: materialized.catalog.plugins,
             onlyMissing: false,
             fetch: fetchMarketplace,
-            ...(deps.warn === undefined ? {} : { warn: deps.warn }),
-          });
+          };
+          if (deps.warn !== undefined) iconArgs.warn = deps.warn;
+          const icons = await fetchMarketplaceIcons(iconArgs);
           const addedAt = now();
           deps.db.transaction((tx) => {
             upsertPluginMarketplace(tx, {
@@ -1014,7 +1019,7 @@ export function createPluginCatalogService(deps: {
           const icon = await bundledIcon(manifest);
           return {
             pluginId: entry.pluginId,
-            tags: [] as string[],
+            tags: [],
             marketplaceRank: 0,
             result: bundledSearchResult(
               entry,

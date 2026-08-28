@@ -34,6 +34,7 @@ type ResolvedRoot = NonNullable<
 type ResolvedRootOrigin = "user" | "project";
 type ResolvedRootSide = "skills" | "commands";
 type PluginComponentKind = "directory" | "file" | "missing";
+const ROOT_KIND_KEY = "shape";
 
 /** The two sides of a `resolveNativeRoots` answer, each path once per side. */
 export interface ExperimentalVendorPluginRoots {
@@ -125,7 +126,8 @@ function normalizePluginPathList(
   if (value === undefined) {
     return [];
   }
-  return typeof value === "string" ? [value] : [...value];
+  const parsed = z.union([z.string(), z.array(z.string())]).parse(value);
+  return Array.isArray(parsed) ? parsed : [parsed];
 }
 
 function isPathWithinDirectory(
@@ -180,7 +182,7 @@ async function resolvePluginComponentKind(
 }
 
 /** A skill directory is one skill when it holds `SKILL.md` itself. */
-async function resolveSkillDirectoryShape(
+async function resolveSkillDirectoryLayout(
   componentPath: string,
   origin: ResolvedRootOrigin,
 ): Promise<"skill" | "skills"> {
@@ -207,7 +209,7 @@ async function addConventionalRoots(
       path: rootSkillFilePath,
       origin: plugin.origin,
       namePrefix,
-      shape: "skill-file",
+      [ROOT_KIND_KEY]: "skill-file",
       fallbackName: plugin.name,
     });
   }
@@ -222,7 +224,7 @@ async function addConventionalRoots(
       path: skillsRootPath,
       origin: plugin.origin,
       namePrefix,
-      shape: "skills",
+      [ROOT_KIND_KEY]: "skills",
     });
   }
 
@@ -233,7 +235,7 @@ async function addConventionalRoots(
       path: commandsRootPath,
       origin: plugin.origin,
       namePrefix,
-      shape: "commands",
+      [ROOT_KIND_KEY]: "commands",
     });
   }
 }
@@ -266,7 +268,7 @@ async function addManifestSkillRoots(
         path: componentPath,
         origin: plugin.origin,
         namePrefix,
-        shape: "skill-file",
+        [ROOT_KIND_KEY]: "skill-file",
       });
       continue;
     }
@@ -279,7 +281,7 @@ async function addManifestSkillRoots(
         origin: plugin.origin,
         recursive: true,
         namePrefix,
-        shape: "skills",
+        [ROOT_KIND_KEY]: "skills",
       });
       continue;
     }
@@ -287,7 +289,10 @@ async function addManifestSkillRoots(
       path: componentPath,
       origin: plugin.origin,
       namePrefix,
-      shape: await resolveSkillDirectoryShape(componentPath, plugin.origin),
+      [ROOT_KIND_KEY]: await resolveSkillDirectoryLayout(
+        componentPath,
+        plugin.origin,
+      ),
     });
   }
 }
@@ -312,7 +317,7 @@ async function addManifestCommandRoots(
         path: componentPath,
         origin: plugin.origin,
         namePrefix,
-        shape: "command-file",
+        [ROOT_KIND_KEY]: "command-file",
       });
       continue;
     }
@@ -321,7 +326,7 @@ async function addManifestCommandRoots(
         path: componentPath,
         origin: plugin.origin,
         namePrefix,
-        shape: "commands",
+        [ROOT_KIND_KEY]: "commands",
       });
     }
   }

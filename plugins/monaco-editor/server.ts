@@ -189,21 +189,23 @@ export default async function plugin(bb: BbPluginApi) {
 
     if (source.kind === "host") {
       const api = path.win32.isAbsolute(filePath) ? path.win32 : path.posix;
-      return {
+      const target = {
         path: filePath,
         rootPath: api.dirname(filePath),
-        ...(environment.hostId ? { hostId: environment.hostId } : {}),
       };
+      if (environment.hostId) return { ...target, hostId: environment.hostId };
+      return target;
     }
 
     if (!environment.path) {
       throw new Error("This environment has no workspace path");
     }
-    return {
+    const target = {
       path: path.join(environment.path, filePath),
       rootPath: environment.path,
-      ...(environment.hostId ? { hostId: environment.hostId } : {}),
     };
+    if (environment.hostId) return { ...target, hostId: environment.hostId };
+    return target;
   }
 
   function relativeTo(root: string, target: string): string {
@@ -241,13 +243,21 @@ export default async function plugin(bb: BbPluginApi) {
 
     async tree({ source }) {
       const target = await resolveTarget(source, ".");
-      const result = await bb.sdk.files.listPaths({
-        path: target.rootPath,
-        includeFiles: true,
-        includeDirectories: true,
-        limit: MAX_TREE_ENTRIES,
-        ...(target.hostId !== undefined ? { hostId: target.hostId } : {}),
-      });
+      const result =
+        target.hostId === undefined
+          ? await bb.sdk.files.listPaths({
+              path: target.rootPath,
+              includeFiles: true,
+              includeDirectories: true,
+              limit: MAX_TREE_ENTRIES,
+            })
+          : await bb.sdk.files.listPaths({
+              path: target.rootPath,
+              includeFiles: true,
+              includeDirectories: true,
+              limit: MAX_TREE_ENTRIES,
+              hostId: target.hostId,
+            });
       return {
         root: target.rootPath,
         entries: result.paths.map((entry) => ({

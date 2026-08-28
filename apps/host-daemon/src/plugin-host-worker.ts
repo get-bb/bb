@@ -5,17 +5,39 @@ const HOST_WORKER_PROTOCOL_VERSION = 2;
 const RESULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_DISPOSE_TIMEOUT_MS = 5_000;
 
+interface HostRuntimeObject {}
+
+interface HostRecord {}
+
+interface HostFunction {
+  (
+    ...args: HostBoundaryValue[]
+  ): HostBoundaryValue | Promise<HostBoundaryValue>;
+}
+
+type HostBoundaryValue =
+  | HostRecord
+  | HostFunction
+  | HostRuntimeObject
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined;
+
+interface StandardSchemaResult {
+  readonly value?: HostBoundaryValue;
+  readonly issues?: readonly { readonly message: string }[];
+}
+
 interface StandardSchema {
   readonly "~standard": {
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters
     readonly validate: (
       value: unknown,
-    ) =>
-      | { readonly value: unknown; readonly issues?: undefined }
-      | { readonly issues: readonly { readonly message: string }[] }
-      | Promise<
-          | { readonly value: unknown; readonly issues?: undefined }
-          | { readonly issues: readonly { readonly message: string }[] }
-        >;
+    ) => StandardSchemaResult | Promise<StandardSchemaResult>;
   };
 }
 
@@ -26,13 +48,6 @@ interface HostMethod {
 
 interface HostSignal {
   readonly payload: StandardSchema;
-}
-
-interface HostWatchOptions {
-  readonly rootPath: string;
-  readonly ignoredPaths?: readonly string[];
-  readonly debounceMs?: number;
-  readonly maxWaitMs?: number;
 }
 
 interface ResolvedHostWatchOptions {
@@ -52,6 +67,8 @@ type HostWatchEvent =
     }
   | { readonly kind: "rescan-required" }
   | { readonly kind: "watch-error"; readonly message: string };
+
+type HostWatchChangeType = "create" | "update" | "delete";
 
 type HostWatchListener = (event: HostWatchEvent) => void | Promise<void>;
 
@@ -79,10 +96,13 @@ interface HostContext {
     readonly dataDir: string;
     readonly tempDir: string;
   };
-  experimental_emitSignal(signal: string, payload: unknown): Promise<void>;
+  experimental_emitSignal(
+    signal: string,
+    payload: HostBoundaryValue,
+  ): Promise<void>;
   experimental_watch(
-    options: HostWatchOptions,
-    listener: HostWatchListener,
+    options: HostBoundaryValue,
+    listener: HostBoundaryValue,
   ): Promise<HostWatchSubscription>;
   experimental_retainWorker(): HostWorkerLease;
 }
@@ -92,7 +112,13 @@ interface HostEntry {
   readonly contract: Readonly<Record<string, HostMethod>>;
   readonly experimental_signals?: Readonly<Record<string, HostSignal>>;
   readonly handlers: Readonly<
-    Record<string, (input: unknown, context: HostContext) => unknown>
+    Record<
+      string,
+      (
+        input: HostBoundaryValue,
+        context: HostContext,
+      ) => HostBoundaryValue | Promise<HostBoundaryValue>
+    >
   >;
   readonly dispose?: () => void | Promise<void>;
 }
@@ -102,7 +128,7 @@ type ParentMessage =
       readonly type: "call";
       readonly callId: string;
       readonly method: string;
-      readonly input: unknown;
+      readonly input: HostBoundaryValue;
     }
   | { readonly type: "cancel"; readonly callId: string }
   | { readonly type: "dispose" }
@@ -125,161 +151,316 @@ const MIN_WATCH_DEBOUNCE_MS = 10;
 const MAX_WATCH_DEBOUNCE_MS = 5_000;
 const MAX_WATCH_WAIT_MS = 30_000;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isHostFunction(value: HostBoundaryValue): value is HostFunction {
+  return value instanceof Function;
 }
 
-function isSchema(value: unknown): value is StandardSchema {
+function isRecord(value: HostBoundaryValue): value is HostRecord {
   return (
-    isRecord(value) &&
-    isRecord(value["~standard"]) &&
-    typeof value["~standard"].validate === "function"
+    value instanceof Object && !Array.isArray(value) && !isHostFunction(value)
   );
 }
 
-function parseEntry(value: unknown): HostEntry {
+function hasProperty(value: HostRecord, key: string): boolean {
+  return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+function readProperty(
+  value: HostRecord,
+  key: string,
+): HostBoundaryValue | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (descriptor === undefined) return undefined;
+  if ("value" in descriptor) return descriptor.value;
+  return descriptor.get?.call(value);
+}
+
+function readEntries(
+  value: HostRecord,
+): readonly [string, HostBoundaryValue][] {
+  return Object.entries(value);
+}
+
+function isString(value: HostBoundaryValue): value is string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isNumber(value: HostBoundaryValue): value is number {
+  return Object.prototype.toString.call(value) === "[object Number]";
+}
+
+function isHostWatchChangeType(
+  value: HostBoundaryValue,
+): value is HostWatchChangeType {
+  return value === "create" || value === "update" || value === "delete";
+}
+
+function isSchema(value: HostBoundaryValue): value is StandardSchema {
+  if (!isRecord(value)) return false;
+  const standard = readProperty(value, "~standard");
+  return (
+    isRecord(standard) && isHostFunction(readProperty(standard, "validate"))
+  );
+}
+
+async function resolveHostValue(
+  value: HostBoundaryValue | Promise<HostBoundaryValue>,
+): Promise<HostBoundaryValue> {
+  return value instanceof Promise ? value : value;
+}
+
+function parseSchemaResult(value: HostBoundaryValue): StandardSchemaResult {
+  if (!isRecord(value))
+    throw new Error("host schema returned an invalid result");
+  const issues = readProperty(value, "issues");
+  if (issues !== undefined) {
+    if (!Array.isArray(issues)) {
+      throw new Error("host schema returned invalid issues");
+    }
+    const parsedIssues: Array<{ readonly message: string }> = [];
+    for (const issue of issues) {
+      const message = isRecord(issue)
+        ? readProperty(issue, "message")
+        : undefined;
+      if (!isString(message)) {
+        throw new Error("host schema returned invalid issues");
+      }
+      parsedIssues.push({ message });
+    }
+    return { issues: parsedIssues };
+  }
+  if (!hasProperty(value, "value")) {
+    throw new Error("host schema returned no value");
+  }
+  return { value: readProperty(value, "value") };
+}
+
+function parseSchema(value: HostBoundaryValue): StandardSchema {
+  if (!isSchema(value)) throw new Error("host artifact has an invalid schema");
+  const standard = readProperty(value, "~standard");
+  if (!isRecord(standard))
+    throw new Error("host artifact has an invalid schema");
+  const validate = readProperty(standard, "validate");
+  if (!isHostFunction(validate)) {
+    throw new Error("host artifact has an invalid schema");
+  }
+  return {
+    "~standard": {
+      async validate(input) {
+        const boundaryInput =
+          /* SAFETY: HostBoundaryValue includes every JavaScript value that can cross the worker boundary. */ input as HostBoundaryValue;
+        return parseSchemaResult(
+          await resolveHostValue(validate(boundaryInput)),
+        );
+      },
+    },
+  };
+}
+
+function parseEntry(value: HostBoundaryValue): HostEntry {
+  const apiVersion = isRecord(value)
+    ? readProperty(value, "experimental_apiVersion")
+    : undefined;
+  const contractValue = isRecord(value)
+    ? readProperty(value, "contract")
+    : undefined;
+  const handlersValue = isRecord(value)
+    ? readProperty(value, "handlers")
+    : undefined;
+  const disposeValue = isRecord(value)
+    ? readProperty(value, "dispose")
+    : undefined;
   if (
     !isRecord(value) ||
-    value.experimental_apiVersion !== 1 ||
-    !isRecord(value.contract) ||
-    !isRecord(value.handlers) ||
-    (value.dispose !== undefined && typeof value.dispose !== "function")
+    apiVersion !== 1 ||
+    !isRecord(contractValue) ||
+    !isRecord(handlersValue) ||
+    (disposeValue !== undefined && !isHostFunction(disposeValue))
   ) {
     throw new Error("host artifact does not export a valid host entry");
   }
-  for (const [name, method] of Object.entries(value.contract)) {
+  const contract: Record<string, HostMethod> = {};
+  const handlers: Record<
+    string,
+    (
+      input: HostBoundaryValue,
+      context: HostContext,
+    ) => HostBoundaryValue | Promise<HostBoundaryValue>
+  > = {};
+  for (const [name, method] of readEntries(contractValue)) {
+    const handlerValue = readProperty(handlersValue, name);
     if (
       !isRecord(method) ||
-      !isSchema(method.input) ||
-      !isSchema(method.output) ||
-      typeof value.handlers[name] !== "function"
+      !isSchema(readProperty(method, "input")) ||
+      !isSchema(readProperty(method, "output")) ||
+      !isHostFunction(handlerValue)
     ) {
       throw new Error(`host artifact has an invalid method "${name}"`);
     }
+    contract[name] = {
+      input: parseSchema(readProperty(method, "input")),
+      output: parseSchema(readProperty(method, "output")),
+    };
+    const handler = handlerValue;
+    handlers[name] = async (input, context) =>
+      resolveHostValue(handler(input, context));
   }
-  if (value.experimental_signals !== undefined) {
-    if (!isRecord(value.experimental_signals)) {
+  let signals: Readonly<Record<string, HostSignal>> | undefined;
+  const signalsValue = readProperty(value, "experimental_signals");
+  if (signalsValue !== undefined) {
+    if (!isRecord(signalsValue)) {
       throw new Error("host artifact signals must be an object");
     }
-    for (const [name, signal] of Object.entries(value.experimental_signals)) {
-      if (!isRecord(signal) || !isSchema(signal.payload)) {
+    const parsedSignals: Record<string, HostSignal> = {};
+    for (const [name, signal] of readEntries(signalsValue)) {
+      if (!isRecord(signal) || !isSchema(readProperty(signal, "payload"))) {
         throw new Error(`host artifact has an invalid signal "${name}"`);
       }
+      parsedSignals[name] = {
+        payload: parseSchema(readProperty(signal, "payload")),
+      };
     }
+    signals = parsedSignals;
   }
-  return value as unknown as HostEntry;
+  return {
+    experimental_apiVersion: 1,
+    contract,
+    experimental_signals: signals,
+    handlers,
+    dispose:
+      disposeValue === undefined
+        ? undefined
+        : async () => {
+            if (!isHostFunction(disposeValue)) return;
+            await resolveHostValue(disposeValue());
+          },
+  };
 }
 
-function parseHostWatchEvent(value: unknown): HostWatchEvent | null {
-  if (!isRecord(value) || typeof value.kind !== "string") return null;
-  if (value.kind === "rescan-required") return { kind: value.kind };
-  if (value.kind === "watch-error" && typeof value.message === "string") {
-    return { kind: value.kind, message: value.message };
+function parseHostWatchEvent(value: HostBoundaryValue): HostWatchEvent | null {
+  if (!isRecord(value)) return null;
+  const kind = readProperty(value, "kind");
+  if (!isString(kind)) return null;
+  if (kind === "rescan-required") return { kind };
+  const message = readProperty(value, "message");
+  if (kind === "watch-error" && isString(message)) {
+    return { kind, message };
   }
-  if (value.kind !== "changed" || !Array.isArray(value.changes)) return null;
+  const changesValue = readProperty(value, "changes");
+  if (kind !== "changed" || !Array.isArray(changesValue)) return null;
   const changes: Array<{
     path: string;
-    type: "create" | "update" | "delete";
+    type: HostWatchChangeType;
   }> = [];
-  for (const change of value.changes) {
-    if (!isRecord(change) || typeof change.path !== "string") return null;
-    if (
-      change.type !== "create" &&
-      change.type !== "update" &&
-      change.type !== "delete"
-    ) {
-      return null;
-    }
-    changes.push({ path: change.path, type: change.type });
+  for (const change of changesValue) {
+    if (!isRecord(change)) return null;
+    const path = readProperty(change, "path");
+    const type = readProperty(change, "type");
+    if (!isString(path)) return null;
+    if (!isHostWatchChangeType(type)) return null;
+    changes.push({ path, type });
   }
-  return { kind: value.kind, changes };
+  return { kind, changes };
 }
 
-function parseParentMessage(value: unknown): ParentMessage | null {
-  if (!isRecord(value) || typeof value.type !== "string") return null;
-  if (value.type === "dispose") return { type: "dispose" };
-  if (value.type === "watch-ready" && typeof value.watchId === "string") {
-    return { type: "watch-ready", watchId: value.watchId };
+function parseParentMessage(value: HostBoundaryValue): ParentMessage | null {
+  if (!isRecord(value)) return null;
+  const type = readProperty(value, "type");
+  if (!isString(type)) return null;
+  if (type === "dispose") return { type };
+  const watchId = readProperty(value, "watchId");
+  if (type === "watch-ready" && isString(watchId)) {
+    return { type, watchId };
   }
-  if (
-    value.type === "watch-start-error" &&
-    typeof value.watchId === "string" &&
-    typeof value.error === "string"
-  ) {
+  const error = readProperty(value, "error");
+  if (type === "watch-start-error" && isString(watchId) && isString(error)) {
     return {
-      type: "watch-start-error",
-      watchId: value.watchId,
-      error: value.error,
+      type,
+      watchId,
+      error,
     };
   }
+  const sequence = readProperty(value, "sequence");
   if (
-    value.type === "watch-event" &&
-    typeof value.watchId === "string" &&
-    typeof value.sequence === "number" &&
-    Number.isSafeInteger(value.sequence)
+    type === "watch-event" &&
+    isString(watchId) &&
+    isNumber(sequence) &&
+    Number.isSafeInteger(sequence)
   ) {
-    const event = parseHostWatchEvent(value.event);
+    const event = parseHostWatchEvent(readProperty(value, "event"));
     if (event !== null) {
       return {
-        type: "watch-event",
-        watchId: value.watchId,
-        sequence: value.sequence,
+        type,
+        watchId,
+        sequence,
         event,
       };
     }
   }
-  if (value.type === "cancel" && typeof value.callId === "string") {
-    return { type: "cancel", callId: value.callId };
+  const callId = readProperty(value, "callId");
+  if (type === "cancel" && isString(callId)) {
+    return { type, callId };
   }
-  if (
-    value.type === "call" &&
-    typeof value.callId === "string" &&
-    typeof value.method === "string"
-  ) {
+  const method = readProperty(value, "method");
+  if (type === "call" && isString(callId) && isString(method)) {
     return {
-      type: "call",
-      callId: value.callId,
-      method: value.method,
-      input: value.input,
+      type,
+      callId,
+      method,
+      input: readProperty(value, "input"),
     };
   }
   return null;
 }
 
+function parseStringArray(value: HostBoundaryValue): readonly string[] {
+  if (!Array.isArray(value)) throw new Error("invalid host watch options");
+  const parsed: string[] = [];
+  for (const entry of value) {
+    if (!isString(entry)) throw new Error("invalid host watch options");
+    parsed.push(entry);
+  }
+  return parsed;
+}
+
 function validateWatchOptions(
-  value: HostWatchOptions,
+  value: HostBoundaryValue,
 ): ResolvedHostWatchOptions {
   if (!isRecord(value)) throw new Error("invalid host watch options");
-  const ignoredPaths = value.ignoredPaths ?? [];
-  const debounceMs = value.debounceMs ?? 75;
-  const maxWaitMs = value.maxWaitMs ?? 500;
+  const rootPath = readProperty(value, "rootPath");
+  const ignoredPathsValue = readProperty(value, "ignoredPaths");
+  const debounceValue = readProperty(value, "debounceMs");
+  const maxWaitValue = readProperty(value, "maxWaitMs");
+  const ignoredPaths =
+    ignoredPathsValue === undefined ? [] : parseStringArray(ignoredPathsValue);
+  const debounceMs = debounceValue === undefined ? 75 : debounceValue;
+  const maxWaitMs = maxWaitValue === undefined ? 500 : maxWaitValue;
   if (
-    typeof value.rootPath !== "string" ||
-    !isAbsolute(value.rootPath) ||
-    Buffer.byteLength(value.rootPath) > MAX_WATCH_PATH_BYTES ||
-    !Array.isArray(ignoredPaths) ||
+    !isString(rootPath) ||
+    !isAbsolute(rootPath) ||
+    Buffer.byteLength(rootPath) > MAX_WATCH_PATH_BYTES ||
     ignoredPaths.length > MAX_WATCH_IGNORE_ENTRIES ||
     ignoredPaths.some(
-      (entry) =>
-        typeof entry !== "string" ||
-        Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
+      (entry) => Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
     ) ||
+    !isNumber(debounceMs) ||
     !Number.isInteger(debounceMs) ||
     debounceMs < MIN_WATCH_DEBOUNCE_MS ||
     debounceMs > MAX_WATCH_DEBOUNCE_MS ||
+    !isNumber(maxWaitMs) ||
     !Number.isInteger(maxWaitMs) ||
     maxWaitMs < debounceMs ||
     maxWaitMs > MAX_WATCH_WAIT_MS
   ) {
     throw new Error("invalid host watch options");
   }
-  return { rootPath: value.rootPath, ignoredPaths, debounceMs, maxWaitMs };
+  return { rootPath, ignoredPaths, debounceMs, maxWaitMs };
 }
 
 async function validate(
   schema: StandardSchema,
-  value: unknown,
-): Promise<unknown> {
+  value: HostBoundaryValue,
+): Promise<HostBoundaryValue> {
   const result = await schema["~standard"].validate(value);
   if (result.issues !== undefined) {
     throw new Error(result.issues.map((issue) => issue.message).join("; "));
@@ -287,7 +468,10 @@ async function validate(
   return result.value;
 }
 
-function normalizeJson(value: unknown, label: string): unknown {
+function normalizeJson(
+  value: HostBoundaryValue,
+  label: string,
+): HostBoundaryValue {
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(value);
@@ -303,15 +487,57 @@ function normalizeJson(value: unknown, label: string): unknown {
   return JSON.parse(serialized);
 }
 
-function send(message: object): void {
+type WorkerMessage =
+  | { readonly type: "watch-stop"; readonly watchId: string }
+  | {
+      readonly type: "watch-start";
+      readonly watchId: string;
+      readonly rootPath: string;
+      readonly ignoredPaths: readonly string[];
+      readonly debounceMs: number;
+      readonly maxWaitMs: number;
+    }
+  | {
+      readonly type: "watch-ack";
+      readonly watchId: string;
+      readonly sequence: number;
+    }
+  | {
+      readonly type: "result";
+      readonly callId: string;
+      readonly ok: true;
+      readonly output: HostBoundaryValue;
+    }
+  | {
+      readonly type: "result";
+      readonly callId: string;
+      readonly ok: false;
+      readonly error: string;
+    }
+  | {
+      readonly type: "signal";
+      readonly signal: string;
+      readonly payload: HostBoundaryValue;
+    }
+  | { readonly type: "lease-acquire"; readonly leaseId: string }
+  | { readonly type: "lease-release"; readonly leaseId: string }
+  | {
+      readonly type: "ready";
+      readonly protocolVersion: number;
+      readonly pluginId: string;
+      readonly generation: string;
+    }
+  | { readonly type: "startup-error"; readonly error: string };
+
+function send(message: WorkerMessage): void {
   if (!process.connected) return;
   try {
     process.send?.(message);
   } catch {}
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(error: Error): string {
+  return error.message;
 }
 
 const [
@@ -350,14 +576,17 @@ let entry: HostEntry | null = null;
 let disposing = false;
 
 function startWatch(
-  options: HostWatchOptions,
-  listener: HostWatchListener,
+  options: HostBoundaryValue,
+  listener: HostBoundaryValue,
   requestSignal: AbortSignal,
 ): Promise<HostWatchSubscription> {
   const validated = validateWatchOptions(options);
-  if (typeof listener !== "function") {
+  if (!isHostFunction(listener)) {
     throw new Error("host watch listener must be a function");
   }
+  const watchListener: HostWatchListener = async (event) => {
+    await resolveHostValue(listener(event));
+  };
   if (disposing || lifecycleController.signal.aborted) {
     throw new Error("host worker is disposing");
   }
@@ -379,7 +608,7 @@ function startWatch(
     },
   };
   const state: WorkerWatchState = {
-    listener,
+    listener: watchListener,
     subscription,
     resolve,
     reject,
@@ -438,9 +667,9 @@ function handleWatchEvent(
   void Promise.resolve()
     .then(() => state.listener(event))
     .catch((error) => {
-      process.stderr.write(
-        `Host watch listener failed: ${errorMessage(error)}\n`,
-      );
+      const message =
+        error instanceof Error ? errorMessage(error) : String(error);
+      process.stderr.write(`Host watch listener failed: ${message}\n`);
     })
     .finally(() => send({ type: "watch-ack", watchId, sequence }));
 }
@@ -499,6 +728,9 @@ async function handleCall(
       lifecycle: { signal: lifecycleController.signal },
       experimental_paths: { dataDir, tempDir },
       async experimental_emitSignal(signalName, payload) {
+        if (!isString(signalName)) {
+          throw new Error("host signal name must be a string");
+        }
         const signal = currentEntry.experimental_signals?.[signalName];
         if (signal === undefined) {
           throw new Error(`unknown host signal "${signalName}"`);
@@ -539,11 +771,13 @@ async function handleCall(
     );
     send({ type: "result", callId: message.callId, ok: true, output });
   } catch (error) {
+    const errorText =
+      error instanceof Error ? errorMessage(error) : String(error);
     send({
       type: "result",
       callId: message.callId,
       ok: false,
-      error: errorMessage(error),
+      error: errorText,
     });
   } finally {
     contextOpen = false;
@@ -558,7 +792,7 @@ try {
   const imported = await import(pathToFileURL(artifactPath).href);
   if (disposing) process.exit(0);
   entry = parseEntry(imported.default);
-  process.on("message", (raw: unknown) => {
+  process.on("message", (raw: HostBoundaryValue) => {
     const message = parseParentMessage(raw);
     if (message === null) return;
     if (message.type === "call") {
@@ -583,6 +817,7 @@ try {
   });
 } catch (error) {
   if (disposing) process.exit(1);
-  send({ type: "startup-error", error: errorMessage(error) });
+  const message = error instanceof Error ? errorMessage(error) : String(error);
+  send({ type: "startup-error", error: message });
   process.exit(1);
 }

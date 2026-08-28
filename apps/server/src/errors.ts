@@ -54,7 +54,7 @@ export class ApiError extends HTTPException {
 function normalizeApiErrorOptions(
   options: boolean | ApiErrorOptions | undefined,
 ): ApiErrorOptions {
-  if (typeof options === "boolean") {
+  if (options === true || options === false) {
     return { retryable: options };
   }
   return options ?? {};
@@ -74,10 +74,7 @@ export class TurnStartGuardError extends ApiError {
   }
 }
 
-export function errorToResponse(
-  error: unknown,
-  logger: ServerLogger,
-): Response {
+export function errorToResponse<T>(error: T, logger: ServerLogger): Response {
   if (error instanceof TurnStartGuardError) {
     logger.warn(
       { err: error, ...error.details },

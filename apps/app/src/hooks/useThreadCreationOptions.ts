@@ -307,15 +307,18 @@ export function useThreadCreationOptions(
   const executionOptionsQueryEnabled = enabled;
   const executionOptionsRouting = resolveProviderRouting
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
-    : resolveThreadCreationProviderRouting({
-        environmentId,
-        environmentHostId,
-        environmentSelectionValue: rawEnvironmentSelectionValue,
-        ...(knownModelCatalogScope === undefined
-          ? {}
-          : { modelCatalogScope: knownModelCatalogScope }),
-        scope,
-      });
+    : (() => {
+        const routingArgs: ResolveThreadCreationProviderRoutingArgs = {
+          environmentId,
+          environmentHostId,
+          environmentSelectionValue: rawEnvironmentSelectionValue,
+          scope,
+        };
+        if (knownModelCatalogScope !== undefined) {
+          routingArgs.modelCatalogScope = knownModelCatalogScope;
+        }
+        return resolveThreadCreationProviderRouting(routingArgs);
+      })();
   const canResolveReadyProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&
@@ -427,20 +430,23 @@ export function useThreadCreationOptions(
 
   const providerOptions = useMemo(
     (): ProviderPickerOption[] =>
-      providers.map((p) => ({
-        value: p.id,
-        label: p.displayName,
-        icon: getProviderIconInfo(p.id, p)?.icon,
-        ...(p.strings?.brandPrefix === undefined
-          ? {}
-          : { brandPrefix: p.strings.brandPrefix }),
-        ...(p.strings?.planModeCopy === undefined
-          ? {}
-          : { planModeCopy: p.strings.planModeCopy }),
-        ...(p.strings?.installUrl === undefined
-          ? {}
-          : { installUrl: p.strings.installUrl }),
-      })),
+      providers.map((p) => {
+        const option: ProviderPickerOption = {
+          value: p.id,
+          label: p.displayName,
+          icon: getProviderIconInfo(p.id, p)?.icon,
+        };
+        if (p.strings?.brandPrefix !== undefined) {
+          option.brandPrefix = p.strings.brandPrefix;
+        }
+        if (p.strings?.planModeCopy !== undefined) {
+          option.planModeCopy = p.strings.planModeCopy;
+        }
+        if (p.strings?.installUrl !== undefined) {
+          option.installUrl = p.strings.installUrl;
+        }
+        return option;
+      }),
     [providers],
   );
 

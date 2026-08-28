@@ -4,9 +4,6 @@
   "type": "registry:ui",
   "title": "table",
   "description": "BB ui \"table\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/table.tsx",
@@ -14,5 +11,8 @@
       "type": "registry:ui",
       "target": "components/ui/table.tsx"
     }
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

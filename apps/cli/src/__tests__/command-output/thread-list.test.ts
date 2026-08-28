@@ -94,9 +94,7 @@ describe("bb thread list command output", () => {
 
     await runCommand(["thread", "list"], register);
 
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
+    expect(list).toHaveBeenCalledWith({});
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
       "ID                 Title  Project  Status         \n-----------------  -----  -------  ---------------\nthread-archived-1  -      Alpha    idle (archived)",
@@ -147,9 +145,7 @@ describe("bb thread list command output", () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
     await runCommand(["thread", "list"], register);
 
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
+    expect(list).toHaveBeenCalledWith({});
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
       "ID                 Title  Project  Status      \n-----------------  -----  -------  ------------\nthread-personal-1  -      -        idle        ",
@@ -230,9 +226,7 @@ describe("bb thread list command output", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     await runCommand(["thread", "list"], register);
 
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
+    expect(list).toHaveBeenCalledWith({});
   });
 
   it("bb thread list does not infer parent-thread from BB_THREAD_ID", async () => {
@@ -244,8 +238,6 @@ describe("bb thread list command output", () => {
     vi.stubEnv("BB_THREAD_ID", "thread-current");
     await runCommand(["thread", "list"], register);
 
-    expect(list).toHaveBeenCalledWith({
-      query: {},
-    });
+    expect(list).toHaveBeenCalledWith({});
   });
 });

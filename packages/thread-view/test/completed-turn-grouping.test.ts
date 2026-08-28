@@ -120,7 +120,7 @@ function completedTurn(
   terminalMessage: EventProjectionMessage | undefined,
   summaryCount = messages.length,
 ): EventProjectionTurn {
-  return {
+  const turn: EventProjectionTurn = {
     turnId: "turn-1",
     threadId: "thread-1",
     sourceSeqStart: 1,
@@ -131,8 +131,9 @@ function completedTurn(
     status: "completed",
     summaryCount,
     messages,
-    ...(terminalMessage ? { terminalMessage } : {}),
   };
+  if (terminalMessage) turn.terminalMessage = terminalMessage;
+  return turn;
 }
 
 function summarySourceMessageIds(

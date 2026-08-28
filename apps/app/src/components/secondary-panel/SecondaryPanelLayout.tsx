@@ -72,7 +72,23 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
+  dependencies?: SecondaryPanelLayoutDependencies;
 }
+
+export interface SecondaryPanelLayoutDependencies {
+  Panel: typeof Panel;
+  PanelGroup: typeof PanelGroup;
+  ResponsiveDrawerShell: typeof PersistentResponsiveDrawerShell;
+  dispatchBrowserViewBoundsSync: typeof dispatchBrowserViewBoundsSync;
+}
+
+const defaultSecondaryPanelLayoutDependencies: SecondaryPanelLayoutDependencies =
+  {
+    Panel,
+    PanelGroup,
+    ResponsiveDrawerShell: PersistentResponsiveDrawerShell,
+    dispatchBrowserViewBoundsSync,
+  };
 
 export function SecondaryPanelLayout({
   open,
@@ -90,7 +106,10 @@ export function SecondaryPanelLayout({
   renderPanel,
   renderHostedPanel,
   composerHost,
+  dependencies = defaultSecondaryPanelLayoutDependencies,
 }: SecondaryPanelLayoutProps) {
+  const dispatchBrowserViewBoundsSync =
+    dependencies.dispatchBrowserViewBoundsSync;
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
@@ -240,7 +259,11 @@ export function SecondaryPanelLayout({
         },
       );
     },
-    [cancelCompactDrawerContentSettleFrame, realizePanel],
+    [
+      cancelCompactDrawerContentSettleFrame,
+      dispatchBrowserViewBoundsSync,
+      realizePanel,
+    ],
   );
 
   const canShowNativeBrowserView = renderAsDrawer
@@ -338,7 +361,7 @@ export function SecondaryPanelLayout({
   return (
     <>
       <div className="flex min-h-0 w-full min-w-0 flex-1">
-        <PanelGroup
+        <dependencies.PanelGroup
           key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
           data-split-resize-grid-root=""
@@ -349,7 +372,7 @@ export function SecondaryPanelLayout({
             ...getPanelCollapseTransitionStyle(transitionsReady),
           }}
         >
-          <Panel
+          <dependencies.Panel
             id={mainPanelId}
             {...(collapse === undefined
               ? {}
@@ -360,12 +383,12 @@ export function SecondaryPanelLayout({
             className="min-w-0 overflow-clip"
           >
             {mainContent}
-          </Panel>
+          </dependencies.Panel>
           {inlinePanel}
-        </PanelGroup>
+        </dependencies.PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <PersistentResponsiveDrawerShell
+        <dependencies.ResponsiveDrawerShell
           open={open}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) {
@@ -379,7 +402,7 @@ export function SecondaryPanelLayout({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {isPanelRealized ? drawerPanel : drawerFallback}
           </div>
-        </PersistentResponsiveDrawerShell>
+        </dependencies.ResponsiveDrawerShell>
       ) : null}
     </>
   );

@@ -6,7 +6,8 @@
 
 **Auth from a native client.** RPC/CLI/mention-search use `browserRequestProblem` (`apps/server/src/browser-request-guard.ts:150-176`): Origin is checked only if present; POST must be `content-type: application/json`. RN `fetch` sends no Origin, so plugin RPC/CLI work from native. `@bb/sdk` already has `plugins.callRpc` (`packages/sdk/src/areas/plugins.ts:378-384`) and `threads.interactions.respond/cancel` (`packages/sdk/src/areas/threads.ts:723-770`).
 
-**First-party plugin survey (plugins/*).** All 18 ship `bb.app` (`package.json`), all are React-DOM + Tailwind + `@bb/shared-ui`:
+**First-party plugin survey (plugins/\*).** All 18 ship `bb.app` (`package.json`), all are React-DOM + Tailwind + `@bb/shared-ui`:
+
 - ask-user-question: server `agents.registerTool` + `ui.requestInput`; app `pendingInteraction` id `ask-user-question` (`plugins/ask-user-question/app.tsx:561-566`), payload is JSON validated by `interactionPayloadSchema` (`plugins/ask-user-question/src/contracts.ts:64-80`); form uses `window.addEventListener`, HTMLTextAreaElement.
 - secrets: server `cli` + `ui.requestInput`; app `pendingInteraction` id `secret-request` (`plugins/secrets/app.tsx:217`), payload `secretRequestPayloadSchema`.
 - side-chat: server rpc `createSideChat`/`sendToMain` (`plugins/side-chat/server.ts:146-174`); app `messageAction` + `threadPanelAction` rendering host `ThreadChat` on a hidden fork thread (`plugins/side-chat/app.tsx:321-355`).
@@ -25,12 +26,14 @@
 **Server-side (works for any client automatically):** agent tools + statusLabels, skills, CLI commands, background services/schedules, thread events, mention providers (search `GET /plugins/mentions/search`, `routes/plugins.ts:212-240`; resolve at send; mention resource `kind:"plugin"` `packages/domain/src/shared-types.ts:249-263`), declarative settings schema (`packages/server-contract/src/api/plugins.ts:318-349`), plugin management (`installedPluginSchema` `:181-219`), pending-interaction plumbing (`packages/domain/src/pending-interactions.ts:329-333, 461-465`; app fallback = "form unavailable, Cancel" `PluginPendingInteractionComposer.tsx:112-126`), unknown message directives render as literal text (`apps/app/src/components/ui/markdown-message-directives.tsx:288-292`), plugin panel tab persistence is JSON (`apps/app/src/lib/fixed-panel-tabs-state.ts:212-246`).
 
 **Feasibility matrix (ranked by value/effort):**
+
 1. **(a) skip frontends + (c)-lite native subset** — low effort, high value. Everything server-side already works; add native renderers keyed on `origin.rendererId` for `ask-user-question` and `secret-request` payloads (JSON schemas above) so threads never block; native mention menu over `/plugins/mentions/search`; native declarative settings; provider icons via `iconUrl` SVG; literal directives; treat side-chat forks as ordinary threads (call `createSideChat` rpc natively).
 2. **(b) WebView per panel** — high effort, medium-high value. Requires a new bb-served "plugin host shell" page that installs the full `__bbPluginRuntime` (react-dom, 10 Radix families, sonner, vaul, pierre) plus a bridged `pluginSdkApp` (rpc via same-origin fetch, navigate/composer/openPanel via postMessage, realtime via WS), host theme.css, `<div data-bb-plugin>` scope, cookie/auth sharing, and must be same-origin (Origin check). Precedent: `installTestPluginRuntime`/`renderSlot` harness (`packages/plugin-sdk/src/testing/app.tsx:62-85, 494, 835`). Unlocks docs/tasks/github/automations/workflows navPanels, threadPanelActions, fileOpeners, settingsSections. Not for `ThreadChat`-based panels (side-chat needs the whole timeline engine), composer banners, message/plus-menu/sidebar `run` callbacks, threadList, content scripts.
 3. **(c)-full declarative JSON UI API** — high effort (new `experimental_` SDK surface + docs/api_to_audit.md + server + web + native + plugin adoption), value only after adoption.
 4. **(d) hidden WebView projecting slots** — not viable: slots are opaque React DOM components; only host-rendered chrome metadata (title/icon/id) is projectable, and `run` callbacks would still need a bridge. Reduces to (b) with more moving parts.
 
 ## Key files
+
 - packages/plugin-sdk/src/app-contract.ts
 - packages/plugin-sdk/src/app.ts
 - packages/plugin-sdk/src/backend-contract.ts
@@ -78,13 +81,14 @@
 - docs/plugin-marketplace-plan.md
 
 ## Reuse verdicts
+
 - @get-bb/plugin-sdk (root: backend-contract, app-contract, rpc-contract, json-value types): **reusable-as-is** — Type-only surface plus tiny pure helpers (PLUGIN_CLI_OUTPUT_MAX_BYTES, experimental_defineHostEntry). Useful for typing plugin RPC contracts/pending-interaction payloads in RN. Note app-contract types reference react ComponentType and DOM PointerEvent<HTMLElement> (app-contract.ts:672) — types compile but describe DOM components.
 - @get-bb/plugin-sdk/app (runtime facade): **not-reusable** — Reads globalThis.__bbPluginRuntime.pluginSdkApp (app.ts:45-70); the contract (PluginSdkApp, app-contract.ts:1451-1521) is react-dom components/hooks tied to react-router, wsManager, composer DOM. Only meaningful if the RN app supplies its own runtime — and plugin bundles still need react-dom/Radix.
 - @get-bb/plugin-sdk/internal/plugin-app-collector + composer-customization-validation: **reusable-as-is** — Pure JS validation of registrations; runs anywhere. Only useful if bundles are evaluated in-process, which Hermes cannot do because bundles import react-dom/Radix shims.
 - @get-bb/plugin-sdk/internal/host-policy: **reusable-as-is** — Pure zod/policy; server-side concern, no client need.
 - @bb/plugin-build: **not-reusable** — Node build tool (node:fs, esbuild, @tailwindcss/node/oxide); N/A for a client. Its RUNTIME_SLOT_BY_SPECIFIER (build-plugin-app.ts:63-85) defines what any WebView host shell must provide.
 - @bb/plugin-registry (shadcn component registry): **not-reusable** — Radix/Tailwind DOM component sources (registry.json uiItems, r/*.json); no RN equivalents.
-- Plugin frontend bundles (plugins/*/dist/app.js) and plugins/*/app.tsx sources: **not-reusable** — ESM built with esbuild platform:browser; shims throw without globalThis.__bbPluginRuntime (build-plugin-app.ts:155-160); JSX is HTML+Tailwind classNames; docs/tasks use tiptap (ProseMirror DOM), github uses @pierre/diffs + MutationObserver + localStorage, inline-vis uses <iframe>, ask-user-question uses window keydown + HTMLTextAreaElement. Runnable only inside a WebView with a host shell page.
+- Plugin frontend bundles (plugins/_/dist/app.js) and plugins/_/app.tsx sources: **not-reusable** — ESM built with esbuild platform:browser; shims throw without globalThis.__bbPluginRuntime (build-plugin-app.ts:155-160); JSX is HTML+Tailwind classNames; docs/tasks use tiptap (ProseMirror DOM), github uses @pierre/diffs + MutationObserver + localStorage, inline-vis uses <iframe>, ask-user-question uses window keydown + HTMLTextAreaElement. Runnable only inside a WebView with a host shell page.
 - apps/app/src/lib/plugin-frontend.ts (loader/reconciler): **not-reusable** — Dynamic import(url) of ESM, document.head <link> injection, window pagehide, react-dom/Radix imports (lines 1-25, 330-352, 917, 954).
 - apps/app/src/lib/plugin-slots.ts (slot store): **headless-logic-only** — Pure useSyncExternalStore store; nothing to store in RN unless a native slot contract exists.
 - apps/app/src/lib/plugin-sdk-hooks.ts callPluginRpc / fetchPluginSdkSettings: **reusable-with-small-changes** — Pure fetch functions (lines 135-177, 185-211) use root-relative URLs; need absolute base URL + auth headers. The React hooks around them depend on react-router, wsManager, composer DOM.
@@ -93,6 +97,7 @@
 - Plugin backends (plugins/*/server.ts, host.ts) — agent tools, CLI, services, mention providers, requestInput, providers: **reusable-as-is** — Server/daemon-side; work automatically for any client. Their UI counterparts (pending-interaction forms, panels) do not.
 
 ## Risks
+
 - Without native pending-interaction renderers, ask-user-question and secrets prompts show 'form unavailable' and the only action is Cancel (PluginPendingInteractionComposer.tsx:112-126) — agents using the cross-provider question tool block on mobile.
 - Native renderers hardcoded per rendererId (ask-user-question, secret-request) couple the app to plugin payload schemas that live in plugin source (plugins/ask-user-question/src/contracts.ts, plugins/secrets/src/contracts.ts); third-party plugins' interactions remain unrenderable.
 - A WebView-hosted plugin shell must be served same-origin with the bb server (plugin fetches are root-relative, e.g. plugins/side-chat/app.tsx:71; local auth 403s on foreign Origin) and must ship the exact __bbPluginRuntime slot set or bundles throw at import (build-plugin-app.ts:155-160); SDK-major gating (app-bundle.ts:367) must be honored.
@@ -105,6 +110,7 @@
 - Message directives from tasks/docs/workflows/inline-vis will render as literal `::task{...}` text in a native markdown renderer unless handled (markdown-message-directives.tsx:288-292).
 
 ## Open questions
+
 - Should the native app render pending interactions generically (a new declarative form payload the server understands) or hardcode ask-user-question and secret-request payload schemas for v1?
 - Is a bb-served 'plugin host shell' HTML route (single slot mount with bridged pluginSdkApp) worth building in apps/app, and which slots would it target first (navPanel for docs/tasks/github/automations vs threadPanelAction)?
 - How will the native app authenticate WebView loads of /api/v1/plugins/:id/assets and same-origin plugin RPC (cookie vs token header injection) when connected via getbb.app connect?

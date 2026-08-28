@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
 
@@ -5,6 +7,7 @@ const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"]);
 const TRANSIENT_FETCH_ERROR_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
 const TRANSIENT_FETCH_MAX_ATTEMPTS = 2;
 const TRANSIENT_FETCH_RETRY_DELAY_MS = 25;
+const fetchErrorCauseSchema = z.object({ code: z.string() });
 
 function getFetchMethod(input: FetchInput, init: FetchInit): string {
   if (init?.method) {
@@ -17,15 +20,8 @@ function getFetchMethod(input: FetchInput, init: FetchInit): string {
 }
 
 function getErrorCode(error: Error): string | null {
-  const cause = error.cause;
-  if (
-    cause instanceof Error &&
-    "code" in cause &&
-    typeof cause.code === "string"
-  ) {
-    return cause.code;
-  }
-  return null;
+  const parsedCause = fetchErrorCauseSchema.safeParse(error.cause);
+  return parsedCause.success ? parsedCause.data.code : null;
 }
 
 function isTransientFetchError(error: Error): boolean {

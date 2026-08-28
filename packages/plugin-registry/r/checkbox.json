@@ -4,14 +4,6 @@
   "type": "registry:ui",
   "title": "checkbox",
   "description": "BB ui \"checkbox\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-checkbox"
-  ],
-  "registryDependencies": [
-    "@bb/icon",
-    "@bb/motion",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/checkbox.tsx",
@@ -19,5 +11,13 @@
       "type": "registry:ui",
       "target": "components/ui/checkbox.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-checkbox"
+  ],
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/motion",
+    "@bb/utils"
   ]
 }

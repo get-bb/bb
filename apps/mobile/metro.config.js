@@ -74,8 +74,8 @@ function resolveWorkspaceSource(moduleName) {
   const entry = packageJson.exports?.[subpath];
   if (!entry) return null;
   const source =
-    typeof entry === "string" ? entry : (entry.source ?? entry.default);
-  if (typeof source !== "string") return null;
+    String(entry) === entry ? entry : (entry.source ?? entry.default);
+  if (String(source) !== source) return null;
   return path.resolve(packageDir, source);
 }
 

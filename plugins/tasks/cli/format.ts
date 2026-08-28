@@ -1,4 +1,6 @@
-function oneLine(value: unknown): string {
+type FormattableValue = string | number | boolean | null | undefined;
+
+function oneLine(value: FormattableValue): string {
   return String(value ?? "")
     .replace(/[\r\n\t]+/gu, " ")
     .replace(/\s+/gu, " ")
@@ -7,7 +9,7 @@ function oneLine(value: unknown): string {
 
 export function table(
   headers: readonly string[],
-  rows: readonly (readonly unknown[])[],
+  rows: readonly (readonly FormattableValue[])[],
   emptyMessage: string,
 ): string {
   if (rows.length === 0) return emptyMessage;
@@ -31,7 +33,7 @@ export function table(
 }
 
 export function detail(
-  fields: readonly (readonly [string, unknown])[],
+  fields: readonly (readonly [string, FormattableValue])[],
 ): string {
   const width = Math.max(...fields.map(([label]) => label.length));
   return fields

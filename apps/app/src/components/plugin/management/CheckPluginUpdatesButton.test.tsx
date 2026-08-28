@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { allPluginListQueryKeyPrefix } from "@/hooks/queries/query-keys";
-import type { PluginUpdatesEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  checkPluginUpdates,
+  type PluginUpdatesEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import {
   CheckPluginUpdatesButton,
   summarizeUpdateCheck,
@@ -28,7 +32,7 @@ function entry(
   };
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: JsonValue): Response {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
   });
@@ -81,8 +85,9 @@ describe("summarizeUpdateCheck", () => {
 
 describe("CheckPluginUpdatesButton", () => {
   it("posts a full or scoped check and refetches the plugin list", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ results: [{ id: "a", outcome: "current", installed }] }),
+    const fetchMock = vi.fn<Parameters<typeof checkPluginUpdates>[0]>(
+      async () =>
+        jsonResponse({ results: [{ id: "a", outcome: "current", installed }] }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper, queryClient } = createQueryClientTestHarness();
@@ -104,7 +109,10 @@ describe("CheckPluginUpdatesButton", () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const bodies = fetchMock.mock.calls.map((call) => {
-      const [url, init] = call as unknown as [string, RequestInit];
+      const [url, init] = call;
+      if (init === undefined) {
+        throw new Error("Expected a request init");
+      }
       expect(url).toContain("/plugins/updates/check");
       expect(init.method).toBe("POST");
       return JSON.parse(String(init.body));

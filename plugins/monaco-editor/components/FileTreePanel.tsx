@@ -47,7 +47,6 @@ export function FileTreePanel({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [height, setHeight] = useState(readStoredTreeHeight);
   const heightRef = useRef(height);
-  heightRef.current = height;
   const requestedHeightRef = useRef(height);
   const dragStartHeightRef = useRef<number | null>(null);
 
@@ -71,6 +70,10 @@ export function FileTreePanel({
     dragStartHeightRef.current = null;
     storeTreeHeight(heightRef.current);
   };
+
+  useLayoutEffect(() => {
+    heightRef.current = height;
+  }, [height]);
 
   useLayoutEffect(() => {
     const parent = panelRef.current?.parentElement;
@@ -122,21 +125,15 @@ export function FileTreePanel({
   const filtered = useMemo(() => filterTree(tree, query), [tree, query]);
 
   useEffect(() => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      for (const ancestor of ancestorsOf(activePath)) next.add(ancestor);
-      return next;
-    });
-  }, [activePath]);
-
-  useEffect(() => {
     activeRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [activePath, entries.length]);
 
   const effectiveExpanded = useMemo(() => {
-    if (filtered.expand.size === 0) return expanded;
-    return new Set([...expanded, ...filtered.expand]);
-  }, [expanded, filtered.expand]);
+    const next = new Set(expanded);
+    for (const ancestor of ancestorsOf(activePath)) next.add(ancestor);
+    for (const path of filtered.expand) next.add(path);
+    return next;
+  }, [activePath, expanded, filtered.expand]);
 
   const toggle = (path: string) => {
     setExpanded((current) => {
@@ -147,13 +144,13 @@ export function FileTreePanel({
     });
   };
 
+  const panelStyle: React.CSSProperties = { height };
+  if (background !== null) panelStyle.backgroundColor = background;
+
   return (
     <div
       ref={panelRef}
-      style={{
-        height,
-        ...(background === null ? {} : { backgroundColor: background }),
-      }}
+      style={panelStyle}
       className={cn(
         "flex shrink-0 flex-col",
         background === null && "bg-surface-recessed",

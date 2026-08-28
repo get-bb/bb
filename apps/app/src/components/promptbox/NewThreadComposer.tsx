@@ -1005,23 +1005,26 @@ export function NewThreadComposer({
     ],
   );
 
-  const seededExecutionInputSources = useMemo(
-    (): CreateExecutionInputSources => ({
-      ...(seed?.providerId !== undefined
-        ? { providerId: "explicit" as const }
-        : {}),
-      ...(seed?.model !== undefined ? { model: "explicit" as const } : {}),
-      ...(seed?.reasoningLevel !== undefined
-        ? { reasoningLevel: "explicit" as const }
-        : {}),
-      ...(seed?.serviceTier !== undefined && supportsServiceTier && serviceTier
-        ? { serviceTier: "explicit" as const }
-        : {}),
-      ...(seed?.permissionMode !== undefined
-        ? { permissionMode: "explicit" as const }
-        : {}),
-    }),
-    [
+  const seededExecutionInputSources =
+    useMemo((): CreateExecutionInputSources => {
+      const sources: CreateExecutionInputSources = {};
+      if (seed?.providerId !== undefined) sources.providerId = "explicit";
+      if (seed?.model !== undefined) sources.model = "explicit";
+      if (seed?.reasoningLevel !== undefined) {
+        sources.reasoningLevel = "explicit";
+      }
+      if (
+        seed?.serviceTier !== undefined &&
+        supportsServiceTier &&
+        serviceTier
+      ) {
+        sources.serviceTier = "explicit";
+      }
+      if (seed?.permissionMode !== undefined) {
+        sources.permissionMode = "explicit";
+      }
+      return sources;
+    }, [
       seed?.model,
       seed?.permissionMode,
       seed?.providerId,
@@ -1029,8 +1032,7 @@ export function NewThreadComposer({
       seed?.serviceTier,
       serviceTier,
       supportsServiceTier,
-    ],
-  );
+    ]);
   const submissionEnvironment =
     selectedEnvironment ??
     (selectionScope === "new-thread" ? seed?.environment : undefined) ??
@@ -1083,11 +1085,13 @@ export function NewThreadComposer({
         model: selectedThreadModel,
         reasoningLevel,
         permissionMode,
-        ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
         executionInputSources: sources,
         environment: submissionEnvironment,
         input,
       };
+      if (supportsServiceTier && serviceTier) {
+        request.serviceTier = serviceTier;
+      }
       isSubmittingRef.current = true;
       setIsSubmitting(true);
       setAttachmentError(null);
@@ -1187,6 +1191,19 @@ export function NewThreadComposer({
     (options: NewThreadComposerPromptOptions) => {
       const locks = options.locks ?? {};
       const disabledReason = options.blockedReason ?? submitDisabledReason;
+      const environmentConfig = {
+        value: effectiveEnvironmentValue,
+        onChange: changeEnvironment,
+        sources: projectSources,
+        reuseDisabled: reuseThreadOptions.length === 0,
+        worktreeDisabledReason,
+        disabled: locks.environment,
+      };
+      if (!isProjectless && options.onRequestMachineSetup) {
+        Object.assign(environmentConfig, {
+          onRequestMachineSetup: options.onRequestMachineSetup,
+        });
+      }
       return (
         <NewThreadPromptBox
           id={options.id}
@@ -1240,17 +1257,7 @@ export function NewThreadComposer({
           }}
           promptActions={promptActions}
           modeConfig={{
-            environment: {
-              value: effectiveEnvironmentValue,
-              onChange: changeEnvironment,
-              sources: projectSources,
-              reuseDisabled: reuseThreadOptions.length === 0,
-              worktreeDisabledReason,
-              disabled: locks.environment,
-              ...(!isProjectless && options.onRequestMachineSetup
-                ? { onRequestMachineSetup: options.onRequestMachineSetup }
-                : {}),
-            },
+            environment: environmentConfig,
             branch: {
               value:
                 selectedBranch?.name ??

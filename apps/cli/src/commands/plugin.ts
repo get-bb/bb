@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
-import { derivePluginId } from "@bb/domain";
+import { derivePluginId, jsonValueSchema, type JsonValue } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import type {
   InstalledPlugin as PluginEntry,
@@ -132,9 +132,9 @@ const pluginPackageSummarySchema = z.object({
 const pluginManifestSchema = z.object({
   bb: z
     .object({
-      server: z.unknown().optional(),
-      app: z.unknown().optional(),
-      host: z.unknown().optional(),
+      server: z.string().optional(),
+      app: z.string().optional(),
+      host: z.string().optional(),
     })
     .optional(),
 });
@@ -244,7 +244,7 @@ async function requirePluginManifest(
     );
     process.exit(1);
   }
-  if (typeof manifest.bb?.server !== "string") {
+  if (manifest.bb?.server === undefined) {
     console.error(
       `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
     );
@@ -344,13 +344,12 @@ async function probeSdkVersionPublished(): Promise<
     );
     return stdout.trim().length === 0 ? "missing" : "published";
   } catch (error) {
+    const streams = npmErrorStreams(error);
     const detail = [
-      (error as { stderr?: unknown }).stderr,
-      (error as { stdout?: unknown }).stdout,
+      streams.stderr,
+      streams.stdout,
       error instanceof Error ? error.message : "",
-    ]
-      .map((part) => (typeof part === "string" ? part : ""))
-      .join("\n");
+    ].join("\n");
     return detail.includes("E404") || detail.includes("404 Not Found")
       ? "missing"
       : "unknown";
@@ -359,15 +358,26 @@ async function probeSdkVersionPublished(): Promise<
 
 const NPM_FAILURE_DETAIL_LINES = 8;
 
-function npmOutputTail(output: unknown): string {
-  if (typeof output !== "string") return "";
+function npmOutputTail(output: string): string {
   return output.trim().split("\n").slice(-NPM_FAILURE_DETAIL_LINES).join("\n");
 }
 
+const npmErrorSchema = z.object({
+  stderr: z.string().optional(),
+  stdout: z.string().optional(),
+});
+
+function npmErrorStreams(cause: unknown): { stderr: string; stdout: string } {
+  const parsed = npmErrorSchema.safeParse(cause);
+  return parsed.success
+    ? { stderr: parsed.data.stderr ?? "", stdout: parsed.data.stdout ?? "" }
+    : { stderr: "", stdout: "" };
+}
+
 function npmFailureDetail(cause: unknown): string {
-  if (typeof cause !== "object" || cause === null) return "";
-  const stderr = "stderr" in cause ? npmOutputTail(cause.stderr) : "";
-  const stdout = "stdout" in cause ? npmOutputTail(cause.stdout) : "";
+  const streams = npmErrorStreams(cause);
+  const stderr = npmOutputTail(streams.stderr);
+  const stdout = npmOutputTail(streams.stdout);
   const text = stderr || stdout;
   if (text === "") return "";
   return `\n${text
@@ -411,21 +421,18 @@ async function callPlugins(
   baseUrl: string,
   path: string,
   method: "GET" | "POST" | "PUT" | "DELETE",
-  body?: unknown,
-): Promise<unknown> {
-  const response = await cliFetch(`${baseUrl}/api/v1/plugins${path}`, {
-    method,
-    ...(body === undefined
-      ? {}
-      : {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-  });
+  body?: JsonValue,
+): Promise<JsonValue> {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { "content-type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await cliFetch(`${baseUrl}/api/v1/plugins${path}`, init);
   const text = await response.text();
-  let parsed: unknown;
+  let parsed: JsonValue;
   try {
-    parsed = text ? JSON.parse(text) : {};
+    parsed = jsonValueSchema.parse(text ? JSON.parse(text) : {});
   } catch {
     throw new Error(
       `Unexpected response from /api/v1/plugins${path} (${response.status}): ${text.slice(0, 200)}`,
@@ -437,13 +444,13 @@ async function callPlugins(
   return parsed;
 }
 
-const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
+const UPDATE_STATUS_LABELS = {
   current: "current",
   "update-available": "update available",
   pinned: "pinned",
   incompatible: "incompatible",
   unavailable: "unavailable",
-};
+} satisfies Record<PluginUpdateResult["outcome"], string>;
 
 function blockedSummary(result: PluginUpdateResult): string {
   if (!result.blocked) return "—";
@@ -531,6 +538,18 @@ async function existsOnDisk(source: string): Promise<boolean> {
 type InstallIntent =
   | { kind: "source"; source: string; summary: string }
   | { kind: "catalog"; plan: PluginCatalogInstallPlan };
+
+interface PluginInstallRequest {
+  source: string;
+  subdirectory?: string;
+  plugin?: string;
+}
+
+interface PluginCatalogInstallRequest {
+  entryId: string;
+  marketplace: string;
+  confirmedSource?: PluginCatalogResolvedSource;
+}
 
 const QUALIFIED_ENTRY_PATTERN = /^([a-z0-9][a-z0-9-]*)@([a-z0-9][a-z0-9-]*)$/u;
 
@@ -695,11 +714,11 @@ function exitWithError(result: { error?: string }): never {
   process.exit(1);
 }
 
-function sdkErrorMessage(error: unknown): string {
-  if (error instanceof BbHttpError) {
-    return error.message.replace(/^HTTP \d+: /u, "");
+function sdkErrorMessage(cause: unknown): string {
+  if (cause instanceof BbHttpError) {
+    return cause.message.replace(/^HTTP \d+: /u, "");
   }
-  return error instanceof Error ? error.message : String(error);
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function printSettings(result: PluginSettingsResult): void {
@@ -1005,26 +1024,33 @@ export function registerPluginCommands(
               process.exit(1);
             }
           }
-          const plugin =
-            intent.kind === "source"
-              ? await createCliBbSdk(getUrl()).plugins.install({
-                  source: intent.source,
-                  ...(opts.subdirectory === undefined
-                    ? {}
-                    : { subdirectory: opts.subdirectory }),
-                  ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
-                })
-              : await createCliBbSdk(getUrl()).plugins.catalog.install(
-                  intent.plan.kind === "marketplace"
-                    ? {
-                        entryId: intent.plan.entryId,
-                        marketplace: intent.plan.marketplace,
-                        ...(intent.plan.official
-                          ? {}
-                          : { confirmedSource: intent.plan.resolvedSource }),
-                      }
-                    : { entryId: intent.plan.entryId },
-                );
+          let plugin: PluginEntry;
+          if (intent.kind === "source") {
+            const sourceArgs: PluginInstallRequest = { source: intent.source };
+            if (opts.subdirectory !== undefined) {
+              sourceArgs.subdirectory = opts.subdirectory;
+            }
+            if (opts.plugin !== undefined) {
+              sourceArgs.plugin = opts.plugin;
+            }
+            plugin = await createCliBbSdk(getUrl()).plugins.install(sourceArgs);
+          } else if (intent.plan.kind === "marketplace") {
+            const catalogArgs: PluginCatalogInstallRequest = {
+              entryId: intent.plan.entryId,
+              marketplace: intent.plan.marketplace,
+            };
+            if (!intent.plan.official) {
+              catalogArgs.confirmedSource = intent.plan.resolvedSource;
+            }
+            plugin =
+              await createCliBbSdk(getUrl()).plugins.catalog.install(
+                catalogArgs,
+              );
+          } else {
+            plugin = await createCliBbSdk(getUrl()).plugins.catalog.install({
+              entryId: intent.plan.entryId,
+            });
+          }
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);
@@ -1206,7 +1232,7 @@ export function registerPluginCommands(
       action(async (path: string | undefined, opts: { check?: boolean }) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
         const manifest = await requirePluginManifest(rootDir);
-        const hasApp = typeof manifest.bb?.app === "string";
+        const hasApp = manifest.bb?.app !== undefined;
         const layout = await resolvePluginSdkLayout(rootDir);
         if (layout.kind === "package") {
           if (opts.check) {
@@ -1370,9 +1396,9 @@ export function registerPluginCommands(
         const rootDir = resolve(process.cwd(), path ?? ".");
         const bbVersion = resolveBbCliVersion();
         const manifest = await readPluginManifest(rootDir);
-        const hasApp = typeof manifest?.bb?.app === "string";
-        const hasHost = typeof manifest?.bb?.host === "string";
-        if (typeof manifest?.bb?.server === "string") {
+        const hasApp = manifest?.bb?.app !== undefined;
+        const hasHost = manifest?.bb?.host !== undefined;
+        if (manifest?.bb?.server !== undefined) {
           await refreshPluginTypes(rootDir, hasApp);
         }
         const toolchain = await cliBuildToolchain();
@@ -1401,8 +1427,8 @@ export function registerPluginCommands(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
         const manifest = await requirePluginManifest(rootDir);
-        const hasApp = typeof manifest.bb?.app === "string";
-        const hasHost = typeof manifest.bb?.host === "string";
+        const hasApp = manifest.bb?.app !== undefined;
+        const hasHost = manifest.bb?.host !== undefined;
         await refreshPluginTypes(rootDir, hasApp);
         const realDir = await realpath(rootDir).catch(() => rootDir);
         const list = await createCliBbSdk(getUrl()).plugins.list();
@@ -1451,8 +1477,9 @@ export function registerPluginCommands(
           rootDir,
           { recursive: true },
           (_event, filename) => {
-            if (typeof filename === "string" && filename.length > 0) {
-              loop.handleChange(filename);
+            const changedFile = filename?.toString() ?? "";
+            if (changedFile.length > 0) {
+              loop.handleChange(changedFile);
             }
           },
         );

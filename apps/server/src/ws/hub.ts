@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import {
+  jsonValueSchema,
   realtimeSubscriptionTargetKey as subscriptionKey,
+  type JsonValue,
   type RealtimeSubscriptionTarget,
   type ChangedMessage,
   type EnvironmentChangeKind,
@@ -122,6 +124,11 @@ function subscriptionKeysForMessage(message: ChangedMessage): string[] {
 interface ThreadEventWaiter {
   resolve: (notified: boolean) => void;
   timeout: ReturnType<typeof setTimeout>;
+}
+
+interface ThreadEventWaiterRegistration {
+  cancel: () => void;
+  promise: Promise<boolean>;
 }
 
 interface DaemonRegistrationWaiter {
@@ -714,7 +721,7 @@ export class NotificationHub implements DbNotifier {
   registerThreadEventWaiter(
     threadId: string,
     timeoutMs: number,
-  ): { promise: Promise<boolean>; cancel: () => void } {
+  ): ThreadEventWaiterRegistration {
     let waiter: ThreadEventWaiter;
     const promise = new Promise<boolean>((resolve) => {
       waiter = {
@@ -744,9 +751,11 @@ export class NotificationHub implements DbNotifier {
       type: "changed",
       entity: "thread",
       id: threadId,
-      ...(metadata ? { metadata } : {}),
       changes,
     };
+    if (metadata !== undefined) {
+      message.metadata = metadata;
+    }
     if (isThreadListRelevantChange(message)) {
       this.notifyClients(message);
     } else {
@@ -807,14 +816,15 @@ export class NotificationHub implements DbNotifier {
   notifyPluginSignal(
     pluginId: string,
     channel: string,
-    payload: unknown,
+    payload: JsonValue | undefined,
   ): number {
+    const parsedPayload = jsonValueSchema.parse(payload ?? null);
     const message = JSON.stringify(
       pluginSignalSchema.parse({
         type: "plugin-signal",
         pluginId,
         channel,
-        payload,
+        payload: parsedPayload,
       }),
     );
     let delivered = 0;
@@ -990,11 +1000,11 @@ export class NotificationHub implements DbNotifier {
       type: "changed",
       entity: "thread",
       id: threadId,
-      ...(pending.eventTypes.size > 0
-        ? { metadata: { eventTypes: [...pending.eventTypes] } }
-        : {}),
       changes: ["events-appended"],
     };
+    if (pending.eventTypes.size > 0) {
+      message.metadata = { eventTypes: [...pending.eventTypes] };
+    }
     const parseResult = serverMessageSchema.safeParse(message);
     if (!parseResult.success) {
       console.error("Skipping invalid realtime broadcast", parseResult.error);

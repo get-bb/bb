@@ -31,7 +31,7 @@ function provider(
   supportsUsage = true,
   strings?: ProviderInfo["strings"],
 ): ProviderInfo {
-  return {
+  const result: ProviderInfo = {
     id,
     pluginId: `provider-${id}`,
     displayName,
@@ -49,8 +49,9 @@ function provider(
       permissionModes: ["full"],
     },
     composerActions: [],
-    ...(strings === undefined ? {} : { strings }),
   };
+  if (strings !== undefined) result.strings = strings;
+  return result;
 }
 
 const FIRST_PARTY_PROVIDERS: ProviderInfo[] = [

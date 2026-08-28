@@ -19,6 +19,32 @@ type DashboardState =
   | { authed: false; emailPasswordEnabled: boolean }
   | ({ authed: true } & AccountState);
 
+interface CreateCodeInput {
+  serverId?: string | number | boolean | null;
+  reuse?: boolean;
+}
+
+interface CreateCodeOptions {
+  serverId: string | undefined;
+  reuse: boolean;
+}
+
+function isStringValue(
+  value: string | number | boolean | null | undefined,
+): value is string {
+  return String(value) === value;
+}
+
+function parseCreateCodeInput(
+  input: CreateCodeInput | undefined,
+): CreateCodeOptions {
+  const serverId = input?.serverId;
+  return {
+    serverId: isStringValue(serverId) ? serverId : undefined,
+    reuse: input?.reuse === true,
+  };
+}
+
 export const getDashboard = createServerFn({ method: "GET" }).handler(
   async (): Promise<DashboardState> => {
     const env = getEnv();
@@ -61,10 +87,9 @@ export const createServerRowFn = createServerFn({ method: "POST" })
   });
 
 export const createCodeFn = createServerFn({ method: "POST" })
-  .validator((input: { serverId?: string; reuse?: boolean } | undefined) => ({
-    serverId: typeof input?.serverId === "string" ? input.serverId : undefined,
-    reuse: input?.reuse === true,
-  }))
+  .validator((input: CreateCodeInput | undefined) =>
+    parseCreateCodeInput(input),
+  )
   .handler(async ({ data }) => {
     const userId = await getSessionUserId();
     if (!userId) return { error: "unauthenticated" as const };

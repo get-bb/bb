@@ -1,6 +1,6 @@
 export interface DeferredPromise<T> {
   promise: Promise<T>;
-  reject: (reason?: unknown) => void;
+  reject: <Reason>(reason?: Reason) => void;
   resolve: (value: T | PromiseLike<T>) => void;
 }
 

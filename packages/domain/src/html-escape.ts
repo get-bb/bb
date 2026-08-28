@@ -1,14 +1,14 @@
-const HTML_ESCAPE_REPLACEMENTS: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
+const HTML_ESCAPE_REPLACEMENTS = new Map([
+  ["&", "&amp;"],
+  ["<", "&lt;"],
+  [">", "&gt;"],
+  ['"', "&quot;"],
+  ["'", "&#39;"],
+]);
 
 export function escapeHtmlText(value: string): string {
   return value.replace(
     /[&<>"']/gu,
-    (character) => HTML_ESCAPE_REPLACEMENTS[character] ?? character,
+    (character) => HTML_ESCAPE_REPLACEMENTS.get(character) ?? character,
   );
 }

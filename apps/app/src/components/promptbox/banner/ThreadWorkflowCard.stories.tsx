@@ -55,7 +55,8 @@ const investigationSnapshot: WorkflowProgressSnapshot = {
     ["templates-security", 90_300, 51, 226_000],
   ].map(([label, tokens, toolCalls, durationMs], i) => ({
     index: i + 1,
-    label: label as string,
+    label:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ label as string,
     state: "done" as const,
     model: "opus",
     attempt: 1,
@@ -65,9 +66,12 @@ const investigationSnapshot: WorkflowProgressSnapshot = {
     phaseTitle: "Investigate",
     queuedAt: 1780540127739,
     startedAt: 1780540127740,
-    tokens: tokens as number,
-    toolCalls: toolCalls as number,
-    durationMs: durationMs as number,
+    tokens:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ tokens as number,
+    toolCalls:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ toolCalls as number,
+    durationMs:
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ durationMs as number,
   })),
 };
 investigationSnapshot.agents.push({

@@ -1,6 +1,6 @@
 import type { JsonObject } from "../json-value.js";
 
-export const draculaLightCodeTheme = {
+export const draculaLightCodeTheme: JsonObject = {
   colors: {
     "activityBar.activeBackground": "#644ac910",
     "activityBar.activeBorder": "#a3144d80",
@@ -946,4 +946,4 @@ export const draculaLightCodeTheme = {
     },
   ],
   type: "light",
-} as JsonObject;
+};

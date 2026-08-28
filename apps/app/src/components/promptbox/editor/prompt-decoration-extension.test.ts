@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import type { ComposerView } from "@get-bb/plugin-sdk";
-import { Editor } from "@tiptap/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { Editor, type JSONContent } from "@tiptap/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS,
   PROMPT_DECORATION_LARGE_DOC_SIZE,
@@ -20,7 +20,7 @@ import {
 
 function createEditor(
   richTextEditing: boolean,
-  content: object,
+  content: JSONContent,
   options: PromptDecorationExtensionOptions = {},
 ): Editor {
   return new Editor({
@@ -33,7 +33,7 @@ function createEditor(
   });
 }
 
-function paragraphContent(text: string): object {
+function paragraphContent(text: string) {
   return {
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text }] }],
@@ -45,15 +45,21 @@ function decorationClasses(editor: Editor): string[] {
     getPromptDecorationSet(editor.state)
       ?.find()
       .map((decoration) => decoration.spec.className)
-      .filter(
-        (className): className is string => typeof className === "string",
-      ) ?? []
+      .filter((className): className is string => className !== undefined) ?? []
   );
 }
+
+beforeEach(() => {
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => null,
+  });
+});
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "elementFromPoint");
 });
 
 describe("PromptDecorationExtension", () => {

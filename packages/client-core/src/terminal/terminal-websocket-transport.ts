@@ -23,7 +23,7 @@ export interface TerminalBrowserSocket {
   close(code?: number, reason?: string): void;
   onclose: ((event: CloseEvent) => void) | null;
   onerror: ((event: Event) => void) | null;
-  onmessage: ((event: MessageEvent) => void) | null;
+  onmessage: ((event: MessageEvent<string>) => void) | null;
   onopen: ((event: Event) => void) | null;
   readonly readyState: number;
   send(data: string): void;
@@ -226,7 +226,7 @@ export class TerminalWebSocketTransport {
     }
     this.socket = socket;
     socket.onopen = () => this.handleOpen(socket);
-    socket.onmessage = (event) => this.handleMessage(socket, event.data);
+    socket.onmessage = (event) => this.handleMessage(socket, event);
     socket.onerror = () => undefined;
     socket.onclose = () => this.handleClose(socket);
   }
@@ -248,18 +248,20 @@ export class TerminalWebSocketTransport {
     this.flushInputs();
   }
 
-  private handleMessage(socket: TerminalBrowserSocket, raw: unknown): void {
-    if (this.disposed || this.socket !== socket || typeof raw !== "string") {
+  private handleMessage(
+    socket: TerminalBrowserSocket,
+    event: MessageEvent<string>,
+  ): void {
+    if (this.disposed || this.socket !== socket) {
       return;
     }
-    let decoded: unknown;
+    let parsed: ReturnType<typeof terminalServerMessageSchema.safeParse>;
     try {
-      decoded = JSON.parse(raw);
+      parsed = terminalServerMessageSchema.safeParse(JSON.parse(event.data));
     } catch {
       this.options.onInvalidMessage?.();
       return;
     }
-    const parsed = terminalServerMessageSchema.safeParse(decoded);
     if (!parsed.success) {
       this.options.onInvalidMessage?.();
       return;

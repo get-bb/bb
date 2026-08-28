@@ -1,18 +1,17 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
-import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import {
+  type PluginListItem,
+  type PluginListResult,
+} from "@/hooks/queries/plugin-settings-queries";
+import { pluginListQueryKey } from "@/hooks/queries/query-keys";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
-
-const usePluginListMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
-  usePluginList: usePluginListMock,
-}));
 
 afterEach(() => {
   cleanup();
@@ -20,7 +19,7 @@ afterEach(() => {
 });
 
 function plugin(overrides: Partial<PluginListItem>): PluginListItem {
-  return {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     id: "notify",
     name: "Notify",
     enabled: true,
@@ -31,14 +30,21 @@ function plugin(overrides: Partial<PluginListItem>): PluginListItem {
 }
 
 function renderGlyph(plugins: PluginListItem[]) {
-  usePluginListMock.mockReturnValue({ data: { plugins } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  queryClient.setQueryData<PluginListResult>(pluginListQueryKey(true), {
+    plugins,
+  });
   return render(
     <Provider>
-      <MemoryRouter>
-        <SidebarProvider>
-          <SidebarPluginAttentionGlyph className="footer-action" />
-        </SidebarProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SidebarProvider>
+            <SidebarPluginAttentionGlyph className="footer-action" />
+          </SidebarProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     </Provider>,
   );
 }

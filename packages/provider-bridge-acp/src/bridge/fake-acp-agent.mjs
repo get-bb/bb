@@ -1,72 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Scripted fake ACP agent for bridge tests.
- *
- * Speaks just enough of the Agent Client Protocol to exercise the bridge:
- * initialize/session lifecycle, streamed message chunks, permission requests,
- * client fs writes, cancellation, and (env-gated) session/load support.
- *
- * Env knobs (passed by tests through thread/start envVars):
- * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
- * - FAKE_ACP_FAIL_LOAD=1     → advertise session/load, then fail it
- * - FAKE_ACP_FORK_SESSION=1  → advertise + accept session/fork
- * - FAKE_ACP_FORK_LOG        → write the session/fork params as JSON
- * - FAKE_ACP_FORK_REUSE_SOURCE_ID=1
- *                            → return the source session id from session/fork
- * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
- * - FAKE_ACP_USAGE_SESSION_ID
- *                            → override the usage notification session id
- * - FAKE_ACP_MODEL_LINES     → stdout for the agent's `--list-models` mode
- * - FAKE_ACP_MODEL_LIST_STDERR
- *                            → make `--list-models` fail with this stderr
- * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
- * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
- * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
- *                            → advertise per-model effort configOptions
- * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
- * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
- *                            → advertise unmapped thought_level values
- * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
- *                            → accept reasoning_effort config updates without
- *                              advertising a thought_level config option
- * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
- *                            → fail session/set_config_option for model values
- * - FAKE_ACP_SET_CONFIG_FAST_ERROR=1
- *                            → fail session/set_config_option for Fast values
- * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
- *                            → mirror Cursor compatibility-vs-parameterized
- *                              model/config-option responses
- * - FAKE_ACP_REQUEST_LOG     → append each client request as JSON
- * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
- *                              (exercises large-catalog reasoning discovery)
- * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
- *                              session creation requires authenticate first
- * - FAKE_ACP_AUTH_OPTIONAL=1 → advertise the auth methods but never require
- *                              authenticate (a signed-in agent, as Cursor is)
- * - FAKE_ACP_SESSION_NEW_ERROR
- *                            → reject session/new with this message (-32603)
- * - FAKE_ACP_EXIT_ON_SESSION_NEW=<code>
- *                            → exit with this code when session/new arrives
- * - FAKE_ACP_SESSION_NEW_DELAY_MS=<ms>
- *                            → answer session/new only after this delay
- * - FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE=1
- *                            → write a usage_update and a message chunk for
- *                              the new session (plus one for a stale session
- *                              id) in the same chunk as the session/new and
- *                              session/fork responses
- * - FAKE_ACP_IGNORE_CANCEL=1 → never answer a prompt after session/cancel
- * - FAKE_ACP_READY_FILE      → written once the agent process is up
- * - FAKE_ACP_SIGNAL_FILE     → written with "SIGTERM" when the agent is reaped
- * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
- * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
- *                              count model-discovery spawns in cache/TTL tests)
- * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
- * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
- * - FAKE_ACP_COMPACT_STOP_REASON
- *                            → stop reason returned for /compact
- */
-
 import { createInterface } from "node:readline";
 import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 
@@ -102,9 +35,10 @@ const sessionNewDelayMs = Number(
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
-// `--list-models` is the agent's own model-list mode: the bridge derives its
-// list command from the launch spec's agent binary plus `modelCli.listArgs`,
-// so a list command can only ever be this binary.
+
+function parseString(value) {
+  return value?.constructor === String ? value : null;
+}
 if (process.argv.includes("--list-models")) {
   if (process.env.FAKE_ACP_MODEL_LIST_STDERR) {
     process.stderr.write(`${process.env.FAKE_ACP_MODEL_LIST_STDERR}\n`);
@@ -146,8 +80,6 @@ process.on("SIGTERM", () => {
   if (process.env.FAKE_ACP_SIGNAL_FILE) {
     const signalFile = process.env.FAKE_ACP_SIGNAL_FILE;
     const stagedSignalFile = `${signalFile}.${process.pid}.tmp`;
-    // The final path is the test's completion boundary: publish it only after
-    // the marker bytes are complete.
     writeFileSync(stagedSignalFile, "SIGTERM\n");
     renameSync(stagedSignalFile, signalFile);
   }
@@ -341,7 +273,6 @@ function requireAuthenticated(message) {
   ) {
     return true;
   }
-  // ACP's reserved auth-required error: code -32000 with this message.
   send({
     jsonrpc: "2.0",
     id: message.id,
@@ -350,11 +281,6 @@ function requireAuthenticated(message) {
   return false;
 }
 
-/**
- * A session response, optionally written in one chunk together with the
- * session's first updates (and one update for a session id this agent never
- * owned), the way an agent that starts streaming right away can.
- */
 function sendSessionResponse(message, result) {
   const response = { jsonrpc: "2.0", id: message.id, result };
   if (!updatesWithSessionResponse) {
@@ -433,11 +359,7 @@ async function handlePrompt(message) {
   }
 
   if (text === "/compact") {
-    // OpenCode treats this exact prompt as a provider-local control.
   } else if (text.includes("request-external-directory-permission")) {
-    // opencode's external_directory permission: the running edit tool asks
-    // with the generic kind "other", a bare directory title, and
-    // locations = [file, parentDir]. Mirrors get-bb/bb#1719.
     notifyUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "write-tool-1",
@@ -521,7 +443,6 @@ async function handlePrompt(message) {
       notifyUpdate(messageChunk("write:denied"));
     }
   } else if (text.includes("hang")) {
-    // Stay pending until the client sends session/cancel.
     return;
   } else if (text.includes("die")) {
     process.exit(7);
@@ -529,7 +450,6 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
   } else if (text.includes("echo-argv")) {
-    // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
   } else if (text.includes("echo-selected-model")) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
@@ -548,7 +468,10 @@ async function handlePrompt(message) {
   } else if (text.includes("echo-mcp-servers")) {
     const names = currentMcpServers
       .map((server) => server?.name)
-      .filter((name) => typeof name === "string")
+      .flatMap((name) => {
+        const parsedName = parseString(name);
+        return parsedName === null ? [] : [parsedName];
+      })
       .join(",");
     notifyUpdate(messageChunk(`mcp-servers:${names}`));
   } else if (text.includes("echo-mcp-server-config")) {
@@ -590,20 +513,21 @@ async function handleMessage(message) {
           ? "default"
           : "default[]";
       }
+      const agentCapabilities = {
+        loadSession,
+        promptCapabilities: { image: false },
+      };
+      if (forkSession) {
+        agentCapabilities.sessionCapabilities = { fork: {} };
+      }
+      const result = { protocolVersion: 1, agentCapabilities };
+      if (authMethods.length > 0) {
+        result.authMethods = authMethods.map((id) => ({ id }));
+      }
       send({
         jsonrpc: "2.0",
         id: message.id,
-        result: {
-          protocolVersion: 1,
-          agentCapabilities: {
-            loadSession,
-            promptCapabilities: { image: false },
-            ...(forkSession ? { sessionCapabilities: { fork: {} } } : {}),
-          },
-          ...(authMethods.length > 0
-            ? { authMethods: authMethods.map((id) => ({ id })) }
-            : {}),
-        },
+        result,
       });
       return;
     case "authenticate": {
@@ -712,13 +636,14 @@ async function handleMessage(message) {
       return;
     case "session/set_model": {
       const modelId = message.params?.modelId;
+      const parsedModelId = parseString(modelId);
       const availableModels = cursorParameterizedModels
         ? cursorModelOptions()
         : fakeModels;
       if (
         (!cursorParameterizedModels && !modelConfig && !modelsField) ||
-        typeof modelId !== "string" ||
-        !availableModels.some((model) => model.value === modelId)
+        parsedModelId === null ||
+        !availableModels.some((model) => model.value === parsedModelId)
       ) {
         send({
           jsonrpc: "2.0",
@@ -727,7 +652,7 @@ async function handleMessage(message) {
         });
         return;
       }
-      selectedModel = modelId;
+      selectedModel = parsedModelId;
       send({ jsonrpc: "2.0", id: message.id, result: configState() });
       return;
     }
@@ -735,6 +660,7 @@ async function handleMessage(message) {
       const configId = message.params?.configId;
       const value = message.params?.value;
       if (configId === "model") {
+        const parsedValue = parseString(value);
         if (setConfigModelError) {
           send({
             jsonrpc: "2.0",
@@ -748,8 +674,8 @@ async function handleMessage(message) {
           : fakeModels;
         if (
           (!cursorParameterizedModels && !modelConfig) ||
-          typeof value !== "string" ||
-          !availableModels.some((model) => model.value === value)
+          parsedValue === null ||
+          !availableModels.some((model) => model.value === parsedValue)
         ) {
           send({
             jsonrpc: "2.0",
@@ -758,18 +684,19 @@ async function handleMessage(message) {
           });
           return;
         }
-        selectedModel = value;
+        selectedModel = parsedValue;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
       if (configId === "effort") {
+        const parsedValue = parseString(value);
         const efforts = cursorParameterizedModels
           ? ["low", "medium", "high", "xhigh"]
           : effortsByModel.get(selectedModel);
         if (
           (!cursorParameterizedModels && !thoughtLevelConfig) ||
-          typeof value !== "string" ||
-          !efforts?.includes(value)
+          parsedValue === null ||
+          !efforts?.includes(parsedValue)
         ) {
           send({
             jsonrpc: "2.0",
@@ -778,11 +705,12 @@ async function handleMessage(message) {
           });
           return;
         }
-        selectedEffort = value;
+        selectedEffort = parsedValue;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
       if (configId === "fast" && cursorParameterizedModels) {
+        const parsedValue = parseString(value);
         if (setConfigFastError) {
           send({
             jsonrpc: "2.0",
@@ -791,7 +719,7 @@ async function handleMessage(message) {
           });
           return;
         }
-        if (value !== "false" && value !== "true") {
+        if (parsedValue !== "false" && parsedValue !== "true") {
           send({
             jsonrpc: "2.0",
             id: message.id,
@@ -799,12 +727,13 @@ async function handleMessage(message) {
           });
           return;
         }
-        selectedFast = value;
+        selectedFast = parsedValue;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
       if (configId === "reasoning_effort" && acceptNativeReasoning) {
-        if (typeof value !== "string") {
+        const parsedValue = parseString(value);
+        if (parsedValue === null) {
           send({
             jsonrpc: "2.0",
             id: message.id,
@@ -812,7 +741,7 @@ async function handleMessage(message) {
           });
           return;
         }
-        selectedEffort = value;
+        selectedEffort = parsedValue;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
@@ -828,7 +757,6 @@ async function handleMessage(message) {
       return;
     case "session/cancel":
       if (ignoreCancel) {
-        // An agent that never settles a cancelled prompt.
         return;
       }
       if (activePromptId !== null) {

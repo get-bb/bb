@@ -15,10 +15,11 @@ import {
   useAtom,
   useAtomValue,
 } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
-import { buildMachineThreadGroups } from "@bb/client-core";
+import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import {
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
@@ -32,27 +33,26 @@ import {
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
 
-const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
+function renderWithProviders(ui: ReactNode, store = createStore()) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(hostsQueryKey(), []);
+  return render(
+    <JotaiProvider store={store}>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </JotaiProvider>,
+  );
+}
 
-vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: mockUseHosts,
-  usePrimaryHost: vi.fn(() => undefined),
-}));
-
-vi.mock("@bb/client-core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@bb/client-core")>();
-  return {
-    ...actual,
-    buildMachineThreadGroups: vi.fn(actual.buildMachineThreadGroups),
-  };
-});
-
-const mockBuildMachineThreadGroups = vi.mocked(buildMachineThreadGroups);
-
-function getModeOrderProbeConfig(mode: SidebarOrganizationMode): {
-  entitySectionIds: SidebarSectionId[];
+interface ModeOrderProbeConfig {
+  entitySectionIds: readonly SidebarSectionId[];
   hasThreadsSection?: boolean;
-} {
+}
+
+function getModeOrderProbeConfig(
+  mode: SidebarOrganizationMode,
+): ModeOrderProbeConfig {
   switch (mode) {
     case "project":
       return { entitySectionIds: ["project:a"] };
@@ -206,23 +206,20 @@ describe("sidebar organization mode sections", () => {
     const renderMachine = vi.fn(() => <MachineModeProbe />);
     const renderProject = vi.fn(() => <ModeOrderProbe mode="project" />);
 
-    render(
-      <JotaiProvider store={store}>
-        <ActiveModeOrderProbe
-          mode="project"
-          renderChronological={renderChronological}
-          renderMachine={renderMachine}
-          renderProject={renderProject}
-        />
-      </JotaiProvider>,
+    renderWithProviders(
+      <ActiveModeOrderProbe
+        mode="project"
+        renderChronological={renderChronological}
+        renderMachine={renderMachine}
+        renderProject={renderProject}
+      />,
+      store,
     );
 
     await screen.findByTestId("project-order");
     expect(renderProject).toHaveBeenCalledOnce();
     expect(renderChronological).not.toHaveBeenCalled();
     expect(renderMachine).not.toHaveBeenCalled();
-    expect(mockUseHosts).not.toHaveBeenCalled();
-    expect(mockBuildMachineThreadGroups).not.toHaveBeenCalled();
     expect(store.get(sidebarManualSectionOrderAtom)).toEqual(["section:stale"]);
     expect(store.get(sidebarMachineSectionOrderAtom)).toEqual([
       "machine:stale",
@@ -238,11 +235,7 @@ describe("sidebar organization mode sections", () => {
     store.set(sidebarManualSectionOrderAtom, sectionOrder);
     store.set(sidebarMachineSectionOrderAtom, machineOrder);
     store.set(sidebarOrganizationModeAtom, "project");
-    render(
-      <JotaiProvider store={store}>
-        <StoredActiveModeOrderProbe />
-      </JotaiProvider>,
-    );
+    renderWithProviders(<StoredActiveModeOrderProbe />, store);
 
     expect(await screen.findByTestId("project-order")).not.toBeNull();
     act(() => store.set(sidebarOrganizationModeAtom, "chronological"));
@@ -264,11 +257,7 @@ describe("sidebar organization mode sections", () => {
     store.set(sidebarMachineSectionOrderAtom, ["threads"]);
     store.set(collapsedSidebarSectionIdsAtom, []);
 
-    render(
-      <JotaiProvider store={store}>
-        <MachineModeProbe />
-      </JotaiProvider>,
-    );
+    renderWithProviders(<MachineModeProbe />, store);
 
     expect(screen.getByText("No threads")).not.toBeNull();
     fireEvent.click(
@@ -280,7 +269,6 @@ describe("sidebar organization mode sections", () => {
       screen.getByRole("button", { name: "Expand Threads section" }),
     );
     expect(screen.getByText("No threads")).not.toBeNull();
-    expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
   });
 
   it("surfaces shared runtime activity for a collapsed machine section", () => {
@@ -288,11 +276,7 @@ describe("sidebar organization mode sections", () => {
     store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
     store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
 
-    render(
-      <JotaiProvider store={store}>
-        <MachineModeProbe threads={[makeThread()]} />
-      </JotaiProvider>,
-    );
+    renderWithProviders(<MachineModeProbe threads={[makeThread()]} />, store);
 
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();

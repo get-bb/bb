@@ -344,15 +344,20 @@ export async function getEnvironmentStatus(
   return environmentStatusResponseSchema.parse(await response.json());
 }
 
+interface AvailableModelsQuery {
+  hostId?: string;
+  providerId?: string;
+}
+
 export async function getAvailableModels(
   api: PublicApiClient,
   options: GetAvailableModelsOptions,
 ): Promise<AvailableModel[]> {
+  const query: AvailableModelsQuery = {};
+  if (options.hostId) query.hostId = options.hostId;
+  if (options.providerId) query.providerId = options.providerId;
   const response = await api.system["execution-options"].$get({
-    query: {
-      ...(options.hostId ? { hostId: options.hostId } : {}),
-      ...(options.providerId ? { providerId: options.providerId } : {}),
-    },
+    query,
   });
   await expectStatus(response, 200, "get available models");
   return systemExecutionOptionsResponseSchema.parse(await response.json())

@@ -198,11 +198,11 @@ const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
   { label: "Dark", value: "dark" },
 ];
 
-const THEME_PREFERENCE_LABELS: Record<ThemePreference, string> = {
+const THEME_PREFERENCE_LABELS = {
   dark: "Dark",
   light: "Light",
   system: "System",
-};
+} satisfies Record<ThemePreference, string>;
 
 const FAVICON_COLOR_OPTIONS: ReadonlyArray<FaviconColorOption> = [
   { label: "Default", value: "default" },
@@ -216,7 +216,7 @@ const FAVICON_COLOR_OPTIONS: ReadonlyArray<FaviconColorOption> = [
   { label: "Pink", value: "pink" },
 ];
 
-const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
+const FAVICON_COLOR_LABELS = {
   blue: "Blue",
   default: "Default",
   green: "Green",
@@ -226,7 +226,7 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
   red: "Red",
   teal: "Teal",
   yellow: "Yellow",
-};
+} satisfies Record<FaviconColorPreference, string>;
 
 const SETTINGS_DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";

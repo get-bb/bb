@@ -349,17 +349,20 @@ export class RuntimeProviderProcessManager {
     providerId: string,
     bridgeLaunch: AgentRuntimeBridgeLaunch,
   ): BridgeProtocolAdapter {
-    const adapterOptions = {
+    const adapterOptions: CreateBridgeAdapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       bridgeLaunch,
-      bridgeBundleDir: this.args.bridgeBundleDir,
-      ...(this.args.bridgeNodeEnv !== undefined
-        ? { bridgeNodeEnv: this.args.bridgeNodeEnv }
-        : {}),
-      ...(this.args.bridgeNodeExecutablePath !== undefined
-        ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
-        : {}),
     };
+    if (this.args.bridgeBundleDir !== undefined) {
+      adapterOptions.bridgeBundleDir = this.args.bridgeBundleDir;
+    }
+    if (this.args.bridgeNodeEnv !== undefined) {
+      adapterOptions.bridgeNodeEnv = this.args.bridgeNodeEnv;
+    }
+    if (this.args.bridgeNodeExecutablePath !== undefined) {
+      adapterOptions.bridgeNodeExecutablePath =
+        this.args.bridgeNodeExecutablePath;
+    }
 
     return (this.args.createAdapter ?? createProviderForId)(
       providerId,

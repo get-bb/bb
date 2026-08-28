@@ -80,10 +80,13 @@ export function registerProviderCommands(
         ) => {
           const serverUrl = getUrl();
           const sdk = createCliBbSdk(serverUrl);
-          const executionOptions = await sdk.providers.models({
-            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
-            ...(providerId ? { providerId } : {}),
-          });
+          const routing = await resolveMachineEnvironmentRouting(
+            opts,
+            serverUrl,
+          );
+          const executionOptions = await sdk.providers.models(
+            providerId === undefined ? routing : { ...routing, providerId },
+          );
           const models = includeSelectedOnlyModel({
             models: executionOptions.models,
             selectedOnlyModels: executionOptions.selectedOnlyModels,

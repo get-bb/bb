@@ -24,7 +24,8 @@ const BASE_ARGS = {
   currentThreadHasPendingInteraction: false,
   isThreadView: false,
   thread: null,
-  sidebarThreads: [] as FaviconSidebarThread[],
+  sidebarThreads:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ [] as FaviconSidebarThread[],
 };
 
 describe("shouldShowFaviconAttentionDot", () => {

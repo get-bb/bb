@@ -23,12 +23,11 @@ async function statusFor(
   baseUrl: string,
   args: RequestArgs = {},
 ): Promise<number> {
+  const requestInit: RequestInit = { method: args.method ?? "GET" };
+  if (args.headers !== undefined) requestInit.headers = args.headers;
   const response = await fetch(
     new URL(args.path ?? "/api/v1/threads", baseUrl),
-    {
-      method: args.method ?? "GET",
-      ...(args.headers === undefined ? {} : { headers: args.headers }),
-    },
+    requestInit,
   );
   return response.status;
 }

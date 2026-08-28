@@ -170,20 +170,22 @@ export function updateHost(
   }
 
   const now = Date.now();
+  const changes: Partial<typeof hosts.$inferInsert> = { updatedAt: now };
+  if (input.destroyedAt !== undefined) {
+    changes.destroyedAt = input.destroyedAt;
+  }
+  if (input.name !== undefined) {
+    changes.name = input.name;
+  }
+  if (input.maxPermissionMode !== undefined) {
+    changes.maxPermissionMode = input.maxPermissionMode;
+  }
+  if (input.lastRejectedProtocolVersion !== undefined) {
+    changes.lastRejectedProtocolVersion = input.lastRejectedProtocolVersion;
+  }
+
   db.update(hosts)
-    .set({
-      ...(input.destroyedAt !== undefined
-        ? { destroyedAt: input.destroyedAt }
-        : {}),
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.maxPermissionMode !== undefined
-        ? { maxPermissionMode: input.maxPermissionMode }
-        : {}),
-      ...(input.lastRejectedProtocolVersion !== undefined
-        ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
-        : {}),
-      updatedAt: now,
-    })
+    .set(changes)
     .where(eq(hosts.id, hostId))
     .run();
 

@@ -293,13 +293,13 @@ may do about it. The `provider/error` delta beside it still carries the
 user-visible row; the hint carries the action. The runtime keys on `kind`
 only and never consults the provider id:
 
-| `kind` | Runtime action |
-| --- | --- |
-| `sessionArchived` | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`). |
-| `authRequired` | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health. |
+| `kind`               | Runtime action                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessionArchived`    | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`).                                                                                                                                                                                                                                               |
+| `authRequired`       | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health.                                                                                                                                                                                |
 | `restartRecommended` | Stop the bridge process the thread runs on and resume the thread on a fresh one — right away when the thread is idle, otherwise before its next turn. The restart waits while another thread on the same process is mid-turn or holds open background work, and never re-resumes a sibling the host already resumed on the replacement. |
-| `staleTurn` | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it. |
-| `rateLimited` | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own. |
+| `staleTurn`          | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it.                                                                                                                                                                                                                         |
+| `rateLimited`        | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own.                                                                                                     |
 
 The action follows the hint whichever attempt it arrives on: a rung of the
 rate-limit ladder or the retry after an unarchive that is rejected with

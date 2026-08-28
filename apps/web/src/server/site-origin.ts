@@ -1,5 +1,7 @@
-export function resolveSiteOrigin(appUrl: unknown): string {
-  if (typeof appUrl !== "string" || appUrl.trim() === "") {
+type SiteAppUrlInput = string | undefined;
+
+export function resolveSiteOrigin(appUrl: SiteAppUrlInput): string {
+  if (appUrl === undefined || appUrl.trim() === "") {
     throw new Error(
       "APP_URL is missing from the resolved wrangler config; the unfurl tags need it to build absolute URLs",
     );

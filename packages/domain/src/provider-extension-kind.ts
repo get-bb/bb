@@ -4,6 +4,11 @@ export const EXTENSION_KIND_PATTERN = /^[a-z0-9-]+\/[a-z0-9-]+$/u;
 
 export type ExtensionKind = `${string}/${string}`;
 
+interface ParsedExtensionKind {
+  pluginId: string;
+  name: string;
+}
+
 export function isExtensionKind(value: string): value is ExtensionKind {
   return EXTENSION_KIND_PATTERN.test(value);
 }
@@ -13,10 +18,7 @@ export const extensionKindSchema = z.string().refine(isExtensionKind, {
     'extension kinds are "<pluginId>/<name>" (lowercase letters, digits, and "-")',
 });
 
-export function parseExtensionKind(kind: ExtensionKind): {
-  pluginId: string;
-  name: string;
-} {
+export function parseExtensionKind(kind: ExtensionKind): ParsedExtensionKind {
   const separator = kind.indexOf("/");
   return {
     pluginId: kind.slice(0, separator),

@@ -34,23 +34,17 @@ describe("composer text effects", () => {
     );
 
     expect(
-      getComposerTextEffects(storageKey).map(({ effect }) =>
-        typeof effect === "string" ? effect : effect.className,
-      ),
+      getComposerTextEffects(storageKey).map(({ effect }) => effect.className),
     ).toEqual(["alpha-first", "alpha-second", "zeta-effect"]);
 
     setComposerTextEffect(storageKey, "alpha", null, alphaFirst);
     expect(
-      getComposerTextEffects(storageKey).map(({ effect }) =>
-        typeof effect === "string" ? effect : effect.className,
-      ),
+      getComposerTextEffects(storageKey).map(({ effect }) => effect.className),
     ).toEqual(["alpha-second", "zeta-effect"]);
 
     setComposerTextEffect(storageKey, "zeta", null, zeta);
     expect(
-      getComposerTextEffects(storageKey).map(({ effect }) =>
-        typeof effect === "string" ? effect : effect.className,
-      ),
+      getComposerTextEffects(storageKey).map(({ effect }) => effect.className),
     ).toEqual(["alpha-second"]);
     setComposerTextEffect(storageKey, "alpha", null, alphaSecond);
   });

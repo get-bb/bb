@@ -1,52 +1,109 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook } from "@testing-library/react";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { QueryObserverSuccessResult } from "@tanstack/react-query";
+import {
+  PERSONAL_PROJECT_ID,
+  type Host,
+  type ThreadListEntry,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import * as hostQueries from "@/hooks/queries/host-queries";
+import * as sidebarNavigationQuery from "@/hooks/queries/sidebar-navigation-query";
 import { useSidebarThreads } from "./plugin-sidebar-hooks";
 
-const state = vi.hoisted(() => ({
-  data: undefined as
-    | {
-        sections: never[];
-        projects: { id: string; name: string; threads: ThreadListEntry[] }[];
-        personalProject: {
-          id: string;
-          name: string;
-          threads: ThreadListEntry[];
-        };
-      }
-    | undefined,
-}));
+type SidebarData = NonNullable<
+  ReturnType<typeof sidebarNavigationQuery.useSidebarNavigation>["data"]
+>;
+let sidebarData: SidebarData | undefined;
+const emptyHosts: Host[] = [];
 
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({ data: state.data, isError: false }),
-}));
+function successQueryResult<T>(data: T): QueryObserverSuccessResult<T, Error> {
+  return {
+    data,
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    errorUpdateCount: 0,
+    isError: false,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isLoading: false,
+    isPending: false,
+    isLoadingError: false,
+    isInitialLoading: false,
+    isPaused: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    isSuccess: true,
+    isEnabled: true,
+    refetch: async () => successQueryResult(data),
+    status: "success",
+    fetchStatus: "idle",
+    promise: Promise.resolve(data),
+  };
+}
 
-vi.mock("@/hooks/queries/host-queries", () => {
-  const hosts: never[] = [];
-  return { useHosts: () => ({ data: hosts }) };
-});
+function sidebarQueryData(): SidebarData {
+  if (sidebarData === undefined) {
+    throw new Error("Expected sidebar data before rendering the hook");
+  }
+  return sidebarData;
+}
 
-function payload(threads: ThreadListEntry[]) {
+vi.spyOn(sidebarNavigationQuery, "useSidebarNavigation").mockImplementation(
+  () => successQueryResult(sidebarQueryData()),
+);
+vi.spyOn(hostQueries, "useHosts").mockImplementation(() =>
+  successQueryResult(emptyHosts),
+);
+
+function payload(threads: ThreadListEntry[]): SidebarData {
+  const project: SidebarData["projects"][number] = {
+    id: "proj_app",
+    kind: "standard",
+    name: "App",
+    gitRemoteUrl: null,
+    createdAt: 1,
+    updatedAt: 1,
+    sources: [],
+    threads,
+    defaultExecutionOptions: null,
+  };
+  const personalProject: SidebarData["personalProject"] = {
+    id: PERSONAL_PROJECT_ID,
+    kind: "personal",
+    name: "Personal",
+    gitRemoteUrl: null,
+    createdAt: 1,
+    updatedAt: 1,
+    sources: [],
+    threads: [],
+    defaultExecutionOptions: null,
+  };
   return {
     sections: [],
-    projects: [{ id: "proj_app", name: "App", threads }],
-    personalProject: { id: PERSONAL_PROJECT_ID, name: "Personal", threads: [] },
+    projects: [project],
+    personalProject,
   };
 }
 
 afterEach(() => {
   cleanup();
-  state.data = undefined;
+  sidebarData = undefined;
 });
 
 describe("useSidebarThreads", () => {
   it("keeps DTO identity for entries that did not change across a sidebar update", () => {
     const stable = makeThreadListEntry({ id: "thr_stable", title: "Stable" });
     const changing = makeThreadListEntry({ id: "thr_changing", title: "One" });
-    state.data = payload([stable, changing]);
+    sidebarData = payload([stable, changing]);
     const { result, rerender } = renderHook(() => useSidebarThreads());
     const before = result.current.threads;
     expect(before.map((thread) => thread.id)).toEqual([
@@ -54,7 +111,7 @@ describe("useSidebarThreads", () => {
       "thr_changing",
     ]);
 
-    state.data = payload([
+    sidebarData = payload([
       stable,
       makeThreadListEntry({ id: "thr_changing", title: "Two" }),
     ]);
@@ -68,7 +125,7 @@ describe("useSidebarThreads", () => {
 
   it("shares DTO identity between two consumers of the same payload", () => {
     const stable = makeThreadListEntry({ id: "thr_stable", title: "Stable" });
-    state.data = payload([stable]);
+    sidebarData = payload([stable]);
     const first = renderHook(() => useSidebarThreads());
     const second = renderHook(() => useSidebarThreads());
     expect(second.result.current.threads[0]).toBe(

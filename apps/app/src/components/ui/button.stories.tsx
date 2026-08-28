@@ -20,14 +20,14 @@ const variants: readonly ButtonVariant[] = [
 
 const sizes: readonly ButtonSize[] = ["sm", "default", "lg", "icon"];
 
-const VARIANT_LABEL: Record<ButtonVariant, string> = {
+const VARIANT_LABEL = {
   default: "Save changes",
   secondary: "Cancel",
   outline: "Connect repo",
   ghost: "Settings",
   destructive: "Delete project",
   link: "View docs",
-};
+} satisfies Record<ButtonVariant, string>;
 
 export function Overview() {
   return (

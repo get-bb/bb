@@ -200,10 +200,10 @@ function handleToolCallProviderRequest(
     turnId: resolvedTurnId,
     callId: toolCallReq.callId,
     tool: toolCallReq.tool,
-    ...(toolCallReq.arguments !== undefined
-      ? { arguments: toolCallReq.arguments }
-      : {}),
   };
+  if (toolCallReq.arguments !== undefined) {
+    scopedToolCallReq.arguments = toolCallReq.arguments;
+  }
   void args
     .onToolCall(scopedToolCallReq)
     .then((response) => {

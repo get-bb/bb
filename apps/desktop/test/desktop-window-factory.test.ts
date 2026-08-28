@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { afterEach, describe, expect, it } from "vitest";
+import type { JsonValue } from "@bb/domain";
 import {
   createDesktopWindowFactory,
   type DesktopBrowserWindow,
@@ -50,7 +51,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public devToolsOpenCount = 0;
   public id: number;
   public readonly addedDictionaryWords: string[] = [];
-  public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
+  public readonly sentMessages: Array<{ channel: string; payload: JsonValue }> =
     [];
   public readonly spellCheckerEnabledValues: boolean[] = [];
   public readonly session: DesktopContextMenuWebContents["session"] = {
@@ -79,7 +80,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     }
   }
 
-  send(channel: string, payload: unknown): void {
+  send(channel: string, payload: JsonValue): void {
     this.sentMessages.push({ channel, payload });
   }
 

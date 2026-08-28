@@ -1,7 +1,8 @@
+import type { JsonValue } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { fetchPluginList, removePlugin } from "./plugin-settings-queries";
 
-function fetchReturning(body: unknown, status = 200): typeof fetch {
+function fetchReturning(body: JsonValue, status = 200): typeof fetch {
   return async () =>
     new Response(JSON.stringify(body), {
       status,
@@ -9,8 +10,10 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
-function receiverSensitiveFetch(body: unknown): typeof fetch {
-  return function (this: typeof globalThis) {
+function receiverSensitiveFetch(body: JsonValue): typeof fetch {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ function (
+    this: typeof globalThis,
+  ) {
     if (this !== globalThis) throw new TypeError("Illegal invocation");
     return Promise.resolve(
       new Response(JSON.stringify(body), {
@@ -171,10 +174,14 @@ describe("fetchPluginList envelope", () => {
 describe("removePlugin", () => {
   it("DELETEs the plugin by encoded id and resolves on ok", async () => {
     const calls: Array<{ url: string; init?: { method?: string } }> = [];
-    const fetchImpl = (async (url: string, init?: { method?: string }) => {
-      calls.push({ url, init });
-      return { ok: true, status: 200, json: async () => ({ ok: true }) };
-    }) as unknown as typeof fetch;
+    const fetchImpl =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (async (
+        url: string,
+        init?: { method?: string },
+      ) => {
+        calls.push({ url, init });
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }) as typeof fetch;
     await removePlugin(fetchImpl, "demo/widget");
     expect(calls[0]?.url).toBe("/api/v1/plugins/demo%2Fwidget");
     expect(calls[0]?.init).toMatchObject({ method: "DELETE" });

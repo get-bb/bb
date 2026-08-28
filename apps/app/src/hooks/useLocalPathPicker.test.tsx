@@ -2,36 +2,46 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import * as HostDaemonModule from "@/hooks/useHostDaemon";
+import * as HostQueriesModule from "@/hooks/queries/host-queries";
+import { sdk } from "@/lib/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocalPathPicker } from "./useLocalPathPicker";
 
-const mocks = vi.hoisted(() => ({
-  hosts: undefined as Host[] | undefined,
+const mocks = {
+  hosts:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ undefined as
+      | Host[]
+      | undefined,
   isLoadingHosts: false,
-  pickFolder: vi.fn(),
-  primaryHost: null as Host | null,
+  primaryHost:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ null as Host | null,
   supportsNativeFolderPicker: true,
+};
+
+vi.spyOn(HostDaemonModule, "useHostDaemon").mockImplementation(() => ({
+  localDaemonHostId: "host_atum",
+  localHostId: "host_atum",
+  hasDaemon: true,
+  supportsNativeFolderPicker: mocks.supportsNativeFolderPicker,
+  platform: "linux",
+  isLocalDaemonHost: (hostId: string | null | undefined) =>
+    hostId === "host_atum",
 }));
 
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({
-    localDaemonHostId: "host_atum",
-    localHostId: "host_atum",
-    hasDaemon: true,
-    supportsNativeFolderPicker: mocks.supportsNativeFolderPicker,
-    platform: "linux",
-    isLocalDaemonHost: (hostId: string | null) => hostId === "host_atum",
-  }),
-}));
+/* SAFETY: This fake returns only the query fields that the hook reads. */
+vi.spyOn(HostQueriesModule, "useHosts").mockImplementation(
+  () =>
+    ({
+      data: mocks.hosts,
+      isPending: mocks.isLoadingHosts,
+    }) as ReturnType<typeof HostQueriesModule.useHosts>,
+);
+vi.spyOn(HostQueriesModule, "usePrimaryHost").mockImplementation(
+  () => mocks.primaryHost,
+);
 
-vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
-  usePrimaryHost: () => mocks.primaryHost,
-}));
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: { hosts: { pickFolder: mocks.pickFolder } },
-}));
+const pickFolderMock = vi.spyOn(sdk.hosts, "pickFolder");
 
 const atum: Host = {
   id: "host_atum",
@@ -58,7 +68,7 @@ beforeEach(() => {
   mocks.supportsNativeFolderPicker = true;
   mocks.hosts = [atum];
   mocks.isLoadingHosts = false;
-  mocks.pickFolder.mockResolvedValue({ path: "/home/me/repo" });
+  pickFolderMock.mockResolvedValue({ path: "/home/me/repo" });
 });
 
 afterEach(() => {
@@ -127,7 +137,7 @@ describe("useLocalPathPicker openPathEntry", () => {
     act(() => result.current.openPathEntry({ kind: "create" }));
 
     expect(result.current.projectPathDialog.isOpen).toBe(true);
-    expect(mocks.pickFolder).not.toHaveBeenCalled();
+    expect(pickFolderMock).not.toHaveBeenCalled();
   });
 
   it("uses the native picker with one machine", () => {
@@ -137,7 +147,7 @@ describe("useLocalPathPicker openPathEntry", () => {
 
     act(() => result.current.openPathEntry({ kind: "create" }));
 
-    expect(mocks.pickFolder).toHaveBeenCalled();
+    expect(pickFolderMock).toHaveBeenCalled();
     expect(result.current.projectPathDialog.isOpen).toBe(false);
   });
 
@@ -149,7 +159,7 @@ describe("useLocalPathPicker openPathEntry", () => {
 
     act(() => result.current.openPathEntry({ kind: "create" }));
 
-    expect(mocks.pickFolder).toHaveBeenCalled();
+    expect(pickFolderMock).toHaveBeenCalled();
     expect(result.current.projectPathDialog.isOpen).toBe(false);
   });
 
@@ -163,6 +173,6 @@ describe("useLocalPathPicker openPathEntry", () => {
     act(() => result.current.openPathEntry({ kind: "create" }));
 
     expect(result.current.projectPathDialog.isOpen).toBe(true);
-    expect(mocks.pickFolder).not.toHaveBeenCalled();
+    expect(pickFolderMock).not.toHaveBeenCalled();
   });
 });

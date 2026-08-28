@@ -234,12 +234,13 @@ function projectSourceAddJson(
   if (args.type === "local_path") {
     return { hostId: args.hostId, path: args.path, type: args.type };
   }
-  return {
+  const request: CreateProjectSourceRequest = {
     hostId: args.hostId,
     type: args.type,
-    ...(args.remoteUrl !== undefined ? { remoteUrl: args.remoteUrl } : {}),
-    ...(args.targetPath !== undefined ? { targetPath: args.targetPath } : {}),
   };
+  if (args.remoteUrl !== undefined) request.remoteUrl = args.remoteUrl;
+  if (args.targetPath !== undefined) request.targetPath = args.targetPath;
+  return request;
 }
 
 function projectSourceUpdateJson(
@@ -255,25 +256,25 @@ function projectSourceUpdateJson(
 function embeddedAttachmentFilename(
   clientFile: ProjectAttachmentUploadFile,
 ): string | undefined {
-  if ("name" in clientFile && typeof clientFile.name === "string") {
+  if ("name" in clientFile) {
     return clientFile.name;
   }
   return undefined;
 }
 
 function projectListQuery(input: ProjectListArgs): ProjectListQuery {
-  return {
-    ...(input.include === undefined ? {} : { include: input.include }),
-    ...(input.includePersonal === undefined
-      ? {}
-      : { includePersonal: input.includePersonal ? "true" : "false" }),
-  };
+  const query: ProjectListQuery = {};
+  if (input.include !== undefined) query.include = input.include;
+  if (input.includePersonal !== undefined) {
+    query.includePersonal = input.includePersonal ? "true" : "false";
+  }
+  return query;
 }
 
 function embeddedAttachmentMimeType(
   clientFile: ProjectAttachmentUploadFile,
 ): string | undefined {
-  if ("type" in clientFile && typeof clientFile.type === "string") {
+  if ("type" in clientFile && clientFile.type !== undefined) {
     return clientFile.type;
   }
   return undefined;

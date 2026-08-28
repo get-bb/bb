@@ -37,15 +37,17 @@ export function scheduleDeferredPluginFrontendBoot(
 }
 
 export function requestBrowserIdle(callback: () => void): () => void {
-  if (
-    typeof window.requestIdleCallback === "function" &&
-    typeof window.cancelIdleCallback === "function"
-  ) {
-    const id = window.requestIdleCallback(callback, { timeout: 1_000 });
-    return () => window.cancelIdleCallback(id);
+  const browserWindow = globalThis.window;
+  const requestIdleCallback = browserWindow?.requestIdleCallback;
+  const cancelIdleCallback = browserWindow?.cancelIdleCallback;
+  if (requestIdleCallback !== undefined && cancelIdleCallback !== undefined) {
+    const id = requestIdleCallback.call(browserWindow, callback, {
+      timeout: 1_000,
+    });
+    return () => cancelIdleCallback.call(browserWindow, id);
   }
-  let frame = window.requestAnimationFrame(() => {
-    frame = window.requestAnimationFrame(callback);
+  let frame = browserWindow.requestAnimationFrame(() => {
+    frame = browserWindow.requestAnimationFrame(callback);
   });
-  return () => window.cancelAnimationFrame(frame);
+  return () => browserWindow.cancelAnimationFrame(frame);
 }

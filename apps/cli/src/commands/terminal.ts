@@ -10,6 +10,7 @@ import {
 import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import {
   terminalServerMessageSchema,
+  type TerminalOutputQuery,
   type TerminalSession,
 } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
@@ -358,14 +359,15 @@ async function resolveTerminalListScope(
   if (opts.environment !== undefined) {
     return { kind: "environment", environmentId: opts.environment };
   }
-  return {
+  const scope: TerminalListScope = {
     kind: "host_path",
     hostId: await resolveMachineHostId({
       serverUrl,
       target: machine ?? "",
     }),
-    ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
   };
+  if (opts.cwd !== undefined) scope.cwd = opts.cwd;
+  return scope;
 }
 
 async function resolveTerminalCreateScope(
@@ -472,28 +474,24 @@ export async function resolveSendData(
     : baseData;
 }
 
-function terminalOutputQuery(opts: TerminalOutputOptions) {
-  return {
-    ...(opts.sinceSeq !== undefined
-      ? { sinceSeq: parseNonNegativeInteger(opts.sinceSeq, "--since-seq") }
-      : {}),
-    ...(opts.tailBytes !== undefined
-      ? {
-          tailBytes: parseRequiredPositiveInteger(
-            opts.tailBytes,
-            "--tail-bytes",
-          ),
-        }
-      : {}),
-    ...(opts.limitChunks !== undefined
-      ? {
-          limitChunks: parseRequiredPositiveInteger(
-            opts.limitChunks,
-            "--limit-chunks",
-          ),
-        }
-      : {}),
-  };
+function terminalOutputQuery(opts: TerminalOutputOptions): TerminalOutputQuery {
+  const query: TerminalOutputQuery = {};
+  if (opts.sinceSeq !== undefined) {
+    query.sinceSeq = parseNonNegativeInteger(opts.sinceSeq, "--since-seq");
+  }
+  if (opts.tailBytes !== undefined) {
+    query.tailBytes = parseRequiredPositiveInteger(
+      opts.tailBytes,
+      "--tail-bytes",
+    );
+  }
+  if (opts.limitChunks !== undefined) {
+    query.limitChunks = parseRequiredPositiveInteger(
+      opts.limitChunks,
+      "--limit-chunks",
+    );
+  }
+  return query;
 }
 
 function parseNonNegativeInteger(value: string, label: string): number {
@@ -706,13 +704,12 @@ async function waitForTerminal(args: {
       continue;
     }
 
+    const query = terminalOutputQuery(args.opts);
+    if (nextSeq !== undefined) query.sinceSeq = nextSeq;
     const output = await readTerminalOutputForWait({
       sdk,
       terminalId: args.terminalId,
-      query: {
-        ...terminalOutputQuery(args.opts),
-        ...(nextSeq !== undefined ? { sinceSeq: nextSeq } : {}),
-      },
+      query,
     });
     nextSeq = output.nextSeq;
     const text = output.chunks
@@ -750,8 +747,12 @@ async function readTerminalOutputForWait(args: {
       terminalId: args.terminalId,
       ...args.query,
     })
-    .catch((error: unknown) => {
-      if (isTerminalOutputUnavailable(error)) {
+    .catch((error) => {
+      if (
+        error instanceof BbHttpError &&
+        error.status === 409 &&
+        error.code === "terminal_output_unavailable"
+      ) {
         throw new CliExitError(
           `Terminal ${args.terminalId} exited before the requested output matched`,
           TERMINAL_WAIT_TIMEOUT_EXIT_CODE,
@@ -759,12 +760,4 @@ async function readTerminalOutputForWait(args: {
       }
       throw error;
     });
-}
-
-function isTerminalOutputUnavailable(error: unknown): boolean {
-  return (
-    error instanceof BbHttpError &&
-    error.status === 409 &&
-    error.code === "terminal_output_unavailable"
-  );
 }

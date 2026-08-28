@@ -85,11 +85,16 @@ const SECTION_B_PARENT_KEY =
   LOOKUP.sectionParentKeyBySectionId.get("section:b");
 
 function dragStart(id: string): DragStartEvent {
-  return { active: { id } } as DragStartEvent;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    active: { id },
+  } as DragStartEvent;
 }
 
 function dragOver(activeId: string, overId: string): DragOverEvent {
-  return { active: { id: activeId }, over: { id: overId } } as DragOverEvent;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    active: { id: activeId },
+    over: { id: overId },
+  } as DragOverEvent;
 }
 
 function renderSectionThreadDnd() {
@@ -162,7 +167,11 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     expect(added).toHaveLength(1);
 
     act(() =>
-      props().onDragCancel?.({ active: { id: "dragged" } } as DragCancelEvent),
+      props().onDragCancel?.(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+          active: { id: "dragged" },
+        } as DragCancelEvent,
+      ),
     );
     expect(
       removeSpy.mock.calls.filter(([type]) => type === "pointermove"),

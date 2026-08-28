@@ -223,7 +223,8 @@ function mockResizeObserverDeliveries(): () => void {
     constructor(callback: ResizeObserverCallback) {
       this.record = {
         callback,
-        instance: this as unknown as ResizeObserver,
+        instance:
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ this as ResizeObserver,
         targets: new Set(),
       };
       observers.push(this.record);
@@ -246,7 +247,10 @@ function mockResizeObserverDeliveries(): () => void {
         callback(
           Array.from(
             targets,
-            (target) => ({ target }) as unknown as ResizeObserverEntry,
+            (target) =>
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ ({
+                target,
+              }) as ResizeObserverEntry,
           ),
           instance,
         );
@@ -633,7 +637,9 @@ describe("GeneratedConversationMessage markdown body", () => {
       '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
     );
     expect(sourcePill?.tagName).not.toBe("A");
-    fireEvent.click(sourcePill as Element);
+    fireEvent.click(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ sourcePill as Element,
+    );
     expect(openPanel).toHaveBeenCalledOnce();
   });
 });

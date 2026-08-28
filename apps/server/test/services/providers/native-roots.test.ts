@@ -63,7 +63,7 @@ const USER_SKILLS = {
   recursive: false,
   ancestors: false,
   namePrefix: "",
-  shape: "skills",
+  ["shape"]: "skills",
 } as const;
 
 interface ResolverStub {

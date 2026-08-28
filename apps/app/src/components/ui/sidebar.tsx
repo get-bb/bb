@@ -2,7 +2,13 @@ import * as React from "react";
 import { flushSync } from "react-dom";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Slot } from "@radix-ui/react-slot";
-import { animate, clamp, motionValue, type MotionValue } from "motion";
+import {
+  animate,
+  clamp,
+  motionValue,
+  type MotionValue,
+  type ValueAnimationTransition,
+} from "motion";
 
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
@@ -58,6 +64,41 @@ type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
 };
 
+export interface SidebarProviderDependencies {
+  animate: (
+    value: MotionValue<number>,
+    target: number,
+    options: ValueAnimationTransition<number>,
+  ) => { stop: () => void };
+}
+
+const defaultSidebarProviderDependencies: SidebarProviderDependencies = {
+  animate,
+};
+
+type SidebarWidthIconStyle = React.CSSProperties & {
+  "--sidebar-width-icon": string;
+};
+
+type SidebarWidthStyle = React.CSSProperties & {
+  "--sidebar-width": string;
+};
+
+type SidebarSkeletonStyle = React.CSSProperties & {
+  "--skeleton-width": string;
+};
+
+function setForwardedRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
+  if (ref === null) {
+    return;
+  }
+  if ("current" in ref) {
+    ref.current = value;
+    return;
+  }
+  ref(value);
+}
+
 type SidebarInsetSwipeSession = {
   kind: "pointer" | "touch";
   id: number;
@@ -79,22 +120,20 @@ const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
 };
 
 function getSidebarMobilePanelWidth(): number {
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return 320;
   }
 
-  return Math.min(window.innerWidth * 0.9, 320);
+  return Math.min(browserWindow.innerWidth * 0.9, 320);
 }
 
 function clampSidebarMobileSwipeProgress(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function getSidebarMobileMotionNodes(): {
-  panel: HTMLElement | null;
-  backdrop: HTMLElement | null;
-} {
-  if (typeof document === "undefined") {
+function getSidebarMobileMotionNodes() {
+  if (globalThis.document === undefined) {
     return { panel: null, backdrop: null };
   }
 
@@ -377,7 +416,7 @@ function scheduleSidebarMobileRealization(realize: () => void): () => void {
     realize();
   };
   const timeout = window.setTimeout(run, SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS);
-  if (typeof window.requestIdleCallback === "function") {
+  if (window.requestIdleCallback !== undefined) {
     idleHandle = window.requestIdleCallback(
       () => {
         idleHandle = null;
@@ -477,6 +516,7 @@ const SidebarProvider = React.forwardRef<
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     width?: string;
+    dependencies?: SidebarProviderDependencies;
   }
 >(
   (
@@ -485,6 +525,7 @@ const SidebarProvider = React.forwardRef<
       open: openProp,
       onOpenChange: setOpenProp,
       width = SIDEBAR_WIDTH,
+      dependencies = defaultSidebarProviderDependencies,
       className,
       style,
       children,
@@ -604,7 +645,7 @@ const SidebarProvider = React.forwardRef<
     const desktopMotionProgress = desktopMotionProgressRef.current;
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
-        const openState = typeof value === "function" ? value(open) : value;
+        const openState = value instanceof Function ? value(open) : value;
         if (setOpenProp) {
           setOpenProp(openState);
         } else {
@@ -619,10 +660,14 @@ const SidebarProvider = React.forwardRef<
       if (shouldReduceMotion) {
         desktopMotionProgress.jump(target);
       } else if (desktopMotionProgress.get() !== target) {
-        animate(desktopMotionProgress, target, PANEL_SPRING_TRANSITION);
+        dependencies.animate(
+          desktopMotionProgress,
+          target,
+          PANEL_SPRING_TRANSITION,
+        );
       }
       return () => desktopMotionProgress.stop();
-    }, [desktopMotionProgress, open, shouldReduceMotion]);
+    }, [dependencies, desktopMotionProgress, open, shouldReduceMotion]);
     const toggleSidebar = React.useCallback(() => {
       if (!isCompactViewport) {
         setOpen((open) => !open);
@@ -681,7 +726,10 @@ const SidebarProvider = React.forwardRef<
     );
 
     const isSidebarShowing = isCompactViewport ? openMobile : open;
-
+    const providerStyle: SidebarWidthIconStyle = {
+      "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+      ...style,
+    };
     return (
       <SidebarContext.Provider value={contextValue}>
         <SidebarShowingContext.Provider value={isSidebarShowing}>
@@ -689,12 +737,7 @@ const SidebarProvider = React.forwardRef<
             <SidebarWidthContext.Provider value={width}>
               <TooltipProvider delayDuration={300} disableHoverableContent>
                 <div
-                  style={
-                    {
-                      "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                      ...style,
-                    } as React.CSSProperties
-                  }
+                  style={providerStyle}
                   className={cn(
                     "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
                     className,
@@ -729,6 +772,9 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
       setSuppressMobileCloseAnimation,
     } = useSidebar();
     const width = React.useContext(SidebarWidthContext);
+    const widthStyle: SidebarWidthStyle = {
+      "--sidebar-width": width,
+    };
     const desktopMotionProgress = useSidebarDesktopMotionProgress();
     const desktopGapRef = React.useRef<HTMLDivElement>(null);
     const desktopPanelRef = React.useRef<HTMLDivElement>(null);
@@ -753,7 +799,6 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
       applyProgress(desktopMotionProgress.get());
       return desktopMotionProgress.on("change", applyProgress);
     }, [desktopMotionProgress, width]);
-    const widthStyle = { "--sidebar-width": width } as React.CSSProperties;
     const handleOpenMobileChange = React.useCallback(
       (nextOpen: boolean) => {
         if (nextOpen) {
@@ -965,11 +1010,7 @@ const SidebarMobilePanel = React.forwardRef<
     const setPanelRef = React.useCallback(
       (node: HTMLDivElement | null) => {
         panelRef.current = node;
-        if (typeof ref === "function") {
-          ref(node);
-        } else if (ref) {
-          ref.current = node;
-        }
+        setForwardedRef(ref, node);
       },
       [ref],
     );
@@ -1409,7 +1450,7 @@ const SidebarMobilePanel = React.forwardRef<
               ...style,
               ...suppressedOpenTransitionStyle,
               ...panelMotionStyle,
-            } as SidebarMobileWidthStyle
+            } satisfies SidebarMobileWidthStyle
           }
           onPointerDown={handlePanelPointerDown}
           onTouchStart={handlePanelTouchStart}
@@ -2006,11 +2047,7 @@ const SidebarContent = React.forwardRef<
   const setContentRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       contentRef.current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
+      setForwardedRef(ref, node);
     },
     [ref],
   );
@@ -2202,6 +2239,9 @@ const SidebarMenuSkeleton = React.forwardRef<
     }
     return `${hash + 50}%`;
   }, [skeletonId]);
+  const skeletonStyle: SidebarSkeletonStyle = {
+    "--skeleton-width": width,
+  };
 
   return (
     <div
@@ -2213,11 +2253,7 @@ const SidebarMenuSkeleton = React.forwardRef<
       <Skeleton
         className="h-4 flex-1 max-w-[--skeleton-width]"
         data-sidebar="menu-skeleton-text"
-        style={
-          {
-            "--skeleton-width": width,
-          } as React.CSSProperties
-        }
+        style={skeletonStyle}
       />
     </div>
   );

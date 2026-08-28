@@ -1,5 +1,6 @@
 const CONNECT_SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
 const CONNECT_SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
+type ConnectSessionTimerHandle = number | ReturnType<typeof setTimeout>;
 
 export type ConnectSessionAuthenticateResult =
   | { expiresAt: number; ok: true }
@@ -12,10 +13,13 @@ type ConnectSessionAuthenticate = (
 
 interface CreateConnectSessionRenewalArgs {
   authenticate: ConnectSessionAuthenticate;
-  clearTimeoutFn?: (handle: unknown) => void;
+  clearTimeoutFn?: (handle: ConnectSessionTimerHandle) => void;
   log?: (message: string) => void;
   now?: () => number;
-  setTimeoutFn?: (handler: () => void, timeout: number) => unknown;
+  setTimeoutFn?: (
+    handler: () => void,
+    timeout: number,
+  ) => ConnectSessionTimerHandle;
 }
 
 export interface ConnectSessionRenewal {
@@ -40,14 +44,14 @@ export function createConnectSessionRenewal(
     });
   const clearTimeoutFn =
     args.clearTimeoutFn ??
-    ((handle: unknown) => {
-      clearTimeout(handle as ReturnType<typeof setTimeout>);
+    ((handle: ConnectSessionTimerHandle) => {
+      clearTimeout(handle);
     });
 
   let generation = 0;
   let expiresAt: number | null = null;
   let serverUrl: string | null = null;
-  let timer: unknown = null;
+  let timer: ConnectSessionTimerHandle | null = null;
   let inFlight: Promise<void> | null = null;
 
   function retire(): void {

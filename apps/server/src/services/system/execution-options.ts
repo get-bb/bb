@@ -44,6 +44,12 @@ interface ResolveSystemProviderModelsArgs {
   providerId: string;
 }
 
+interface LoadSystemProviderModelsArgs {
+  cwd?: string;
+  hostId: string;
+  provider: ProviderInfo;
+}
+
 interface ExpectedFallbackErrorLogFields {
   errorCode: string;
   errorDetails?: unknown;
@@ -136,7 +142,7 @@ function includeRequestedRegisteredProvider(
   return registration === null ? providers : [...providers, registration.info];
 }
 
-function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
+function canOmitProviderDiscoveryForError(error: Error): error is ApiError {
   return (
     error instanceof ApiError && (error.status === 502 || error.status === 504)
   );
@@ -194,7 +200,10 @@ async function listInstalledPluginProviderInfos(
           ? registration.info
           : null;
       } catch (error) {
-        if (!canOmitProviderDiscoveryForError(error)) {
+        if (
+          !(error instanceof Error) ||
+          !canOmitProviderDiscoveryForError(error)
+        ) {
           throw error;
         }
         deps.logger.warn(
@@ -240,7 +249,7 @@ function resolveSystemProviderInfosPlan(
       ),
     };
   } catch (error) {
-    if (!canOmitProviderDiscoveryForError(error)) {
+    if (!(error instanceof Error) || !canOmitProviderDiscoveryForError(error)) {
       throw error;
     }
     deps.logger.warn(
@@ -283,11 +292,14 @@ export async function resolveSystemProviderModels(
     );
   }
 
-  const result = await loadSystemProviderModels(deps, {
-    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+  const modelLoadArgs: LoadSystemProviderModelsArgs = {
     hostId: args.hostId,
     provider,
-  });
+  };
+  if (args.cwd !== undefined) {
+    modelLoadArgs.cwd = args.cwd;
+  }
+  const result = await loadSystemProviderModels(deps, modelLoadArgs);
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
     {
@@ -399,14 +411,17 @@ export async function resolveSystemExecutionOptions(
         query.providerId,
       ).find((provider) => provider.id === query.providerId)
     : undefined;
-  const earlyModelResultPromise =
-    hostId !== null && configuredRequestedProvider
-      ? loadSystemProviderModels(deps, {
-          ...(cwd !== undefined ? { cwd } : {}),
-          hostId,
-          provider: configuredRequestedProvider,
-        })
-      : null;
+  let earlyModelResultPromise: Promise<ModelListResult> | null = null;
+  if (hostId !== null && configuredRequestedProvider !== undefined) {
+    const modelLoadArgs: LoadSystemProviderModelsArgs = {
+      hostId,
+      provider: configuredRequestedProvider,
+    };
+    if (cwd !== undefined) {
+      modelLoadArgs.cwd = cwd;
+    }
+    earlyModelResultPromise = loadSystemProviderModels(deps, modelLoadArgs);
+  }
   let providers: ProviderInfo[];
   try {
     providers = await providersPromise;
@@ -472,14 +487,19 @@ export async function resolveSystemExecutionOptions(
     };
   }
 
-  const modelResult =
-    earlyModelResultPromise !== null
-      ? await earlyModelResultPromise
-      : await loadSystemProviderModels(deps, {
-          ...(cwd !== undefined ? { cwd } : {}),
-          hostId,
-          provider: modelsProvider,
-        });
+  let modelResult: ModelListResult;
+  if (earlyModelResultPromise !== null) {
+    modelResult = await earlyModelResultPromise;
+  } else {
+    const modelLoadArgs: LoadSystemProviderModelsArgs = {
+      hostId,
+      provider: modelsProvider,
+    };
+    if (cwd !== undefined) {
+      modelLoadArgs.cwd = cwd;
+    }
+    modelResult = await loadSystemProviderModels(deps, modelLoadArgs);
+  }
 
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
@@ -502,15 +522,7 @@ export async function resolveSystemExecutionOptions(
 
 async function loadSystemProviderModels(
   deps: LoggedWorkSessionDeps,
-  {
-    cwd,
-    hostId,
-    provider,
-  }: {
-    cwd?: string;
-    hostId: string;
-    provider: ProviderInfo;
-  },
+  { cwd, hostId, provider }: LoadSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
   if (!provider.available) {
     return unavailableProviderModelResult(provider.id);
@@ -519,14 +531,16 @@ async function loadSystemProviderModels(
   const command: ProviderListModelsCommand = {
     type: "provider.list_models",
     providerId: provider.id,
-    ...(cwd !== undefined &&
+    bridgeLaunch,
+  };
+  if (
+    cwd !== undefined &&
     providerModelCatalogDependsOnWorkspace(
       provider.capabilities.modelCatalogScope,
     )
-      ? { cwd }
-      : {}),
-    bridgeLaunch,
-  };
+  ) {
+    command.cwd = cwd;
+  }
   try {
     const { models, selectedOnlyModels } = await listProviderModelsMemoized(
       deps,

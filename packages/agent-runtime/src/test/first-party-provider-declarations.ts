@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { pluginPackageJsonSchema } from "@bb/domain";
-import type { PluginSettingValue } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, PluginSettingValue } from "@get-bb/plugin-sdk";
 import type { NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 
@@ -24,6 +25,12 @@ async function declaredIconNames(pluginId: string): Promise<string[]> {
   return Object.keys(manifest.bb.branding.experimental_icons ?? {});
 }
 
+const pluginServerModuleSchema = z
+  .object({
+    default: z.function({ input: [z.custom<BbPluginApi>()] }).optional(),
+  })
+  .passthrough();
+
 export interface CaptureFirstPartyProviderDeclarationsOptions {
   settings?: Record<string, PluginSettingValue>;
 }
@@ -36,16 +43,22 @@ export async function captureFirstPartyProviderDeclarations(
     `../../../../plugins/${pluginId}/server.ts`,
     import.meta.url,
   ).href;
-  const loaded: unknown = await import(/* @vite-ignore */ moduleUrl);
-  const entry = (loaded as { default?: unknown }).default;
-  if (typeof entry !== "function") {
+  const loaded = await import(/* @vite-ignore */ moduleUrl);
+  const parsedModule = pluginServerModuleSchema.safeParse(loaded);
+  if (!parsedModule.success || parsedModule.data.default === undefined) {
     throw new Error(`${pluginId} has no default plugin export`);
   }
-  const host = createFakePluginHost({
+  const entry = parsedModule.data.default;
+  const hostOptions: Parameters<typeof createFakePluginHost>[0] = {
     pluginId,
     dataDir: firstPartyPluginRootDir("__no-such-data-dir__"),
     experimental_declaredIconNames: await declaredIconNames(pluginId),
-    ...(options.settings === undefined ? {} : { settings: options.settings }),
+  };
+  if (options.settings !== undefined) {
+    hostOptions.settings = options.settings;
+  }
+  const host = createFakePluginHost({
+    ...hostOptions,
   });
   try {
     await entry(host.bb);

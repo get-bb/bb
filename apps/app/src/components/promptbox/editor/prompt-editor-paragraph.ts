@@ -28,10 +28,15 @@ export function createPromptParagraphNewlineTransaction(args: {
     dispatch: () => {
       nextTransaction = transaction;
     },
+    // SAFETY: Tiptap invokes this command with the editor context supplied by the active editor.
     editor: args.editor as Editor,
+    // SAFETY: This command only reads state and dispatches the provided transaction.
     commands: null as never,
+    // SAFETY: This command does not call the command-chain helpers.
     can: null as never,
+    // SAFETY: This command does not call the command-chain helpers.
     chain: null as never,
+    // SAFETY: This command does not access the editor view.
     view: null as never,
   });
 

@@ -15,22 +15,29 @@ interface ThreadLifecycleSupersessionPredicates {
   notDeleted?: true;
 }
 
-export const THREAD_LIFECYCLE_EVENT_PREDICATES: Record<
-  ThreadLifecycleEventType,
-  ThreadLifecycleSupersessionPredicates
-> = {
-  "run.preparing": { notArchived: true, notDeleted: true },
-  "run.started": { notArchived: true, notDeleted: true },
-  "run.succeeded": {},
-  "run.failed": { notDeleted: true },
-  "stop.requested": {},
-  "stop.settled": {},
+type ThreadLifecycleEventPredicatesByType = {
+  readonly [
+    eventType in ThreadLifecycleEventType
+  ]: ThreadLifecycleSupersessionPredicates;
 };
 
-export const THREAD_LIFECYCLE: Record<
-  ThreadStatus,
-  Partial<Record<ThreadLifecycleEventType, ThreadStatus>>
-> = {
+type ThreadLifecycleByStatus = {
+  readonly [status in ThreadStatus]: Readonly<
+    Partial<Record<ThreadLifecycleEventType, ThreadStatus>>
+  >;
+};
+
+export const THREAD_LIFECYCLE_EVENT_PREDICATES: ThreadLifecycleEventPredicatesByType =
+  {
+    "run.preparing": { notArchived: true, notDeleted: true },
+    "run.started": { notArchived: true, notDeleted: true },
+    "run.succeeded": {},
+    "run.failed": { notDeleted: true },
+    "stop.requested": {},
+    "stop.settled": {},
+  };
+
+export const THREAD_LIFECYCLE: ThreadLifecycleByStatus = {
   idle: {
     "run.preparing": "starting",
     "run.started": "active",

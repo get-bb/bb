@@ -39,7 +39,7 @@ function checkbox(name: string): HTMLInputElement {
   if (!(control instanceof HTMLElement)) {
     throw new Error(`Checkbox ${name} is missing`);
   }
-  return control as HTMLInputElement;
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ control as HTMLInputElement;
 }
 
 describe("InstallCliSkillsDialog", () => {

@@ -43,11 +43,12 @@ async function initRepo(): Promise<string> {
 
 async function captureReadHostFileError(
   command: CommandOf<"host.read_file">,
-): Promise<unknown> {
+): Promise<CommandDispatchError> {
   try {
     await readHostFile(command);
   } catch (error) {
-    return error;
+    if (error instanceof CommandDispatchError) return error;
+    throw error;
   }
 
   throw new Error("Expected readHostFile to fail");
@@ -55,11 +56,12 @@ async function captureReadHostFileError(
 
 async function captureReadHostRelativeFileError(
   command: CommandOf<"host.read_file_relative">,
-): Promise<unknown> {
+): Promise<CommandDispatchError> {
   try {
     await readHostRelativeFile(command);
   } catch (error) {
-    return error;
+    if (error instanceof CommandDispatchError) return error;
+    throw error;
   }
 
   throw new Error("Expected readHostRelativeFile to fail");

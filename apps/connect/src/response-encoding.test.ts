@@ -33,8 +33,8 @@ async function bundleFixture(): Promise<string> {
 function serveOriginOverTunnel(ws: ClientWebSocket): void {
   const send = (frame: Frame) => ws.send(new Uint8Array(encodeFrame(frame)));
   ws.addEventListener("message", (event) => {
-    if (typeof event.data === "string") return;
-    const frame = decodeFrame(event.data as ArrayBuffer);
+    if (!(event.data instanceof ArrayBuffer)) return;
+    const frame = decodeFrame(event.data);
     if (frame.type !== "open-http") return;
     const cacheable =
       new URL(frame.path, "http://origin.local").searchParams.get(

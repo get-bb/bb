@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -18,8 +19,8 @@ interface RecordedRequest {
   init: RequestInit | undefined;
 }
 
-function jsonOk(body: unknown): Response {
-  return {
+function jsonOk(body: JsonValue): Response {
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
     ok: true,
     status: 200,
     json: () => Promise.resolve(body),
@@ -62,20 +63,32 @@ describe("PluginSettingsForm", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(<PluginSettingsForm pluginId="demo" />, { wrapper });
 
-    const greeting = (await screen.findByLabelText(
-      "Greeting",
-    )) as HTMLInputElement;
+    const greeting =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (await screen.findByLabelText(
+        "Greeting",
+      )) as HTMLInputElement;
     expect(greeting.value).toBe("hello");
 
-    const apiKey = screen.getByLabelText("API key") as HTMLInputElement;
+    const apiKey =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByLabelText(
+        "API key",
+      ) as HTMLInputElement;
     expect(apiKey.value).toBe("");
     expect(apiKey.placeholder).toBe("[not set]");
 
     const save = screen.getByRole("button", { name: /save settings/i });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        save as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
 
     fireEvent.change(greeting, { target: { value: "hi" } });
-    expect((save as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        save as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     fireEvent.click(save);
 
     const put = await vi.waitFor(() => {
@@ -90,7 +103,9 @@ describe("PluginSettingsForm", () => {
 
     await vi.waitFor(() => {
       expect(
-        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          screen.getByLabelText("Greeting") as HTMLInputElement
+        ).value,
       ).toBe("hi");
     });
   });
@@ -123,9 +138,17 @@ describe("PluginSettingsForm", () => {
 
     const agents = await screen.findByLabelText("Custom agents");
     expect(agents.tagName).toBe("TEXTAREA");
-    expect((agents as HTMLTextAreaElement).value).toBe("[]");
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        agents as HTMLTextAreaElement
+      ).value,
+    ).toBe("[]");
     expect(agents.getAttribute("spellcheck")).toBe("false");
-    expect((agents as HTMLTextAreaElement).rows).toBe(6);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        agents as HTMLTextAreaElement
+      ).rows,
+    ).toBe(6);
     expect(agents.closest('[data-control-placement="below"]')).not.toBeNull();
     const greeting = screen.getByLabelText("Greeting");
     expect(greeting.tagName).toBe("INPUT");
@@ -133,9 +156,13 @@ describe("PluginSettingsForm", () => {
       greeting.closest('[data-control-placement="inline"]'),
     ).not.toBeNull();
 
-    const save = screen.getByRole("button", {
-      name: /save settings/i,
-    }) as HTMLButtonElement;
+    const save =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ screen.getByRole(
+        "button",
+        {
+          name: /save settings/i,
+        },
+      ) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
 
     const edited = [
@@ -150,7 +177,11 @@ describe("PluginSettingsForm", () => {
     ].join("\n");
     fireEvent.change(agents, { target: { value: edited } });
     expect(save.disabled).toBe(false);
-    expect((agents as HTMLTextAreaElement).rows).toBe(9);
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        agents as HTMLTextAreaElement
+      ).rows,
+    ).toBe(9);
 
     fireEvent.click(save);
     const put = await vi.waitFor(() => {
@@ -176,9 +207,10 @@ describe("PluginSettingsForm", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(<PluginSettingsForm pluginId="demo" />, { wrapper });
 
-    const apiKey = (await screen.findByLabelText(
-      "API key",
-    )) as HTMLInputElement;
+    const apiKey =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (await screen.findByLabelText(
+        "API key",
+      )) as HTMLInputElement;
     fireEvent.change(apiKey, { target: { value: "sk-123" } });
     fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
 
@@ -260,9 +292,10 @@ describe("PluginSettingsDetail settings gating", () => {
       { wrapper },
     );
 
-    const alphaGreeting = (await screen.findByLabelText(
-      "Greeting",
-    )) as HTMLInputElement;
+    const alphaGreeting =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (await screen.findByLabelText(
+        "Greeting",
+      )) as HTMLInputElement;
     fireEvent.change(alphaGreeting, { target: { value: "unsaved alpha" } });
     fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
     await vi.waitFor(() => {
@@ -280,11 +313,13 @@ describe("PluginSettingsDetail settings gating", () => {
     );
     await vi.waitFor(() => {
       expect(
-        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          screen.getByLabelText("Greeting") as HTMLInputElement
+        ).value,
       ).toBe("bonjour");
     });
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         screen.getByRole("button", {
           name: /save settings/i,
         }) as HTMLButtonElement
@@ -299,7 +334,9 @@ describe("PluginSettingsDetail settings gating", () => {
     );
     await vi.waitFor(() => {
       expect(
-        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+          screen.getByLabelText("Greeting") as HTMLInputElement
+        ).value,
       ).toBe("bonjour");
     });
     expect(

@@ -20,9 +20,9 @@ export function getAppUpdateCheckSnapshot(): boolean {
   return isChecking;
 }
 
-export function checkErrorDescription(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
+export function checkErrorDescription(cause: unknown): string {
+  if (cause instanceof Error && cause.message.length > 0) {
+    return cause.message;
   }
   return "The update check did not complete.";
 }
@@ -35,9 +35,9 @@ export function startAppUpdateCheck(check: () => Promise<void>): void {
   notify();
 
   void check()
-    .catch((error: unknown) => {
+    .catch((cause: unknown) => {
       appToast.error("Update check failed", {
-        description: checkErrorDescription(error),
+        description: checkErrorDescription(cause),
       });
     })
     .finally(() => {

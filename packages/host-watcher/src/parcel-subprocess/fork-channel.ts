@@ -65,6 +65,7 @@ export function createChildChannel(child: ChildProcess): ChildChannel {
     },
     onMessage(listener) {
       child.on("message", (message) => {
+        /* SAFETY: The fork channel sends only ChildToParentMessage values from the child watcher. */
         listener(message as ChildToParentMessage);
       });
     },

@@ -7,32 +7,22 @@ import type {
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
-import {
-  useThreadSearch,
-  type UseThreadSearchResult,
-} from "@/hooks/queries/thread-queries";
+import * as sidebarNavigationQuery from "@/hooks/queries/sidebar-navigation-query";
+import * as threadQueries from "@/hooks/queries/thread-queries";
+import type { UseThreadSearchResult } from "@/hooks/queries/thread-queries";
 import {
   ThreadPaletteResults,
   type ThreadPaletteNavigationItem,
 } from "./ThreadPaletteResults";
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  hasThreadSearchableQuery: (value: string) =>
-    value.replace(/\s/g, "").length >= 2,
-  useThreadSearch: vi.fn(),
-}));
-
-vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({ data: undefined, isLoading: false }),
-}));
-
-vi.mock("@/components/thread/ThreadTitleMentions", () => ({
-  useThreadTitleMentionResources: () => ({
-    projectNamesById: new Map<string, string>(),
-  }),
-}));
-
-const mockUseThreadSearch = vi.mocked(useThreadSearch);
+const mockUseThreadSearch = vi.spyOn(threadQueries, "useThreadSearch");
+vi.spyOn(sidebarNavigationQuery, "useSidebarNavigation").mockImplementation(
+  () =>
+    /* SAFETY: This test fixture supplies the query fields that the component reads. */ ({
+      data: undefined,
+      isLoading: false,
+    }) as ReturnType<typeof sidebarNavigationQuery.useSidebarNavigation>,
+);
 
 function createThreadListEntry({
   id,
@@ -121,7 +111,6 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.clearAllMocks();
-  vi.restoreAllMocks();
 });
 
 describe("ThreadPaletteResults", () => {

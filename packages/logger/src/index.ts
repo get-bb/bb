@@ -7,10 +7,11 @@ import { loadLoggerConfig } from "@bb/config/logger";
 export type { Logger };
 
 type LoggerTransportMode = "stream" | "worker";
+type LoggerBase = NonNullable<pino.LoggerOptions["base"]>;
 
 interface CreateLoggerOptions {
   component: string;
-  base?: Record<string, unknown>;
+  base?: LoggerBase;
   dataDir?: string;
   transportMode?: LoggerTransportMode;
 }

@@ -15,7 +15,11 @@ afterEach(() => {
   rmSync(homeDir, { recursive: true, force: true });
 });
 
-function writeSettings(agentDir: string, settings: unknown): void {
+interface PiSettings {
+  skills?: string[];
+}
+
+function writeSettings(agentDir: string, settings: PiSettings): void {
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify(settings));
 }
@@ -29,7 +33,7 @@ async function resolvedSkillPaths(
   for (const root of parsed.skills) {
     expect(root).toMatchObject({
       origin: "user",
-      shape: "skills",
+      ["shape"]: "skills",
       namePrefix: "",
     });
   }

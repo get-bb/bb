@@ -767,7 +767,7 @@ function buildDirectUnmanagedEnvironmentPlan(
           },
           path: args.intent.path,
           workspaceProvisionType: "unmanaged",
-          ...(checkout ? { checkout } : {}),
+          checkout,
         }),
       };
     },

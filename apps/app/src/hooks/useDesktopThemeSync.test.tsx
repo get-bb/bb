@@ -15,9 +15,7 @@ const desktopInfo: BbDesktopInfo = {
   version: "0.0.0-test",
 };
 
-function installColorSchemeMediaQuery(initialDark: boolean): {
-  setDark(dark: boolean): void;
-} {
+function installColorSchemeMediaQuery(initialDark: boolean) {
   let dark = initialDark;
   const listeners = new Set<EventListenerOrEventListenerObject>();
   const mediaQuery: MediaQueryList = {
@@ -42,10 +40,10 @@ function installColorSchemeMediaQuery(initialDark: boolean): {
     },
     dispatchEvent(event) {
       for (const listener of listeners) {
-        if (typeof listener === "function") {
-          listener.call(mediaQuery, event);
-        } else {
+        if ("handleEvent" in listener) {
           listener.handleEvent(event);
+        } else {
+          listener.call(mediaQuery, event);
         }
       }
       return true;
@@ -54,7 +52,7 @@ function installColorSchemeMediaQuery(initialDark: boolean): {
 
   window.matchMedia = vi.fn(() => mediaQuery);
   return {
-    setDark(nextDark) {
+    setDark(nextDark: boolean) {
       dark = nextDark;
       mediaQuery.dispatchEvent(new Event("change"));
     },

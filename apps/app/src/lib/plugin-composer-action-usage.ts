@@ -18,8 +18,8 @@ let snapshot: Readonly<Record<string, number>> = EMPTY_USAGE_COUNTS;
 const listeners = new Set<() => void>();
 
 function readUsageCounts(): Readonly<Record<string, number>> {
-  if (typeof window === "undefined") return EMPTY_USAGE_COUNTS;
-  const storedValue = window.localStorage.getItem(
+  if (!("window" in globalThis)) return EMPTY_USAGE_COUNTS;
+  const storedValue = globalThis.window.localStorage.getItem(
     PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
   );
   if (storedValue === null) return EMPTY_USAGE_COUNTS;
@@ -59,13 +59,13 @@ function handleStorage(event: StorageEvent): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  if (listeners.size === 1 && typeof window !== "undefined") {
-    window.addEventListener("storage", handleStorage);
+  if (listeners.size === 1 && "window" in globalThis) {
+    globalThis.window.addEventListener("storage", handleStorage);
   }
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0 && typeof window !== "undefined") {
-      window.removeEventListener("storage", handleStorage);
+    if (listeners.size === 0 && "window" in globalThis) {
+      globalThis.window.removeEventListener("storage", handleStorage);
     }
   };
 }
@@ -91,8 +91,8 @@ export function recordPluginComposerActionUse(pluginId: string): void {
     ...current,
     [pluginId]: Math.min((current[pluginId] ?? 0) + 1, MAX_USAGE_COUNT),
   });
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(
+  if ("window" in globalThis) {
+    globalThis.window.localStorage.setItem(
       PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
       JSON.stringify(next),
     );

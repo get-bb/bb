@@ -68,6 +68,11 @@ interface RuntimeManagerProviderMaintenanceInternals {
   providerMaintenanceRuntime: AgentRuntime | null;
 }
 
+function castRuntimeManagerTestSeam<T>(value: RuntimeManager): T {
+  // SAFETY: Tests access private runtime state through a deliberate seam.
+  return value as T;
+}
+
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
@@ -1410,7 +1415,9 @@ describe("RuntimeManager", () => {
       },
     });
     const managerInternals =
-      manager as unknown as RuntimeManagerProviderMaintenanceInternals;
+      castRuntimeManagerTestSeam<RuntimeManagerProviderMaintenanceInternals>(
+        manager,
+      );
     vi.spyOn(managerInternals, "createProviderMaintenanceRuntime")
       .mockImplementationOnce(() => staleCreation.promise)
       .mockImplementationOnce(async () => currentRuntime);

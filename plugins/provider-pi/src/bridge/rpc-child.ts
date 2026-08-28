@@ -1,11 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { PassThrough, Writable, type Readable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
+import { z } from "zod";
 import {
   experimental_isProviderBridgeRecording,
   experimental_readBoundedLines,
   experimental_recordProviderChildIo,
   sanitizeInheritedChildProcessEnv,
   withoutBridgeRuntimeEnv,
+  type JsonObject,
+  type JsonValue,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
@@ -31,16 +34,31 @@ export interface PiRpcResponse {
   type: "response";
   command: string;
   success: boolean;
-  data?: unknown;
+  data?: JsonValue;
   error?: string;
 }
+
+interface PiLaunch {
+  command: string;
+  args: string[];
+}
+
+const piRpcMessageSchema = z.object({ type: z.string() }).catchall(z.json());
+const piRpcResponseSchema: z.ZodType<PiRpcResponse> = z.object({
+  id: z.string().optional(),
+  type: z.literal("response"),
+  command: z.string(),
+  success: z.boolean(),
+  data: z.json().optional(),
+  error: z.string().optional(),
+});
 
 export interface SpawnPiRpcChildArgs {
   cwd: string;
   env: NodeJS.ProcessEnv;
   args: readonly string[];
-  onEvent: (event: Record<string, unknown>) => void;
-  onChannelMessage: (message: Record<string, unknown>) => void;
+  onEvent: (event: JsonObject) => void;
+  onChannelMessage: (message: JsonObject) => void;
   onExit: (info: PiRpcChildExitInfo) => void;
   recordThreadId: string | null;
 }
@@ -65,10 +83,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
-  command: string;
-  args: string[];
-} {
+export function resolvePiLaunch(env: NodeJS.ProcessEnv): PiLaunch {
   const command = env[PI_BRIDGE_COMMAND_ENV];
   if (!command) {
     return { command: "pi", args: [] };
@@ -77,14 +92,11 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   if (!rawArgs) {
     return { command, args: [] };
   }
-  const parsed: unknown = JSON.parse(rawArgs);
-  if (
-    !Array.isArray(parsed) ||
-    !parsed.every((entry): entry is string => typeof entry === "string")
-  ) {
+  const parsed = z.array(z.string()).safeParse(JSON.parse(rawArgs));
+  if (!parsed.success) {
     throw new Error(`${PI_BRIDGE_ARGS_ENV} must be a JSON array of strings`);
   }
-  return { command, args: parsed };
+  return { command, args: parsed.data };
 }
 
 export function buildPiChildEnv(
@@ -130,8 +142,9 @@ export class PiRpcChild {
     this.channelRecorder = createChannelRecorder(args.recordThreadId);
     const stdout = this.child.stdout;
     const stderr = this.child.stderr;
-    const channelIn = this.child.stdio[3] as Readable | null | undefined;
-    this.channelWriter = (this.child.stdio[4] as Writable | null) ?? null;
+    const channelIn = this.child.stdio[3];
+    this.channelWriter =
+      this.child.stdio[4] instanceof Writable ? this.child.stdio[4] : null;
     this.child.stdin?.on("error", () => undefined);
     this.channelWriter?.on("error", () => undefined);
     if (stdout) {
@@ -152,7 +165,7 @@ export class PiRpcChild {
         process.stderr.write(`pi[${String(this.child.pid ?? "?")}]: ${text}`);
       });
     }
-    if (channelIn) {
+    if (channelIn instanceof Readable) {
       experimental_readBoundedLines({
         input: channelIn,
         onLine: (line) => this.handleChannelLine(line),
@@ -206,7 +219,7 @@ export class PiRpcChild {
   }
 
   request(
-    command: Record<string, unknown>,
+    command: JsonObject,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ): Promise<PiRpcResponse> {
     if (this.exitInfo !== null) {
@@ -231,9 +244,9 @@ export class PiRpcChild {
   }
 
   async requestOk(
-    command: Record<string, unknown>,
+    command: JsonObject,
     timeoutMs?: number,
-  ): Promise<unknown> {
+  ): Promise<JsonValue | undefined> {
     const response = await this.request(command, timeoutMs);
     if (!response.success) {
       throw new Error(response.error ?? `pi rejected ${String(command.type)}`);
@@ -241,7 +254,7 @@ export class PiRpcChild {
     return response.data;
   }
 
-  sendChannel(message: Record<string, unknown>): void {
+  sendChannel(message: JsonObject): void {
     const writer = this.channelWriter;
     if (!writer || writer.destroyed || writer.writableEnded) {
       return;
@@ -323,24 +336,29 @@ export class PiRpcChild {
     if (!trimmed) {
       return;
     }
-    let parsed: unknown;
+    let parsedJson: JsonValue;
     try {
-      parsed = JSON.parse(trimmed);
+      parsedJson = z.json().parse(JSON.parse(trimmed));
     } catch {
       return;
     }
-    if (typeof parsed !== "object" || parsed === null) {
+    const parsed = piRpcMessageSchema.safeParse(parsedJson);
+    if (!parsed.success) {
       return;
     }
-    const message = parsed as Record<string, unknown>;
+    const message = parsed.data;
     if (message.type === "response") {
+      const response = piRpcResponseSchema.safeParse(message);
+      if (!response.success) {
+        return;
+      }
       this.sawResponse = true;
-      const id = typeof message.id === "string" ? message.id : undefined;
+      const id = response.data.id;
       const pending = id === undefined ? undefined : this.pending.get(id);
       if (pending && id !== undefined) {
         this.pending.delete(id);
         if (pending.timer !== null) clearTimeout(pending.timer);
-        pending.resolve(message as unknown as PiRpcResponse);
+        pending.resolve(response.data);
       }
       return;
     }
@@ -354,9 +372,7 @@ export class PiRpcChild {
       );
       return;
     }
-    if (typeof message.type === "string") {
-      this.args.onEvent(message);
-    }
+    this.args.onEvent(message);
   }
 
   private handleChannelLine(line: string): void {
@@ -365,18 +381,19 @@ export class PiRpcChild {
       return;
     }
     try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (typeof parsed === "object" && parsed !== null) {
-        this.channelRecorder?.fromChild(parsed);
-        this.args.onChannelMessage(parsed as Record<string, unknown>);
-      }
+      const parsed = z
+        .record(z.string(), z.json())
+        .safeParse(JSON.parse(trimmed));
+      if (!parsed.success) return;
+      this.channelRecorder?.fromChild(parsed.data);
+      this.args.onChannelMessage(parsed.data);
     } catch {}
   }
 }
 
 interface ChannelRecorder {
-  fromChild(message: unknown): void;
-  toChild(message: unknown): void;
+  fromChild(message: JsonObject): void;
+  toChild(message: JsonObject): void;
 }
 
 function createChannelRecorder(
@@ -395,7 +412,7 @@ function createChannelRecorder(
     { stdin: toChild, stdout: fromChild },
     { threadId },
   );
-  const wrap = (message: unknown): string =>
+  const wrap = (message: JsonObject): string =>
     `${JSON.stringify({ [PI_CHANNEL_RECORDING_KEY]: message })}\n`;
   return {
     fromChild: (message) => {

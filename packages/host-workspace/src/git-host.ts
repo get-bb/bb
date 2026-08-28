@@ -1,6 +1,10 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { promisify } from "node:util";
 import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
   type GitHostPullRequest,
   type GitHostPullRequestCheck,
   type GitHostPullRequestCheckConclusion,
@@ -47,6 +51,12 @@ interface GetPullRequestForCurrentBranchArgs extends GitHostCliOptions {
   localBranch: string;
 }
 
+interface GitHostConfigCommandOptions extends GitHostCliOptions {
+  cwd: string;
+  allowFailure: true;
+  timeoutMs: number;
+}
+
 type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
@@ -60,38 +70,44 @@ interface RunPullRequestActionForCurrentBranchArgs extends GitHostCliOptions {
   action: GitHostPullRequestAction;
 }
 
-type JsonObject = Record<string, unknown>;
-
-function asObject(value: unknown): JsonObject | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as JsonObject;
+function asObject(value: JsonValue): JsonObject | null {
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function getString(object: JsonObject, key: string): string | null {
   const value = object[key];
-  return typeof value === "string" ? value : null;
+  return isString(value) ? value : null;
 }
 
 function getNumber(object: JsonObject, key: string): number | null {
   const value = object[key];
-  return typeof value === "number" ? value : null;
+  return isNumber(value) ? value : null;
 }
 
 function getBoolean(object: JsonObject, key: string): boolean | null {
   const value = object[key];
-  return typeof value === "boolean" ? value : null;
+  return isBoolean(value) ? value : null;
 }
 
-function normalizeUppercase(value: unknown): string | null {
-  return typeof value === "string" && value.trim()
-    ? value.trim().toUpperCase()
-    : null;
+function isString(value: JsonValue): value is string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isNumber(value: JsonValue): value is number {
+  return Object.prototype.toString.call(value) === "[object Number]";
+}
+
+function isBoolean(value: JsonValue): value is boolean {
+  return value === true || value === false;
+}
+
+function normalizeUppercase(value: JsonValue): string | null {
+  return isString(value) && value.trim() ? value.trim().toUpperCase() : null;
 }
 
 function normalizeReviewDecision(
-  value: unknown,
+  value: JsonValue,
 ): GitHostPullRequestReviewDecision | null {
   switch (normalizeUppercase(value)) {
     case "APPROVED":
@@ -106,7 +122,7 @@ function normalizeReviewDecision(
 }
 
 function normalizeMergeStateStatus(
-  value: unknown,
+  value: JsonValue,
 ): GitHostPullRequestMergeStateStatus | null {
   switch (normalizeUppercase(value)) {
     case "BEHIND":
@@ -131,7 +147,7 @@ function normalizeMergeStateStatus(
 }
 
 function normalizeMergeable(
-  value: unknown,
+  value: JsonValue,
 ): GitHostPullRequestMergeable | null {
   switch (normalizeUppercase(value)) {
     case "CONFLICTING":
@@ -145,7 +161,7 @@ function normalizeMergeable(
   }
 }
 
-function normalizeCheckStatus(value: unknown): GitHostPullRequestCheckStatus {
+function normalizeCheckStatus(value: JsonValue): GitHostPullRequestCheckStatus {
   switch (normalizeUppercase(value)) {
     case "QUEUED":
     case "REQUESTED":
@@ -169,7 +185,7 @@ function normalizeCheckStatus(value: unknown): GitHostPullRequestCheckStatus {
 }
 
 function normalizeCheckConclusion(
-  value: unknown,
+  value: JsonValue,
 ): GitHostPullRequestCheckConclusion | null {
   switch (normalizeUppercase(value)) {
     case "SUCCESS":
@@ -200,7 +216,7 @@ function normalizeCheckConclusion(
 
 function getNullableUrl(object: JsonObject, key: string): string | null {
   const value = object[key];
-  if (typeof value !== "string" || value.length === 0) {
+  if (!isString(value) || value.length === 0) {
     return null;
   }
   try {
@@ -228,7 +244,7 @@ function normalizeCheckName(object: JsonObject): string {
   return "Unnamed check";
 }
 
-function normalizeChecks(value: unknown): GitHostPullRequestCheck[] {
+function normalizeChecks(value: JsonValue): GitHostPullRequestCheck[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -255,12 +271,12 @@ function normalizeChecks(value: unknown): GitHostPullRequestCheck[] {
   return checks;
 }
 
-function getArrayLength(value: unknown): number {
+function getArrayLength(value: JsonValue): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
 function normalizeGitHubPullRequestView(
-  json: unknown,
+  json: JsonValue,
 ): GitHostPullRequest | null {
   const object = asObject(json);
   if (!object) {
@@ -311,17 +327,26 @@ function buildPullRequestActionArgs(
   }
 }
 
-function getExecFileException(error: unknown): ExecFileException | undefined {
-  return error instanceof Error ? (error as ExecFileException) : undefined;
+function getExecFileException(error: Error): ExecFileException {
+  return error;
 }
 
-function trimGhOutput(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+function getGitHostProcessEnv(
+  shellPath: string | undefined,
+): NodeJS.ProcessEnv {
+  if (shellPath === undefined) {
+    return sanitizeInheritedChildProcessEnv({ env: process.env });
+  }
+  return sanitizeInheritedChildProcessEnv({ env: process.env, shellPath });
+}
+
+function trimGhOutput(value: string | undefined): string {
+  return value?.trim() ?? "";
 }
 
 function createGitHostCommandFailedError(
   args: string[],
-  error: unknown,
+  error: Error,
 ): WorkspaceError {
   const execError = getExecFileException(error);
   if (execError?.code === "ENOENT") {
@@ -333,8 +358,7 @@ function createGitHostCommandFailedError(
   }
   const stderr = trimGhOutput(execError?.stderr);
   const stdout = trimGhOutput(execError?.stdout);
-  const detail =
-    stderr || stdout || (error instanceof Error ? error.message : "");
+  const detail = stderr || stdout || error.message;
   return new WorkspaceError(
     "git_host_command_failed",
     detail
@@ -351,9 +375,9 @@ export function parseGitHostPullRequest(
   if (!trimmed) {
     return null;
   }
-  let json: unknown;
+  let json: JsonValue;
   try {
-    json = JSON.parse(trimmed);
+    json = jsonValueSchema.parse(JSON.parse(trimmed));
   } catch {
     return null;
   }
@@ -379,7 +403,7 @@ interface GitRemoteRepository {
 
 function ghCommandUnavailable(
   ghArgs: string[],
-  error: unknown,
+  error: Error,
 ): Extract<GitHostPullRequestLookup, { outcome: "unavailable" }> {
   const execError = getExecFileException(error);
   if (execError?.code === "ENOENT") {
@@ -394,7 +418,7 @@ function ghCommandUnavailable(
   const detail =
     trimGhOutput(execError?.stderr) ||
     trimGhOutput(execError?.stdout) ||
-    (error instanceof Error ? error.message : "");
+    error.message;
   const command = `gh ${ghArgs.slice(0, 2).join(" ")}`;
   return {
     outcome: "unavailable",
@@ -403,7 +427,7 @@ function ghCommandUnavailable(
 }
 
 function classifyPullRequestViewError(
-  error: unknown,
+  error: Error,
 ): Extract<GitHostPullRequestLookup, { outcome: "none" | "unavailable" }> {
   const execError = getExecFileException(error);
   if (GH_NO_PULL_REQUEST_PATTERN.test(trimGhOutput(execError?.stderr))) {
@@ -496,6 +520,12 @@ async function getPullRequestTarget(
   const escapedBranch = escapeGitConfigRegexp(args.localBranch);
   let configResult: GitCommandResult;
   try {
+    const gitOptions: GitHostConfigCommandOptions = {
+      cwd: args.cwd,
+      allowFailure: true,
+      timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
+    };
+    if (args.shellPath !== undefined) gitOptions.shellPath = args.shellPath;
     configResult = await runGit(
       [
         "config",
@@ -503,12 +533,7 @@ async function getPullRequestTarget(
         "--get-regexp",
         `^(branch\\.${escapedBranch}\\.(remote|merge)|remote\\..*\\.url)$`,
       ],
-      {
-        cwd: args.cwd,
-        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-        allowFailure: true,
-        timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
-      },
+      gitOptions,
     );
   } catch (error) {
     return gitUpstreamLookupUnavailable(
@@ -592,15 +617,14 @@ export async function getPullRequestForCurrentBranch(
     ({ stdout } = await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({
-        env: process.env,
-        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-      }),
+      env: getGitHostProcessEnv(args.shellPath),
       timeout: GH_PR_VIEW_TIMEOUT_MS,
       maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
     }));
   } catch (error) {
-    return classifyPullRequestViewError(error);
+    return classifyPullRequestViewError(
+      error instanceof Error ? error : new Error(String(error)),
+    );
   }
   const pullRequest = parseGitHostPullRequest(stdout);
   if (!pullRequest) {
@@ -627,14 +651,14 @@ export async function runPullRequestActionForCurrentBranch(
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({
-        env: process.env,
-        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-      }),
+      env: getGitHostProcessEnv(args.shellPath),
       timeout: GH_PR_ACTION_TIMEOUT_MS,
       maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
     });
   } catch (error) {
-    throw createGitHostCommandFailedError(ghArgs, error);
+    throw createGitHostCommandFailedError(
+      ghArgs,
+      error instanceof Error ? error : new Error(String(error)),
+    );
   }
 }

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import { appCommandIdSchema } from "@bb/domain";
+import { appCommandIdSchema, type JsonValue } from "@bb/domain";
 import {
   bbDesktopBrowserFindResultSchema,
   bbDesktopBrowserOpenTabRequestSchema,
@@ -113,7 +113,11 @@ function notifyWindowStateListeners(): void {
   }
 }
 
-function applyDesktopInfoPayload(payload: unknown): BbDesktopInfo | null {
+type DesktopIpcPayload = JsonValue | undefined;
+
+function applyDesktopInfoPayload(
+  payload: DesktopIpcPayload,
+): BbDesktopInfo | null {
   const parsed = bbDesktopInfoSchema.safeParse(payload);
   if (!parsed.success) {
     return null;
@@ -124,7 +128,7 @@ function applyDesktopInfoPayload(payload: unknown): BbDesktopInfo | null {
 }
 
 function applyDesktopWindowStatePayload(
-  payload: unknown,
+  payload: DesktopIpcPayload,
 ): BbDesktopWindowState | null {
   const parsed = bbDesktopWindowStateSchema.safeParse(payload);
   if (!parsed.success) {
@@ -137,7 +141,7 @@ function applyDesktopWindowStatePayload(
 
 async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
   try {
-    const payload: unknown = await ipcRenderer.invoke(channel);
+    const payload: DesktopIpcPayload = await ipcRenderer.invoke(channel);
     return applyDesktopInfoPayload(payload) ?? currentInfo;
   } catch {
     return currentInfo;
@@ -146,7 +150,7 @@ async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
 
 async function invokeDesktopWindowState(): Promise<BbDesktopWindowState> {
   try {
-    const payload: unknown = await ipcRenderer.invoke(
+    const payload: DesktopIpcPayload = await ipcRenderer.invoke(
       BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
     );
     return applyDesktopWindowStatePayload(payload) ?? currentWindowState;
@@ -358,13 +362,16 @@ const bbDesktopApi: BbDesktopApi = {
   },
 };
 
-ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
-  applyDesktopInfoPayload(payload);
-});
+ipcRenderer.on(
+  BB_DESKTOP_INFO_CHANGED_CHANNEL,
+  (_event, payload: DesktopIpcPayload) => {
+    applyDesktopInfoPayload(payload);
+  },
+);
 
 ipcRenderer.on(
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     applyDesktopWindowStatePayload(payload);
   },
 );
@@ -375,13 +382,16 @@ ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
   }
 });
 
-ipcRenderer.on(BB_DESKTOP_APP_COMMAND_CHANNEL, (_event, payload: unknown) => {
-  const parsed = appCommandIdSchema.safeParse(payload);
-  if (!parsed.success) return;
-  for (const listener of appCommandListeners) {
-    listener(parsed.data);
-  }
-});
+ipcRenderer.on(
+  BB_DESKTOP_APP_COMMAND_CHANNEL,
+  (_event, payload: DesktopIpcPayload) => {
+    const parsed = appCommandIdSchema.safeParse(payload);
+    if (!parsed.success) return;
+    for (const listener of appCommandListeners) {
+      listener(parsed.data);
+    }
+  },
+);
 
 ipcRenderer.on(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, () => {
   let handled = false;
@@ -391,19 +401,22 @@ ipcRenderer.on(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, () => {
   ipcRenderer.send(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, handled);
 });
 
-ipcRenderer.on(BB_DESKTOP_BROWSER_STATE_CHANNEL, (_event, payload: unknown) => {
-  const parsed = bbDesktopBrowserStateSchema.safeParse(payload);
-  if (!parsed.success) {
-    return;
-  }
-  for (const listener of browserStateListeners) {
-    listener(parsed.data);
-  }
-});
+ipcRenderer.on(
+  BB_DESKTOP_BROWSER_STATE_CHANNEL,
+  (_event, payload: DesktopIpcPayload) => {
+    const parsed = bbDesktopBrowserStateSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserStateListeners) {
+      listener(parsed.data);
+    }
+  },
+);
 
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     const parsed = bbDesktopBrowserTabRefSchema.safeParse(payload);
     if (!parsed.success) {
       return;
@@ -416,7 +429,7 @@ ipcRenderer.on(
 
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     const parsed = bbDesktopBrowserOpenTabRequestSchema.safeParse(payload);
     if (!parsed.success) {
       return;
@@ -429,7 +442,7 @@ ipcRenderer.on(
 
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     const parsed =
       bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
     if (!parsed.success) {
@@ -443,7 +456,7 @@ ipcRenderer.on(
 
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     const parsed = bbDesktopBrowserSnapshotSchema.safeParse(payload);
     if (!parsed.success) {
       return;
@@ -456,7 +469,7 @@ ipcRenderer.on(
 
 ipcRenderer.on(
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
-  (_event, payload: unknown) => {
+  (_event, payload: DesktopIpcPayload) => {
     const parsed = bbDesktopBrowserFindResultSchema.safeParse(payload);
     if (!parsed.success) {
       return;

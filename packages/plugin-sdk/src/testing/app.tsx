@@ -108,7 +108,7 @@ import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.
 
 export interface RpcCall {
   method: string;
-  input: unknown;
+  input: JsonValue;
 }
 export type NavigateCall =
   | { method: "toThread"; threadId: string }
@@ -173,7 +173,7 @@ interface TestComposerStore {
 interface SlotEnv {
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
-  realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
+  realtimeHandlers: Map<string, Set<(payload: JsonValue) => void>>;
   realtimeConnection: TestRealtimeConnectionStore;
   settingsState: PluginSettingsState;
   bbContext: BbContext;
@@ -207,7 +207,11 @@ interface TestFixedTabTargetStore {
 export interface SidebarActionCall {
   method: keyof PluginSidebarThreadActions;
   threadId?: string;
-  options?: Record<string, unknown>;
+  options?: {
+    split?: boolean;
+    projectId?: string;
+    focusPrompt?: boolean;
+  };
   title?: string;
   pinned?: boolean;
   read?: boolean;
@@ -248,19 +252,24 @@ function useSlotEnv(hook: string): SlotEnv {
 
 /** Same shape (and checks) as the BB app's real definePluginApp. */
 function definePluginApp(setup: PluginAppSetup): PluginAppDefinition {
-  if (typeof setup !== "function") {
+  if (!(setup instanceof Function)) {
     throw new Error("definePluginApp expects a setup function");
   }
   return Object.freeze({ __bbPluginApp: true as const, setup });
 }
 
-function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { __bbPluginApp?: unknown }).__bbPluginApp === true &&
-    typeof (value as { setup?: unknown }).setup === "function"
-  );
+type PluginAppCandidate = PluginAppDefinition | JsonValue;
+
+function isPluginAppDefinition(
+  value: PluginAppCandidate | PluginAppModule,
+): value is PluginAppDefinition {
+  const boxed = Object(value);
+  if (boxed !== value || Array.isArray(boxed)) return false;
+  if (!("__bbPluginApp" in boxed) || boxed.__bbPluginApp !== true) {
+    return false;
+  }
+  if (!("setup" in boxed)) return false;
+  return boxed.setup instanceof Function;
 }
 
 /**
@@ -480,19 +489,20 @@ function TestNewThreadComposer({
           // Untouched submits echo the `default*` seeds back, mirroring the
           // real composer's round-trip guarantee so plugin tests can cover
           // the store-then-restore pattern.
-          void onSubmit({
+          const request: Parameters<NewThreadComposerProps["onSubmit"]>[0] = {
             projectId: defaultProjectId ?? "project-test",
             providerId: defaultProviderId ?? "codex",
             model: defaultModel ?? "gpt-5",
             reasoningLevel: defaultReasoningLevel ?? "medium",
             permissionMode: defaultPermissionMode ?? "auto",
-            ...(defaultServiceTier !== undefined
-              ? { serviceTier: defaultServiceTier }
-              : {}),
             executionInputSources: {},
             environment: defaultEnvironment ?? { type: "project-default" },
             input: [{ type: "text", text, mentions: [] }],
-          });
+          };
+          if (defaultServiceTier !== undefined) {
+            request.serviceTier = defaultServiceTier;
+          }
+          void onSubmit(request);
         }}
       >
         Start thread
@@ -510,8 +520,16 @@ function TestProviderModelPicker({
   disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  const [draftState, setDraftState] = useState(() => ({
+    source: value,
+    draft: value,
+  }));
+  const draft = Object.is(draftState.source, value) ? draftState.draft : value;
+  const updateDraft = (
+    update: (current: typeof draft) => typeof draft,
+  ): void => {
+    setDraftState({ source: value, draft: update(draft) });
+  };
   const reasoningLevels = [
     "none",
     "low",
@@ -545,7 +563,7 @@ function TestProviderModelPicker({
           disabled={!allowProviderChange}
           value={draft.providerId}
           onChange={(event) =>
-            setDraft((current) => ({
+            updateDraft((current) => ({
               ...current,
               providerId: event.target.value,
             }))
@@ -555,7 +573,10 @@ function TestProviderModelPicker({
           aria-label="Model"
           value={draft.model}
           onChange={(event) =>
-            setDraft((current) => ({ ...current, model: event.target.value }))
+            updateDraft((current) => ({
+              ...current,
+              model: event.target.value,
+            }))
           }
         />
         <input
@@ -566,14 +587,14 @@ function TestProviderModelPicker({
               (candidate) => candidate === event.target.value,
             );
             if (reasoningLevel === undefined) return;
-            setDraft((current) => ({ ...current, reasoningLevel }));
+            updateDraft((current) => ({ ...current, reasoningLevel }));
           }}
         />
         <select
           aria-label="Service tier"
           value={draft.serviceTier ?? ""}
           onChange={(event) =>
-            setDraft((current) => {
+            updateDraft((current) => {
               const serviceTier = event.target.value;
               if (serviceTier !== "fast" && serviceTier !== "default") {
                 const next = { ...current };
@@ -699,99 +720,186 @@ function TestDiff({
   );
 }
 
+type RealtimePayload = JsonValue;
+
+function useTestRpc<
+  Contract extends PluginRpcContract = PluginRpcContract,
+>(): PluginRpcClient<Contract> {
+  // SAFETY: The test client validates and round-trips every JSON RPC value at this boundary.
+  return useSlotEnv("useRpc").rpcClient as PluginRpcClient<Contract>;
+}
+
+function useTestRealtime(
+  channel: string,
+  handler: (payload: RealtimePayload) => void,
+): void {
+  const env = useSlotEnv("useRealtime");
+  // Latest handler without resubscribing per render, like the host hook.
+  const handlerRef = useRef(handler);
+  useEffect(() => {
+    handlerRef.current = handler;
+  });
+  useEffect(() => {
+    const listener = (payload: RealtimePayload) => handlerRef.current(payload);
+    let listeners = env.realtimeHandlers.get(channel);
+    if (!listeners) {
+      listeners = new Set();
+      env.realtimeHandlers.set(channel, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, [env, channel]);
+}
+
+function useTestRealtimeConnectionState(): PluginRealtimeConnectionState {
+  const connection = useSlotEnv(
+    "useRealtimeConnectionState",
+  ).realtimeConnection;
+  return useSyncExternalStore(
+    connection.subscribe,
+    connection.getSnapshot,
+    connection.getSnapshot,
+  );
+}
+
+function useTestSettings(): PluginSettingsState {
+  return useSlotEnv("useSettings").settingsState;
+}
+
+function useTestBbContext(): BbContext {
+  return useSlotEnv("useBbContext").bbContext;
+}
+
+function useTestBbNavigate(): BbNavigate {
+  return useSlotEnv("useBbNavigate").navigate;
+}
+
+function useTestAppPanel(): ExperimentalAppPanel {
+  return useSlotEnv("experimental_useAppPanel").appPanel;
+}
+
+function useTestFixedTabTarget<Target extends JsonValue>(
+  tab: ExperimentalPluginFixedTabReference<Target>,
+): ExperimentalFixedTabTargetState<Target> | null {
+  const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
+  const state = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
+  if (
+    state === null ||
+    state.panelId !== tab.panelId ||
+    state.tabId !== tab.id ||
+    tab.experimental_target === undefined
+  ) {
+    return null;
+  }
+  try {
+    if (!tab.experimental_target.validate(state.target)) return null;
+  } catch {
+    return null;
+  }
+  return {
+    clear: () => store.clear(state.sequence),
+    sequence: state.sequence,
+    target: state.target,
+  };
+}
+
+function useTestComposer(): PluginComposerApi {
+  const composer = useSlotEnv("useComposer").composer;
+  useSyncExternalStore(
+    composer.subscribe,
+    composer.getVersionSnapshot,
+    composer.getVersionSnapshot,
+  );
+  return {
+    ...composer.api,
+    scope: composer.getScope(),
+    text: composer.getText(),
+  };
+}
+
+function useTestSidebarThreads(): PluginSidebarThreadsState {
+  return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
+}
+
+function useTestProviders(): PluginProvidersState {
+  return useSlotEnv("experimental_useProviders").providers;
+}
+
+function useTestCodeTheme(): PluginCodeThemeState {
+  return useSlotEnv("experimental_useCodeTheme").codeTheme;
+}
+
+function useTestSidebarThreadActions(): PluginSidebarThreadActions {
+  return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
+}
+
+function useTestSidebarThreadSplit(threadId: string): PluginSidebarThreadSplit {
+  const env = useSlotEnv("experimental_useSidebarThreadSplit");
+  return useMemo(
+    () => ({
+      splitProps: {
+        onPointerDown: () => {
+          env.sidebarActionCalls.push({ method: "open", threadId });
+        },
+      },
+      isAvailable: true,
+      layout: null,
+    }),
+    [env, threadId],
+  );
+}
+
+function useTestSidebarThreadPullRequest(
+  threadId: string,
+): PluginSidebarThreadPullRequestState {
+  const env = useSlotEnv("experimental_useSidebarThreadPullRequest");
+  return useMemo(
+    () => ({
+      isLoading: false,
+      pullRequest: env.sidebarPullRequests.get(threadId) ?? null,
+    }),
+    [env, threadId],
+  );
+}
+
+function useTestComposerView(): ComposerView {
+  const composer = useSlotEnv("useComposerView").composer;
+  useSyncExternalStore(
+    composer.subscribe,
+    composer.getVersionSnapshot,
+    composer.getVersionSnapshot,
+  );
+  const text = composer.getText();
+  const attachmentCount = composer.getAttachmentCount();
+  return {
+    scope: composer.getScope(),
+    layout: "expanded",
+    draft: {
+      text,
+      isEmpty: isComposerDraftEmpty(text, attachmentCount),
+      attachmentCount,
+    },
+    run: { isRunning: false, isSubmitting: false },
+  };
+}
+
 const testPluginSdkApp = {
   definePluginApp,
-  useRpc<
-    Contract extends PluginRpcContract = PluginRpcContract,
-  >(): PluginRpcClient<Contract> {
-    return useSlotEnv("useRpc").rpcClient as PluginRpcClient<Contract>;
-  },
-  useRealtime(channel: string, handler: (payload: unknown) => void): void {
-    const env = useSlotEnv("useRealtime");
-    // Latest handler without resubscribing per render, like the host hook.
-    const handlerRef = useRef(handler);
-    useEffect(() => {
-      handlerRef.current = handler;
-    });
-    useEffect(() => {
-      const listener = (payload: unknown) => handlerRef.current(payload);
-      let listeners = env.realtimeHandlers.get(channel);
-      if (!listeners) {
-        listeners = new Set();
-        env.realtimeHandlers.set(channel, listeners);
-      }
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    }, [env, channel]);
-  },
-  useRealtimeConnectionState(): PluginRealtimeConnectionState {
-    const connection = useSlotEnv(
-      "useRealtimeConnectionState",
-    ).realtimeConnection;
-    return useSyncExternalStore(
-      connection.subscribe,
-      connection.getSnapshot,
-      connection.getSnapshot,
-    );
-  },
-  useSettings(): PluginSettingsState {
-    return useSlotEnv("useSettings").settingsState;
-  },
-  useBbContext(): BbContext {
-    return useSlotEnv("useBbContext").bbContext;
-  },
-  useBbNavigate(): BbNavigate {
-    return useSlotEnv("useBbNavigate").navigate;
-  },
-  experimental_useAppPanel(): ExperimentalAppPanel {
-    return useSlotEnv("experimental_useAppPanel").appPanel;
-  },
-  experimental_useFixedTabTarget<Target extends JsonValue>(
-    tab: ExperimentalPluginFixedTabReference<Target>,
-  ): ExperimentalFixedTabTargetState<Target> | null {
-    const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
-    const state = useSyncExternalStore(
-      store.subscribe,
-      store.getSnapshot,
-      store.getSnapshot,
-    );
-    if (
-      state === null ||
-      state.panelId !== tab.panelId ||
-      state.tabId !== tab.id ||
-      tab.experimental_target === undefined
-    ) {
-      return null;
-    }
-    try {
-      if (!tab.experimental_target.validate(state.target)) return null;
-    } catch {
-      return null;
-    }
-    return {
-      clear: () => store.clear(state.sequence),
-      sequence: state.sequence,
-      target: state.target,
-    };
-  },
-  useComposer(): PluginComposerApi {
-    const composer = useSlotEnv("useComposer").composer;
-    const version = useSyncExternalStore(
-      composer.subscribe,
-      composer.getVersionSnapshot,
-      composer.getVersionSnapshot,
-    );
-    return useMemo(
-      () => ({
-        ...composer.api,
-        scope: composer.getScope(),
-        text: composer.getText(),
-      }),
-      [composer, version],
-    );
-  },
+  useRpc: useTestRpc,
+  useRealtime: useTestRealtime,
+  useRealtimeConnectionState: useTestRealtimeConnectionState,
+  useSettings: useTestSettings,
+  useBbContext: useTestBbContext,
+  useBbNavigate: useTestBbNavigate,
+  experimental_useAppPanel: useTestAppPanel,
+  experimental_useFixedTabTarget: useTestFixedTabTarget,
+  useComposer: useTestComposer,
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_FileLink: TestFileLink,
@@ -801,67 +909,13 @@ const testPluginSdkApp = {
   experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
-  experimental_useSidebarThreads(): PluginSidebarThreadsState {
-    return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
-  },
-  experimental_useProviders(): PluginProvidersState {
-    return useSlotEnv("experimental_useProviders").providers;
-  },
-  experimental_useCodeTheme(): PluginCodeThemeState {
-    return useSlotEnv("experimental_useCodeTheme").codeTheme;
-  },
-  experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
-    return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
-  },
-  experimental_useSidebarThreadSplit(threadId): PluginSidebarThreadSplit {
-    const env = useSlotEnv("experimental_useSidebarThreadSplit");
-    return useMemo(
-      () => ({
-        splitProps: {
-          onPointerDown: () => {
-            env.sidebarActionCalls.push({ method: "open", threadId });
-          },
-        },
-        isAvailable: true,
-        layout: null,
-      }),
-      [env, threadId],
-    );
-  },
-  experimental_useSidebarThreadPullRequest(
-    threadId,
-  ): PluginSidebarThreadPullRequestState {
-    const env = useSlotEnv("experimental_useSidebarThreadPullRequest");
-    return useMemo(
-      () => ({
-        isLoading: false,
-        pullRequest: env.sidebarPullRequests.get(threadId) ?? null,
-      }),
-      [env, threadId],
-    );
-  },
-  useComposerView(): ComposerView {
-    const composer = useSlotEnv("useComposerView").composer;
-    const version = useSyncExternalStore(
-      composer.subscribe,
-      composer.getVersionSnapshot,
-      composer.getVersionSnapshot,
-    );
-    return useMemo(() => {
-      const text = composer.getText();
-      const attachmentCount = composer.getAttachmentCount();
-      return {
-        scope: composer.getScope(),
-        layout: "expanded",
-        draft: {
-          text,
-          isEmpty: isComposerDraftEmpty(text, attachmentCount),
-          attachmentCount,
-        },
-        run: { isRunning: false, isSubmitting: false },
-      };
-    }, [composer, version]);
-  },
+  experimental_useSidebarThreads: useTestSidebarThreads,
+  experimental_useProviders: useTestProviders,
+  experimental_useCodeTheme: useTestCodeTheme,
+  experimental_useSidebarThreadActions: useTestSidebarThreadActions,
+  experimental_useSidebarThreadSplit: useTestSidebarThreadSplit,
+  experimental_useSidebarThreadPullRequest: useTestSidebarThreadPullRequest,
+  useComposerView: useTestComposerView,
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -874,6 +928,7 @@ interface PluginRuntimeHost {
  * (and therefore `@get-bb/plugin-sdk/app`) is imported.
  */
 export function installTestPluginRuntime(): void {
+  // SAFETY: The installer owns this global runtime slot and writes the validated test SDK object.
   const host = globalThis as PluginRuntimeHost;
   host.__bbPluginRuntime = {
     ...host.__bbPluginRuntime,
@@ -906,12 +961,18 @@ export interface CapturedPluginApp {
   contentScripts: PluginContentScriptRegistration[];
 }
 
-type PluginAppModule = { default: unknown };
+type PluginAppModule = { default: PluginAppCandidate };
+
+type PluginAppLoader = () => Promise<PluginAppDefinition | PluginAppModule>;
+
+function isPluginAppLoader(source: PluginAppSource): source is PluginAppLoader {
+  return source instanceof Function;
+}
 
 export type PluginAppSource =
   | PluginAppDefinition
   | PluginAppModule
-  | (() => Promise<PluginAppDefinition | PluginAppModule>);
+  | PluginAppLoader;
 
 /**
  * Install the test runtime, resolve the plugin app definition, and capture
@@ -923,10 +984,12 @@ export async function loadPluginApp(
   source: PluginAppSource,
 ): Promise<CapturedPluginApp> {
   installTestPluginRuntime();
-  const resolved = typeof source === "function" ? await source() : source;
+  const resolved = isPluginAppLoader(source) ? await source() : source;
   const definition = isPluginAppDefinition(resolved)
     ? resolved
-    : (resolved as PluginAppModule).default;
+    : "default" in resolved
+      ? resolved.default
+      : null;
   if (!isPluginAppDefinition(definition)) {
     throw new Error(
       "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
@@ -944,6 +1007,16 @@ export interface ContentScriptTestMountOptions {
    * thread-row status API. Current-host behavior is enabled by default.
    */
   omitExperimentalThreadRowStatus?: boolean;
+}
+
+interface TestContentScriptMountContext {
+  pluginId: string;
+  generation: number;
+  signal: AbortSignal;
+  experimental_setThreadRowStatus?: (
+    threadId: string,
+    status: PluginComposerThreadRowStatus | null,
+  ) => void;
 }
 
 export interface ContentScriptThreadRowStatusCall {
@@ -983,15 +1056,26 @@ export async function mountPluginContentScripts(
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
   let disposed = false;
-  const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
+  const setThreadRowStatus = (
+    threadId: string,
+    status: PluginComposerThreadRowStatus | null,
+  ): void => {
     if (controller.signal.aborted) return;
-    if (typeof threadId !== "string" || threadId.trim().length === 0) {
+    let normalizedThreadId: string;
+    try {
+      normalizedThreadId = threadId.trim();
+    } catch {
       console.warn(
         `bb plugin "${options.pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
       );
       return;
     }
-    const normalizedThreadId = threadId.trim();
+    if (normalizedThreadId.length === 0) {
+      console.warn(
+        `bb plugin "${options.pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+      );
+      return;
+    }
     const normalizedStatus = normalizePluginThreadRowStatus(status, (reason) =>
       console.warn(`bb plugin "${options.pluginId}": ${reason}`),
     );
@@ -1028,15 +1112,16 @@ export async function mountPluginContentScripts(
 
   try {
     for (const registration of app.contentScripts) {
-      const result = await registration.mount({
+      const mountContext: TestContentScriptMountContext = {
         pluginId: options.pluginId,
         generation,
         signal: controller.signal,
-        ...(!options.omitExperimentalThreadRowStatus
-          ? { experimental_setThreadRowStatus: setThreadRowStatus }
-          : {}),
-      });
-      if (result !== undefined && typeof result !== "function") {
+      };
+      if (!options.omitExperimentalThreadRowStatus) {
+        mountContext.experimental_setThreadRowStatus = setThreadRowStatus;
+      }
+      const result = await registration.mount(mountContext);
+      if (result !== undefined && !(result instanceof Function)) {
         throw new Error(
           `content script "${registration.id}" mount must return a cleanup function, a promise of one, or nothing`,
         );
@@ -1152,7 +1237,7 @@ export interface RenderedSlotBehaviorDrivers {
    * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
    * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
    */
-  emitRealtime(channel: string, payload: unknown): Promise<void>;
+  emitRealtime(channel: string, payload: JsonValue | undefined): Promise<void>;
   /** Drive the lifecycle of the same connection used by realtime events. */
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
@@ -1197,23 +1282,48 @@ export interface RenderedSlot
   readonly lifecycle: RenderedSlotLifecycleControls;
 }
 
-function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
+type JsonBoundaryInput = JsonValue | undefined;
+type JsonObject = { [key: string]: JsonValue };
+
+function isJsonObject(value: JsonBoundaryInput): value is JsonObject {
+  return value !== null && value !== undefined && Object(value) === value;
+}
+
+function strictJsonRoundTrip(
+  value: JsonBoundaryInput,
+  label: string,
+): JsonValue {
   const ancestors = new Set<object>();
-  function visit(current: unknown, path: string): void {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
+  function visit(current: JsonBoundaryInput, path: string): void {
+    if (current === null) {
       return;
     }
-    if (typeof current === "number") {
-      if (!Number.isFinite(current)) {
+    if (current === undefined) {
+      throw new Error(`${label} at ${path} is not a JSON value`);
+    }
+    if (Object(current) !== current) {
+      if (
+        current === Infinity ||
+        current === -Infinity ||
+        current !== current
+      ) {
         throw new Error(`${label} at ${path} contains a non-finite number`);
       }
       return;
     }
-    if (typeof current !== "object") {
+    if (Array.isArray(current)) {
+      if (ancestors.has(current)) {
+        throw new Error(`${label} at ${path} is cyclic`);
+      }
+      ancestors.add(current);
+      try {
+        current.forEach((item, index) => visit(item, `${path}[${index}]`));
+      } finally {
+        ancestors.delete(current);
+      }
+      return;
+    }
+    if (!isJsonObject(current)) {
       throw new Error(`${label} at ${path} is not a JSON value`);
     }
     if (ancestors.has(current)) {
@@ -1221,15 +1331,15 @@ function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
     }
     ancestors.add(current);
     try {
-      if (Array.isArray(current)) {
-        current.forEach((item, index) => visit(item, `${path}[${index}]`));
-        return;
-      }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error(`${label} at ${path} must be a plain JSON object`);
       }
-      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+      if (
+        Reflect.ownKeys(current).some(
+          (key) => Object.prototype.toString.call(key) === "[object Symbol]",
+        )
+      ) {
         throw new Error(`${label} at ${path} contains a symbol key`);
       }
       for (const [key, child] of Object.entries(current)) {
@@ -1240,7 +1350,7 @@ function strictJsonRoundTrip(value: unknown, label: string): JsonValue {
     }
   }
   visit(value, "$");
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
+  return JSON.parse(JSON.stringify(value));
 }
 
 export function renderSlot<
@@ -1252,16 +1362,21 @@ export function renderSlot<
   options: RenderSlotOptions<Contract> = {},
 ): RenderedSlot {
   const rpcCalls: RpcCall[] = [];
+  // SAFETY: The RPC boundary validates and round-trips handler values before use.
   const rpcHandlers = (options.rpc ?? {}) as Record<
     string,
-    (input: unknown) => unknown
+    (input: JsonBoundaryInput) => JsonBoundaryInput | Promise<JsonBoundaryInput>
   >;
-  const rpcClient: PluginRpcClient = {
+  const rpcClient: PluginRpcClient<Contract> = {
     async call(method, input) {
       const normalizedInput =
         input === undefined
           ? null
-          : strictJsonRoundTrip(input, `rpc "${method}" input`);
+          : strictJsonRoundTrip(
+              // SAFETY: RPC schemas define JSON wire values, and the parser validates the runtime value.
+              input as JsonBoundaryInput,
+              `rpc "${method}" input`,
+            );
       rpcCalls.push({ method, input: normalizedInput });
       const handler = rpcHandlers[method];
       if (!handler) {
@@ -1274,7 +1389,10 @@ export function renderSlot<
     },
   };
 
-  const realtimeHandlers = new Map<string, Set<(payload: unknown) => void>>();
+  const realtimeHandlers = new Map<
+    string,
+    Set<(payload: RealtimePayload) => void>
+  >();
   let realtimeConnectionState =
     options.realtimeConnectionState ?? ("connected" as const);
   const realtimeConnectionListeners = new Set<() => void>();
@@ -1343,8 +1461,8 @@ export function renderSlot<
         surface: panelOptions.surface,
         panelId: panelOptions.tab.panelId,
         tabId: panelOptions.tab.id,
-        ...(target === undefined ? {} : { target }),
       };
+      if (target !== undefined) call.target = target;
       experimental_fixedTabOpenCalls.push(call);
       const accepted = options.experimental_openFixedTab?.(call) ?? false;
       if (accepted && target !== undefined) {
@@ -1379,17 +1497,21 @@ export function renderSlot<
   };
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
-      sidebarActionCalls.push({
+      const call: SidebarActionCall = {
         method: "open",
         threadId,
-        ...(openOptions ? { options: { ...openOptions } } : {}),
-      });
+      };
+      if (openOptions !== undefined) call.options = { ...openOptions };
+      sidebarActionCalls.push(call);
     },
     openNewThread(newThreadOptions) {
-      sidebarActionCalls.push({
+      const call: SidebarActionCall = {
         method: "openNewThread",
-        ...(newThreadOptions ? { options: { ...newThreadOptions } } : {}),
-      });
+      };
+      if (newThreadOptions !== undefined) {
+        call.options = { ...newThreadOptions };
+      }
+      sidebarActionCalls.push(call);
     },
     async setPinned(threadId, pinned) {
       sidebarActionCalls.push({ method: "setPinned", threadId, pinned });
@@ -1415,17 +1537,19 @@ export function renderSlot<
       navigateCalls.push({ method: "toProject", projectId });
     },
     toPluginPanel(path, panelOptions) {
-      navigateCalls.push({
+      const call: NavigateCall = {
         method: "toPluginPanel",
         path,
-        ...(panelOptions !== undefined ? { options: panelOptions } : {}),
-      });
+      };
+      if (panelOptions !== undefined) call.options = panelOptions;
+      navigateCalls.push(call);
     },
     toCompose(composeOptions) {
-      navigateCalls.push({
+      const call: NavigateCall = {
         method: "toCompose",
-        ...(composeOptions !== undefined ? { options: composeOptions } : {}),
-      });
+      };
+      if (composeOptions !== undefined) call.options = composeOptions;
+      navigateCalls.push(call);
     },
     openThreadPanel(panelOptions) {
       navigateCalls.push({
@@ -1595,7 +1719,7 @@ export function renderSlot<
   };
   const emitRealtime = async (
     channel: string,
-    payload: unknown,
+    payload: JsonValue | undefined,
   ): Promise<void> => {
     const normalized =
       payload === undefined

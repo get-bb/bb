@@ -25,10 +25,6 @@ interface PluginDevLoop {
   dispose: () => void;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
   const debounceMs = deps.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const now = deps.now ?? (() => Date.now());
@@ -49,7 +45,9 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
           `rebuilt app in ${Math.max(0, Math.round(now() - startedAt))}ms`,
         );
       } catch (error) {
-        parts.push(`build failed: ${errorMessage(error)}`);
+        parts.push(
+          `build failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         deps.log(`${parts.join(" · ")} — fix and save to retry`);
         return;
       }
@@ -62,7 +60,9 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
           `rebuilt host in ${Math.max(0, Math.round(now() - startedAt))}ms`,
         );
       } catch (error) {
-        parts.push(`host build failed: ${errorMessage(error)}`);
+        parts.push(
+          `host build failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         deps.log(`${parts.join(" · ")} — fix and save to retry`);
         return;
       }
@@ -71,7 +71,9 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
       await deps.reloadPlugin();
       parts.push(`reloaded ${deps.pluginId}`);
     } catch (error) {
-      parts.push(`reload failed: ${errorMessage(error)}`);
+      parts.push(
+        `reload failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     deps.log(parts.join(" · "));
   }

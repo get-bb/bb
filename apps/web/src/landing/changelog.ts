@@ -18,7 +18,13 @@ type ReleaseMeta = {
   headline: string;
 };
 
-export const RELEASE_META: Record<string, ReleaseMeta> = {
+type ReleaseMetaMap = Record<string, ReleaseMeta>;
+
+function createReleaseMetaMap(entries: ReleaseMetaMap): ReleaseMetaMap {
+  return entries;
+}
+
+export const RELEASE_META = createReleaseMetaMap({
   "0.40.0": {
     date: "August 26, 2026",
     headline: "File Editor, quick palette, and agent providers",
@@ -63,7 +69,7 @@ export const RELEASE_META: Record<string, ReleaseMeta> = {
     date: "July 9, 2026",
     headline: "More agents, more models, redesigned Settings",
   },
-};
+});
 
 export function parseChangelog(markdown: string): Release[] {
   const releases: Release[] = [];

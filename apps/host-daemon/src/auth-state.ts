@@ -56,8 +56,6 @@ interface ResolveServerUrlArgs {
 }
 
 export function resolveServerUrl(args: ResolveServerUrlArgs): string | null {
-  return typeof args.providedServerUrl === "string" &&
-    args.providedServerUrl.trim().length > 0
-    ? normalizeServerUrl(args.providedServerUrl.trim())
-    : null;
+  const trimmedServerUrl = args.providedServerUrl?.trim();
+  return trimmedServerUrl ? normalizeServerUrl(trimmedServerUrl) : null;
 }

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MarketplacesSettingsSection } from "./MarketplacesSettingsSection";
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -40,7 +41,7 @@ interface RecordedRequest {
   init: RequestInit | undefined;
 }
 
-function stubFetch(marketplaces: unknown[]): RecordedRequest[] {
+function stubFetch(marketplaces: JsonValue[]): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
     "fetch",

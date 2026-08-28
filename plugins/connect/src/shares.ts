@@ -33,7 +33,12 @@ const persistedShareSchema = z
     createdAt: z.number(),
   })
   .strict();
-const sharesContainerSchema = z.record(z.string(), z.unknown());
+const sharesContainerSchema = z.record(z.string(), z.json());
+const sharedPortErrorDetailsSchema = z.object({
+  code: z.string().optional(),
+  body: z.object({ code: z.string().optional() }).optional(),
+});
+type SharedPortErrorDetails = z.infer<typeof sharedPortErrorDetailsSchema>;
 
 interface RestoredShare {
   hostId: string | null;
@@ -54,19 +59,22 @@ export class SharePortError extends Error {
   }
 }
 
-export function parseSharePort(raw: unknown): number {
-  const asNumber =
-    typeof raw === "number"
-      ? raw
-      : typeof raw === "string" && raw.trim() !== ""
-        ? Number(raw)
-        : Number.NaN;
-  if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > 65535) {
+export function parseSharePort(raw: number | string): number {
+  const parsed = z
+    .union([z.number(), z.string().trim().min(1)])
+    .pipe(z.coerce.number())
+    .safeParse(raw);
+  if (
+    !parsed.success ||
+    !Number.isInteger(parsed.data) ||
+    parsed.data < 1 ||
+    parsed.data > 65535
+  ) {
     throw new SharePortError(
       `Invalid port "${String(raw)}": must be an integer between 1 and 65535`,
     );
   }
-  return asNumber;
+  return parsed.data;
 }
 
 export function sharePublicUrl(
@@ -127,22 +135,13 @@ function compareListings(a: ShareListing, b: ShareListing): number {
   );
 }
 
-function sharedPortErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null) return undefined;
-  if ("code" in error && typeof error.code === "string") return error.code;
-  if (
-    "body" in error &&
-    typeof error.body === "object" &&
-    error.body !== null &&
-    "code" in error.body &&
-    typeof error.body.code === "string"
-  ) {
-    return error.body.code;
-  }
-  return undefined;
+function sharedPortErrorCode(
+  error: SharedPortErrorDetails,
+): string | undefined {
+  return error.code ?? error.body?.code;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: Error | string): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -199,7 +198,7 @@ export class ShareRegistry {
         next.set(restoredShareKey(hostId, share.port), share);
       } catch (error) {
         this.options.log.warn(
-          `skipping shared-port entry "${storageKey}" after an unexpected hydration error: ${errorMessage(error)}`,
+          `skipping shared-port entry "${storageKey}" after an unexpected hydration error: ${errorMessage(error instanceof Error ? error : String(error))}`,
         );
       }
     }
@@ -339,7 +338,7 @@ export class ShareRegistry {
         this.declare(declarationHostId);
       } catch (error) {
         this.options.log.warn(
-          `failed to update shared ports after removing port ${validated} from host ${declarationHostId}: ${errorMessage(error)}`,
+          `failed to update shared ports after removing port ${validated} from host ${declarationHostId}: ${errorMessage(error instanceof Error ? error : String(error))}`,
         );
       }
     }
@@ -361,7 +360,7 @@ export class ShareRegistry {
         this.options.hosts.declareSharedPorts(hostId, []);
       } catch (error) {
         this.options.log.warn(
-          `failed to clear shared ports for host ${hostId}: ${errorMessage(error)}`,
+          `failed to clear shared ports for host ${hostId}: ${errorMessage(error instanceof Error ? error : String(error))}`,
         );
       }
     }
@@ -384,7 +383,7 @@ export class ShareRegistry {
       } catch (error) {
         firstError ??= error;
         this.options.log.warn(
-          `failed to declare shared ports for host ${hostId}: ${errorMessage(error)}`,
+          `failed to declare shared ports for host ${hostId}: ${errorMessage(error instanceof Error ? error : String(error))}`,
         );
       }
     }
@@ -407,7 +406,7 @@ export class ShareRegistry {
       await this.persist();
     } catch (error) {
       this.options.log.warn(
-        `failed to persist normalized legacy shares: ${errorMessage(error)}`,
+        `failed to persist normalized legacy shares: ${errorMessage(error instanceof Error ? error : String(error))}`,
       );
     }
   }
@@ -447,7 +446,11 @@ export class ShareRegistry {
         url: await this.urlFor(host, share.port),
       };
     } catch (error) {
-      return this.unavailableListing(share, error, host);
+      return this.unavailableListing(
+        share,
+        error instanceof Error ? error : String(error),
+        host,
+      );
     }
   }
 
@@ -459,7 +462,7 @@ export class ShareRegistry {
 
   private unavailableListing(
     share: RestoredShare,
-    error: unknown,
+    error: Error | string,
     host?: ShareHost,
   ): ShareListing {
     return {
@@ -480,7 +483,10 @@ export class ShareRegistry {
     };
   }
 
-  private unavailableReason(share: RestoredShare, error: unknown): string {
+  private unavailableReason(
+    share: RestoredShare,
+    error: Error | string,
+  ): string {
     if (error instanceof ShareHostNotFoundError) {
       return `Host ${error.hostId} was removed. Run \`bb connect unexpose ${share.port} --host ${error.hostId}\` to prune this share.`;
     }
@@ -496,7 +502,13 @@ export class ShareRegistry {
       return machineSharePublicUrl(identity, port);
     } catch (error) {
       const prefix = `Cannot share port ${port} from host "${host.name}" (${host.id})`;
-      const code = sharedPortErrorCode(error);
+      const errorDetails = sharedPortErrorDetailsSchema.safeParse(error);
+      const code = sharedPortErrorCode(
+        errorDetails.success ? errorDetails.data : {},
+      );
+      const message = errorMessage(
+        error instanceof Error ? error : String(error),
+      );
       if (code === "connect_host_unenrolled") {
         throw new SharePortError(
           `${prefix}: this host has no bb connect machine credential. Enroll it via Connect in Settings > Machines.`,
@@ -507,7 +519,7 @@ export class ShareRegistry {
           `${prefix}: this host is not connected right now. Bring the host online and try again.`,
         );
       }
-      throw new SharePortError(`${prefix}: ${errorMessage(error)}`);
+      throw new SharePortError(`${prefix}: ${message}`);
     }
   }
 
@@ -585,7 +597,7 @@ export class ShareRegistry {
       this.declare(hostId);
     } catch (error) {
       this.options.log.warn(
-        `failed to restore shared ports for host ${hostId}: ${errorMessage(error)}`,
+        `failed to restore shared ports for host ${hostId}: ${errorMessage(error instanceof Error ? error : String(error))}`,
       );
     }
   }
@@ -595,17 +607,23 @@ export class ShareRegistry {
       await this.options.kv.delete(SHARES_KV_KEY);
       return;
     }
-    const map: Record<string, unknown> = {};
+    type PersistedShare = {
+      hostId?: string;
+      port: number;
+      createdAt: number;
+    };
+    const map: Record<string, PersistedShare> = {};
     for (const share of this.shares.values()) {
       const storageKey =
         share.hostId === null
           ? String(share.port)
           : shareKey(share.hostId, share.port);
-      map[storageKey] = {
-        ...(share.hostId === null ? {} : { hostId: share.hostId }),
+      const persisted: PersistedShare = {
         port: share.port,
         createdAt: share.createdAt,
       };
+      if (share.hostId !== null) persisted.hostId = share.hostId;
+      map[storageKey] = persisted;
     }
     await this.options.kv.set(SHARES_KV_KEY, map);
   }

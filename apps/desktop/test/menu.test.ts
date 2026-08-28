@@ -1,13 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BaseWindow, MenuItemConstructorOptions } from "electron";
 
-vi.mock("electron", () => ({
-  app: { name: "bb" },
-  Menu: { sendActionToFirstResponder: vi.fn() },
-}));
-
-import { Menu } from "electron";
-
 import {
   buildApplicationMenuTemplate,
   CONNECT_SERVERS_SKIPPED_MENU_LABELS,
@@ -15,11 +8,14 @@ import {
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
 
+const sendActionToFirstResponder = vi.fn();
+
 function menuArgs(
   reloadWindow: InstallApplicationMenuArgs["reloadWindow"],
   overrides: Partial<InstallApplicationMenuArgs> = {},
 ): InstallApplicationMenuArgs {
   return {
+    applicationName: "bb",
     accelerators: {
       closeWindowOrSideTab: undefined,
       createNewWindow: undefined,
@@ -37,6 +33,7 @@ function menuArgs(
     openServerDaemonLogs: () => {},
     openSettings: () => {},
     reloadWindow,
+    sendActionToFirstResponder,
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: "This Mac" }],
@@ -49,61 +46,79 @@ function findServerSubmenu(
   template: MenuItemConstructorOptions[],
 ): MenuItemConstructorOptions[] {
   const windowMenu = template.find((item) => item.label === "Window");
-  const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
+  const windowSubmenu = getMenuSubmenu(windowMenu);
   const serverMenu = windowSubmenu.find((item) => item.label === "Server");
-  return serverMenu?.submenu as MenuItemConstructorOptions[];
+  return getMenuSubmenu(serverMenu);
+}
+
+function getMenuSubmenu(
+  item: MenuItemConstructorOptions | undefined,
+): MenuItemConstructorOptions[] {
+  if (!Array.isArray(item?.submenu)) {
+    throw new Error("Expected a menu item submenu.");
+  }
+  return item.submenu;
+}
+
+function clickMenuItem(
+  item: MenuItemConstructorOptions | undefined,
+  browserWindow: BaseWindow | undefined | null,
+): void {
+  const click = item?.click;
+  if (click === undefined) return;
+  // SAFETY: These menu callbacks only inspect the browser window in this test.
+  click(undefined as never, browserWindow as never, undefined as never);
 }
 
 describe("application menu", () => {
   it("closes a native panel when Electron omits its window", () => {
-    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    sendActionToFirstResponder.mockClear();
     const closeWindowOrSideTab = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, { closeWindowOrSideTab }),
     );
     const fileMenu = template.find((item) => item.label === "File");
-    const submenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const submenu = getMenuSubmenu(fileMenu);
     const closeWindow = submenu.find((item) => item.label === "Close Window");
 
-    closeWindow?.click?.({} as never, null as never, {} as never);
+    clickMenuItem(closeWindow, null);
 
-    expect(Menu.sendActionToFirstResponder).toHaveBeenCalledWith(
-      "performClose:",
-    );
+    expect(sendActionToFirstResponder).toHaveBeenCalledWith("performClose:");
     expect(closeWindowOrSideTab).not.toHaveBeenCalled();
   });
 
   it("forwards an undefined window for detached DevTools", () => {
-    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    sendActionToFirstResponder.mockClear();
     const closeWindowOrSideTab = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, { closeWindowOrSideTab }),
     );
     const fileMenu = template.find((item) => item.label === "File");
-    const submenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const submenu = getMenuSubmenu(fileMenu);
     const closeWindow = submenu.find((item) => item.label === "Close Window");
 
-    closeWindow?.click?.({} as never, undefined, {} as never);
+    clickMenuItem(closeWindow, undefined);
 
     expect(closeWindowOrSideTab).toHaveBeenCalledWith(undefined);
-    expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
+    expect(sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 
   it("shows reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
     const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
     const viewMenu = template.find((item) => item.label === "View");
-    const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const submenu = getMenuSubmenu(viewMenu);
     const reload = submenu.find((item) => item.label === "Reload");
     const forceReload = submenu.find((item) => item.label === "Force Reload");
+    // SAFETY: The test uses an identity-only window for the reload callback.
     const focusedWindow = {} as BaseWindow;
 
     expect(reload?.accelerator).toBe("CommandOrControl+R");
     expect(reload?.registerAccelerator).toBe(false);
     expect(forceReload?.accelerator).toBe("CommandOrControl+Shift+R");
     expect(forceReload?.registerAccelerator).toBe(false);
-    reload?.click?.({} as never, focusedWindow, {} as never);
-    forceReload?.click?.({} as never, focusedWindow, {} as never);
+    clickMenuItem(reload, focusedWindow);
+    clickMenuItem(forceReload, focusedWindow);
     expect(reloadWindow).toHaveBeenNthCalledWith(1, focusedWindow, false);
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
@@ -130,9 +145,9 @@ describe("application menu", () => {
     expect(serverSubmenu[1]?.checked).toBe(true);
     expect(serverSubmenu[2]?.type).toBe("separator");
     expect(serverSubmenu[3]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
-    serverSubmenu[1]?.click?.({} as never, undefined, {} as never);
+    clickMenuItem(serverSubmenu[1], undefined);
     expect(selectServer).toHaveBeenCalledWith("custom");
-    serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
+    clickMenuItem(serverSubmenu[3], undefined);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
   });
 
@@ -169,17 +184,17 @@ describe("application menu", () => {
   });
 
   it("builds a native Linux menu with the Linux DevTools accelerator", () => {
-    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    sendActionToFirstResponder.mockClear();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, { isMac: false }),
     );
-    const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
+    const appMenu = getMenuSubmenu(template[0]);
     const windowMenu = template.find((item) => item.label === "Window");
-    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
+    const windowSubmenu = getMenuSubmenu(windowMenu);
     const viewMenu = template.find((item) => item.label === "View");
-    const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const viewSubmenu = getMenuSubmenu(viewMenu);
     const fileMenu = template.find((item) => item.label === "File");
-    const fileSubmenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const fileSubmenu = getMenuSubmenu(fileMenu);
     const closeWindow = fileSubmenu.find(
       (item) => item.label === "Close Window",
     );
@@ -194,7 +209,7 @@ describe("application menu", () => {
         ?.accelerator,
     ).toBe("Control+Shift+I");
 
-    closeWindow?.click?.({} as never, null as never, {} as never);
-    expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
+    clickMenuItem(closeWindow, null);
+    expect(sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 });

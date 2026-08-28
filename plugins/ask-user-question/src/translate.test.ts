@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { toolInputSchema } from "./contracts.js";
 import {
   NOT_UNIQUE_MESSAGE,
@@ -14,7 +15,7 @@ import {
   validateToolInput,
 } from "./translate.js";
 
-function parseInput(input: unknown) {
+function parseInput(input: JsonValue) {
   const parsed = toolInputSchema.safeParse(input);
   if (!parsed.success) throw new Error(`invalid fixture: ${parsed.error}`);
   return parsed.data;

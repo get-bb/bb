@@ -21,14 +21,14 @@ export const DEFAULT_APPLICATION_MENU_ACCELERATORS: ApplicationMenuAccelerators 
     openSettings: "CommandOrControl+,",
   };
 
-const ELECTRON_KEY_NAMES: Readonly<Record<string, string>> = {
-  ArrowDown: "Down",
-  ArrowLeft: "Left",
-  ArrowRight: "Right",
-  ArrowUp: "Up",
-  Escape: "Esc",
-  " ": "Space",
-};
+const ELECTRON_KEY_NAMES = new Map([
+  ["ArrowDown", "Down"],
+  ["ArrowLeft", "Left"],
+  ["ArrowRight", "Right"],
+  ["ArrowUp", "Up"],
+  ["Escape", "Esc"],
+  [" ", "Space"],
+]);
 
 const ELECTRON_NAMED_KEYS = new Set([
   "Backspace",
@@ -57,7 +57,7 @@ export function formatElectronAccelerator(
   if (shortcut.alt) parts.push("Alt");
   if (shortcut.shift) parts.push("Shift");
   if (shortcut.meta) parts.push("Command");
-  const rawKey = ELECTRON_KEY_NAMES[shortcut.key] ?? shortcut.key;
+  const rawKey = ELECTRON_KEY_NAMES.get(shortcut.key) ?? shortcut.key;
   const key = rawKey === "+" ? "Plus" : rawKey;
   if (
     key.length !== 1 &&

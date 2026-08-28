@@ -4,6 +4,8 @@ import type {
   ThreadEvent,
   ThreadTimelineModelFallback,
 } from "@bb/domain";
+import { jsonObjectSchema } from "@bb/domain";
+import { z } from "zod";
 import type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 
 interface ProviderModelFallbackData {
@@ -14,13 +16,15 @@ interface ProviderModelFallbackData {
 }
 
 function jsonObject(value: JsonValue | undefined): JsonObject | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value
-    : null;
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
+const nonEmptyStringSchema = z.string().min(1);
+
 function nonEmptyString(value: JsonValue | undefined): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  const parsed = nonEmptyStringSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function getProviderModelFallbackData(

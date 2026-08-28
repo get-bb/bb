@@ -81,6 +81,7 @@ it("starts an exported bridge with its plugin-scoped directories", async () => {
   );
 
   expect(result.code).toBe(0);
+  // SAFETY: The fixture emits the reported bridge context with these fields.
   const reported = JSON.parse(result.stdout.trim()) as {
     line: string;
     context: { pluginId: string; dataDir: string; tempDir: string };
@@ -185,6 +186,7 @@ it("tees both sides of the runtime wire when record mode is on", async () => {
       .trim()
       .split("\n")
       .map(
+        // SAFETY: The recorder writes each line with this exact record contract.
         (line) =>
           JSON.parse(line) as { seq: number; dir: string; line: string },
       );

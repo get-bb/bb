@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { getSchema, type Editor } from "@tiptap/core";
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest";
+import { Editor, getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Node } from "@tiptap/pm/model";
-import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { promptEditorValueFromDoc } from "./prompt-editor-serialization";
 import {
   applyPromptListNewline,
@@ -10,37 +12,67 @@ import {
   createSplitPromptListItemTransaction,
 } from "./prompt-editor-list";
 
-const schema = getSchema([
-  StarterKit.configure({
-    blockquote: {},
-    bold: {},
-    bulletList: {},
-    code: {},
-    codeBlock: false,
-    dropcursor: false,
-    gapcursor: false,
-    heading: {},
-    horizontalRule: false,
-    italic: {},
-    link: false,
-    listItem: {},
-    orderedList: {},
-    strike: false,
-    underline: false,
-  }),
-]);
+function createPromptEditorExtensions() {
+  return [
+    StarterKit.configure({
+      blockquote: {},
+      bold: {},
+      bulletList: {},
+      code: {},
+      codeBlock: false,
+      dropcursor: false,
+      gapcursor: false,
+      heading: {},
+      horizontalRule: false,
+      italic: {},
+      link: false,
+      listItem: {},
+      orderedList: {},
+      strike: false,
+      underline: false,
+    }),
+  ];
+}
+
+const schema = getSchema(createPromptEditorExtensions());
 
 const editorContext = {
   extensionManager: { attributes: [] },
 };
 
-function stateFromJson(docJson: unknown, selectionPosition: number) {
+type PromptEditorNodeJson = {
+  type:
+    | "doc"
+    | "bulletList"
+    | "orderedList"
+    | "listItem"
+    | "paragraph"
+    | "text";
+  attrs?: { start?: number };
+  content?: PromptEditorNodeJson[];
+  text?: string;
+};
+
+function stateFromJson(
+  docJson: PromptEditorNodeJson,
+  selectionPosition: number,
+) {
   const doc = Node.fromJSON(schema, docJson);
   return EditorState.create({
     schema,
     doc,
     selection: TextSelection.create(doc, selectionPosition),
   });
+}
+
+function createTestEditor(state: EditorState): Editor {
+  const editor = new Editor({
+    element: document.createElement("div"),
+    extensions: createPromptEditorExtensions(),
+    injectCSS: false,
+  });
+  editor.view.updateState(state);
+  return editor;
 }
 
 describe("createSplitPromptListItemTransaction", () => {
@@ -345,25 +377,21 @@ describe("applyPromptListNewline", () => {
       },
       8,
     );
-    let dispatchedTransaction: Transaction | null = null;
-    const editor = {
-      state,
-      extensionManager: editorContext.extensionManager,
-      isActive: () => false,
-      view: {
-        dispatch: (transaction: Transaction) => {
-          dispatchedTransaction = transaction;
-        },
-      },
-    } as unknown as Editor;
+    const editor = createTestEditor(state);
+    const dispatch = vi.spyOn(editor.view, "dispatch");
 
     expect(applyPromptListNewline(editor)).toBe(true);
-    expect(dispatchedTransaction).not.toBeNull();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const dispatchedTransaction = dispatch.mock.calls[0]?.[0];
+    if (dispatchedTransaction === undefined) {
+      throw new Error("The list command did not dispatch a transaction");
+    }
 
-    const nextState = state.apply(dispatchedTransaction!);
+    const nextState = state.apply(dispatchedTransaction);
     expect(nextState.doc.toString()).toBe(
       'doc(bulletList(listItem(paragraph("first")), listItem(paragraph)))',
     );
+    editor.destroy();
   });
 
   it("does not handle ordinary paragraphs", () => {
@@ -379,18 +407,11 @@ describe("applyPromptListNewline", () => {
       },
       6,
     );
-    let didDispatch = false;
-    const editor = {
-      state,
-      extensionManager: editorContext.extensionManager,
-      view: {
-        dispatch: () => {
-          didDispatch = true;
-        },
-      },
-    } as unknown as Editor;
+    const editor = createTestEditor(state);
+    const dispatch = vi.spyOn(editor.view, "dispatch");
 
     expect(applyPromptListNewline(editor)).toBe(false);
-    expect(didDispatch).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+    editor.destroy();
   });
 });

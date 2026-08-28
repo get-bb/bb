@@ -23,18 +23,16 @@ export default defineConfig(({ command }) => {
   );
   const cloudflareConfig: PluginConfig = {
     viteEnvironment: { name: "ssr" },
-    ...(cloudDev
-      ? {
-          persistState: { path: cloudDev.persistStatePath },
-          config: (config: WorkerConfig) => ({
-            vars: {
-              ...config.vars,
-              ...cloudDev.vars,
-            },
-          }),
-        }
-      : {}),
   };
+  if (cloudDev !== null) {
+    cloudflareConfig.persistState = { path: cloudDev.persistStatePath };
+    cloudflareConfig.config = (config: WorkerConfig) => ({
+      vars: {
+        ...config.vars,
+        ...cloudDev.vars,
+      },
+    });
+  }
 
   return {
     define: { __SITE_ORIGIN__: JSON.stringify(siteOrigin) },

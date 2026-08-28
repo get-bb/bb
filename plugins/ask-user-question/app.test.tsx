@@ -2,6 +2,7 @@
 import { cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { InteractionPayload, InteractionResponse } from "./src/contracts";
 
 const app = await loadPluginApp(() => import("./app"));
@@ -52,7 +53,7 @@ const singleSelect: InteractionPayload = {
 function render(
   payload: InteractionPayload,
   handlers: {
-    submit?: (value: unknown) => Promise<void>;
+    submit?: (value: JsonValue) => Promise<void>;
     cancel?: () => Promise<void>;
   } = {},
 ) {
@@ -61,7 +62,7 @@ function render(
       id: "pint_test",
       threadId: "thr_test",
       title: "Database",
-      payload: payload as never,
+      payload,
       createdAt: 0,
       expiresAt: null,
     },
@@ -226,7 +227,7 @@ describe("a payload the form cannot read", () => {
         id: "pint_test",
         threadId: "thr_test",
         title: "Database",
-        payload: { questions: "not an array" } as never,
+        payload: { questions: "not an array" },
         createdAt: 0,
         expiresAt: null,
       },

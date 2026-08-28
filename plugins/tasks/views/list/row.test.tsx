@@ -101,6 +101,7 @@ async function rowFor(slot: ReturnType<typeof renderList>, key: string) {
   await slot.findByText(key);
   const row = slot.container.querySelector(`[data-task-key="${key}"]`);
   if (row === null) throw new Error(`row ${key} not found`);
+  // SAFETY: The task row selector returns an element rendered by this test.
   return row as HTMLElement;
 }
 
@@ -124,6 +125,7 @@ describe("inline row editing", () => {
         slot.rpcCalls.some(
           (call) =>
             call.method === "updateTask" &&
+            // SAFETY: The updateTask test call contains the status field sent by the row.
             (call.input as { status?: string }).status === "done",
         ),
       ).toBe(true),
@@ -156,6 +158,7 @@ describe("inline row editing", () => {
         slot.rpcCalls.some(
           (call) =>
             call.method === "updateTask" &&
+            // SAFETY: The updateTask test call contains the priority field sent by the row.
             (call.input as { priority?: string }).priority === "urgent",
         ),
       ).toBe(true),

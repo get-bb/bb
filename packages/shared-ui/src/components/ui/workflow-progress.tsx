@@ -756,7 +756,11 @@ export type WorkflowStatusPillState =
   | "failed"
   | "cancelled";
 
-const STATUS_PILL_LABEL: Record<WorkflowStatusPillState, string> = {
+type WorkflowStatusPillLabels = {
+  [state in WorkflowStatusPillState]: string;
+};
+
+const STATUS_PILL_LABEL: WorkflowStatusPillLabels = {
   queued: "Queued",
   completed: "Complete",
   failed: "Failed",
@@ -851,7 +855,11 @@ function phaseStripSegmentState(
   return "upcoming";
 }
 
-const PHASE_STRIP_SEGMENT_CLASS: Record<PhaseStripSegmentState, string> = {
+type PhaseStripSegmentClasses = {
+  [state in PhaseStripSegmentState]: string;
+};
+
+const PHASE_STRIP_SEGMENT_CLASS: PhaseStripSegmentClasses = {
   done: "bg-success/60",
   active: "animate-pulse bg-foreground",
   failed: "bg-destructive/70",

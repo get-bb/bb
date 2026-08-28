@@ -4,6 +4,13 @@ import {
   parseAgentOptions,
   parseStoredAgentOptions,
 } from "./validation.js";
+import type { JsonValue } from "./types.js";
+
+interface CyclicSchemaFixture {
+  [key: string]: JsonValue;
+  type: "object";
+  self: CyclicSchemaFixture | null;
+}
 
 describe("safe workflow JSON Schema subset", () => {
   it("preserves common structured-output schemas", () => {
@@ -99,18 +106,15 @@ describe("safe workflow JSON Schema subset", () => {
   });
 
   it("retains cycle and prototype defenses before schema compilation", () => {
-    const cyclic: Record<string, unknown> = { type: "object" };
+    const cyclic: CyclicSchemaFixture = { type: "object", self: null };
     cyclic.self = cyclic;
-    expect(() => assertValidJsonSchema(cyclic as never, "schema")).toThrow(
+    expect(() => assertValidJsonSchema(cyclic, "schema")).toThrow(
       "cyclic value",
     );
 
-    const inherited = Object.create({ poisoned: true }) as Record<
-      string,
-      unknown
-    >;
-    inherited.type = "object";
-    expect(() => assertValidJsonSchema(inherited as never, "schema")).toThrow(
+    const inherited: CyclicSchemaFixture = { type: "object", self: null };
+    Object.setPrototypeOf(inherited, { poisoned: true });
+    expect(() => assertValidJsonSchema(inherited, "schema")).toThrow(
       "unsafe prototype",
     );
   });

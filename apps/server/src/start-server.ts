@@ -1,5 +1,4 @@
 import { serve } from "@hono/node-server";
-import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
@@ -33,6 +32,8 @@ import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import { WorkspaceReadCaches } from "./services/environments/workspace-read-cache.js";
 import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
+
+const { existsSync } = process.getBuiltinModule("node:fs");
 
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
@@ -239,7 +240,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   void pluginService
     .start()
-    .catch((error: unknown) => {
+    .catch((error) => {
       logger.error({ err: error }, "Plugin startup failed");
     })
     .finally(() => {
@@ -263,7 +264,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       clearInterval(sweepInterval);
       pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stopPeriodicUpdateChecks();
-      await pluginService.stop().catch((error: unknown) => {
+      await pluginService.stop().catch((error) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });
       const closeServer = new Promise<void>((resolve, reject) => {
@@ -281,7 +282,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     return shutdownPromise;
   };
 
-  process.on("uncaughtException", (error: unknown) => {
+  process.on("uncaughtException", (error) => {
     if (pluginService.handleUncaughtException(error)) return;
     const message =
       error instanceof Error ? (error.stack ?? error.message) : String(error);

@@ -5,9 +5,7 @@ interface HeadersWithGetSetCookie extends Headers {
 }
 
 function hasGetSetCookie(headers: Headers): headers is HeadersWithGetSetCookie {
-  return (
-    "getSetCookie" in headers && typeof headers.getSetCookie === "function"
-  );
+  return "getSetCookie" in headers && headers.getSetCookie instanceof Function;
 }
 
 function getSetCookies(headers: Headers): string[] {
@@ -29,10 +27,9 @@ export async function refreshAccountSessionCookies(
     );
     if (!response.ok) return null;
 
-    const body: unknown = await response.json();
+    const body = await response.json();
     if (
-      typeof body !== "object" ||
-      body === null ||
+      !(body instanceof Object) ||
       !("session" in body) ||
       !("user" in body)
     ) {

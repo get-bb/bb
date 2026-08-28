@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { compareSemver, resolveVersionArgument } from "./lib/semver.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -24,23 +25,19 @@ const defaultFileSystem = {
   unlink,
   writeFile,
 };
+const packageObjectSchema = z.object({}).passthrough();
+const packageVersionSchema = z.object({ version: z.string() }).passthrough();
 
 function parsePackageJson({ content, packagePath }) {
-  const packageJson = JSON.parse(content);
-
-  if (
-    typeof packageJson !== "object" ||
-    packageJson === null ||
-    Array.isArray(packageJson)
-  ) {
+  const objectResult = packageObjectSchema.safeParse(JSON.parse(content));
+  if (!objectResult.success) {
     throw new Error(`Invalid package JSON object in ${packagePath}`);
   }
-
-  if (typeof packageJson.version !== "string") {
+  const versionResult = packageVersionSchema.safeParse(objectResult.data);
+  if (!versionResult.success) {
     throw new Error(`Missing string version field in ${packagePath}`);
   }
-
-  return packageJson;
+  return versionResult.data;
 }
 
 async function readPackageTarget({ fileSystem, repoRoot, target }) {

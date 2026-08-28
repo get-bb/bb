@@ -4,6 +4,7 @@ import * as RechartsPrimitive from "recharts";
 import { cn } from "../../lib/utils";
 
 const THEMES = { light: "", dark: ".dark" } as const;
+const THEME_NAMES: readonly (keyof typeof THEMES)[] = ["light", "dark"];
 
 export type ChartConfig = {
   [k in string]: {
@@ -76,22 +77,18 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   return (
     <style
       dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+        __html: THEME_NAMES.map(
+          (theme) => `
+${THEMES[theme]} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color;
+    const color = itemConfig.theme?.[theme] || itemConfig.color;
     return color ? `  --color-${key}: ${color};` : null;
   })
   .join("\n")}
 }
 `,
-          )
-          .join("\n"),
+        ).join("\n"),
       }}
     />
   );
@@ -99,16 +96,32 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
+type ChartTooltipPayload = NonNullable<
+  React.ComponentProps<typeof RechartsPrimitive.Tooltip>["payload"]
+>[number];
+
+type ChartLegendPayload = NonNullable<
+  React.ComponentProps<typeof RechartsPrimitive.Legend>["payload"]
+>[number];
+
+type ChartPayload = ChartTooltipPayload | ChartLegendPayload;
+
+type ChartTooltipContentProps = Omit<
+  React.ComponentProps<typeof RechartsPrimitive.Tooltip>,
+  "label"
+> &
+  React.ComponentProps<"div"> & {
+    label?: string;
+    hideLabel?: boolean;
+    hideIndicator?: boolean;
+    indicator?: "line" | "dot" | "dashed";
+    nameKey?: string;
+    labelKey?: string;
+  };
+
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean;
-      hideIndicator?: boolean;
-      indicator?: "line" | "dot" | "dashed";
-      nameKey?: string;
-      labelKey?: string;
-    }
+  ChartTooltipContentProps
 >(
   (
     {
@@ -139,8 +152,8 @@ const ChartTooltipContent = React.forwardRef<
       const key = `${labelKey || item?.dataKey || item?.name || "value"}`;
       const itemConfig = getPayloadConfigFromPayload(config, item, key);
       const value =
-        !labelKey && typeof label === "string"
-          ? config[label as keyof typeof config]?.label || label
+        !labelKey && label !== undefined
+          ? config[label]?.label || label
           : itemConfig?.label;
 
       if (labelFormatter) {
@@ -217,6 +230,7 @@ const ChartTooltipContent = React.forwardRef<
                               },
                             )}
                             style={
+                              // SAFETY: React accepts CSS custom properties through its CSSProperties style contract.
                               {
                                 "--color-bg": indicatorColor,
                                 "--color-border": indicatorColor,
@@ -319,40 +333,27 @@ ChartLegendContent.displayName = "ChartLegend";
 
 function getPayloadConfigFromPayload(
   config: ChartConfig,
-  payload: unknown,
+  payload: ChartPayload,
   key: string,
 ) {
-  if (typeof payload !== "object" || payload === null) {
-    return undefined;
-  }
+  const configLabelKey =
+    getStringPayloadValue(payload, key) ??
+    (payload.payload == null || !(payload.payload instanceof Object)
+      ? undefined
+      : getStringPayloadValue(payload.payload, key)) ??
+    key;
 
-  const payloadPayload =
-    "payload" in payload &&
-    typeof payload.payload === "object" &&
-    payload.payload !== null
-      ? payload.payload
-      : undefined;
+  return configLabelKey in config ? config[configLabelKey] : config[key];
+}
 
-  let configLabelKey: string = key;
-
-  if (
-    key in payload &&
-    typeof payload[key as keyof typeof payload] === "string"
-  ) {
-    configLabelKey = payload[key as keyof typeof payload] as string;
-  } else if (
-    payloadPayload &&
-    key in payloadPayload &&
-    typeof payloadPayload[key as keyof typeof payloadPayload] === "string"
-  ) {
-    configLabelKey = payloadPayload[
-      key as keyof typeof payloadPayload
-    ] as string;
-  }
-
-  return configLabelKey in config
-    ? config[configLabelKey]
-    : config[key as keyof typeof config];
+function getStringPayloadValue(
+  payload: ChartPayload,
+  key: string,
+): string | undefined {
+  const value = Object.entries(payload).find(
+    ([entryKey]) => entryKey === key,
+  )?.[1];
+  return value === String(value) ? value : undefined;
 }
 
 export {

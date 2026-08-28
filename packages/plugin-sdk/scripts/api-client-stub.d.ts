@@ -1,7 +1,23 @@
-export type PublicApiFetch = (...args: unknown[]) => unknown;
+export type PublicApiFetch = (
+  ...args: Parameters<typeof fetch>
+) => ReturnType<typeof fetch>;
 export interface PublicApiClientOptions {
-  [key: string]: unknown;
+  fetch: PublicApiFetch;
 }
-export declare function createPublicApiClient(...args: unknown[]): unknown;
-export declare function createApiClient(...args: unknown[]): unknown;
-export type ApiClient = unknown;
+export interface PublicApiRoute {
+  readonly $url: (...args: object[]) => string;
+  readonly [key: string]: PublicApiRoute | PublicApiRouteMethod;
+}
+export type PublicApiRouteMethod = (
+  ...args: object[]
+) => PublicApiRoute | string;
+export type PublicApiClient = Record<string, PublicApiRoute>;
+export declare function createPublicApiClient(
+  baseUrl: string,
+  options?: PublicApiClientOptions,
+): PublicApiClient;
+export declare function createApiClient(
+  baseUrl: string,
+  options?: PublicApiClientOptions,
+): { api: { v1: PublicApiClient } };
+export type ApiClient = ReturnType<typeof createApiClient>;

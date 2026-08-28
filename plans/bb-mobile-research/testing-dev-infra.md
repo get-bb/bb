@@ -3,6 +3,7 @@
 **Source dev (`pnpm dev`)** — `package.json:13` runs `packages/scripts/src/commands/run-dev.ts` under `dotenv -c development`. It computes a per-checkout `DevInstanceConfig` (`packages/config/src/runtime.ts:196-210`): ports = base + sha256(repoRoot)%8000 (`runtime.ts:85-90,137-146`: app 11000+, server 19000+, host-daemon 27000+, cloud 35000+/43000+), data dir `~/.bb-dev/<label>-<hash12>` (`runtime.ts:199`), `serverUrl = http://127.0.0.1:<serverPort>` (`runtime.ts:205`). `toDevProcessEnv` (`runtime.ts:296-317`) exports `BB_DATA_DIR, BB_DEV_APP_PORT, BB_DEV_CONNECT_BASE_URL, BB_HOST_DAEMON_PORT, BB_SERVER_PORT, BB_SERVER_URL, NODE_ENV=development` then runs `turbo run dev --filter=@bb/app --filter=@bb/server --filter=@bb/host-daemon --ui tui` (`run-dev.ts:29-47`). Filters are hardcoded — there is no server+daemon-only dev entry. Port pre-checks bind 127.0.0.1 (`run-dev.ts:23,70`). Server dev = `dev-supervisor.mjs` → `tsx src/index.ts` (`apps/server/scripts/dev-supervisor.mjs:11-18`); daemon dev = `run-host-daemon.ts --auto-join` (`apps/host-daemon/scripts/dev-supervisor.mjs:11-22`), which self-enrolls via `POST /internal/hosts/enroll-key` (`run-host-daemon.ts:180-200`).
 
 **Bind/reachability.** Server listens on `BB_SERVER_BIND_HOST` (`apps/server/src/start-server.ts:39-45`), default `127.0.0.1`, only `127.0.0.1|0.0.0.0` accepted (`packages/config/src/env-vars.ts:105-113,371`); non-loopback logs a security warning (`start-server.ts:212-216`, unauthenticated API). Vite dev binds `BB_DEV_APP_HOST` default 127.0.0.1 (`packages/config/src/vite-dev.ts:23-29`) and proxies `/api`,`/ws` (`apps/app/vite.dev.config.ts:30-45`); host-daemon local API binds 127.0.0.1 (`packages/host-daemon-contract/src/local.ts:11`, `apps/host-daemon/src/local-api-config.ts:36`). Prod: server 38886, daemon 38887, `~/.bb` (`runtime.ts:79-82`); in production the server serves `apps/app/dist` itself (`start-server.ts:64-70`). Docs for LAN/phone: `BB_SERVER_BIND_HOST=0.0.0.0` (`docs/configuration.md:848-861`), Tailscale Serve (`README.md:121-129`, `docs/multiple-devices.md:19-24`), bb connect getbb.app tunnel (`docs/multiple-devices.md:15-18`, `docs/debugging-and-qa.md:34-40`).
+
 - iOS Simulator shares Mac loopback → `http://127.0.0.1:<BB_SERVER_PORT>` works with defaults.
 - Android emulator → `http://10.0.2.2:<port>` (host loopback) or `adb reverse tcp:<port> tcp:<port>`.
 - Physical phone → needs `BB_SERVER_BIND_HOST=0.0.0.0` (LAN IP), Tailscale Serve, or bb connect URL; the daemon local API is never reachable off-box (docs/multiple-devices.md:76 "Phones and tablets need no helper").
@@ -36,6 +37,7 @@
 Maestro (YAML flows via `maestro test`, works against Expo dev-client/release builds on iOS Simulator + Android emulator, no native test target like Detox; Expo has no first-party e2e). Backend: a Node script under `apps/mobile/e2e/` reusing `tests/integration/helpers/harness.ts` (server + in-process daemon + fake adapter, fixed port, `BB_SERVER_BIND_HOST=0.0.0.0` only for physical devices) or `pnpm qa:standalone:start --format json` for real providers; seed with `createPublicApiClient`/`@bb/sdk`/`pnpm bb:dev`; pass server URL via `EXPO_PUBLIC_*`/Maestro `--env` + deep link; iOS uses 127.0.0.1, Android `adb reverse`. Run unit tests on Linux shard; simulator e2e on `blacksmith-6vcpu-macos-15`, nightly/label-gated.
 
 ## Key files
+
 - packages/scripts/src/commands/run-dev.ts
 - packages/config/src/runtime.ts
 - packages/config/src/env-vars.ts
@@ -83,6 +85,7 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - apps/cli/src/commands/project.ts
 
 ## Reuse verdicts
+
 - @bb/config (packages/config): **not-reusable** — Node builtins throughout: node:crypto/node:os/node:path in runtime.ts:1-3, node:os in env.ts:1, node:path in client-config.ts:1; reads process.env. Only pure helpers (local-app-origins.ts, defaults.ts) could be copied into the RN app.
 - @bb/server-contract, @bb/host-daemon-contract, @bb/domain: **reusable-with-small-changes** — No node:/DOM imports found (grep of src/, non-test); depend on hono/client (`hc`) + zod. Metro needs package-exports resolution (no `main`, exports point to .ts via source/default) and a `.js`→`.ts` specifier rewrite (packages/server-contract/src/index.ts:1-6).
 - @bb/sdk (packages/sdk/src/browser.ts, core.ts, transport-http.ts): **reusable-with-small-changes** — No node: imports except node-websocket.ts; must pass explicit baseUrl/realtimeUrl (default is same-origin, transport-http.ts:17); realtime uses global WebSocket (RN provides one). Same Metro exports/.js caveats.
@@ -93,6 +96,7 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - apps/app vitest setup (apps/app/src/test/setup.ts, vitest.config.ts): **not-reusable** — jsdom/window/document polyfills; irrelevant to RN test runner (jest-expo or vitest with react-native preset would be separate).
 
 ## Risks
+
 - Metro cannot resolve workspace packages as-is: they have no `main`, only `exports` (source/types/default→.ts) and use `.js` relative specifiers; requires unstable_enablePackageExports + custom resolveRequest, otherwise every @bb/* import fails at bundle time.
 - pnpm isolated node_modules (no .npmrc) may trip RN native module/peer resolution; Expo suggests `nodeLinker: hoisted` as fallback, but that changes the whole-monorepo plugin isolation model (pnpm-workspace.yaml comment).
 - Server API is unauthenticated; reaching it from a physical phone requires BB_SERVER_BIND_HOST=0.0.0.0 (security warning at start-server.ts:212-216) or Tailscale/bb connect; e2e scripts must not leave a 0.0.0.0 listener running.
@@ -107,6 +111,7 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - Fake provider adapter is only wired in-process (tests/integration harness); the standalone daemon (apps/host-daemon/dist) has no env switch for fake providers, so a deterministic e2e backend requires writing a harness-based launcher.
 
 ## Open questions
+
 - Should apps/mobile use jest-expo (Expo default) or vitest with a react-native preset? Root vitest.config.ts auto-discovers only dirs with vitest.config.ts; turbo `test` runs whatever `test` script exists.
 - Does the RN WebSocket Origin header (`http://127.0.0.1:<port>` / `http://10.0.2.2:<port>`) actually pass browserRequestProblem on both platforms? Needs an empirical check.
 - Which Expo SDK / RN version, and does its Metro default (unstable_enablePackageExports) suffice, or must apps/mobile ship a metro.config.js with a `.js`→`.ts` resolveRequest and `source` condition?

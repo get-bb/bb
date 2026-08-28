@@ -927,7 +927,7 @@ export async function createHostDaemonApp(
     }),
   });
 
-  const daemon = createDaemon({
+  const daemonOptions: Parameters<typeof createDaemon>[0] = {
     identity: {
       hostId: options.hostId,
       hostName: options.hostName,
@@ -935,7 +935,6 @@ export async function createHostDaemonApp(
     },
     logger: options.logger,
     releaseLock: options.releaseLock,
-    ...(options.forceExit ? { forceExit: options.forceExit } : {}),
     flushEvents: async () => {
       await eventSink.flush();
     },
@@ -962,7 +961,11 @@ export async function createHostDaemonApp(
       );
       await connection.start();
     },
-  });
+  };
+  if (options.forceExit !== undefined) {
+    daemonOptions.forceExit = options.forceExit;
+  }
+  const daemon = createDaemon(daemonOptions);
   requestDaemonRestart = () => {
     void daemon.shutdown("self-update").catch((error) => {
       options.logger.error({ err: error }, "Self-update shutdown failed");

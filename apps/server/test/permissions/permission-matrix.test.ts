@@ -54,7 +54,7 @@ const REVIEWER_INPUTS = [...approvalReviewerValues, null] as const;
 type PolicyCell =
   `${(typeof permissionModeValues)[number]}|${(typeof runtimePermissionScopeValues)[number]}|${NonNullable<(typeof REVIEWER_INPUTS)[number]> | "-"}|${NonNullable<(typeof ESCALATION_INPUTS)[number]> | "-"}`;
 
-const ACCEPTED_POLICY_SHAPES: readonly PolicyCell[] = [
+const ACCEPTED_POLICY_CELLS: readonly PolicyCell[] = [
   "accept-edits|workspace|user|ask",
   "accept-edits|workspace|user|deny",
   "auto|workspace|automatic|ask",
@@ -93,7 +93,7 @@ describe("runtime permission policy shapes", () => {
     (cell) => {
       const key: PolicyCell = `${cell.permissionMode}|${cell.permissionScope}|${cell.approvalReviewer ?? "-"}|${cell.permissionEscalation ?? "-"}`;
       expect(runtimePermissionPolicySchema.safeParse(cell).success).toBe(
-        ACCEPTED_POLICY_SHAPES.includes(key),
+        ACCEPTED_POLICY_CELLS.includes(key),
       );
     },
   );

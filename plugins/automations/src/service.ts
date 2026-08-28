@@ -366,20 +366,18 @@ function applyAgentExecutionUpdate(
     );
   }
 
-  const next = {
+  const next: Extract<AutomationExecution, { mode: "agent" }> = {
     ...execution,
-    ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
-    ...(update.providerId !== undefined
-      ? { providerId: update.providerId }
-      : {}),
-    ...(update.model !== undefined ? { model: update.model } : {}),
-    ...(update.reasoningLevel !== undefined
-      ? { reasoningLevel: update.reasoningLevel }
-      : {}),
-    ...(update.permissionMode !== undefined
-      ? { permissionMode: update.permissionMode }
-      : {}),
   };
+  if (update.prompt !== undefined) next.prompt = update.prompt;
+  if (update.providerId !== undefined) next.providerId = update.providerId;
+  if (update.model !== undefined) next.model = update.model;
+  if (update.reasoningLevel !== undefined) {
+    next.reasoningLevel = update.reasoningLevel;
+  }
+  if (update.permissionMode !== undefined) {
+    next.permissionMode = update.permissionMode;
+  }
   if (update.serviceTier === null) {
     delete next.serviceTier;
   } else if (update.serviceTier !== undefined) {
@@ -738,11 +736,11 @@ export function createAutomationService(args: {
       });
       if (!deduped) {
         publishAutomationChange(bb, input.projectId, "automation-runs-changed");
-        const closeFailedRun = (error: unknown): void => {
+        const closeFailedRun = (error: Error): void => {
           closeAutomationRun(db, {
             runId: run.id,
             status: "failed",
-            error: error instanceof Error ? error.message : String(error),
+            error: error.message,
             now: Date.now(),
           });
         };
@@ -766,11 +764,11 @@ export function createAutomationService(args: {
               });
             }
           } catch (error) {
-            closeFailedRun(error);
+            const failure =
+              error instanceof Error ? error : new Error(String(error));
+            closeFailedRun(failure);
             bb.log.error(
-              `Manual automation run ${run.id} failed unexpectedly: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `Manual automation run ${run.id} failed unexpectedly: ${failure.message}`,
             );
             publishAutomationChange(bb, input.projectId, [
               "automations-changed",

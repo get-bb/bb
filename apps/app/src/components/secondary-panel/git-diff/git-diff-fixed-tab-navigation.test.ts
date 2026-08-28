@@ -19,12 +19,14 @@ describe("createGitDiffFixedTabDestination", () => {
 
     const open = (
       target?: { kind: "file"; path: string } | { kind: "commit"; sha: string },
-    ) =>
-      openAppFixedTabFromDestinations([destination], {
+    ) => {
+      const intent: Parameters<typeof openAppFixedTabFromDestinations>[1] = {
         surface: { kind: "current" },
         tab: GIT_DIFF_FIXED_TAB_REFERENCE,
-        ...(target === undefined ? {} : { target }),
-      });
+      };
+      if (target !== undefined) intent.target = target;
+      return openAppFixedTabFromDestinations([destination], intent);
+    };
 
     expect(open({ kind: "file", path: "src/app.tsx" })).toBe(true);
     expect(open({ kind: "commit", sha: "abc123" })).toBe(true);

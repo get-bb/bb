@@ -164,16 +164,12 @@ function PluginNavSidebarItemList({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (
-        !event.over ||
-        typeof event.active.id !== "string" ||
-        typeof event.over.id !== "string"
-      ) {
-        return;
-      }
+      if (!event.over) return;
+      const activeKey = String(event.active.id);
+      const overKey = String(event.over.id);
       const nextOrder = reorderPluginNavPanels({
-        activeKey: event.active.id,
-        overKey: event.over.id,
+        activeKey,
+        overKey,
         order: normalizedOrder,
         visibleKeys,
       });

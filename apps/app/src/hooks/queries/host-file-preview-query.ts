@@ -44,10 +44,7 @@ const HOST_MEDIA_PREVIEW_TYPES = new Map<string, HostMediaPreviewType>([
   [".wmv", { kind: "video", mimeType: "video/x-ms-wmv" }],
 ]);
 
-function splitAbsoluteHostFilePath(path: string): {
-  name: string;
-  rootPath: string;
-} {
+function splitAbsoluteHostFilePath(path: string) {
   const lastSeparatorIndex = Math.max(
     path.lastIndexOf("/"),
     path.lastIndexOf("\\"),

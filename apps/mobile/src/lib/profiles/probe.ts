@@ -1,3 +1,4 @@
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import { z } from "zod";
 import { MOBILE_APP_SURFACE_HEADER } from "../sdk/app-surface";
 import { isLoopbackHost } from "./direct-url";
@@ -26,26 +27,26 @@ export type ProbeFetch = (
 ) => Promise<{
   ok: boolean;
   status: number;
-  json(): Promise<unknown>;
+  json(): Promise<JsonValue>;
 }>;
 
 const DEFAULT_PROBE_TIMEOUT_MS = 8000;
 
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.name === "AbortError" || error.name === "TimeoutError") {
+function describeError(cause: unknown): string {
+  if (cause instanceof Error) {
+    if (cause.name === "AbortError" || cause.name === "TimeoutError") {
       return "Timed out";
     }
-    return error.message;
+    return cause.message;
   }
-  return String(error);
+  return String(cause);
 }
 
 async function getJson(
   fetchImpl: ProbeFetch,
   url: string,
   timeoutMs: number,
-): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+): Promise<{ ok: true; body: JsonValue } | { ok: false; error: string }> {
   try {
     const response = await fetchImpl(url, {
       headers: {
@@ -57,7 +58,11 @@ async function getJson(
       return { ok: false, error: `HTTP ${response.status}` };
     }
     try {
-      return { ok: true, body: await response.json() };
+      const parsed = jsonValueSchema.safeParse(await response.json());
+      if (!parsed.success) {
+        return { ok: false, error: "Response was not valid JSON" };
+      }
+      return { ok: true, body: parsed.data };
     } catch {
       return { ok: false, error: "Response was not JSON" };
     }

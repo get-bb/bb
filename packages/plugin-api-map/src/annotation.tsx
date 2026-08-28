@@ -31,12 +31,12 @@ export type AnnotationChipPlacement =
   | "side"
   | "outside-above";
 
-export const CHIP_PLACEMENT_CLASS: Record<AnnotationChipPlacement, string> = {
+export const CHIP_PLACEMENT_CLASS = {
   corner: "-right-2 -top-2",
   "corner-inset": "right-2 -top-2",
   side: "-right-2 top-1/2 -translate-y-1/2",
   "outside-above": "left-1/2 -top-6 -translate-x-1/2",
-};
+} satisfies Record<AnnotationChipPlacement, string>;
 
 export function ExperimentalBadge() {
   return (

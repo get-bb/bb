@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   createFakePluginHost,
   type FakePluginHost,
@@ -6,11 +7,39 @@ import {
 import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import plugin, { RENDERER_ID, TOOL_NAME } from "./server.js";
 import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
-import type { InteractionPayload, ToolResult } from "./contracts.js";
+import { interactionPayloadSchema } from "./contracts.js";
+
+const toolResultSchema = z.object({
+  questions: z.array(
+    z.object({
+      question: z.string(),
+      header: z.string(),
+      options: z.array(
+        z.object({
+          label: z.string(),
+          description: z.string(),
+          preview: z.string().optional(),
+        }),
+      ),
+      multiSelect: z.boolean(),
+    }),
+  ),
+  answers: z.record(z.string(), z.string()),
+  response: z.string().optional(),
+  annotations: z
+    .record(
+      z.string(),
+      z.object({
+        preview: z.string().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
 
 function createHost(): FakePluginHost {
   const host = createFakePluginHost({ pluginId: "ask-user-question" });
-  plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+  plugin(host.bb);
   return host;
 }
 
@@ -67,9 +96,15 @@ const questions = [
 async function resultText(
   result: Awaited<ReturnType<FakePluginHost["harness"]["callAgentTool"]>>,
 ): Promise<string> {
-  if (typeof result === "string") return result;
-  const [part] = result.content;
-  if (part?.type !== "text") throw new Error("expected a text result");
+  const stringResult = z.string().safeParse(result);
+  if (stringResult.success) return stringResult.data;
+  const objectResult = z
+    .object({
+      content: z.array(z.object({ type: z.literal("text"), text: z.string() })),
+    })
+    .parse(result);
+  const [part] = objectResult.content;
+  if (part === undefined) throw new Error("expected a text result");
   return part.text;
 }
 
@@ -104,11 +139,15 @@ describe("provider gating", () => {
     const resolved = await host.harness.resolveAgentConfiguration(
       configurationContext("codex"),
     );
-    const schema = resolved.tools[0]?.inputSchema as {
-      properties: {
-        questions: { items: { required: string[] } };
-      };
-    };
+    const schema = z
+      .object({
+        properties: z.object({
+          questions: z.object({
+            items: z.object({ required: z.array(z.string()) }),
+          }),
+        }),
+      })
+      .parse(resolved.tools[0]?.inputSchema);
     expect(schema.properties.questions.items.required).toContain("multiSelect");
 
     const answered = host.harness.callAgentTool(TOOL_NAME, {
@@ -136,7 +175,7 @@ describe("asking a question", () => {
     const pending = host.harness.pendingInteractions[0]!;
     expect(pending.rendererId).toBe(RENDERER_ID);
     expect(pending.title).toBe("Database");
-    const payload = pending.payload as InteractionPayload;
+    const payload = interactionPayloadSchema.parse(pending.payload);
     expect(payload.questions[0]).toMatchObject({
       id: "q0",
       prompt: "Which database should we use?",
@@ -148,7 +187,9 @@ describe("asking a question", () => {
       answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
     });
 
-    const parsed = JSON.parse(await resultText(await call)) as ToolResult;
+    const parsed = toolResultSchema.parse(
+      JSON.parse(await resultText(await call)),
+    );
     expect(parsed.answers).toEqual({
       "Which database should we use?": "Postgres (Recommended); with pgbouncer",
     });
@@ -192,7 +233,7 @@ describe("asking a question", () => {
       Promise.reject(
         new Error("Thread thr-test is already awaiting user interaction"),
       );
-    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    plugin(host.bb);
 
     const result = await host.harness.callAgentTool(TOOL_NAME, { questions });
 

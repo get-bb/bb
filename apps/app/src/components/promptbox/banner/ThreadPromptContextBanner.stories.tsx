@@ -663,18 +663,16 @@ function ContextBannerPreview({
         childThreadsSection={childThreads}
         pullRequestSection={
           pullRequest
-            ? {
-                pullRequest,
-                ...(pullRequestActions
-                  ? {
-                      actions: {
-                        onMarkReady: noop,
-                        onMerge: noop,
-                        selectedMergeMethod: pullRequestMergeMethod,
-                      },
-                    }
-                  : {}),
-              }
+            ? pullRequestActions
+              ? {
+                  pullRequest,
+                  actions: {
+                    onMarkReady: noop,
+                    onMerge: noop,
+                    selectedMergeMethod: pullRequestMergeMethod,
+                  },
+                }
+              : { pullRequest }
             : null
         }
         expandedSection={expandedSection}

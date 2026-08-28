@@ -37,11 +37,8 @@ export function mergeDesktopUpdateInfo(
     null;
   const nativeDownloadState = args.autoInfo?.downloadState;
 
-  return {
+  const mergedInfo = {
     ...baseInfo,
-    ...(nativeDownloadState === undefined
-      ? {}
-      : { downloadState: nativeDownloadState }),
     lastCheckedAt: latestCheckedAt(
       args.feedInfo?.lastCheckedAt ?? null,
       args.autoInfo?.lastCheckedAt ?? null,
@@ -52,4 +49,8 @@ export function mergeDesktopUpdateInfo(
       feedUpdateAvailable || autoUpdateAvailable || updateDownloaded,
     updateDownloaded,
   };
+  if (nativeDownloadState !== undefined) {
+    mergedInfo.downloadState = nativeDownloadState;
+  }
+  return mergedInfo;
 }

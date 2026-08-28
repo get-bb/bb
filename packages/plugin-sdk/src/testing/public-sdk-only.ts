@@ -18,6 +18,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { z } from "zod";
 
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist"]);
 const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]s|tsx)$/u;
@@ -114,18 +115,15 @@ function escapesPackage(
 }
 
 function declaredDependencyNames(packageRoot: string): string[] {
-  const manifest: unknown = JSON.parse(
-    readFileSync(join(packageRoot, "package.json"), "utf8"),
-  );
+  const manifest = z
+    .object({
+      dependencies: z.record(z.string(), z.string()).optional(),
+      devDependencies: z.record(z.string(), z.string()).optional(),
+    })
+    .parse(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")));
   const names: string[] = [];
-  for (const field of ["dependencies", "devDependencies"]) {
-    const block =
-      typeof manifest === "object" && manifest !== null && field in manifest
-        ? (manifest as Record<string, unknown>)[field]
-        : undefined;
-    if (typeof block === "object" && block !== null) {
-      names.push(...Object.keys(block));
-    }
+  for (const block of [manifest.dependencies, manifest.devDependencies]) {
+    if (block !== undefined) names.push(...Object.keys(block));
   }
   return names;
 }

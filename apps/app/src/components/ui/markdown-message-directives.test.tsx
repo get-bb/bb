@@ -666,6 +666,8 @@ describe("ThreadTimelineRows message directive subscription", () => {
 
     expect(screen.queryByTestId("inline-vis")).toBeNull();
     expect(screen.getByText('::inline-vis{file="collide.html"}')).toBeTruthy();
-    expect(console.warn as Mock).toHaveBeenCalled();
+    expect(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ console.warn as Mock,
+    ).toHaveBeenCalled();
   });
 });

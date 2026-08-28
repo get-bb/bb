@@ -140,18 +140,19 @@ export function shouldPreservePendingMessages(
 function buildAttachments(
   parsed: NonNullable<ReturnType<typeof parsePromptInput>>,
 ): EventProjectionUserMessage["attachments"] {
-  return {
+  const attachments: NonNullable<EventProjectionUserMessage["attachments"]> = {
     webImages: parsed.webImages,
     localImages: parsed.localImages,
     localFiles: parsed.localFiles,
-    ...(parsed.imageUrls.length > 0 ? { imageUrls: parsed.imageUrls } : {}),
-    ...(parsed.localImagePaths.length > 0
-      ? { localImagePaths: parsed.localImagePaths }
-      : {}),
-    ...(parsed.localFilePaths.length > 0
-      ? { localFilePaths: parsed.localFilePaths }
-      : {}),
   };
+  if (parsed.imageUrls.length > 0) attachments.imageUrls = parsed.imageUrls;
+  if (parsed.localImagePaths.length > 0) {
+    attachments.localImagePaths = parsed.localImagePaths;
+  }
+  if (parsed.localFilePaths.length > 0) {
+    attachments.localFilePaths = parsed.localFilePaths;
+  }
+  return attachments;
 }
 
 interface ParseUserFromClientRequestArgs {
@@ -295,7 +296,7 @@ function buildClientUserMessage({
     decoded.senderThreadId ??
     (initiator === "agent" ? (agentEnvelope?.senderThreadId ?? null) : null);
 
-  return {
+  const message: EventProjectionUserMessage = {
     kind: "user",
     id: messageId(
       decoded.threadId,
@@ -318,6 +319,7 @@ function buildClientUserMessage({
     mentions: parsedInput.mentions,
     attachments: buildAttachments(parsedInput),
   };
+  return message;
 }
 
 function clientUserMessageIdSuffix(messageIndex: number): string | undefined {
@@ -478,7 +480,7 @@ export function parseProviderUserMessage(
   if (text.length === 0) {
     return null;
   }
-  return {
+  const message: EventProjectionUserMessage = {
     kind: "user",
     id: messageId(decoded.threadId, "provider-input", decoded.item.id),
     threadId: decoded.threadId,
@@ -486,9 +488,6 @@ export function parseProviderUserMessage(
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     scope: decoded.scope,
-    ...(decoded.item.parentToolCallId
-      ? { parentToolCallId: decoded.item.parentToolCallId }
-      : {}),
     initiator: "system",
     senderThreadId: null,
     systemMessageKind: "unlabeled",
@@ -497,6 +496,10 @@ export function parseProviderUserMessage(
     text,
     mentions: [],
   };
+  if (decoded.item.parentToolCallId) {
+    message.parentToolCallId = decoded.item.parentToolCallId;
+  }
+  return message;
 }
 
 export function parseLegacyUserMessage(

@@ -12,9 +12,9 @@ const SCHEMA_PATH = fileURLToPath(
   ),
 );
 
-const publishedSchemaSchema = z.record(z.string(), z.unknown());
+const publishedSchemaSchema = z.record(z.string(), z.json());
 
-async function compilePublishedSchema(): Promise<(value: unknown) => boolean> {
+async function compilePublishedSchema() {
   const schema = publishedSchemaSchema.parse(
     JSON.parse(await readFile(SCHEMA_PATH, "utf8")),
   );
@@ -27,7 +27,39 @@ interface Fixture {
   readonly manifest: unknown;
 }
 
-function manifestWith(entry: Record<string, unknown>): Record<string, unknown> {
+interface ManifestEntryOverrides {
+  engines?: Engines;
+  icon?: string | IconObject;
+  surprise?: boolean;
+  source?: Source;
+}
+
+interface Engines {
+  bb?: string;
+  bbPluginSdk?: string;
+}
+
+interface IconObject {
+  logo?: boolean;
+  url: string;
+}
+
+interface Source {
+  git?: {
+    range?: string;
+    ref?: string;
+    subdir?: string;
+    tagPrefix?: string;
+    url: string;
+  };
+  npm?: {
+    package: string;
+    range?: string;
+    tag?: string;
+  };
+}
+
+function manifestWith(entry: ManifestEntryOverrides) {
   return {
     schemaVersion: 1,
     name: "acme",
@@ -60,7 +92,7 @@ function rangeFixture(label: string, range: string, valid: boolean): Fixture {
   };
 }
 
-function enginesFixture(label: string, engines: unknown): Fixture {
+function enginesFixture(label: string, engines: Engines): Fixture {
   return { label, valid: false, manifest: manifestWith({ engines }) };
 }
 

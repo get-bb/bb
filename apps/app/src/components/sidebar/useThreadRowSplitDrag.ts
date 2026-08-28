@@ -36,10 +36,7 @@ export function useThreadRowSplitDrag({
   projectId,
   threadId,
   title,
-}: UseThreadRowSplitDragArgs): {
-  onPointerDown: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
-  openInSplit: () => void;
-} {
+}: UseThreadRowSplitDragArgs) {
   const store = useStore();
   const navigate = useRouteNavigate();
   const isCompact = useIsCompactViewport();
@@ -58,12 +55,10 @@ export function useThreadRowSplitDrag({
       const content: PaneContent = { kind: "thread", projectId, threadId };
       const startLayout = store.get(splitLayoutAtom);
       const fallback = singlePaneFallback(startLayout);
-
-      beginSplitDrag({
+      const dragOptions: Parameters<typeof beginSplitDrag>[0] = {
         ghostLabel: title,
         sourceEl: rowEl,
         cancelSidebarReorderOnEngage: true,
-        ...(fallback ? { fallback } : {}),
         shouldEngage: (x, y) =>
           shouldEngageSidebarSplitDrag({
             startX,
@@ -104,7 +99,12 @@ export function useThreadRowSplitDrag({
             existing !== null ? { replace: true } : undefined,
           );
         },
-      });
+      } satisfies Parameters<typeof beginSplitDrag>[0];
+      if (fallback !== null) {
+        dragOptions.fallback = fallback;
+      }
+
+      beginSplitDrag(dragOptions);
     },
     [navigate, projectId, store, threadId, title],
   );

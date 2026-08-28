@@ -86,7 +86,7 @@ const EMPTY_CONTEXT: AppCommandContext = {
 };
 
 function browserPlatform(): string {
-  return typeof navigator === "undefined" ? "" : navigator.platform;
+  return globalThis.navigator?.platform ?? "";
 }
 
 const OPEN_MODAL_SELECTOR = [

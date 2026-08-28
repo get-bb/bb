@@ -211,7 +211,10 @@ describe("canonical JSON", () => {
   );
 
   it("rejects cycles", () => {
-    const value: { self?: object } = {};
+    interface CyclicValue {
+      self?: CyclicValue;
+    }
+    const value: CyclicValue = {};
     value.self = value;
     expect(() => canonicalizeJson(value)).toThrow("cycle");
   });

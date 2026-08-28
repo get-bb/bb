@@ -518,12 +518,19 @@ function getThreadRowOptions({
   variant,
 }: GetThreadRowOptionsArgs): ThreadRowOptions {
   const depth = getThreadRowDepth({ depthOffset, nodeDepth, variant });
-  const baseOptions = {
+  const baseOptions: Pick<
+    ThreadRowOptions,
+    "depth" | "isCompact" | "consumeClickSuppression" | "dragBindings"
+  > = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
-    ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
-    ...(dragBindings ? { dragBindings } : {}),
   };
+  if (consumeClickSuppression !== undefined) {
+    baseOptions.consumeClickSuppression = consumeClickSuppression;
+  }
+  if (dragBindings !== undefined) {
+    baseOptions.dragBindings = dragBindings;
+  }
 
   if (!isParent) {
     return {
@@ -532,15 +539,18 @@ function getThreadRowOptions({
     };
   }
 
-  return {
+  const parentOptions: Extract<ThreadRowOptions, { kind: "parent" }> = {
     ...baseOptions,
     kind: "parent",
     isCollapsed,
     childCount,
     childActivity,
-    ...(stickyLevel !== undefined ? { stickyLevel } : {}),
     onToggleCollapsed: onToggleThreadCollapsed,
   };
+  if (stickyLevel !== undefined) {
+    parentOptions.stickyLevel = stickyLevel;
+  }
+  return parentOptions;
 }
 
 interface GetThreadRowOptionsArgs {
@@ -802,14 +812,15 @@ function useEnvironmentThreadGroupRenameAction({
 
   const onRenameEnvironment = useCallback(() => {
     resetUpdateEnvironment();
-    onOpen({
-      ...(representativeThread.environmentBranchName !== null
-        ? { branchName: representativeThread.environmentBranchName }
-        : {}),
+    const renameTarget: EnvironmentRenameDialogTarget = {
       canClearName: representativeThread.environmentName !== null,
       id: environmentId,
       currentName: representativeThread.environmentName ?? "",
-    });
+    };
+    if (representativeThread.environmentBranchName !== null) {
+      renameTarget.branchName = representativeThread.environmentBranchName;
+    }
+    onOpen(renameTarget);
   }, [environmentId, onOpen, representativeThread, resetUpdateEnvironment]);
 
   const onSubmitRenameEnvironment = useCallback(

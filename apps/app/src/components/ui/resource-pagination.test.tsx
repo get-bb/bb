@@ -171,7 +171,7 @@ function stubSize(node: HTMLElement, height: number, width: number): void {
   });
   node.getBoundingClientRect = () => {
     rowMeasurements += 1;
-    return {
+    return /* SAFETY: The test controls this fixture and verifies its behavior. */ {
       height,
       width,
       top: 0,

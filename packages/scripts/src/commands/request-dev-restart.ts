@@ -39,7 +39,7 @@ interface ReadRunningSupervisorPidArgs {
   serviceName: string;
 }
 
-const restartTargets: Record<RestartTarget, RestartTargetConfig> = {
+const restartTargets = {
   both: {
     filters: ["@bb/server", "@bb/host-daemon"],
     label: "server and host-daemon",
@@ -55,7 +55,7 @@ const restartTargets: Record<RestartTarget, RestartTargetConfig> = {
     label: "server",
     services: ["server"],
   },
-};
+} satisfies Record<RestartTarget, RestartTargetConfig>;
 
 export function parseTarget(value: string): RestartTarget {
   if (value === "both" || value === "host-daemon" || value === "server") {

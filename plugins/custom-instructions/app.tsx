@@ -5,7 +5,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 
 const AUTOSAVE_DELAY_MS = 500;
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: Error | string | number | boolean | null): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -32,7 +32,7 @@ function CustomInstructionsSettings() {
         setMaxLength(response.maxLength);
         setSaveState("saved");
       })
-      .catch((loadError: unknown) => {
+      .catch((loadError) => {
         if (active) setError(errorMessage(loadError));
       })
       .finally(() => {
@@ -60,7 +60,7 @@ function CustomInstructionsSettings() {
           setMaxLength(response.maxLength);
           setSaveState("saved");
         })
-        .catch((saveError: unknown) => {
+        .catch((saveError) => {
           if (!active) return;
           setError(errorMessage(saveError));
           setSaveState("error");

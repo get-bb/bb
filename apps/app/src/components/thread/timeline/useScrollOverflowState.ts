@@ -53,7 +53,8 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       applyFlags({ above: false, below: false });
       return;
     }
-    if (!options.measureOverflow || typeof window === "undefined") {
+    const browserWindow = globalThis.window;
+    if (!options.measureOverflow || browserWindow === undefined) {
       return;
     }
 
@@ -72,25 +73,28 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     };
     const scheduleMeasure = () => {
       if (frame !== null) return;
+      const requestAnimationFrame = browserWindow.requestAnimationFrame;
       frame =
-        typeof window.requestAnimationFrame === "function"
-          ? window.requestAnimationFrame(measure)
-          : window.setTimeout(measure, 0);
+        requestAnimationFrame !== undefined
+          ? requestAnimationFrame.call(browserWindow, measure)
+          : browserWindow.setTimeout(measure, 0);
     };
 
     scheduleMeasure();
     scroll.addEventListener("scroll", scheduleMeasure, { passive: true });
 
+    const ResizeObserverConstructor = globalThis.ResizeObserver;
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
+      ResizeObserverConstructor === undefined
         ? null
-        : new ResizeObserver(scheduleMeasure);
+        : new ResizeObserverConstructor(scheduleMeasure);
     resizeObserver?.observe(scroll);
 
+    const MutationObserverConstructor = globalThis.MutationObserver;
     const mutationObserver =
-      typeof MutationObserver === "undefined"
+      MutationObserverConstructor === undefined
         ? null
-        : new MutationObserver(scheduleMeasure);
+        : new MutationObserverConstructor(scheduleMeasure);
     mutationObserver?.observe(scroll, {
       childList: true,
       characterData: true,
@@ -99,10 +103,11 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
 
     return () => {
       if (frame !== null) {
-        if (typeof window.cancelAnimationFrame === "function") {
-          window.cancelAnimationFrame(frame);
+        const cancelAnimationFrame = browserWindow.cancelAnimationFrame;
+        if (cancelAnimationFrame !== undefined) {
+          cancelAnimationFrame.call(browserWindow, frame);
         } else {
-          window.clearTimeout(frame);
+          browserWindow.clearTimeout(frame);
         }
       }
       scroll.removeEventListener("scroll", scheduleMeasure);
@@ -120,7 +125,7 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
       !scroll ||
       !topSentinel ||
       !bottomSentinel ||
-      typeof IntersectionObserver === "undefined"
+      globalThis.IntersectionObserver === undefined
     ) {
       return;
     }
@@ -128,7 +133,7 @@ export function useScrollOverflowState<TElement extends HTMLElement>(
     let aboveVisible = true;
     let belowVisible = true;
 
-    const observer = new IntersectionObserver(
+    const observer = new globalThis.IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.target === topSentinel) {

@@ -104,7 +104,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     signal.addEventListener("abort", disposeState, { once: true });
   }
 
-  function status(): { enabled: boolean; supported: boolean } {
+  function status() {
     return { enabled: child !== null, supported: deps.platform === "darwin" };
   }
 

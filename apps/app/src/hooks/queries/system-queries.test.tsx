@@ -11,7 +11,7 @@ import type {
   ProviderCliStatusResponse,
   ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -29,19 +29,6 @@ import {
   useSystemProviderStates,
 } from "./system-queries";
 
-vi.mock("@/lib/sdk", () => ({
-  BbHttpError: class BbHttpError extends Error {},
-  sdk: {
-    hosts: { providerCliStatus: vi.fn() },
-    providers: { list: vi.fn() },
-    system: {
-      executionOptions: vi.fn(),
-      providerStates: vi.fn(),
-      usageLimits: vi.fn(),
-    },
-  },
-}));
-
 const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   providers: [],
   models: [],
@@ -50,8 +37,17 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   modelLoadError: null,
 };
 
-const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
+const PROVIDER_CLI_STATUS_RESPONSE =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {} as ProviderCliStatusResponse;
 const PROVIDERS: ProviderInfo[] = [];
+
+beforeEach(() => {
+  vi.spyOn(sdk.hosts, "providerCliStatus");
+  vi.spyOn(sdk.providers, "list");
+  vi.spyOn(sdk.system, "executionOptions");
+  vi.spyOn(sdk.system, "providerStates");
+  vi.spyOn(sdk.system, "usageLimits");
+});
 
 function providerStates(providerId: string): SystemProviderStatesResponse {
   return {
@@ -75,7 +71,7 @@ function providerStates(providerId: string): SystemProviderStatesResponse {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 

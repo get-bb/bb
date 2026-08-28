@@ -17,18 +17,11 @@ import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 
-type RunFailureHandler = (error: unknown) => void;
-type AgentThreadsSdk = {
-  get(
-    args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
-  ): Promise<unknown>;
-  send(
-    args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
-  ): Promise<unknown>;
-  spawn(
-    args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
-  ): Promise<unknown>;
-};
+type RunFailureHandler = (error: Error) => void;
+type AgentThreadsSdk = Pick<
+  BbPluginApi["sdk"]["threads"],
+  "get" | "send" | "spawn"
+>;
 type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
 };
@@ -42,6 +35,7 @@ const sdkThreadSchema = z
   })
   .passthrough();
 type SdkThread = z.infer<typeof sdkThreadSchema>;
+type ThreadSpawnArgs = Parameters<AgentThreadsSdk["spawn"]>[0];
 
 const projectGoneErrorSchema = z
   .object({
@@ -54,17 +48,15 @@ const threadGoneErrorSchema = z
   .object({ status: z.literal(404) })
   .passthrough();
 
-function isThreadGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+function isThreadGoneError(error: Error): boolean {
   return threadGoneErrorSchema.safeParse(error).success;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(error: Error): string {
+  return error.message;
 }
 
-function isProjectGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+function isProjectGoneError(error: Error): boolean {
   return projectGoneErrorSchema.safeParse(error).success;
 }
 
@@ -103,21 +95,20 @@ export async function executeAgentRun(
       });
       return;
     }
-    const thread = sdkThreadSchema.parse(
-      await bb.sdk.threads.spawn({
-        projectId: args.automation.projectId,
-        environment: args.execution.environment,
-        prompt: args.execution.prompt,
-        title: args.automation.name,
-        providerId: args.execution.providerId,
-        model: args.execution.model,
-        reasoningLevel: args.execution.reasoningLevel,
-        ...(args.execution.serviceTier === undefined
-          ? {}
-          : { serviceTier: args.execution.serviceTier }),
-        permissionMode: args.execution.permissionMode,
-      }),
-    );
+    const spawnArgs: ThreadSpawnArgs = {
+      projectId: args.automation.projectId,
+      environment: args.execution.environment,
+      prompt: args.execution.prompt,
+      title: args.automation.name,
+      providerId: args.execution.providerId,
+      model: args.execution.model,
+      reasoningLevel: args.execution.reasoningLevel,
+      permissionMode: args.execution.permissionMode,
+    };
+    if (args.execution.serviceTier !== undefined) {
+      spawnArgs.serviceTier = args.execution.serviceTier;
+    }
+    const thread = sdkThreadSchema.parse(await bb.sdk.threads.spawn(spawnArgs));
     setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
     markAutomationThread(db, {
       automationId: args.automation.id,
@@ -126,7 +117,12 @@ export async function executeAgentRun(
       now: Date.now(),
     });
   } catch (error) {
-    settleDispatchFailure(bb, db, args, error);
+    settleDispatchFailure(
+      bb,
+      db,
+      args,
+      error instanceof Error ? error : new Error(String(error)),
+    );
   } finally {
     publishAutomationChange(bb, args.automation.projectId, [
       "automations-changed",
@@ -139,7 +135,7 @@ function settleDispatchFailure(
   bb: Pick<BbPluginApi, "log">,
   db: Db,
   args: AgentRunArgs,
-  error: unknown,
+  error: Error,
 ): void {
   const message = errorMessage(error);
   if (isProjectGoneError(error)) {
@@ -175,10 +171,11 @@ async function reuseTargetThreadForRun(
       await bb.sdk.threads.get({ threadId: args.targetThreadId }),
     );
   } catch (error) {
-    if (!isThreadGoneError(error)) throw error;
+    const failure = error instanceof Error ? error : new Error(String(error));
+    if (!isThreadGoneError(failure)) throw failure;
     closeRunForUnusableTargetThread(bb, db, {
       ...args,
-      detail: errorMessage(error),
+      detail: errorMessage(failure),
     });
     return;
   }
@@ -284,9 +281,10 @@ export async function executeScriptRun(
       now: Date.now(),
     });
   } catch (error) {
-    args.onFailure(error);
+    const failure = error instanceof Error ? error : new Error(String(error));
+    args.onFailure(failure);
     bb.log.error(
-      `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
+      `Failed to run script for automation ${args.automation.id}: ${errorMessage(failure)}`,
     );
   } finally {
     publishAutomationChange(bb, args.automation.projectId, [
@@ -387,14 +385,15 @@ async function reconcileOutcome(
       await bb.sdk.threads.get({ threadId: run.threadId }),
     );
   } catch (error) {
-    if (isThreadGoneError(error)) {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    if (isThreadGoneError(failure)) {
       return {
         status: "skipped",
         skipReason: `interrupted: thread ${run.threadId} no longer exists`,
       };
     }
     bb.log.warn(
-      `Could not check thread ${run.threadId} for running automation run ${run.id}; leaving it running: ${errorMessage(error)}`,
+      `Could not check thread ${run.threadId} for running automation run ${run.id}; leaving it running: ${errorMessage(failure)}`,
     );
     return null;
   }

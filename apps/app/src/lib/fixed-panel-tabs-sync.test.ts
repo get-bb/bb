@@ -20,27 +20,12 @@ import {
   useFixedPanelTabsStorageMaintenance,
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
-import { BbHttpError } from "./sdk";
+import { BbHttpError, sdk } from "./sdk";
 
-const apiMocks = vi.hoisted(() => ({
-  getThreadTabs: vi.fn(),
-  updateThreadTabs: vi.fn(),
-}));
-
-vi.mock("./sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./sdk")>();
-  return {
-    ...actual,
-    sdk: {
-      threads: {
-        tabs: {
-          get: apiMocks.getThreadTabs,
-          update: apiMocks.updateThreadTabs,
-        },
-      },
-    },
-  };
-});
+const apiMocks = {
+  getThreadTabs: vi.spyOn(sdk.threads.tabs, "get"),
+  updateThreadTabs: vi.spyOn(sdk.threads.tabs, "update"),
+};
 
 function createQueryWrapper(queryClient: QueryClient) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
@@ -467,7 +452,7 @@ describe("fixed panel tab storage churn", () => {
     const garbageKey = getFixedPanelTabsStateStorageKey({
       threadId: "garbage",
     });
-    const staleShapeKey = getFixedPanelTabsStateStorageKey({
+    const staleLayoutKey = getFixedPanelTabsStateStorageKey({
       threadId: "stale-shape",
     });
     window.localStorage.setItem(
@@ -486,7 +471,7 @@ describe("fixed panel tab storage churn", () => {
     );
     window.localStorage.setItem(garbageKey, "{not json");
     window.localStorage.setItem(
-      staleShapeKey,
+      staleLayoutKey,
       JSON.stringify({ lastUsedAt: now, secondary: "nope" }),
     );
     window.localStorage.setItem("unrelated", "keep");
@@ -496,7 +481,7 @@ describe("fixed panel tab storage churn", () => {
     expect(window.localStorage.getItem(freshKey)).not.toBeNull();
     expect(window.localStorage.getItem(expiredKey)).toBeNull();
     expect(window.localStorage.getItem(garbageKey)).toBeNull();
-    expect(window.localStorage.getItem(staleShapeKey)).toBeNull();
+    expect(window.localStorage.getItem(staleLayoutKey)).toBeNull();
     expect(window.localStorage.getItem("unrelated")).toBe("keep");
   });
 });

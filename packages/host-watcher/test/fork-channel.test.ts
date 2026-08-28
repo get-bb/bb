@@ -2,19 +2,40 @@ import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { createChildChannel } from "../src/parcel-subprocess/fork-channel.js";
+import type { ParentToChildMessage } from "../src/parcel-subprocess/messages.js";
 
 type SendCallback = (error: Error | null) => void;
 
 class FakeChild extends EventEmitter {
+  stdin: ChildProcess["stdin"] = null;
+  stdout: ChildProcess["stdout"] = null;
+  stderr: ChildProcess["stderr"] = null;
+  stdio: ChildProcess["stdio"] = [null, null, null, null, null];
+  killed = false;
   connected = true;
+  exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
+  pid: number | undefined = undefined;
+  spawnargs: string[] = [];
+  spawnfile = "";
   killedWith: string | null = null;
   sendCount = 0;
-  send: (message: unknown, callback?: SendCallback) => boolean = () => true;
+  send: (message: ParentToChildMessage, callback?: SendCallback) => boolean =
+    () => true;
 
   kill(signal?: string): boolean {
+    this.killed = true;
     this.killedWith = signal ?? "SIGTERM";
     return true;
   }
+
+  disconnect(): void {}
+
+  unref(): void {}
+
+  ref(): void {}
+
+  [Symbol.dispose](): void {}
 
   failSyncWith(error: NodeJS.ErrnoException): void {
     this.send = () => {
@@ -24,7 +45,7 @@ class FakeChild extends EventEmitter {
   }
 
   failAsyncWith(error: NodeJS.ErrnoException): void {
-    this.send = (_message, callback) => {
+    this.send = (_message: ParentToChildMessage, callback?: SendCallback) => {
       this.sendCount += 1;
       callback?.(error);
       return false;
@@ -38,13 +59,10 @@ function epipe(): NodeJS.ErrnoException {
   return error;
 }
 
-function setup(): {
-  child: FakeChild;
-  channel: ReturnType<typeof createChildChannel>;
-  exits: number;
-} {
+function setup() {
   const child = new FakeChild();
-  const channel = createChildChannel(child as unknown as ChildProcess);
+  // SAFETY: FakeChild implements the child process members that this channel uses.
+  const channel = createChildChannel(child as ChildProcess);
   const state = { child, channel, exits: 0 };
   channel.onExit(() => {
     state.exits += 1;

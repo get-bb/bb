@@ -1,7 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { ToolCallForwarder } from "../tool-proxy-mcp.js";
 import { describe, expect, it } from "vitest";
 import { buildBridgeMcpServer } from "../tool-proxy-mcp.js";
+
+type ToolCallArgs = Parameters<ToolCallForwarder>[1];
 
 const RESULT_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -67,8 +70,7 @@ describe("buildBridgeMcpServer", () => {
   });
 
   it("forwards tool calls with raw arguments and reports errors", async () => {
-    const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
-      [];
+    const calls: Array<{ toolName: string; args: ToolCallArgs }> = [];
     const server = buildBridgeMcpServer(
       [
         {

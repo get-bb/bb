@@ -19,12 +19,13 @@ describe("local Cloud readiness", () => {
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
-    if (typeof address !== "object" || address === null) {
+    const port = Object(address).port;
+    if (port === undefined) {
       throw new Error("test server did not bind a TCP port");
     }
 
     await waitForCloudService({
-      url: `http://127.0.0.1:${address.port}/dashboard`,
+      url: `http://127.0.0.1:${port}/dashboard`,
       host: "bb.localhost:42745",
       serviceExited: () => false,
     });

@@ -1,14 +1,14 @@
 import type { TaskPriority, TaskStatus } from "../../shared/contract.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const STATUS_COLOR_CLASS: Record<TaskStatus, string> = {
+const STATUS_COLOR_CLASS = {
   backlog: "text-subtle-foreground",
   todo: "text-subtle-foreground",
   in_progress: "text-attention",
   in_review: "text-timeline-accent",
   done: "text-success",
   canceled: "text-subtle-foreground",
-};
+} satisfies Record<TaskStatus, string>;
 
 export function StatusIcon({
   status,
@@ -76,12 +76,12 @@ export function StatusIcon({
   );
 }
 
-const ACTIVE_BARS: Record<Exclude<TaskPriority, "urgent">, number> = {
+const ACTIVE_BARS = {
   none: 0,
   low: 1,
   medium: 2,
   high: 3,
-};
+} satisfies Record<Exclude<TaskPriority, "urgent">, number>;
 
 export function PriorityIcon({
   priority,

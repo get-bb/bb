@@ -24,8 +24,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
+import { z } from "zod";
 
-function errorText(error: unknown): string {
+type RpcError = Error | string;
+
+function errorText(error: RpcError): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -44,7 +47,7 @@ interface PairErrorCopy {
   tail: string;
 }
 
-const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
+const PAIR_ERROR_COPY = {
   invalid_code: {
     lead: "That code is invalid or has expired.",
     linkLabel: "Get a new code",
@@ -65,9 +68,9 @@ const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
     linkLabel: "Open the dashboard",
     tail: " — check your connection, then try again.",
   },
-};
+} satisfies Record<PairErrorCode, PairErrorCopy>;
 
-function toPairErrorCode(error: unknown): PairErrorCode {
+function toPairErrorCode(error: RpcError): PairErrorCode {
   const message = errorText(error);
   if (
     message === "invalid_code" ||
@@ -80,82 +83,32 @@ function toPairErrorCode(error: unknown): PairErrorCode {
   return "invalid_code";
 }
 
-function asStatus(payload: unknown): ConnectStatus | null {
-  if (payload === null || typeof payload !== "object") return null;
-  const record = payload as {
-    state?: unknown;
-    paired?: unknown;
-    handle?: unknown;
-    url?: unknown;
-    dashboardUrl?: unknown;
-    lastError?: unknown;
-    nextRetryAt?: unknown;
-    since?: unknown;
-    remoteClients?: unknown;
-    lastRemoteActivityAt?: unknown;
-    shares?: unknown;
-  };
-  if (
-    (record.state !== "disconnected" &&
-      record.state !== "pairing" &&
-      record.state !== "connected" &&
-      record.state !== "reconnecting") ||
-    typeof record.paired !== "boolean" ||
-    typeof record.since !== "number"
-  ) {
-    return null;
-  }
-  const shares: ConnectStatus["shares"] = [];
-  if (Array.isArray(record.shares)) {
-    for (const entry of record.shares) {
-      if (
-        entry !== null &&
-        typeof entry === "object" &&
-        typeof (entry as { hostId?: unknown }).hostId === "string" &&
-        typeof (entry as { hostName?: unknown }).hostName === "string" &&
-        typeof (entry as { port?: unknown }).port === "number" &&
-        typeof (entry as { createdAt?: unknown }).createdAt === "number" &&
-        typeof (entry as { url?: unknown }).url === "string"
-      ) {
-        shares.push({
-          hostId: (entry as { hostId: string }).hostId,
-          hostName: (entry as { hostName: string }).hostName,
-          port: (entry as { port: number }).port,
-          createdAt: (entry as { createdAt: number }).createdAt,
-          url: (entry as { url: string }).url,
-          ...(typeof (entry as { unavailableReason?: unknown })
-            .unavailableReason === "string"
-            ? {
-                unavailableReason: (entry as { unavailableReason: string })
-                  .unavailableReason,
-              }
-            : {}),
-        });
-      }
-    }
-  }
-  return {
-    state: record.state,
-    paired: record.paired,
-    handle: typeof record.handle === "string" ? record.handle : null,
-    url: typeof record.url === "string" ? record.url : null,
-    dashboardUrl:
-      typeof record.dashboardUrl === "string"
-        ? record.dashboardUrl
-        : "https://getbb.app/dashboard",
-    lastError: typeof record.lastError === "string" ? record.lastError : null,
-    nextRetryAt:
-      typeof record.nextRetryAt === "number" ? record.nextRetryAt : null,
-    since: record.since,
-    remoteClients:
-      typeof record.remoteClients === "number" ? record.remoteClients : 0,
-    lastRemoteActivityAt:
-      typeof record.lastRemoteActivityAt === "number"
-        ? record.lastRemoteActivityAt
-        : null,
-    shares,
-  };
-}
+const connectStatusSchema: z.ZodType<ConnectStatus> = z
+  .object({
+    state: z.enum(["disconnected", "pairing", "connected", "reconnecting"]),
+    paired: z.boolean(),
+    handle: z.string().nullable(),
+    url: z.string().nullable(),
+    dashboardUrl: z.string(),
+    lastError: z.string().nullable(),
+    nextRetryAt: z.number().nullable(),
+    since: z.number(),
+    remoteClients: z.number(),
+    lastRemoteActivityAt: z.number().nullable(),
+    shares: z.array(
+      z
+        .object({
+          hostId: z.string(),
+          hostName: z.string(),
+          port: z.number(),
+          createdAt: z.number(),
+          url: z.string(),
+          unavailableReason: z.string().optional(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
 
 function formatSince(sinceMs: number): string {
   const at = new Date(sinceMs);
@@ -398,7 +351,7 @@ function PairForm({
           submittedRef.current = null;
           onPaired();
         },
-        (rpcError: unknown) => {
+        (rpcError: RpcError) => {
           setPending(false);
           setErrorCode(toPairErrorCode(rpcError));
         },
@@ -471,7 +424,7 @@ function PairForm({
 
 type MachineCodeErrorCode = "machine_limit" | "network" | "not_paired";
 
-function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
+function toMachineCodeErrorCode(error: RpcError): MachineCodeErrorCode {
   const message = errorText(error);
   if (message === "machine_limit" || message === "not_paired") return message;
   return "network";
@@ -618,7 +571,7 @@ function AddMobileDeviceSectionContent({
         setMinting(false);
         setPayload(mobilePairingPayload(result));
       },
-      (rpcError: unknown) => {
+      (rpcError: RpcError) => {
         setMinting(false);
         setErrorCode(toMachineCodeErrorCode(rpcError));
       },
@@ -754,7 +707,7 @@ function SharedPortsSection({
         setPortInput("");
         setFormOpen(false);
       },
-      (rpcError: unknown) => {
+      (rpcError: RpcError) => {
         setExposing(false);
         setError(errorText(rpcError));
       },
@@ -771,7 +724,7 @@ function SharedPortsSection({
         () => {
           setRevokingShare(null);
         },
-        (rpcError: unknown) => {
+        (rpcError: RpcError) => {
           setRevokingShare(null);
           setError(errorText(rpcError));
         },
@@ -1066,7 +1019,7 @@ function ConnectedContent({
         onDisconnected();
         onChanged();
       },
-      (error: unknown) => {
+      (error: RpcError) => {
         setDisconnecting(false);
         setDisconnectError(errorText(error));
       },
@@ -1169,7 +1122,7 @@ function ReconnectingContent({
         onDisconnected();
         onChanged();
       },
-      (error: unknown) => {
+      (error: RpcError) => {
         setDisconnecting(false);
         setDisconnectError(errorText(error));
       },
@@ -1247,15 +1200,15 @@ function ConnectSettingsSection() {
   const refetch = useCallback(() => {
     rpc.call("status").then(
       (result) => {
-        const next = asStatus(result);
-        if (next !== null) {
-          setStatus(next);
+        const parsed = connectStatusSchema.safeParse(result);
+        if (parsed.success) {
+          setStatus(parsed.data);
           setLoadError(null);
         } else {
           setLoadError("Unexpected status payload.");
         }
       },
-      (error: unknown) => setLoadError(errorText(error)),
+      (error: RpcError) => setLoadError(errorText(error)),
     );
   }, [rpc]);
 
@@ -1264,9 +1217,9 @@ function ConnectSettingsSection() {
   }, [refetch]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
-    const next = asStatus(payload);
-    if (next !== null) {
-      setStatus(next);
+    const parsed = connectStatusSchema.safeParse(payload);
+    if (parsed.success) {
+      setStatus(parsed.data);
       setLoadError(null);
     }
   });

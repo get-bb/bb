@@ -19,7 +19,7 @@ interface BannerCopy {
   destructive: boolean;
 }
 
-const COPY: Record<Exclude<ConnectionBannerKind, "hidden">, BannerCopy> = {
+const COPY = {
   connecting: {
     icon: "Loading",
     message: (label) => `Connecting to ${label}…`,
@@ -40,7 +40,7 @@ const COPY: Record<Exclude<ConnectionBannerKind, "hidden">, BannerCopy> = {
     message: (label) => `Could not sign in to ${label}. Retrying…`,
     destructive: false,
   },
-};
+} satisfies Record<Exclude<ConnectionBannerKind, "hidden">, BannerCopy>;
 
 const ENTER_MS = 220;
 const EXIT_MS = 160;

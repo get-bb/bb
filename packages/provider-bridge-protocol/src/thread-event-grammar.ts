@@ -119,10 +119,7 @@ export class ThreadEventGrammar {
         return this.#checkOpenItem(state, event.type, event.item.id);
       }
       default: {
-        if (!ITEM_STREAMING_EVENT_TYPES.has(event.type)) {
-          return OK;
-        }
-        if (!("itemId" in event) || typeof event.itemId !== "string") {
+        if (!isItemStreamingEvent(event)) {
           return OK;
         }
         return this.#checkOpenItem(state, event.type, event.itemId);
@@ -169,6 +166,12 @@ function violation(
 
 function turnIdOf(event: ThreadEvent): string | undefined {
   return "scope" in event ? getThreadEventScopeTurnId(event.scope) : undefined;
+}
+
+type ItemStreamingEvent = Extract<ThreadEvent, { itemId: string }>;
+
+function isItemStreamingEvent(event: ThreadEvent): event is ItemStreamingEvent {
+  return ITEM_STREAMING_EVENT_TYPES.has(event.type);
 }
 
 function trim(itemIds: Set<string>): void {

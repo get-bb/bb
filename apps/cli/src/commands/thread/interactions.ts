@@ -583,7 +583,7 @@ async function resolveInteraction(args: ResolveInteractionArgs): Promise<void> {
       resolution,
       threadId: args.threadId,
     })
-    .catch((error: unknown) => {
+    .catch((error: Error) => {
       throw prependErrorContext(
         `Failed to ${args.failureAction} interaction ${args.interactionId}`,
         error,
@@ -918,7 +918,7 @@ export function registerInteractionCommands(
           const sdk = createCliBbSdk(getUrl());
           const updated = await sdk.threads.interactions
             .respond({ interactionId, threadId, value })
-            .catch((error: unknown) => {
+            .catch((error: Error) => {
               throw prependErrorContext(
                 `Failed to respond to interaction ${interactionId}`,
                 error,

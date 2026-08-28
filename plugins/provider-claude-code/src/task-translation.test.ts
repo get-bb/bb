@@ -35,15 +35,15 @@ function backgroundTaskItem(event: ThreadEvent): ThreadEventBackgroundTaskItem {
   throw new Error(`Event ${event.type} did not carry a backgroundTask item`);
 }
 
-const TASK_EVENT_TYPES = [
+const TASK_EVENT_TYPES: ReadonlySet<string> = new Set([
   "item/backgroundTask/progress",
   "item/backgroundTask/completed",
-] as const;
+]);
 
 function collectTaskEvents(events: ThreadEvent[]): ThreadEvent[] {
   return events.filter(
     (event) =>
-      (TASK_EVENT_TYPES as readonly string[]).includes(event.type) ||
+      TASK_EVENT_TYPES.has(event.type) ||
       (event.type === "item/started" && isBackgroundTaskItem(event.item)),
   );
 }

@@ -434,7 +434,9 @@ describe("thread creation child-thread boundary validation", () => {
     });
   }
 
-  async function captureCreateError(create: () => Promise<unknown>) {
+  async function captureCreateError(
+    create: () => ReturnType<typeof createThreadFromRequest>,
+  ) {
     try {
       await create();
     } catch (error) {

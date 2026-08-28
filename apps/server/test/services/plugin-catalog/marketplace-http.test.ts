@@ -57,17 +57,18 @@ describe("marketplace HTTP policy", () => {
       ]);
     });
     const result = new Promise<LookupAddress[]>((resolve, reject) => {
-      lookup(
-        "marketplace.example.com",
-        { all: true } as LookupOptions,
-        (error, addresses) => {
-          if (error !== null) {
-            reject(error);
-            return;
-          }
-          resolve(addresses as LookupAddress[]);
-        },
-      );
+      const options: LookupOptions = { all: true };
+      lookup("marketplace.example.com", options, (error, addresses) => {
+        if (error !== null) {
+          reject(error);
+          return;
+        }
+        if (!Array.isArray(addresses)) {
+          reject(new Error("expected all DNS addresses"));
+          return;
+        }
+        resolve(addresses);
+      });
     });
     await expect(result).rejects.toThrow(/non-public address 127\.0\.0\.1/u);
   });

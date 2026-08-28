@@ -23,6 +23,11 @@ interface PagerPosition {
   nextKey: string | null;
 }
 
+interface TaskPagerQuery {
+  parentTaskId: null;
+  projectId?: string;
+}
+
 export function pagerPosition(
   tasks: readonly Task[],
   taskKey: string,
@@ -48,12 +53,12 @@ function TaskPager({
   projectId: string | null;
   onNavigate: (route: TasksRoute) => void;
 }) {
+  const taskQuery: TaskPagerQuery = {
+    parentTaskId: null,
+  };
+  if (projectId !== null) taskQuery.projectId = projectId;
   const siblings = useTasksQuery(
-    async (rpc) =>
-      listAllTasks(rpc, {
-        ...(projectId === null ? {} : { projectId }),
-        parentTaskId: null,
-      }),
+    async (rpc) => listAllTasks(rpc, taskQuery),
     ["tasks:changed"],
     [projectId],
   );

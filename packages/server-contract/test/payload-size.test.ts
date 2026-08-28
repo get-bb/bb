@@ -2,15 +2,21 @@ import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   computeTimelineRowDelta,
+  type TimelineDelta,
   type TimelineRow,
 } from "../src/thread-timeline.js";
+
+type Payload =
+  | TimelineRow[]
+  | TimelineDelta
+  | (TimelineDelta & { rowOrder: string[] });
 
 interface PayloadSize {
   gzipBytes: number;
   jsonBytes: number;
 }
 
-function payloadSize(value: unknown): PayloadSize {
+function payloadSize(value: Payload): PayloadSize {
   const json = JSON.stringify(value);
   return {
     gzipBytes: gzipSync(json).byteLength,

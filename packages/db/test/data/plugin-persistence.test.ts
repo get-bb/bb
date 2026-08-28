@@ -9,6 +9,7 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "../../src/index.js";
+import type { CreatePluginArtifactInput } from "../../src/data/plugin-artifacts.js";
 import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
@@ -90,20 +91,22 @@ describe("normalized plugin persistence", () => {
   });
 
   it("rejects an npm artifact without registry integrity at runtime", () => {
-    const invalidArtifact = {
+    const invalidArtifact: CreatePluginArtifactInput = {
       id: "artifact-invalid",
       pluginId: "missing",
       sourceKind: "npm",
       npmResolvedVersion: "1.2.3",
       gitResolvedCommit: null,
+      gitCheckoutRoot: null,
       path: "/cache/artifact-invalid.tgz",
-      integrity: null,
+      integrity: "sha512-invalid",
       contentHash: null,
       validationResult: "pending",
       validatedAt: null,
     };
+    Object.assign(invalidArtifact, { integrity: null });
     expect(() =>
-      Reflect.apply(createPluginArtifact, undefined, [db, invalidArtifact]),
+      createPluginArtifact(db, invalidArtifact),
     ).toThrow(/resolution fields/);
   });
 

@@ -15,6 +15,7 @@ import {
 import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
 import {
   encodeClientTurnRequestIdNumber,
+  type JsonObject,
   type ClientTurnRequestId,
   type ThreadEvent,
 } from "@bb/domain";
@@ -291,7 +292,7 @@ function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
   };
 }
 
-function recordedThreadStops(harness: RaceHarness): Record<string, unknown>[] {
+function recordedThreadStops(harness: RaceHarness): JsonObject[] {
   return harness.record
     .read()
     .filter((request) => request.method === "thread/stop")

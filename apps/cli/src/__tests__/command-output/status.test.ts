@@ -19,6 +19,11 @@ describe("bb status command output", () => {
   it("bb status prints project/thread context", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-1");
+    const missing = vi.fn(async () => new Response(null, { status: 404 }));
+    stubServerApi({
+      "v1.projects.:id.$get": missing,
+      "v1.threads.:id.$get": missing,
+    });
 
     await runCommand(["status"], register);
 
@@ -53,6 +58,10 @@ describe("bb status command output", () => {
     stubServerApi({
       "v1.projects.:id.$get": getProject,
       "v1.threads.:id.$get": getThread,
+      "v1.threads.:id.timeline.$get": vi.fn(async () => ({
+        pendingTodos: null,
+      })),
+      "v1.threads.$get": vi.fn(async () => []),
       "v1.environments.:id.$get": getEnvironment,
     });
 
@@ -82,6 +91,10 @@ describe("bb status command output", () => {
     stubServerApi({
       "v1.projects.:id.$get": getProject,
       "v1.threads.:id.$get": getThread,
+      "v1.threads.:id.timeline.$get": vi.fn(async () => ({
+        pendingTodos: null,
+      })),
+      "v1.threads.$get": vi.fn(async () => []),
     });
 
     await runCommand(["status"], register);

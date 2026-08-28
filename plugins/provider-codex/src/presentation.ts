@@ -6,6 +6,8 @@ import {
   experimental_toolPresentation as toolPresentation,
   experimental_withTitle as withTitle,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
+import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 
 const SHELL_WRAPPER_PATTERN =
   /^(?:\S*\/)?(?:sh|bash|zsh)\s+(?:-lc|-c)\s+([\s\S]+)$/;
@@ -94,9 +96,13 @@ export function planStepsPresentation(args: {
 
 const NODE_REPL_SERVER = "node_repl";
 
+const nodeReplArgumentsSchema = z
+  .object({ title: z.string().optional() })
+  .passthrough();
+
 function nodeReplPresentation(
   tool: string,
-  args: unknown,
+  args: JsonValue,
 ): DeltaPresentation | null {
   if (tool === "js_reset") {
     return {
@@ -110,12 +116,10 @@ function nodeReplPresentation(
   if (tool !== "js") {
     return null;
   }
+  const parsedArgs = nodeReplArgumentsSchema.safeParse(args);
   const title =
-    args !== null &&
-    typeof args === "object" &&
-    "title" in args &&
-    typeof args.title === "string"
-      ? presentationTitle(args.title)
+    parsedArgs.success && parsedArgs.data.title !== undefined
+      ? presentationTitle(parsedArgs.data.title)
       : undefined;
   return withTitle(
     {
@@ -129,7 +133,7 @@ function nodeReplPresentation(
 export function mcpToolPresentation(args: {
   server: string;
   tool: string;
-  args: unknown;
+  args: JsonValue;
 }): DeltaPresentation {
   if (args.server === NODE_REPL_SERVER) {
     const nodeRepl = nodeReplPresentation(args.tool, args.args);
@@ -157,21 +161,19 @@ export function macOsPermissionPresentation(
   return { ...presentation, detail: presentationDetail(detail) };
 }
 
-const COLLAB_AGENT_LABELS: Readonly<
-  Record<string, DeltaPresentation["label"]>
-> = {
-  spawnAgent: { pending: "Spawning agent", completed: "Spawned agent" },
-  wait: { pending: "Waiting for agents", completed: "Waited for agents" },
-  resumeAgent: { pending: "Resuming agent", completed: "Resumed agent" },
-  sendInput: { pending: "Messaging agent", completed: "Messaged agent" },
-  closeAgent: { pending: "Closing agent", completed: "Closed agent" },
-};
+const COLLAB_AGENT_LABELS = new Map<string, DeltaPresentation["label"]>([
+  ["spawnAgent", { pending: "Spawning agent", completed: "Spawned agent" }],
+  ["wait", { pending: "Waiting for agents", completed: "Waited for agents" }],
+  ["resumeAgent", { pending: "Resuming agent", completed: "Resumed agent" }],
+  ["sendInput", { pending: "Messaging agent", completed: "Messaged agent" }],
+  ["closeAgent", { pending: "Closing agent", completed: "Closed agent" }],
+]);
 
 export function collabAgentPresentation(args: {
   tool: string;
   prompt: string | null;
 }): DeltaPresentation {
-  const label = COLLAB_AGENT_LABELS[args.tool] ?? {
+  const label = COLLAB_AGENT_LABELS.get(args.tool) ?? {
     pending: `Running ${args.tool}`,
     completed: `Ran ${args.tool}`,
   };

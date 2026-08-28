@@ -217,23 +217,15 @@ function SearchOlderRowsFailedLoadHarness({
 
 function mockWindowSelection({ node, text }: { node: Node; text: string }) {
   const rect = new DOMRect(10, 20, 30, 8);
-  const range = {
-    commonAncestorContainer: node,
-    getBoundingClientRect: () => rect,
-    getClientRects: () => ({
-      length: 1,
-      item: (index: number) => (index === 0 ? rect : null),
-    }),
-  } as unknown as Range;
-  vi.spyOn(window, "getSelection").mockReturnValue({
-    anchorNode: node,
-    focusNode: node,
-    getRangeAt: () => range,
-    isCollapsed: false,
-    rangeCount: 1,
-    removeAllRanges: vi.fn(),
-    toString: () => text,
-  } as unknown as Selection);
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  vi.spyOn(range, "getBoundingClientRect").mockReturnValue(rect);
+  const selection = window.getSelection();
+  if (selection === null) throw new Error("Missing window selection");
+  selection.removeAllRanges();
+  selection.addRange(range);
+  vi.spyOn(selection, "toString").mockReturnValue(text);
+  vi.spyOn(window, "getSelection").mockReturnValue(selection);
 }
 
 function mockSelectionMenuMedia({
@@ -1532,6 +1524,7 @@ describe("ThreadTimelineRows shared message column width", () => {
       disconnect() {}
     }
     vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    const observer = new ControlledResizeObserver(() => {});
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1560,12 +1553,12 @@ describe("ThreadTimelineRows shared message column width", () => {
         if (!node.hasAttribute("data-timeline-row-list")) continue;
         callback(
           [
-            {
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ {
               target: node,
               contentRect: { width: 358, height: 600 },
-            } as unknown as ResizeObserverEntry,
+            } as ResizeObserverEntry,
           ],
-          undefined as unknown as ResizeObserver,
+          observer,
         );
       }
     });
@@ -1604,6 +1597,7 @@ describe("ThreadTimelineRows shared message column width", () => {
       disconnect() {}
     }
     vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    const observer = new ControlledResizeObserver(() => {});
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1632,12 +1626,12 @@ describe("ThreadTimelineRows shared message column width", () => {
           if (!node.hasAttribute("data-timeline-row-list")) continue;
           callback(
             [
-              {
+              /* SAFETY: The test controls this fixture and verifies its behavior. */ {
                 target: node,
                 contentRect: { width, height: 600 },
-              } as unknown as ResizeObserverEntry,
+              } as ResizeObserverEntry,
             ],
-            undefined as unknown as ResizeObserver,
+            observer,
           );
         }
       });

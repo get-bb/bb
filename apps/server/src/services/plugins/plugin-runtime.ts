@@ -5,26 +5,20 @@ import {
   type NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  readFileSync,
-  realpathSync,
-  type FSWatcher,
-} from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
+import { z } from "zod";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import {
   isPluginOwnedIconPath,
   parseNamespacedGlyph,
   PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
+  type JsonValue,
   type Thread,
 } from "@bb/domain";
 import {
@@ -35,7 +29,11 @@ import {
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
-import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
+import {
+  experimental_aiServicesHostContract,
+  type ExperimentalAiInferenceCompleteInput,
+  type ExperimentalAiVoiceTranscribeInput,
+} from "@get-bb/plugin-sdk/ai-services";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -77,18 +75,40 @@ import type {
   PluginRuntimeStatus,
   PluginServiceDeps,
   PluginHostArtifactSnapshot,
+  PluginHostCallResult,
   PluginWireLookup,
   ServiceRuntime,
 } from "./plugin-service-internal.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
+import type { ProviderRegistration } from "../providers/provider-registry.js";
 
 const pluginSdkRuntimePath = join(
   dirname(fileURLToPath(import.meta.url)),
   "plugin-sdk-runtime.js",
 );
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
+const { createReadStream, existsSync, readFileSync, realpathSync } =
+  process.getBuiltinModule("node:fs");
+const { readFile, readdir, stat } =
+  process.getBuiltinModule("node:fs/promises");
 
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+
+type PluginRuntimeThrownValue = Error | JsonValue | bigint | symbol | undefined;
+
+type PluginServerFactory = (api: BbPluginApi) => void | Promise<void>;
+
+const pluginServerModuleSchema = z
+  .object({ default: z.function().optional() })
+  .passthrough();
+
+interface SettingsDescriptorsRef {
+  current: PluginSettingDescriptors;
+}
+
+interface PluginSourceWatcher {
+  close(): void;
+}
 
 async function hashFile(
   path: string,
@@ -102,11 +122,11 @@ async function hashFile(
   return { digest: hash.digest("hex"), byteLength };
 }
 
-export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
+export function pluginSdkAliasFor(runtimePath: string) {
   return {
     [PLUGIN_SDK_SPECIFIER]: runtimePath,
     [LEGACY_PLUGIN_SDK_SPECIFIER]: runtimePath,
-  };
+  } satisfies Record<string, string>;
 }
 
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
@@ -157,11 +177,11 @@ function registerMutableRootHooks(): void {
   });
 }
 
-const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
+const PROVIDER_ICON_CONTENT_TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".webp": "image/webp",
-};
+} satisfies Record<".svg" | ".png" | ".webp", string>;
 
 export function readPluginProviderIcon(
   rootDir: string,
@@ -171,10 +191,11 @@ export function readPluginProviderIcon(
     return null;
   }
   const asset = icon;
-  const contentType = PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
-  if (contentType === undefined) {
+  const extension = extname(asset).toLowerCase();
+  if (extension !== ".svg" && extension !== ".png" && extension !== ".webp") {
     return null;
   }
+  const contentType = PROVIDER_ICON_CONTENT_TYPES[extension];
   const resolved = resolve(rootDir, asset);
   if (!resolved.startsWith(resolve(rootDir) + sep)) {
     return null;
@@ -244,10 +265,10 @@ function releaseMutableRoots(rootUrls: Iterable<string>): void {
 
 type PluginDevBuildKind = "frontend" | "host";
 
-const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
+const DEV_BUILD_PROBLEM_LABELS = {
   frontend: "frontend bundle build failed",
   host: "host bundle build failed",
-};
+} satisfies Record<PluginDevBuildKind, string>;
 
 const PREVIOUS_INSTANCE_KEPT = "the previous instance is still running";
 
@@ -261,7 +282,7 @@ interface ServiceInstance {
   id: string;
   service: ServiceRuntime;
   controller: AbortController;
-  uncaughtError: { error: unknown } | undefined;
+  uncaughtError: { error: PluginRuntimeThrownValue } | undefined;
 }
 
 interface PluginRuntimeContext {
@@ -312,7 +333,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const withPluginOperationLock = createKeyedLock();
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const disposingPluginIds = new Set<string>();
-  const builtinSourceWatchers: FSWatcher[] = [];
+  const builtinSourceWatchers: PluginSourceWatcher[] = [];
   const ownedRootUrls = new Set<string>();
 
   const statuses = new Map<
@@ -452,7 +473,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
               crashed: true,
               error: instance.uncaughtError.error,
             }),
-      (error: unknown) =>
+      (error: PluginRuntimeThrownValue) =>
         onServiceSettled(id, service, {
           crashed: true,
           error: instance.uncaughtError?.error ?? error,
@@ -460,7 +481,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
-  function handleUncaughtException(error: unknown): boolean {
+  function handleUncaughtException(error: PluginRuntimeThrownValue): boolean {
     const instance = serviceContext.getStore();
     if (instance === undefined) return false;
     const { id, service, controller } = instance;
@@ -500,7 +521,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function onServiceSettled(
     id: string,
     service: ServiceRuntime,
-    outcome: { crashed: false } | { crashed: true; error: unknown },
+    outcome:
+      | { crashed: false }
+      | { crashed: true; error: PluginRuntimeThrownValue },
   ): void {
     service.current = null;
     service.controller = null;
@@ -728,7 +751,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function runFactoryTimeBoxed(
-    factory: (api: BbPluginApi) => unknown,
+    factory: PluginServerFactory,
     api: BbPluginApi,
   ): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
@@ -1033,16 +1056,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       pluginVersion: manifest.version,
     });
     if (metadataProblem !== null) throw new Error(metadataProblem);
-    let declaredDigest: unknown;
-    try {
-      const parsed: unknown = JSON.parse(rawMeta);
-      declaredDigest =
-        typeof parsed === "object" && parsed !== null
-          ? Reflect.get(parsed, "artifactDigest")
-          : undefined;
-    } catch {
-      declaredDigest = undefined;
-    }
+    const declaredDigest = (() => {
+      try {
+        const parsed = z
+          .object({ artifactDigest: z.string() })
+          .passthrough()
+          .safeParse(JSON.parse(rawMeta));
+        return parsed.success ? parsed.data.artifactDigest : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
     const digest = artifact.digest;
     if (declaredDigest !== digest) {
       throw new Error(
@@ -1117,7 +1141,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } else {
       icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
     }
-    return deps.providerRegistry.register({
+    const registration: ProviderRegistration & {
+      installRank: ProviderInstallRank;
+    } = {
       ...buildPluginProviderRegistration({
         available: args.available,
         pluginId: args.row.id,
@@ -1129,11 +1155,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             descriptors: args.settingsDescriptors,
           }),
       }),
-      ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
       iconNames: new Set(args.brandingAssets.icons.keys()),
       installRank: providerInstallRank(args.row),
-    });
+    };
+    if (icon !== null) registration.icon = icon;
+    return deps.providerRegistry.register(registration);
   }
 
   function replaceUnavailableProviderRegistrations(
@@ -1240,7 +1267,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       row.id,
       manifest,
     );
-    const settingsDescriptorsRef: { current: PluginSettingDescriptors } = {
+    const settingsDescriptorsRef: SettingsDescriptorsRef = {
       current: {},
     };
     const handle = createPluginApi({
@@ -1251,7 +1278,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       getSdk: () => boundSdk,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
-        deps.hub.notifyPluginSignal(row.id, channel, payload);
+        deps.hub.notifyPluginSignal(row.id, channel, payload ?? null);
       },
       reportNeedsConfiguration: (message) => {
         reportNeedsConfiguration(row.id, message);
@@ -1326,21 +1353,27 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           throw new Error("host plugin transport is unavailable");
         }
         const callPluginHost = deps.callPluginHost;
+        type AiServiceMethod = keyof typeof experimental_aiServicesHostContract;
+        type AiServiceInput =
+          | ExperimentalAiInferenceCompleteInput
+          | ExperimentalAiVoiceTranscribeInput;
         const call = (
-          method: keyof typeof experimental_aiServicesHostContract,
-          input: unknown,
+          method: AiServiceMethod,
+          input: AiServiceInput,
           options: { hostId: string; timeoutMs: number; signal?: AbortSignal },
-        ): Promise<unknown> =>
-          callPluginHost({
+        ): Promise<PluginHostCallResult> => {
+          const callArgs = {
             pluginId: row.id,
             contract: experimental_aiServicesHostContract,
             method,
             input,
             hostId: options.hostId,
             timeoutMs: options.timeoutMs,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
             artifact,
-          });
+          };
+          if (options.signal === undefined) return callPluginHost(callArgs);
+          return callPluginHost({ ...callArgs, signal: options.signal });
+        };
         return deps.aiServices.register({
           ...declaration,
           pluginId: row.id,
@@ -1395,25 +1428,24 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
-      const jiti = createJiti(import.meta.url, {
-        moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
-      });
-      const mod = (await jiti.import(
-        await resolveServerEntry(row, manifest),
-      )) as {
-        default?: unknown;
-      };
-      const factory = mod.default;
-      if (typeof factory !== "function") {
+      const jiti =
+        pluginSdkAlias === undefined
+          ? createJiti(import.meta.url, { moduleCache: false })
+          : createJiti(import.meta.url, {
+              moduleCache: false,
+              alias: pluginSdkAlias,
+            });
+      const parsedModule = pluginServerModuleSchema.safeParse(
+        await jiti.import(await resolveServerEntry(row, manifest)),
+      );
+      if (!parsedModule.success || parsedModule.data.default === undefined) {
         throw new Error(
-          `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
+          "server entry must default-export a factory (bb) => void",
         );
       }
-      await runFactoryTimeBoxed(
-        factory as (api: BbPluginApi) => unknown,
-        handle.api,
-      );
+      // SAFETY: The module schema checks that default exports a callable plugin factory.
+      const factory = parsedModule.data.default as PluginServerFactory;
+      await runFactoryTimeBoxed(factory, handle.api);
     } catch (error) {
       rollbackGeneration?.();
       for (const database of handle.databaseHandles.splice(0)) {
@@ -1521,7 +1553,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const details = [
         agentToolProblems.get(row.id),
         appBundleCandidate.problem,
-      ].filter((detail): detail is string => typeof detail === "string");
+      ].filter(
+        (detail): detail is string => detail !== null && detail !== undefined,
+      );
       setStatus(
         row.id,
         "running",

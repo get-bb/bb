@@ -20,10 +20,7 @@ interface PullRequestStateDisplay extends PullRequestDisplay {
   dotClass: string;
 }
 
-export const PULL_REQUEST_STATE_DISPLAY: Record<
-  PullRequestState,
-  PullRequestStateDisplay
-> = {
+export const PULL_REQUEST_STATE_DISPLAY = {
   open: {
     label: "Open",
     icon: "GitPullRequestArrow",
@@ -48,70 +45,65 @@ export const PULL_REQUEST_STATE_DISPLAY: Record<
     className: "text-destructive",
     dotClass: "bg-destructive",
   },
-};
+} satisfies Record<PullRequestState, PullRequestStateDisplay>;
 
-const CHECKS_DISPLAY: Record<ThreadPullRequestChecksState, PullRequestDisplay> =
-  {
-    passing: {
-      label: "Checks passing",
-      icon: "CircleCheck",
-      className: "text-success",
-    },
-    failing: {
-      label: "Checks failing",
-      icon: "CircleX",
-      className: "text-destructive",
-    },
-    pending: {
-      label: "Checks pending",
-      icon: "Clock",
-      className: "text-warning-text",
-    },
-    no_checks: {
-      label: "No checks",
-      icon: "Circle",
-      className: "text-muted-foreground",
-    },
-    unknown: {
-      label: "Checks unknown",
-      icon: "AlertTriangle",
-      className: "text-warning-text",
-    },
-  };
+const CHECKS_DISPLAY = {
+  passing: {
+    label: "Checks passing",
+    icon: "CircleCheck",
+    className: "text-success",
+  },
+  failing: {
+    label: "Checks failing",
+    icon: "CircleX",
+    className: "text-destructive",
+  },
+  pending: {
+    label: "Checks pending",
+    icon: "Clock",
+    className: "text-warning-text",
+  },
+  no_checks: {
+    label: "No checks",
+    icon: "Circle",
+    className: "text-muted-foreground",
+  },
+  unknown: {
+    label: "Checks unknown",
+    icon: "AlertTriangle",
+    className: "text-warning-text",
+  },
+} satisfies Record<ThreadPullRequestChecksState, PullRequestDisplay>;
 
-const REVIEW_DISPLAY: Record<ThreadPullRequestReviewState, PullRequestDisplay> =
-  {
-    approved: {
-      label: "Approved",
-      icon: "CircleCheck",
-      className: "text-success",
-    },
-    changes_requested: {
-      label: "Changes requested",
-      icon: "CircleX",
-      className: "text-destructive",
-    },
-    review_required: {
-      label: "Review required",
-      icon: "Clock",
-      className: "text-destructive",
-    },
-    review_requested: {
-      label: "Review requested",
-      icon: "Clock",
-      className: "text-destructive",
-    },
-    none: {
-      label: "No review",
-      icon: "Circle",
-      className: "text-muted-foreground",
-    },
-  };
+const REVIEW_DISPLAY = {
+  approved: {
+    label: "Approved",
+    icon: "CircleCheck",
+    className: "text-success",
+  },
+  changes_requested: {
+    label: "Changes requested",
+    icon: "CircleX",
+    className: "text-destructive",
+  },
+  review_required: {
+    label: "Review required",
+    icon: "Clock",
+    className: "text-destructive",
+  },
+  review_requested: {
+    label: "Review requested",
+    icon: "Clock",
+    className: "text-destructive",
+  },
+  none: {
+    label: "No review",
+    icon: "Circle",
+    className: "text-muted-foreground",
+  },
+} satisfies Record<ThreadPullRequestReviewState, PullRequestDisplay>;
 
-const MERGEABILITY_DISPLAY: Record<
-  ThreadPullRequestMergeabilityState,
-  PullRequestDisplay
-> = {
+const MERGEABILITY_DISPLAY = {
   mergeable: {
     label: "Mergeable",
     icon: "CircleCheck",
@@ -137,12 +129,9 @@ const MERGEABILITY_DISPLAY: Record<
     icon: "AlertTriangle",
     className: "text-warning-text",
   },
-};
+} satisfies Record<ThreadPullRequestMergeabilityState, PullRequestDisplay>;
 
-const ATTENTION_DISPLAY: Record<
-  ThreadPullRequestAttentionState,
-  PullRequestDisplay
-> = {
+const ATTENTION_DISPLAY = {
   checks_failed: {
     ...CHECKS_DISPLAY.failing,
     icon: "GitPullRequestArrow",
@@ -176,7 +165,7 @@ const ATTENTION_DISPLAY: Record<
   merged: PULL_REQUEST_STATE_DISPLAY.merged,
   closed: PULL_REQUEST_STATE_DISPLAY.closed,
   none: PULL_REQUEST_STATE_DISPLAY.open,
-};
+} satisfies Record<ThreadPullRequestAttentionState, PullRequestDisplay>;
 
 export function getPullRequestChecksDisplay(
   pullRequest: ThreadPullRequest,

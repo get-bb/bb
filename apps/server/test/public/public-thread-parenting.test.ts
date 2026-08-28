@@ -19,6 +19,17 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+interface CreateChildRequestBody {
+  origin: string;
+  projectId: string;
+  providerId: string;
+  model: string;
+  input: { type: string; text: string }[];
+  environment: { type: string; environmentId: string };
+  parentThreadId: string;
+  visibility?: "hidden" | "visible";
+}
+
 describe("public thread parenting routes", () => {
   it("creates a child thread under a parent", async () => {
     await withTestHarness(async (harness) => {
@@ -94,21 +105,25 @@ describe("public thread parenting routes", () => {
         providerThreadId: "provider-hidden-parent-create-child",
         threadId: hiddenParentThread.id,
       });
-      const createChild = async (visibility?: "hidden" | "visible") =>
-        harness.app.request("/api/v1/threads", {
+      const createChild = async (visibility?: "hidden" | "visible") => {
+        const requestBody: CreateChildRequestBody = {
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "text", text: "Create child work" }],
+          environment: { type: "reuse", environmentId: environment.id },
+          parentThreadId: hiddenParentThread.id,
+        };
+        if (visibility !== undefined) {
+          requestBody.visibility = visibility;
+        }
+        return harness.app.request("/api/v1/threads", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            origin: "app",
-            projectId: project.id,
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Create child work" }],
-            environment: { type: "reuse", environmentId: environment.id },
-            parentThreadId: hiddenParentThread.id,
-            ...(visibility === undefined ? {} : { visibility }),
-          }),
+          body: JSON.stringify(requestBody),
         });
+      };
 
       const inheritedResponse = await createChild();
       expect(inheritedResponse.status).toBe(201);

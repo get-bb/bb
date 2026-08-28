@@ -31,7 +31,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getWorkspaceOpenTargetFallbackIcon } from "./workspace-open-target-display";
 
-const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
+const WORKSPACE_OPEN_TARGET_ICONS = {
   "android-studio": androidStudioIcon,
   antigravity: antigravityIcon,
   bbedit: bbeditIcon,
@@ -57,7 +57,7 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   webstorm: webstormIcon,
   xcode: xcodeIcon,
   zed: zedIcon,
-};
+} satisfies Record<string, string | undefined>;
 
 interface WorkspaceOpenTargetIconProps {
   className?: string;
@@ -94,7 +94,9 @@ export function WorkspaceOpenTargetIcon({
   }
 
   if (icon.kind === "builtin") {
-    const iconSrc = WORKSPACE_OPEN_TARGET_ICONS[icon.name];
+    const iconSrc = Object.entries(WORKSPACE_OPEN_TARGET_ICONS).find(
+      ([name]) => name === icon.name,
+    )?.[1];
     if (iconSrc) {
       return (
         <img

@@ -17,39 +17,41 @@ import type {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
+import * as hostDaemonModule from "@/hooks/useHostDaemon";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeProviderInfo } from "@/test/provider-info-fixture";
 import { MachineSettingsView } from "./MachineSettingsView";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    hosts: {
-      delete: vi.fn(),
-      list: vi.fn(),
-      providerCliStatus: vi.fn(),
-      retryUpdate: vi.fn(),
-      update: vi.fn(),
-    },
-    providers: { list: vi.fn() },
-    system: { config: vi.fn(), version: vi.fn() },
-  },
-}));
+vi.spyOn(sdk.hosts, "delete");
+vi.spyOn(sdk.hosts, "list");
+vi.spyOn(sdk.hosts, "providerCliStatus");
+vi.spyOn(sdk.hosts, "retryUpdate");
+vi.spyOn(sdk.hosts, "update");
+vi.spyOn(sdk.providers, "list");
+vi.spyOn(sdk.system, "config");
+vi.spyOn(sdk.system, "version");
+vi.spyOn(wsManager, "subscribe").mockImplementation(() => {});
+vi.spyOn(wsManager, "unsubscribe").mockImplementation(() => {});
 
-vi.mock("@/lib/ws", () => ({
-  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
+interface HostDaemonTestState {
+  localDaemonHostId: string | null;
+  platform: "darwin" | "linux" | "wsl" | "unknown" | null;
+}
 
-const hostDaemon = vi.hoisted(() => ({
-  localDaemonHostId: null as string | null,
-  platform: null as "darwin" | "linux" | "wsl" | "unknown" | null,
-}));
+const hostDaemon: HostDaemonTestState = {
+  localDaemonHostId: null,
+  platform: null,
+};
 
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({
-    localDaemonHostId: hostDaemon.localDaemonHostId,
-    platform: hostDaemon.platform,
-  }),
+vi.spyOn(hostDaemonModule, "useHostDaemon").mockImplementation(() => ({
+  localDaemonHostId: hostDaemon.localDaemonHostId,
+  localHostId: null,
+  hasDaemon: false,
+  supportsNativeFolderPicker: false,
+  platform: hostDaemon.platform,
+  isLocalDaemonHost: () => false,
 }));
 
 const HOST_ID = "host_remote";

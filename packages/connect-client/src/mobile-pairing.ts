@@ -1,4 +1,5 @@
 import { deriveConnectBaseUrl } from "./urls.js";
+import { z } from "zod";
 
 export interface MobilePairingPayload {
   code: string;
@@ -6,6 +7,13 @@ export interface MobilePairingPayload {
   apex: string;
   expiresAt: number;
 }
+
+const mobilePairingPayloadSchema = z.object({
+  code: z.string().min(1),
+  serverUrl: z.string(),
+  apex: z.string(),
+  expiresAt: z.number().int(),
+});
 
 export function mobilePairingPayload(machineCode: {
   code: string;
@@ -31,8 +39,8 @@ export function encodeMobilePairingPayload(
   });
 }
 
-function isHttpUrl(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0) return false;
+function isHttpUrl(value: string): boolean {
+  if (value.length === 0) return false;
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
@@ -50,29 +58,10 @@ export function parseMobilePairingPayload(
   } catch {
     return null;
   }
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+  const parsed = mobilePairingPayloadSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  if (!isHttpUrl(parsed.data.serverUrl) || !isHttpUrl(parsed.data.apex)) {
     return null;
   }
-  const record = raw as {
-    code?: unknown;
-    serverUrl?: unknown;
-    apex?: unknown;
-    expiresAt?: unknown;
-  };
-  if (
-    typeof record.code !== "string" ||
-    record.code.length === 0 ||
-    !isHttpUrl(record.serverUrl) ||
-    !isHttpUrl(record.apex) ||
-    typeof record.expiresAt !== "number" ||
-    !Number.isInteger(record.expiresAt)
-  ) {
-    return null;
-  }
-  return {
-    code: record.code,
-    serverUrl: record.serverUrl,
-    apex: record.apex,
-    expiresAt: record.expiresAt,
-  };
+  return parsed.data;
 }

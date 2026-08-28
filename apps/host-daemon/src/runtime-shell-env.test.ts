@@ -105,13 +105,14 @@ async function createFakeCliPackage(
 function createShellEnvSpawnResult(
   args: CreateShellEnvSpawnResultArgs,
 ): UserShellEnvSpawnResult {
-  return {
-    ...(args.error === undefined ? {} : { error: args.error }),
+  const result: UserShellEnvSpawnResult = {
     signal: args.signal ?? null,
     status: args.status ?? 0,
     stderr: args.stderr ?? "",
     stdout: args.stdout ?? "",
   };
+  if (args.error !== undefined) result.error = args.error;
+  return result;
 }
 
 function createMarkedShellEnvOutput(pathValue: string): string {

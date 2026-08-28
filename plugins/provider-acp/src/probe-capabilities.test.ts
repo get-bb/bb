@@ -3,12 +3,15 @@ import type { AcpAgentDefinition } from "./agents.js";
 import type { AcpProbeResult } from "./contract.js";
 import { applyAcpAgentProbe } from "./probe-capabilities.js";
 
-const agent = (fork?: "none" | "tip"): AcpAgentDefinition => ({
-  id: "acp-example",
-  displayName: "Example",
-  launch: { displayName: "Example", command: "example", args: [], env: {} },
-  ...(fork === undefined ? {} : { fork }),
-});
+const agent = (fork?: "none" | "tip"): AcpAgentDefinition => {
+  const definition: AcpAgentDefinition = {
+    id: "acp-example",
+    displayName: "Example",
+    launch: { displayName: "Example", command: "example", args: [], env: {} },
+  };
+  if (fork !== undefined) definition.fork = fork;
+  return definition;
+};
 
 const reachable = (fork: boolean): AcpProbeResult => ({
   reachable: true,

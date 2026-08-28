@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { BridgeRecordingDirection } from "../bridge-kit/bridge-recorder.js";
 import {
   PARITY_INITIALIZE_ID,
@@ -22,18 +23,18 @@ export interface RerecordCurrentBridgeLaneResult {
   stalls: string[];
 }
 
-interface WireMessage {
-  id?: string | number;
-  method?: string;
-  [key: string]: unknown;
-}
+const wireMessageSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    method: z.string().optional(),
+  })
+  .catchall(z.json());
+type WireMessage = z.infer<typeof wireMessageSchema>;
 
 function parseWireLine(line: string): WireMessage | null {
   try {
-    const parsed: unknown = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as WireMessage)
-      : null;
+    const parsed = wireMessageSchema.safeParse(JSON.parse(line));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }

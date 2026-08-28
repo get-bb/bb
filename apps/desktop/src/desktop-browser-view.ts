@@ -1,4 +1,9 @@
-import { Menu, WebContentsView, session, type Session } from "electron";
+import type {
+  MenuItemConstructorOptions,
+  Session,
+  WebContentsView,
+  WebContentsViewConstructorOptions,
+} from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -75,6 +80,14 @@ export interface DesktopBrowserHostContentBounds {
   width: number;
 }
 
+export interface DesktopBrowserViewRuntime {
+  buildContextMenu(template: MenuItemConstructorOptions[]): { popup(): void };
+  createWebContentsView(
+    options: WebContentsViewConstructorOptions,
+  ): WebContentsView;
+  fromPartition(partition: string): Session;
+}
+
 export interface DesktopBrowserHostContentView {
   addChildView(view: WebContentsView): void;
   removeChildView(view: WebContentsView): void;
@@ -103,6 +116,7 @@ export interface CreateDesktopBrowserViewManagerArgs {
   focusHostWebContents: (hostWebContentsId: number) => void;
   partition?: string;
   resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
+  runtime: DesktopBrowserViewRuntime;
 }
 
 interface HostScopedRequestArgs<TRequest> {
@@ -344,7 +358,7 @@ export function createDesktopBrowserViewManager(
     if (hardenedSession !== null) {
       return hardenedSession;
     }
-    const browserSession = session.fromPartition(partition);
+    const browserSession = args.runtime.fromPartition(partition);
     browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(isAllowedBrowserPermission(permission));
     });
@@ -461,7 +475,7 @@ export function createDesktopBrowserViewManager(
         return;
       }
       const { editFlags } = params;
-      const menu = Menu.buildFromTemplate([
+      const menu = args.runtime.buildContextMenu([
         {
           role: "cut",
           enabled: editFlags.canCut,
@@ -552,9 +566,9 @@ export function createDesktopBrowserViewManager(
     );
   }
 
-  function createEntry(args: CreateEntryArgs): BrowserViewEntry {
+  function createEntry(entryArgs: CreateEntryArgs): BrowserViewEntry {
     ensureHardenedSession();
-    const view = new WebContentsView({
+    const view = args.runtime.createWebContentsView({
       webPreferences: {
         partition,
         sandbox: true,
@@ -567,7 +581,7 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
-      desiredBounds: args.desiredBounds,
+      desiredBounds: entryArgs.desiredBounds,
       popupTimestamps: [],
       rendererRecoveryAttempts: 0,
       rendererRecoveryState: "healthy",
@@ -576,9 +590,9 @@ export function createDesktopBrowserViewManager(
       visible: false,
       activeFindRequestId: null,
     };
-    wireWebContents(args.hostWindow, args.tabId, entry);
-    args.hostWindow.contentView.addChildView(view);
-    entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
+    wireWebContents(entryArgs.hostWindow, entryArgs.tabId, entry);
+    entryArgs.hostWindow.contentView.addChildView(view);
+    entries.set(browserViewKey(entryArgs.hostWindow, entryArgs.tabId), entry);
     entriesByWebContentsId.set(view.webContents.id, entry);
     return entry;
   }

@@ -6,6 +6,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
 import { getPersonalWorkspaceRoot, WorkspaceError } from "@bb/host-workspace";
+import { z } from "zod";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,
@@ -17,9 +18,17 @@ import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provisio
 const WORKSPACE_RESOLUTION_FAILURE_CODES: readonly WorkspaceResolutionFailureCode[] =
   workspaceResolutionFailureCodeSchema.options;
 
-interface WorkspaceResolutionFailureFromErrorArgs {
-  error: unknown;
+interface WorkspaceResolutionFailureFromErrorArgs<TError> {
+  error: TError;
   workspacePath: string;
+}
+
+interface WorkspaceEnvironmentRequest {
+  dataDir?: string;
+  environmentId: string;
+  injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
+  targetThreadId?: string;
+  workspaceContext: WorkspaceContext;
 }
 
 interface ResolveWorkspaceForCommandArgs {
@@ -43,9 +52,17 @@ type WorkspaceResolutionResult =
       failure: WorkspaceResolutionFailure;
     };
 
-interface PermissionDeniedError extends Error {
+interface PermissionDeniedError {
   readonly code: "EACCES" | "EPERM";
+  readonly message: string;
 }
+
+const permissionDeniedErrorSchema = z
+  .object({
+    code: z.enum(["EACCES", "EPERM"]),
+    message: z.string(),
+  })
+  .passthrough();
 
 function isWorkspaceResolutionFailureCode(
   code: string,
@@ -53,18 +70,16 @@ function isWorkspaceResolutionFailureCode(
   return WORKSPACE_RESOLUTION_FAILURE_CODES.some((value) => value === code);
 }
 
-function isPermissionDeniedError(
-  error: unknown,
-): error is PermissionDeniedError {
+function parsePermissionDeniedError<T>(error: T): PermissionDeniedError | null {
   if (!(error instanceof Error)) {
-    return false;
+    return null;
   }
-  const code = Reflect.get(error, "code");
-  return code === "EACCES" || code === "EPERM";
+  const parsed = permissionDeniedErrorSchema.safeParse(error);
+  return parsed.success ? parsed.data : null;
 }
 
-export function workspaceResolutionFailureFromError(
-  args: WorkspaceResolutionFailureFromErrorArgs,
+export function workspaceResolutionFailureFromError<TError>(
+  args: WorkspaceResolutionFailureFromErrorArgs<TError>,
 ): WorkspaceResolutionFailure {
   const { error, workspacePath } = args;
   if (error instanceof WorkspaceError) {
@@ -85,10 +100,11 @@ export function workspaceResolutionFailureFromError(
       workspacePath,
     };
   }
-  if (isPermissionDeniedError(error)) {
+  const permissionDeniedError = parsePermissionDeniedError(error);
+  if (permissionDeniedError) {
     return {
       code: "permission_denied",
-      message: error.message,
+      message: permissionDeniedError.message,
       workspacePath,
     };
   }
@@ -110,34 +126,40 @@ export async function resolveWorkspaceForCommand(
   args: ResolveWorkspaceForCommandArgs,
 ): Promise<WorkspaceResolutionResult> {
   try {
+    const workspaceRequest: WorkspaceEnvironmentRequest = {
+      environmentId: args.environmentId,
+      workspaceContext: args.workspaceContext,
+    };
+    if (args.dataDir !== undefined) workspaceRequest.dataDir = args.dataDir;
+    if (args.injectedSkillSources !== undefined) {
+      workspaceRequest.injectedSkillSources = args.injectedSkillSources;
+    }
+    if (args.targetThreadId !== undefined) {
+      workspaceRequest.targetThreadId = args.targetThreadId;
+    }
     const entry = await requireWorkspaceEnvironment(
-      {
-        dataDir: args.dataDir,
-        environmentId: args.environmentId,
-        ...(args.injectedSkillSources !== undefined
-          ? { injectedSkillSources: args.injectedSkillSources }
-          : {}),
-        ...(args.targetThreadId !== undefined
-          ? { targetThreadId: args.targetThreadId }
-          : {}),
-        workspaceContext: args.workspaceContext,
-      },
+      workspaceRequest,
       args.runtimeManager,
     );
     if (args.requireGit === true && !entry.workspace.isGitRepo) {
-      const workspace = await args.runtimeManager.refreshEnvironmentWorkspace({
+      const provisionRequest = {
         environmentId: args.environmentId,
-        provision: reconnectProvisionArgsFromWorkspaceContext({
-          environmentId: args.environmentId,
-          ...(args.dataDir
+        provision: reconnectProvisionArgsFromWorkspaceContext(
+          args.dataDir
             ? {
+                environmentId: args.environmentId,
                 personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir),
+                workspaceContext: args.workspaceContext,
               }
-            : {}),
-          workspaceContext: args.workspaceContext,
-        }),
+            : {
+                environmentId: args.environmentId,
+                workspaceContext: args.workspaceContext,
+              },
+        ),
         workspacePath: args.workspaceContext.workspacePath,
-      });
+      };
+      const workspace =
+        await args.runtimeManager.refreshEnvironmentWorkspace(provisionRequest);
       if (!workspace.isGitRepo) {
         return {
           ok: false,

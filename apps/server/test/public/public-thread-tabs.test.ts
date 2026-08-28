@@ -183,12 +183,14 @@ describe("public thread tabs", () => {
         await readJson(updateResponse),
         await readJson(getResponse),
       ]) {
-        const wire = body as {
-          tabs: Array<Record<string, unknown> & { fileOpenerOwner?: object }>;
-        };
-        expect(wire.tabs[0]).not.toHaveProperty("hostId");
-        expect(wire.tabs[1]).toHaveProperty("hostId", "host_1");
-        expect(wire.tabs[2]?.fileOpenerOwner).not.toHaveProperty("hostId");
+        expect(body).not.toHaveProperty(["tabs", 0, "hostId"]);
+        expect(body).toHaveProperty(["tabs", 1, "hostId"], "host_1");
+        expect(body).not.toHaveProperty([
+          "tabs",
+          2,
+          "fileOpenerOwner",
+          "hostId",
+        ]);
         expect(threadTabsResponseSchema.parse(body).tabs).toEqual(tabs);
       }
     });

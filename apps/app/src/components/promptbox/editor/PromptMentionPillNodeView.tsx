@@ -1,5 +1,6 @@
 import { useContext, type KeyboardEvent, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { z } from "zod";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionTooltipLabel,
@@ -22,10 +23,9 @@ export function PromptMentionPillNodeView({
 }: NodeViewProps) {
   const resolveLink = useContext(PromptMentionLinkContext);
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
-  const fallbackSerializedText =
-    typeof node.attrs.serializedText === "string"
-      ? node.attrs.serializedText
-      : undefined;
+  const fallbackSerializedText = z
+    .string()
+    .safeParse(node.attrs.serializedText);
   const isSelected = decorations.some(
     (decoration) => decoration.spec?.mentionSelected === true,
   );
@@ -38,7 +38,9 @@ export function PromptMentionPillNodeView({
         className={cn(EDITOR_MENTION_PILL_CLASS, selectedClass)}
         data-prompt-mention="true"
       >
-        {fallbackSerializedText ?? "@mention"}
+        {fallbackSerializedText.success
+          ? fallbackSerializedText.data
+          : "@mention"}
       </NodeViewWrapper>
     );
   }

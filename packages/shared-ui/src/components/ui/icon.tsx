@@ -150,6 +150,7 @@ type CoreIconName = keyof typeof CORE_ICON_MAP;
 
 export type IconName = CoreIconName | ExtendedIconName;
 
+// SAFETY: Object.keys returns the known keys from the literal core icon map.
 const CORE_ICON_NAMES = Object.keys(CORE_ICON_MAP) as readonly CoreIconName[];
 
 export const ICON_NAMES: readonly IconName[] = [
@@ -157,8 +158,7 @@ export const ICON_NAMES: readonly IconName[] = [
   ...EXTENDED_ICON_NAMES,
 ];
 
-const CORE_ICON_LOOKUP: Readonly<Record<string, IconSvgElement | undefined>> =
-  CORE_ICON_MAP;
+const CORE_ICON_LOOKUP = new Map(Object.entries(CORE_ICON_MAP));
 
 let extendedIconsLoad: Promise<void> | null = null;
 
@@ -166,7 +166,7 @@ export function preloadExtendedIcons(): Promise<void> {
   if (getExtendedIcons() !== null) return Promise.resolve();
   extendedIconsLoad ??= import("./icon-extended").then(
     () => undefined,
-    (error: unknown) => {
+    (error: Error) => {
       extendedIconsLoad = null;
       throw error;
     },
@@ -191,7 +191,7 @@ export function Icon({
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
-  const coreIcon = CORE_ICON_LOOKUP[name];
+  const coreIcon = CORE_ICON_LOOKUP.get(name);
   if (coreIcon !== undefined) {
     return (
       <HugeiconsIcon

@@ -1,10 +1,8 @@
 import {
-  type DeltaItemShape,
   type DeltaNoTurnFallback,
   type JsonRpcMessage,
   type ProviderRateLimitState,
   type ProviderRateLimitStatus,
-  type ProviderRuntimeEvent,
   type ThreadDelta,
   type ThreadEventPlanStep,
   type ThreadEventTokenUsageBreakdown,
@@ -17,6 +15,7 @@ import {
   sdkMessageEnvelopeSchema,
   threadIdentityEnvelopeSchema,
   toOptionalRecord,
+  toOptionalString,
   type ClientTurnRequestId,
   type ProviderRawEvent,
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
@@ -25,6 +24,7 @@ import {
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,
+  claudeAssistantUsageMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
   claudeConversationResetMessageSchema,
   claudeModelFallbackSystemMessageSchema,
@@ -39,8 +39,11 @@ import {
   claudeUserMessageSchema,
   type ClaudeApiRetryMessage,
   type ClaudeAssistantMessage,
+  type ClaudeSdkUsage,
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
+  type ClaudeStreamEventMessage,
+  type ClaudeUserMessage,
 } from "./schemas.js";
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
 import {
@@ -75,10 +78,58 @@ import {
   resolveClaudeModelContextWindowHint,
 } from "./sdk-extraction.js";
 import { claudeCodeVisibilityMetadata } from "./visibility.js";
+import { z } from "zod";
 
 export interface ClaudeDeltaTranslationContext {
   threadId?: string;
   parentToolCallId?: string;
+}
+
+type ClaudeDeltaItem = Extract<ThreadDelta, { kind: "item.open" }>["item"];
+type ClaudeProviderErrorDelta = Extract<
+  ThreadDelta,
+  { kind: "provider.error" }
+>;
+type ClaudeUnhandledDelta = Extract<ThreadDelta, { kind: "unhandled" }>;
+type ClaudeTurnBoundaryDelta = Extract<ThreadDelta, { kind: "turn.boundary" }>;
+type ClaudeRawSdkMessage = JsonRpcMessage["params"];
+type ClaudeSystemMessage = ReturnType<typeof claudeSystemMessageSchema.parse>;
+type ClaudeJsonRpcValue =
+  | boolean
+  | number
+  | string
+  | null
+  | ClaudeJsonRpcValue[]
+  | ClaudeJsonRpcObject;
+type ClaudeJsonRpcObject = {
+  [key: string]: ClaudeJsonRpcValue | undefined;
+};
+
+interface ClaudeSdkEnvelopeParams extends ClaudeJsonRpcObject {
+  message: ClaudeRawSdkMessage;
+  threadId?: string;
+}
+
+const claudeJsonRpcValueSchema: z.ZodType<ClaudeJsonRpcValue> = z.lazy(() =>
+  z.union([
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.null(),
+    z.array(claudeJsonRpcValueSchema),
+    z.record(z.string(), claudeJsonRpcValueSchema),
+  ]),
+);
+const claudeJsonRpcObjectSchema: z.ZodType<ClaudeJsonRpcObject> = z.record(
+  z.string(),
+  claudeJsonRpcValueSchema,
+);
+
+function parseClaudeJsonRpcObject<T>(
+  value: T,
+): ClaudeJsonRpcObject | undefined {
+  const parsed = claudeJsonRpcObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 const ASSISTANT_STREAM_KEY = "assistant";
@@ -89,37 +140,46 @@ function thinkingStreamChannel(contentIndex: number): string {
 
 const PLAN_STEPS_CHANNEL = "planSteps";
 
-function terminalToolShape(
-  shape: DeltaItemShape,
+function terminalToolItem(
+  item: ClaudeDeltaItem,
   outputText: string | undefined,
-): DeltaItemShape {
-  if (shape.type === "delegation" && outputText !== undefined) {
+): ClaudeDeltaItem {
+  if (item.type === "delegation" && outputText !== undefined) {
     const summary = stripClaudeAgentOutputMetadata(outputText);
-    return summary.length > 0 ? { ...shape, summary } : shape;
+    return summary.length > 0 ? { ...item, summary } : item;
   }
-  return shape;
+  return item;
 }
 
 function terminalCloseFields(
-  shape: DeltaItemShape,
+  item: ClaudeDeltaItem,
   outputText: string | undefined,
   isError: boolean,
 ): Pick<
   Extract<ThreadDelta, { kind: "item.close" }>,
   "exitCode" | "aggregatedOutput" | "resultText"
 > {
-  switch (shape.type) {
+  switch (item.type) {
     case "command":
-      return {
+      const commandFields: Pick<
+        Extract<ThreadDelta, { kind: "item.close" }>,
+        "exitCode" | "aggregatedOutput" | "resultText"
+      > = {
         exitCode: isError ? 1 : 0,
-        ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
       };
+      if (outputText !== undefined) {
+        commandFields.aggregatedOutput = outputText;
+      }
+      return commandFields;
     case "fileRead":
     case "search":
     case "delegation":
       return {};
     default:
-      return outputText === undefined ? {} : { resultText: outputText };
+      if (outputText === undefined) {
+        return {};
+      }
+      return { resultText: outputText };
   }
 }
 
@@ -136,13 +196,15 @@ function planStepsSnapshotDelta(
   };
 }
 
-const claudeResultFallbackErrorDetails: Record<string, string> = {
-  error_during_execution: "Claude Code failed during execution.",
-  error_max_budget_usd: "Claude Code exceeded the configured budget.",
-  error_max_structured_output_retries:
+const claudeResultFallbackErrorDetails = new Map<string, string>([
+  ["error_during_execution", "Claude Code failed during execution."],
+  ["error_max_budget_usd", "Claude Code exceeded the configured budget."],
+  [
+    "error_max_structured_output_retries",
     "Claude Code exhausted structured output retries.",
-  error_max_turns: "Claude Code reached the maximum number of turns.",
-};
+  ],
+  ["error_max_turns", "Claude Code reached the maximum number of turns."],
+]);
 
 const CLAUDE_SYNTHETIC_MODEL = "<synthetic>";
 const CLAUDE_NO_RESPONSE_REQUESTED_TEXT = "No response requested.";
@@ -164,11 +226,10 @@ function hasClaudeAssistantErrorMarker(
   );
 }
 
-function hasClaudeZeroUsage(usage: unknown): boolean {
-  const usageRecord = toOptionalRecord(usage);
+function hasClaudeZeroUsage(usage: ClaudeSdkUsage | undefined): boolean {
   return (
-    usageRecord !== undefined &&
-    CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS.every((key) => usageRecord[key] === 0)
+    usage !== undefined &&
+    CLAUDE_SYNTHETIC_ZERO_USAGE_KEYS.every((key) => usage[key] === 0)
   );
 }
 
@@ -176,13 +237,18 @@ function isClaudeNoResponseRequestedSyntheticMessage(
   message: ClaudeAssistantMessage,
 ): boolean {
   const nestedMessage = toOptionalRecord(message.message);
+  const parsedUsageMessage = claudeAssistantUsageMessageSchema.safeParse(
+    message.message,
+  );
   return (
     nestedMessage?.model === CLAUDE_SYNTHETIC_MODEL &&
     nestedMessage.role === "assistant" &&
     nestedMessage.stop_reason === "stop_sequence" &&
     nestedMessage.stop_sequence === "" &&
     !hasClaudeAssistantErrorMarker(message) &&
-    hasClaudeZeroUsage(nestedMessage.usage) &&
+    hasClaudeZeroUsage(
+      parsedUsageMessage.success ? parsedUsageMessage.data.usage : undefined,
+    ) &&
     extractAssistantText(message) === CLAUDE_NO_RESPONSE_REQUESTED_TEXT
   );
 }
@@ -209,15 +275,17 @@ function extractClaudeFallbackOnlyAssistantMessage(
   const to = toOptionalRecord(block?.to);
   const originalModel = from?.model;
   const fallbackModel = to?.model;
+  const originalModelName = toOptionalString(originalModel);
+  const fallbackModelName = toOptionalString(fallbackModel);
   if (
-    typeof originalModel !== "string" ||
-    originalModel.length === 0 ||
-    typeof fallbackModel !== "string" ||
-    fallbackModel.length === 0
+    originalModelName === undefined ||
+    originalModelName.length === 0 ||
+    fallbackModelName === undefined ||
+    fallbackModelName.length === 0
   ) {
     return null;
   }
-  return { fallbackModel, originalModel };
+  return { fallbackModel: fallbackModelName, originalModel: originalModelName };
 }
 
 function buildClaudeApiRetryDetail(message: ClaudeApiRetryMessage): string {
@@ -354,8 +422,9 @@ function isClaudeResultFailure(message: ClaudeResultMessage): boolean {
 }
 
 function getClaudeResultErrorDetail(message: ClaudeResultMessage): string {
-  if (message.is_error && typeof message.result === "string") {
-    return message.result;
+  const result = toOptionalString(message.result);
+  if (message.is_error && result !== undefined) {
+    return result;
   }
 
   const errors = (message.errors ?? [])
@@ -366,7 +435,7 @@ function getClaudeResultErrorDetail(message: ClaudeResultMessage): string {
   }
 
   return (
-    claudeResultFallbackErrorDetails[message.subtype] ??
+    claudeResultFallbackErrorDetails.get(message.subtype) ??
     `Claude Code result failed: ${message.subtype}`
   );
 }
@@ -517,33 +586,37 @@ export function createClaudeDeltaTranslator(
     if (parsed.success) {
       return parsed.data;
     }
-    return {
+    const fallbackEvent: JsonRpcMessage = {
       jsonrpc: "2.0",
-      ...(rawEvent.id !== undefined ? { id: rawEvent.id } : {}),
       method: rawEvent.method,
       params: {
         serializationError:
           "Provider raw event params were not JSON-serializable.",
       },
     };
+    if (rawEvent.id !== undefined) {
+      fallbackEvent.id = rawEvent.id;
+    }
+    return providerRawEventSchema.parse(fallbackEvent);
   }
 
   function sdkEnvelopeFor(
-    rawMessage: unknown,
+    rawMessage: ClaudeRawSdkMessage,
     context: ClaudeDeltaTranslationContext | undefined,
   ): JsonRpcMessage {
+    const params: ClaudeSdkEnvelopeParams = { message: rawMessage };
+    if (context?.threadId !== undefined && context.threadId.length > 0) {
+      params.threadId = context.threadId;
+    }
     return {
       jsonrpc: "2.0",
       method: "sdk/message",
-      params: {
-        ...(context?.threadId ? { threadId: context.threadId } : {}),
-        message: rawMessage,
-      },
+      params,
     };
   }
 
   function noTurnFallbackFor(
-    rawMessage: unknown,
+    rawMessage: ClaudeRawSdkMessage,
     context: ClaudeDeltaTranslationContext | undefined,
   ): DeltaNoTurnFallback {
     const rawEvent = sdkEnvelopeFor(rawMessage, context);
@@ -554,21 +627,20 @@ export function createClaudeDeltaTranslator(
   }
 
   function unexpectedSdkEventDeltas(
-    rawMessage: unknown,
+    rawMessage: ClaudeRawSdkMessage,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
     const fallback = noTurnFallbackFor(rawMessage, context);
-    return [
-      {
-        kind: "unhandled",
-        raw: fallback.raw,
-        rawType: fallback.rawType,
-        vouchedTurn: true,
-        ...(context?.parentToolCallId
-          ? { parentRef: context.parentToolCallId }
-          : {}),
-      },
-    ];
+    const delta: ClaudeUnhandledDelta = {
+      kind: "unhandled",
+      raw: fallback.raw,
+      rawType: fallback.rawType,
+      vouchedTurn: true,
+    };
+    if (context?.parentToolCallId) {
+      delta.parentRef = context.parentToolCallId;
+    }
+    return [delta];
   }
 
   function unhandledDeltas(
@@ -579,19 +651,20 @@ export function createClaudeDeltaTranslator(
     if (description.coverage !== "unknown") {
       return [];
     }
-    return [
-      {
-        kind: "unhandled",
-        raw: toRawEvent(rawEvent),
-        rawType: description.kind,
-        vouchedTurn: true,
-        ...(parentRef ? { parentRef } : {}),
-      },
-    ];
+    const delta: ClaudeUnhandledDelta = {
+      kind: "unhandled",
+      raw: toRawEvent(rawEvent),
+      rawType: description.kind,
+      vouchedTurn: true,
+    };
+    if (parentRef) {
+      delta.parentRef = parentRef;
+    }
+    return [delta];
   }
 
   function translateSystemMessage(
-    event: unknown,
+    event: ClaudeSystemMessage,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
@@ -601,13 +674,15 @@ export function createClaudeDeltaTranslator(
         code: apiRetryMessage.data.error,
         httpStatusCode: apiRetryMessage.data.error_status,
       });
-      const retryError: ThreadDelta = {
+      const retryError: ClaudeProviderErrorDelta = {
         kind: "provider.error",
         message: "Provider error",
         detail: buildClaudeApiRetryDetail(apiRetryMessage.data),
         willRetry: true,
-        ...(errorInfo === null ? {} : { errorInfo }),
       };
+      if (errorInfo !== null) {
+        retryError.errorInfo = errorInfo;
+      }
       if (isTurnStartSuppressed(state)) {
         return [{ ...retryError, threadScoped: true }];
       }
@@ -658,7 +733,10 @@ export function createClaudeDeltaTranslator(
       return [
         {
           kind: "context.compacted",
-          noTurnFallback: noTurnFallbackFor(event, context),
+          noTurnFallback: noTurnFallbackFor(
+            parseClaudeJsonRpcObject(event) ?? null,
+            context,
+          ),
         },
       ];
     }
@@ -759,15 +837,10 @@ export function createClaudeDeltaTranslator(
   }
 
   function translateAssistantMessage(
-    event: unknown,
+    message: ClaudeAssistantMessage,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parsedMessage = claudeAssistantMessageSchema.safeParse(event);
-    if (!parsedMessage.success) {
-      return unexpectedSdkEventDeltas(event, context);
-    }
-    const message = parsedMessage.data;
     if (isTurnStartSuppressed(state)) {
       return [];
     }
@@ -809,17 +882,14 @@ export function createClaudeDeltaTranslator(
       if (hasCompletionBlockingClaudeTasks(state.tasksById)) {
         return deltas;
       }
-      deltas.push(
-        ...withMirror(state, [
-          {
-            kind: "turn.boundary",
-            status: "completed",
-            ...(state.latestProviderCheckpointId !== undefined
-              ? { providerCheckpointId: state.latestProviderCheckpointId }
-              : {}),
-          },
-        ]),
-      );
+      const boundary: ClaudeTurnBoundaryDelta = {
+        kind: "turn.boundary",
+        status: "completed",
+      };
+      if (state.latestProviderCheckpointId !== undefined) {
+        boundary.providerCheckpointId = state.latestProviderCheckpointId;
+      }
+      deltas.push(...withMirror(state, [boundary]));
       return deltas;
     }
 
@@ -865,7 +935,7 @@ export function createClaudeDeltaTranslator(
       deltas.push({
         kind: "item.open",
         key: { providerItemId: toolUse.id, ...parentRefField },
-        item: classified.shape,
+        item: classified["shape"],
         presentation: classified.presentation,
       });
       if (classified.planSteps !== undefined) {
@@ -878,15 +948,10 @@ export function createClaudeDeltaTranslator(
   }
 
   function translateStreamEvent(
-    event: unknown,
+    message: ClaudeStreamEventMessage,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parsedMessage = claudeStreamEventMessageSchema.safeParse(event);
-    if (!parsedMessage.success) {
-      return unexpectedSdkEventDeltas(event, context);
-    }
-    const message = parsedMessage.data;
     if (isTurnStartSuppressed(state)) {
       return [];
     }
@@ -925,20 +990,19 @@ export function createClaudeDeltaTranslator(
   }
 
   function translateUserMessage(
-    event: unknown,
+    message: ClaudeUserMessage,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parsedMessage = claudeUserMessageSchema.safeParse(event);
-    if (!parsedMessage.success) {
-      return unexpectedSdkEventDeltas(event, context);
-    }
-    const toolResults = extractToolResults(parsedMessage.data);
+    const toolResults = extractToolResults(message);
     if (toolResults.length === 0) {
       return [];
     }
     if (!state.mirror.turnOpen) {
-      return unexpectedSdkEventDeltas(event, context);
+      return unexpectedSdkEventDeltas(
+        parseClaudeJsonRpcObject(message) ?? null,
+        context,
+      );
     }
     const parentToolCallId = context?.parentToolCallId;
     const parentRefField = parentToolCallId
@@ -946,15 +1010,15 @@ export function createClaudeDeltaTranslator(
       : {};
     const envelopeToolUseResult =
       toolResults.length === 1
-        ? (toOptionalRecord(parsedMessage.data)?.tool_use_result ?? undefined)
+        ? (toOptionalRecord(message)?.tool_use_result ?? undefined)
         : undefined;
     const deltas: ThreadDelta[] = [];
     for (const result of toolResults) {
       const started = state.startedTools.get(result.toolUseId);
       state.startedTools.delete(result.toolUseId);
-      const startedShape = started?.shape;
+      const startedItem = started?.["shape"];
       const isCommandResult =
-        result.toolName === "Bash" || startedShape?.type === "command";
+        result.toolName === "Bash" || startedItem?.type === "command";
       const outputText = isCommandResult
         ? extractClaudeCommandExecutionOutput({
             content: result.content,
@@ -962,7 +1026,7 @@ export function createClaudeDeltaTranslator(
           })
         : extractResultText(result.content);
       const resultToolName =
-        startedShape?.type === "tool" ? startedShape.tool : result.toolName;
+        startedItem?.type === "tool" ? startedItem.tool : result.toolName;
       const base =
         started ??
         classifyClaudeToolResultFallback(result.toolName, sessionCwd);
@@ -971,15 +1035,15 @@ export function createClaudeDeltaTranslator(
         kind: "item.close",
         key: { providerItemId: result.toolUseId, ...parentRefField },
         status,
-        ...terminalCloseFields(base.shape, outputText, result.isError),
-        item: terminalToolShape(base.shape, outputText),
+        ...terminalCloseFields(base["shape"], outputText, result.isError),
+        item: terminalToolItem(base["shape"], outputText),
         presentation: base.presentation,
       });
       if (resultToolName !== undefined) {
         const planSteps = foldClaudeTaskToolResult({
           state: state.taskPlan,
           toolName: resultToolName,
-          input: startedShape?.type === "tool" ? startedShape.args : undefined,
+          input: startedItem?.type === "tool" ? startedItem.args : undefined,
           output: envelopeToolUseResult ?? result.toolUseResult ?? outputText,
           failed: result.isError,
         });
@@ -992,15 +1056,10 @@ export function createClaudeDeltaTranslator(
   }
 
   function translateResultMessage(
-    event: unknown,
+    message: ClaudeResultMessage,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parsedMessage = claudeResultMessageSchema.safeParse(event);
-    if (!parsedMessage.success) {
-      return unexpectedSdkEventDeltas(event, context);
-    }
-    const message = parsedMessage.data;
     const resultCanClaimPendingInput =
       message.origin === undefined || message.origin.kind === "human";
     if (
@@ -1065,45 +1124,40 @@ export function createClaudeDeltaTranslator(
               providerCode: resultErrorInfo?.providerCode ?? "rate_limit_event",
               httpStatusCode: resultErrorInfo?.httpStatusCode ?? null,
             };
-      deltas.push({
+      const resultError: ClaudeProviderErrorDelta = {
         kind: "provider.error",
         message: "Provider error",
         detail: resultFailed
           ? getClaudeResultErrorDetail(message)
           : (pendingHardRateLimitRejection?.detail ??
             getClaudeResultErrorDetail(message)),
-        ...(errorInfo === null ? {} : { errorInfo }),
-      });
+      };
+      if (errorInfo !== null) {
+        resultError.errorInfo = errorInfo;
+      }
+      deltas.push(resultError);
     }
     state.armedHardRateLimitRejection = undefined;
     if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
       return deltas;
     }
     state.suppressUnacceptedTurnStart = failed;
-    deltas.push(
-      ...withMirror(state, [
-        {
-          kind: "turn.boundary",
-          status: failed ? "failed" : "completed",
-          ...(state.latestProviderCheckpointId !== undefined
-            ? { providerCheckpointId: state.latestProviderCheckpointId }
-            : {}),
-        },
-      ]),
-    );
+    const boundary: ClaudeTurnBoundaryDelta = {
+      kind: "turn.boundary",
+      status: failed ? "failed" : "completed",
+    };
+    if (state.latestProviderCheckpointId !== undefined) {
+      boundary.providerCheckpointId = state.latestProviderCheckpointId;
+    }
+    deltas.push(...withMirror(state, [boundary]));
     return deltas;
   }
 
   function translateRateLimitEvent(
-    event: unknown,
+    message: ClaudeRateLimitEvent,
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parsedMessage = claudeRateLimitEventSchema.safeParse(event);
-    if (!parsedMessage.success) {
-      return unexpectedSdkEventDeltas(event, context);
-    }
-    const message = parsedMessage.data;
     const rateLimits = normalizeClaudeRateLimits(message);
     if (!isHardClaudeRateLimitRejection(message)) {
       if (
@@ -1128,7 +1182,7 @@ export function createClaudeDeltaTranslator(
   }
 
   function translateSdkMessage(
-    event: unknown,
+    event: ClaudeRawSdkMessage,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
     const messageType = claudeSdkMessageTypeSchema.safeParse(event);
@@ -1157,47 +1211,76 @@ export function createClaudeDeltaTranslator(
         if (!parsedMessage.success) {
           return unexpectedSdkEventDeltas(event, context);
         }
-        return translateSystemMessage(event, state, context);
+        return translateSystemMessage(parsedMessage.data, state, context);
       }
-      case "assistant":
-        return translateAssistantMessage(event, state, context);
-      case "stream_event":
-        return translateStreamEvent(event, state, context);
-      case "user":
-        return translateUserMessage(event, state, context);
-      case "result":
-        return translateResultMessage(event, state, context);
-      case "rate_limit_event":
-        return translateRateLimitEvent(event, state, context);
+      case "assistant": {
+        const parsedMessage = claudeAssistantMessageSchema.safeParse(event);
+        if (!parsedMessage.success) {
+          return unexpectedSdkEventDeltas(event, context);
+        }
+        return translateAssistantMessage(parsedMessage.data, state, context);
+      }
+      case "stream_event": {
+        const parsedMessage = claudeStreamEventMessageSchema.safeParse(event);
+        if (!parsedMessage.success) {
+          return unexpectedSdkEventDeltas(event, context);
+        }
+        return translateStreamEvent(parsedMessage.data, state, context);
+      }
+      case "user": {
+        const parsedMessage = claudeUserMessageSchema.safeParse(event);
+        if (!parsedMessage.success) {
+          return unexpectedSdkEventDeltas(event, context);
+        }
+        return translateUserMessage(parsedMessage.data, state, context);
+      }
+      case "result": {
+        const parsedMessage = claudeResultMessageSchema.safeParse(event);
+        if (!parsedMessage.success) {
+          return unexpectedSdkEventDeltas(event, context);
+        }
+        return translateResultMessage(parsedMessage.data, state, context);
+      }
+      case "rate_limit_event": {
+        const parsedMessage = claudeRateLimitEventSchema.safeParse(event);
+        if (!parsedMessage.success) {
+          return unexpectedSdkEventDeltas(event, context);
+        }
+        return translateRateLimitEvent(parsedMessage.data, state, context);
+      }
     }
   }
 
   function translate(
-    event: ProviderRuntimeEvent | unknown,
+    event: ClaudeRawSdkMessage,
     context?: ClaudeDeltaTranslationContext,
   ): ThreadDelta[] {
     const sdkEnvelope = sdkMessageEnvelopeSchema.safeParse(event);
     if (sdkEnvelope.success) {
-      const sdkMessage = sdkEnvelope.data.params.message;
+      const sdkMessage =
+        parseClaudeJsonRpcObject(sdkEnvelope.data.params.message) ?? null;
       const nestedParentToolCallId = getNestedParentToolUseId(sdkMessage);
       const parentToolCallId = nestedParentToolCallId
         ? nestedParentToolCallId
         : (sdkEnvelope.data.params.parent_tool_use_id ??
           context?.parentToolCallId);
-      const translated = translate(sdkMessage, {
-        ...context,
-        ...(parentToolCallId ? { parentToolCallId } : {}),
-      });
+      const childContext: ClaudeDeltaTranslationContext =
+        context === undefined ? {} : { ...context };
+      if (parentToolCallId) {
+        childContext.parentToolCallId = parentToolCallId;
+      }
+      const translated = translate(sdkMessage, childContext);
+      const rawParams = parseClaudeJsonRpcObject(sdkEnvelope.data.params);
+      const rawEvent: JsonRpcMessage = {
+        jsonrpc: "2.0",
+        method: sdkEnvelope.data.method,
+      };
+      if (rawParams !== undefined) {
+        rawEvent.params = rawParams;
+      }
       return translated.length > 0
         ? translated
-        : unhandledDeltas(
-            {
-              jsonrpc: "2.0",
-              method: sdkEnvelope.data.method,
-              params: sdkEnvelope.data.params,
-            },
-            parentToolCallId,
-          );
+        : unhandledDeltas(rawEvent, parentToolCallId);
     }
 
     const identityEnvelope = threadIdentityEnvelopeSchema.safeParse(event);
@@ -1238,14 +1321,15 @@ export function createClaudeDeltaTranslator(
 
     const envelope = jsonRpcEnvelopeSchema.safeParse(event);
     if (envelope.success) {
-      return unhandledDeltas(
-        {
-          jsonrpc: "2.0",
-          method: envelope.data.method,
-          ...(envelope.data.params ? { params: envelope.data.params } : {}),
-        },
-        context?.parentToolCallId,
-      );
+      const rawEvent: JsonRpcMessage = {
+        jsonrpc: "2.0",
+        method: envelope.data.method,
+      };
+      const params = parseClaudeJsonRpcObject(envelope.data.params);
+      if (params !== undefined) {
+        rawEvent.params = params;
+      }
+      return unhandledDeltas(rawEvent, context?.parentToolCallId);
     }
 
     return translateSdkMessage(event, context);

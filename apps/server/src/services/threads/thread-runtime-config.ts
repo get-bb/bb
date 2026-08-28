@@ -136,14 +136,15 @@ export async function resolveExecutionOptions(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
-  const plan = await resolveExistingThreadExecutionPlan(deps, {
-    ...(args.projectDefaults !== undefined
-      ? { projectDefaults: args.projectDefaults }
-      : {}),
+  const planInput: Parameters<typeof resolveExistingThreadExecutionPlan>[1] = {
     executionSource: args.requestedExecution.source,
     input: buildExistingThreadExecutionInput(args.requestedExecution),
     threadId: args.threadId,
-  });
+  };
+  if (args.projectDefaults !== undefined) {
+    planInput.projectDefaults = args.projectDefaults;
+  }
+  const plan = await resolveExistingThreadExecutionPlan(deps, planInput);
   return plan.resolvedExecution;
 }
 

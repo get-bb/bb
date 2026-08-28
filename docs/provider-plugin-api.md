@@ -44,22 +44,23 @@ own settings that produce registrations at runtime.
 
 ```ts
 bb.providers.register({
-  id: "claude-code",             // flat; first registration wins; no reservation
+  id: "claude-code", // flat; first registration wins; no reservation
   displayName: "Claude Code",
-  family: undefined,             // optional grouping key (the ACP agents share one)
-  icon: "./icons/claude.svg",    // a plugin SVG, served as logoUrl; a glyph name; or "<pluginId>/<name>"
+  family: undefined, // optional grouping key (the ACP agents share one)
+  icon: "./icons/claude.svg", // a plugin SVG, served as logoUrl; a glyph name; or "<pluginId>/<name>"
   strings: {
     signInHint: "Run `claude` on the machine to sign in.",
     expiredHint: "Your Claude session expired. Run `claude`, then reload.",
     installUrl: "https://docs.anthropic.com/claude-code",
-    brandPrefix: "Claude ",      // optional; stripped from model display names
-    planModeCopy: undefined,     // optional; plan-mode banner copy
-    iconTint: undefined,         // optional { light, dark }
+    brandPrefix: "Claude ", // optional; stripped from model display names
+    planModeCopy: undefined, // optional; plan-mode banner copy
+    iconTint: undefined, // optional { light, dark }
   },
   maintenance: { health: true, usage: true, installation: true }, // each defaults to false
-  capabilities: {                // pre-session facts, one client shape: ProviderInfo
+  capabilities: {
+    // pre-session facts, one client shape: ProviderInfo
     permissionModes: ["accept-edits", "auto", "full"], // closed core enum
-    fork: "checkpoint",          // "none" | "tip" | "checkpoint"
+    fork: "checkpoint", // "none" | "tip" | "checkpoint"
     supportsNativeUserQuestion: true,
     supportsManualCompaction: true,
     supportsThreadArchive: true,
@@ -67,22 +68,24 @@ bb.providers.register({
     supportsServiceTier: false,
     reasoningLevels: ["low", "high"], // the coarse ladder; `reasoningLevels` below is precise
   },
-  reasoningLevels: [             // picker options; model/list is precise
+  reasoningLevels: [
+    // picker options; model/list is precise
     { id: "low", label: "Low" },
     { id: "high", label: "High" },
   ],
-  serviceTiers: undefined,       // optional; open list, model/list is precise
-  composerActions: ["plan"],     // "plan" | "goal"
-  extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema }
+  serviceTiers: undefined, // optional; open list, model/list is precise
+  composerActions: ["plan"], // "plan" | "goal"
+  extensionKinds: {}, // "<name>": { item?: Schema, state?: Schema }
   models: { fallback: [], scope: "host" }, // cold-cache placeholder; scope is
-                                 // "host" | "workspace" (default): how far one
-                                 // model/list answer travels
+  // "host" | "workspace" (default): how far one
+  // model/list answer travels
   env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
-  deriveProviderOptions(ctx) {   // called on every command
+  deriveProviderOptions(ctx) {
+    // called on every command
     // ctx: { threadId, projectId, model, permissionMode, promptMode?, settings }
-    return {};                   // opaque JSON handed to this plugin's bridge
+    return {}; // opaque JSON handed to this plugin's bridge
   },
-})
+});
 // => { dispose(): void }
 ```
 
@@ -130,8 +133,10 @@ Rules:
 
 ```ts
 export const experimental_providerBridge = experimental_defineProviderBridge({
-  handleLine, start, onClose,
-})
+  handleLine,
+  start,
+  onClose,
+});
 ```
 
 The export name and `experimental_defineProviderBridge` / `experimental_apiVersion`
@@ -261,7 +266,6 @@ colours. The web also paints `oklch()`, `lab()`, `lch()`, `color()` and a
 percentage alpha through CSS; React Native's colour parser does not, so on
 mobile such a tint falls back to the neutral row colour (never to black).
 
-
 Genericity rule: model fallback, context cleared, compaction skipped, and
 background work stay core. Codex goals and the Codex `macos` permission
 profile are codex extension kinds, with read-time conversion of persisted
@@ -360,7 +364,7 @@ plugin renders its own extension kinds and the generic `tool` items its
 provider emitted:
 
 ```ts
-app.slots.experimental_timelineRenderer({ kind, component })
+app.slots.experimental_timelineRenderer({ kind, component });
 // component props: { row, payload, presentation, thread, Original }
 ```
 

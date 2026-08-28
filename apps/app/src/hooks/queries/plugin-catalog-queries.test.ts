@@ -1,3 +1,4 @@
+import type { JsonValue } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   applyPluginUpdate,
@@ -7,7 +8,7 @@ import {
   searchPluginCatalog,
 } from "./plugin-catalog-queries";
 
-function fetchReturning(body: unknown, status = 200): typeof fetch {
+function fetchReturning(body: JsonValue, status = 200): typeof fetch {
   return async () =>
     new Response(JSON.stringify(body), {
       status,
@@ -15,7 +16,7 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
-function recordingFetch(body: unknown, status = 200) {
+function recordingFetch(body: JsonValue, status = 200) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const impl = fetchReturning(body, status);
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -25,7 +26,7 @@ function recordingFetch(body: unknown, status = 200) {
   return { fetchImpl, calls };
 }
 
-const UPDATES_RESULTS = [
+const UPDATES_RESULTS: JsonValue[] = [
   {
     id: "current-plugin",
     outcome: "current",

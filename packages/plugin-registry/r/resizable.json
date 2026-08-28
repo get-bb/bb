@@ -4,13 +4,6 @@
   "type": "registry:ui",
   "title": "resizable",
   "description": "BB ui \"resizable\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "lucide-react",
-    "react-resizable-panels"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/resizable.tsx",
@@ -18,5 +11,12 @@
       "type": "registry:ui",
       "target": "components/ui/resizable.tsx"
     }
+  ],
+  "dependencies": [
+    "lucide-react",
+    "react-resizable-panels"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

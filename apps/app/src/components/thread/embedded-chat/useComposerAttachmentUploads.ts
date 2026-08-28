@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError } from "@/lib/sdk";
 import type { PromptDraftAttachment } from "@bb/client-core";
@@ -49,12 +50,6 @@ interface DraftAttachmentOperationState {
   targetKey: string | null;
 }
 
-function uploadRejectionReason(error: unknown): string | null {
-  return error instanceof BbHttpError
-    ? getMutationErrorMessage({ error, fallbackMessage: "Request failed" })
-    : null;
-}
-
 function attachFailureMessage(
   failedFiles: readonly string[],
   reason: string | null,
@@ -70,8 +65,7 @@ export function useDraftAttachmentUploads({
   target,
 }: UseDraftAttachmentUploadsArgs): UseDraftAttachmentUploadsResult {
   const uploadPromptAttachment = useUploadPromptAttachment();
-  const targetRef = useRef(target);
-  targetRef.current = target;
+  const targetRef = useLatestRef(target);
   const [operation, setOperation] = useState<DraftAttachmentOperationState>({
     error: null,
     pendingCount: 0,
@@ -119,7 +113,12 @@ export function useDraftAttachmentUploads({
             }
           } catch (error) {
             failedFiles.push(file.name);
-            rejectionReason ??= uploadRejectionReason(error);
+            if (error instanceof BbHttpError) {
+              rejectionReason ??= getMutationErrorMessage({
+                error,
+                fallbackMessage: "Request failed",
+              });
+            }
           }
         }
       } finally {
@@ -138,7 +137,7 @@ export function useDraftAttachmentUploads({
         );
       }
     },
-    [projectId, uploadPromptAttachment],
+    [projectId, targetRef, uploadPromptAttachment],
   );
 
   return {

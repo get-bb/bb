@@ -10,7 +10,13 @@ import {
   subdirectoryForCollectionEntry,
 } from "../../../src/services/plugins/collection-manifest.js";
 
-function manifest(plugins: unknown): string {
+type CollectionPluginInput = Array<
+  | { name: string; source: string }
+  | { name: string; source: string; subdir: string }
+  | { name: string; source: string; description: string }
+>;
+
+function manifest(plugins: CollectionPluginInput): string {
   return JSON.stringify({
     schemaVersion: 1,
     name: "acme-plugins",
@@ -18,7 +24,7 @@ function manifest(plugins: unknown): string {
   });
 }
 
-function parse(plugins: unknown) {
+function parse(plugins: CollectionPluginInput) {
   return parsePluginCollectionManifest(manifest(plugins), ".bb/plugins.json");
 }
 
@@ -131,7 +137,9 @@ describe("collection manifest in a checkout", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  async function writeCollection(plugins: unknown): Promise<void> {
+  async function writeCollection(
+    plugins: CollectionPluginInput,
+  ): Promise<void> {
     await writeFile(join(repoDir, ".bb", "plugins.json"), manifest(plugins));
   }
 

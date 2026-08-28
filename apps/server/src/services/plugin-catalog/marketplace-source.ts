@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { PluginMarketplaceSourceKind } from "@bb/db";
 import {
@@ -23,10 +22,19 @@ const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
 const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
+const { mkdir, readFile, rm, stat } =
+  process.getBuiltinModule("node:fs/promises");
+
 type MarketplaceSource =
   | { kind: "https"; manifestUrl: string }
   | { kind: "git"; url: string; ref: string }
   | { kind: "path"; directory: string };
+
+interface MarketplaceSourceColumns {
+  sourceKind: PluginMarketplaceSourceKind;
+  manifestUrl: string;
+  sourceGitRef: string | null;
+}
 
 const GIT_CLONE_ARGS = ["-c", "core.hooksPath=/dev/null"] as const;
 
@@ -91,11 +99,9 @@ export function marketplaceSourceFromRow(row: {
   return { kind: "git", url: row.manifestUrl, ref: row.sourceGitRef };
 }
 
-export function marketplaceSourceColumns(source: MarketplaceSource): {
-  sourceKind: PluginMarketplaceSourceKind;
-  manifestUrl: string;
-  sourceGitRef: string | null;
-} {
+export function marketplaceSourceColumns(
+  source: MarketplaceSource,
+): MarketplaceSourceColumns {
   if (source.kind === "https") {
     return {
       sourceKind: "https",
@@ -231,7 +237,7 @@ async function materializeLocal(
     }
     const raw = await readFile(manifestPath, "utf8");
     const catalog = parseMarketplaceManifest(
-      JSON.parse(raw) as unknown,
+      JSON.parse(raw),
       "marketplace manifest",
     );
     return {

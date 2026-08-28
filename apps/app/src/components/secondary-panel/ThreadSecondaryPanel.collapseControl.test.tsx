@@ -834,7 +834,9 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       initiallyInactivePane?.querySelector("[data-new-tab-control-reserved]"),
     ).not.toBeNull();
 
-    fireEvent.pointerDown(initiallyInactivePane as HTMLElement);
+    fireEvent.pointerDown(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ initiallyInactivePane as HTMLElement,
+    );
     const focusedPaneNewTabControl = screen.getByRole("button", {
       name: "Open new tab in this pane",
     });

@@ -1,7 +1,9 @@
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type {
   RealtimeSocketErrorEvent,
   RealtimeSocketFactory,
   RealtimeSocketLike,
+  RealtimeMessageData,
   RealtimeSocketOptions,
 } from "./socket";
 
@@ -14,7 +16,7 @@ export class FakeSocket implements RealtimeSocketLike {
   readonly sent: string[] = [];
   readonly closes: { code?: number; reason?: string }[] = [];
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onmessage: ((event: { data: RealtimeMessageData }) => void) | null = null;
   onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onerror: ((event: RealtimeSocketErrorEvent) => void) | null = null;
 
@@ -38,7 +40,7 @@ export class FakeSocket implements RealtimeSocketLike {
     this.onopen?.();
   }
 
-  receive(data: unknown): void {
+  receive(data: RealtimeMessageData): void {
     this.onmessage?.({ data });
   }
 
@@ -54,8 +56,8 @@ export class FakeSocket implements RealtimeSocketLike {
     this.onclose?.({ code: 1006, reason: viaErrorMessage ? "" : message });
   }
 
-  sentMessages(): unknown[] {
-    return this.sent.map((raw) => JSON.parse(raw) as unknown);
+  sentMessages(): JsonValue[] {
+    return this.sent.map((raw) => jsonValueSchema.parse(JSON.parse(raw)));
   }
 }
 

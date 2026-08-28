@@ -150,7 +150,7 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
     const inner = innerRef.current;
     if (!wrapper || !inner) return;
     wrapper.style.height = visible ? `${inner.offsetHeight}px` : "0px";
-    if (typeof ResizeObserver === "undefined") return;
+    if (globalThis.ResizeObserver === undefined) return;
     let lastWidth: number | null = null;
     let pendingVisibilitySnap = false;
     const snapState: SnapState = { savedDuration: null, restoreFrame: null };
@@ -239,7 +239,7 @@ export function AutoHeightContainer({
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
-    if (!wrapper || !inner || typeof ResizeObserver === "undefined") return;
+    if (!wrapper || !inner || globalThis.ResizeObserver === undefined) return;
     wrapper.style.height = `${inner.offsetHeight}px`;
     let lastWidth: number | null = null;
     let pendingVisibilitySnap = false;

@@ -82,9 +82,7 @@ function filterSessionDecisionWithoutGrant(
 export function decodeCodexInteractiveRequest(
   request: ProviderInboundRequest,
 ): DecodedInteractiveRequest | null {
-  if (typeof request.id !== "string" && typeof request.id !== "number") {
-    return null;
-  }
+  if (request.id === undefined) return null;
 
   switch (request.method) {
     case "item/commandExecution/requestApproval": {
@@ -354,18 +352,17 @@ export function extractCodexMacOsPermissionRequest(
 function toCodexGrantedPermissionProfile(
   args: PendingInteractionGrantedPermissionProfile,
 ): PermissionsRequestApprovalResponse["permissions"] {
-  return {
-    ...(args.network ? { network: { enabled: args.network.enabled } } : {}),
-    ...(args.fileSystem
-      ? {
-          fileSystem: {
-            read: args.fileSystem.read.length > 0 ? args.fileSystem.read : null,
-            write:
-              args.fileSystem.write.length > 0 ? args.fileSystem.write : null,
-          },
-        }
-      : {}),
-  };
+  const permissions: PermissionsRequestApprovalResponse["permissions"] = {};
+  if (args.network) {
+    permissions.network = { enabled: args.network.enabled };
+  }
+  if (args.fileSystem) {
+    permissions.fileSystem = {
+      read: args.fileSystem.read.length > 0 ? args.fileSystem.read : null,
+      write: args.fileSystem.write.length > 0 ? args.fileSystem.write : null,
+    };
+  }
+  return permissions;
 }
 
 function fromCodexCommandApprovalDecision(
@@ -383,10 +380,15 @@ function isCodexPolicyAmendmentDecision(
   decision: CodexCommandApprovalDecision,
 ): decision is CodexPolicyAmendmentDecision {
   return (
-    typeof decision === "object" &&
     decision !== null &&
-    ("acceptWithExecpolicyAmendment" in decision ||
-      "applyNetworkPolicyAmendment" in decision)
+    (Object.prototype.hasOwnProperty.call(
+      decision,
+      "acceptWithExecpolicyAmendment",
+    ) ||
+      Object.prototype.hasOwnProperty.call(
+        decision,
+        "applyNetworkPolicyAmendment",
+      ))
   );
 }
 

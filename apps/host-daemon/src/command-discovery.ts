@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { z } from "zod";
 import type {
   DiscoveredSkill,
   HostCommandOrigin,
@@ -29,18 +30,18 @@ interface CommandScanRootBase {
 interface CommandScanDirectoryRoot extends CommandScanRootBase {
   boundaryPath?: string;
   rootPath: string;
-  shape: "skill" | "skill-recursive" | "skill-directory" | "command";
+  ["shape"]: "skill" | "skill-recursive" | "skill-directory" | "command";
 }
 
 interface CommandScanFileRoot extends CommandScanRootBase {
   filePath: string;
-  shape: "command-file";
+  ["shape"]: "command-file";
 }
 
 interface CommandScanSkillFileRoot extends CommandScanRootBase {
   fallbackName: string;
   filePath: string;
-  shape: "skill-file";
+  ["shape"]: "skill-file";
   source: "skill";
 }
 
@@ -123,16 +124,11 @@ function hasSupportedFrontmatterDelimiter(content: string): boolean {
   );
 }
 
-function readFrontmatterString(
-  data: Record<string, unknown>,
-  key: string,
-): string | null {
-  const value = data[key];
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+const frontmatterStringSchema = z.string().trim().min(1);
+
+function readFrontmatterString<TValue>(value: TValue): string | null {
+  const parsed = frontmatterStringSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
@@ -147,18 +143,16 @@ async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
     return { name: null, description: null, argumentHint: null };
   }
 
-  let data: Record<string, unknown>;
   try {
-    data = matter(content).data;
+    const data = matter(content).data;
+    return {
+      name: readFrontmatterString(data.name),
+      description: readFrontmatterString(data.description),
+      argumentHint: readFrontmatterString(data["argument-hint"]),
+    };
   } catch {
     return { name: null, description: null, argumentHint: null };
   }
-
-  return {
-    name: readFrontmatterString(data, "name"),
-    description: readFrontmatterString(data, "description"),
-    argumentHint: readFrontmatterString(data, "argument-hint"),
-  };
 }
 
 function canFollowSkillSymlink(root: CommandScanRoot): boolean {
@@ -407,7 +401,7 @@ async function scanSkillFileRootFiles(
 
 async function scanSkillFiles(args: ScanRootArgs): Promise<SkillFileMatch[]> {
   const { root } = args;
-  switch (root.shape) {
+  switch (root["shape"]) {
     case "skill":
       return scanSkillRootFiles(root);
     case "skill-recursive":
@@ -434,7 +428,7 @@ function commandNameFromPath(rootPath: string, filePath: string): string {
 async function scanCommandRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
-  if (args.root.shape !== "command") {
+  if (args.root["shape"] !== "command") {
     throw new Error("scanCommandRoot requires a command root");
   }
   const matchedFiles: string[] = [];
@@ -457,7 +451,7 @@ async function scanCommandRoot(
 async function scanCommandFileRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
-  if (args.root.shape !== "command-file") {
+  if (args.root["shape"] !== "command-file") {
     throw new Error("scanCommandFileRoot requires a command-file root");
   }
   try {
@@ -473,7 +467,7 @@ async function scanCommandFileRoot(
 }
 
 async function scanRoot(args: ScanRootArgs): Promise<HostProviderCommand[]> {
-  switch (args.root.shape) {
+  switch (args.root["shape"]) {
     case "skill":
     case "skill-recursive":
     case "skill-directory":

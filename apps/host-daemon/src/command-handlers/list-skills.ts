@@ -32,7 +32,7 @@ function createBbSkillScanRoot(
 ): SkillScanRoot {
   return {
     rootPath,
-    shape: "skill",
+    ["shape"]: "skill",
     namePrefix: "",
     source: "skill",
     origin: rootKind === "bb-project" ? "project" : "user",

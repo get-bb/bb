@@ -22,7 +22,7 @@ export interface ParcelWatcherBackend {
     callback: (
       error: ParcelWatcherError,
       events: ParcelWatcherEventBatch,
-    ) => unknown,
+    ) => void,
     opts?: ParcelWatcherSubscribeOptions,
   ): Promise<ParcelAsyncSubscription>;
 }
@@ -40,7 +40,7 @@ type ParcelWatcherBackendLogLevel = "info" | "warn" | "error";
 export type ParcelWatcherBackendLogger = (
   level: ParcelWatcherBackendLogLevel,
   message: string,
-  fields?: Record<string, unknown>,
+  fields?: Record<string, string | number>,
 ) => void;
 
 export function createSubprocessParcelWatcherBackend(options?: {
@@ -69,14 +69,20 @@ export function getParcelWatcherBackend(): ParcelWatcherBackend {
   return inProcessBackend;
 }
 
+interface DisposableParcelWatcherBackend extends ParcelWatcherBackend {
+  dispose: () => void;
+}
+
+function hasDispose(
+  backend: ParcelWatcherBackend,
+): backend is DisposableParcelWatcherBackend {
+  return "dispose" in backend && backend.dispose instanceof Function;
+}
+
 export function disposeParcelWatcherBackend(): void {
   const backend = installedBackend;
   installedBackend = undefined;
-  if (
-    backend !== undefined &&
-    "dispose" in backend &&
-    typeof backend.dispose === "function"
-  ) {
-    (backend as { dispose: () => void }).dispose();
+  if (backend !== undefined && hasDispose(backend)) {
+    backend.dispose();
   }
 }

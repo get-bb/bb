@@ -24,6 +24,12 @@ type BuildOnProgressArgs = {
   transcript: ProvisioningTranscriptEntry[];
 };
 
+interface ProvisionBranchMetadata {
+  branchName: string;
+  sha?: string;
+  [key: string]: string | undefined;
+}
+
 const PROVISION_PROGRESS_BATCH_MS = 1_000;
 
 export async function provisionEnvironment(
@@ -72,7 +78,7 @@ export async function provisionEnvironment(
       }
       if (entry.workspace.isGitRepo && branchName) {
         let branchText = `Using branch: ${branchName}`;
-        const metadata: { branchName: string; sha?: string } = { branchName };
+        const metadata: ProvisionBranchMetadata = { branchName };
         try {
           const sha = await entry.workspace.getHeadSha();
           if (sha) {
@@ -179,12 +185,13 @@ function toProvisionWorkspaceOptions(
 ): ProvisionWorkspaceArgs {
   switch (command.workspaceProvisionType) {
     case "unmanaged": {
-      return {
+      const provision = {
         workspaceProvisionType: "unmanaged" as const,
         path: command.path,
-        ...(command.checkout ? { checkout: command.checkout } : {}),
         onProgress,
       };
+      if (command.checkout === undefined) return provision;
+      return { ...provision, checkout: command.checkout };
     }
     case "managed-worktree": {
       return {

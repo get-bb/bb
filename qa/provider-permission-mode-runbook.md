@@ -203,14 +203,14 @@ by granting the entire project parent directory.
 
 Record PASS, FAIL, BLOCKED, or NOT ATTEMPTED for each cell:
 
-| Provider | Mode | Reads | Git inspect | Workspace write | Git index | Commit | BB CLI | Subagent | Escalation path |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Codex | accept-edits | | | | | | | | user interaction |
-| Codex | auto | | | | | | | | automatic review |
-| Codex | full | | | | | | | | bypass |
-| Claude Code | accept-edits | | | | | | | | user interaction |
-| Claude Code | auto | | | | | | | | automatic review |
-| Claude Code | full | | | | | | | | bypass |
+| Provider    | Mode         | Reads | Git inspect | Workspace write | Git index | Commit | BB CLI | Subagent | Escalation path  |
+| ----------- | ------------ | ----- | ----------- | --------------- | --------- | ------ | ------ | -------- | ---------------- |
+| Codex       | accept-edits |       |             |                 |           |        |        |          | user interaction |
+| Codex       | auto         |       |             |                 |           |        |        |          | automatic review |
+| Codex       | full         |       |             |                 |           |        |        |          | bypass           |
+| Claude Code | accept-edits |       |             |                 |           |        |        |          | user interaction |
+| Claude Code | auto         |       |             |                 |           |        |        |          | automatic review |
+| Claude Code | full         |       |             |                 |           |        |        |          | bypass           |
 
 ## Cleanup
 

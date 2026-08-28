@@ -11,8 +11,19 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
-import type { DynamicTool, ReasoningLevel } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  jsonObjectSchema,
+  jsonValueSchema,
+} from "@bb/domain";
+import type {
+  DynamicTool,
+  JsonObject,
+  JsonValue,
+  ReasoningLevel,
+  ThreadEvent,
+} from "@bb/domain";
+import { z } from "zod";
 import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
@@ -47,7 +58,7 @@ function requestId(): number {
   return nextRequestId;
 }
 
-function sendRequest(method: string, params: object): number {
+function sendRequest<TParams>(method: string, params: TParams): number {
   const id = requestId();
   handleLine(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   return id;
@@ -95,23 +106,20 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
   return output.messages.filter((message) => message.method === method);
 }
 
-function threadEvents(): Record<string, unknown>[] {
-  return assembleCapturedThreadEvents(
-    output.messages,
-    "acp",
-  ) as unknown as Record<string, unknown>[];
+function threadEvents(): ThreadEvent[] {
+  return assembleCapturedThreadEvents(output.messages, "acp");
 }
 
 function emittedDeltaKinds(): string[] {
   return notifications(THREAD_DELTA_NOTIFICATION_METHOD).flatMap((message) => {
-    const params = message.params as
-      | { deltas?: { kind?: string }[] }
-      | undefined;
-    return (params?.deltas ?? []).map((delta) => delta.kind ?? "");
+    const params = deltaNotificationSchema.safeParse(message.params);
+    return params.success
+      ? params.data.deltas.map((delta) => delta.kind ?? "")
+      : [];
   });
 }
 
-function threadEventsOfType(type: string): Record<string, unknown>[] {
+function threadEventsOfType(type: string): ThreadEvent[] {
   return threadEvents().filter((event) => event.type === type);
 }
 
@@ -123,21 +131,28 @@ function bbThreadIdFor(providerThreadId: string): string {
     return recorded;
   }
   for (const message of notifications("thread/identity")) {
-    const params = message.params;
-    if (
-      typeof params === "object" &&
-      params !== null &&
-      !Array.isArray(params) &&
-      params.providerThreadId === providerThreadId &&
-      typeof params.threadId === "string"
-    ) {
-      return params.threadId;
+    const params = threadIdentitySchema.safeParse(message.params);
+    if (params.success && params.data.providerThreadId === providerThreadId) {
+      return params.data.threadId;
     }
   }
   throw new Error(`No bb thread id recorded for ${providerThreadId}`);
 }
 
 const CLIENT_REQUEST_ID = "creq_abcdefghjk";
+
+interface ExecutionOptions {
+  permissionMode: "accept-edits" | "full";
+  permissionScope: "workspace" | "full";
+  approvalReviewer: "user" | null;
+  permissionEscalation: "ask" | "deny" | null;
+  envVars?: Record<string, string>;
+  instructions?: string;
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  serviceTier?: "default" | "fast";
+  providerOptions?: ProviderOptions;
+}
 
 function executionOptions(args: {
   permissionMode?: "accept-edits" | "full";
@@ -147,11 +162,11 @@ function executionOptions(args: {
   model?: string;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: "default" | "fast";
-  providerOptions?: Record<string, unknown>;
-}): Record<string, unknown> {
+  providerOptions?: ProviderOptions;
+}): ExecutionOptions {
   const permissionMode = args.permissionMode ?? "full";
-  return {
-    ...(permissionMode === "full"
+  const options: ExecutionOptions =
+    permissionMode === "full"
       ? {
           permissionMode: "full",
           permissionScope: "full",
@@ -163,14 +178,14 @@ function executionOptions(args: {
           permissionScope: "workspace",
           approvalReviewer: "user",
           permissionEscalation: args.permissionEscalation ?? "ask",
-        }),
-    ...(args.envVars ? { envVars: args.envVars } : {}),
-    ...(args.instructions ? { instructions: args.instructions } : {}),
-    ...(args.model ? { model: args.model } : {}),
-    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
-    ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
-    ...(args.providerOptions ? { providerOptions: args.providerOptions } : {}),
-  };
+        };
+  if (args.envVars) options.envVars = args.envVars;
+  if (args.instructions) options.instructions = args.instructions;
+  if (args.model) options.model = args.model;
+  if (args.reasoningLevel) options.reasoningLevel = args.reasoningLevel;
+  if (args.serviceTier) options.serviceTier = args.serviceTier;
+  if (args.providerOptions) options.providerOptions = args.providerOptions;
+  return options;
 }
 
 interface AgentLaunchArgs {
@@ -203,29 +218,62 @@ interface AgentLaunchArgs {
   };
 }
 
-function acpLaunchSpec(args: AgentLaunchArgs): Record<string, unknown> {
+interface AcpLaunchSpec {
+  displayName: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  modelCli?: {
+    listArgs: string[];
+    selectFlag?: string;
+    primaryModels: string[];
+  };
+  reasoningCli?: NonNullable<AgentLaunchArgs["reasoningCli"]>;
+  nativeReasoning?: NonNullable<AgentLaunchArgs["nativeReasoning"]>;
+  permissionCli?: NonNullable<AgentLaunchArgs["permissionCli"]>;
+}
+
+interface ProviderOptions {
+  acpLaunchSpec: AcpLaunchSpec;
+  acpDialect?: string;
+  parameterizedModelPicker?: boolean;
+  reasoningProbePriorityModelIds?: string[];
+  primaryModels?: string[];
+  additionalWorkspaceWriteRoots?: string[];
+}
+
+interface ThreadStartRequest {
+  threadId: string;
+  cwd: string;
+  instructionMode: "append";
+  options: ExecutionOptions;
+  dynamicTools?: DynamicTool[];
+  providerThreadId?: string;
+  sourceProviderThreadId?: string;
+}
+
+function acpLaunchSpec(args: AgentLaunchArgs): AcpLaunchSpec {
   const agent = args.agent ?? {
     command: process.execPath,
     args: [FAKE_AGENT_PATH],
   };
-  return {
+  const spec: AcpLaunchSpec = {
     displayName: "Fake ACP",
     command: agent.command,
     args: agent.args,
     env: args.envVars ?? {},
-    ...(args.modelListArgs
-      ? {
-          modelCli: {
-            listArgs: [...agent.args, ...args.modelListArgs],
-            ...(args.selectFlag ? { selectFlag: args.selectFlag } : {}),
-            primaryModels: args.primaryModels ?? [],
-          },
-        }
-      : {}),
-    ...(args.reasoningCli ? { reasoningCli: args.reasoningCli } : {}),
-    ...(args.nativeReasoning ? { nativeReasoning: args.nativeReasoning } : {}),
-    ...(args.permissionCli ? { permissionCli: args.permissionCli } : {}),
   };
+  if (args.modelListArgs) {
+    spec.modelCli = {
+      listArgs: [...agent.args, ...args.modelListArgs],
+      primaryModels: args.primaryModels ?? [],
+    };
+    if (args.selectFlag) spec.modelCli.selectFlag = args.selectFlag;
+  }
+  if (args.reasoningCli) spec.reasoningCli = args.reasoningCli;
+  if (args.nativeReasoning) spec.nativeReasoning = args.nativeReasoning;
+  if (args.permissionCli) spec.permissionCli = args.permissionCli;
+  return spec;
 }
 
 interface StartThreadArgs extends AgentLaunchArgs {
@@ -239,58 +287,91 @@ interface StartThreadArgs extends AgentLaunchArgs {
   additionalWorkspaceWriteRoots?: string[];
 }
 
+const providerThreadResultSchema = z.object({
+  providerThreadId: z.string(),
+});
+const threadIdentitySchema = z.object({
+  providerThreadId: z.string(),
+  threadId: z.string(),
+});
+const threadIdParamsSchema = z.object({ threadId: z.string() });
+const deltaNotificationSchema = z.object({
+  threadId: z.string().optional(),
+  deltas: z.array(
+    z.object({
+      kind: z.string().optional(),
+      used: jsonValueSchema.optional(),
+      size: jsonValueSchema.optional(),
+    }),
+  ),
+});
+const modelSummarySchema = z.object({
+  id: z.string(),
+  supportedReasoningEfforts: z.array(
+    z.object({
+      reasoningEffort: z.string(),
+      description: z.string(),
+    }),
+  ),
+  defaultReasoningEffort: z.string().optional(),
+});
+const modelListResultSchema = z.object({
+  models: z.array(modelSummarySchema),
+  selectedOnlyModels: z.array(modelSummarySchema),
+});
+const mcpServerConfigSchema = z.object({
+  name: z.string(),
+  env: z.array(z.object({ name: z.string(), value: z.string() })),
+});
+const mcpServerConfigsSchema = z.array(mcpServerConfigSchema);
+const toolCallParamsSchema = z.object({ callId: z.string() });
+
+function providerThreadIdFrom(value: JsonValue | undefined): string {
+  return providerThreadResultSchema.parse(value).providerThreadId;
+}
+
 async function startThread(args?: StartThreadArgs): Promise<{
   bbThreadId: string;
   providerThreadId: string;
 }> {
   nextThreadSerial += 1;
   const bbThreadId = `thread-${nextThreadSerial}`;
-  const id = sendRequest("thread/start", {
+  const providerOptions: ProviderOptions = {
+    acpLaunchSpec: acpLaunchSpec(args ?? {}),
+  };
+  if (args?.dialectId) providerOptions.acpDialect = args.dialectId;
+  if (args?.parameterizedModelPicker === true) {
+    providerOptions.parameterizedModelPicker = true;
+  }
+  if (args?.reasoningProbePriorityModelIds) {
+    providerOptions.reasoningProbePriorityModelIds =
+      args.reasoningProbePriorityModelIds;
+  }
+  if (args?.modelPickerPrimaryModels) {
+    providerOptions.primaryModels = args.modelPickerPrimaryModels;
+  }
+  if (args?.additionalWorkspaceWriteRoots) {
+    providerOptions.additionalWorkspaceWriteRoots =
+      args.additionalWorkspaceWriteRoots;
+  }
+  const params: ThreadStartRequest = {
     threadId: bbThreadId,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: executionOptions({
-      ...args,
-      providerOptions: {
-        ...(args?.dialectId ? { acpDialect: args.dialectId } : {}),
-        ...(args?.parameterizedModelPicker === true
-          ? { parameterizedModelPicker: true }
-          : {}),
-        ...(args?.reasoningProbePriorityModelIds
-          ? {
-              reasoningProbePriorityModelIds:
-                args.reasoningProbePriorityModelIds,
-            }
-          : {}),
-        ...(args?.modelPickerPrimaryModels
-          ? { primaryModels: args.modelPickerPrimaryModels }
-          : {}),
-        acpLaunchSpec: acpLaunchSpec(args ?? {}),
-        ...(args?.additionalWorkspaceWriteRoots
-          ? {
-              additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
-            }
-          : {}),
-      },
-    }),
-    ...(args?.dynamicTools ? { dynamicTools: args.dynamicTools } : {}),
+    options: executionOptions({ ...args, providerOptions }),
+  };
+  if (args?.dynamicTools) params.dynamicTools = args.dynamicTools;
+  const id = sendRequest("thread/start", {
+    ...params,
   });
   const response = await waitForResponse(id);
   if (response.error) {
     throw new Error(`thread/start failed: ${response.error.message}`);
   }
-  const result = response.result;
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    Array.isArray(result) ||
-    typeof result.providerThreadId !== "string"
-  ) {
-    throw new Error("thread/start did not return a providerThreadId");
-  }
-  startedProviderThreadIds.push(result.providerThreadId);
-  bbThreadIdByProviderThreadId.set(result.providerThreadId, bbThreadId);
-  return { bbThreadId, providerThreadId: result.providerThreadId };
+  const providerThreadId = providerThreadIdFrom(response.result);
+  startedProviderThreadIds.push(providerThreadId);
+  bbThreadIdByProviderThreadId.set(providerThreadId, bbThreadId);
+  return { bbThreadId, providerThreadId };
 }
 
 async function stopThread(providerThreadId: string): Promise<void> {
@@ -319,29 +400,19 @@ async function startThreadResponse(
 }
 
 function providerThreadIdOf(response: BridgeJsonRpcOutputMessage): string {
-  const result = response.result;
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    Array.isArray(result) ||
-    typeof result.providerThreadId !== "string"
-  ) {
+  try {
+    return providerThreadIdFrom(response.result);
+  } catch {
     throw new Error(
       `construction response carries no providerThreadId: ${JSON.stringify(response)}`,
     );
   }
-  return result.providerThreadId;
 }
 
 function messagesForThread(threadId: string): BridgeJsonRpcOutputMessage[] {
   return output.messages.filter((message) => {
-    const params = message.params;
-    return (
-      typeof params === "object" &&
-      params !== null &&
-      !Array.isArray(params) &&
-      params.threadId === threadId
-    );
+    const params = threadIdParamsSchema.safeParse(message.params);
+    return params.success && params.data.threadId === threadId;
   });
 }
 
@@ -349,21 +420,22 @@ function deltaKindsOf(message: BridgeJsonRpcOutputMessage): string[] {
   if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
     return [];
   }
-  const params = message.params as { deltas?: { kind?: string }[] } | undefined;
-  return (params?.deltas ?? []).map((delta) => delta.kind ?? "");
+  const params = deltaNotificationSchema.safeParse(message.params);
+  return params.success
+    ? params.data.deltas.map((delta) => delta.kind ?? "")
+    : [];
 }
 
 function contextWindowDeltasFor(
   threadId: string,
-): { used?: unknown; size?: unknown }[] {
+): { used?: JsonValue; size?: JsonValue }[] {
   return messagesForThread(threadId).flatMap((message) => {
     if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
       return [];
     }
-    const params = message.params as
-      | { deltas?: { kind?: string; used?: unknown; size?: unknown }[] }
-      | undefined;
-    return (params?.deltas ?? [])
+    const params = deltaNotificationSchema.safeParse(message.params);
+    if (!params.success) return [];
+    return params.data.deltas
       .filter((delta) => delta.kind === "contextWindow")
       .map((delta) => ({ used: delta.used, size: delta.size }));
   });
@@ -373,41 +445,37 @@ function sendModelList(
   args: AgentLaunchArgs & { modelLines?: string } = {},
 ): number {
   const { modelLines, ...launch } = args;
+  const launchSpecArgs: AgentLaunchArgs = { ...launch };
+  if (modelLines !== undefined) {
+    launchSpecArgs.modelListArgs = launch.modelListArgs ?? ["--list-models"];
+    launchSpecArgs.envVars = {
+      ...launch.envVars,
+      FAKE_ACP_MODEL_LINES: modelLines,
+    };
+  }
+  const providerOptions: ProviderOptions = {
+    acpLaunchSpec: acpLaunchSpec(launchSpecArgs),
+  };
+  if (launch.dialectId) providerOptions.acpDialect = launch.dialectId;
+  if (launch.parameterizedModelPicker === true) {
+    providerOptions.parameterizedModelPicker = true;
+  }
+  if (launch.reasoningProbePriorityModelIds) {
+    providerOptions.reasoningProbePriorityModelIds =
+      launch.reasoningProbePriorityModelIds;
+  }
+  if (launch.modelPickerPrimaryModels) {
+    providerOptions.primaryModels = launch.modelPickerPrimaryModels;
+  }
   return sendRequest("model/list", {
-    providerOptions: {
-      ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
-      ...(launch.parameterizedModelPicker === true
-        ? { parameterizedModelPicker: true }
-        : {}),
-      ...(launch.reasoningProbePriorityModelIds
-        ? {
-            reasoningProbePriorityModelIds:
-              launch.reasoningProbePriorityModelIds,
-          }
-        : {}),
-      ...(launch.modelPickerPrimaryModels
-        ? { primaryModels: launch.modelPickerPrimaryModels }
-        : {}),
-      acpLaunchSpec: acpLaunchSpec(
-        modelLines === undefined
-          ? launch
-          : {
-              ...launch,
-              modelListArgs: launch.modelListArgs ?? ["--list-models"],
-              envVars: {
-                ...launch.envVars,
-                FAKE_ACP_MODEL_LINES: modelLines,
-              },
-            },
-      ),
-    },
+    providerOptions,
   });
 }
 
-function sendTurnRequest(
+function sendTurnRequest<TParams>(
   method: "turn/start" | "turn/steer",
   providerThreadId: string,
-  params: Record<string, unknown>,
+  params: TParams,
 ): number {
   return sendRequest(method, {
     threadId: bbThreadIdFor(providerThreadId),
@@ -418,10 +486,12 @@ function sendTurnRequest(
   });
 }
 
-function compactCommandInput(): unknown[] {
-  return JSON.parse(
-    JSON.stringify(createStandaloneBuiltinCompactCommandInput()),
-  ) as unknown[];
+function compactCommandInput(): JsonValue[] {
+  return z
+    .array(jsonValueSchema)
+    .parse(
+      JSON.parse(JSON.stringify(createStandaloneBuiltinCompactCommandInput())),
+    );
 }
 
 function loggedPrompts(path: string): string[] {
@@ -431,13 +501,18 @@ function loggedPrompts(path: string): string[] {
   return readFileSync(path, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as string);
+    .map((line) => z.string().parse(JSON.parse(line)));
 }
 
 interface LoggedAcpRequest {
   method?: string;
-  params?: Record<string, unknown>;
+  params?: JsonObject;
 }
+
+const loggedAcpRequestSchema = z.object({
+  method: z.string().optional(),
+  params: jsonObjectSchema.optional(),
+});
 
 function loggedAcpRequests(path: string): LoggedAcpRequest[] {
   if (!existsSync(path)) {
@@ -446,10 +521,10 @@ function loggedAcpRequests(path: string): LoggedAcpRequest[] {
   return readFileSync(path, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as LoggedAcpRequest);
+    .map((line) => loggedAcpRequestSchema.parse(JSON.parse(line)));
 }
 
-async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
+async function waitForTurnCompleted(): Promise<ThreadEvent> {
   return waitFor(
     () => threadEventsOfType("turn/completed").at(-1),
     "turn/completed thread event",
@@ -467,29 +542,22 @@ function agentMessageTexts(): string[] {
   };
   for (const event of threadEvents()) {
     if (event.type === "item/agentMessage/delta") {
-      const itemId = String(event.itemId);
-      track(itemId);
+      track(event.itemId);
       textsByItemId.set(
-        itemId,
-        (textsByItemId.get(itemId) ?? "") + String(event.delta ?? ""),
+        event.itemId,
+        (textsByItemId.get(event.itemId) ?? "") + event.delta,
       );
       continue;
     }
+    if (event.type !== "item/completed") {
+      continue;
+    }
     const item = event.item;
-    if (
-      event.type !== "item/completed" ||
-      typeof item !== "object" ||
-      item === null ||
-      Array.isArray(item)
-    ) {
+    if (item?.type !== "agentMessage") {
       continue;
     }
-    const typedItem = item as { id: string; type: string; text?: string };
-    if (typedItem.type !== "agentMessage") {
-      continue;
-    }
-    track(typedItem.id);
-    textsByItemId.set(typedItem.id, typedItem.text ?? "");
+    track(item.id);
+    textsByItemId.set(item.id, item.text);
   }
   return order.map((id) => textsByItemId.get(id) ?? "");
 }
@@ -501,8 +569,8 @@ function callDynamicToolBridge(args: {
   threadId: string;
   token: string;
   tool: string;
-  toolArguments: Record<string, unknown>;
-}): Promise<unknown> {
+  toolArguments: JsonObject;
+}): Promise<JsonValue> {
   return new Promise((resolveCall, rejectCall) => {
     const socket = createConnection({ host: args.host, port: args.port });
     let buffer = "";
@@ -540,9 +608,9 @@ function callDynamicToolBridge(args: {
       }
       settled = true;
       try {
-        resolveCall(JSON.parse(line));
+        resolveCall(jsonValueSchema.parse(JSON.parse(line)));
       } catch (error) {
-        rejectCall(error);
+        rejectCall(error instanceof Error ? error : new Error(String(error)));
       }
     });
     socket.on("error", rejectOnce);
@@ -598,12 +666,8 @@ describe("acp bridge", () => {
         },
       ],
     });
-    const selectedOnly = (
-      response.result as {
-        selectedOnlyModels: {
-          supportedReasoningEfforts: { reasoningEffort: string }[];
-        }[];
-      }
+    const selectedOnly = modelListResultSchema.parse(
+      response.result,
     ).selectedOnlyModels;
     expect(
       selectedOnly[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
@@ -680,13 +744,9 @@ describe("acp bridge", () => {
       },
     });
 
-    const result = (await waitForResponse(modelListId)).result as {
-      models: {
-        id: string;
-        supportedReasoningEfforts: { reasoningEffort: string }[];
-      }[];
-      selectedOnlyModels: { id: string }[];
-    };
+    const result = modelListResultSchema.parse(
+      (await waitForResponse(modelListId)).result,
+    );
     const initialize = loggedAcpRequests(requestLog).find(
       (request) => request.method === "initialize",
     );
@@ -788,7 +848,30 @@ describe("acp bridge", () => {
     async (method, legacyModel, selectedModel) => {
       const threadId = `legacy-cursor-${method.slice("thread/".length)}`;
       const requestLog = join(workspaceDir, `${threadId}.jsonl`);
-      const id = sendRequest(method, {
+      const launchSpec =
+        method === "thread/resume"
+          ? acpLaunchSpec({
+              envVars: {
+                FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+                FAKE_ACP_REQUEST_LOG: requestLog,
+                FAKE_ACP_LOAD_SESSION: "1",
+              },
+            })
+          : method === "thread/fork"
+            ? acpLaunchSpec({
+                envVars: {
+                  FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+                  FAKE_ACP_REQUEST_LOG: requestLog,
+                  FAKE_ACP_FORK_SESSION: "1",
+                },
+              })
+            : acpLaunchSpec({
+                envVars: {
+                  FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+                  FAKE_ACP_REQUEST_LOG: requestLog,
+                },
+              });
+      const request: ThreadStartRequest = {
         threadId,
         cwd: workspaceDir,
         instructionMode: "append",
@@ -799,27 +882,17 @@ describe("acp bridge", () => {
           providerOptions: {
             acpDialect: "cursor",
             parameterizedModelPicker: true,
-            acpLaunchSpec: acpLaunchSpec({
-              envVars: {
-                FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
-                FAKE_ACP_REQUEST_LOG: requestLog,
-                ...(method === "thread/resume"
-                  ? { FAKE_ACP_LOAD_SESSION: "1" }
-                  : {}),
-                ...(method === "thread/fork"
-                  ? { FAKE_ACP_FORK_SESSION: "1" }
-                  : {}),
-              },
-            }),
+            acpLaunchSpec: launchSpec,
           },
         }),
-        ...(method === "thread/resume"
-          ? { providerThreadId: "legacy-resume-session" }
-          : {}),
-        ...(method === "thread/fork"
-          ? { sourceProviderThreadId: "legacy-source-session" }
-          : {}),
-      });
+      };
+      if (method === "thread/resume") {
+        request.providerThreadId = "legacy-resume-session";
+      }
+      if (method === "thread/fork") {
+        request.sourceProviderThreadId = "legacy-source-session";
+      }
+      const id = sendRequest(method, request);
       const response = await waitForResponse(id);
       expect(response.error).toBeUndefined();
       expect(
@@ -965,12 +1038,9 @@ describe("acp bridge", () => {
       },
     });
 
-    const result = (await waitForResponse(modelListId)).result as {
-      models: {
-        id: string;
-        supportedReasoningEfforts: { reasoningEffort: string }[];
-      }[];
-    };
+    const result = modelListResultSchema.parse(
+      (await waitForResponse(modelListId)).result,
+    );
     expect(result.models).toHaveLength(60);
     const lastGenerated = result.models.find(
       (model) => model.id === "fake/gen-59",
@@ -1349,14 +1419,7 @@ describe("acp bridge", () => {
     });
 
     const response = await waitForResponse(modelListId);
-    const models = (
-      response.result as {
-        models: {
-          id: string;
-          supportedReasoningEfforts: { reasoningEffort: string }[];
-        }[];
-      }
-    ).models;
+    const models = modelListResultSchema.parse(response.result).models;
     expect(
       models.find((model) => model.id === "fake/strong")
         ?.supportedReasoningEfforts,
@@ -1372,14 +1435,7 @@ describe("acp bridge", () => {
     });
 
     const response = await waitForResponse(modelListId);
-    const models = (
-      response.result as {
-        models: {
-          id: string;
-          supportedReasoningEfforts: { reasoningEffort: string }[];
-        }[];
-      }
-    ).models;
+    const models = modelListResultSchema.parse(response.result).models;
     expect(
       models.find((model) => model.id === "fake/strong")
         ?.supportedReasoningEfforts,
@@ -1397,15 +1453,7 @@ describe("acp bridge", () => {
     });
 
     const response = await waitForResponse(modelListId);
-    const models = (
-      response.result as {
-        models: {
-          id: string;
-          supportedReasoningEfforts: { reasoningEffort: string }[];
-          defaultReasoningEffort: string;
-        }[];
-      }
-    ).models;
+    const models = modelListResultSchema.parse(response.result).models;
     const strong = models.find((model) => model.id === "fake/strong");
     expect(strong?.defaultReasoningEffort).toBe("medium");
     expect(strong?.supportedReasoningEfforts).toEqual([
@@ -1460,9 +1508,9 @@ describe("acp bridge", () => {
     if (!configText) {
       throw new Error("Fake ACP agent did not report MCP server config");
     }
-    const [mcpServerConfig] = JSON.parse(
-      configText.slice(configPrefix.length),
-    ) as { env: { name: string; value: string }[] }[];
+    const [mcpServerConfig] = mcpServerConfigsSchema.parse(
+      JSON.parse(configText.slice(configPrefix.length)),
+    );
     expect(
       mcpServerConfig?.env.find(({ name }) => name === "ELECTRON_RUN_AS_NODE")
         ?.value,
@@ -1661,15 +1709,17 @@ describe("acp bridge", () => {
       projectSlug,
       "mcp-approvals.json",
     );
-    const approvals = JSON.parse(readFileSync(approvalPath, "utf8")) as unknown;
+    const approvals = z
+      .array(z.string())
+      .parse(JSON.parse(readFileSync(approvalPath, "utf8")));
     expect(approvals).toEqual([
       expect.stringMatching(`^${ACP_BRIDGE_MCP_SERVER_NAME}-[a-f0-9]{16}$`),
     ]);
 
     await stopThread(providerThreadId);
-    expect(JSON.parse(readFileSync(approvalPath, "utf8")) as unknown).toEqual(
-      [],
-    );
+    expect(
+      z.array(z.string()).parse(JSON.parse(readFileSync(approvalPath, "utf8"))),
+    ).toEqual([]);
   });
 
   it("forwards ACP dynamic tool calls through the runtime tool-call contract", async () => {
@@ -1700,9 +1750,9 @@ describe("acp bridge", () => {
     if (!configText) {
       throw new Error("Fake ACP agent did not report MCP server config");
     }
-    const [mcpServerConfig] = JSON.parse(
-      configText.slice(configPrefix.length),
-    ) as { env: { name: string; value: string }[]; name: string }[];
+    const [mcpServerConfig] = mcpServerConfigsSchema.parse(
+      JSON.parse(configText.slice(configPrefix.length)),
+    );
     if (!mcpServerConfig) {
       throw new Error("Fake ACP agent reported no MCP server config");
     }
@@ -1793,9 +1843,9 @@ describe("acp bridge", () => {
     if (!configText) {
       throw new Error("Fake ACP agent did not report MCP server config");
     }
-    const [mcpServerConfig] = JSON.parse(
-      configText.slice(configPrefix.length),
-    ) as { env: { name: string; value: string }[]; name: string }[];
+    const [mcpServerConfig] = mcpServerConfigsSchema.parse(
+      JSON.parse(configText.slice(configPrefix.length)),
+    );
     if (!mcpServerConfig) {
       throw new Error("Fake ACP agent reported no MCP server config");
     }
@@ -1857,7 +1907,8 @@ describe("acp bridge", () => {
           (message) =>
             message.method === "item/tool/call" &&
             message.id !== undefined &&
-            (message.params as { callId?: unknown }).callId ===
+            toolCallParamsSchema.safeParse(message.params).success &&
+            toolCallParamsSchema.parse(message.params).callId ===
               "test-dynamic-tool-call-after-reset",
         ),
       "forwarded dynamic tool call after reset",
@@ -1930,13 +1981,7 @@ describe("acp bridge", () => {
     });
     const startResponse = await waitForResponse(startId);
     expect(startResponse.error).toBeUndefined();
-    const providerThreadId =
-      typeof startResponse.result === "object" &&
-      startResponse.result !== null &&
-      !Array.isArray(startResponse.result) &&
-      typeof startResponse.result.providerThreadId === "string"
-        ? startResponse.result.providerThreadId
-        : "";
+    const providerThreadId = providerThreadIdFrom(startResponse.result);
     startedProviderThreadIds.push(providerThreadId);
 
     const turnId = sendRequest("turn/start", {
@@ -1954,9 +1999,13 @@ describe("acp bridge", () => {
     await waitForResponse(turnId);
     await waitForFileWithRealTimer(promptLog);
 
-    const prompt: unknown = JSON.parse(
-      readFileSync(promptLog, "utf8").trim().split("\n")[0] ?? "null",
-    );
+    const prompt = z
+      .string()
+      .parse(
+        JSON.parse(
+          readFileSync(promptLog, "utf8").trim().split("\n")[0] ?? "null",
+        ),
+      );
     expect(prompt).toContain("Available bb skills:");
     expect(prompt).toContain(
       "- deploy: Ship the app. (SKILL.md: /staged/acp-skills/deploy/SKILL.md)",
@@ -2127,7 +2176,12 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("write:ok");
     expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
     expect(
-      threadEventsOfType("item/completed").map((event) => event.item),
+      threadEvents()
+        .filter(
+          (event): event is Extract<ThreadEvent, { type: "item/completed" }> =>
+            event.type === "item/completed",
+        )
+        .map((event) => event.item),
     ).toContainEqual(
       expect.objectContaining({
         type: "fileChange",
@@ -2186,13 +2240,7 @@ describe("acp bridge", () => {
       });
       const startResponse = await waitForResponse(startId);
       expect(startResponse.error).toBeUndefined();
-      const providerThreadId =
-        typeof startResponse.result === "object" &&
-        startResponse.result !== null &&
-        !Array.isArray(startResponse.result) &&
-        typeof startResponse.result.providerThreadId === "string"
-          ? startResponse.result.providerThreadId
-          : "";
+      const providerThreadId = providerThreadIdFrom(startResponse.result);
       startedProviderThreadIds.push(providerThreadId);
 
       const turnId = sendRequest("turn/start", {
@@ -2334,8 +2382,7 @@ describe("acp bridge", () => {
       threadEvents().filter(
         (event) =>
           event.type === "item/started" &&
-          (event.item as { type?: string } | undefined)?.type ===
-            "contextCompaction",
+          event.item?.type === "contextCompaction",
       ),
     ).toHaveLength(1);
     expect(loggedPrompts(promptLog)).toEqual(["/compact"]);
@@ -2511,17 +2558,9 @@ describe("acp bridge", () => {
       sourceProviderThreadId: "source-session",
     });
     const response = await waitForResponse(forkId);
-    const result = response.result;
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      Array.isArray(result) ||
-      typeof result.providerThreadId !== "string"
-    ) {
-      throw new Error("thread/fork did not return a providerThreadId");
-    }
-    startedProviderThreadIds.push(result.providerThreadId);
-    expect(result.providerThreadId).toMatch(/^fake-fork-/u);
+    const providerThreadId = providerThreadIdFrom(response.result);
+    startedProviderThreadIds.push(providerThreadId);
+    expect(providerThreadId).toMatch(/^fake-fork-/u);
 
     await waitForFileWithRealTimer(forkLog);
     expect(JSON.parse(readFileSync(forkLog, "utf8"))).toMatchObject({
@@ -2531,11 +2570,11 @@ describe("acp bridge", () => {
     });
     expect(notifications("thread/identity").at(-1)?.params).toEqual({
       threadId: "thread-fork",
-      providerThreadId: result.providerThreadId,
+      providerThreadId,
       sessionRestorable: false,
     });
 
-    sendTurnRequest("turn/start", result.providerThreadId, {
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-mcp-servers", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -2544,7 +2583,7 @@ describe("acp bridge", () => {
     );
 
     const completedTurnCount = threadEventsOfType("turn/completed").length;
-    sendTurnRequest("turn/start", result.providerThreadId, {
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
     });
     await waitFor(
@@ -2669,22 +2708,18 @@ describe("acp bridge", () => {
         if (message.method !== "thread/delta") {
           return [];
         }
-        const params = message.params as {
-          threadId?: unknown;
-          deltas?: unknown;
-        };
-        return params.threadId === threadId &&
-          Array.isArray(params.deltas) &&
-          params.deltas.some(
-            (delta) => (delta as { kind?: unknown }).kind === "session.reset",
-          )
+        const params = deltaNotificationSchema.safeParse(message.params);
+        return params.success &&
+          params.data.threadId === threadId &&
+          params.data.deltas.some((delta) => delta.kind === "session.reset")
           ? [index]
           : [];
       });
     const identityIndexesFor = (threadId: string): number[] =>
       output.messages.flatMap((message, index) =>
         message.method === "thread/identity" &&
-        (message.params as { threadId?: unknown }).threadId === threadId
+        threadIdParamsSchema.safeParse(message.params).success &&
+        threadIdParamsSchema.parse(message.params).threadId === threadId
           ? [index]
           : [],
       );
@@ -2733,20 +2768,9 @@ describe("acp bridge", () => {
       sourceProviderThreadId: "source-session",
     });
     const forkResponse = await waitForResponse(forkId);
-    const forkResult = forkResponse.result;
-    if (
-      typeof forkResult !== "object" ||
-      forkResult === null ||
-      Array.isArray(forkResult) ||
-      typeof forkResult.providerThreadId !== "string"
-    ) {
-      throw new Error("thread/fork did not return a providerThreadId");
-    }
-    startedProviderThreadIds.push(forkResult.providerThreadId);
-    bbThreadIdByProviderThreadId.set(
-      forkResult.providerThreadId,
-      "thread-fork-reset",
-    );
+    const providerThreadId = providerThreadIdFrom(forkResponse.result);
+    startedProviderThreadIds.push(providerThreadId);
+    bbThreadIdByProviderThreadId.set(providerThreadId, "thread-fork-reset");
     const forkResets = resetIndexesFor("thread-fork-reset");
     const forkIdentities = identityIndexesFor("thread-fork-reset");
     expect(forkResets).toHaveLength(1);
@@ -2913,19 +2937,11 @@ describe("acp bridge", () => {
       providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
-    const result = response.result;
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      Array.isArray(result) ||
-      typeof result.providerThreadId !== "string"
-    ) {
-      throw new Error("thread/resume did not return a providerThreadId");
-    }
-    expect(result.providerThreadId).not.toBe(first.providerThreadId);
+    const providerThreadId = providerThreadIdFrom(response.result);
+    expect(providerThreadId).not.toBe(first.providerThreadId);
     expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
-    startedProviderThreadIds.push(result.providerThreadId);
+    startedProviderThreadIds.push(providerThreadId);
   });
 
   it("re-applies ACP-native reasoning after session/load resume", async () => {
@@ -2986,17 +3002,9 @@ describe("acp bridge", () => {
       providerThreadId: "fake-sess-stale",
     });
     const response = await waitForResponse(resumeId);
-    const result = response.result;
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      Array.isArray(result) ||
-      typeof result.providerThreadId !== "string"
-    ) {
-      throw new Error("thread/resume did not return a providerThreadId");
-    }
-    expect(result.providerThreadId).not.toBe("fake-sess-stale");
-    startedProviderThreadIds.push(result.providerThreadId);
+    const providerThreadId = providerThreadIdFrom(response.result);
+    expect(providerThreadId).not.toBe("fake-sess-stale");
+    startedProviderThreadIds.push(providerThreadId);
 
     expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
   });
@@ -3124,7 +3132,7 @@ describe("acp bridge", () => {
         .filter((message) => message.method === "thread/identity")
         .map(
           (message) =>
-            (message.params as { providerThreadId: string }).providerThreadId,
+            threadIdentitySchema.parse(message.params).providerThreadId,
         ),
     ).toEqual([liveProviderThreadId]);
 

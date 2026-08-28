@@ -107,6 +107,105 @@ function migrationStatementHash(statement: string): string {
   return createHash("sha256").update(statement).digest("hex");
 }
 
+interface BoundaryObject {}
+type DynamicObject = Record<string, JsonValue>;
+type BoundaryValue =
+  | JsonValue
+  | BoundaryObject
+  | bigint
+  | symbol
+  | undefined
+  | ((...args: never[]) => BoundaryValue | void);
+type JsonObject = { [key: string]: JsonValue };
+interface SettingsValueMap {
+  [key: string]: PluginSettingValue | undefined;
+}
+type ToolParameterOverrides = Map<string, JsonObject>;
+type Disposable = { dispose(): void };
+type CliRecordState = { registration: FakeCliRecord | null };
+type ThreadEventHandlerMap = {
+  [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
+};
+type NormalizedAgentToolSelections = {
+  toolIds: string[];
+  parameterOverrides: ToolParameterOverrides;
+};
+type NormalizedAgentConfiguration = {
+  toolIds: string[];
+  toolParameterOverrides: ToolParameterOverrides;
+  skillIds: string[];
+  instructions: string | null;
+};
+type AgentToolRegistrationImplementation = {
+  name: string;
+  description: string;
+  instructions?: string;
+  presentation?: PluginAgentToolPresentation;
+  parameters: z.ZodType | JsonObject;
+  execute: (
+    ...args: never[]
+  ) => PluginAgentToolResult | Promise<PluginAgentToolResult>;
+};
+
+const stringValueSchema = z.string();
+const booleanValueSchema = z.boolean();
+const numberValueSchema = z.number();
+const bigintValueSchema = z.bigint();
+const symbolValueSchema = z.symbol();
+const functionValueSchema = z.function();
+const boundaryValueSchema = z.preprocess(
+  (value) => value,
+  z.custom<BoundaryValue>(() => true),
+);
+const agentToolSelectionSchema = z
+  .object({
+    name: boundaryValueSchema.optional(),
+    parameters: boundaryValueSchema.optional(),
+  })
+  .passthrough();
+
+function isStringValue<T>(value: T): value is T & string {
+  return stringValueSchema.safeParse(value).success;
+}
+
+function isBooleanValue<T>(value: T): value is T & boolean {
+  return booleanValueSchema.safeParse(value).success;
+}
+
+function isNumberValue<T>(value: T): value is T & number {
+  return numberValueSchema.safeParse(value).success;
+}
+
+function isFunctionValue<T>(
+  value: T,
+): value is T & ((...args: never[]) => BoundaryValue | void) {
+  return functionValueSchema.safeParse(value).success;
+}
+
+function isObjectValue<T>(value: T): value is T & DynamicObject {
+  return value !== null && Object(value) === value && !isFunctionValue(value);
+}
+
+function valueKind<T>(value: T): string {
+  if (value === null) return "object";
+  if (isStringValue(value)) return "string";
+  if (isBooleanValue(value)) return "boolean";
+  if (isNumberValue(value)) return "number";
+  if (isFunctionValue(value)) return "function";
+  if (value === undefined) return "undefined";
+  if (bigintValueSchema.safeParse(value).success) return "bigint";
+  if (symbolValueSchema.safeParse(value).success) return "symbol";
+  return "object";
+}
+
+type IssuePathSegment = PropertyKey | { readonly key: PropertyKey };
+
+function isIssuePathObject(
+  value: IssuePathSegment,
+): value is { readonly key: PropertyKey } {
+  return value !== null && Object(value) === value;
+}
+
 /**
  * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
  * runtime (apps/server/src/services/plugins/plugin-api.ts), for unit-testing
@@ -192,12 +291,12 @@ export interface FakeAgentToolRecord {
    */
   presentation: PluginAgentToolPresentation | null;
   /** JSON-schema object the host would send providers. */
-  inputSchema: unknown;
+  inputSchema: DynamicObject;
   parse(
-    input: unknown,
-  ): { ok: true; value: unknown } | { ok: false; error: string };
+    input: BoundaryValue,
+  ): { ok: true; value: BoundaryValue } | { ok: false; error: string };
   execute(
-    params: unknown,
+    params: BoundaryValue,
     ctx: PluginAgentToolContext,
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
@@ -217,12 +316,12 @@ export interface FakeMentionProviderRecord {
 export interface FakeRealtimeSignal {
   channel: string;
   /** JSON-round-tripped, like the WS broadcast; `undefined` → `null`. */
-  payload: unknown;
+  payload: JsonValue;
 }
 
 export interface ExperimentalFakeHostRpcCall {
   method: string;
-  input: unknown;
+  input: JsonValue;
   hostId: string;
   signal?: AbortSignal;
 }
@@ -285,7 +384,7 @@ export interface FakePluginBehaviorDrivers {
   experimental_emitHostSignal(
     hostId: string,
     signal: string,
-    payload: unknown,
+    payload: BoundaryValue,
   ): Promise<void>;
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
@@ -301,7 +400,7 @@ export interface FakePluginBehaviorDrivers {
    * strict JSON result normalization, and structured failure codes. Rejects
    * with the same message/code/issues the frontend client surfaces.
    */
-  callRpc(method: string, input?: unknown): Promise<unknown>;
+  callRpc(method: string, input?: BoundaryValue): Promise<JsonValue>;
   /**
    * Invoke the plugin's CLI command with host semantics: the result's
    * exitCode must be a number, stdout/stderr default to "", and a throwing
@@ -343,7 +442,7 @@ export interface FakePluginBehaviorDrivers {
   emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
     payload: PluginThreadEventPayloads[E],
-  ): Promise<{ errors: unknown[] }>;
+  ): Promise<{ errors: BoundaryValue[] }>;
   /**
    * Call a registered agent tool the way a provider tool-call would:
    * arguments go through the tool's parse step (zod-validated for zod
@@ -352,7 +451,7 @@ export interface FakePluginBehaviorDrivers {
    */
   callAgentTool(
     name: string,
-    input: unknown,
+    input: BoundaryValue,
     ctx?: Partial<PluginAgentToolContext>,
   ): Promise<PluginAgentToolResult>;
   /** Evaluate `bb.agents.configure` with production validation/fail-closed
@@ -445,7 +544,7 @@ export interface CreateFakePluginHostOptions {
   /** Deterministic stand-in for the targeted daemon host entry. */
   experimental_callHostRpc?: (
     call: ExperimentalFakeHostRpcCall,
-  ) => unknown | Promise<unknown>;
+  ) => BoundaryValue | Promise<BoundaryValue>;
 }
 
 export interface FakePluginHost {
@@ -457,15 +556,19 @@ export interface FakePluginHost {
 function readSettingsValues(
   descriptors: PluginSettingDescriptors,
   stored: Map<string, PluginSettingValue>,
-): Record<string, PluginSettingValue | undefined> {
-  const values: Record<string, PluginSettingValue | undefined> = {};
+): SettingsValueMap {
+  const values: SettingsValueMap = {};
   for (const [key, descriptor] of Object.entries(descriptors)) {
     let value = stored.get(key);
     const expected = descriptor.type === "boolean" ? "boolean" : "string";
-    if (typeof value !== expected) value = undefined;
+    if (
+      (expected === "boolean" && !isBooleanValue(value)) ||
+      (expected === "string" && !isStringValue(value))
+    )
+      value = undefined;
     if (
       descriptor.type === "select" &&
-      typeof value === "string" &&
+      isStringValue(value) &&
       !descriptor.options.includes(value)
     ) {
       value = undefined;
@@ -477,15 +580,15 @@ function readSettingsValues(
 
 // ---------------------------------------------------------------------------
 
-function isNeedsConfigurationError(error: unknown): error is Error {
+function isNeedsConfigurationError<T>(error: T): error is T & Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage<T>(error: T): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function jsonRoundTrip(value: unknown, what: string): unknown {
+function jsonRoundTrip<T>(value: T, what: string): JsonValue | undefined {
   if (value === undefined) return undefined;
   let json: string | undefined;
   try {
@@ -496,13 +599,13 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
   if (json === undefined) {
     throw new Error(`${what} is not JSON-serializable`);
   }
-  return JSON.parse(json);
+  return z.json().parse(JSON.parse(json));
 }
 
 interface FakeRpcRecord {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: never) => unknown;
+  handler: (input: never) => BoundaryValue | Promise<BoundaryValue>;
 }
 
 type FakeHostWorkerExitSubscription = (event: {
@@ -514,7 +617,7 @@ interface FakeHostSignalSubscription {
   payloadSchema: StandardSchemaV1;
   handler: (event: {
     hostId: string;
-    payload: unknown;
+    payload: BoundaryValue;
   }) => void | Promise<void>;
 }
 
@@ -525,17 +628,15 @@ function normalizeRpcIssues(
     const rawPath = issue.path;
     const segments =
       rawPath === undefined ? [] : Array.isArray(rawPath) ? rawPath : [rawPath];
-    const path = segments.map((segment) => {
-      const key =
-        typeof segment === "object" && segment !== null
-          ? Reflect.get(segment, "key")
-          : segment;
-      return typeof key === "number" ? key : String(key);
+    const path = segments.map((segment: IssuePathSegment) => {
+      const key = isIssuePathObject(segment) ? segment.key : segment;
+      return isNumberValue(key) ? key : String(key);
     });
-    return {
+    const normalized: PluginRpcValidationIssue = {
       message: issue.message,
-      ...(path.length > 0 ? { path } : {}),
     };
+    if (path.length > 0) normalized.path = path;
+    return normalized;
   });
 }
 
@@ -546,11 +647,11 @@ function throwRpcError(error: PluginRpcError): never {
   throw thrown;
 }
 
-async function validateRpcValue(
+async function validateRpcValue<T>(
   schema: StandardSchemaV1,
-  value: unknown,
+  value: T,
   phase: "input" | "output",
-): Promise<unknown> {
+): Promise<BoundaryValue> {
   let result: StandardSchemaV1Result<unknown>;
   try {
     result = await schema["~standard"].validate(value);
@@ -569,20 +670,16 @@ async function validateRpcValue(
       issues: normalizeRpcIssues(result.issues),
     });
   }
-  return result.value;
+  return boundaryValueSchema.parse(result.value);
 }
 
-function normalizeRpcJsonResult(value: unknown): JsonValue {
+function normalizeRpcJsonResult<T>(value: T): JsonValue {
   const ancestors = new Set<object>();
-  function visit(current: unknown, path: string): JsonValue {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
+  function visit(current: BoundaryValue, path: string): JsonValue {
+    if (current === null || isStringValue(current) || isBooleanValue(current)) {
       return current;
     }
-    if (typeof current === "number") {
+    if (isNumberValue(current)) {
       if (!Number.isFinite(current)) {
         return throwRpcError({
           code: "non_json_result",
@@ -591,10 +688,10 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       }
       return current;
     }
-    if (typeof current !== "object") {
+    if (!isObjectValue(current)) {
       return throwRpcError({
         code: "non_json_result",
-        message: `rpc result at ${path} is not a JSON value (${typeof current})`,
+        message: `rpc result at ${path} is not a JSON value (${valueKind(current)})`,
       });
     }
     if (ancestors.has(current)) {
@@ -608,14 +705,14 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       if (Array.isArray(current)) {
         return current.map((item, index) => visit(item, `${path}[${index}]`));
       }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         return throwRpcError({
           code: "non_json_result",
           message: `rpc result at ${path} must be a plain JSON object`,
         });
       }
-      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+      if (Object.getOwnPropertySymbols(current).length > 0) {
         return throwRpcError({
           code: "non_json_result",
           message: `rpc result at ${path} contains a symbol key`,
@@ -630,17 +727,14 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       ancestors.delete(current);
     }
   }
-  return visit(value, "$result");
+  return visit(boundaryValueSchema.parse(value), "$result");
 }
 
 function normalizeAgentToolSelections(args: {
   knownIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
-}): {
-  toolIds: string[];
-  parameterOverrides: Map<string, Record<string, unknown>>;
-} {
+  value: BoundaryValue;
+}): NormalizedAgentToolSelections {
   if (!Array.isArray(args.value)) {
     throw new Error("configure() output.tools must be an array");
   }
@@ -650,20 +744,22 @@ function normalizeAgentToolSelections(args: {
     );
   }
   const toolIds: string[] = [];
-  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const parameterOverrides: ToolParameterOverrides = new Map();
   const seen = new Set<string>();
   for (let index = 0; index < args.value.length; index += 1) {
     const entry = args.value[index];
-    let name: unknown;
-    let parameters: Record<string, unknown> | null = null;
-    if (typeof entry === "string") {
+    let name: BoundaryValue;
+    let parameters: JsonObject | null = null;
+    if (isStringValue(entry)) {
       name = entry;
-    } else if (
-      typeof entry === "object" &&
-      entry !== null &&
-      !Array.isArray(entry)
-    ) {
-      const typed = entry as Record<string, unknown>;
+    } else {
+      const parsedEntry = agentToolSelectionSchema.safeParse(entry);
+      if (!parsedEntry.success) {
+        throw new Error(
+          `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
+        );
+      }
+      const typed = parsedEntry.data;
       const unknownKeys = Object.keys(typed)
         .filter((key) => !["name", "parameters"].includes(key))
         .sort();
@@ -677,14 +773,10 @@ function normalizeAgentToolSelections(args: {
         index,
         value: typed.parameters,
       });
-    } else {
-      throw new Error(
-        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
-      );
     }
-    if (typeof name !== "string" || name.length === 0) {
+    if (!isStringValue(name) || name.length === 0) {
       throw new Error(
-        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
+        `configure() output.tools[${index}] must ${isStringValue(entry) ? "be" : "name"} a non-empty string`,
       );
     }
     if (seen.has(name)) {
@@ -706,10 +798,10 @@ function normalizeAgentToolSelections(args: {
 
 function normalizeAgentToolParameters(args: {
   index: number;
-  value: unknown;
-}): Record<string, unknown> {
+  value: BoundaryValue;
+}): JsonObject {
   const { index, value } = args;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (!isObjectValue(value) || Array.isArray(value)) {
     throw new Error(
       `configure() output.tools[${index}].parameters must be a JSON-schema object`,
     );
@@ -735,7 +827,12 @@ function normalizeAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
   }
-  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  const parameters = z.json().parse(JSON.parse(serialized));
+  if (!isObjectValue(parameters) || Array.isArray(parameters)) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must be a JSON-schema object`,
+    );
+  }
   if (parameters.type !== "object") {
     throw new Error(
       `configure() output.tools[${index}].parameters must have root type "object"`,
@@ -752,7 +849,7 @@ function normalizeAgentConfigurationIds(args: {
   field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
+  value: BoundaryValue;
 }): string[] {
   if (!Array.isArray(args.value)) {
     throw new Error(`configure() output.${args.field} must be an array`);
@@ -766,7 +863,7 @@ function normalizeAgentConfigurationIds(args: {
   const seen = new Set<string>();
   for (let index = 0; index < args.value.length; index += 1) {
     const id = args.value[index];
-    if (typeof id !== "string" || id.length === 0) {
+    if (!isStringValue(id) || id.length === 0) {
       throw new Error(
         `configure() output.${args.field}[${index}] must be a non-empty string`,
       );
@@ -787,27 +884,18 @@ function normalizeAgentConfigurationIds(args: {
   return selected;
 }
 
-function normalizeAgentConfiguration(args: {
+function normalizeAgentConfiguration<T>(args: {
   knownSkillIds: ReadonlySet<string>;
   knownToolIds: ReadonlySet<string>;
   pluginId: string;
-  value: unknown;
-}): {
-  toolIds: string[];
-  toolParameterOverrides: Map<string, Record<string, unknown>>;
-  skillIds: string[];
-  instructions: string | null;
-} {
-  if (
-    typeof args.value !== "object" ||
-    args.value === null ||
-    Array.isArray(args.value)
-  ) {
+  value: T;
+}): NormalizedAgentConfiguration {
+  if (!isObjectValue(args.value) || Array.isArray(args.value)) {
     throw new Error(
       "configure() must return { tools: string[], skills: string[], instructions?: string }",
     );
   }
-  const output = args.value as Record<string, unknown>;
+  const output = args.value;
   const unknownKeys = Object.keys(output)
     .filter((key) => !["tools", "skills", "instructions"].includes(key))
     .sort();
@@ -818,7 +906,7 @@ function normalizeAgentConfiguration(args: {
   }
   if (
     output.instructions !== undefined &&
-    typeof output.instructions !== "string"
+    !isStringValue(output.instructions)
   ) {
     throw new Error("configure() output.instructions must be a string");
   }
@@ -836,14 +924,18 @@ function normalizeAgentConfiguration(args: {
       pluginId: args.pluginId,
       value: output.skills,
     }),
-    instructions:
-      typeof output.instructions === "string" &&
-      output.instructions.trim().length > 0
-        ? output.instructions.slice(
+    instructions: (() => {
+      const parsedInstructions = stringValueSchema.safeParse(
+        output.instructions,
+      );
+      return parsedInstructions.success &&
+        parsedInstructions.data.trim().length > 0
+        ? parsedInstructions.data.slice(
             0,
             PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
           )
-        : null,
+        : null;
+    })(),
   };
 }
 
@@ -972,10 +1064,9 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1028,14 +1119,16 @@ function createFakePluginHostInternal(
   const settings: PluginSettings = {
     define(descriptors) {
       assertLive();
+      // SAFETY: The SDK descriptor generic always has string keys and validated descriptor values.
       registerSettingDescriptors(
         settingsDescriptors,
-        descriptors as Record<string, unknown>,
+        descriptors as DynamicObject,
       );
       type Values = PluginSettingsValues<typeof descriptors>;
       return {
         async get() {
           assertLive();
+          // SAFETY: The declared descriptors determine the returned settings value map.
           return readSettingsValues(
             settingsDescriptors,
             storedSettings,
@@ -1044,6 +1137,7 @@ function createFakePluginHostInternal(
         onChange(listener) {
           assertLive();
           settingsListeners.push(
+            // SAFETY: The listener parameter matches the declared settings value map.
             listener as (typeof settingsListeners)[number],
           );
         },
@@ -1062,12 +1156,12 @@ function createFakePluginHostInternal(
           `invalid http method "${String(method)}" — use one of: ${[...PLUGIN_HTTP_METHODS].join(", ")}`,
         );
       }
-      if (typeof path !== "string" || !path.startsWith("/")) {
+      if (!isStringValue(path) || !path.startsWith("/")) {
         throw new Error(
           `http route path must be a string starting with "/", got ${JSON.stringify(path)}`,
         );
       }
-      if (typeof handler !== "function") {
+      if (!isFunctionValue(handler)) {
         throw new Error(
           `http route handler for ${normalizedMethod} ${path} must be a function`,
         );
@@ -1096,18 +1190,10 @@ function createFakePluginHostInternal(
   const rpc: PluginRpc = {
     register(contract, handlers) {
       assertLive();
-      if (
-        typeof contract !== "object" ||
-        contract === null ||
-        Array.isArray(contract)
-      ) {
+      if (!isObjectValue(contract) || Array.isArray(contract)) {
         throw new Error("rpc.register contract must be an object");
       }
-      if (
-        typeof handlers !== "object" ||
-        handlers === null ||
-        Array.isArray(handlers)
-      ) {
+      if (!isObjectValue(handlers) || Array.isArray(handlers)) {
         throw new Error("rpc.register handlers must be an object");
       }
       const pending: Array<[string, FakeRpcRecord]> = [];
@@ -1127,8 +1213,8 @@ function createFakePluginHostInternal(
           );
         }
         const methodContract = readRpcMethodContract(name, contractValue);
-        const handler = Reflect.get(handlers, name);
-        if (typeof handler !== "function") {
+        const handler = handlers[name];
+        if (!isFunctionValue(handler)) {
           throw new Error(
             `rpc method "${name}" must provide a handler function`,
           );
@@ -1141,7 +1227,8 @@ function createFakePluginHostInternal(
           {
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
-            handler: handler as (input: never) => unknown,
+            handler: async (input) =>
+              boundaryValueSchema.parse(await handler(input)),
           },
         ]);
       }
@@ -1156,7 +1243,7 @@ function createFakePluginHostInternal(
   const realtime: PluginRealtime = {
     publish(channel, payload) {
       assertLive();
-      if (typeof channel !== "string" || channel.length === 0) {
+      if (!isStringValue(channel) || channel.length === 0) {
         throw new Error("realtime channel must be a non-empty string");
       }
       const normalized =
@@ -1176,7 +1263,7 @@ function createFakePluginHostInternal(
   const background: PluginBackground = {
     service(name, service) {
       assertLive();
-      if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+      if (!isStringValue(name) || !BACKGROUND_NAME_PATTERN.test(name)) {
         throw new Error(
           `invalid service name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
         );
@@ -1184,7 +1271,7 @@ function createFakePluginHostInternal(
       if (services.some((record) => record.name === name)) {
         throw new Error(`background service "${name}" is already registered`);
       }
-      if (typeof service?.start !== "function") {
+      if (!isFunctionValue(service?.start)) {
         throw new Error(
           `background service "${name}" must provide a start(signal) function`,
         );
@@ -1193,7 +1280,7 @@ function createFakePluginHostInternal(
     },
     schedule(name, cron, fn) {
       assertLive();
-      if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+      if (!isStringValue(name) || !BACKGROUND_NAME_PATTERN.test(name)) {
         throw new Error(
           `invalid schedule name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
         );
@@ -1208,7 +1295,7 @@ function createFakePluginHostInternal(
           `invalid cron ${JSON.stringify(cron)} for schedule "${name}": ${errorMessage(error)}`,
         );
       }
-      if (typeof fn !== "function") {
+      if (!isFunctionValue(fn)) {
         throw new Error(`schedule "${name}" must provide a function`);
       }
       schedules.push({ name, cron: String(cron), fn });
@@ -1216,7 +1303,7 @@ function createFakePluginHostInternal(
   };
 
   // --- cli ---
-  const cliRecord: { registration: FakeCliRecord | null } = {
+  const cliRecord: CliRecordState = {
     registration: null,
   };
   const cli: PluginCli = {
@@ -1226,13 +1313,13 @@ function createFakePluginHostInternal(
         throw new Error("cli command is already registered");
       }
       const name = registration?.name;
-      if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
+      if (!isStringValue(name) || !CLI_COMMAND_NAME_PATTERN.test(name)) {
         throw new Error(
           `invalid cli command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
         );
       }
       if (
-        typeof registration.summary !== "string" ||
+        !isStringValue(registration.summary) ||
         registration.summary.trim().length === 0
       ) {
         throw new Error(`cli command "${name}" must provide a summary`);
@@ -1243,10 +1330,10 @@ function createFakePluginHostInternal(
       }
       const validatedCommands = commands.map((command, index) => {
         if (
-          typeof command?.name !== "string" ||
+          !isStringValue(command?.name) ||
           !CLI_COMMAND_NAME_PATTERN.test(command.name) ||
-          typeof command.summary !== "string" ||
-          typeof command.usage !== "string"
+          !isStringValue(command.summary) ||
+          !isStringValue(command.usage)
         ) {
           throw new Error(
             `cli command "${name}" commands[${index}] must be { name: [a-z0-9-]+, summary, usage }`,
@@ -1258,7 +1345,7 @@ function createFakePluginHostInternal(
           usage: command.usage,
         };
       });
-      if (typeof registration.run !== "function") {
+      if (!isFunctionValue(registration.run)) {
         throw new Error(
           `cli command "${name}" must provide a run(argv, ctx) function`,
         );
@@ -1285,7 +1372,7 @@ function createFakePluginHostInternal(
     | null = null;
   function registerProviderDeclaration(
     declaration: PluginProviderDeclaration,
-  ): { dispose(): void } {
+  ): Disposable {
     assertLive();
     // The shared validator: the fake host must accept and reject provider
     // declarations exactly like production.
@@ -1351,13 +1438,143 @@ function createFakePluginHostInternal(
     },
   };
 
+  const registerAgentTool: PluginAgents["registerTool"] = (
+    tool: AgentToolRegistrationImplementation,
+  ) => {
+    assertLive();
+    const name = tool?.name;
+    if (!isStringValue(name) || !AGENT_TOOL_NAME_PATTERN.test(name)) {
+      throw new Error(
+        `invalid tool name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
+      );
+    }
+    if (RESERVED_AGENT_TOOL_NAMES.includes(name)) {
+      throw new Error(
+        `tool name "${name}" is a built-in bb tool — pick another name`,
+      );
+    }
+    rejectStaleAgentToolFields(name, tool);
+    if (
+      !isStringValue(tool.description) ||
+      tool.description.trim().length === 0
+    ) {
+      throw new Error(`tool "${name}" must provide a description`);
+    }
+    if (tool.instructions !== undefined && !isStringValue(tool.instructions)) {
+      throw new Error(`tool "${name}" instructions must be a string`);
+    }
+    if (
+      isStringValue(tool.instructions) &&
+      tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
+    ) {
+      throw new Error(
+        `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+      );
+    }
+    const presentation = parsePluginAgentToolPresentation(
+      name,
+      tool.presentation,
+    );
+    if (presentation?.icon !== undefined) {
+      const problem = undeclaredIconProblem(
+        pluginId,
+        declaredIconNames,
+        presentation.icon.glyph,
+      );
+      if (problem !== null) {
+        throw new Error(agentToolIconRefusalMessage(name, problem));
+      }
+    }
+    if (!isFunctionValue(tool.execute)) {
+      throw new Error(
+        `tool "${name}" must provide an execute(params, ctx) function`,
+      );
+    }
+    const parameters = tool.parameters;
+    let inputSchema: DynamicObject;
+    let parse: FakeAgentToolRecord["parse"];
+    if (isZodSchemaLike(parameters)) {
+      const schema = z.custom<z.ZodType>(() => true).parse(parameters);
+      try {
+        const generatedSchema = z.toJSONSchema(schema, {
+          io: "input",
+        });
+        const serializedSchema = JSON.stringify(generatedSchema);
+        if (serializedSchema === undefined) throw new Error();
+        const parsedSchema = z.json().parse(JSON.parse(serializedSchema));
+        if (!isObjectValue(parsedSchema) || Array.isArray(parsedSchema)) {
+          throw new Error();
+        }
+        inputSchema = parsedSchema;
+      } catch (error) {
+        throw new Error(
+          `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${errorMessage(error)}) — use zod 4, or pass a plain JSON-schema object`,
+        );
+      }
+      parse = (input) => {
+        const result = schema.safeParse(input);
+        if (result.success) {
+          return { ok: true, value: boundaryValueSchema.parse(result.data) };
+        }
+        return { ok: false, error: summarizeParseIssues(result.error) };
+      };
+    } else if (isObjectValue(parameters) && !Array.isArray(parameters)) {
+      try {
+        const serializedSchema = JSON.parse(JSON.stringify(parameters));
+        if (
+          !isObjectValue(serializedSchema) ||
+          Array.isArray(serializedSchema)
+        ) {
+          throw new Error();
+        }
+        inputSchema = serializedSchema;
+      } catch {
+        throw new Error(
+          `tool "${name}" parameters JSON schema is not JSON-serializable`,
+        );
+      }
+      parse = (input) => ({ ok: true, value: input });
+    } else {
+      throw new Error(
+        `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
+      );
+    }
+    assertNoRecursiveJsonSchemaReferences(
+      inputSchema,
+      `tool "${name}" parameters`,
+    );
+    const record: FakeAgentToolRecord = {
+      name,
+      description: tool.description,
+      presentation,
+      instructions:
+        tool.instructions !== undefined && tool.instructions.trim().length > 0
+          ? tool.instructions
+          : null,
+      inputSchema,
+      parse,
+      execute:
+        // SAFETY: The registration contract supplies the validated execute function.
+        (
+          tool.execute as (
+            params: BoundaryValue,
+            ctx: PluginAgentToolContext,
+          ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
+        ).bind(tool),
+    };
+    if (agentTools.some((existing) => existing.name === name)) {
+      throw new Error(`tool "${name}" is already registered`);
+    }
+    agentTools.push(record);
+  };
+
   const agents: PluginAgents = {
     configure(provider) {
       assertLive();
       if (agentConfigurationProvider !== null) {
         throw new Error("agent configuration is already registered");
       }
-      if (typeof provider !== "function") {
+      if (!isFunctionValue(provider)) {
         throw new Error(
           "configure requires a provider function (context) => ({ tools, skills, instructions? })",
         );
@@ -1369,140 +1586,14 @@ function createFakePluginHostInternal(
       if (instructionProvider !== null) {
         throw new Error("agent instructions are already registered");
       }
-      if (typeof provider !== "function") {
+      if (!isFunctionValue(provider)) {
         throw new Error(
           "contributeInstructions requires a provider function (ctx) => string | null",
         );
       }
       instructionProvider = provider;
     },
-    registerTool(tool: {
-      name: string;
-      description: string;
-      instructions?: string;
-      presentation?: PluginAgentToolPresentation;
-      parameters: unknown;
-      execute(
-        params: never,
-        ctx: PluginAgentToolContext,
-      ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
-    }) {
-      assertLive();
-      const name = tool?.name;
-      if (typeof name !== "string" || !AGENT_TOOL_NAME_PATTERN.test(name)) {
-        throw new Error(
-          `invalid tool name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
-        );
-      }
-      if (RESERVED_AGENT_TOOL_NAMES.includes(name)) {
-        throw new Error(
-          `tool name "${name}" is a built-in bb tool — pick another name`,
-        );
-      }
-      rejectStaleAgentToolFields(name, tool);
-      if (
-        typeof tool.description !== "string" ||
-        tool.description.trim().length === 0
-      ) {
-        throw new Error(`tool "${name}" must provide a description`);
-      }
-      if (
-        tool.instructions !== undefined &&
-        typeof tool.instructions !== "string"
-      ) {
-        throw new Error(`tool "${name}" instructions must be a string`);
-      }
-      if (
-        typeof tool.instructions === "string" &&
-        tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
-      ) {
-        throw new Error(
-          `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
-        );
-      }
-      const presentation = parsePluginAgentToolPresentation(
-        name,
-        tool.presentation,
-      );
-      if (presentation?.icon !== undefined) {
-        // A namespaced glyph must name one of THIS plugin's declared icons,
-        // checked here like production checks it at the register call.
-        const problem = undeclaredIconProblem(
-          pluginId,
-          declaredIconNames,
-          presentation.icon.glyph,
-        );
-        if (problem !== null) {
-          throw new Error(agentToolIconRefusalMessage(name, problem));
-        }
-      }
-      if (typeof tool.execute !== "function") {
-        throw new Error(
-          `tool "${name}" must provide an execute(params, ctx) function`,
-        );
-      }
-      const parameters: unknown = tool.parameters;
-      let inputSchema: unknown;
-      let parse: FakeAgentToolRecord["parse"];
-      if (isZodSchemaLike(parameters)) {
-        try {
-          inputSchema = z.toJSONSchema(parameters as z.ZodType, {
-            io: "input",
-          });
-        } catch (error) {
-          throw new Error(
-            `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${errorMessage(error)}) — use zod 4, or pass a plain JSON-schema object`,
-          );
-        }
-        parse = (input) => {
-          const result = (parameters as z.ZodType).safeParse(input);
-          if (result.success) return { ok: true, value: result.data };
-          return { ok: false, error: summarizeParseIssues(result.error) };
-        };
-      } else if (
-        typeof parameters === "object" &&
-        parameters !== null &&
-        !Array.isArray(parameters)
-      ) {
-        try {
-          inputSchema = JSON.parse(JSON.stringify(parameters));
-        } catch {
-          throw new Error(
-            `tool "${name}" parameters JSON schema is not JSON-serializable`,
-          );
-        }
-        parse = (input) => ({ ok: true, value: input });
-      } else {
-        throw new Error(
-          `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
-        );
-      }
-      assertNoRecursiveJsonSchemaReferences(
-        inputSchema,
-        `tool "${name}" parameters`,
-      );
-      const record: FakeAgentToolRecord = {
-        name,
-        description: tool.description,
-        presentation,
-        instructions:
-          tool.instructions !== undefined && tool.instructions.trim().length > 0
-            ? tool.instructions
-            : null,
-        inputSchema,
-        parse,
-        execute: (
-          tool.execute as (
-            params: unknown,
-            ctx: PluginAgentToolContext,
-          ) => PluginAgentToolResult | Promise<PluginAgentToolResult>
-        ).bind(tool),
-      };
-      if (agentTools.some((existing) => existing.name === name)) {
-        throw new Error(`tool "${name}" is already registered`);
-      }
-      agentTools.push(record);
-    },
+    registerTool: registerAgentTool,
   };
 
   // --- ui ---
@@ -1512,7 +1603,7 @@ function createFakePluginHostInternal(
     registerMentionProvider(provider) {
       assertLive();
       const id = provider?.id;
-      if (typeof id !== "string" || !MENTION_PROVIDER_ID_PATTERN.test(id)) {
+      if (!isStringValue(id) || !MENTION_PROVIDER_ID_PATTERN.test(id)) {
         throw new Error(
           `invalid mention provider id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
         );
@@ -1521,17 +1612,17 @@ function createFakePluginHostInternal(
         throw new Error(`mention provider "${id}" is already registered`);
       }
       if (
-        typeof provider.label !== "string" ||
+        !isStringValue(provider.label) ||
         provider.label.trim().length === 0
       ) {
         throw new Error(`mention provider "${id}" must provide a label`);
       }
-      if (typeof provider.search !== "function") {
+      if (!isFunctionValue(provider.search)) {
         throw new Error(
           `mention provider "${id}" must provide a search({ query, projectId, threadId }) function`,
         );
       }
-      if (typeof provider.resolve !== "function") {
+      if (!isFunctionValue(provider.resolve)) {
         throw new Error(
           `mention provider "${id}" must provide a resolve(itemId) function`,
         );
@@ -1552,7 +1643,7 @@ function createFakePluginHostInternal(
     needsConfiguration(message) {
       assertLive();
       needsConfigurationMessages.push(
-        typeof message === "string" && message.length > 0
+        isStringValue(message) && message.length > 0
           ? message
           : "needs configuration",
       );
@@ -1580,9 +1671,7 @@ function createFakePluginHostInternal(
   });
 
   // --- thread events / dispose ---
-  const threadEventHandlers: {
-    [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
-  } = {
+  const threadEventHandlers: ThreadEventHandlerMap = {
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
@@ -1606,14 +1695,14 @@ function createFakePluginHostInternal(
     requestOptions?: Parameters<PluginUi["requestInput"]>[1],
   ) {
     assertLive();
-    if (!request || typeof request !== "object") {
+    if (!isObjectValue(request)) {
       throw new Error("ui.requestInput requires an options object");
     }
-    if (typeof request.threadId !== "string" || request.threadId.length === 0) {
+    if (!isStringValue(request.threadId) || request.threadId.length === 0) {
       throw new Error("ui.requestInput threadId must be a non-empty string");
     }
     if (
-      typeof request.rendererId !== "string" ||
+      !isStringValue(request.rendererId) ||
       !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
     ) {
       throw new Error(
@@ -1621,7 +1710,7 @@ function createFakePluginHostInternal(
       );
     }
     if (
-      typeof request.title !== "string" ||
+      !isStringValue(request.title) ||
       request.title.trim().length === 0 ||
       request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
     ) {
@@ -1636,7 +1725,7 @@ function createFakePluginHostInternal(
       if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
         throw new Error("ui.requestInput payload exceeds 64 KiB");
       }
-      payload = JSON.parse(json) as JsonValue;
+      payload = z.json().parse(JSON.parse(json));
     } catch (error) {
       if (error instanceof Error && error.message.includes("64 KiB")) {
         throw error;
@@ -1698,9 +1787,8 @@ function createFakePluginHostInternal(
             throw new Error(`unknown host rpc method "${String(method)}"`);
           }
           if (
-            typeof callOptions !== "object" ||
-            callOptions === null ||
-            typeof callOptions.hostId !== "string" ||
+            !isObjectValue(callOptions) ||
+            !isStringValue(callOptions.hostId) ||
             callOptions.hostId.length === 0
           ) {
             throw new Error(
@@ -1719,10 +1807,9 @@ function createFakePluginHostInternal(
             method: String(method),
             input: validatedInput,
             hostId: callOptions.hostId,
-            ...(callOptions.signal === undefined
-              ? {}
-              : { signal: callOptions.signal }),
           };
+          if (callOptions.signal !== undefined)
+            call.signal = callOptions.signal;
           hostRpcCalls.push(call);
           if (options.experimental_callHostRpc === undefined) {
             throw new Error(
@@ -1735,11 +1822,12 @@ function createFakePluginHostInternal(
             rawOutput,
             "output",
           );
+          // SAFETY: The output schema validates the value for this typed host method.
           return normalizeRpcJsonResult(validatedOutput) as never;
         },
         experimental_onWorkerExit(handler) {
           assertLive();
-          if (typeof handler !== "function") {
+          if (!isFunctionValue(handler)) {
             throw new Error("host worker exit subscription requires a handler");
           }
           hostWorkerExitSubscriptions.push(handler);
@@ -1755,15 +1843,14 @@ function createFakePluginHostInternal(
           assertLive();
           const descriptor = experimental_signals?.[signal];
           if (
-            typeof signal !== "string" ||
+            !isStringValue(signal) ||
             signal.length === 0 ||
-            typeof descriptor !== "object" ||
-            descriptor === null ||
+            !isObjectValue(descriptor) ||
             !isStandardSchema(descriptor.payload)
           ) {
             throw new Error(`unknown host signal "${String(signal)}"`);
           }
-          if (typeof handler !== "function") {
+          if (!isFunctionValue(handler)) {
             throw new Error("host signal subscription requires a handler");
           }
           const record: FakeHostSignalSubscription = {
@@ -2046,8 +2133,9 @@ function createFakePluginHostInternal(
         parsedInput,
         "input",
       );
-      let result: unknown;
+      let result: BoundaryValue;
       try {
+        // SAFETY: The input schema validates the value before the handler call.
         result = await record.handler(validatedInput as never);
       } catch (error) {
         return throwRpcError({
@@ -2070,7 +2158,7 @@ function createFakePluginHostInternal(
       }
       try {
         const result = await registration.run(argv, ctx);
-        if (typeof result?.exitCode !== "number") {
+        if (!isNumberValue(result?.exitCode)) {
           throw new Error(
             "cli run() must return { exitCode: number, stdout?, stderr? }",
           );
@@ -2078,8 +2166,8 @@ function createFakePluginHostInternal(
         return enforcePluginCliOutputLimit(
           {
             exitCode: result.exitCode,
-            stdout: typeof result.stdout === "string" ? result.stdout : "",
-            stderr: typeof result.stderr === "string" ? result.stderr : "",
+            stdout: isStringValue(result.stdout) ? result.stdout : "",
+            stderr: isStringValue(result.stderr) ? result.stderr : "",
           },
           argv.includes("--json"),
         );
@@ -2147,7 +2235,7 @@ function createFakePluginHostInternal(
       } catch (error) {
         started = Promise.reject(error);
       }
-      const done = started.catch((error: unknown) => {
+      const done = started.catch((error: BoundaryValue) => {
         if (isNeedsConfigurationError(error)) {
           needsConfigurationMessages.push(error.message);
           return undefined;
@@ -2166,12 +2254,12 @@ function createFakePluginHostInternal(
     },
 
     async emitThreadEvent(event, payload) {
-      const errors: unknown[] = [];
+      const errors: BoundaryValue[] = [];
       for (const handler of [...threadEventHandlers[event]]) {
         try {
           await handler(payload);
         } catch (error) {
-          errors.push(error);
+          errors.push(boundaryValueSchema.parse(error));
           emitLog("warn", `${event} handler failed: ${errorMessage(error)}`);
         }
       }

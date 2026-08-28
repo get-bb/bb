@@ -96,6 +96,7 @@ it("carries U+2028/U+2029 through stdout events, RPC responses, and both channel
     (m) => m.method === "item/tool/call",
     "tool call",
   );
+  // SAFETY: The bridge validates tool call parameters before this test reads the arguments field.
   expect((toolCall.params as { arguments: unknown }).arguments).toEqual({
     value: argValue,
   });

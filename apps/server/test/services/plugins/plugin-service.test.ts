@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import semver from "semver";
+import { z } from "zod";
 import {
   createConnection,
   getInstalledPlugin,
@@ -19,7 +20,12 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
+import {
+  PLUGIN_SDK_VERSION,
+  pluginPackageJsonSchema,
+  type PluginPackageJson,
+  type SystemChangeKind,
+} from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -32,7 +38,64 @@ import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
 
-const logger = testLogger as unknown as Logger;
+// SAFETY: testLogger supplies the logger methods that the plugin service calls.
+const logger = testLogger as Pick<Logger, "debug" | "error" | "info" | "warn">;
+
+interface PluginTestGlobals {
+  __brittleCheckout?: string;
+  __cyclerDisposals?: string[];
+  __cyclerVersion?: string;
+  __disabledMoveStarted?: string;
+  __movedCheckout?: string;
+  __observedFloor?: string;
+  __stalerApi?: {
+    onDispose(hook: () => void): void;
+  };
+  __switchableDisposed?: boolean;
+  cjsChild?: string;
+  esmReloader?: string;
+  failImporterRead?: () => Promise<string>;
+  imported?: string;
+  importerReadShared?: () => Promise<string>;
+  nestedGuest?: string;
+  rollbacker?: string;
+  rollbackerLoadLazy?: () => Promise<string>;
+  symlinked?: string;
+}
+
+declare global {
+  var __brittleCheckout: string | undefined;
+  var __cyclerDisposals: string[] | undefined;
+  var __cyclerVersion: string | undefined;
+  var __disabledMoveStarted: string | undefined;
+  var __movedCheckout: string | undefined;
+  var __observedFloor: string | undefined;
+  var __stalerApi: { onDispose(hook: () => void): void } | undefined;
+  var __switchableDisposed: boolean | undefined;
+  var cjsChild: string | undefined;
+  var esmReloader: string | undefined;
+  var failImporterRead: (() => Promise<string>) | undefined;
+  var imported: string | undefined;
+  var importerReadShared: (() => Promise<string>) | undefined;
+  var nestedGuest: string | undefined;
+  var rollbacker: string | undefined;
+  var rollbackerLoadLazy: (() => Promise<string>) | undefined;
+  var symlinked: string | undefined;
+}
+
+interface PluginFixturePackageJson {
+  name: string;
+  version: string;
+  engines?: { bb: string };
+  bb: PluginPackageJson["bb"];
+}
+
+const pluginGlobals: PluginTestGlobals = globalThis;
+
+const sdkFixtureManifestSchema = pluginPackageJsonSchema.extend({
+  engines: z.object({ bbPluginSdk: z.string() }),
+  devDependencies: z.record(z.string(), z.string()),
+});
 
 async function writePlugin(
   dir: string,
@@ -41,26 +104,26 @@ async function writePlugin(
     version?: string;
     engines?: string;
     serverSource: string;
-    bb?: Record<string, unknown>;
+    bb?: Partial<PluginPackageJson["bb"]>;
   },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
-  await writeFile(
-    join(rootDir, "package.json"),
-    JSON.stringify({
-      name: options.name,
-      version: options.version ?? "0.1.0",
-      ...(options.engines ? { engines: { bb: options.engines } } : {}),
-      bb: {
-        name: "Service fixture",
-        description: "Plugin service fixture.",
-        branding: { icon: "Zap" },
-        server: "./server.ts",
-        ...options.bb,
-      },
-    }),
-  );
+  const packageJson: PluginFixturePackageJson = {
+    name: options.name,
+    version: options.version ?? "0.1.0",
+    bb: {
+      name: "Service fixture",
+      description: "Plugin service fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+      ...options.bb,
+    },
+  };
+  if (options.engines !== undefined) {
+    packageJson.engines = { bb: options.engines };
+  }
+  await writeFile(join(rootDir, "package.json"), JSON.stringify(packageJson));
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
   return rootDir;
 }
@@ -291,9 +354,8 @@ describe("plugin service", () => {
       `export default function plugin() { (globalThis as any).__cyclerVersion = "v2"; }`,
     );
     await service.reload("cycler");
-    const globals = globalThis as Record<string, unknown>;
-    expect(globals.__cyclerVersion).toBe("v2");
-    expect(globals.__cyclerDisposals).toEqual(["second", "first"]);
+    expect(pluginGlobals.__cyclerVersion).toBe("v2");
+    expect(pluginGlobals.__cyclerDisposals).toEqual(["second", "first"]);
     expect(service.list().find((p) => p.id === "cycler")?.status).toBe(
       "running",
     );
@@ -302,19 +364,17 @@ describe("plugin service", () => {
   it("reload re-reads an ESM plugin's entry and its submodules", async () => {
     const rootDir = join(workDir, "bb-plugin-esm-reloader");
     await writeEsmPlugin(rootDir, "esm-reloader");
-    const globals = globalThis as Record<string, unknown>;
-
     await writeEsmSources(rootDir, "esmReloader", "entry1", "sub1");
     await service.installPath(rootDir);
-    expect(globals.esmReloader).toBe("entry1:sub1");
+    expect(pluginGlobals.esmReloader).toBe("entry1:sub1");
 
     await writeEsmSources(rootDir, "esmReloader", "entry2", "sub1");
     await service.reload("esm-reloader");
-    expect(globals.esmReloader).toBe("entry2:sub1");
+    expect(pluginGlobals.esmReloader).toBe("entry2:sub1");
 
     await writeEsmSources(rootDir, "esmReloader", "entry2", "sub2");
     await service.reload("esm-reloader");
-    expect(globals.esmReloader).toBe("entry2:sub2");
+    expect(pluginGlobals.esmReloader).toBe("entry2:sub2");
   });
 
   it("reload re-reads a plugin's CommonJS children", async () => {
@@ -339,15 +399,13 @@ describe("plugin service", () => {
          globalThis.cjsChild = helper.H + ":" + require("./required.cjs").R;
        }\n`,
     );
-    const globals = globalThis as Record<string, unknown>;
-
     await writeSources("cjs-before");
     await service.installPath(rootDir);
-    expect(globals.cjsChild).toBe("cjs-before:cjs-before");
+    expect(pluginGlobals.cjsChild).toBe("cjs-before:cjs-before");
 
     await writeSources("cjs-after");
     await service.reload("cjs-child");
-    expect(globals.cjsChild).toBe("cjs-after:cjs-after");
+    expect(pluginGlobals.cjsChild).toBe("cjs-after:cjs-after");
   });
 
   it("reload of an imported plugin is visible to a plugin that imports it", async () => {
@@ -369,8 +427,10 @@ describe("plugin service", () => {
     );
     await service.installPath(importedDir);
     await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
-    const readShared = globals.importerReadShared as () => Promise<string>;
+    const readShared = pluginGlobals.importerReadShared;
+    if (readShared === undefined) {
+      throw new Error("importerReadShared was not registered");
+    }
     expect(await readShared()).toBe("shared1");
 
     await writeFile(
@@ -379,7 +439,7 @@ describe("plugin service", () => {
     );
     await writeEsmSources(importedDir, "imported", "entry2", "sub2");
     await service.reload("imported");
-    expect(globals.imported).toBe("entry2:sub2");
+    expect(pluginGlobals.imported).toBe("entry2:sub2");
     expect(await readShared()).toBe("shared2");
   });
 
@@ -413,8 +473,10 @@ describe("plugin service", () => {
     );
     await service.installPath(importedDir);
     await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
-    const read = globals.failImporterRead as () => Promise<string>;
+    const read = pluginGlobals.failImporterRead;
+    if (read === undefined) {
+      throw new Error("failImporterRead was not registered");
+    }
     expect(await read()).toBe("shared1:cjs1");
 
     await writeFile(
@@ -439,15 +501,13 @@ describe("plugin service", () => {
     const linkDir = join(workDir, "link-symlinked");
     await writeEsmPlugin(realDir, "symlinked");
     await symlink(realDir, linkDir);
-    const globals = globalThis as Record<string, unknown>;
-
     await writeEsmSources(realDir, "symlinked", "entry1", "sub1");
     await service.installPath(linkDir);
-    expect(globals.symlinked).toBe("entry1:sub1");
+    expect(pluginGlobals.symlinked).toBe("entry1:sub1");
 
     await writeEsmSources(realDir, "symlinked", "entry2", "sub2");
     await service.reload("symlinked");
-    expect(globals.symlinked).toBe("entry2:sub2");
+    expect(pluginGlobals.symlinked).toBe("entry2:sub2");
   });
 
   it("reload of a plugin nested inside another plugin's tree re-reads sources", async () => {
@@ -455,17 +515,15 @@ describe("plugin service", () => {
     const nestedDir = join(outerDir, "vendor", "nested-guest");
     await writeEsmPlugin(outerDir, "outer-host");
     await writeEsmPlugin(nestedDir, "nested-guest");
-    const globals = globalThis as Record<string, unknown>;
-
     await writeEsmSources(outerDir, "outerHost", "entry1", "sub1");
     await writeEsmSources(nestedDir, "nestedGuest", "entry1", "sub1");
     await service.installPath(outerDir);
     await service.installPath(nestedDir);
-    expect(globals.nestedGuest).toBe("entry1:sub1");
+    expect(pluginGlobals.nestedGuest).toBe("entry1:sub1");
 
     await writeEsmSources(nestedDir, "nestedGuest", "entry2", "sub2");
     await service.reload("nested-guest");
-    expect(globals.nestedGuest).toBe("entry2:sub2");
+    expect(pluginGlobals.nestedGuest).toBe("entry2:sub2");
   });
 
   it("keeps a live plugin's lazy imports coherent after a failed reload", async () => {
@@ -486,8 +544,10 @@ describe("plugin service", () => {
       `export const MARKER = "sub1";\n`,
     );
     await service.installPath(rootDir);
-    const globals = globalThis as Record<string, unknown>;
-    const loadLazy = globals.rollbackerLoadLazy as () => Promise<string>;
+    const loadLazy = pluginGlobals.rollbackerLoadLazy;
+    if (loadLazy === undefined) {
+      throw new Error("rollbackerLoadLazy was not registered");
+    }
     expect(await loadLazy()).toBe("lazy1");
 
     await writeFile(join(rootDir, "server.js"), `export default 42;\n`);
@@ -509,9 +569,10 @@ describe("plugin service", () => {
       `,
     });
     await service.installPath(rootDir);
-    const captured = (globalThis as Record<string, unknown>).__stalerApi as {
-      onDispose(hook: () => void): void;
-    };
+    const captured = pluginGlobals.__stalerApi;
+    if (captured === undefined) {
+      throw new Error("staler API was not registered");
+    }
     await service.reload("staler");
     expect(() => captured.onDispose(() => {})).toThrowError(/stale API handle/);
   });
@@ -542,16 +603,7 @@ describe("plugin service", () => {
   });
 
   it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
-    const lines: string[] = [];
-    const push = (level: string) => (message: unknown) => {
-      lines.push(`${level} ${String(message)}`);
-    };
-    const capturing = {
-      debug: push("debug"),
-      info: push("info"),
-      warn: push("warn"),
-      error: push("error"),
-    } as unknown as Logger;
+    const warnSpy = vi.spyOn(logger, "warn");
     const makeService = (appVersion: string) =>
       createPluginService({
         aiServices: createAiServiceRegistry(),
@@ -562,7 +614,7 @@ describe("plugin service", () => {
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
-        logger: capturing,
+        logger,
         dataDir: join(workDir, "data"),
         appVersion,
         loadTimeoutMs: 2000,
@@ -600,9 +652,10 @@ describe("plugin service", () => {
     expect(entry?.statusDetail).toBe(
       "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
-    expect(lines).toContain(
-      "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    expect(warnSpy).toHaveBeenCalledWith(
+      "plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
+    warnSpy.mockRestore();
     await after.stop();
   });
 
@@ -613,12 +666,9 @@ describe("plugin service", () => {
     );
     const rootDir = join(workDir, "bb-plugin-sdk-upgrade-fixture");
     await cp(fixtureDir, rootDir, { recursive: true });
-    const manifest = JSON.parse(
-      await readFile(join(rootDir, "package.json"), "utf8"),
-    ) as {
-      engines: { bbPluginSdk: string };
-      devDependencies: Record<string, string>;
-    };
+    const manifest = sdkFixtureManifestSchema.parse(
+      JSON.parse(await readFile(join(rootDir, "package.json"), "utf8")),
+    );
     expect(manifest.engines.bbPluginSdk).toBe(">=0.4.8");
     expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.8");
     expect(semver.gt(PLUGIN_SDK_VERSION, "0.4.8")).toBe(true);
@@ -818,9 +868,7 @@ describe("plugin service", () => {
     await service.installPath(rootDir);
     const disabled = await service.setEnabled("switchable", false);
     expect(disabled?.status).toBe("disabled");
-    expect((globalThis as Record<string, unknown>).__switchableDisposed).toBe(
-      true,
-    );
+    expect(pluginGlobals.__switchableDisposed).toBe(true);
     const enabled = await service.setEnabled("switchable", true);
     expect(enabled?.status).toBe("running");
   });
@@ -874,9 +922,7 @@ describe("plugin service", () => {
       bundledPlugins: [],
       loadTimeoutMs: 2000,
       onSettingsChanged: (pluginId) => {
-        changed.push(
-          `${pluginId}:${String((globalThis as Record<string, unknown>).__observedFloor)}`,
-        );
+        changed.push(`${pluginId}:${String(pluginGlobals.__observedFloor)}`);
       },
     });
     try {
@@ -926,7 +972,7 @@ describe("plugin service", () => {
       source: `path:${checkoutB}`,
       rootDir: checkoutB,
     });
-    expect((globalThis as Record<string, unknown>).__movedCheckout).toBe("b");
+    expect(pluginGlobals.__movedCheckout).toBe("b");
     expect(getInstalledPlugin(db, "moved")).toMatchObject({
       sourceKind: "path",
       sourcePath: checkoutB,
@@ -974,7 +1020,7 @@ describe("plugin service", () => {
       enabled: false,
       status: "disabled",
     });
-    delete (globalThis as Record<string, unknown>).__disabledMoveStarted;
+    delete pluginGlobals.__disabledMoveStarted;
 
     const moved = await service.installPath(checkoutB);
 
@@ -988,17 +1034,13 @@ describe("plugin service", () => {
       enabled: false,
       rootDir: checkoutB,
     });
-    expect(
-      (globalThis as Record<string, unknown>).__disabledMoveStarted,
-    ).toBeUndefined();
+    expect(pluginGlobals.__disabledMoveStarted).toBeUndefined();
     expect(service.getApi("dormant")).toBeUndefined();
 
     expect(await service.setEnabled("dormant", true)).toMatchObject({
       status: "running",
     });
-    expect((globalThis as Record<string, unknown>).__disabledMoveStarted).toBe(
-      "b",
-    );
+    expect(pluginGlobals.__disabledMoveStarted).toBe("b");
   });
 
   it("rejects a path move whose new checkout fails to start and keeps the old install running", async () => {
@@ -1040,7 +1082,7 @@ describe("plugin service", () => {
       version: "0.2.0",
       status: "running",
     });
-    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe("a");
+    expect(pluginGlobals.__brittleCheckout).toBe("a");
     expect(service.getApi("brittle")).toBeDefined();
     expect((await service.getSettings("brittle"))?.values).toEqual({
       token: { set: true },

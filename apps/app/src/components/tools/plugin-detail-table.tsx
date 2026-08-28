@@ -124,7 +124,7 @@ export function PluginDetailRow({
   const hasDetail = detail !== null && detail !== undefined && detail !== "";
   const detailId = useId();
   const [expanded, setExpanded] = useState(false);
-  const isLongDescription = typeof detail === "string" && detail.length > 180;
+  const isLongDescription = String(detail ?? "").length > 180;
   return (
     <tr className={hasDetail ? DETAIL_ROW_GRID : "grid grid-cols-1"}>
       <th

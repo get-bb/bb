@@ -51,7 +51,7 @@ describe("ProviderCliVersionBanner", () => {
       "Installed 0.135.0; a newer version is required.",
     );
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         screen.getByRole("button", {
           name: "Updating…",
         }) as HTMLButtonElement

@@ -36,10 +36,12 @@ function packumentFetch(
             version,
             {
               version,
-              engines: {
-                ...(metadata.bb ? { bb: metadata.bb } : {}),
-                ...(metadata.sdk ? { bbPluginSdk: metadata.sdk } : {}),
-              },
+              engines: (() => {
+                const engines: Record<string, string> = {};
+                if (metadata.bb) engines.bb = metadata.bb;
+                if (metadata.sdk) engines.bbPluginSdk = metadata.sdk;
+                return engines;
+              })(),
               dist: {
                 integrity: metadata.integrity ?? `sha512-${version}`,
               },

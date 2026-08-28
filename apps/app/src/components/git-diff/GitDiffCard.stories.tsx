@@ -52,9 +52,10 @@ const STORY_THEME_STYLE_ID = "story-git-diff-theme";
 
 function usePaletteCss(themeId: BuiltInThemeId) {
   useEffect(() => {
-    let el = document.getElementById(
-      STORY_THEME_STYLE_ID,
-    ) as HTMLStyleElement | null;
+    let el =
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ document.getElementById(
+        STORY_THEME_STYLE_ID,
+      ) as HTMLStyleElement | null;
     if (!el) {
       el = document.createElement("style");
       el.id = STORY_THEME_STYLE_ID;

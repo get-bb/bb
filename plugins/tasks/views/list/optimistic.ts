@@ -47,14 +47,13 @@ function fieldSettled(task: Task, field: EditField, edit: TaskEdit): boolean {
 
 export function applyEdit(task: Task, edit: TaskEdit | undefined): Task {
   if (edit === undefined || !hasFields(edit)) return task;
-  return {
-    ...task,
-    ...(edit.status !== undefined ? { status: edit.status } : {}),
-    ...(edit.priority !== undefined ? { priority: edit.priority } : {}),
-    ...(edit.dueDate !== undefined ? { dueDate: edit.dueDate } : {}),
-    ...(edit.labelIds !== undefined ? { labelIds: edit.labelIds } : {}),
-    ...(edit.position !== undefined ? { position: edit.position } : {}),
-  };
+  const next = { ...task };
+  if (edit.status !== undefined) next.status = edit.status;
+  if (edit.priority !== undefined) next.priority = edit.priority;
+  if (edit.dueDate !== undefined) next.dueDate = edit.dueDate;
+  if (edit.labelIds !== undefined) next.labelIds = edit.labelIds;
+  if (edit.position !== undefined) next.position = edit.position;
+  return next;
 }
 
 export function editedTasks(
@@ -78,10 +77,9 @@ export function matchesFilters(
   );
 }
 
-function makeEntry(prev: TaskEntry | undefined): {
-  edit: TaskEdit;
-  gens: Partial<Record<EditField, number>>;
-} {
+type TaskEntryState = Pick<TaskEntry, "edit" | "gens">;
+
+function makeEntry(prev: TaskEntry | undefined): TaskEntryState {
   return { edit: { ...prev?.edit }, gens: { ...prev?.gens } };
 }
 

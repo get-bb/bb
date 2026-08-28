@@ -33,13 +33,13 @@ const rpcSuccessSchema = z
   })
   .strict();
 
-const rpcFailureSchema = z
+const rpcNotPairedFailureSchema = z
   .object({
     ok: z.literal(false),
-    error: z.union([
-      z.string(),
-      z.object({ code: z.string(), message: z.string() }).passthrough(),
-    ]),
+    error: z.object({
+      code: z.literal("handler_error"),
+      message: z.literal("not_paired"),
+    }),
   })
   .passthrough();
 
@@ -65,6 +65,7 @@ type ConnectServerSyncFetch = (
 ) => Promise<Pick<Response, "ok" | "status" | "json" | "text">>;
 
 type ConnectServerSyncLog = (message: string) => void;
+type ConnectServerSyncTimer = ReturnType<typeof setInterval> | number;
 
 interface FetchConnectAccountServersArgs {
   serverUrl: string;
@@ -104,13 +105,8 @@ export async function fetchConnectAccountServers(
   if (response.status === 503) {
     return { ok: false, reason: "plugin-disabled" };
   }
-  const failure = rpcFailureSchema.safeParse(body);
-  if (
-    failure.success &&
-    typeof failure.data.error === "object" &&
-    failure.data.error.code === "handler_error" &&
-    failure.data.error.message === "not_paired"
-  ) {
+  const failure = rpcNotPairedFailureSchema.safeParse(body);
+  if (failure.success) {
     return { ok: false, reason: "not-paired" };
   }
   return { ok: false, reason: "unavailable" };
@@ -133,8 +129,11 @@ interface CreateConnectServerSyncArgs {
   log?: ConnectServerSyncLog;
   now?: () => number;
   minIntervalMs?: number;
-  setIntervalFn?: (handler: () => void, timeout: number) => unknown;
-  clearIntervalFn?: (handle: unknown) => void;
+  setIntervalFn?: (
+    handler: () => void,
+    timeout: number,
+  ) => ConnectServerSyncTimer;
+  clearIntervalFn?: (handle: ConnectServerSyncTimer) => void;
 }
 
 export interface ConnectServerSync {
@@ -157,12 +156,10 @@ export function createConnectServerSync(
     ((handler: () => void, timeout: number) => setInterval(handler, timeout));
   const clearIntervalFn =
     args.clearIntervalFn ??
-    ((handle: unknown) => {
-      clearInterval(handle as ReturnType<typeof setInterval>);
-    });
+    ((handle: ConnectServerSyncTimer) => clearInterval(handle));
   const log = args.log;
 
-  let timer: unknown = null;
+  let timer: ConnectServerSyncTimer | null = null;
   let lastSyncAttemptAt = 0;
   let inFlight: Promise<void> | null = null;
   let loggedSkipReason: ConnectServerSyncSkipReason | null = null;
@@ -235,13 +232,9 @@ export function createConnectServerSync(
     const handle = setIntervalFn(() => {
       void syncNow();
     }, intervalMs);
-    if (
-      typeof handle === "object" &&
-      handle !== null &&
-      "unref" in handle &&
-      typeof handle.unref === "function"
-    ) {
-      handle.unref();
+    const timerWithUnref = z.object({ unref: z.function() }).safeParse(handle);
+    if (timerWithUnref.success) {
+      timerWithUnref.data.unref();
     }
     timer = handle;
   }

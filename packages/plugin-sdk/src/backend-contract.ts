@@ -9,6 +9,7 @@ import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
+export type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -18,6 +19,8 @@ import type {
   ExperimentalHostClient,
   ExperimentalHostSignals,
 } from "./host-contract.js";
+
+type JsonObject = { [key: string]: JsonValue };
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -119,7 +122,7 @@ export interface PluginSettings {
 
 export interface PluginKvStorage {
   get<T>(key: string): Promise<T | undefined>;
-  set(key: string, value: unknown): Promise<void>;
+  set(key: string, value: JsonValue): Promise<void>;
   delete(key: string): Promise<void>;
   list(prefix?: string): Promise<string[]>;
 }
@@ -227,7 +230,7 @@ export interface PluginRealtime {
    * per-channel subscriptions). `payload` must be JSON-serializable;
    * `undefined` is normalized to `null`. Nothing is persisted.
    */
-  publish(channel: string, payload: unknown): void;
+  publish(channel: string, payload: JsonValue | undefined): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -494,7 +497,7 @@ export interface PluginAgentToolSelection {
    * parameter schema. Execution-side validation still runs the registered
    * parameters, so the override must only narrow what the registered schema
    * already accepts. Recursive local `$ref` chains are rejected. */
-  parameters: Record<string, unknown>;
+  parameters: JsonObject;
 }
 
 /** Per-resolution selection returned by {@link PluginAgents.configure}. */
@@ -932,9 +935,9 @@ export interface PluginAgents {
   registerTool(
     tool: PluginAgentToolRegistrationBase & {
       /** Raw JSON-schema escape hatch; params arrive unvalidated. */
-      parameters: Record<string, unknown>;
+      parameters: JsonObject;
       execute(
-        params: unknown,
+        params: JsonValue,
         ctx: PluginAgentToolContext,
       ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
     },

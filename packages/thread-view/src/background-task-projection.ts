@@ -103,12 +103,6 @@ export function upsertBackgroundTaskMessage(
     createdAt: meta.createdAt,
     scope: decoded.scope,
     startedAt: meta.createdAt,
-    ...(lifecycle.item.parentToolCallId
-      ? { parentToolCallId: lifecycle.item.parentToolCallId }
-      : {}),
-    ...(lifecycle.item.presentation
-      ? { presentation: lifecycle.item.presentation }
-      : {}),
     itemId: lifecycle.item.id,
     familyId: lifecycle.item.familyId ?? null,
     taskType: lifecycle.item.taskType,
@@ -124,6 +118,12 @@ export function upsertBackgroundTaskMessage(
     error: lifecycle.item.error ?? null,
     completedAt: lifecycle.kind === "end" ? meta.createdAt : null,
   };
+  if (lifecycle.item.parentToolCallId) {
+    message.parentToolCallId = lifecycle.item.parentToolCallId;
+  }
+  if (lifecycle.item.presentation) {
+    message.presentation = lifecycle.item.presentation;
+  }
   state.backgroundTasksByItemId.set(lifecycle.item.id, message);
   state.messages.push(message);
   return true;

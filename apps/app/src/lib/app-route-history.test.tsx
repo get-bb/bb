@@ -192,8 +192,9 @@ async function expectSidebarButtonState(
 ) {
   await waitFor(() => {
     expect(
-      (screen.getByRole("button", { name: label }) as HTMLButtonElement)
-        .disabled,
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
+        screen.getByRole("button", { name: label }) as HTMLButtonElement
+      ).disabled,
     ).toBe(disabled);
   });
 }

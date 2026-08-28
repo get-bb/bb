@@ -1,6 +1,6 @@
 import semver from "semver";
 import { z } from "zod";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { PLUGIN_SDK_VERSION, type JsonValue } from "@bb/domain";
 import {
   DEFAULT_GIT_REF,
   gitSemverTagName,
@@ -102,9 +102,26 @@ export interface NpmResolverRun {
   getPackument(intent: NpmSourceIntentForResolution): Promise<Packument>;
 }
 
+interface CompatibilityEvaluation {
+  effective: CompatibilityProblem[];
+  packaged: CompatibilityProblem[];
+  devMode: boolean;
+}
+
+interface NpmCandidateSelection {
+  outcome: "selected";
+  candidate: NpmResolvedCandidate;
+  blocked?: {
+    candidate: NpmResolvedCandidate;
+    reasons: CompatibilityProblem[];
+  };
+  packagedBuildProblems: CompatibilityProblem[];
+  devMode: boolean;
+}
+
 export function createNpmResolverRun(options?: {
   fetch?: (input: string, init: RequestInit) => Promise<Response>;
-  readJson?: (response: Response) => Promise<unknown>;
+  readJson?: (response: Response) => Promise<JsonValue>;
 }): NpmResolverRun {
   const fetchImpl = options?.fetch ?? fetch;
   const readJson =
@@ -207,11 +224,7 @@ export function evaluateCompatibility(args: {
   bbRange: string | undefined;
   sdkRange: string | undefined;
   appVersion: string;
-}): {
-  effective: CompatibilityProblem[];
-  packaged: CompatibilityProblem[];
-  devMode: boolean;
-} {
+}): CompatibilityEvaluation {
   const appVersion = semver.coerce(args.appVersion);
   if (!appVersion) {
     throw new Error(`cannot parse running bb version "${args.appVersion}"`);
@@ -341,13 +354,14 @@ export async function selectNpmCandidate(args: {
       blocked ??= { candidate, reasons: problems.effective };
       continue;
     }
-    return {
+    const result: NpmCandidateSelection = {
       outcome: "selected",
       candidate,
-      ...(blocked ? { blocked } : {}),
       packagedBuildProblems: problems.packaged,
       devMode: problems.devMode,
     };
+    if (blocked !== undefined) result.blocked = blocked;
+    return result;
   }
   if (!newestCandidate) {
     return {
@@ -372,16 +386,16 @@ export async function resolveNpmUpdate(args: {
 }): Promise<PluginUpdateResolution> {
   const devMode = semver.coerce(args.appVersion)?.version === "0.0.0";
   if (args.intent.specKind === "exact") {
-    return {
+    const result: PluginUpdateResolution = {
       outcome: "pinned",
       current: args.current,
-      ...(devMode ? { devMode: true } : {}),
     };
+    if (devMode) result.devMode = true;
+    return result;
   }
   const selected = await selectNpmCandidate(args);
-  const flags = {
-    ...(selected.devMode ? { devMode: true as const } : {}),
-  };
+  const flags: ResolutionFlags = {};
+  if (selected.devMode) flags.devMode = true;
   if (selected.outcome === "unavailable") {
     return { outcome: "unavailable", detail: selected.detail, ...flags };
   }
@@ -394,20 +408,16 @@ export async function resolveNpmUpdate(args: {
       ...flags,
     };
   }
-  const extra = {
-    ...flags,
-    ...(selected.blocked
-      ? {
-          blocked: {
-            version: selected.blocked.candidate,
-            reasons: selected.blocked.reasons,
-          },
-        }
-      : {}),
-    ...(selected.packagedBuildProblems.length > 0
-      ? { packagedBuildProblems: selected.packagedBuildProblems }
-      : {}),
-  };
+  const extra: ResolutionFlags = { ...flags };
+  if (selected.blocked !== undefined) {
+    extra.blocked = {
+      version: selected.blocked.candidate,
+      reasons: selected.blocked.reasons,
+    };
+  }
+  if (selected.packagedBuildProblems.length > 0) {
+    extra.packagedBuildProblems = selected.packagedBuildProblems;
+  }
   if (selected.candidate.version === args.current.version) {
     return { outcome: "current", current: args.current, ...extra };
   }
@@ -674,11 +684,12 @@ async function resolveGitRangeUpdate(args: {
       commit: candidate.commit,
     });
     if (candidate.commit === args.currentCommit) {
-      return {
+      const result: PluginUpdateResolution = {
         outcome: "current",
         current: args.current,
-        ...(blocked ? { blocked } : {}),
       };
+      if (blocked !== undefined) result.blocked = blocked;
+      return result;
     }
     if (probes >= MAX_GIT_CANDIDATE_PROBES) {
       return {
@@ -696,17 +707,18 @@ async function resolveGitRangeUpdate(args: {
       blocked ??= { version, reasons: probed.reasons };
       continue;
     }
-    return {
+    const result: PluginUpdateResolution = {
       outcome: "update-available",
       current: args.current,
       candidate: version,
       candidateGitTag: candidate.tag,
-      ...(blocked ? { blocked } : {}),
-      ...(probed.devMode ? { devMode: true } : {}),
-      ...(probed.packagedBuildProblems.length > 0
-        ? { packagedBuildProblems: probed.packagedBuildProblems }
-        : {}),
     };
+    if (blocked !== undefined) result.blocked = blocked;
+    if (probed.devMode) result.devMode = true;
+    if (probed.packagedBuildProblems.length > 0) {
+      result.packagedBuildProblems = probed.packagedBuildProblems;
+    }
+    return result;
   }
   if (blocked !== undefined) {
     return {
@@ -737,15 +749,16 @@ export async function resolveGitUpdate(args: {
     commit: args.currentCommit,
   });
   if (args.intent.kind === "range") {
-    return resolveGitRangeUpdate({
+    const rangeArgs: Parameters<typeof resolveGitRangeUpdate>[0] = {
       url: args.url,
       intent: args.intent,
       current,
       currentCommit: args.currentCommit,
-      ...(args.probeCandidate === undefined
-        ? {}
-        : { probeCandidate: args.probeCandidate }),
-    });
+    };
+    if (args.probeCandidate !== undefined) {
+      rangeArgs.probeCandidate = args.probeCandidate;
+    }
+    return resolveGitRangeUpdate(rangeArgs);
   }
   if (args.intent.refKind === "commit") return { outcome: "pinned", current };
   const resolved = await resolveGitRef({ url: args.url, ref: args.intent.ref });

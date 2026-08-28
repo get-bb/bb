@@ -7,6 +7,10 @@ import {
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ExperimentalAiInferenceCompleteInput,
+  ExperimentalAiInferenceCompleteOutput,
+} from "@get-bb/plugin-sdk/ai-services";
 import {
   internalAuthHeaders,
   listQueuedEnvironmentCommands,
@@ -26,9 +30,12 @@ import {
   seedThread,
   seedTurnStarted,
 } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
-import { AiServiceCallError } from "../../src/services/ai/ai-service-call.js";
-import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
+import {
+  createTestAppHarness,
+  type TestAppHarness,
+  withTestHarness,
+} from "../helpers/test-app.js";
+import { registerFakeAiService } from "../helpers/ai-services.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
@@ -38,40 +45,106 @@ import {
 } from "../../src/services/threads/thread-provisioning.js";
 import { generateThreadMetadataWithOutcome } from "../../src/services/threads/title-generation.js";
 
-const piAiMocks = vi.hoisted(() => ({
-  complete: vi.fn(),
-  getModel: vi.fn(),
-}));
-
 interface MockThreadMetadata {
   branchSlug?: string;
   title?: string;
 }
 
-function mockThreadMetadataCompletion(metadata: MockThreadMetadata) {
-  return {
-    content: [
-      {
-        arguments: metadata,
-        id: "tool_result",
-        name: "result",
-        type: "toolCall",
-      },
-    ],
+type MetadataPlan =
+  | { kind: "success"; metadata: MockThreadMetadata }
+  | { kind: "failure"; error: Error }
+  | { kind: "service-failure"; code: "timeout" | "service_unavailable" }
+  | {
+      kind: "pending";
+      onStart: (resolve: (metadata: MockThreadMetadata) => void) => void;
+    };
+
+let metadataPlan: MetadataPlan = {
+  error: new Error("fake AI service has no metadata plan"),
+  kind: "failure",
+};
+let metadataPlans: MetadataPlan[] = [];
+let inferenceCallCount = 0;
+let inferenceModels: string[] = [];
+
+function metadataSuccess(metadata: MockThreadMetadata): MetadataPlan {
+  return { kind: "success", metadata };
+}
+
+function metadataValue(metadata: MockThreadMetadata) {
+  const entries: [string, string][] = [];
+  if (metadata.branchSlug !== undefined) {
+    entries.push(["branchSlug", metadata.branchSlug]);
+  }
+  if (metadata.title !== undefined) {
+    entries.push(["title", metadata.title]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function mockThreadMetadata(metadata: MockThreadMetadata): void {
+  metadataPlans = [];
+  metadataPlan = metadataSuccess(metadata);
+}
+
+function mockMetadataPlans(...plans: MetadataPlan[]): void {
+  metadataPlans = [...plans];
+  metadataPlan = {
+    error: new Error("fake AI service received an unexpected call"),
+    kind: "failure",
   };
 }
 
-vi.mock("@earendil-works/pi-ai/providers/all", () => ({
-  builtinModels: () => ({
-    complete: piAiMocks.complete,
-    getModel: piAiMocks.getModel,
-    getProviders: () => [],
-  }),
-}));
+function mockPendingMetadata(
+  onStart: (resolve: (metadata: MockThreadMetadata) => void) => void,
+): void {
+  metadataPlans = [];
+  metadataPlan = { kind: "pending", onStart };
+}
 
-function mockThreadMetadata(metadata: MockThreadMetadata): void {
-  piAiMocks.getModel.mockReturnValue({ provider: "test" });
-  piAiMocks.complete.mockResolvedValue(mockThreadMetadataCompletion(metadata));
+async function completeFakeInference(
+  input: ExperimentalAiInferenceCompleteInput,
+): Promise<ExperimentalAiInferenceCompleteOutput> {
+  inferenceCallCount += 1;
+  inferenceModels.push(input.model);
+  const plan = metadataPlans.shift() ?? metadataPlan;
+  if (plan.kind === "failure") {
+    throw plan.error;
+  }
+  if (plan.kind === "service-failure") {
+    return {
+      code: plan.code,
+      message: `fake ${plan.code}`,
+      ok: false,
+    };
+  }
+  if (plan.kind === "pending") {
+    const metadata = await new Promise<MockThreadMetadata>((resolve) => {
+      plan.onStart(resolve);
+    });
+    return { model: input.model, ok: true, value: metadataValue(metadata) };
+  }
+  return {
+    model: input.model,
+    ok: true,
+    value: metadataValue(plan.metadata),
+  };
+}
+
+function registerTestAiService(harness: TestAppHarness): void {
+  registerFakeAiService(harness.deps.aiServices, {
+    id: "test",
+    completeInference: completeFakeInference,
+  });
+}
+
+function withFakeAiHarness<T>(
+  run: (harness: TestAppHarness) => Promise<T>,
+): Promise<T> {
+  return withTestHarness(async (harness) => {
+    registerTestAiService(harness);
+    return run(harness);
+  });
 }
 
 const THREAD_START_EXECUTION = {
@@ -84,8 +157,13 @@ const THREAD_START_EXECUTION = {
 
 describe("generated managed branch names", () => {
   beforeEach(() => {
-    piAiMocks.complete.mockReset();
-    piAiMocks.getModel.mockReset();
+    metadataPlans = [];
+    metadataPlan = {
+      error: new Error("fake AI service has no metadata plan"),
+      kind: "failure",
+    };
+    inferenceCallCount = 0;
+    inferenceModels = [];
   });
 
   it("uses generated branch slugs for managed worktree provisioning", async () => {
@@ -93,7 +171,7 @@ describe("generated managed branch names", () => {
       branchSlug: "unrelated-slug",
       title: "Improve Branch Names",
     });
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-branch",
       });
@@ -143,7 +221,7 @@ describe("generated managed branch names", () => {
       expect(managedCommand.command.branchName).toBe(
         `bb/improve-branch-names-${thread.id}`,
       );
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
     });
   });
 
@@ -151,17 +229,11 @@ describe("generated managed branch names", () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    mockPendingMetadata((resolve) => {
+      resolveMetadata = resolve;
+    });
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-early-provisioning-row",
       });
@@ -216,7 +288,7 @@ describe("generated managed branch names", () => {
           updatedThread.environmentId,
         ),
       ).toEqual([]);
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
 
       const [firstProvisioningRow] = listEvents(harness.db, {
         threadId: thread.id,
@@ -251,17 +323,11 @@ describe("generated managed branch names", () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    mockPendingMetadata((resolve) => {
+      resolveMetadata = resolve;
+    });
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-stop-during-metadata",
       });
@@ -297,7 +363,7 @@ describe("generated managed branch names", () => {
       });
 
       await vi.waitFor(() => {
-        expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+        expect(inferenceCallCount).toBe(1);
         expect(getThread(harness.db, thread.id)?.environmentId).toBeTruthy();
       });
 
@@ -354,17 +420,11 @@ describe("generated managed branch names", () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    mockPendingMetadata((resolve) => {
+      resolveMetadata = resolve;
+    });
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-prepared-sweep",
       });
@@ -404,7 +464,7 @@ describe("generated managed branch names", () => {
       await vi.waitFor(() => {
         const updatedThread = getThread(harness.db, thread.id);
         expect(updatedThread?.environmentId).toBeTruthy();
-        expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+        expect(inferenceCallCount).toBe(1);
         const provisioningRows = listEvents(harness.db, {
           threadId: thread.id,
         }).filter((event) => event.type === "system/thread-provisioning");
@@ -471,15 +531,11 @@ describe("generated managed branch names", () => {
   });
 
   it("uses two timeout attempts for managed worktree metadata inference", async () => {
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete
-      .mockRejectedValueOnce(new InferenceTimeoutError({ timeoutMs: 2_500 }))
-      .mockResolvedValueOnce(
-        mockThreadMetadataCompletion({
-          title: "Recovered Managed Metadata",
-        }),
-      );
-    await withTestHarness(async (harness) => {
+    mockMetadataPlans(
+      { kind: "service-failure", code: "timeout" },
+      metadataSuccess({ title: "Recovered Managed Metadata" }),
+    );
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-managed-metadata-retry",
       });
@@ -524,7 +580,7 @@ describe("generated managed branch names", () => {
       expect(managedCommand.command.branchName).toBe(
         `bb/recovered-managed-metadata-${thread.id}`,
       );
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      expect(inferenceCallCount).toBe(2);
     });
   });
 
@@ -533,7 +589,7 @@ describe("generated managed branch names", () => {
       branchSlug: "generated-rename-branch",
       title: "Generated Rename Title",
     });
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-title-rename",
       });
@@ -622,7 +678,7 @@ describe("generated managed branch names", () => {
   it("generates titles for submitted fork threads", async () => {
     mockThreadMetadata({ title: "Generated Fork Title" });
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-fork-title",
       });
@@ -693,7 +749,7 @@ describe("generated managed branch names", () => {
   });
 
   it("does not queue a daemon rename for user-supplied titles", async () => {
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-user-title-no-rename",
       });
@@ -781,25 +837,17 @@ describe("generated managed branch names", () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete
-      .mockRejectedValueOnce(
-        new AiServiceCallError(
-          "codex",
-          "service_unavailable",
-          "Our servers are currently overloaded. Please try again later.",
-        ),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveMetadata = (metadata) => {
-              resolve(mockThreadMetadataCompletion(metadata));
-            };
-          }),
-      );
+    mockMetadataPlans(
+      { kind: "service-failure", code: "service_unavailable" },
+      {
+        kind: "pending",
+        onStart: (resolve) => {
+          resolveMetadata = resolve;
+        },
+      },
+    );
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-idle-late-title-rename",
       });
@@ -889,7 +937,7 @@ describe("generated managed branch names", () => {
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
 
       await vi.waitFor(() => {
-        expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+        expect(inferenceCallCount).toBe(2);
       });
 
       resolveMetadata({ title: "Late Idle Title" });
@@ -906,16 +954,7 @@ describe("generated managed branch names", () => {
         title: "Late Idle Title",
       });
       expect(getThread(harness.db, thread.id)?.title).toBe("Late Idle Title");
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        1,
-        "test",
-        "mock-model",
-      );
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        2,
-        "test",
-        "mock-fallback-model",
-      );
+      expect(inferenceModels).toEqual(["mock-model", "mock-fallback-model"]);
     });
   });
 
@@ -923,17 +962,11 @@ describe("generated managed branch names", () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    mockPendingMetadata((resolve) => {
+      resolveMetadata = resolve;
+    });
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-errored-late-title-no-rename",
       });
@@ -1011,7 +1044,7 @@ describe("generated managed branch names", () => {
     mockThreadMetadata({
       branchSlug: "Slug Only Branch",
     });
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-branch-slug-only",
       });
@@ -1056,7 +1089,7 @@ describe("generated managed branch names", () => {
       const managedCommand =
         requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
       expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
     });
   });
 
@@ -1067,6 +1100,7 @@ describe("generated managed branch names", () => {
         openAiApiKey: "",
       },
       async (harness) => {
+        registerTestAiService(harness);
         const { host } = seedHostSession(harness.deps, {
           id: "host-generated-branch-fallback",
         });
@@ -1109,11 +1143,8 @@ describe("generated managed branch names", () => {
         const managedCommand =
           requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
         expect(managedCommand.command.branchName).toBe(`bb/${thread.id}`);
-        expect(piAiMocks.getModel).toHaveBeenCalledWith(
-          "openai",
-          "gpt-4o-mini",
-        );
-        expect(piAiMocks.complete).not.toHaveBeenCalled();
+        expect(inferenceModels).toEqual([]);
+        expect(inferenceCallCount).toBe(0);
       },
     );
   });
@@ -1123,7 +1154,7 @@ describe("generated managed branch names", () => {
       branchSlug: "wrong-slug",
       title: "Canonical Generated Title",
     });
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-generated-branch-invalid",
       });
@@ -1172,14 +1203,15 @@ describe("generated managed branch names", () => {
       expect(managedCommand.command.branchName).toBe(
         `bb/canonical-generated-title-${thread.id}`,
       );
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
     });
   });
 
   it("returns no metadata when inference times out", async () => {
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockReturnValue(new Promise(() => undefined));
+    mockMetadataPlans({ kind: "service-failure", code: "timeout" });
     const harness = await createTestAppHarness();
+    registerTestAiService(harness);
+    seedHostSession(harness.deps, { id: "host-timeout" });
     const infoSpy = vi.spyOn(harness.deps.logger, "info");
     try {
       await expect(
@@ -1192,7 +1224,7 @@ describe("generated managed branch names", () => {
         metadata: null,
         reason: "timeout",
       });
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 1,
@@ -1208,15 +1240,13 @@ describe("generated managed branch names", () => {
   });
 
   it("retries once when metadata inference times out", async () => {
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete
-      .mockReturnValueOnce(new Promise(() => undefined))
-      .mockResolvedValueOnce(
-        mockThreadMetadataCompletion({
-          title: "Recovered Metadata",
-        }),
-      );
+    mockMetadataPlans(
+      { kind: "service-failure", code: "timeout" },
+      metadataSuccess({ title: "Recovered Metadata" }),
+    );
     const harness = await createTestAppHarness();
+    registerTestAiService(harness);
+    seedHostSession(harness.deps, { id: "host-retry-timeout" });
     const infoSpy = vi.spyOn(harness.deps.logger, "info");
     try {
       await expect(
@@ -1232,17 +1262,8 @@ describe("generated managed branch names", () => {
           title: "Recovered Metadata",
         },
       });
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        1,
-        "test",
-        "mock-model",
-      );
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        2,
-        "test",
-        "mock-fallback-model",
-      );
+      expect(inferenceCallCount).toBe(2);
+      expect(inferenceModels).toEqual(["mock-model", "mock-fallback-model"]);
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           attempt: 1,
@@ -1267,22 +1288,15 @@ describe("generated managed branch names", () => {
   });
 
   it("retries transient Codex service failures", async () => {
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete
-      .mockRejectedValueOnce(
-        new AiServiceCallError(
-          "codex",
-          "service_unavailable",
-          "Our servers are currently overloaded. Please try again later.",
-        ),
-      )
-      .mockResolvedValueOnce(
-        mockThreadMetadataCompletion({
-          title: "Recovered Metadata",
-        }),
-      );
+    mockMetadataPlans(
+      { kind: "service-failure", code: "service_unavailable" },
+      metadataSuccess({ title: "Recovered Metadata" }),
+    );
 
-    await withTestHarness(async (harness) => {
+    await withFakeAiHarness(async (harness) => {
+      seedHostSession(harness.deps, {
+        id: "host-retry-service-unavailable",
+      });
       await expect(
         generateThreadMetadataWithOutcome(harness.deps, {
           input: textInput("Recover transient metadata provider failures"),
@@ -1296,24 +1310,18 @@ describe("generated managed branch names", () => {
           title: "Recovered Metadata",
         },
       });
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        1,
-        "test",
-        "mock-model",
-      );
-      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
-        2,
-        "test",
-        "mock-fallback-model",
-      );
+      expect(inferenceCallCount).toBe(2);
+      expect(inferenceModels).toEqual(["mock-model", "mock-fallback-model"]);
     });
   });
 
   it("does not retry non-transient metadata inference failures", async () => {
-    piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockRejectedValue(new Error("metadata failed"));
-    await withTestHarness(async (harness) => {
+    mockMetadataPlans({
+      error: new Error("metadata failed"),
+      kind: "failure",
+    });
+    await withFakeAiHarness(async (harness) => {
+      seedHostSession(harness.deps, { id: "host-failed-metadata" });
       await expect(
         generateThreadMetadataWithOutcome(harness.deps, {
           input: textInput("Improve failed metadata generation behavior"),
@@ -1325,7 +1333,7 @@ describe("generated managed branch names", () => {
         metadata: null,
         reason: "failed",
       });
-      expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(inferenceCallCount).toBe(1);
     });
   });
 });

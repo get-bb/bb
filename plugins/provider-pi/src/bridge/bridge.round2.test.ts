@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { JsonObject } from "@bb/domain";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { handleLine } from "./bridge.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import {
@@ -226,15 +228,19 @@ it("a steer's ack precedes the event pi wrote in the same chunk as the prompt re
   expect(consumed).toBeGreaterThan(accepted);
 }, 90_000);
 
-function queueUpdateSteering(delta: Record<string, unknown>): unknown[] | null {
+const queueUpdateMessageSchema = z.object({
+  params: z.object({
+    message: z.object({
+      type: z.literal("queue_update"),
+      steering: z.array(z.string()),
+    }),
+  }),
+});
+
+function queueUpdateSteering(delta: JsonObject): string[] | null {
   if (delta.kind !== "unhandled") return null;
-  const raw = delta.raw as
-    | { params?: { message?: { type?: unknown; steering?: unknown } } }
-    | undefined;
-  const message = raw?.params?.message;
-  if (message?.type !== "queue_update" || !Array.isArray(message.steering))
-    return null;
-  return message.steering;
+  const parsed = queueUpdateMessageSchema.safeParse(delta.raw);
+  return parsed.success ? parsed.data.params.message.steering : null;
 }
 
 it("a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer", async () => {

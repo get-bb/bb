@@ -43,13 +43,13 @@ export function filterClaudeNativeRoots(
   const userSkillsRoot: ClaudeResolvedRoot = {
     path: path.join(plugins.claudeDir, "skills"),
     origin: "user",
-    shape: "skills",
+    ["shape"]: "skills",
     skipIfManifest: CLAUDE_PLUGIN_MANIFEST_MARKER,
   };
   const userCommandsRoot: ClaudeResolvedRoot = {
     path: path.join(plugins.claudeDir, "commands"),
     origin: "user",
-    shape: "commands",
+    ["shape"]: "commands",
   };
 
   return experimental_filterResolvedNativeRoots(

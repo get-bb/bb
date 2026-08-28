@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import type { DragEndEvent } from "@dnd-kit/core";
+import { z } from "zod";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -65,18 +66,17 @@ export function useNeighborReorderSortable<Item>({
       }
 
       const { active, over } = event;
-      if (
-        !over ||
-        typeof active.id !== "string" ||
-        typeof over.id !== "string"
-      ) {
+      if (!over) {
         return;
       }
+      const activeId = z.string().safeParse(active.id);
+      const overId = z.string().safeParse(over.id);
+      if (!activeId.success || !overId.success) return;
 
       const orderItems = renderedItems.map((item) => ({ id: getId(item) }));
       const request = buildNeighborReorderRequest({
-        activeId: active.id,
-        overId: over.id,
+        activeId: activeId.data,
+        overId: overId.data,
         items: orderItems,
       });
       if (!request) {

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import type {
   DiscoveredSkill,
   HostProviderCommand,
@@ -34,6 +35,40 @@ export interface GoldenFile {
   workspace: GoldenSection;
   userOnly: GoldenSection;
 }
+
+const goldenCommandSchema = z.object({
+  name: z.string(),
+  source: z.enum(["skill", "command"]),
+  origin: z.enum(["project", "user"]),
+  description: z.string().nullable(),
+  argumentHint: z.string().nullable(),
+}) satisfies z.ZodType<GoldenCommand>;
+const goldenSkillSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  filePath: z.string(),
+  rootKind: z.enum([
+    "bb-project",
+    "bb-data-dir",
+    "bb-builtin",
+    "provider-project",
+    "provider-user",
+    "shared-project",
+    "shared-user",
+    "plugin",
+  ]),
+  linked: z.boolean(),
+}) satisfies z.ZodType<GoldenSkill>;
+const goldenSectionSchema = z.object({
+  commands: z.array(goldenCommandSchema),
+  skills: z.array(goldenSkillSchema),
+}) satisfies z.ZodType<GoldenSection>;
+const goldenFileSchema = z.object({
+  providerId: z.string(),
+  variant: z.string(),
+  workspace: goldenSectionSchema,
+  userOnly: goldenSectionSchema,
+}) satisfies z.ZodType<GoldenFile>;
 
 export type ApplyEnv = (
   env: Readonly<Record<string, string | undefined>>,
@@ -188,7 +223,7 @@ export function goldenFilePath(variant: FixtureVariant): string {
 
 export async function readGolden(variant: FixtureVariant): Promise<GoldenFile> {
   const content = await fs.readFile(goldenFilePath(variant), "utf8");
-  return JSON.parse(content) as GoldenFile;
+  return goldenFileSchema.parse(JSON.parse(content));
 }
 
 export async function writeGolden(

@@ -9,29 +9,43 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
   CanUseTool,
+  Query,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
+  jsonObjectSchema,
+  type JsonObject,
   type JsonValue,
   type RuntimePermissionPolicy,
   type ThreadEvent,
 } from "@bb/domain";
+import { z } from "zod";
+import { installClaudeSdkDependencies } from "../claude-sdk-dependencies.js";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
-  queryMock: vi.fn(),
-}));
+const forkSessionMock = vi.fn();
+const queryMock = vi.fn();
+const restoreClaudeSdkDependencies = installClaudeSdkDependencies({
+  query: (params) => {
+    const query = queryMock(params);
+    // SAFETY: The controlled query implements the SDK methods used by this test suite.
+    return query as Query;
+  },
+  forkSession: (sessionId, options) => forkSessionMock(sessionId, options),
+});
 
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: queryMock,
-  forkSession: forkSessionMock,
-  createSdkMcpServer: vi.fn(() => ({})),
-  tool: vi.fn((_name, _desc, _schema, handler) => handler),
-}));
+afterAll(restoreClaudeSdkDependencies);
 
 import { handleLine } from "../bridge.js";
 import { buildSessionOptions } from "../session-options.js";
@@ -73,14 +87,14 @@ interface DeniedReadonlyBashCase {
 
 interface AssistantToolUseMessageArgs {
   parentToolUseId: string | null;
-  toolInput: Record<string, unknown>;
+  toolInput: JsonObject;
   toolName: string;
   toolUseId: string;
 }
 
 interface CanUseToolPolicyAllowExpectation {
   behavior: "allow";
-  updatedInput: Record<string, unknown>;
+  updatedInput: JsonObject;
 }
 
 interface CanUseToolPolicyDenyExpectation {
@@ -97,7 +111,7 @@ interface CanUseToolPolicyCase {
   decisionReason?: string;
   expected: CanUseToolPolicyExpectation;
   id: string;
-  input: Record<string, unknown>;
+  input: JsonObject;
   name: string;
   policy: RuntimePermissionPolicy;
   toolName: string;
@@ -120,6 +134,7 @@ interface ClaudeQueryCallOptions {
   env?: Record<string, string | undefined>;
   hooks?: BridgeSessionHooks;
   model?: string;
+  plugins?: { type: string; path: string }[];
   permissionMode?: ClaudePermissionMode;
   resume?: string;
   sandbox?: BridgeSessionOptions["sandbox"];
@@ -131,6 +146,15 @@ interface ClaudeQueryCallOptions {
 interface ClaudeQueryCall {
   options: ClaudeQueryCallOptions;
   prompt: AsyncIterable<SDKUserMessage>;
+}
+
+interface CanonicalOptions extends JsonObject {
+  approvalReviewer: "user";
+  instructions: "test";
+  permissionEscalation: "ask" | "deny";
+  permissionMode: "accept-edits";
+  permissionScope: "workspace";
+  providerOptions: JsonObject;
 }
 
 interface StaleResumeErrorMessageArgs {
@@ -189,38 +213,17 @@ interface ForwardedAskUserQuestion {
   resultPromise: ReturnType<CanUseTool>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isClaudeQueryCall(value: unknown): value is ClaudeQueryCall {
-  if (!isRecord(value) || !isRecord(value.options)) {
-    return false;
-  }
-  const { prompt } = value;
-  if (
-    prompt === null ||
-    typeof prompt !== "object" ||
-    !(Symbol.asyncIterator in prompt)
-  ) {
-    return false;
-  }
-  return (
-    value.options.canUseTool === undefined ||
-    typeof value.options.canUseTool === "function"
-  );
-}
-
 function getProviderThreadIdFromResult(
   message: BridgeJsonRpcOutputMessage,
 ): string {
-  if (
-    !isRecord(message.result) ||
-    typeof message.result.providerThreadId !== "string"
-  ) {
+  const result = jsonObjectSchema.safeParse(message.result);
+  const providerThreadId = result.success
+    ? z.string().safeParse(result.data.providerThreadId)
+    : { success: false as const };
+  if (!providerThreadId.success) {
     throw new Error("Expected response result with providerThreadId");
   }
-  return message.result.providerThreadId;
+  return providerThreadId.data;
 }
 
 function getLatestQueryOptions(): ClaudeQueryCallOptions {
@@ -229,7 +232,7 @@ function getLatestQueryOptions(): ClaudeQueryCallOptions {
 
 function getLatestQueryCall(): ClaudeQueryCall {
   const latestCall = queryMock.mock.calls.at(-1)?.[0];
-  if (!isClaudeQueryCall(latestCall)) {
+  if (latestCall === undefined) {
     throw new Error("Expected Claude SDK query options");
   }
   return latestCall;
@@ -245,18 +248,21 @@ function getBridgeErrorMessages(
   messages: BridgeJsonRpcOutputMessage[],
 ): string[] {
   return messages.flatMap((message) => {
-    if (message.method !== "error" || !isRecord(message.params)) {
+    if (message.method !== "error") {
       return [];
     }
-    return typeof message.params.message === "string"
-      ? [message.params.message]
-      : [];
+    const params = jsonObjectSchema.safeParse(message.params);
+    if (!params.success) {
+      return [];
+    }
+    const parsedMessage = z.string().safeParse(params.data.message);
+    return parsedMessage.success ? [parsedMessage.data] : [];
   });
 }
 
 function getLastCanUseTool(): CanUseTool {
   const latestCall = queryMock.mock.calls.at(-1)?.[0];
-  if (!isClaudeQueryCall(latestCall) || !latestCall.options.canUseTool) {
+  if (latestCall === undefined || !latestCall.options.canUseTool) {
     throw new Error("Expected Claude SDK query to receive canUseTool");
   }
   return latestCall.options.canUseTool;
@@ -354,10 +360,11 @@ async function readNextPrompt(call: ClaudeQueryCall): Promise<SDKUserMessage> {
 
 async function readNextPromptText(call: ClaudeQueryCall): Promise<string> {
   const content = (await readNextPrompt(call)).message.content;
-  if (typeof content !== "string") {
+  const text = z.string().safeParse(content);
+  if (!text.success) {
     throw new Error("Expected Claude prompt text content");
   }
-  return content;
+  return text.data;
 }
 
 async function invokeBridgeHooks(
@@ -517,8 +524,8 @@ function createBridgeUserQuestionInput(): ClaudeUserQuestionInput {
 
 function canonicalOptions(args?: {
   permissionEscalation?: "ask" | "deny";
-  providerOptions?: Record<string, JsonValue>;
-}): Record<string, JsonValue> {
+  providerOptions?: JsonObject;
+}): CanonicalOptions {
   return {
     permissionMode: "accept-edits",
     permissionScope: "workspace",
@@ -538,18 +545,19 @@ function canonicalTurnParams(args: {
   expectedTurnId?: string;
   input: JsonValue[];
   permissionEscalation?: "ask" | "deny";
-  providerOptions?: Record<string, JsonValue>;
-}): Record<string, JsonValue> {
-  return {
+  providerOptions?: JsonObject;
+}): JsonObject {
+  const params: JsonObject = {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId ?? args.threadId,
-    ...(args.expectedTurnId !== undefined
-      ? { expectedTurnId: args.expectedTurnId }
-      : {}),
     clientRequestId: "creq_abcdefghjk",
     input: args.input,
     options: canonicalOptions(args),
   };
+  if (args.expectedTurnId !== undefined) {
+    params.expectedTurnId = args.expectedTurnId;
+  }
+  return params;
 }
 
 function planCommandInput(text: string): JsonValue[] {
@@ -587,14 +595,14 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
 }
 
 function sendResumeThread(args: ResumeBridgeThreadArgs): void {
+  const options = canonicalOptions();
+  if (args.permissionEscalation !== undefined) {
+    options.permissionEscalation = args.permissionEscalation;
+  }
   args.bridge.sendRequest(args.requestId, "thread/resume", {
     cwd: "/tmp/worktree",
     instructionMode: "append",
-    options: canonicalOptions({
-      ...(args.permissionEscalation
-        ? { permissionEscalation: args.permissionEscalation }
-        : {}),
-    }),
+    options,
     providerThreadId: args.providerThreadId,
     threadId: args.threadId,
   });
@@ -614,20 +622,16 @@ async function stopBridgeThread(args: StopBridgeThreadArgs): Promise<void> {
 
 function interactionPayload(
   message: BridgeJsonRpcOutputMessage,
-): Record<string, unknown> | undefined {
+): JsonObject | undefined {
   if (message.method !== BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest) {
     return undefined;
   }
-  const params = message.params;
-  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+  const params = jsonObjectSchema.safeParse(message.params);
+  if (!params.success) {
     return undefined;
   }
-  const payload = params.payload;
-  return typeof payload === "object" &&
-    payload !== null &&
-    !Array.isArray(payload)
-    ? (payload as Record<string, unknown>)
-    : undefined;
+  const payload = jsonObjectSchema.safeParse(params.data.payload);
+  return payload.success ? payload.data : undefined;
 }
 
 function isApprovalInteraction(message: BridgeJsonRpcOutputMessage): boolean {
@@ -3407,13 +3411,15 @@ describe("bridge", () => {
       );
       await bridge.flushWork();
 
-      const permissionRequest = bridge.messages.find(
-        (message) =>
-          isApprovalInteraction(message) &&
-          isRecord(interactionPayload(message)?.subject) &&
-          (interactionPayload(message)?.subject as { itemId?: unknown })
-            .itemId === askToolUseId,
-      );
+      const permissionRequest = bridge.messages.find((message) => {
+        if (!isApprovalInteraction(message)) {
+          return false;
+        }
+        const subject = jsonObjectSchema.safeParse(
+          interactionPayload(message)?.subject,
+        );
+        return subject.success && subject.data.itemId === askToolUseId;
+      });
       if (permissionRequest?.id === undefined) {
         throw new Error("Expected forwarded background permission request");
       }
@@ -3683,13 +3689,17 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       expect(
-        bridge.messages.some(
-          (message) =>
-            message.method === "error" &&
-            isRecord(message.params) &&
-            message.params.threadId === threadId &&
-            message.params.message === "Claude SDK exploded",
-        ),
+        bridge.messages.some((message) => {
+          if (message.method !== "error") {
+            return false;
+          }
+          const params = jsonObjectSchema.safeParse(message.params);
+          return (
+            params.success &&
+            params.data.threadId === threadId &&
+            params.data.message === "Claude SDK exploded"
+          );
+        }),
       ).toBe(true);
 
       bridge.sendRequest(2, "turn/start", {
@@ -4132,12 +4142,9 @@ describe("bridge", () => {
       try {
         await startBridgeThread({ bridge, threadId });
 
-        bridge.sendRequest(2, testCase.method, {
+        const params: JsonObject = {
           threadId,
           providerThreadId: threadId,
-          ...(testCase.method === "turn/steer"
-            ? { expectedTurnId: "turn-1" }
-            : {}),
           input: [{ type: "text", text: "Please account for the restart" }],
           clientRequestId: "creq_abcdefghjk",
           options: {
@@ -4147,7 +4154,11 @@ describe("bridge", () => {
             permissionEscalation: "ask",
             providerOptions: {},
           },
-        });
+        };
+        if (testCase.method === "turn/steer") {
+          params.expectedTurnId = "turn-1";
+        }
+        bridge.sendRequest(2, testCase.method, params);
         await bridge.flushWork();
 
         expect(bridge.hasResponse(2)).toBe(false);
@@ -4201,15 +4212,14 @@ describe("bridge", () => {
 
         await getLatestQueryCall().prompt[Symbol.asyncIterator]().return?.();
 
-        bridge.sendRequest(2, testCase.method, {
-          ...canonicalTurnParams({
-            threadId,
-            input: [{ type: "text", text: "loosen permissions" }],
-          }),
-          ...(testCase.method === "turn/steer"
-            ? { expectedTurnId: "turn-1" }
-            : {}),
+        const params = canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "loosen permissions" }],
         });
+        if (testCase.method === "turn/steer") {
+          params.expectedTurnId = "turn-1";
+        }
+        bridge.sendRequest(2, testCase.method, params);
         await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
           error: { code: -32000 },
         });
@@ -4270,10 +4280,12 @@ describe("bridge", () => {
       return text;
     }
 
-    function withBridgeHarness(): {
+    interface BridgeHarness {
       bridge: BridgeJsonRpcTestHarness;
       queries: ControlledClaudeQuery[];
-    } {
+    }
+
+    function withBridgeHarness(): BridgeHarness {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
       const queries: ControlledClaudeQuery[] = [];
       queryMock.mockImplementation(() => {
@@ -4481,9 +4493,7 @@ describe("canonical skills/configure", () => {
       });
       await bridge.waitForResponse(2);
 
-      const options = getLatestQueryOptions() as {
-        plugins?: { type: string; path: string }[];
-      };
+      const options = getLatestQueryOptions();
       expect(options.plugins).toHaveLength(2);
       const [pluginA, pluginB] = options.plugins ?? [];
       expect(pluginA?.type).toBe("local");
@@ -4582,16 +4592,34 @@ describe("canonical model context-window hint", () => {
         usage: {
           input_tokens: 100,
           output_tokens: 20,
+          cache_creation: {
+            ephemeral_1h_input_tokens: 0,
+            ephemeral_5m_input_tokens: 0,
+          },
           cache_creation_input_tokens: 30,
           cache_read_input_tokens: 40,
+          inference_geo: "",
+          iterations: [],
+          server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
+          service_tier: "standard",
+          speed: "standard",
         },
         modelUsage: {
           "claude-fable-5": {
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheReadInputTokens: 40,
+            cacheCreationInputTokens: 30,
+            webSearchRequests: 0,
+            costUSD: 0,
             contextWindow: 200_000,
+            maxOutputTokens: 8_192,
           },
         },
+        permission_denials: [],
+        uuid: "00000000-0000-4000-8000-000000000004",
         session_id: "session-1",
-      } as unknown as SDKMessage);
+      });
       await bridge.flushWork();
 
       const contextWindowEvents = assembleCapturedThreadEvents(

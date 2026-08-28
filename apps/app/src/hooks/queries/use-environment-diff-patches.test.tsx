@@ -16,13 +16,10 @@ import { environmentDiffPatchQueryKey } from "./query-keys";
 import { HEAVY_PAYLOAD_GC_TIME_MS } from "./query-policies";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { diffPatch: vi.fn() } },
-}));
-
 const ENVIRONMENT_ID = "env-1";
 const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
 const PATH = "file.ts";
+const diffPatch = vi.spyOn(sdk.environments, "diffPatch");
 
 function patchKey() {
   return environmentDiffPatchQueryKey(ENVIRONMENT_ID, "all", "main", PATH);
@@ -40,7 +37,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(sdk.environments.diffPatch).mockReset();
+  diffPatch.mockReset();
 });
 
 describe("useEnvironmentDiffPatches", () => {
@@ -51,11 +48,17 @@ describe("useEnvironmentDiffPatches", () => {
       mergeBaseBranch: "main",
     };
     const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch).mockReturnValue(firstFetch.promise);
+    diffPatch.mockReturnValue(firstFetch.promise);
 
     const { result, rerender } = renderHook(
       ({ target }) => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target }),
-      { wrapper, initialProps: { target: TARGET as WorkspaceDiffTarget } },
+      {
+        wrapper,
+        initialProps: {
+          target:
+            /* SAFETY: The test controls this fixture and verifies its behavior. */ TARGET as WorkspaceDiffTarget,
+        },
+      },
     );
 
     act(() => {
@@ -65,7 +68,7 @@ describe("useEnvironmentDiffPatches", () => {
     await waitFor(() => {
       expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
     });
-    const request = vi.mocked(sdk.environments.diffPatch).mock.calls[0]?.[0];
+    const request = diffPatch.mock.calls[0]?.[0];
     expect(request?.signal?.aborted).toBe(false);
     rerender({ target: changedTarget });
 
@@ -88,7 +91,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    diffPatch
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -155,7 +158,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    diffPatch
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -230,7 +233,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    diffPatch
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -284,9 +287,7 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "diff --git a/file.ts b/file.ts\n+content\n",
       truncated: false,
     };
-    vi.mocked(sdk.environments.diffPatch).mockResolvedValue(
-      availableResponse(patch),
-    );
+    diffPatch.mockResolvedValue(availableResponse(patch));
 
     const { result } = renderHook(
       () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),

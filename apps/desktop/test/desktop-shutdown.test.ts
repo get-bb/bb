@@ -8,8 +8,13 @@ import {
   type DesktopShutdownSignal,
 } from "../src/desktop-shutdown.js";
 
+interface FakeSignalListeners {
+  SIGINT: DesktopSignalListener[];
+  SIGTERM: DesktopSignalListener[];
+}
+
 class FakeSignalProcess implements DesktopSignalProcess {
-  private listeners: Record<DesktopShutdownSignal, DesktopSignalListener[]> = {
+  private listeners: FakeSignalListeners = {
     SIGINT: [],
     SIGTERM: [],
   };

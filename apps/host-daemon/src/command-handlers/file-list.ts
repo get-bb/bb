@@ -80,13 +80,14 @@ export function normalizeListedPath(relativePath: string): string {
 export function finalizeListedFiles(
   args: FinalizeListedFilesArgs,
 ): FinalizedFileList {
-  const result = finalizeListedPaths({
+  const finalizeArgs: FinalizeListedPathsArgs = {
     paths: args.filePaths.map(toListedFile),
     limit: args.limit,
     includeFiles: true,
     includeDirectories: false,
-    ...(args.query ? { query: args.query } : {}),
-  });
+  };
+  if (args.query) finalizeArgs.query = args.query;
+  const result = finalizeListedPaths(finalizeArgs);
 
   return {
     files: result.paths.map(toFileListEntry),

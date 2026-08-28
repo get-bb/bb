@@ -34,19 +34,12 @@ function selectionRangeTouchesNode(range: Range, node: HTMLElement): boolean {
   if (node.contains(commonAncestorContainer)) {
     return true;
   }
-  if (
-    typeof range.intersectsNode === "function" &&
-    (() => {
-      try {
-        return range.intersectsNode(node);
-      } catch {
-        return false;
-      }
-    })()
-  ) {
-    return true;
+  if (!("intersectsNode" in range)) return false;
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function readSelectionWithinPanel({
@@ -58,9 +51,9 @@ function readSelectionWithinPanel({
   node: HTMLElement | null;
   pointerStartedInNode: boolean;
 }): MessageProseSelection | null {
-  if (node === null || typeof window === "undefined") return null;
+  if (node === null || !("window" in globalThis)) return null;
 
-  const selection = window.getSelection();
+  const selection = globalThis.window.getSelection();
   if (
     selection === null ||
     selection.rangeCount === 0 ||
@@ -123,17 +116,18 @@ export function SecondaryPanelSelectionActions({
   }, []);
 
   useEffect(() => {
-    if (!isEnabled || typeof window === "undefined") return;
+    if (!isEnabled || !("window" in globalThis)) return;
+    const browserWindow = globalThis.window;
 
     let frame: number | null = null;
     const cancelFrame = () => {
       if (frame === null) return;
-      window.cancelAnimationFrame(frame);
+      browserWindow.cancelAnimationFrame(frame);
       frame = null;
     };
     const scheduleReport = (anchor: SelectionAnchor | null = null) => {
       cancelFrame();
-      frame = window.requestAnimationFrame(() => {
+      frame = browserWindow.requestAnimationFrame(() => {
         frame = null;
         reportSelection(anchor);
       });

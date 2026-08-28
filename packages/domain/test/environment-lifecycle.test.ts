@@ -63,13 +63,18 @@ function eligibleRowState(
   overrides?: Partial<Omit<EnvironmentLifecycleRowState, "status">>,
 ): EnvironmentLifecycleRowState {
   const predicates = ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES[eventType];
-  return rowState(status, {
-    ...(predicates.managed ? { managed: true } : {}),
-    ...(predicates.matchingDestroyAttempt
-      ? { destroyAttemptId: "rpc_attempt" }
-      : {}),
-    ...overrides,
-  });
+  const overrideState = overrides ?? {};
+  const state = rowState(status, overrideState);
+  if (predicates.managed && !Object.hasOwn(overrideState, "managed")) {
+    state.managed = true;
+  }
+  if (
+    predicates.matchingDestroyAttempt &&
+    !Object.hasOwn(overrideState, "destroyAttemptId")
+  ) {
+    state.destroyAttemptId = "rpc_attempt";
+  }
+  return state;
 }
 
 function expectedTarget(
@@ -78,8 +83,17 @@ function expectedTarget(
   row: EnvironmentLifecycleRowState,
 ): EnvironmentStatus | undefined {
   const target = ENVIRONMENT_LIFECYCLE[status][eventType];
-  if (target === undefined || typeof target === "string") {
+  if (target === undefined) {
     return target;
+  }
+  switch (target) {
+    case "provisioning":
+    case "ready":
+    case "retiring":
+    case "error":
+    case "destroying":
+    case "destroyed":
+      return target;
   }
   return row.path !== null
     ? target.withWorkspacePath

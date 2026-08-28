@@ -2,32 +2,34 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import * as threadTableOfContentsModule from "@/components/thread/toc/ThreadTableOfContents";
 import type { ThreadTimelineSurfaceProps } from "@/components/thread/timeline/ThreadTimelineSurface";
+import * as threadTimelineSurfaceModule from "@/components/thread/timeline/ThreadTimelineSurface";
 
-vi.mock("@/components/thread/timeline/ThreadTimelineSurface", () => ({
-  ThreadTimelineSurface: (props: ThreadTimelineSurfaceProps) => (
-    <div data-testid="timeline">
-      <span data-testid="plugin-panel-opener">
-        {props.onOpenPluginPanel === undefined ? "missing" : "available"}
-      </span>
-      <span data-testid="navigation-target">
-        {props.timelineNavigationTargetRowId ?? "none"}
-      </span>
-    </div>
-  ),
-}));
+vi.spyOn(
+  threadTimelineSurfaceModule,
+  "ThreadTimelineSurface",
+).mockImplementation((props: ThreadTimelineSurfaceProps) => (
+  <div data-testid="timeline">
+    <span data-testid="plugin-panel-opener">
+      {props.onOpenPluginPanel === undefined ? "missing" : "available"}
+    </span>
+    <span data-testid="navigation-target">
+      {props.timelineNavigationTargetRowId ?? "none"}
+    </span>
+  </div>
+));
 
-vi.mock("@/components/thread/toc/ThreadTableOfContents", () => ({
-  ThreadTableOfContents: ({
-    onNavigateToRow,
-  }: {
-    onNavigateToRow?: (rowId: string) => void;
-  }) => (
+vi.spyOn(
+  threadTableOfContentsModule,
+  "ThreadTableOfContents",
+).mockImplementation(
+  ({ onNavigateToRow }: { onNavigateToRow?: (rowId: string) => void }) => (
     <button type="button" onClick={() => onNavigateToRow?.("row-target")}>
       Jump to row
     </button>
   ),
-}));
+);
 
 const { ThreadTimelinePane } = await import("./ThreadTimelinePane");
 

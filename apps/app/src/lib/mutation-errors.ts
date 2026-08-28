@@ -1,5 +1,6 @@
-import { extractErrorMessage, toRecord } from "@bb/core-ui";
+import { extractErrorMessage } from "@bb/core-ui";
 import { BbHttpError } from "@bb/sdk/browser";
+import { z } from "zod";
 import { appToast } from "@/components/ui/app-toast";
 import { HttpError } from "./api";
 import {
@@ -26,7 +27,22 @@ interface MutationErrorMeta {
   showErrorToast?: boolean;
 }
 
-type MutationErrorMetaInput = Readonly<Record<string, unknown>> | undefined;
+interface MutationErrorMetaInput {
+  errorMessage?: string | number;
+  lifecycleOperation?: string;
+  showErrorToast?: boolean | string;
+}
+
+const errorCauseSchema = z.object({
+  message: z.string().optional(),
+  name: z.string().optional(),
+});
+
+const mutationErrorMetaSchema = z.object({
+  errorMessage: z.string().optional(),
+  lifecycleOperation: z.string().optional(),
+  showErrorToast: z.boolean().optional(),
+});
 
 function normalizeMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim();
@@ -40,25 +56,36 @@ function stripTrailingPeriod(message: string): string {
   return message.replace(TRAILING_PERIOD_PATTERN, "");
 }
 
-function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
+function parseErrorCause(cause: unknown) {
+  const parsed = errorCauseSchema.safeParse(cause);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  if (cause instanceof Error) {
+    return { message: cause.message, name: cause.name };
+  }
+  return null;
 }
 
-function isNetworkTransportError(error: unknown): boolean {
+function isAbortLikeError(cause: unknown): boolean {
+  return parseErrorCause(cause)?.name === "AbortError";
+}
+
+function isNetworkTransportError(cause: unknown): boolean {
   if (
-    error instanceof HttpError ||
-    error instanceof BbHttpError ||
-    isAbortLikeError(error)
+    cause instanceof HttpError ||
+    cause instanceof BbHttpError ||
+    isAbortLikeError(cause)
   ) {
     return false;
   }
 
-  const record = toRecord(error);
-  if (!record || typeof record.message !== "string") {
+  const parsed = parseErrorCause(cause);
+  if (parsed?.message === undefined) {
     return false;
   }
 
-  const normalizedMessage = normalizeMessage(record.message).toLowerCase();
+  const normalizedMessage = normalizeMessage(parsed.message).toLowerCase();
   return (
     normalizedMessage.includes("failed to fetch") ||
     normalizedMessage.includes("load failed") ||
@@ -67,12 +94,8 @@ function isNetworkTransportError(error: unknown): boolean {
 }
 
 function toLifecycleErrorOperation(
-  value: unknown,
+  value: string | undefined,
 ): LifecycleErrorOperation | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
   switch (value) {
     case "archive_thread":
     case "commit":
@@ -111,29 +134,35 @@ function getHttpErrorMessage(error: HttpError | BbHttpError): string | null {
 }
 
 export function getMutationErrorMeta(
-  value: MutationErrorMetaInput,
+  value: MutationErrorMetaInput | undefined,
 ): MutationErrorMeta {
   if (!value) {
     return {};
   }
 
-  const errorMessage =
-    typeof value.errorMessage === "string"
-      ? normalizeMessage(value.errorMessage)
-      : undefined;
-  const showErrorToast =
-    typeof value.showErrorToast === "boolean"
-      ? value.showErrorToast
-      : undefined;
-  const lifecycleOperation = toLifecycleErrorOperation(
-    value.lifecycleOperation,
-  );
+  const parsed = mutationErrorMetaSchema.safeParse(value);
+  if (!parsed.success) {
+    return {};
+  }
 
-  return {
-    ...(errorMessage ? { errorMessage } : {}),
-    ...(lifecycleOperation ? { lifecycleOperation } : {}),
-    ...(showErrorToast === undefined ? {} : { showErrorToast }),
-  };
+  const errorMessage =
+    parsed.data.errorMessage === undefined
+      ? undefined
+      : normalizeMessage(parsed.data.errorMessage);
+  const lifecycleOperation = toLifecycleErrorOperation(
+    parsed.data.lifecycleOperation,
+  );
+  const result: MutationErrorMeta = {};
+  if (errorMessage) {
+    result.errorMessage = errorMessage;
+  }
+  if (lifecycleOperation) {
+    result.lifecycleOperation = lifecycleOperation;
+  }
+  if (parsed.data.showErrorToast !== undefined) {
+    result.showErrorToast = parsed.data.showErrorToast;
+  }
+  return result;
 }
 
 export function getMutationErrorMessage({
@@ -168,8 +197,8 @@ export function getMutationErrorMessage({
   return normalizedMessage.length > 0 ? normalizedMessage : fallbackMessage;
 }
 
-export function shouldShowMutationErrorToast(error: unknown): boolean {
-  return !isAbortLikeError(error);
+export function shouldShowMutationErrorToast(cause: unknown): boolean {
+  return !isAbortLikeError(cause);
 }
 
 export function showMutationErrorToast({

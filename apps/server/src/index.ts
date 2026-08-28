@@ -13,7 +13,7 @@ installSafeProcessDiagnostics({
   processName: "server",
 });
 
-function reportStartupFailure(error: unknown): void {
+function reportStartupFailure(error: Error): void {
   try {
     writeSafeProcessDiagnosticReport({
       kind: "startupFailure",
@@ -34,4 +34,8 @@ async function main(): Promise<void> {
   await serverModule.runServer(serverConfig);
 }
 
-void main().catch(reportStartupFailure);
+void main().catch((error) => {
+  reportStartupFailure(
+    error instanceof Error ? error : new Error(String(error)),
+  );
+});

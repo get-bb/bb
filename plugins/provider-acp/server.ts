@@ -3,7 +3,10 @@ import type {
   PluginProviderDeclaration,
 } from "@get-bb/plugin-sdk";
 import { type AcpAgentDefinition } from "./src/agents.js";
-import { resolveConfiguredAcpAgents } from "./src/configured-agents.js";
+import {
+  resolveConfiguredAcpAgents,
+  type ResolveConfiguredAcpAgentsArgs,
+} from "./src/configured-agents.js";
 import { acpHostContract, type AcpProbeResult } from "./src/contract.js";
 import { acpProviderDeclaration } from "./src/declaration.js";
 import { applyAcpAgentProbe } from "./src/probe-capabilities.js";
@@ -105,15 +108,16 @@ export default async function acpProvidersPlugin(
     const legacy = await readLegacyCustomAcpAgents(
       bb.server.experimental_dataDir,
     );
-    const resolved = resolveConfiguredAcpAgents({
+    const resolveArgs: ResolveConfiguredAcpAgentsArgs = {
       settingValue,
       legacyEntries: legacy.entries,
-      ...(legacy.problem === undefined
-        ? {}
-        : { legacyProblem: legacy.problem }),
       reservedProviderIds: RESERVED_ACP_PROVIDER_IDS,
       shippedAgents: KNOWN_ACP_AGENTS,
-    });
+    };
+    if (legacy.problem !== undefined) {
+      resolveArgs.legacyProblem = legacy.problem;
+    }
+    const resolved = resolveConfiguredAcpAgents(resolveArgs);
     for (const warning of resolved.warnings) {
       bb.log.warn(warning);
     }
@@ -180,7 +184,7 @@ export default async function acpProvidersPlugin(
   const initial = await settings.get();
   await queueReconcile(initial.customAgents);
   settings.onChange((next) => {
-    void queueReconcile(next.customAgents).catch((error: unknown) => {
+    void queueReconcile(next.customAgents).catch((error) => {
       bb.log.error(
         `Could not re-register the configured ACP agents: ${String(error)}`,
       );

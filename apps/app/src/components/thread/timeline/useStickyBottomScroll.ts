@@ -68,9 +68,10 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     const element = scrollRef.current;
     if (!element) return;
     refreshMaxScrollOffset(element);
-    if (typeof ResizeObserver === "undefined") return;
+    const resizeObserverConstructor = globalThis.ResizeObserver;
+    if (resizeObserverConstructor === undefined) return;
 
-    const observer = new ResizeObserver(() => {
+    const observer = new resizeObserverConstructor(() => {
       refreshMaxScrollOffset(element);
     });
     observer.observe(element);

@@ -304,13 +304,12 @@ export function resolveThreadExecutionPermissionMode(
   const supported = registry.getSupportedPermissionModes(
     args.thread.providerId,
   );
-  return (
-    clampPermissionModeToCeiling({
-      ceiling,
-      permissionMode,
-      ...(supported ? { permissionModes: supported } : {}),
-    }) ?? ceiling
-  );
+  const clampArgs: Parameters<typeof clampPermissionModeToCeiling>[0] = {
+    ceiling,
+    permissionMode,
+  };
+  if (supported) clampArgs.permissionModes = supported;
+  return clampPermissionModeToCeiling(clampArgs) ?? ceiling;
 }
 
 function resolvePreferredThreadExecutionPermissionMode(

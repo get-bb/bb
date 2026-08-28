@@ -17,7 +17,7 @@ const inboundSchema = z.object({
   params: z.unknown(),
 });
 
-function writeMessage(message: Record<string, unknown>): void {
+function writeMessage<T>(message: T): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 }
 

@@ -4,6 +4,8 @@ import {
   buildBridgeInjectionScript,
   parsePageToShellMessage,
   type NativeShellHandshake,
+  type PageToShellMessage,
+  type ShellToPageEvent,
 } from "@bb/mobile-bridge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +17,16 @@ import {
   shellSetBadge,
   shellShare,
 } from "./native-shell";
+
+interface TestNativeBridge {
+  __receive(event: ShellToPageEvent): void;
+}
+
+function testNativeBridge(): TestNativeBridge {
+  const native = window.bb?.native;
+  if (native === undefined) throw new Error("missing native bridge");
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ native as TestNativeBridge;
+}
 
 const handshake: NativeShellHandshake = {
   bridgeVersion: 1,
@@ -45,11 +57,17 @@ function installShell(overrides: Partial<NativeShellHandshake> = {}): void {
   resetNativeShellForTests();
 }
 
-function lastMessage(): unknown {
+function lastMessage(): PageToShellMessage {
   const raw = posted.at(-1);
   const parsed = parsePageToShellMessage(raw);
   if (!parsed.ok) throw new Error(`shell could not parse: ${parsed.reason}`);
   return parsed.message;
+}
+
+function lastRequest(): Extract<PageToShellMessage, { type: "request" }> {
+  const message = lastMessage();
+  if (message.type !== "request") throw new Error("expected a shell request");
+  return message;
 }
 
 beforeEach(() => {
@@ -58,11 +76,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
-  Reflect.deleteProperty(
-    window as unknown as Record<string, unknown>,
-    "ReactNativeWebView",
-  );
+  Reflect.deleteProperty(window, "bb");
+  Reflect.deleteProperty(window, "ReactNativeWebView");
   resetNativeShellForTests();
   vi.restoreAllMocks();
 });
@@ -159,13 +174,9 @@ describe("shellShare", () => {
   it("resolves with the shell's answer", async () => {
     installShell();
     const promise = shellShare({ url: "https://bee.getbb.app/threads/thr_1" });
-    const message = lastMessage() as { type: string; id: string };
+    const message = lastRequest();
     expect(message.type).toBe("request");
-    const bridge = (
-      window as unknown as {
-        bb: { native: { __receive(event: unknown): void } };
-      }
-    ).bb.native;
+    const bridge = testNativeBridge();
     bridge.__receive({
       type: "response",
       id: message.id,
@@ -177,12 +188,8 @@ describe("shellShare", () => {
   it("returns null when the shell refuses, so the caller can copy instead", async () => {
     installShell();
     const promise = shellShare({ text: "hello" });
-    const message = lastMessage() as { id: string };
-    const bridge = (
-      window as unknown as {
-        bb: { native: { __receive(event: unknown): void } };
-      }
-    ).bb.native;
+    const message = lastRequest();
+    const bridge = testNativeBridge();
     bridge.__receive({
       type: "response",
       id: message.id,
@@ -207,10 +214,7 @@ describe("shellShare", () => {
   });
 
   it("returns null when nothing can share", async () => {
-    Reflect.deleteProperty(
-      navigator as unknown as Record<string, unknown>,
-      "share",
-    );
+    Reflect.deleteProperty(navigator, "share");
     await expect(shellShare({ text: "hello" })).resolves.toBeNull();
   });
 });

@@ -7,28 +7,32 @@ import {
 } from "../../shared/contract.js";
 import type { TaskSort } from "../../shared/pagination.js";
 
-export const STATUS_LABELS: Record<TaskStatus, string> = {
+type StatusLabels = { [status in TaskStatus]: string };
+type PriorityLabels = { [priority in TaskPriority]: string };
+type SortLabels = { [sort in TaskSort]: string };
+
+export const STATUS_LABELS = {
   backlog: "Backlog",
   todo: "Todo",
   in_progress: "In Progress",
   in_review: "In Review",
   done: "Done",
   canceled: "Canceled",
-};
+} satisfies StatusLabels;
 
-export const PRIORITY_LABELS: Record<TaskPriority, string> = {
+export const PRIORITY_LABELS = {
   urgent: "Urgent",
   high: "High",
   medium: "Medium",
   low: "Low",
   none: "No priority",
-};
+} satisfies PriorityLabels;
 
-export const SORT_LABELS: Record<TaskSort, string> = {
+export const SORT_LABELS = {
   manual: "Manual",
   priority: "Priority",
   due: "Due date",
-};
+} satisfies SortLabels;
 
 interface StatusGroup {
   status: TaskStatus;
@@ -83,11 +87,12 @@ export function selectedLabelIds(
 
 export function formatDueDate(dueDate: string, today = new Date()): string {
   const date = new Date(`${dueDate}T00:00:00`);
-  return date.toLocaleDateString("en-US", {
+  const options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
-    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
-  });
+  };
+  if (date.getFullYear() !== today.getFullYear()) options.year = "numeric";
+  return date.toLocaleDateString("en-US", options);
 }
 
 export function activeWorkLabel(

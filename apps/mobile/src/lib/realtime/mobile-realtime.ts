@@ -13,6 +13,7 @@ import {
   type ThreadOpenSignal,
   type ThreadPaneActionSignal,
 } from "@bb/server-contract";
+import { z } from "zod";
 import {
   SOCKET_OPEN,
   defaultRealtimeSocketFactory,
@@ -75,7 +76,7 @@ export interface CreateMobileRealtimeOptions {
   socketFactory?: RealtimeSocketFactory;
   headers?: () => Record<string, string>;
   connectionTimeoutMs?: number;
-  onInvalidMessage?: (error: unknown) => void;
+  onInvalidMessage?: (cause: unknown) => void;
 }
 
 const REALTIME_MIN_RECONNECT_DELAY_MS = 1000;
@@ -117,8 +118,8 @@ export function createMobileRealtime(
     options.connectionTimeoutMs ?? REALTIME_CONNECTION_TIMEOUT_MS;
   const onInvalidMessage =
     options.onInvalidMessage ??
-    ((error: unknown) => {
-      console.warn("Ignored invalid realtime message", error);
+    ((cause: unknown) => {
+      console.warn("Ignored invalid realtime message", cause);
     });
 
   const subscriptions = new Map<string, ActiveSubscription>();
@@ -344,9 +345,10 @@ export function createMobileRealtime(
     };
     next.onmessage = (event) => {
       if (socket !== next) return;
-      if (typeof event.data !== "string") return;
+      const parsedData = z.string().safeParse(event.data);
+      if (!parsedData.success) return;
       noteServerActivity();
-      handleIncomingMessage(event.data);
+      handleIncomingMessage(parsedData.data);
     };
     next.onclose = (event) => {
       if (socket === next && !socketOpened && socketErrorMessage === null) {

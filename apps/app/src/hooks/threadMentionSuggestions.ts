@@ -80,15 +80,18 @@ function toThreadMentionSuggestion(
   const projectName = shouldShowProjectName(thread, context)
     ? projectNamesById.get(thread.projectId)
     : undefined;
-  return {
+  const suggestion: ThreadMentionSuggestion = {
     kind: "thread",
     path: `thread:${thread.id}`,
     replacement: `thread:${thread.id}`,
     projectId: thread.projectId,
-    ...(projectName ? { projectName } : {}),
     threadId: thread.id,
     title: getThreadDisplayTitle(thread),
   };
+  if (projectName !== undefined) {
+    suggestion.projectName = projectName;
+  }
+  return suggestion;
 }
 
 function getThreadMentionContext(

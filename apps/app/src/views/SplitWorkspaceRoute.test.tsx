@@ -4,32 +4,36 @@ import { Suspense, useEffect } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PaneContent } from "@/lib/split-layout";
+import * as splitThreadAreaModule from "./thread-detail/SplitThreadArea";
+import * as rootComposeViewModule from "./RootComposeView";
 import SplitWorkspaceRoute from "./SplitWorkspaceRoute";
+
+function TestToolsView({ pluginId }: { pluginId?: string }) {
+  return <output data-testid="tools-view">{pluginId ?? "overview"}</output>;
+}
 
 const workspaceLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 
-vi.mock("./thread-detail/SplitThreadArea", () => ({
-  SplitThreadArea: ({ routeContent }: { routeContent: PaneContent }) => {
+vi.spyOn(splitThreadAreaModule, "SplitThreadArea").mockImplementation(
+  ({ routeContent } = {}) => {
     useEffect(() => {
       workspaceLifecycle.mounts += 1;
       return () => {
         workspaceLifecycle.unmounts += 1;
       };
     }, []);
-    return <output data-testid="route-content">{routeContent.kind}</output>;
+    return (
+      <output data-testid="route-content">
+        {routeContent?.kind ?? "new-thread"}
+      </output>
+    );
   },
-}));
+);
 
-vi.mock("./RootComposeView", () => ({
-  LegacyProjectComposeRedirect: () => <div>legacy redirect</div>,
-}));
-
-vi.mock("./ToolsView", () => ({
-  ToolsView: ({ pluginId }: { pluginId?: string }) => (
-    <output data-testid="tools-view">{pluginId ?? "overview"}</output>
-  ),
-}));
+vi.spyOn(
+  rootComposeViewModule,
+  "LegacyProjectComposeRedirect",
+).mockImplementation(() => <div>legacy redirect</div>);
 
 function NavigationControls() {
   const navigate = useNavigate();
@@ -80,7 +84,9 @@ describe("SplitWorkspaceRoute", () => {
             path="*"
             element={
               <Suspense fallback={null}>
-                <SplitWorkspaceRoute />
+                <SplitWorkspaceRoute
+                  dependencies={{ ToolsView: TestToolsView }}
+                />
               </Suspense>
             }
           />

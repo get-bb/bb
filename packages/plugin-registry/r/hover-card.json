@@ -4,12 +4,6 @@
   "type": "registry:ui",
   "title": "hover-card",
   "description": "BB ui \"hover-card\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "dependencies": [
-    "@radix-ui/react-hover-card"
-  ],
-  "registryDependencies": [
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/hover-card.tsx",
@@ -17,5 +11,11 @@
       "type": "registry:ui",
       "target": "components/ui/hover-card.tsx"
     }
+  ],
+  "dependencies": [
+    "@radix-ui/react-hover-card"
+  ],
+  "registryDependencies": [
+    "@bb/utils"
   ]
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   providerHealthResultSchema,
@@ -55,6 +56,9 @@ const FULL_OPTIONS = {
   permissionEscalation: null,
 };
 
+const bridgeJsonRpcObjectSchema = z.record(z.string(), z.json());
+const threadStartResultSchema = z.object({ providerThreadId: z.string() });
+
 let harness: BridgeJsonRpcTestHarness;
 let collector: BridgeDeltaEventCollector;
 let requestCounter = 0;
@@ -93,23 +97,26 @@ async function startSession(args: {
   providerOptions?: BridgeJsonRpcObject;
   input?: BridgeJsonRpcObject[];
 }): Promise<string> {
-  const response = await request("thread/start", {
+  const options: BridgeJsonRpcObject = { ...FULL_OPTIONS };
+  if (args.providerOptions !== undefined) {
+    options.providerOptions = args.providerOptions;
+  }
+  const params: BridgeJsonRpcObject = {
     threadId: THREAD_ID,
     cwd: CWD,
     instructionMode: "append",
-    options: {
-      ...FULL_OPTIONS,
-      ...(args.providerOptions === undefined
-        ? {}
-        : { providerOptions: args.providerOptions }),
-    },
-    ...(args.dynamicTools === undefined
-      ? {}
-      : { dynamicTools: args.dynamicTools }),
-    ...(args.input === undefined ? {} : { input: args.input }),
+    options,
+  };
+  if (args.dynamicTools !== undefined) {
+    params.dynamicTools = args.dynamicTools;
+  }
+  if (args.input !== undefined) {
+    params.input = args.input;
+  }
+  const response = await request("thread/start", {
+    ...params,
   });
-  const result = response.result as { providerThreadId: string };
-  expect(typeof result.providerThreadId).toBe("string");
+  const result = threadStartResultSchema.parse(response.result);
   return result.providerThreadId;
 }
 
@@ -118,15 +125,17 @@ function textInput(text: string): BridgeJsonRpcObject[] {
 }
 
 function answerToolCall(
-  answer: (params: Record<string, unknown>) => BridgeJsonRpcObject,
-): Record<string, unknown> {
+  answer: (params: BridgeJsonRpcObject) => BridgeJsonRpcObject,
+): BridgeJsonRpcObject {
   const call = harness.messages.find(
     (message) => message.method === "item/tool/call",
   );
-  expect(call, "the bridge called its bb tool").toBeDefined();
-  const params = call?.params as Record<string, unknown>;
+  if (!call) {
+    throw new Error("the bridge did not call its bb tool");
+  }
+  const params = bridgeJsonRpcObjectSchema.parse(call.params);
   handleLine(
-    JSON.stringify({ jsonrpc: "2.0", id: call?.id, result: answer(params) }),
+    JSON.stringify({ jsonrpc: "2.0", id: call.id, result: answer(params) }),
   );
   return params;
 }
@@ -144,16 +153,18 @@ function itemEvents(events: ThreadEvent[]): ItemEvent[] {
   );
 }
 
-function completedItem<T extends ItemEvent["item"]["type"]>(
+function completedItem(
   events: ThreadEvent[],
-  type: T,
-): Extract<ItemEvent["item"], { type: T }> {
+  type: ItemEvent["item"]["type"],
+): ItemEvent["item"] {
   const event = itemEvents(events).find(
     (candidate) =>
       candidate.type === "item/completed" && candidate.item.type === type,
   );
-  expect(event, `a completed ${type} item`).toBeDefined();
-  return event?.item as Extract<ItemEvent["item"], { type: T }>;
+  if (event === undefined || event.type !== "item/completed") {
+    throw new Error(`a completed ${type} item was not found`);
+  }
+  return event.item;
 }
 
 describe("the echo bridge's grammar v3 stream", () => {

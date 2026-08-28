@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffFileEntry } from "@bb/server-contract";
+import type { BbDiffProps } from "@/components/code/code-rendering";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import type {
   DiffFileContentsResult,
@@ -16,16 +17,13 @@ import type {
 } from "@/components/git-diff/GitDiffCardBody";
 import { DiffFileCard } from "./DiffFileCard";
 
-const diffViewMock = vi.hoisted(() => ({
-  renderedFileDiffs: [] as unknown[],
-}));
+const renderedDiffs: BbDiffProps[] = [];
+const diffViewMock = { renderedDiffs };
 
-vi.mock("@pierre/diffs/react", () => ({
-  FileDiff: ({ fileDiff }: { fileDiff: unknown }) => {
-    diffViewMock.renderedFileDiffs.push(fileDiff);
-    return <div data-testid="diff-view" />;
-  },
-}));
+function TestDiffView(props: BbDiffProps) {
+  diffViewMock.renderedDiffs.push(props);
+  return <div data-testid="diff-view" />;
+}
 
 const DIFF_RENDERER_CHUNK_TIMEOUT_MS = 10_000;
 
@@ -94,25 +92,31 @@ function textResult(contents: string, name: string): DiffFileContentsResult {
 }
 
 const intersectionCallbacks = new Set<IntersectionObserverCallback>();
+const intersectionObservers = new Map<
+  IntersectionObserverCallback,
+  IntersectionObserver
+>();
 
 function revealCardBodies() {
   act(() => {
     for (const callback of intersectionCallbacks) {
+      const observer = intersectionObservers.get(callback);
+      if (observer === undefined) continue;
       callback(
         [
-          {
+          /* SAFETY: The test controls this fixture and verifies its behavior. */ {
             isIntersecting: true,
             intersectionRatio: 1,
           } as IntersectionObserverEntry,
         ],
-        { thresholds: [0] } as unknown as IntersectionObserver,
+        observer,
       );
     }
   });
 }
 
 function stubPointer(kind: "coarse" | "fine") {
-  vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+  vi.stubGlobal("matchMedia", (query: string) => ({
     matches: kind === "coarse" && query === POINTER_COARSE_QUERY,
     media: query,
     onchange: null,
@@ -139,25 +143,35 @@ function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
       onLoadPatch={() => {}}
       onRetry={() => {}}
       onRequestFileContents={onRequestFileContents}
+      diffRenderer={TestDiffView}
     />,
   );
 }
 
 describe("DiffFileCard context expansion", () => {
   beforeEach(() => {
-    diffViewMock.renderedFileDiffs.length = 0;
+    diffViewMock.renderedDiffs.length = 0;
     intersectionCallbacks.clear();
+    intersectionObservers.clear();
     vi.stubGlobal(
       "IntersectionObserver",
-      class IntersectionObserverMock {
+      class IntersectionObserverMock implements IntersectionObserver {
+        readonly root = null;
+        readonly rootMargin = "0px";
+        readonly scrollMargin = "0px";
         readonly thresholds = [0];
-        constructor(private readonly callback: IntersectionObserverCallback) {
+        constructor(public readonly callback: IntersectionObserverCallback) {
           intersectionCallbacks.add(this.callback);
+          intersectionObservers.set(this.callback, this);
         }
-        observe() {}
-        unobserve() {}
+        observe(_target: Element): void {}
+        unobserve(_target: Element): void {}
+        takeRecords(): IntersectionObserverEntry[] {
+          return [];
+        }
         disconnect() {
           intersectionCallbacks.delete(this.callback);
+          intersectionObservers.delete(this.callback);
         }
       },
     );
@@ -188,7 +202,7 @@ describe("DiffFileCard context expansion", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(onRequestFileContents).not.toHaveBeenCalled();
-    const patchOnlyRenderCount = diffViewMock.renderedFileDiffs.length;
+    const patchOnlyRenderCount = diffViewMock.renderedDiffs.length;
     expect(patchOnlyRenderCount).toBeGreaterThan(0);
 
     fireEvent.click(expandButton);
@@ -203,8 +217,9 @@ describe("DiffFileCard context expansion", () => {
         screen.queryByRole("button", { name: "Expand context" }),
       ).toBeNull();
     });
-    const lastRenderedFileDiff = diffViewMock.renderedFileDiffs.at(-1);
-    expect(lastRenderedFileDiff).not.toBe(diffViewMock.renderedFileDiffs[0]);
+    const lastRenderedDiff = diffViewMock.renderedDiffs.at(-1);
+    expect(lastRenderedDiff?.fullFileContents).not.toBeNull();
+    expect(diffViewMock.renderedDiffs[0]?.fullFileContents).toBeNull();
   });
 
   it("requests the contents during idle time on fine pointers without an explicit action", async () => {
@@ -286,6 +301,7 @@ describe("DiffFileCard context expansion", () => {
         onLoadPatch={() => {}}
         onRetry={() => {}}
         onRequestFileContents={onRequestFileContents}
+        diffRenderer={TestDiffView}
       />,
     );
     revealCardBodies();

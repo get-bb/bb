@@ -1,20 +1,15 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   usePluginContributions,
   usePluginMentionSearch,
 } from "./plugin-contribution-queries";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { config: vi.fn() } },
-}));
-
-function mockFetchJsonOnce(body: unknown, init: { status?: number } = {}) {
+function mockFetchJsonOnce(body: JsonValue, init: { status?: number } = {}) {
   const status = init.status ?? 200;
   const fetchMock = vi.fn().mockResolvedValue(
     new Response(JSON.stringify(body), {
@@ -34,7 +29,6 @@ afterEach(() => {
 
 describe("usePluginContributions", () => {
   it("fetches contributions and drops malformed entries", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(makeSystemConfig());
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
       mentionProviders: [
@@ -95,7 +89,6 @@ describe("usePluginContributions", () => {
   });
 
   it("shapes a failed contributions request as empty rather than an error", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(makeSystemConfig());
     mockFetchJsonOnce({ ok: false }, { status: 503 });
 
     const { wrapper } = createQueryClientTestHarness();

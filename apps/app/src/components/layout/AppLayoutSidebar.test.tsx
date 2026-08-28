@@ -8,9 +8,13 @@ import {
   screen,
 } from "@testing-library/react";
 import { useEffect, useState } from "react";
+import * as AppSidebarModule from "@/components/sidebar/AppSidebar";
+import * as SettingsSidebarModule from "@/components/settings/SettingsSidebar";
+import * as ToolsSidebarModule from "@/components/tools/ToolsSidebar";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
+  Sidebar,
   SidebarProvider,
   SidebarTrigger,
   useCloseMobileSidebar,
@@ -20,57 +24,41 @@ import {
   type AppLayoutSidebarMode,
 } from "./AppLayoutSidebar";
 
-const mountCounts = vi.hoisted(() => ({ appSidebar: 0 }));
+const mountCounts = { appSidebar: 0 };
 
-vi.mock("@/components/sidebar/AppSidebar", async () => {
-  const { Sidebar } = await vi.importActual<
-    typeof import("@/components/ui/sidebar")
-  >("@/components/ui/sidebar");
-  const { useEffect } = await vi.importActual<typeof import("react")>("react");
-  return {
-    AppSidebar: ({ mobileHosted }: { mobileHosted?: { hidden: boolean } }) => {
-      useEffect(() => {
-        mountCounts.appSidebar += 1;
-      }, []);
-      if (mobileHosted) {
-        return (
-          <div data-testid="app-sidebar-body" hidden={mobileHosted.hidden}>
-            App sidebar
-          </div>
-        );
-      }
-      return <Sidebar>App sidebar</Sidebar>;
-    },
-  };
-});
+vi.spyOn(AppSidebarModule, "AppSidebar").mockImplementation(
+  ({ mobileHosted }: { mobileHosted?: { hidden: boolean } }) => {
+    useEffect(() => {
+      mountCounts.appSidebar += 1;
+    }, []);
+    if (mobileHosted) {
+      return (
+        <div data-testid="app-sidebar-body" hidden={mobileHosted.hidden}>
+          App sidebar
+        </div>
+      );
+    }
+    return <Sidebar>App sidebar</Sidebar>;
+  },
+);
 
-vi.mock("@/components/settings/SettingsSidebar", async () => {
-  const { Sidebar } = await vi.importActual<
-    typeof import("@/components/ui/sidebar")
-  >("@/components/ui/sidebar");
-  return {
-    SettingsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
-      mobileHosted ? (
-        <div data-testid="settings-sidebar-body">Settings sidebar</div>
-      ) : (
-        <Sidebar>Settings sidebar</Sidebar>
-      ),
-  };
-});
+vi.spyOn(SettingsSidebarModule, "SettingsSidebar").mockImplementation(
+  ({ mobileHosted }: { mobileHosted?: boolean }) =>
+    mobileHosted ? (
+      <div data-testid="settings-sidebar-body">Settings sidebar</div>
+    ) : (
+      <Sidebar>Settings sidebar</Sidebar>
+    ),
+);
 
-vi.mock("@/components/tools/ToolsSidebar", async () => {
-  const { Sidebar } = await vi.importActual<
-    typeof import("@/components/ui/sidebar")
-  >("@/components/ui/sidebar");
-  return {
-    ToolsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
-      mobileHosted ? (
-        <div data-testid="tools-sidebar-body">Tools sidebar</div>
-      ) : (
-        <Sidebar>Tools sidebar</Sidebar>
-      ),
-  };
-});
+vi.spyOn(ToolsSidebarModule, "ToolsSidebar").mockImplementation(
+  ({ mobileHosted }: { mobileHosted?: boolean }) =>
+    mobileHosted ? (
+      <div data-testid="tools-sidebar-body">Tools sidebar</div>
+    ) : (
+      <Sidebar>Tools sidebar</Sidebar>
+    ),
+);
 
 const MOBILE_TOGGLE_SETTLE_MS = 220;
 

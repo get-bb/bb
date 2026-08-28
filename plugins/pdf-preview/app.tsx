@@ -10,26 +10,19 @@ type PreviewState =
   | { status: "ready"; frameLoaded: boolean; url: string }
   | { status: "error"; message: string };
 
-function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
-  const [reloadNonce, setReloadNonce] = useState(0);
+function PdfPreview({
+  path,
+  target,
+  onRetry,
+}: {
+  path: string;
+  target: NonNullable<ReturnType<typeof resolvePdfReadTarget>>;
+  onRetry: () => void;
+}) {
   const [state, setState] = useState<PreviewState>({ status: "loading" });
-  const target = useMemo(
-    () => resolvePdfReadTarget(path, source),
-    [
-      path,
-      source.environmentId,
-      source.kind,
-      source.projectId,
-      source.threadId,
-    ],
-  );
-
   useEffect(() => {
-    if (target === null) return;
-
     const controller = new AbortController();
     let objectUrl: string | null = null;
-    setState({ status: "loading" });
 
     void loadPdfBlob(target, controller.signal)
       .then((blob) => {
@@ -37,7 +30,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         objectUrl = URL.createObjectURL(blob);
         setState({ status: "ready", frameLoaded: false, url: objectUrl });
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (controller.signal.aborted) return;
         setState({
           status: "error",
@@ -49,9 +42,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
       controller.abort();
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
-  }, [reloadNonce, target]);
-
-  if (target === null) return <Original />;
+  }, [target]);
 
   if (state.status === "error") {
     return (
@@ -63,7 +54,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           <button
             type="button"
             className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => setReloadNonce((current) => current + 1)}
+            onClick={onRetry}
           >
             Retry
           </button>
@@ -116,6 +107,24 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         }}
       />
     </div>
+  );
+}
+
+function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const target = useMemo(
+    () => resolvePdfReadTarget(path, source),
+    [path, source],
+  );
+
+  if (target === null) return <Original />;
+  return (
+    <PdfPreview
+      key={`${target.url}:${reloadNonce}`}
+      path={path}
+      target={target}
+      onRetry={() => setReloadNonce((current) => current + 1)}
+    />
   );
 }
 

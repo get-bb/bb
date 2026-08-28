@@ -21,15 +21,16 @@ export function createAuth(env: Env) {
   const subdomainOrigin = `${appUrl.protocol}//*.${env.BASE_DOMAIN}${
     appUrl.port ? `:${appUrl.port}` : ""
   }`;
+  const database = drizzleAdapter(db, {
+    provider: "sqlite",
+    schema: { user, session, account, verification },
+  });
   return betterAuth({
     appName: "bb connect",
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.APP_URL,
     trustedOrigins: [env.APP_URL, subdomainOrigin],
-    database: drizzleAdapter(db, {
-      provider: "sqlite",
-      schema: { user, session, account, verification },
-    }) as unknown as Parameters<typeof betterAuth>[0]["database"],
+    database,
     session: {
       expiresIn: CONNECT_SESSION_EXPIRES_IN_SECONDS,
       updateAge: CONNECT_SESSION_UPDATE_AGE_SECONDS,

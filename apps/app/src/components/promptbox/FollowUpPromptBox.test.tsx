@@ -8,51 +8,86 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { Profiler, startTransition, type ReactNode } from "react";
+import { Profiler, memo, startTransition, type ComponentProps } from "react";
 import { flushSync } from "react-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import * as bottomAnchoredScrollBodyModule from "@/components/ui/bottom-anchored-scroll-body.js";
+import * as compactViewportModule from "@bb/shared-ui/hooks/use-compact-viewport";
+import * as pointerCoarseModule from "@bb/shared-ui/hooks/use-pointer-coarse";
+import * as promptBoxInternalModule from "@/components/promptbox/PromptBoxInternal";
+import * as promptVoiceModule from "@/components/promptbox/usePromptVoice";
+import * as executionControlsModule from "@/components/promptbox/ExecutionControls";
+import * as permissionModePickerModule from "@/components/pickers/PermissionModePicker";
+import * as scrollToBottomModule from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
+import * as timelineModule from "@/components/thread/timeline";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
 
-const mocks = vi.hoisted(() => {
-  const values = {
-    executionControls: vi.fn(),
-    isCompactViewport: false,
-    isPointerCoarse: false,
-    scrollToBottom: vi.fn(),
-    permissionModePicker: vi.fn(),
-    voiceState: "idle" as "idle" | "recording" | "transcribing" | "error",
-  };
-  return Object.assign(values, {});
-});
+type VoiceState = "idle" | "recording" | "transcribing" | "error";
+
+type ExecutionControlsProps = ComponentProps<
+  typeof executionControlsModule.ExecutionControls
+>;
+type PermissionModePickerProps = ComponentProps<
+  typeof permissionModePickerModule.PermissionModePicker
+>;
+
+interface ExecutionControlsModuleGetter {
+  readonly ExecutionControls: object;
+}
+
+interface FollowUpPromptBoxTestMocks {
+  executionControls: Mock<(props: ExecutionControlsProps) => void>;
+  isCompactViewport: boolean;
+  isPointerCoarse: boolean;
+  scrollToBottom: Mock<() => void>;
+  permissionModePicker: Mock<(props: PermissionModePickerProps) => void>;
+  voiceState: VoiceState;
+}
+
+const mocks: FollowUpPromptBoxTestMocks = {
+  executionControls: vi.fn<(props: ExecutionControlsProps) => void>(),
+  isCompactViewport: false,
+  isPointerCoarse: false,
+  scrollToBottom: vi.fn<() => void>(),
+  permissionModePicker: vi.fn<(props: PermissionModePickerProps) => void>(),
+  voiceState: "idle",
+};
 let resizeObserverCallback: ResizeObserverCallback | null = null;
 
-vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
-  useBottomAnchoredScroll: () => ({
-    isAtBottom: false,
-    scrollToBottom: mocks.scrollToBottom,
-    scrollElementIntoView: vi.fn(),
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
-    captureScrollAnchor: vi.fn(),
-  }),
+vi.spyOn(
+  bottomAnchoredScrollBodyModule,
+  "useBottomAnchoredScroll",
+).mockImplementation(() => ({
+  isAtBottom: false,
+  scrollToBottom: mocks.scrollToBottom,
+  scrollElementIntoView: () => {},
+  scrollElementIntoViewClampedToMaxScroll: () => {},
+  captureScrollAnchor: () => {},
+  getScrollElement: () => null,
 }));
-
-vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => mocks.isCompactViewport,
-}));
-
-vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
-  usePointerCoarse: () => mocks.isPointerCoarse,
-}));
-
-vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
-  PromptBoxInternal: ({
+vi.spyOn(compactViewportModule, "useIsCompactViewport").mockImplementation(
+  () => mocks.isCompactViewport,
+);
+vi.spyOn(pointerCoarseModule, "usePointerCoarse").mockImplementation(
+  () => mocks.isPointerCoarse,
+);
+vi.spyOn(promptBoxInternalModule, "PromptBoxInternal").mockImplementation(
+  ({
     footerStart,
     compact,
     onSubmit,
@@ -65,27 +100,6 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     heightAnimationKey,
     minHeight,
     voice,
-  }: {
-    footerStart?: ReactNode;
-    compact?: {
-      isCompact: boolean;
-      placeholder?: string;
-    };
-    onSubmit: () => void;
-    onEscape?: () => void;
-    blurOnPointerSubmit?: boolean;
-    promptBoxRef?: {
-      current: {
-        captureHeightForLayoutChange: () => void;
-        focusEnd: () => void;
-      } | null;
-    };
-    submission?: { onModifierSubmit?: () => void };
-    suppressPluginComposerCustomizations?: boolean;
-    onCollapse?: () => void;
-    heightAnimationKey?: string | number;
-    minHeight?: number;
-    voice?: { state: "idle" | "recording" | "transcribing" | "error" };
   }) => (
     <div
       data-testid="prompt-box"
@@ -101,7 +115,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <input
         aria-label="Follow-up prompt"
         ref={(node) => {
-          if (!promptBoxRef) return;
+          if (!promptBoxRef || !("current" in promptBoxRef)) return;
           promptBoxRef.current = node
             ? {
                 captureHeightForLayoutChange: () => {},
@@ -109,6 +123,9 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
                   node.focus();
                   node.setSelectionRange(node.value.length, node.value.length);
                 },
+                insertTextAtCursor: () => {},
+                getTextBeforeCursor: () => undefined,
+                playVoiceCompletionTransition: async () => {},
               }
             : null;
         }}
@@ -144,43 +161,52 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       ) : null}
     </div>
   ),
+);
+vi.spyOn(promptVoiceModule, "usePromptVoice").mockImplementation(() => ({
+  state: mocks.voiceState,
+  isSupported: false,
+  stream: null,
+  start: vi.fn(),
+  stop: vi.fn(),
+  cancel: vi.fn(),
 }));
-
-vi.mock("@/components/promptbox/usePromptVoice", () => ({
-  usePromptVoice: () => ({
-    state: mocks.voiceState,
-    isSupported: false,
-    stream: null,
-    start: vi.fn(),
-    stop: vi.fn(),
-    cancel: vi.fn(),
-  }),
-}));
-
-vi.mock("@/components/promptbox/ExecutionControls", () => ({
-  ExecutionControls: (props: { disabled?: boolean }) => {
-    mocks.executionControls(props);
-    return null;
-  },
-}));
-
-vi.mock("@/components/pickers/PermissionModePicker", () => ({
-  PermissionModePicker: (props: {
-    disabled?: boolean;
-    showChevronWhenDisabled?: boolean;
-  }) => {
+const TestExecutionControls = memo((props: ExecutionControlsProps) => {
+  mocks.executionControls(props);
+  return null;
+});
+vi.spyOn<ExecutionControlsModuleGetter, "ExecutionControls">(
+  executionControlsModule,
+  "ExecutionControls",
+  "get",
+).mockReturnValue(TestExecutionControls);
+vi.spyOn(permissionModePickerModule, "PermissionModePicker").mockImplementation(
+  (props) => {
     mocks.permissionModePicker(props);
     return null;
   },
-}));
+);
+vi.spyOn(
+  scrollToBottomModule,
+  "ThreadTimelineScrollToBottomButton",
+).mockImplementation(() => null);
+vi.spyOn(timelineModule, "ThreadContextWindowIndicator").mockImplementation(
+  () => <></>,
+);
 
-vi.mock("@/views/thread-detail/ThreadTimelineScrollToBottomButton", () => ({
-  ThreadTimelineScrollToBottomButton: () => null,
-}));
-
-vi.mock("@/components/thread/timeline", () => ({
-  ThreadContextWindowIndicator: () => null,
-}));
+function createResizeObserverEntry(
+  target: HTMLElement,
+  blockSize: number,
+  contentHeight: number,
+): ResizeObserverEntry {
+  const size = { blockSize, inlineSize: 0 };
+  return {
+    target,
+    borderBoxSize: [size],
+    contentBoxSize: [size],
+    contentRect: new DOMRect(0, 0, 0, contentHeight),
+    devicePixelContentBoxSize: [size],
+  };
+}
 
 function createFollowUpPromptBoxProps(
   submitMode: FollowUpSubmitMode,
@@ -291,6 +317,7 @@ beforeEach(() => {
 describe("FollowUpPromptBox", () => {
   it("does not commit an unchanged measurement while a height update is pending", () => {
     const onRender = vi.fn();
+    const resizeObserver = new ResizeObserver(() => {});
     render(
       <Profiler id="follow-up-prompt-box" onRender={onRender}>
         <FollowUpPromptBox
@@ -306,20 +333,14 @@ describe("FollowUpPromptBox", () => {
       value: 24,
     });
     let commitsAfterSynchronousSignal = -1;
-    const resizeEntries = [
-      {
-        target: stackElement,
-        borderBoxSize: [{ blockSize: 24 }],
-        contentRect: { height: 999 },
-      } as unknown as ResizeObserverEntry,
-    ];
+    const resizeEntries = [createResizeObserverEntry(stackElement, 24, 999)];
 
     act(() => {
       startTransition(() => {
-        resizeObserverCallback?.(resizeEntries, {} as ResizeObserver);
+        resizeObserverCallback?.(resizeEntries, resizeObserver);
       });
       flushSync(() => {
-        resizeObserverCallback?.(resizeEntries, {} as ResizeObserver);
+        resizeObserverCallback?.(resizeEntries, resizeObserver);
       });
       commitsAfterSynchronousSignal = onRender.mock.calls.length;
     });
@@ -355,6 +376,7 @@ describe("FollowUpPromptBox", () => {
     });
     const draft = { text: "Follow up", mentions: [], attachments: [] };
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const resizeObserver = new ResizeObserver(() => {});
     render(
       <FollowUpPromptBox
         {...props}
@@ -384,16 +406,10 @@ describe("FollowUpPromptBox", () => {
 
     act(() => {
       resizeObserverCallback?.(
-        [
-          {
-            target: stackElement,
-            borderBoxSize: [{ blockSize: 24 }],
-            contentRect: { height: 999 },
-          } as unknown as ResizeObserverEntry,
-        ],
-        {} as ResizeObserver,
+        [createResizeObserverEntry(stackElement, 24, 999)],
+        resizeObserver,
       );
-      resizeObserverCallback?.([], {} as ResizeObserver);
+      resizeObserverCallback?.([], resizeObserver);
     });
 
     expect(initialMinHeight).toBe(100);

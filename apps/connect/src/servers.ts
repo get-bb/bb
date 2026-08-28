@@ -17,6 +17,11 @@ import type { Env } from "./tunnel-do.js";
 
 const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 
+interface DesktopSessionPayload {
+  expiresAt: number;
+  userId: string;
+}
+
 function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
@@ -35,6 +40,27 @@ function base64UrlToString(value: string): string | null {
     return new TextDecoder().decode(
       Uint8Array.from(atob(padded), (character) => character.charCodeAt(0)),
     );
+  } catch {
+    return null;
+  }
+}
+
+function parseDesktopSessionPayload(
+  decoded: string,
+): DesktopSessionPayload | null {
+  try {
+    const value = JSON.parse(decoded);
+    if (
+      Object.prototype.toString.call(value) !== "[object Object]" ||
+      !Object.hasOwn(value, "userId") ||
+      !Object.hasOwn(value, "expiresAt") ||
+      Object.prototype.toString.call(value.userId) !== "[object String]" ||
+      Object.prototype.toString.call(value.expiresAt) !== "[object Number]" ||
+      !Number.isFinite(value.expiresAt)
+    ) {
+      return null;
+    }
+    return { expiresAt: value.expiresAt, userId: value.userId };
   } catch {
     return null;
   }
@@ -87,23 +113,9 @@ export async function verifyDesktopSessionCookie(
 
   const decoded = base64UrlToString(payload);
   if (decoded === null) return null;
-  try {
-    const value: unknown = JSON.parse(decoded);
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("userId" in value) ||
-      typeof value.userId !== "string" ||
-      !("expiresAt" in value) ||
-      typeof value.expiresAt !== "number" ||
-      value.expiresAt <= now
-    ) {
-      return null;
-    }
-    return value.userId;
-  } catch {
-    return null;
-  }
+  const value = parseDesktopSessionPayload(decoded);
+  if (value === null || value.expiresAt <= now) return null;
+  return value.userId;
 }
 
 const serverCredentialCache = new Map<

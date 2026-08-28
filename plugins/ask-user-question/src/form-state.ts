@@ -18,7 +18,7 @@ function questionHasOptions(question: InteractionQuestion): boolean {
 
 export function createInitialFormState(
   questions: readonly InteractionQuestion[],
-): QuestionFormState {
+) {
   const state: QuestionFormState = {};
   for (const question of questions) {
     state[question.id] = {

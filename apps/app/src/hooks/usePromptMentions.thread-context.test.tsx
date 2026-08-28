@@ -1,38 +1,85 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import type { Thread } from "@bb/domain";
+import type { UseQueryResult } from "@tanstack/react-query";
+import type { ThreadListEntry } from "@bb/domain";
+import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as pluginContributionQueries from "./queries/plugin-contribution-queries";
+import * as sidebarNavigationQuery from "./queries/sidebar-navigation-query";
+import * as threadQueries from "./queries/thread-queries";
+import * as pathSuggestions from "./usePathSuggestions";
 import { usePromptMentions } from "./usePromptMentions";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 
-const mocks = vi.hoisted(() => ({
-  usePathSuggestions: vi.fn(),
-  usePluginContributions: vi.fn(),
-  usePluginMentionSearch: vi.fn(),
-  useSidebarNavigation: vi.fn(),
-  useThreadMentionCandidates: vi.fn(),
-}));
-
-vi.mock("./usePathSuggestions", () => ({
-  PATH_SUGGESTION_DEBOUNCE_MS: 0,
-  usePathSuggestions: mocks.usePathSuggestions,
-}));
-
-vi.mock("./queries/plugin-contribution-queries", () => ({
-  usePluginContributions: mocks.usePluginContributions,
-  usePluginMentionSearch: mocks.usePluginMentionSearch,
-}));
-
-vi.mock("./queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: mocks.useSidebarNavigation,
-}));
-
-vi.mock("./queries/thread-queries", () => ({
-  useThreadMentionCandidates: mocks.useThreadMentionCandidates,
-}));
-
-function makeThread(): Thread {
+function queryResult<T>(data: T | undefined): UseQueryResult<T, Error> {
+  const common = {
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle" as const,
+    isEnabled: true,
+    isError: false,
+    isFetching: false,
+    isLoadingError: false,
+    isPaused: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: async () => queryResult(data),
+  } as const;
+  if (data === undefined) {
+    return {
+      ...common,
+      data: undefined,
+      isFetched: false,
+      isFetchedAfterMount: false,
+      isInitialLoading: true,
+      isLoading: true,
+      isPending: true,
+      isSuccess: false,
+      promise: new Promise<T>(() => {}),
+      status: "pending" as const,
+    };
+  }
   return {
+    ...common,
+    data,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isInitialLoading: false,
+    isLoading: false,
+    isPending: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    status: "success" as const,
+  };
+}
+
+const usePathSuggestions = vi.spyOn(pathSuggestions, "usePathSuggestions");
+const usePluginContributions = vi.spyOn(
+  pluginContributionQueries,
+  "usePluginContributions",
+);
+const usePluginMentionSearch = vi.spyOn(
+  pluginContributionQueries,
+  "usePluginMentionSearch",
+);
+const useSidebarNavigation = vi.spyOn(
+  sidebarNavigationQuery,
+  "useSidebarNavigation",
+);
+const useThreadMentionCandidates = vi.spyOn(
+  threadQueries,
+  "useThreadMentionCandidates",
+);
+
+function makeThread(): ThreadListEntry {
+  return makeThreadListEntry({
     id: "thr_existing",
     projectId: "proj_1",
     environmentId: "env_worktree",
@@ -53,30 +100,34 @@ function makeThread(): Thread {
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-  };
+  });
 }
 
 beforeEach(() => {
-  mocks.usePathSuggestions.mockReturnValue({
+  usePathSuggestions.mockReturnValue({
     suggestions: [],
     isLoading: false,
     isError: false,
     isDebouncing: false,
   });
-  mocks.usePluginContributions.mockReturnValue({
-    data: { mentionProviders: [] },
+  usePluginContributions.mockImplementation(() => {
+    return queryResult({ mentionProviders: [] });
   });
-  mocks.usePluginMentionSearch.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isError: false,
+  usePluginMentionSearch.mockImplementation(() => {
+    return queryResult<pluginContributionQueries.PluginMentionSearchGroup[]>(
+      undefined,
+    );
   });
-  mocks.useSidebarNavigation.mockReturnValue({ data: undefined });
-  mocks.useThreadMentionCandidates.mockReturnValue({
-    data: [makeThread()],
-    isLoading: false,
-    isFetching: false,
-    isError: false,
+  useSidebarNavigation.mockImplementation(() => {
+    return queryResult<SidebarBootstrapResponse>(undefined);
+  });
+  useThreadMentionCandidates.mockImplementation(() => {
+    return {
+      data: [makeThread()],
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    };
   });
 });
 
@@ -99,7 +150,7 @@ describe("usePromptMentions thread contexts", () => {
         threadId: "thr_existing",
       }),
     ]);
-    expect(mocks.usePathSuggestions).toHaveBeenLastCalledWith(
+    expect(usePathSuggestions).toHaveBeenLastCalledWith(
       expect.objectContaining({
         currentThreadId: "thr_existing",
         environmentId: "env_worktree",

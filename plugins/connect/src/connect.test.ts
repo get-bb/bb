@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket as NodeWebSocket, WebSocketServer } from "ws";
 import {
   createFakePluginHost,
+  type CreateFakePluginHostOptions,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
+import type { JsonValue, PluginKvStorage } from "@get-bb/plugin-sdk";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
   headersForLoopbackRequest,
@@ -31,25 +33,131 @@ import {
 } from "./redeem.js";
 import type { ConnectStatus } from "./types.js";
 import { ShareHostResolver } from "./hosts.js";
+import { z } from "zod";
 
 const SERVER_HOST_ID = "host-server";
 const SERVER_HOST_NAME = "Server";
 const REMOTE_HOST_ID = "host-air";
 const REMOTE_HOST_NAME = "Sawyer Air";
 
+const connectShareStatusSchema = z
+  .object({
+    hostId: z.string(),
+    hostName: z.string(),
+    port: z.number().int(),
+    createdAt: z.number(),
+    url: z.string(),
+    unavailableReason: z.string().optional(),
+  })
+  .strict();
+
+const connectStatusSchema: z.ZodType<ConnectStatus> = z
+  .object({
+    state: z.enum(["disconnected", "pairing", "connected", "reconnecting"]),
+    paired: z.boolean(),
+    handle: z.string().nullable(),
+    url: z.string().nullable(),
+    dashboardUrl: z.string(),
+    lastError: z.string().nullable(),
+    nextRetryAt: z.number().nullable(),
+    since: z.number(),
+    remoteClients: z.number().int(),
+    lastRemoteActivityAt: z.number().nullable(),
+    shares: z.array(connectShareStatusSchema),
+  })
+  .strict();
+
+const shareListingSchema = connectShareStatusSchema;
+const shareRemovalSchema = z
+  .object({
+    removed: z.boolean(),
+    hostId: z.string(),
+    hostName: z.string(),
+    port: z.number().int(),
+  })
+  .strict();
+const accountServersSchema = z
+  .object({
+    servers: z.array(
+      z
+        .object({
+          handle: z.string(),
+          name: z.string(),
+          live: z.boolean(),
+          url: z.string(),
+        })
+        .strict(),
+    ),
+    selfHandle: z.string(),
+  })
+  .strict();
+const machineCodeSchema = z
+  .object({
+    code: z.string(),
+    serverUrl: z.string(),
+    expiresAt: z.number(),
+  })
+  .strict();
+const machineCodeCliSchema = machineCodeSchema.extend({ apex: z.string() });
+const credentialSchema = z
+  .object({
+    serverUrl: z.string(),
+    handle: z.string(),
+    credential: z.string(),
+  })
+  .strict();
+
+type TestKvStore = Pick<PluginKvStorage, "get" | "set" | "delete">;
+
+interface TestKvStoreBundle {
+  kv: Map<string, JsonValue>;
+  store: TestKvStore;
+}
+
+function createTestKvStore(
+  initial: readonly [string, JsonValue][] = [],
+): TestKvStoreBundle {
+  const kv = new Map<string, JsonValue>(initial);
+  const store: TestKvStore = {
+    async get<T>(key: string) {
+      const value = kv.get(key);
+      return value === undefined
+        ? undefined
+        : JSON.parse(JSON.stringify(value));
+    },
+    async set(key: string, value: JsonValue) {
+      kv.set(key, value);
+    },
+    async delete(key: string) {
+      kv.delete(key);
+    },
+  };
+  return { kv, store };
+}
+
+function pluginApi(host: FakePluginHost): Parameters<typeof plugin>[0] {
+  return host.bb;
+}
+
+function portFromAddress(address: ReturnType<Server["address"]>): number {
+  if (address === null) throw new Error("expected TCP address");
+  const boxed = Object(address);
+  if (!("port" in boxed)) throw new Error("expected TCP address");
+  return Number(boxed.port);
+}
+
 function createConnectFakeHost(options?: {
   remoteIdentity?: { label: string; baseDomain: string };
   mobileApp?: boolean;
 }): FakePluginHost {
-  return createFakePluginHost({
+  const hostOptions: CreateFakePluginHostOptions = {
     pluginId: "connect",
     sdk: {
       system: {
-        config: async () =>
-          ({
-            primaryHostId: SERVER_HOST_ID,
-            experiments: { mobileApp: options?.mobileApp ?? true },
-          }) as never,
+        config: async () => ({
+          primaryHostId: SERVER_HOST_ID,
+          experiments: { mobileApp: options?.mobileApp ?? true },
+        }),
       },
       hosts: {
         get: async ({ hostId }: { hostId: string }) => {
@@ -64,23 +172,21 @@ function createConnectFakeHost(options?: {
               status: 404,
             });
           }
-          return host as never;
+          return host;
         },
-        list: async () =>
-          [
-            { id: SERVER_HOST_ID, name: SERVER_HOST_NAME },
-            { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME },
-          ] as never,
+        list: async () => [
+          { id: SERVER_HOST_ID, name: SERVER_HOST_NAME },
+          { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME },
+        ],
       },
     },
-    ...(options?.remoteIdentity
-      ? {
-          sharedPortTunnelIdentities: {
-            [REMOTE_HOST_ID]: options.remoteIdentity,
-          },
-        }
-      : {}),
-  });
+  };
+  if (options?.remoteIdentity !== undefined) {
+    hostOptions.sharedPortTunnelIdentities = {
+      [REMOTE_HOST_ID]: options.remoteIdentity,
+    };
+  }
+  return createFakePluginHost(hostOptions);
 }
 
 describe("deriveConnectBaseUrl", () => {
@@ -239,18 +345,7 @@ describe("parseSharePort / serverOwnPort", () => {
 
 describe("ShareRegistry", () => {
   it("persists shares in kv and refuses the server's own port", async () => {
-    const kv = new Map<string, unknown>();
-    const store = {
-      async get<T>(key: string) {
-        return kv.get(key) as T | undefined;
-      },
-      async set(key: string, value: unknown) {
-        kv.set(key, value);
-      },
-      async delete(key: string) {
-        kv.delete(key);
-      },
-    };
+    const { kv, store } = createTestKvStore();
     const credential = {
       serverUrl: "https://sawyer.getbb.app",
       handle: "sawyer",
@@ -259,14 +354,14 @@ describe("ShareRegistry", () => {
     const fakeHost = createFakePluginHost({
       sdk: {
         system: {
-          config: async () => ({ primaryHostId: "host-server" }) as never,
+          config: async () => ({ primaryHostId: "host-server" }),
         },
         hosts: {
-          get: async () => ({ id: "host-server", name: "Server" }) as never,
+          get: async () => ({ id: "host-server", name: "Server" }),
         },
       },
     });
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const hostResolver = new ShareHostResolver(() => pluginBb.sdk);
     const serverHost = {
       id: "host-server",
@@ -324,23 +419,13 @@ describe("ShareRegistry", () => {
   });
 
   it("loads legacy entries without hostId as server-host shares", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -369,7 +454,7 @@ describe("ShareRegistry", () => {
   });
 
   it("lists persisted shares in the sync snapshot before any resolution, including unpaired", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [
         SHARES_KV_KEY,
         {
@@ -383,19 +468,9 @@ describe("ShareRegistry", () => {
       ],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -426,23 +501,13 @@ describe("ShareRegistry", () => {
   });
 
   it("collapses the placeholder snapshot row when a legacy share resolves", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -476,23 +541,13 @@ describe("ShareRegistry", () => {
   });
 
   it("normalizes legacy entries to the server host id at activation", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [SHARES_KV_KEY, { "3000": { port: 3000, createdAt: 123 } }],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -523,7 +578,7 @@ describe("ShareRegistry", () => {
   });
 
   it("loads valid entries when another kv entry is malformed", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [
         SHARES_KV_KEY,
         {
@@ -537,19 +592,9 @@ describe("ShareRegistry", () => {
       ],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -588,7 +633,7 @@ describe("ShareRegistry", () => {
   });
 
   it("hydrates offline machine shares without resolving their URLs", async () => {
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [
         SHARES_KV_KEY,
         {
@@ -606,24 +651,14 @@ describe("ShareRegistry", () => {
       ],
     ]);
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const ensureIdentity = vi.fn(async () => {
       throw Object.assign(new Error("host is offline"), {
         body: { code: "connect_host_offline" },
       });
     });
     const registry = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: {
         ensureSharedPortTunnel: ensureIdentity,
         declareSharedPorts: pluginBb.hosts.declareSharedPorts,
@@ -682,22 +717,24 @@ describe("ConnectTunnel share activation", () => {
         system: {
           config: async () => {
             markLookupStarted();
-            return { primaryHostId: await serverHostId } as never;
+            return { primaryHostId: await serverHostId };
           },
         },
         hosts: {
-          get: async ({ hostId }: { hostId: string }) =>
-            ({ id: hostId, name: hostId }) as never,
+          get: async ({ hostId }: { hostId: string }) => ({
+            id: hostId,
+            name: hostId,
+          }),
         },
       },
     });
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
+    const pluginBb = pluginApi(fakeHost);
     const credential = {
       serverUrl: "http://127.0.0.1:1",
       handle: "sawyer",
       credential: "bbcred_x",
     };
-    const kv = new Map<string, unknown>([
+    const { kv, store } = createTestKvStore([
       [
         SHARES_KV_KEY,
         {
@@ -710,17 +747,7 @@ describe("ConnectTunnel share activation", () => {
       ],
     ]);
     const shares = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -755,8 +782,8 @@ describe("ConnectTunnel share activation", () => {
 
   it("keeps persisted shares visible in status after an unpaired restart", async () => {
     const fakeHost = createConnectFakeHost();
-    const pluginBb = fakeHost.bb as unknown as Parameters<typeof plugin>[0];
-    const kv = new Map<string, unknown>([
+    const pluginBb = pluginApi(fakeHost);
+    const { kv, store } = createTestKvStore([
       [
         SHARES_KV_KEY,
         {
@@ -770,17 +797,7 @@ describe("ConnectTunnel share activation", () => {
       ],
     ]);
     const shares = new ShareRegistry({
-      kv: {
-        async get<T>(key: string) {
-          return kv.get(key) as T | undefined;
-        },
-        async set(key: string, value: unknown) {
-          kv.set(key, value);
-        },
-        async delete(key: string) {
-          kv.delete(key);
-        },
-      },
+      kv: store,
       hosts: pluginBb.hosts,
       hostResolver: new ShareHostResolver(() => pluginBb.sdk),
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
@@ -838,14 +855,11 @@ async function listen(
 ): Promise<{ server: Server; origin: string; port: number }> {
   const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const addr = server.address();
-  if (addr === null || typeof addr === "string") {
-    throw new Error("expected TCP address");
-  }
+  const port = portFromAddress(server.address());
   return {
     server,
-    origin: `http://127.0.0.1:${addr.port}`,
-    port: addr.port,
+    origin: `http://127.0.0.1:${port}`,
+    port,
   };
 }
 
@@ -908,14 +922,11 @@ describe("TunnelSession routing", () => {
     await new Promise<void>((resolve) =>
       wss.once("listening", () => resolve()),
     );
-    const wssAddr = wss.address();
-    if (wssAddr === null || typeof wssAddr === "string") {
-      throw new Error("expected TCP address");
-    }
+    const wssPort = portFromAddress(wss.address());
     const relayReady = new Promise<NodeWebSocket>((resolve) => {
       wss.on("connection", (socket) => resolve(socket));
     });
-    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssPort}`);
     cleanups.push(async () => {
       client.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
@@ -1048,14 +1059,11 @@ describe("TunnelSession routing", () => {
     await new Promise<void>((resolve) =>
       wss.once("listening", () => resolve()),
     );
-    const wssAddr = wss.address();
-    if (wssAddr === null || typeof wssAddr === "string") {
-      throw new Error("expected TCP address");
-    }
+    const wssPort = portFromAddress(wss.address());
     const relayReady = new Promise<NodeWebSocket>((resolve) => {
       wss.on("connection", (socket) => resolve(socket));
     });
-    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssPort}`);
     cleanups.push(async () => {
       client.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
@@ -1137,14 +1145,11 @@ describe("TunnelSession routing", () => {
     await new Promise<void>((resolve) =>
       wss.once("listening", () => resolve()),
     );
-    const wssAddr = wss.address();
-    if (wssAddr === null || typeof wssAddr === "string") {
-      throw new Error("expected TCP address");
-    }
+    const wssPort = portFromAddress(wss.address());
     const relayReady = new Promise<NodeWebSocket>((resolve) => {
       wss.on("connection", (socket) => resolve(socket));
     });
-    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssPort}`);
     cleanups.push(async () => {
       client.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
@@ -1254,14 +1259,11 @@ describe("TunnelSession routing", () => {
     await new Promise<void>((resolve) =>
       wss.once("listening", () => resolve()),
     );
-    const wssAddr = wss.address();
-    if (wssAddr === null || typeof wssAddr === "string") {
-      throw new Error("expected TCP address");
-    }
+    const wssPort = portFromAddress(wss.address());
     const relayReady = new Promise<NodeWebSocket>((resolve) => {
       wss.on("connection", (socket) => resolve(socket));
     });
-    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssPort}`);
     cleanups.push(async () => {
       client.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
@@ -1328,7 +1330,7 @@ describe("connect plugin", () => {
 
   async function loadPlugin(): Promise<FakePluginHost> {
     host = createConnectFakeHost();
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     return host;
   }
 
@@ -1350,7 +1352,7 @@ describe("connect plugin", () => {
 
   it("starts unpaired — a healthy state, not needs-configuration", async () => {
     const { harness } = await loadPlugin();
-    const status = (await harness.callRpc("status")) as ConnectStatus;
+    const status = connectStatusSchema.parse(await harness.callRpc("status"));
     expect(status).toMatchObject({
       state: "disconnected",
       paired: false,
@@ -1379,12 +1381,14 @@ describe("connect plugin", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { harness } = await loadPlugin();
 
-    const before = (await harness.callRpc("status")) as ConnectStatus;
+    const before = connectStatusSchema.parse(await harness.callRpc("status"));
     expect(before.dashboardUrl).toBe("http://bb.localhost:59329/dashboard");
 
-    const after = (await harness.callRpc("pair", {
-      code: "ABCD",
-    })) as ConnectStatus;
+    const after = connectStatusSchema.parse(
+      await harness.callRpc("pair", {
+        code: "ABCD",
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://bb.localhost:59329/api/connect/redeem",
       expect.objectContaining({ method: "POST" }),
@@ -1438,11 +1442,13 @@ describe("connect plugin", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { bb, harness } = await loadPlugin();
 
-    const status = (await harness.callRpc("pair", {
-      code: "ABCD",
-      server: "http://127.0.0.1:59321",
-      baseUrl: "https://getbb.app",
-    })) as ConnectStatus;
+    const status = connectStatusSchema.parse(
+      await harness.callRpc("pair", {
+        code: "ABCD",
+        server: "http://127.0.0.1:59321",
+        baseUrl: "https://getbb.app",
+      }),
+    );
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://getbb.app/api/connect/redeem",
@@ -1451,13 +1457,13 @@ describe("connect plugin", () => {
     expect(status.paired).toBe(true);
     expect(status.handle).toBe("sawyer");
     expect(status.url).toBe("http://127.0.0.1:59321");
-    const stored = (await bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
-      credential: string;
-    };
+    const stored = credentialSchema.parse(
+      await bb.storage.kv.get(CREDENTIAL_KV_KEY),
+    );
     expect(stored.credential).toBe("bbcred_live");
     const states = harness.realtimeSignals
       .filter((signal) => signal.channel === "connect")
-      .map((signal) => (signal.payload as ConnectStatus).state);
+      .map((signal) => connectStatusSchema.parse(signal.payload).state);
     expect(states).toContain("pairing");
   });
 
@@ -1472,10 +1478,12 @@ describe("connect plugin", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { harness } = await loadPlugin();
 
-    const status = (await harness.callRpc("pair", {
-      code: "ABCD",
-      baseUrl: "http://localhost:59329",
-    })) as ConnectStatus;
+    const status = connectStatusSchema.parse(
+      await harness.callRpc("pair", {
+        code: "ABCD",
+        baseUrl: "http://localhost:59329",
+      }),
+    );
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:59329/api/connect/redeem",
@@ -1499,30 +1507,29 @@ describe("connect plugin", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { bb, harness } = await loadPlugin();
 
-    const status = (await harness.callRpc("pair", {
-      code: "ABCD",
-      baseUrl: "http://localhost:59332",
-    })) as ConnectStatus;
+    const status = connectStatusSchema.parse(
+      await harness.callRpc("pair", {
+        code: "ABCD",
+        baseUrl: "http://localhost:59332",
+      }),
+    );
 
     expect(status.paired).toBe(true);
     expect(status.handle).toBe("sawyer-desktop");
     expect(status.url).toBe("http://sawyer-desktop.localhost:59332");
 
-    const stored = (await bb.storage.kv.get(CREDENTIAL_KV_KEY)) as {
-      serverUrl: string;
-      handle: string;
-      credential: string;
-    };
+    const stored = credentialSchema.parse(
+      await bb.storage.kv.get(CREDENTIAL_KV_KEY),
+    );
     expect(stored).toEqual({
       serverUrl: "http://sawyer-desktop.localhost:59332",
       handle: "sawyer-desktop",
       credential: "bbcred_second",
     });
 
-    const exposed = (await harness.callRpc("expose", { port: 8000 })) as {
-      port: number;
-      url: string;
-    };
+    const exposed = shareListingSchema.parse(
+      await harness.callRpc("expose", { port: 8000 }),
+    );
     expect(exposed.url).toBe("http://sawyer-desktop--8000.localhost:59332");
   });
 
@@ -1544,7 +1551,9 @@ describe("connect plugin", () => {
       baseUrl: "https://getbb.app",
     });
 
-    const after = (await harness.callRpc("disconnect")) as ConnectStatus;
+    const after = connectStatusSchema.parse(
+      await harness.callRpc("disconnect"),
+    );
     expect(after.paired).toBe(false);
     expect(after.state).toBe("disconnected");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
@@ -1575,7 +1584,9 @@ describe("connect plugin", () => {
       baseUrl: "https://getbb.app",
     });
 
-    const after = (await harness.callRpc("disconnect")) as ConnectStatus;
+    const after = connectStatusSchema.parse(
+      await harness.callRpc("disconnect"),
+    );
     expect(after.paired).toBe(false);
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
     expect(harness.logEntries).toContainEqual({
@@ -1601,7 +1612,7 @@ describe("connect plugin", () => {
       }),
     ).rejects.toThrow("expired_code");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
-    const status = (await harness.callRpc("status")) as ConnectStatus;
+    const status = connectStatusSchema.parse(await harness.callRpc("status"));
     expect(status.state).toBe("disconnected");
   });
 
@@ -1645,7 +1656,7 @@ describe("connect plugin", () => {
 
     const { controller, done } = harness.runService("tunnel");
     await vi.waitFor(async () => {
-      const status = (await harness.callRpc("status")) as ConnectStatus;
+      const status = connectStatusSchema.parse(await harness.callRpc("status"));
       expect(status.paired).toBe(true);
       expect(status.state).toBe("reconnecting");
     });
@@ -1672,10 +1683,9 @@ describe("connect plugin", () => {
     });
 
     const shareUrl = "http://sawyer--8000.localhost:59330";
-    const exposed = (await harness.callRpc("expose", { port: 8000 })) as {
-      port: number;
-      url: string;
-    };
+    const exposed = shareListingSchema.parse(
+      await harness.callRpc("expose", { port: 8000 }),
+    );
     expect(exposed).toEqual({
       hostId: SERVER_HOST_ID,
       hostName: SERVER_HOST_NAME,
@@ -1684,10 +1694,9 @@ describe("connect plugin", () => {
       createdAt: expect.any(Number),
     });
 
-    const listed = (await harness.callRpc("listShares")) as Array<{
-      port: number;
-      url: string;
-    }>;
+    const listed = z
+      .array(shareListingSchema)
+      .parse(await harness.callRpc("listShares"));
     expect(listed).toEqual([
       {
         hostId: SERVER_HOST_ID,
@@ -1698,7 +1707,7 @@ describe("connect plugin", () => {
       },
     ]);
 
-    const status = (await harness.callRpc("status")) as ConnectStatus;
+    const status = connectStatusSchema.parse(await harness.callRpc("status"));
     expect(status.shares).toEqual([
       {
         hostId: SERVER_HOST_ID,
@@ -1709,10 +1718,9 @@ describe("connect plugin", () => {
       },
     ]);
 
-    const removed = (await harness.callRpc("unexpose", { port: 8000 })) as {
-      removed: boolean;
-      port: number;
-    };
+    const removed = shareRemovalSchema.parse(
+      await harness.callRpc("unexpose", { port: 8000 }),
+    );
     expect(removed).toEqual({
       removed: true,
       hostId: SERVER_HOST_ID,
@@ -1819,7 +1827,7 @@ describe("connect plugin", () => {
     Object.defineProperty(host.bb.hosts, "declareSharedPorts", {
       value: declarations,
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     await host.bb.storage.kv.set(SHARES_KV_KEY, {
       [`${REMOTE_HOST_ID}:3000`]: {
         hostId: REMOTE_HOST_ID,
@@ -1863,7 +1871,7 @@ describe("connect plugin", () => {
     host = createConnectFakeHost({
       remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -1906,7 +1914,7 @@ describe("connect plugin", () => {
       { hostId: REMOTE_HOST_ID, ports: [3000, 4000] },
     ]);
     expect(
-      ((await host.harness.callRpc("status")) as ConnectStatus).shares,
+      connectStatusSchema.parse(await host.harness.callRpc("status")).shares,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ hostId: SERVER_HOST_ID, port: 3000 }),
@@ -1939,7 +1947,7 @@ describe("connect plugin", () => {
         });
       },
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -1977,7 +1985,7 @@ describe("connect plugin", () => {
         });
       },
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -2013,7 +2021,7 @@ describe("connect plugin", () => {
     host = createConnectFakeHost({
       remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -2078,15 +2086,9 @@ describe("connect plugin", () => {
       baseUrl: "https://getbb.app",
     });
 
-    const result = (await harness.callRpc("listAccountServers")) as {
-      servers: Array<{
-        handle: string;
-        name: string;
-        live: boolean;
-        url: string;
-      }>;
-      selfHandle: string;
-    };
+    const result = accountServersSchema.parse(
+      await harness.callRpc("listAccountServers"),
+    );
     expect(result).toEqual({
       servers: [
         {
@@ -2208,9 +2210,9 @@ describe("connect plugin", () => {
       method: "POST",
       headers: { "x-bb-connect-machine": "bbcred_durable" },
     });
-    const result = (await harness.callRpc("createMachineCode")) as {
-      expiresAt: number;
-    };
+    const result = machineCodeSchema.parse(
+      await harness.callRpc("createMachineCode"),
+    );
     expect(result.expiresAt).toBeGreaterThanOrEqual(before + 600_000);
   });
 
@@ -2351,7 +2353,7 @@ describe("connect CLI", () => {
     mobileApp?: boolean;
   }): Promise<FakePluginHost> {
     host = createConnectFakeHost(options);
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    await plugin(pluginApi(host));
     return host;
   }
 
@@ -2482,10 +2484,7 @@ describe("connect CLI", () => {
     const json = await harness.runCli(["servers", "--json"]);
     expect(json.exitCode).toBe(0);
     expect(json.stdout).toBeTruthy();
-    const parsed = JSON.parse(json.stdout ?? "") as {
-      servers: Array<{ handle: string; url: string }>;
-      selfHandle: string;
-    };
+    const parsed = accountServersSchema.parse(JSON.parse(json.stdout ?? ""));
     expect(parsed.selfHandle).toBe("sawyer");
     expect(parsed.servers).toHaveLength(2);
     expect(parsed.servers[0]?.url).toBe("http://sawyer.localhost:59342");
@@ -2557,14 +2556,14 @@ describe("connect CLI", () => {
 
     const json = await harness.runCli(["machine-code", "--json"]);
     expect(json.exitCode).toBe(0);
-    const parsed = JSON.parse(json.stdout ?? "") as Record<string, unknown>;
+    const parsed = machineCodeCliSchema.parse(JSON.parse(json.stdout ?? ""));
     expect(parsed).toEqual({
       code: "K7QP-2M4X",
       serverUrl: "https://sawyer.getbb.app",
       apex: "https://getbb.app",
       expiresAt: expect.any(Number),
     });
-    expect(parsed.expiresAt as number).toBeGreaterThanOrEqual(before + 600_000);
+    expect(parsed.expiresAt).toBeGreaterThanOrEqual(before + 600_000);
     const call = fetchMock.mock.calls.find(
       ([input]) =>
         String(input) === "https://getbb.app/api/connect/machine-code",
@@ -2657,11 +2656,10 @@ describe("connect CLI", () => {
     host = createConnectFakeHost({
       remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
-    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
-    host.harness.sdk.stub(
-      "threads.get",
-      async () => ({ environment: { hostId: REMOTE_HOST_ID } }) as never,
-    );
+    await plugin(pluginApi(host));
+    host.harness.sdk.stub("threads.get", () => ({
+      environment: { hostId: REMOTE_HOST_ID },
+    }));
     vi.stubGlobal(
       "fetch",
       vi.fn(

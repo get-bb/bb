@@ -33,17 +33,29 @@ type SaveState =
   | { kind: "error"; message: string }
   | { kind: "conflict" };
 
+type EditorStatus =
+  | { kind: "loading" }
+  | { kind: "ready" }
+  | { kind: "delegate"; reason: string }
+  | { kind: "error"; message: string };
+
 function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const rpc = useRpc<typeof rpcContract>();
   const codeTheme = experimental_useCodeTheme();
   const codeThemeRef = useRef(codeTheme);
-  codeThemeRef.current = codeTheme;
+  useEffect(() => {
+    codeThemeRef.current = codeTheme;
+  }, [codeTheme]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
 
-  const [activePath, setActivePath] = useState(path);
-  useEffect(() => setActivePath(path), [path]);
+  const [selectedPath, setSelectedPath] = useState<{
+    sourcePath: string;
+    activePath: string;
+  } | null>(null);
+  const activePath =
+    selectedPath?.sourcePath === path ? selectedPath.activePath : path;
 
   const sha256Ref = useRef<string | null>(null);
   const saveStateRef = useRef<SaveState>({ kind: "clean" });
@@ -66,12 +78,20 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
     isLoading: false,
     error: null,
   });
-  const [status, setStatus] = useState<
-    | { kind: "loading" }
-    | { kind: "ready" }
-    | { kind: "delegate"; reason: string }
-    | { kind: "error"; message: string }
-  >({ kind: "loading" });
+  const [statusState, setStatusState] = useState<{
+    path: string;
+    status: EditorStatus;
+  }>({ path, status: { kind: "loading" } });
+  const status =
+    statusState.path === activePath
+      ? statusState.status
+      : ({ kind: "loading" } satisfies EditorStatus);
+  const setStatus = useCallback(
+    (next: EditorStatus) => {
+      setStatusState({ path: activePath, status: next });
+    },
+    [activePath],
+  );
 
   const setSaveState = useCallback((next: SaveState) => {
     saveStateRef.current = next;
@@ -105,7 +125,9 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   }, [activePath, rpc, setSaveState, source]);
 
   const saveRef = useRef(save);
-  saveRef.current = save;
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
 
   const reloadFromDisk = useCallback(async () => {
     const editor = editorRef.current;
@@ -145,7 +167,7 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           error: null,
         });
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (cancelled) return;
         treeRequestedRef.current = false;
         setTree({
@@ -169,9 +191,9 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         setPendingOpen(next);
         return;
       }
-      setActivePath(next);
+      setSelectedPath({ sourcePath: path, activePath: next });
     },
-    [activePath],
+    [activePath, path],
   );
 
   const requestRefresh = useCallback(() => {
@@ -210,8 +232,6 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
 
   useEffect(() => {
     let disposed = false;
-    setStatus({ kind: "loading" });
-
     void (async () => {
       try {
         const [{ baseUrl }, file] = await Promise.all([
@@ -286,7 +306,7 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
       editorRef.current?.dispose();
       editorRef.current = null;
     };
-  }, [activePath, rpc, setSaveState, source]);
+  }, [activePath, rpc, setSaveState, setStatus, source]);
 
   useEffect(() => {
     const monaco = monacoRef.current;
@@ -294,7 +314,7 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
     const applied = applyCodeTheme(monaco, codeTheme);
     editorRef.current?.updateOptions({ theme: applied.name });
     setOverflowWidgetsTheme(applied.base);
-  }, [codeTheme, status]);
+  }, [codeTheme, status.kind]);
 
   if (status.kind === "delegate") return <Original />;
 
@@ -331,7 +351,9 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         onOpenConfirm={() => {
           const next = pendingOpen;
           setPendingOpen(null);
-          if (next !== null) setActivePath(next);
+          if (next !== null) {
+            setSelectedPath({ sourcePath: path, activePath: next });
+          }
         }}
         onOverwrite={() => void overwrite()}
         onReload={() => void reloadFromDisk()}

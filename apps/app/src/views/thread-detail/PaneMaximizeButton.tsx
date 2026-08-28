@@ -28,12 +28,12 @@ const ARRANGEMENT_ACTIONS: ReadonlyArray<{
 const MENU_ITEM_CLASS =
   "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0";
 
-const ARRANGEMENT_REGION_CLASS: Record<SplitSide, string> = {
+const ARRANGEMENT_REGION_CLASS = {
   left: "inset-y-[3px] left-[3px] w-2.5",
   right: "inset-y-[3px] right-[3px] w-2.5",
   top: "inset-x-[3px] top-[3px] h-1.5",
   bottom: "inset-x-[3px] bottom-[3px] h-1.5",
-};
+} satisfies Record<SplitSide, string>;
 
 export function resolvePaneArrangementLabel({
   isDesktopApp,

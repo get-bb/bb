@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import clsx from "clsx";
@@ -140,18 +140,54 @@ describe("loadPluginFrontends", () => {
 });
 
 describe("installPluginRuntime", () => {
-  type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: unknown };
+  interface RuntimeExports {
+    classVarianceAuthority: object;
+    clsx: { default: typeof clsx };
+    jsxDevRuntime: object;
+    jsxRuntime: { jsx: typeof jsxRuntime.jsx };
+    pierreDiffs: object;
+    pierreDiffsReact: object;
+    pluginSdkApp: object;
+    radixAlertDialog: object;
+    radixContextMenu: object;
+    radixDialog: object;
+    radixDropdownMenu: object;
+    radixHoverCard: object;
+    radixMenubar: object;
+    radixNavigationMenu: object;
+    radixPopover: object;
+    radixSelect: object;
+    radixTooltip: object;
+    react: { useState: typeof react.useState };
+    reactDom: object;
+    reactDomClient: object;
+    sharedUiIcon: { Icon: typeof Icon };
+    sonner: object;
+    tailwindMerge: object;
+    vaul: object;
+  }
+
+  type RuntimeHost = typeof globalThis & {
+    __bbPluginRuntime?: RuntimeExports;
+  };
+
+  function runtimeHost(): RuntimeHost {
+    return /* SAFETY: The runtime installer owns this global property and writes the declared runtime contract. */ globalThis as RuntimeHost;
+  }
+
+  beforeEach(() => {
+    delete runtimeHost().__bbPluginRuntime;
+  });
 
   afterEach(() => {
-    delete (globalThis as RuntimeHost).__bbPluginRuntime;
+    delete runtimeHost().__bbPluginRuntime;
   });
 
   it("exposes the app's own runtime modules on every shim slot, exactly once", () => {
     installPluginRuntime();
-    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
-      string,
-      unknown
-    >;
+    const runtime = runtimeHost().__bbPluginRuntime;
+    if (runtime === undefined)
+      throw new Error("plugin runtime was not installed");
     expect(Object.keys(runtime).sort()).toEqual([
       "classVarianceAuthority",
       "clsx",
@@ -178,33 +214,34 @@ describe("installPluginRuntime", () => {
       "tailwindMerge",
       "vaul",
     ]);
-    expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
-    expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);
-    expect((runtime.react as { useState: unknown }).useState).toBe(
-      react.useState,
-    );
-    expect((runtime.jsxRuntime as { jsx: unknown }).jsx).toBe(jsxRuntime.jsx);
+    expect(runtime.clsx.default).toBe(clsx);
+    expect(runtime.sharedUiIcon.Icon).toBe(Icon);
+    expect(runtime.react.useState).toBe(react.useState);
+    expect(runtime.jsxRuntime.jsx).toBe(jsxRuntime.jsx);
     expect(runtime.pluginSdkApp).toBe(pluginSdkAppImplementation);
 
     installPluginRuntime();
-    expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
+    expect(runtimeHost().__bbPluginRuntime).toBe(runtime);
   });
 
   it("hands plugins every @pierre/diffs/react export, with the diff components gated", async () => {
     installPluginRuntime();
-    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
-      string,
-      unknown
-    >;
+    const runtime = runtimeHost().__bbPluginRuntime;
+    if (runtime === undefined)
+      throw new Error("plugin runtime was not installed");
     const pierreDiffsReact = await import("@pierre/diffs/react");
-    const slot = runtime.pierreDiffsReact as Record<string, unknown>;
+    const slot = runtime.pierreDiffsReact;
     expect(Object.keys(slot).sort()).toEqual(
       Object.keys(pierreDiffsReact).sort(),
     );
-    expect(slot.useVirtualizer).toBe(pierreDiffsReact.useVirtualizer);
-    expect(slot.WorkerPoolContext).toBe(pierreDiffsReact.WorkerPoolContext);
-    expect(slot.FileDiff).not.toBe(pierreDiffsReact.FileDiff);
-    expect(slot.File).not.toBe(pierreDiffsReact.File);
+    const slotExport = (name: string) =>
+      Object.getOwnPropertyDescriptor(slot, name)?.value;
+    expect(slotExport("useVirtualizer")).toBe(pierreDiffsReact.useVirtualizer);
+    expect(slotExport("WorkerPoolContext")).toBe(
+      pierreDiffsReact.WorkerPoolContext,
+    );
+    expect(slotExport("FileDiff")).not.toBe(pierreDiffsReact.FileDiff);
+    expect(slotExport("File")).not.toBe(pierreDiffsReact.File);
   });
 });
 

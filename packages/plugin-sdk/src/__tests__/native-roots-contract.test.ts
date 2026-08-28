@@ -10,6 +10,7 @@ import {
 
 const PREFIX_REASON =
   "namePrefix: A root name prefix is a plugin-name-like token ending in ':'";
+const ROOT_TYPE_FIELD = "shape" as const;
 
 function roots(count: number, side: string) {
   return Array.from({ length: count }, (_, index) => ({
@@ -68,6 +69,22 @@ describe("experimental_filterResolvedNativeRoots", () => {
 
   it("drops each refused root on its own, in order, with the path and the reason", () => {
     const warn = vi.fn();
+    const skillSideCommandRoot = {
+      path: "/p/commands",
+      origin: "user",
+      [ROOT_TYPE_FIELD]: "commands",
+    } satisfies ProviderResolvedNativeRootInput;
+    const commandRootWithMarker = {
+      path: "/p/commands-marker",
+      origin: "user",
+      [ROOT_TYPE_FIELD]: "commands",
+      skipIfManifest: "../plugin.json",
+    } satisfies ProviderResolvedNativeRootInput;
+    const commandSideSkillRoot = {
+      path: "/p/skill",
+      origin: "user",
+      [ROOT_TYPE_FIELD]: "skill",
+    } satisfies ProviderResolvedNativeRootInput;
 
     const result = experimental_filterResolvedNativeRoots(
       {
@@ -84,7 +101,7 @@ describe("experimental_filterResolvedNativeRoots", () => {
             skipIfManifest: "../plugin.json",
           },
           { path: "/p/walker", origin: "user", ancestors: true },
-          { path: "/p/commands", origin: "user", shape: "commands" },
+          skillSideCommandRoot,
           {
             path: "/home/u/plugin/skills",
             origin: "project",
@@ -92,13 +109,8 @@ describe("experimental_filterResolvedNativeRoots", () => {
           },
         ],
         commands: [
-          {
-            path: "/p/commands-marker",
-            origin: "user",
-            shape: "commands",
-            skipIfManifest: "../plugin.json",
-          },
-          { path: "/p/skill", origin: "user", shape: "skill" },
+          commandRootWithMarker,
+          commandSideSkillRoot,
           { path: "/home/u/.claude/commands", origin: "user" },
         ],
       },
@@ -186,7 +198,7 @@ describe("experimental_filterResolvedNativeRoots", () => {
             path: "/p/prefixed",
             origin: "user",
             namePrefix: "bad prefix:",
-            shape: "skill",
+            [ROOT_TYPE_FIELD]: "skill",
             skipIfManifest: "m.json",
           },
           { path: "rel/skill-file", origin: "user", fallbackName: "n" },
@@ -287,7 +299,7 @@ describe("experimental_nativeRootsResolveOutputSchema", () => {
           recursive: false,
           ancestors: false,
           namePrefix: "",
-          shape: "skills",
+          [ROOT_TYPE_FIELD]: "skills",
           skipIfManifest: ".claude-plugin/plugin.json",
         },
       ],
@@ -298,7 +310,7 @@ describe("experimental_nativeRootsResolveOutputSchema", () => {
           recursive: false,
           ancestors: false,
           namePrefix: "",
-          shape: "commands",
+          [ROOT_TYPE_FIELD]: "commands",
         },
       ],
     });

@@ -69,11 +69,7 @@ function minimumSupportedVersionForRequirement(
     : CODEX_MINIMUM_SUPPORTED_VERSION;
 }
 
-function codexUpdateCommand(): {
-  command: string;
-  args: string[];
-  displayCommand: string;
-} {
+function codexUpdateCommand() {
   const args = ["update"];
   return {
     command: "codex",
@@ -268,21 +264,26 @@ function usageWindow(
 
 function planLabel(plan: string | null | undefined): string | null {
   if (!plan) return null;
-  const labels: Record<string, string> = {
-    free: "Free",
-    go: "Go",
-    plus: "Plus",
-    pro: "Pro",
-    team: "Team",
-    business: "Business",
-    education: "Education",
-    edu: "Education",
-    enterprise: "Enterprise",
-  };
-  return labels[plan] ?? plan.charAt(0).toUpperCase() + plan.slice(1);
+  const labels = new Map<string, string>([
+    ["free", "Free"],
+    ["go", "Go"],
+    ["plus", "Plus"],
+    ["pro", "Pro"],
+    ["team", "Team"],
+    ["business", "Business"],
+    ["education", "Education"],
+    ["edu", "Education"],
+    ["enterprise", "Enterprise"],
+  ]);
+  return labels.get(plan) ?? plan.charAt(0).toUpperCase() + plan.slice(1);
 }
 
-function normalizeUsage(raw: unknown, email: string | null): ProviderUsage {
+type CodexUsageResponse = z.input<typeof codexUsageResponseSchema>;
+
+function normalizeUsage(
+  raw: CodexUsageResponse,
+  email: string | null,
+): ProviderUsage {
   const parsed = codexUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return {

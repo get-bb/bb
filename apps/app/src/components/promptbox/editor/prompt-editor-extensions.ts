@@ -20,6 +20,20 @@ export function promptEditorExtensions({
   draftObserverDebounceMs,
   onRuleError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
+  const decorationOptions: PromptDecorationExtensionOptions = {};
+  if (getDecorationSources !== undefined) {
+    decorationOptions.getDecorationSources = getDecorationSources;
+  }
+  if (getDraftObservers !== undefined) {
+    decorationOptions.getDraftObservers = getDraftObservers;
+  }
+  if (draftObserverDebounceMs !== undefined) {
+    decorationOptions.draftObserverDebounceMs = draftObserverDebounceMs;
+  }
+  if (onRuleError !== undefined) {
+    decorationOptions.onRuleError = onRuleError;
+  }
+
   return [
     StarterKit.configure({
       blockquote: {},
@@ -42,13 +56,6 @@ export function promptEditorExtensions({
       placeholder: () => getPlaceholder(),
     }),
     PromptMentionExtension,
-    PromptDecorationExtension.configure({
-      ...(getDecorationSources !== undefined ? { getDecorationSources } : {}),
-      ...(getDraftObservers !== undefined ? { getDraftObservers } : {}),
-      ...(draftObserverDebounceMs !== undefined
-        ? { draftObserverDebounceMs }
-        : {}),
-      ...(onRuleError !== undefined ? { onRuleError } : {}),
-    }),
+    PromptDecorationExtension.configure(decorationOptions),
   ];
 }

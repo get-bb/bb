@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clientMessageSchema, type ClientMessage } from "@bb/domain";
 import type { RealtimeSubscriptionTarget } from "@bb/server-contract";
+import type { WebSocketManagerDependencies } from "./ws";
 
 const fakeSocketState = vi.hoisted(() => {
   type CloseHandler = () => void;
@@ -41,14 +42,6 @@ const fakeSocketState = vi.hoisted(() => {
   };
 });
 
-vi.mock("partysocket/ws", () => ({
-  default: fakeSocketState.FakeReconnectingWebSocket,
-}));
-
-vi.mock("./dev-websocket-url", () => ({
-  buildDevWebSocketUrl: () => "ws://bb.test/ws",
-}));
-
 import {
   REALTIME_PING_INTERVAL_MS,
   REALTIME_PONG_TIMEOUT_MS,
@@ -74,6 +67,18 @@ interface FakeSocket {
   readonly sentMessages: string[];
   close: () => void;
   open: () => void;
+}
+
+type WebSocketJsonValue =
+  | boolean
+  | null
+  | number
+  | string
+  | WebSocketJsonObject
+  | readonly WebSocketJsonValue[];
+
+interface WebSocketJsonObject {
+  [key: string]: WebSocketJsonValue;
 }
 
 function installOpenWebSocketConstructor(): void {
@@ -103,12 +108,17 @@ function getOnlySocket(): FakeSocket {
 }
 
 function createConnectedManager(): ConnectedManager {
-  const manager = new WebSocketManager();
+  const manager = new WebSocketManager(undefined, testDependencies);
   manager.connect();
   const socket = getOnlySocket();
   socket.open();
   return { manager, socket };
 }
+
+const testDependencies: WebSocketManagerDependencies = {
+  createSocket: () => new fakeSocketState.FakeReconnectingWebSocket(),
+  buildWebSocketUrl: () => "ws://bb.test/ws",
+};
 
 describe("WebSocketManager subscriptions", () => {
   const originalWebSocket = globalThis.WebSocket;
@@ -199,12 +209,16 @@ describe("WebSocketManager thread-open signals", () => {
     });
   });
 
-  function dispatchRaw(payload: unknown): void {
+  function dispatchRaw(payload: WebSocketJsonObject): void {
     const instance = fakeSocketState.instances[0];
     if (!instance) {
       throw new Error("Expected websocket instance");
     }
-    instance.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
+    instance.onmessage?.(
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+        data: JSON.stringify(payload),
+      } as MessageEvent,
+    );
   }
 
   it("notifies layout listeners and buffers an included file once", () => {
@@ -321,9 +335,13 @@ function getSocketAt(index: number): FakeSocket & {
 
 function receive(
   socket: { onmessage: ((event: MessageEvent) => void) | null },
-  payload: unknown,
+  payload: WebSocketJsonObject,
 ): void {
-  socket.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
+  socket.onmessage?.(
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+      data: JSON.stringify(payload),
+    } as MessageEvent,
+  );
 }
 
 function pingCount(socket: FakeSocket): number {
@@ -349,7 +367,7 @@ describe("WebSocketManager liveness", () => {
   });
 
   function createLiveManager(browserEvents = createFakeBrowserEvents()) {
-    const manager = new WebSocketManager(browserEvents);
+    const manager = new WebSocketManager(browserEvents, testDependencies);
     const connectedEvents: WebSocketConnectedEvent[] = [];
     manager.onConnected((event) => connectedEvents.push(event));
     manager.connect();

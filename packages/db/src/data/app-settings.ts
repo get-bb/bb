@@ -3,6 +3,8 @@ import {
   appKeybindingOverridesSchema,
   appSettingsSchema,
   defaultAppSettings,
+  jsonValueSchema,
+  type JsonValue,
   type AppKeybindingOverrides,
   type AppSettings,
 } from "@bb/domain";
@@ -14,9 +16,9 @@ const appSettingsKeys = appSettingsKeySchema.options;
 
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
 
-function parseStoredValue(text: string): unknown {
+function parseStoredValue(text: string): JsonValue | undefined {
   try {
-    return JSON.parse(text);
+    return jsonValueSchema.parse(JSON.parse(text));
   } catch {
     return undefined;
   }
@@ -25,7 +27,7 @@ function parseStoredValue(text: string): unknown {
 function writeValue(
   db: DbQueryConnection,
   key: string,
-  value: unknown,
+  value: JsonValue,
   updatedAt: number,
 ): void {
   const text = JSON.stringify(value);
@@ -39,7 +41,7 @@ function writeValue(
 }
 
 export function getAppSettings(db: DbConnection): AppSettings {
-  const values: Record<string, unknown> = { ...defaultAppSettings };
+  let values: AppSettings = { ...defaultAppSettings };
   const rows = db
     .select({ key: appSettingsValues.key, value: appSettingsValues.value })
     .from(appSettingsValues)
@@ -49,10 +51,13 @@ export function getAppSettings(db: DbConnection): AppSettings {
   for (const row of rows) {
     const key = appSettingsKeySchema.safeParse(row.key);
     if (!key.success) continue;
-    const value = appSettingsSchema.shape[key.data].safeParse(
-      parseStoredValue(row.value),
-    );
-    if (value.success) values[key.data] = value.data;
+    const storedValue = parseStoredValue(row.value);
+    if (storedValue === undefined) continue;
+    const parsed = appSettingsSchema.safeParse({
+      ...values,
+      [key.data]: storedValue,
+    });
+    if (parsed.success) values = parsed.data;
   }
 
   return appSettingsSchema.parse(values);

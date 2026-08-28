@@ -2,6 +2,7 @@ const { spawn } = require("node:child_process");
 const { chmod, readFile, readdir, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const path = require("node:path");
+const { z } = require("zod");
 
 const desktopPackageRoot = path.resolve(__dirname, "..");
 
@@ -13,15 +14,6 @@ const PACKAGED_NATIVE_PACKAGE_NAMES = [
   BETTER_SQLITE3_PACKAGE_NAME,
 ];
 
-// better-sqlite3 must match the runtime that loads it. The packaged app runs
-// the bb server through Electron's bundled Node, so the packaged copy has to
-// target Electron's ABI. electron-builder's `npmRebuild` would rebuild it for
-// us, but in this pnpm workspace better-sqlite3 resolves to the shared
-// content-addressed store, so an in-place rebuild clobbers the node-ABI binary
-// every other workspace package (and the server test suite) relies on. Instead
-// `npmRebuild` is disabled and we fetch the Electron prebuild into the packaged
-// copy here, leaving the shared store untouched. Desktop dev runs bb-app with
-// the host Node executable so it can use the workspace's normal Node-ABI binary.
 const NODE_PTY_PREBUILD_PLATFORMS = ["darwin-arm64", "darwin-x64"];
 const NODE_PTY_SPAWN_HELPER_RELATIVE_PATHS = [
   path.join("build", "Release", "spawn-helper"),
@@ -217,8 +209,6 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
   }
   await Promise.all(nodePtyDirectories.map(prepareNodePtyPackageDirectory));
 
-  // The Electron target is only known on the real afterPack path. Standalone
-  // invocations (e.g. tests, manual node-pty repair) omit it and skip the fetch.
   if (options.electronVersion === undefined) {
     return { betterSqlite3Directories: [], nodePtyDirectories };
   }
@@ -254,14 +244,11 @@ function resolveElectronVersion() {
 function resolveArchName(context) {
   try {
     const { Arch } = require("electron-builder");
-    const archName = Arch[context.arch];
-    if (typeof archName === "string") {
-      return archName;
+    const archName = z.string().safeParse(Arch[context.arch]);
+    if (archName.success) {
+      return archName.data;
     }
-  } catch {
-    // electron-builder is only resolvable inside the build process; fall back to
-    // the host architecture, which matches single-arch builds on a native host.
-  }
+  } catch {}
   return process.arch;
 }
 

@@ -22,8 +22,8 @@ describe("font platform modules", () => {
       Object.keys(defaultPlatform).sort(),
     );
     for (const weight of WEIGHTS) {
-      expect(typeof iosPlatform.SANS_WEIGHTS[weight]).toBe("string");
-      expect(typeof defaultPlatform.SANS_WEIGHTS[weight]).toBe("string");
+      expect(iosPlatform.SANS_WEIGHTS[weight]).toEqual(expect.any(String));
+      expect(defaultPlatform.SANS_WEIGHTS[weight]).toEqual(expect.any(String));
     }
   });
 
@@ -99,8 +99,8 @@ describe("resolveFont", () => {
 
   it("mono always resolves to a concrete family name", () => {
     for (const weight of WEIGHTS) {
-      expect(typeof resolveFont({ mono: true, weight }).fontFamily).toBe(
-        "string",
+      expect(resolveFont({ mono: true, weight }).fontFamily).toEqual(
+        expect.any(String),
       );
     }
   });

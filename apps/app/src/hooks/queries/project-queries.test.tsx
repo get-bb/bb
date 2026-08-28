@@ -4,17 +4,11 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ProjectBranchesResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { useProjectSourceBranches } from "./project-queries";
 import { projectSourceBranchesQueryKeyPrefix } from "./query-keys";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { branches: vi.fn() } },
-}));
-
-vi.mock("@/hooks/useRealtimeSubscription", () => ({
-  useProjectDetailRealtimeSubscription: vi.fn(),
-}));
+const branches = vi.spyOn(sdk.projects, "branches");
 
 const INITIAL_BRANCHES = {
   branches: ["main"],
@@ -32,28 +26,31 @@ const INITIAL_BRANCHES = {
 } satisfies ProjectBranchesResponse;
 
 describe("useProjectSourceBranches", () => {
+  afterAll(() => {
+    branches.mockRestore();
+  });
+
   afterEach(() => {
     cleanup();
+    branches.mockReset();
     vi.clearAllMocks();
   });
 
   it("starts with cached refs and exposes an explicit blocking remote refresh", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    vi.mocked(sdk.projects.branches)
-      .mockResolvedValueOnce(INITIAL_BRANCHES)
-      .mockResolvedValueOnce({
-        ...INITIAL_BRANCHES,
-        remoteBranches: ["origin/main", "origin/new"],
-      });
+    branches.mockResolvedValueOnce(INITIAL_BRANCHES).mockResolvedValueOnce({
+      ...INITIAL_BRANCHES,
+      remoteBranches: ["origin/main", "origin/new"],
+    });
 
     const { result } = renderHook(
       () => useProjectSourceBranches("project-1", "host-1"),
       { wrapper },
     );
     await waitFor(() => {
-      expect(sdk.projects.branches).toHaveBeenCalledTimes(1);
+      expect(branches).toHaveBeenCalledTimes(1);
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ refresh: "background" }),
     );
@@ -67,7 +64,7 @@ describe("useProjectSourceBranches", () => {
         "origin/new",
       ]);
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         hostId: "host-1",
@@ -76,9 +73,7 @@ describe("useProjectSourceBranches", () => {
         refresh: "blocking",
       }),
     );
-    expect(vi.mocked(sdk.projects.branches).mock.calls[1]?.[0]).toHaveProperty(
-      "signal",
-    );
+    expect(branches.mock.calls[1]?.[0]).toHaveProperty("signal");
 
     const [query] = queryClient.getQueryCache().findAll({
       queryKey: projectSourceBranchesQueryKeyPrefix("project-1"),
@@ -94,7 +89,7 @@ describe("useProjectSourceBranches", () => {
   it("reports fetching while the blocking refresh waits, then reverts to cached reads", async () => {
     const { wrapper } = createQueryClientTestHarness();
     let releaseBlocking: ((value: ProjectBranchesResponse) => void) | undefined;
-    vi.mocked(sdk.projects.branches)
+    branches
       .mockResolvedValueOnce(INITIAL_BRANCHES)
       .mockImplementationOnce(
         () =>
@@ -131,7 +126,7 @@ describe("useProjectSourceBranches", () => {
     await act(async () => {
       await result.current.refetch();
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({ refresh: "background" }),
     );
@@ -140,7 +135,7 @@ describe("useProjectSourceBranches", () => {
   it("still reaches the daemon when the picker opens during the initial cached fetch", async () => {
     const { wrapper } = createQueryClientTestHarness();
     let releaseInitial: ((value: ProjectBranchesResponse) => void) | undefined;
-    vi.mocked(sdk.projects.branches)
+    branches
       .mockImplementationOnce(
         () =>
           new Promise<ProjectBranchesResponse>((resolve) => {
@@ -158,7 +153,7 @@ describe("useProjectSourceBranches", () => {
       { wrapper },
     );
     await waitFor(() => {
-      expect(sdk.projects.branches).toHaveBeenCalledTimes(1);
+      expect(branches).toHaveBeenCalledTimes(1);
     });
 
     let refreshed: Promise<void> | undefined;
@@ -171,9 +166,9 @@ describe("useProjectSourceBranches", () => {
     });
 
     await waitFor(() => {
-      expect(sdk.projects.branches).toHaveBeenCalledTimes(2);
+      expect(branches).toHaveBeenCalledTimes(2);
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ refresh: "blocking" }),
     );
@@ -187,7 +182,7 @@ describe("useProjectSourceBranches", () => {
     await act(async () => {
       await result.current.refetch();
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({ refresh: "background" }),
     );
@@ -197,7 +192,7 @@ describe("useProjectSourceBranches", () => {
     const { wrapper } = createQueryClientTestHarness({
       queries: { retry: 1, retryDelay: 0 },
     });
-    vi.mocked(sdk.projects.branches)
+    branches
       .mockResolvedValueOnce(INITIAL_BRANCHES)
       .mockRejectedValueOnce(new Error("Failed to fetch"))
       .mockResolvedValueOnce({
@@ -210,7 +205,7 @@ describe("useProjectSourceBranches", () => {
       { wrapper },
     );
     await waitFor(() => {
-      expect(sdk.projects.branches).toHaveBeenCalledTimes(1);
+      expect(branches).toHaveBeenCalledTimes(1);
     });
 
     await act(async () => {
@@ -218,13 +213,13 @@ describe("useProjectSourceBranches", () => {
     });
 
     await waitFor(() => {
-      expect(sdk.projects.branches).toHaveBeenCalledTimes(3);
+      expect(branches).toHaveBeenCalledTimes(3);
     });
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ refresh: "blocking" }),
     );
-    expect(sdk.projects.branches).toHaveBeenNthCalledWith(
+    expect(branches).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({ refresh: "blocking" }),
     );

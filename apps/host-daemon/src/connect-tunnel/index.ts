@@ -16,7 +16,9 @@ import {
   type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
 import { connectPublicProtocol } from "@bb/connect-client";
+import { jsonValueSchema } from "@bb/domain";
 import type { HostDaemonLogger } from "../logger.js";
+import { z } from "zod";
 
 type ConnectTunnelState = "connected" | "reconnecting" | "offline";
 
@@ -54,6 +56,8 @@ interface TrustedConnectGate {
   apiOrigin: string;
   baseDomain: string;
 }
+
+const machineLabelAssignmentSchema = z.object({ label: z.string() });
 
 class ConnectTunnelCredentialRejectedError extends Error {
   readonly code = "credential_rejected";
@@ -213,17 +217,14 @@ export class ConnectTunnelClient {
             `machine label assignment failed: HTTP ${response.status}`,
           );
         }
-        const body: unknown = await response.json();
-        if (
-          typeof body !== "object" ||
-          body === null ||
-          !("label" in body) ||
-          typeof body.label !== "string"
-        ) {
+        const body = machineLabelAssignmentSchema.safeParse(
+          jsonValueSchema.parse(await response.json()),
+        );
+        if (!body.success) {
           throw new Error("machine label assignment returned an invalid body");
         }
         const identity = hostDaemonConnectTunnelIdentitySchema.parse({
-          label: body.label,
+          label: body.data.label,
           baseDomain: gate.baseDomain,
         });
         this.identity = identity;
@@ -292,7 +293,7 @@ export class ConnectTunnelClient {
         }
         this.openTunnel(identity);
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (epoch !== this.connectionEpoch || !this.hasConnectIntent()) {
           return;
         }

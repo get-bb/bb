@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import type { DeltaItemShape, ThreadDelta } from "../thread-delta.js";
+import type { ThreadDelta } from "../thread-delta.js";
 import {
   createDeltaAssembler,
   diffCumulativeText,
   type DeltaAssembler,
+  type CreateDeltaAssemblerOptions,
 } from "./delta-assembler.js";
 import { createBridgeDeltaEventCollector } from "../testing/bridge-delta-assembly.js";
 
+type DeltaItemContract = Extract<ThreadDelta, { kind: "item.open" }>["item"];
+
 const THREAD_ID = "thr_1";
-const CREQ = "creq_abcdefghjk" as ClientTurnRequestId;
-const CREQ_2 = "creq_bcdefghjkm" as ClientTurnRequestId;
+const CREQ =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ "creq_abcdefghjk" as ClientTurnRequestId;
+const CREQ_2 =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ "creq_bcdefghjkm" as ClientTurnRequestId;
 
 function createAssembler(): DeltaAssembler {
   return createDeltaAssembler({
@@ -258,12 +263,13 @@ describe("delta assembler", () => {
     providerItemId: string,
     presentation?: typeof openPresentation,
   ): ThreadDelta {
-    return {
+    const delta: Extract<ThreadDelta, { kind: "item.open" }> = {
       kind: "item.open",
       key: { providerItemId },
       item: { type: "tool", tool: "Read", args: { path: "src/index.ts" } },
-      ...(presentation === undefined ? {} : { presentation }),
     };
+    if (presentation !== undefined) delta.presentation = presentation;
+    return delta;
   }
 
   function itemOf(event: ThreadEvent | undefined) {
@@ -381,7 +387,7 @@ describe("delta assembler", () => {
   it("builds file-change items with diffs from the carried changes", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
-    const editShape: DeltaItemShape = {
+    const fileChangeItem: DeltaItemContract = {
       type: "fileChange",
       changes: [
         {
@@ -395,7 +401,7 @@ describe("delta assembler", () => {
     const started = assemble(assembler, {
       kind: "item.open",
       key: { providerItemId: "tc-edit" },
-      item: editShape,
+      item: fileChangeItem,
     });
     expect(started[0]).toMatchObject({
       type: "item/started",
@@ -415,7 +421,7 @@ describe("delta assembler", () => {
       kind: "item.close",
       key: { providerItemId: "tc-edit" },
       status: "completed",
-      item: editShape,
+      item: fileChangeItem,
     });
     expect(closed[0]).toMatchObject({
       type: "item/completed",
@@ -1505,7 +1511,7 @@ describe("delta assembler grammar v3 core kinds", () => {
 
   it.each([
     {
-      shape: {
+      item: {
         type: "fileRead",
         path: "src/index.ts",
         cmd: "cat src/index.ts",
@@ -1518,7 +1524,7 @@ describe("delta assembler grammar v3 core kinds", () => {
       },
     },
     {
-      shape: {
+      item: {
         type: "search",
         mode: "content",
         query: "TODO",
@@ -1534,7 +1540,7 @@ describe("delta assembler grammar v3 core kinds", () => {
       },
     },
     {
-      shape: {
+      item: {
         type: "planSteps",
         steps: [{ step: "Read the spec", status: "completed" }],
         explanation: "first pass",
@@ -1546,16 +1552,16 @@ describe("delta assembler grammar v3 core kinds", () => {
         status: "pending",
       },
     },
-  ] satisfies { shape: DeltaItemShape; started: object }[])(
-    "opens $shape.type pending and settles it from the terminal shape under one id",
-    ({ shape, started }) => {
+  ] satisfies { item: DeltaItemContract; started: object }[])(
+    "opens $item.type pending and settles it from the terminal item under one id",
+    ({ item, started }) => {
       const assembler = createAssembler();
       assemble(assembler, { kind: "turn.open" });
       const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
       const [open] = assemble(assembler, {
         kind: "item.open",
         key: { providerItemId: "v3-1", parentRef: "agent-1" },
-        item: shape,
+        item,
       });
       expect(open).toMatchObject({
         type: "item/started",
@@ -1571,7 +1577,7 @@ describe("delta assembler grammar v3 core kinds", () => {
         kind: "item.close",
         key: { providerItemId: "v3-1", parentRef: "agent-1" },
         status: "failed",
-        item: shape,
+        item,
       });
       expect(closed?.type).toBe("item/completed");
       expect(itemOf(closed)).toMatchObject({
@@ -1711,7 +1717,7 @@ describe("delta assembler grammar v3 core kinds", () => {
     };
     assemble(assembler, { kind: "turn.open" });
     const spawningTurnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
-    const shape: DeltaItemShape = {
+    const delegationItem: DeltaItemContract = {
       type: "delegation",
       childRef: "agent-7",
       label: "Audit the tests",
@@ -1720,7 +1726,7 @@ describe("delta assembler grammar v3 core kinds", () => {
     const [started] = assemble(assembler, {
       kind: "item.open",
       key: { providerItemId: "d-bg" },
-      item: shape,
+      item: delegationItem,
       presentation,
     });
     expect(started).toMatchObject({
@@ -1739,7 +1745,7 @@ describe("delta assembler grammar v3 core kinds", () => {
     const [progress] = assemble(assembler, {
       kind: "item.progress",
       key: { providerItemId: "d-bg" },
-      snapshot: { ...shape, summary: "Halfway through." },
+      snapshot: { ...delegationItem, summary: "Halfway through." },
     });
     expect(progress).toMatchObject({
       type: "item/delegation/progress",
@@ -1756,7 +1762,7 @@ describe("delta assembler grammar v3 core kinds", () => {
       kind: "item.close",
       key: { providerItemId: "d-bg" },
       status: "completed",
-      item: shape,
+      item: delegationItem,
     });
     expect(completed).toMatchObject({
       type: "item/delegation/completed",
@@ -1934,13 +1940,16 @@ describe("delta assembler extension kinds", () => {
 describe("delta assembler background tasks and progress policy", () => {
   function createClockedAssembler(progressThrottleMs?: number) {
     let nowMs = 0;
-    const assembler = createDeltaAssembler({
+    const options: CreateDeltaAssemblerOptions = {
       providerId: "claude-code",
       entropyPrefix: "as-test",
       now: () => nowMs,
       textDeltaFlushMs: 0,
-      ...(progressThrottleMs === undefined ? {} : { progressThrottleMs }),
-    });
+    };
+    if (progressThrottleMs !== undefined) {
+      options.progressThrottleMs = progressThrottleMs;
+    }
+    const assembler = createDeltaAssembler(options);
     return {
       assembler,
       advance(ms: number) {
@@ -1949,11 +1958,11 @@ describe("delta assembler background tasks and progress policy", () => {
     };
   }
 
-  function taskShape(
+  function backgroundTaskItem(
     overrides: Partial<
-      Extract<DeltaItemShape, { type: "backgroundTask" }>
+      Extract<DeltaItemContract, { type: "backgroundTask" }>
     > = {},
-  ): Extract<DeltaItemShape, { type: "backgroundTask" }> {
+  ): Extract<DeltaItemContract, { type: "backgroundTask" }> {
     return {
       type: "backgroundTask",
       familyId: "wf-1",
@@ -1976,7 +1985,7 @@ describe("delta assembler background tasks and progress policy", () => {
     const started = assemble(assembler, {
       kind: "item.open",
       key: TASK_KEY,
-      item: taskShape(),
+      item: backgroundTaskItem(),
     });
     expect(started).toEqual([
       expect.objectContaining({
@@ -1998,7 +2007,7 @@ describe("delta assembler background tasks and progress policy", () => {
       assemble(assembler, {
         kind: "item.progress",
         key: TASK_KEY,
-        snapshot: taskShape(),
+        snapshot: backgroundTaskItem(),
       }),
     ).toEqual([]);
 
@@ -2006,7 +2015,7 @@ describe("delta assembler background tasks and progress policy", () => {
     const progress = assemble(assembler, {
       kind: "item.progress",
       key: TASK_KEY,
-      snapshot: taskShape({ summary: "still going" }),
+      snapshot: backgroundTaskItem({ summary: "still going" }),
     });
     expect(progress).toEqual([
       expect.objectContaining({
@@ -2025,7 +2034,10 @@ describe("delta assembler background tasks and progress policy", () => {
       kind: "item.close",
       key: TASK_KEY,
       status: "completed",
-      item: taskShape({ status: "completed", taskStatus: "completed" }),
+      item: backgroundTaskItem({
+        status: "completed",
+        taskStatus: "completed",
+      }),
     });
     expect(completed).toEqual([
       expect.objectContaining({
@@ -2046,14 +2058,14 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "item.open", key: TASK_KEY, item: backgroundTaskItem() },
     );
 
     advance(100);
     const flushed = assemble(assembler, {
       kind: "item.progress",
       key: TASK_KEY,
-      snapshot: taskShape({ taskStatus: "paused" }),
+      snapshot: backgroundTaskItem({ taskStatus: "paused" }),
       flush: true,
     });
     expect(flushed).toHaveLength(1);
@@ -2063,7 +2075,7 @@ describe("delta assembler background tasks and progress policy", () => {
       assemble(assembler, {
         kind: "item.progress",
         key: TASK_KEY,
-        snapshot: taskShape(),
+        snapshot: backgroundTaskItem(),
       }),
     ).toEqual([]);
   });
@@ -2073,7 +2085,7 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "item.open", key: TASK_KEY, item: backgroundTaskItem() },
     );
 
     advance(100);
@@ -2081,7 +2093,7 @@ describe("delta assembler background tasks and progress policy", () => {
       assemble(assembler, {
         kind: "item.progress",
         key: TASK_KEY,
-        snapshot: taskShape({ summary: "suppressed" }),
+        snapshot: backgroundTaskItem({ summary: "suppressed" }),
       }),
     ).toEqual([]);
 
@@ -2102,14 +2114,14 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "item.open", key: TASK_KEY, item: backgroundTaskItem() },
     );
     advance(100);
     expect(
       assemble(assembler, {
         kind: "item.progress",
         key: TASK_KEY,
-        snapshot: taskShape({ summary: "suppressed" }),
+        snapshot: backgroundTaskItem({ summary: "suppressed" }),
       }),
     ).toEqual([]);
 
@@ -2125,20 +2137,23 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "item.open", key: TASK_KEY, item: backgroundTaskItem() },
     );
     advance(100);
     assemble(assembler, {
       kind: "item.progress",
       key: TASK_KEY,
-      snapshot: taskShape({ summary: "suppressed" }),
+      snapshot: backgroundTaskItem({ summary: "suppressed" }),
     });
     advance(600);
     const events = assemble(assembler, {
       kind: "item.close",
       key: TASK_KEY,
       status: "completed",
-      item: taskShape({ status: "completed", taskStatus: "completed" }),
+      item: backgroundTaskItem({
+        status: "completed",
+        taskStatus: "completed",
+      }),
     });
     expect(events.map((event) => event.type)).toEqual([
       "item/backgroundTask/progress",
@@ -2211,7 +2226,7 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "item.open", key: TASK_KEY, item: backgroundTaskItem() },
       { kind: "turn.boundary", status: "completed" },
     );
     const itemId = assembler.getBbItemId(THREAD_ID, "task:wf-1") ?? "";
@@ -2373,12 +2388,13 @@ describe("delta assembler text-delta batching", () => {
   }
 
   function assistantDelta(text: string, parentRef?: string): ThreadDelta {
+    const key: Extract<ThreadDelta, { kind: "item.textDelta" }>["key"] = {
+      channel: "assistant",
+    };
+    if (parentRef !== undefined) key.parentRef = parentRef;
     return {
       kind: "item.textDelta",
-      key: {
-        channel: "assistant",
-        ...(parentRef === undefined ? {} : { parentRef }),
-      },
+      key,
       channel: "agentMessage",
       text,
     };

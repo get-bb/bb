@@ -3,9 +3,11 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Environment } from "@bb/domain";
+import type { EnvironmentStatusResponse } from "@bb/server-contract";
 import { StrictMode, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useUpdateEnvironment } from "@/hooks/mutations/environment-mutations";
+import * as environmentQueries from "../../../hooks/queries/environment-queries";
 import { useEnvironmentMergeBase } from "./useEnvironmentMergeBase";
 import { useGitDiffPanel } from "./useGitDiffPanel";
 import { useGitDiffPanelState } from "./useGitDiffPanelState";
@@ -17,36 +19,73 @@ interface MergeBaseBranchRequest {
 
 const mergeBaseBranchRequests = vi.hoisted((): MergeBaseBranchRequest[] => []);
 
-vi.mock("../../../hooks/queries/environment-queries", () => ({
-  useEnvironmentMergeBaseBranches: (
-    environmentId: string,
-    options?: { selectedBranch?: string },
-  ) => {
-    mergeBaseBranchRequests.push({
-      environmentId,
-      selectedBranch: options?.selectedBranch,
-    });
-    return { data: undefined, isFetching: false };
-  },
-  useEnvironmentWorkStatus: () => ({
-    data: {
-      outcome: "available",
-      workspace: {
-        mergeBase: {
-          commits: [
-            { sha: "sha-left", shortSha: "sha-lef", subject: "Left commit" },
-            {
-              sha: "sha-right",
-              shortSha: "sha-rig",
-              subject: "Right commit",
-            },
-          ],
+const workStatus: EnvironmentStatusResponse = {
+  outcome: "available",
+  workspace: {
+    mergeBase: {
+      commits: [
+        {
+          sha: "sha-left",
+          shortSha: "sha-lef",
+          subject: "Left commit",
+          authorName: "Test Author",
+          authoredAt: 1,
         },
-        workingTree: { files: [] },
-      },
+        {
+          sha: "sha-right",
+          shortSha: "sha-rig",
+          subject: "Right commit",
+          authorName: "Test Author",
+          authoredAt: 1,
+        },
+      ],
+      insertions: 0,
+      deletions: 0,
+      lineStatsComplete: true,
+      files: [],
+      mergeBaseBranch: "main",
+      baseRef: null,
+      aheadCount: 0,
+      behindCount: 0,
+      hasCommittedUnmergedChanges: false,
     },
-  }),
-}));
+    workingTree: {
+      insertions: 0,
+      deletions: 0,
+      lineStatsComplete: true,
+      files: [],
+      hasUncommittedChanges: false,
+      state: "clean",
+    },
+    checkout: { kind: "branch", branchName: "main", headSha: null },
+    branch: { currentBranch: "main", defaultBranch: "main" },
+  },
+};
+
+// SAFETY: The test replaces query results with the fields that these hooks read.
+vi.spyOn(
+  environmentQueries,
+  "useEnvironmentMergeBaseBranches",
+).mockImplementation((environmentId, options) => {
+  mergeBaseBranchRequests.push({
+    environmentId,
+    selectedBranch: options?.selectedBranch,
+  });
+  // SAFETY: The test only reads data and isFetching from this fake query result.
+  return {
+    data: undefined,
+    isFetching: false,
+  } as ReturnType<typeof environmentQueries.useEnvironmentMergeBaseBranches>;
+});
+vi.spyOn(environmentQueries, "useEnvironmentWorkStatus").mockImplementation(
+  () => {
+    // SAFETY: The test only reads data and isFetching from this fake query result.
+    return {
+      data: workStatus,
+      isFetching: false,
+    } as ReturnType<typeof environmentQueries.useEnvironmentWorkStatus>;
+  },
+);
 
 const noop = () => undefined;
 

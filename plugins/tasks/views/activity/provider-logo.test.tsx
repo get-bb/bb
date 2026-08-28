@@ -16,11 +16,12 @@ describe("CommentProviderAvatar", () => {
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
     expect(screen.getByRole("img", { name: "Codex" })).toBeTruthy();
-    const mask = container.querySelector("[data-provider-logo]");
+    const mask = container.querySelector<HTMLElement>("[data-provider-logo]");
     expect(mask?.getAttribute("data-provider-logo")).toBe(
       "/api/v1/system/providers/codex/logo",
     );
-    expect((mask as HTMLElement).style.maskImage).toContain(
+    expect(mask).not.toBeNull();
+    expect(mask?.style.maskImage).toContain(
       "/api/v1/system/providers/codex/logo",
     );
     expect(container.querySelector("svg > title")).toBeNull();

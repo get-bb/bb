@@ -1,8 +1,14 @@
 import type {
   DeltaFileChange,
-  DeltaItemShape,
   DeltaPresentation,
 } from "@bb/provider-bridge-protocol";
+import type * as BridgeProtocol from "@bb/provider-bridge-protocol";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import {
   REASONING_PRESENTATION,
   extractResultText,
@@ -29,7 +35,7 @@ import {
 import { extractAcpContentText, type AcpToolCallUpdateEvent } from "./wire.js";
 
 export interface AcpClassifiedToolCall {
-  item: DeltaItemShape;
+  item: z.infer<(typeof BridgeProtocol)["deltaItemShapeSchema"]>;
   presentation: DeltaPresentation;
 }
 
@@ -54,26 +60,38 @@ const INLINE_IMAGE_DATA_URL_PATTERN =
 
 export const ACP_TOOL_PAYLOAD_MAX_CHARS = 64 * 1024;
 
+type AcpToolPayload = JsonValue | undefined;
+
+function parseAcpToolPayload(
+  value: AcpToolCallUpdateEvent["rawOutput"],
+): AcpToolPayload {
+  const parsed = jsonValueSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function scrubInlineImageDataUrls(text: string): string {
   return text.replace(INLINE_IMAGE_DATA_URL_PATTERN, "[image]");
 }
 
-function scrubToolPayloadStrings(value: unknown): unknown {
-  if (typeof value === "string") {
-    return scrubInlineImageDataUrls(value);
+function scrubToolPayloadStrings(value: JsonValue): JsonValue {
+  const stringValue = z.string().safeParse(value);
+  if (stringValue.success) {
+    return scrubInlineImageDataUrls(stringValue.data);
   }
   if (Array.isArray(value)) {
     return value.map(scrubToolPayloadStrings);
   }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  return jsonObjectSchema.parse(
+    Object.fromEntries(
       Object.entries(value).map(([key, entry]) => [
         key,
         scrubToolPayloadStrings(entry),
       ]),
-    );
-  }
-  return value;
+    ),
+  );
 }
 
 function truncatedPayloadText(text: string): string {
@@ -84,7 +102,9 @@ function truncatedPayloadText(text: string): string {
   return `${text.slice(0, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
 }
 
-export function boundAcpToolPayload(value: unknown): unknown {
+export function boundAcpToolPayload(
+  value: AcpToolPayload,
+): AcpToolPayload | string {
   if (value === undefined) {
     return undefined;
   }
@@ -96,24 +116,24 @@ export function boundAcpToolPayload(value: unknown): unknown {
   if (serialized.length <= ACP_TOOL_PAYLOAD_MAX_CHARS) {
     return scrubbed;
   }
+  const scrubbedString = z.string().safeParse(scrubbed);
   return truncatedPayloadText(
-    typeof scrubbed === "string" ? scrubbed : extractResultText(scrubbed),
+    scrubbedString.success ? scrubbedString.data : extractResultText(scrubbed),
   );
 }
 
-function boundAcpToolArgs(value: unknown): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+function boundAcpToolArgs(value: AcpToolPayload): JsonObject | undefined {
+  const objectValue = jsonObjectSchema.safeParse(value);
+  if (!objectValue.success) {
     return undefined;
   }
-  const bounded = boundAcpToolPayload(value);
-  if (typeof bounded === "string") {
-    return { truncated: bounded };
+  const bounded = boundAcpToolPayload(objectValue.data);
+  const boundedString = z.string().safeParse(bounded);
+  if (boundedString.success) {
+    return { truncated: boundedString.data };
   }
-  return bounded !== null &&
-    typeof bounded === "object" &&
-    !Array.isArray(bounded)
-    ? (bounded as Record<string, unknown>)
-    : undefined;
+  const boundedObject = jsonObjectSchema.safeParse(bounded);
+  return boundedObject.success ? boundedObject.data : undefined;
 }
 
 function extractAcpToolCallContentText(
@@ -139,11 +159,12 @@ export function extractAcpToolCallOutputText(
   if (contentText !== undefined) {
     return contentText;
   }
-  if (event.rawOutput === undefined) {
+  const rawOutput = parseAcpToolPayload(event.rawOutput);
+  if (rawOutput === undefined) {
     return undefined;
   }
   const rawOutputText = scrubInlineImageDataUrls(
-    extractResultText(event.rawOutput),
+    extractResultText(rawOutput),
   ).trim();
   return rawOutputText.length > 0 ? rawOutputText : undefined;
 }
@@ -160,6 +181,11 @@ const commandRawOutputSchema = z
   })
   .passthrough();
 type CommandRawOutput = z.infer<typeof commandRawOutputSchema>;
+
+interface AcpCommandOutputSoFar {
+  reported: boolean;
+  output: string | undefined;
+}
 
 export interface AcpCommandResult {
   exitCode?: number;
@@ -183,16 +209,18 @@ function joinStreams(stdout: string, stderr: string): string | undefined {
 function acpCommandOutputSoFar(
   event: AcpToolCallUpdateEvent,
   raw: CommandRawOutput | undefined,
-): { reported: boolean; output: string | undefined } {
+): AcpCommandOutputSoFar {
   const content = extractAcpToolCallContentText(event);
   if (content !== undefined) {
     return { reported: true, output: content };
   }
-  if (typeof event.rawOutput === "string") {
+  const rawOutput = parseAcpToolPayload(event.rawOutput);
+  const rawOutputText = z.string().safeParse(rawOutput);
+  if (rawOutputText.success) {
     return {
       reported: true,
       output: emptyToUndefined(
-        scrubInlineImageDataUrls(event.rawOutput).trim(),
+        scrubInlineImageDataUrls(rawOutputText.data).trim(),
       ),
     };
   }
@@ -240,12 +268,14 @@ export function extractAcpCommandResult(
     const body = output ?? "";
     output = `${body}${body.length > 0 && !body.endsWith("\n") ? "\n" : ""}${notes.join(" ")}`;
   }
-  return {
-    ...(exitCode === undefined ? {} : { exitCode }),
-    ...(output === undefined
-      ? {}
-      : { output: scrubInlineImageDataUrls(output) }),
-  };
+  const result: AcpCommandResult = {};
+  if (exitCode !== undefined) {
+    result.exitCode = exitCode;
+  }
+  if (output !== undefined) {
+    result.output = scrubInlineImageDataUrls(output);
+  }
+  return result;
 }
 
 const optionalNonBlank = z
@@ -328,12 +358,15 @@ function buildAcpFileChanges(
       continue;
     }
     const oldText = entry.oldText ?? undefined;
-    changes.push({
+    const change: DeltaFileChange = {
       path: resolveAcpToolCallPath(entry.path, options),
       kind: oldText === undefined ? "add" : "update",
-      ...(oldText === undefined ? {} : { oldText }),
       newText: entry.newText,
-    });
+    };
+    if (oldText !== undefined) {
+      change.oldText = oldText;
+    }
+    changes.push(change);
   }
   if (changes.length > 0) {
     return changes;
@@ -389,13 +422,19 @@ function searchItem(
     return null;
   }
   const root = input.path ?? input.directory;
+  const item: Extract<
+    z.infer<(typeof BridgeProtocol)["deltaItemShapeSchema"]>,
+    { type: "search" }
+  > = {
+    type: "search",
+    mode,
+    query,
+  };
+  if (root !== undefined) {
+    item.path = root;
+  }
   return {
-    item: {
-      type: "search",
-      mode,
-      query,
-      ...(root === undefined ? {} : { path: root }),
-    },
+    item,
     presentation: searchPresentation({ mode, query }),
   };
 }
@@ -437,18 +476,33 @@ function reasoningItem(event: AcpToolCallUpdateEvent): AcpClassifiedToolCall {
 function genericToolFields(
   event: AcpToolCallUpdateEvent,
 ): Pick<
-  Extract<DeltaItemShape, { type: "tool" }>,
+  Extract<
+    z.infer<(typeof BridgeProtocol)["deltaItemShapeSchema"]>,
+    { type: "tool" }
+  >,
   "args" | "result" | "error"
 > {
-  const args = boundAcpToolArgs(event.rawInput);
-  const result = boundAcpToolPayload(event.rawOutput);
+  const args = boundAcpToolArgs(parseAcpToolPayload(event.rawInput));
+  const result = boundAcpToolPayload(parseAcpToolPayload(event.rawOutput));
   const error =
     event.status === "failed" ? extractAcpToolCallOutputText(event) : undefined;
-  return {
-    ...(args === undefined ? {} : { args }),
-    ...(result === undefined ? {} : { result }),
-    ...(error === undefined ? {} : { error }),
-  };
+  const fields: Pick<
+    Extract<
+      z.infer<(typeof BridgeProtocol)["deltaItemShapeSchema"]>,
+      { type: "tool" }
+    >,
+    "args" | "result" | "error"
+  > = {};
+  if (args !== undefined) {
+    fields.args = args;
+  }
+  if (result !== undefined) {
+    fields.result = result;
+  }
+  if (error !== undefined) {
+    fields.error = error;
+  }
+  return fields;
 }
 
 function genericToolItem(
@@ -524,4 +578,5 @@ export function classifyAcpToolCall(
     case undefined:
       return genericToolItem(event, title);
   }
+  return genericToolItem(event, title);
 }

@@ -9,23 +9,22 @@ import {
 } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
+import * as appCommandProvider from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import {
   PaneMaximizeButton,
   resolvePaneArrangementLabel,
 } from "./PaneMaximizeButton";
 
-vi.mock("@/components/commands/AppCommandProvider", () => ({
-  useAppCommandShortcut: () => ({
-    ariaKeyshortcuts: "Meta+Shift+E",
-    label: "⌘⇧E",
-  }),
-}));
-
 const noop = () => {};
+
+const shortcut = {
+  ariaKeyshortcuts: "Meta+Shift+E",
+  label: "⌘⇧E",
+};
 
 function BrowserOverlayProbe() {
   return (
@@ -68,6 +67,13 @@ function renderButton(
 afterEach(() => {
   cleanup();
   delete window.bbDesktop;
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.spyOn(appCommandProvider, "useAppCommandShortcut").mockReturnValue(
+    shortcut,
+  );
 });
 
 describe("PaneMaximizeButton", () => {

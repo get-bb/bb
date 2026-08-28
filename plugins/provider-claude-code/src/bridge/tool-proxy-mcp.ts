@@ -1,6 +1,9 @@
 import {
   type DynamicTool,
   experimental_buildBridgeToolCallContent,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -8,10 +11,13 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
 
 export const BRIDGE_MCP_SERVER_NAME = BB_BRIDGE_MCP_SERVER_NAME;
+
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
 type BridgeToolCallContent =
   | { type: "text"; text: string }
@@ -19,7 +25,7 @@ type BridgeToolCallContent =
 
 export type ToolCallForwarder = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: JsonObject,
 ) => Promise<{
   content: string;
   contentBlocks?: BridgeToolCallContent[];
@@ -39,7 +45,7 @@ export function buildBridgeMcpServer(
     tools: dynamicTools.map((def) => ({
       name: def.name,
       description: def.description,
-      inputSchema: normalizeInputSchema(def.inputSchema),
+      inputSchema: normalizeInputSchema(jsonValueSchema.parse(def.inputSchema)),
     })),
   }));
   instance.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -55,14 +61,13 @@ export function buildBridgeMcpServer(
         isError: true,
       };
     }
-    const result = await forwardToolCall(
-      def.name,
-      request.params.arguments ?? {},
-    );
-    return {
-      content: experimental_buildBridgeToolCallContent(result),
-      ...(result.isError ? { isError: true } : {}),
-    };
+    const args = jsonObjectSchema.parse(request.params.arguments ?? {});
+    const result = await forwardToolCall(def.name, args);
+    const content = experimental_buildBridgeToolCallContent(result);
+    if (result.isError) {
+      return { content, isError: true };
+    }
+    return { content };
   });
   return { type: "sdk", name: BRIDGE_MCP_SERVER_NAME, instance };
 }
@@ -74,15 +79,11 @@ export function getAllowedToolNames(dynamicTools: DynamicTool[]): string[] {
 }
 
 function normalizeInputSchema(
-  inputSchema: unknown,
-): Record<string, unknown> & { type: "object" } {
-  if (
-    inputSchema !== null &&
-    typeof inputSchema === "object" &&
-    !Array.isArray(inputSchema) &&
-    (inputSchema as { type?: unknown }).type === "object"
-  ) {
-    return inputSchema as Record<string, unknown> & { type: "object" };
+  inputSchema: JsonValue,
+): JsonObject & { type: "object" } {
+  const parsed = jsonObjectSchema.safeParse(inputSchema);
+  if (parsed.success && parsed.data.type === "object") {
+    return { ...parsed.data, type: "object" };
   }
   return { type: "object" };
 }

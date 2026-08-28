@@ -170,6 +170,12 @@ interface ThreadSearchSnippet {
   text: string;
 }
 
+interface NormalizedThreadSearchHighlightText {
+  originalEnds: number[];
+  originalStarts: number[];
+  text: string;
+}
+
 function buildThreadSearchSegmentId(args: {
   threadId: string;
   sourceKind: ThreadSearchSourceKind;
@@ -846,11 +852,9 @@ function normalizeThreadSearchText(value: string): string {
     .toLocaleLowerCase();
 }
 
-function normalizeThreadSearchHighlightText(text: string): {
-  originalEnds: number[];
-  originalStarts: number[];
-  text: string;
-} {
+function normalizeThreadSearchHighlightText(
+  text: string,
+): NormalizedThreadSearchHighlightText {
   let normalizedText = "";
   const originalStarts: number[] = [];
   const originalEnds: number[] = [];

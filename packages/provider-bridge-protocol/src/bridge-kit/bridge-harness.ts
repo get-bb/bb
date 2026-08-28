@@ -1,3 +1,5 @@
+import { jsonValueSchema } from "@bb/domain";
+import type { JsonValue } from "@bb/domain";
 import type { BridgeErrorData, ProviderRecoveryHint } from "../errors.js";
 
 export type BridgeJsonRpcId = string | number;
@@ -45,33 +47,46 @@ interface CreateBridgeIoArgs {
   write?: (line: string) => void;
 }
 
-export function createBridgeIo<TMessage>({
-  write = (line) => process.stdout.write(line),
-}: CreateBridgeIoArgs = {}): {
+interface BridgeResponseError {
+  code: number;
+  message: string;
+  data?: BridgeErrorData;
+}
+
+interface BridgeIo<TMessage> {
   send: (message: TMessage | BridgeJsonRpcResponse) => void;
   sendError: BridgeSendError;
-  sendResult: (id: BridgeJsonRpcId, result: unknown) => void;
-} {
+  sendResult: <TResult>(id: BridgeJsonRpcId, result: TResult) => void;
+}
+
+export function createBridgeIo<TMessage>({
+  write = (line) => process.stdout.write(line),
+}: CreateBridgeIoArgs = {}): BridgeIo<TMessage> {
   const send = (message: TMessage | BridgeJsonRpcResponse): void => {
     write(`${JSON.stringify(message)}\n`);
   };
+  const sendError: BridgeSendError = (id, code, message, data) => {
+    const error: BridgeResponseError = {
+      code,
+      message,
+    };
+    if (data !== undefined) {
+      error.data = data;
+    }
+    send({ jsonrpc: "2.0", id, error });
+  };
+  const sendResult = <TResult>(id: BridgeJsonRpcId, result: TResult): void => {
+    send({ jsonrpc: "2.0", id, result });
+  };
   return {
     send,
-    sendError: (id, code, message, data) => {
-      send({
-        jsonrpc: "2.0",
-        id,
-        error: { code, message, ...(data === undefined ? {} : { data }) },
-      });
-    },
-    sendResult: (id, result) => {
-      send({ jsonrpc: "2.0", id, result });
-    },
+    sendError,
+    sendResult,
   };
 }
 
 export function createBridgeLineHandler(args: {
-  handleParsedMessage: (message: unknown) => void;
+  handleParsedMessage: (message: JsonValue) => void;
 }): (line: string) => void {
   return (line): void => {
     const trimmed = line.trim();
@@ -79,9 +94,9 @@ export function createBridgeLineHandler(args: {
       return;
     }
 
-    let parsed: unknown;
+    let parsed: JsonValue;
     try {
-      parsed = JSON.parse(trimmed);
+      parsed = jsonValueSchema.parse(JSON.parse(trimmed));
     } catch {
       return;
     }
@@ -96,7 +111,7 @@ export function runBridgeRequest<
   request: TRequest;
   sendError: BridgeSendError;
 }): void {
-  void args.handleRequest(args.request).catch((error: unknown) => {
+  void args.handleRequest(args.request).catch((error) => {
     if (error instanceof BridgeRecoveryError) {
       args.sendError(args.request.id, error.code, error.message, {
         recovery: error.recovery,

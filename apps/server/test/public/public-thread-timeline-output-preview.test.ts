@@ -44,9 +44,7 @@ function findCommandRow(rows: readonly TimelineRow[], command: string) {
   return row;
 }
 
-function seedRunningTurnWithCommands(harness: TestAppHarness): {
-  threadId: string;
-} {
+function seedRunningTurnWithCommands(harness: TestAppHarness) {
   const { environment, thread } = seedThreadFixture(harness);
   const turn = {
     threadId: thread.id,

@@ -9,7 +9,12 @@ import slackBot from "./server";
 
 const SIGNING_SECRET = "test-signing-secret";
 
-function slackHeaders(rawBody: string): Record<string, string> {
+interface SlackPostMessageInit {
+  body: string;
+  headers: Record<string, string>;
+}
+
+function slackHeaders(rawBody: string) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature =
     "v0=" +
@@ -20,19 +25,22 @@ function slackHeaders(rawBody: string): Record<string, string> {
     "content-type": "application/json",
     "x-slack-request-timestamp": timestamp,
     "x-slack-signature": signature,
-  };
+  } satisfies Record<string, string>;
 }
 
 function mentionEvent(args: { text: string; ts: string; threadTs?: string }) {
+  const event = {
+    type: "app_mention",
+    channel: "C42",
+    text: args.text,
+    ts: args.ts,
+  };
+  if (args.threadTs === undefined) {
+    return JSON.stringify({ type: "event_callback", event });
+  }
   return JSON.stringify({
     type: "event_callback",
-    event: {
-      type: "app_mention",
-      channel: "C42",
-      text: args.text,
-      ts: args.ts,
-      ...(args.threadTs !== undefined ? { thread_ts: args.threadTs } : {}),
-    },
+    event: { ...event, thread_ts: args.threadTs },
   });
 }
 
@@ -138,7 +146,7 @@ describe("slack-bot webhook", () => {
         {
           threadId: "th_1",
           mode: "auto",
-          input: [{ type: "text", text: "and lint too" }],
+          input: [{ type: "text", text: "and lint too", mentions: [] }],
         },
       ],
     ]);
@@ -166,9 +174,11 @@ describe("slack-bot thread.idle", () => {
       body: rawBody,
     });
 
-    const postMessage = vi.fn(async () => ({
-      json: async () => ({ ok: true }),
-    }));
+    const postMessage = vi.fn(
+      async (_url: string, _init: SlackPostMessageInit) => ({
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    );
     vi.stubGlobal("fetch", postMessage);
 
     await harness.emitThreadEvent("thread.idle", {
@@ -177,10 +187,7 @@ describe("slack-bot thread.idle", () => {
     });
 
     expect(postMessage).toHaveBeenCalledTimes(1);
-    const [url, init] = postMessage.mock.calls[0] as unknown as [
-      string,
-      { headers: Record<string, string>; body: string },
-    ];
+    const [url, init] = postMessage.mock.calls[0];
     expect(url).toBe("https://slack.com/api/chat.postMessage");
     expect(init.headers.authorization).toBe("Bearer xoxb-test");
     expect(JSON.parse(init.body)).toEqual({

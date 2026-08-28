@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const PLUGIN_ROOT = realpathSync(resolve(import.meta.dirname, ".."));
 const FRONTEND_ENTRY = join(PLUGIN_ROOT, "app.tsx");
@@ -53,9 +54,14 @@ function importEdges(source: string): ImportEdge[] {
   return edges;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+const packageExportSchema = z.union([
+  z.string().transform((source) => ({ source })),
+  z.object({ source: z.string() }).passthrough(),
+]);
+
+const packageManifestSchema = z.object({
+  exports: z.record(z.string(), packageExportSchema),
+});
 
 function workspaceSourceFile(packageName: string, subpath: string): string {
   const link = join(PLUGIN_ROOT, "node_modules", packageName);
@@ -65,20 +71,16 @@ function workspaceSourceFile(packageName: string, subpath: string): string {
     );
   }
   const packageDir = realpathSync(link);
-  const manifest: unknown = JSON.parse(
-    readFileSync(join(packageDir, "package.json"), "utf8"),
+  const manifest = packageManifestSchema.parse(
+    JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")),
   );
-  const entry =
-    isRecord(manifest) && isRecord(manifest.exports)
-      ? manifest.exports[`.${subpath}`]
-      : undefined;
-  const source = isRecord(entry) ? entry.source : undefined;
-  if (typeof source !== "string") {
+  const entry = manifest.exports[`.${subpath}`];
+  if (entry === undefined) {
     throw new Error(
       `${packageName}${subpath} has no "source" export in its package.json`,
     );
   }
-  return resolve(packageDir, source);
+  return resolve(packageDir, entry.source);
 }
 
 function resolveLocalModule(

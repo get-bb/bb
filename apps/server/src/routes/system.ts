@@ -312,13 +312,12 @@ export function registerSystemRoutes(
     if (!(file instanceof File)) {
       throw new ApiError(400, "invalid_request", "Audio file is required");
     }
+    const promptValue = formData.get("prompt");
     return context.json({
       text: await transcribeVoiceInput(deps, {
         file,
         prompt:
-          typeof formData.get("prompt") === "string"
-            ? String(formData.get("prompt"))
-            : undefined,
+          promptValue instanceof File ? undefined : (promptValue ?? undefined),
       }),
     });
   });

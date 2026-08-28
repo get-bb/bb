@@ -26,7 +26,7 @@ interface FakeSubscription {
   callback: (
     error: ParcelWatcherError,
     events: ParcelWatcherEventBatch,
-  ) => unknown;
+  ) => void;
   unsubscribed: boolean;
 }
 
@@ -39,7 +39,7 @@ class FakeParcel implements ParcelWatcherBackend {
     callback: (
       error: ParcelWatcherError,
       events: ParcelWatcherEventBatch,
-    ) => unknown,
+    ) => void,
   ): Promise<{ unsubscribe(): Promise<void> }> {
     if (this.failNextSubscribe) {
       this.failNextSubscribe = false;

@@ -23,7 +23,6 @@ export function runPluginMessageAction({
   const context: PluginMessageActionContext = {
     threadId,
     message,
-    ...(selectedText !== undefined ? { selectedText } : {}),
     openPanel: (options) => {
       if (openThreadPanel === undefined) {
         console.warn(
@@ -34,10 +33,13 @@ export function runPluginMessageAction({
       return openThreadPanel({ ...options, pluginId: slot.pluginId });
     },
   };
-  const warn = (error: unknown) => {
+  if (selectedText !== undefined) {
+    context.selectedText = selectedText;
+  }
+  const warn = (cause: unknown) => {
     console.warn(
       `[plugin:${slot.pluginId}] messageAction "${slot.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
+        cause instanceof Error ? cause.message : String(cause)
       }`,
     );
   };

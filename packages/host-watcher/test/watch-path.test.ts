@@ -68,12 +68,10 @@ async function waitFor<T>(
 
 function createDeferredPromise<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
+  const promise = new Promise<T>((innerResolve) => {
     resolve = innerResolve;
-    reject = innerReject;
   });
-  return { promise, reject, resolve };
+  return { promise, resolve };
 }
 
 async function importWatchPathWithMockedWatcher(

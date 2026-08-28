@@ -99,42 +99,43 @@ function seedTurn(
   const requestId = encodeClientTurnRequestIdNumber({
     value: args.requestSequence,
   });
+  const requestData = {
+    direction: "outbound" as const,
+    requestId,
+    input: args.inputGroups?.flatMap((group, index) =>
+      index === 0
+        ? group
+        : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
+    ) ?? [
+      ...(args.leadingAgentOnlyInput ?? []),
+      { type: "text" as const, text: args.text, mentions: [] },
+    ],
+    target:
+      args.requestSequence === 2
+        ? { kind: "thread-start" as const }
+        : { kind: "new-turn" as const },
+    execution: {
+      model: "gpt-5",
+      serviceTier: "default" as const,
+      reasoningLevel: "medium" as const,
+      permissionMode: "full" as const,
+      source: "client/turn/requested" as const,
+    },
+    initiator: args.initiator ?? "user",
+    senderThreadId: args.senderThreadId ?? null,
+    request: { method: "turn/start", params: {} },
+    source: "tell" as const,
+  };
+  if (args.inputGroups !== undefined) {
+    Object.assign(requestData, { inputGroups: args.inputGroups });
+  }
   seedStoredEvent(harness.deps, {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
     sequence: args.requestSequence,
     type: "client/turn/requested",
     scope: threadScope(),
-    data: {
-      direction: "outbound",
-      requestId,
-      input: args.inputGroups?.flatMap((group, index) =>
-        index === 0
-          ? group
-          : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
-      ) ?? [
-        ...(args.leadingAgentOnlyInput ?? []),
-        { type: "text", text: args.text, mentions: [] },
-      ],
-      ...(args.inputGroups !== undefined
-        ? { inputGroups: args.inputGroups }
-        : {}),
-      target:
-        args.requestSequence === 2
-          ? { kind: "thread-start" }
-          : { kind: "new-turn" },
-      execution: {
-        model: "gpt-5",
-        serviceTier: "default",
-        reasoningLevel: "medium" as const,
-        permissionMode: "full",
-        source: "client/turn/requested",
-      },
-      initiator: args.initiator ?? "user",
-      senderThreadId: args.senderThreadId ?? null,
-      request: { method: "turn/start", params: {} },
-      source: "tell",
-    },
+    data: requestData,
   });
   seedStoredEvent(harness.deps, {
     threadId: args.threadId,
@@ -172,19 +173,22 @@ function seedTurn(
     },
   });
   if (args.completionStatus !== null) {
+    const completionData = {
+      providerThreadId: args.providerThreadId,
+      status: args.completionStatus ?? "completed",
+    };
+    if (args.providerCheckpointId !== undefined) {
+      Object.assign(completionData, {
+        providerCheckpointId: args.providerCheckpointId,
+      });
+    }
     seedStoredEvent(harness.deps, {
       threadId: args.threadId,
       providerThreadId: args.providerThreadId,
       sequence: args.requestSequence + 4,
       type: "turn/completed",
       scope: turnScope(args.turnId),
-      data: {
-        providerThreadId: args.providerThreadId,
-        status: args.completionStatus ?? "completed",
-        ...(args.providerCheckpointId !== undefined
-          ? { providerCheckpointId: args.providerCheckpointId }
-          : {}),
-      },
+      data: completionData,
     });
   }
 }
@@ -239,25 +243,29 @@ function seedEditableThread(
       data: {},
     });
   }
-  seedTurn(harness, {
+  const firstTurnArgs = {
     providerThreadId: args.firstProviderThreadId ?? "provider-original",
     requestSequence: 2,
     text: "First message",
     threadId: thread.id,
     turnId: args.firstTurnId ?? "turn-first",
-    ...(args.firstTurnLeadingAgentOnlyInput === undefined
-      ? {}
-      : { leadingAgentOnlyInput: args.firstTurnLeadingAgentOnlyInput }),
-    ...(args.firstCompletionStatus !== undefined
-      ? { completionStatus: args.firstCompletionStatus }
-      : {}),
-    ...(args.firstProviderCheckpoint !== null
-      ? {
-          providerCheckpointId:
-            args.firstProviderCheckpoint ?? "checkpoint-first",
-        }
-      : {}),
-  });
+  };
+  if (args.firstTurnLeadingAgentOnlyInput !== undefined) {
+    Object.assign(firstTurnArgs, {
+      leadingAgentOnlyInput: args.firstTurnLeadingAgentOnlyInput,
+    });
+  }
+  if (args.firstCompletionStatus !== undefined) {
+    Object.assign(firstTurnArgs, {
+      completionStatus: args.firstCompletionStatus,
+    });
+  }
+  if (args.firstProviderCheckpoint !== null) {
+    Object.assign(firstTurnArgs, {
+      providerCheckpointId: args.firstProviderCheckpoint ?? "checkpoint-first",
+    });
+  }
+  seedTurn(harness, firstTurnArgs);
   createPromptHistoryEntry(harness.db, {
     input: [{ type: "text", text: "First message", mentions: [] }],
     projectId: project.id,

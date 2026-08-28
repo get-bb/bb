@@ -116,11 +116,14 @@ async function resolveCatalogExecutionDefaults(
     return args.executionDefaults;
   }
 
-  const catalog = await resolveSystemProviderModels(deps, {
-    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+  const catalogArgs: Parameters<typeof resolveSystemProviderModels>[1] = {
     hostId: args.hostId,
     providerId: args.providerId,
-  });
+  };
+  if (args.cwd !== undefined) {
+    catalogArgs.cwd = args.cwd;
+  }
+  const catalog = await resolveSystemProviderModels(deps, catalogArgs);
   if (catalog.modelLoadError !== null) {
     throw new ApiError(
       503,
@@ -450,25 +453,27 @@ async function createProvisioningThread(
         sourceThreadId: args.fork.sourceThreadId,
       });
     }
-    execution = await buildExecutionOptions(deps, args.request, {
-      ...(args.executionDefaults
-        ? { projectDefaults: args.executionDefaults }
-        : {}),
+    const executionArgs: Parameters<typeof buildExecutionOptions>[2] = {
       hostId: intentHostId(deps, args.environmentIntent),
       threadId: thread.id,
-    });
-    context = requestThreadProvision(deps, {
+    };
+    if (args.executionDefaults) {
+      executionArgs.projectDefaults = args.executionDefaults;
+    }
+    execution = await buildExecutionOptions(deps, args.request, executionArgs);
+    const provisionArgs: Parameters<typeof requestThreadProvision>[1] = {
       thread,
       environmentIntent: args.environmentIntent,
       execution,
       fork: args.fork?.descriptor ?? null,
       input: args.request.input,
-      ...(args.providerInput !== undefined
-        ? { providerInput: args.providerInput }
-        : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
-    });
+    };
+    if (args.providerInput !== undefined) {
+      provisionArgs.providerInput = args.providerInput;
+    }
+    context = requestThreadProvision(deps, provisionArgs);
   } catch (error) {
     emitPluginThreadDeleted({
       ...thread,
@@ -649,10 +654,6 @@ export async function createThreadFromRequest(
   } = requestInput;
   const request: ThreadCreateServiceRequest = {
     ...requestRest,
-    ...(hierarchyParentThreadId
-      ? { parentThreadId: hierarchyParentThreadId }
-      : {}),
-    ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
     visibility: resolveCreateThreadVisibility({
       parentThread,
@@ -669,6 +670,12 @@ export async function createThreadFromRequest(
     providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
   };
+  if (hierarchyParentThreadId) {
+    request.parentThreadId = hierarchyParentThreadId;
+  }
+  if (sourceThread) {
+    request.sourceThreadId = sourceThread.id;
+  }
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
     environment: request.environment,
@@ -680,15 +687,18 @@ export async function createThreadFromRequest(
   ).dataDir;
   const modelCatalogCwd =
     modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
+  const catalogDefaultsArgs: ResolveCatalogExecutionDefaultsArgs = {
+    executionDefaults,
+    hostId: childHostId,
+    providerId,
+    requestedModel,
+  };
+  if (modelCatalogCwd !== undefined) {
+    catalogDefaultsArgs.cwd = modelCatalogCwd;
+  }
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
     deps,
-    {
-      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults,
-      hostId: childHostId,
-      providerId,
-      requestedModel,
-    },
+    catalogDefaultsArgs,
   );
 
   let environmentId: string | null = null;
@@ -748,12 +758,22 @@ export async function createThreadFromRequest(
             request,
           },
         );
-        environmentIntent = existingIntent?.intent ?? {
-          type: "direct-unmanaged",
-          hostId,
-          path: resolvedEnvironment.unmanagedPath,
-          ...(workspace.branch ? { branch: workspace.branch } : {}),
-        };
+        if (existingIntent) {
+          environmentIntent = existingIntent.intent;
+        } else {
+          const directUnmanagedIntent: Extract<
+            ThreadProvisionEnvironmentIntent,
+            { type: "direct-unmanaged" }
+          > = {
+            type: "direct-unmanaged",
+            hostId,
+            path: resolvedEnvironment.unmanagedPath,
+          };
+          if (workspace.branch) {
+            directUnmanagedIntent.branch = workspace.branch;
+          }
+          environmentIntent = directUnmanagedIntent;
+        }
         if (existingIntent) {
           environmentId = existingIntent.environmentId;
         }
@@ -805,16 +825,17 @@ export async function createThreadFromRequest(
     );
   }
 
-  const thread = await createProvisioningThread(deps, {
+  const provisioningArgs: Parameters<typeof createProvisioningThread>[1] = {
     environmentId,
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
     fork,
-    ...(options.providerInput !== undefined
-      ? { providerInput: options.providerInput }
-      : {}),
     request,
-  });
+  };
+  if (options.providerInput !== undefined) {
+    provisioningArgs.providerInput = options.providerInput;
+  }
+  const thread = await createProvisioningThread(deps, provisioningArgs);
   deps.telemetry.capture({
     name: "thread_created",
     properties: {

@@ -1,5 +1,7 @@
-import { extractErrorMessage, toRecord } from "@bb/core-ui";
+import { extractErrorMessage } from "@bb/core-ui";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type { SystemVoiceTranscriptionResponse } from "@bb/server-contract";
+import { z } from "zod";
 import { apiClient, toRelativeUrl } from "./api-server";
 import { appSurfaceRequestInit } from "./app-surface";
 import {
@@ -17,6 +19,7 @@ const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
 const ERROR_EXTRACT_OPTS = {
   legacyKeys: ["detail"] as const,
 };
+const ERROR_CODE_SCHEMA = z.object({ code: z.string().trim().min(1) });
 
 function normalizeErrorText(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
@@ -29,13 +32,13 @@ export function requestOptions(signal?: AbortSignal) {
 export class HttpError extends Error {
   readonly status: number;
   readonly code?: string;
-  readonly body?: unknown;
+  readonly body?: JsonValue;
 
   constructor(args: {
     status: number;
     message: string;
     code?: string;
-    body?: unknown;
+    body?: JsonValue;
   }) {
     super(`HTTP ${args.status}: ${args.message}`);
     this.name = "HttpError";
@@ -61,7 +64,7 @@ function deriveHttpErrorMessage(
     normalized.startsWith("[");
   if (shouldParseAsJson) {
     try {
-      const parsed = JSON.parse(normalized) as unknown;
+      const parsed = jsonValueSchema.parse(JSON.parse(normalized));
       const message = extractErrorMessage(parsed, ERROR_EXTRACT_OPTS);
       if (message) {
         return message;
@@ -83,7 +86,7 @@ function deriveHttpErrorMessage(
 function parseHttpErrorBody(
   rawBody: string,
   contentType: string | null,
-): unknown | undefined {
+): JsonValue | undefined {
   const normalized = normalizeErrorText(rawBody);
   if (normalized.length === 0) {
     return undefined;
@@ -96,20 +99,16 @@ function parseHttpErrorBody(
     return undefined;
   }
   try {
-    return JSON.parse(normalized) as unknown;
+    const parsed = jsonValueSchema.safeParse(JSON.parse(normalized));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
 }
 
-function extractErrorCode(value: unknown): string | undefined {
-  const record = toRecord(value);
-  if (!record) {
-    return undefined;
-  }
-  return typeof record.code === "string" && record.code.trim().length > 0
-    ? record.code
-    : undefined;
+function extractErrorCode(value: JsonValue | undefined): string | undefined {
+  const result = ERROR_CODE_SCHEMA.safeParse(value);
+  return result.success ? result.data.code : undefined;
 }
 
 async function throwHttpError(res: Response): Promise<never> {
@@ -145,6 +144,7 @@ export async function request<T>(
 ): Promise<T> {
   const res = await requestResponse(responsePromise);
   const text = await res.text();
+  /* SAFETY: Every caller supplies the response type for a typed server endpoint. */
   return JSON.parse(text) as T;
 }
 
@@ -198,6 +198,7 @@ async function postMultipart<T>(
     await throwHttpError(res);
   }
   const text = await res.text();
+  /* SAFETY: The caller supplies the response type for the typed transcription endpoint. */
   return JSON.parse(text) as T;
 }
 

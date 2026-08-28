@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import { publishCommentsChanged, type TasksApiStore } from "../api";
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
 import { createSystemComment, publishThreadsChanged } from "../delegate";
@@ -46,12 +47,10 @@ function terminalCommentBody(
   return `Thread "${thread.title}" ${liveStatus} — final message posted · ${thread.threadId}`;
 }
 
-function sdkErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  return typeof error.code === "string" ? error.code : undefined;
-}
+const sdkErrorSchema = z.object({
+  code: z.string().optional(),
+  message: z.string().optional(),
+});
 
 function transitionThread(
   bb: BbPluginApi,
@@ -104,14 +103,19 @@ async function reconcileTrackedThread(
     });
     transitionThread(bb, store, trackedThread, liveStatusFromThread(thread));
   } catch (error) {
-    if (sdkErrorCode(error) === "thread_not_found") {
+    const parsedError = sdkErrorSchema.safeParse(error);
+    if (parsedError.success && parsedError.data.code === "thread_not_found") {
       transitionThread(bb, store, trackedThread, "completed");
       return;
     }
+    const message =
+      parsedError.success && parsedError.data.message !== undefined
+        ? parsedError.data.message
+        : error instanceof Error
+          ? error.message
+          : String(error);
     bb.log.warn(
-      `Could not reconcile task thread ${trackedThread.threadId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Could not reconcile task thread ${trackedThread.threadId}: ${message}`,
     );
   }
 }

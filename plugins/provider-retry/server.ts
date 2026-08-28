@@ -30,10 +30,8 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
   });
 }
 
-function logFailure(bb: BbPluginApi, operation: string, error: unknown): void {
-  bb.log.warn(
-    `${operation}: ${error instanceof Error ? error.message : String(error)}`,
-  );
+function logFailure(bb: BbPluginApi, operation: string, error: string): void {
+  bb.log.warn(`${operation}: ${error}`);
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -77,7 +75,12 @@ export default async function plugin(bb: BbPluginApi) {
         ? service.reconcileTracked(threadId)
         : service.reconcile(threadId));
     } catch (error) {
-      logFailure(bb, `Could not inspect provider retry for ${threadId}`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      logFailure(
+        bb,
+        `Could not inspect provider retry for ${threadId}`,
+        message,
+      );
     }
   }
 

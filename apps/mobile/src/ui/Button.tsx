@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { useState, type ReactNode } from "react";
 import { Pressable, View, type PressableProps } from "react-native";
+import { z } from "zod";
 import { haptic, hapticKindForButton, type ButtonHaptic } from "@/lib/haptics";
 import { withAlpha } from "@/theme/colors";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -79,14 +80,14 @@ export type ButtonSize = NonNullable<
 
 type IosAppearance = "filled" | "filledDestructive" | "tinted" | "plain";
 
-const IOS_APPEARANCE: Record<ButtonVariant, IosAppearance> = {
+const IOS_APPEARANCE = {
   default: "filled",
   destructive: "filledDestructive",
   outline: "tinted",
   secondary: "tinted",
   ghost: "plain",
   link: "plain",
-};
+} satisfies Record<ButtonVariant, IosAppearance>;
 
 const iosButtonVariants = cva(
   "flex-row items-center justify-center gap-2 rounded-full",
@@ -150,35 +151,35 @@ export interface ButtonProps
   className?: string;
 }
 
-const ANDROID_TEXT_TOKEN: Record<ButtonVariant, keyof NativeThemeTokens> = {
+const ANDROID_TEXT_TOKEN = {
   default: "background",
   destructive: "destructiveForeground",
   outline: "foreground",
   secondary: "secondaryForeground",
   ghost: "foreground",
   link: "primary",
-};
+} satisfies Record<ButtonVariant, keyof NativeThemeTokens>;
 
-const IOS_TEXT_TOKEN: Record<IosAppearance, keyof NativeThemeTokens> = {
+const IOS_TEXT_TOKEN = {
   filled: "primaryForeground",
   filledDestructive: "destructiveForeground",
   tinted: "primary",
   plain: "primary",
-};
+} satisfies Record<IosAppearance, keyof NativeThemeTokens>;
 
-const ANDROID_ICON_SIZE: Record<ButtonSize, number> = {
+const ANDROID_ICON_SIZE = {
   default: 18,
   sm: 16,
   lg: 20,
   icon: 20,
-};
+} satisfies Record<ButtonSize, number>;
 
-const IOS_ICON_SIZE: Record<ButtonSize, number> = {
+const IOS_ICON_SIZE = {
   default: 20,
   sm: 16,
   lg: 20,
   icon: 22,
-};
+} satisfies Record<ButtonSize, number>;
 
 const TINT_ALPHA = 0.15;
 const TINT_ALPHA_PRESSED = 0.28;
@@ -206,6 +207,7 @@ export function Button({
   const size = sizeProp ?? "default";
   const { tokens } = useTheme();
   const [pressing, setPressing] = useState(false);
+  const textChild = z.string().safeParse(children);
   const isDisabled = disabled || loading;
   const appearance = IOS_APPEARANCE[variant];
   const iosTintable = appearance === "tinted" || appearance === "plain";
@@ -271,7 +273,7 @@ export function Button({
       {...props}
     >
       {iconPosition === "left" ? glyph : null}
-      {typeof children === "string" ? (
+      {textChild.success ? (
         <Text
           className={cn(
             IS_IOS
@@ -285,7 +287,7 @@ export function Button({
           }
           numberOfLines={1}
         >
-          {children}
+          {textChild.data}
         </Text>
       ) : children != null ? (
         <View className="flex-row items-center gap-2">{children}</View>

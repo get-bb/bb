@@ -586,6 +586,7 @@ describe("0003 backfill (staged application on real prior data)", () => {
 
       applyMigration(staged, subdomainMigration);
 
+      // SAFETY: The SELECT returns the server row with the non-null subdomain column.
       const row = staged
         .prepare("SELECT subdomain FROM server WHERE id = ?")
         .get("s1") as {
@@ -593,6 +594,7 @@ describe("0003 backfill (staged application on real prior data)", () => {
       };
       expect(row.subdomain).toBe("sawyer");
 
+      // SAFETY: The SELECT returns one server_id string for every connect code.
       const codes = staged
         .prepare("SELECT server_id FROM connect_code")
         .all() as {
@@ -618,6 +620,7 @@ describe("0003 backfill (staged application on real prior data)", () => {
     fresh.pragma("foreign_keys = ON");
     try {
       for (const f of migrationFiles()) applyMigration(fresh, f);
+      // SAFETY: SQLite PRAGMA table_info returns rows with name and notnull fields.
       const cols = fresh.prepare("PRAGMA table_info(server)").all() as {
         name: string;
         notnull: number;
@@ -625,6 +628,7 @@ describe("0003 backfill (staged application on real prior data)", () => {
       const subdomainCol = cols.find((c) => c.name === "subdomain");
       expect(subdomainCol).toBeDefined();
       expect(subdomainCol?.notnull).toBe(1);
+      // SAFETY: SQLite PRAGMA table_info returns rows with name and notnull fields.
       const machineCols = fresh.prepare("PRAGMA table_info(machine)").all() as {
         name: string;
         notnull: number;

@@ -2046,7 +2046,7 @@ export interface PluginSdkApp {
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract>;
-  useRealtime(channel: string, handler: (payload: unknown) => void): void;
+  useRealtime(channel: string, handler: (payload: JsonValue) => void): void;
   /**
    * Observe the same shared connection that delivers `useRealtime` signals.
    * Use a subsequent transition to `connected` to reconcile server state that

@@ -23,30 +23,40 @@ import {
 
 const permissionModes = ["accept-edits", "auto", "full"] as const;
 
-const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
+const STORY_COMPOSER_ACTIONS_BY_PROVIDER = new Map<
   string,
   readonly ProviderComposerAction[]
-> = {
-  codex: [
-    { kind: "skills", trigger: "/" },
-    {
-      kind: "plan",
-      command: { trigger: "/", name: "plan", trailingText: " " },
-    },
-    {
-      kind: "goal",
-      command: { trigger: "/", name: "goal", trailingText: " " },
-    },
+>([
+  [
+    "codex",
+    [
+      { kind: "skills", trigger: "/" },
+      {
+        kind: "plan",
+        command: { trigger: "/", name: "plan", trailingText: " " },
+      },
+      {
+        kind: "goal",
+        command: { trigger: "/", name: "goal", trailingText: " " },
+      },
+    ],
   ],
-  "claude-code": [
-    { kind: "skills", trigger: "/" },
-    {
-      kind: "plan",
-      command: { trigger: "/", name: "plan", trailingText: " " },
-    },
+  [
+    "claude-code",
+    [
+      { kind: "skills", trigger: "/" },
+      {
+        kind: "plan",
+        command: { trigger: "/", name: "plan", trailingText: " " },
+      },
+    ],
   ],
-  pi: [],
-};
+  ["pi", []],
+]);
+
+const STORY_SERVICE_TIER_SUPPORT_BY_PROVIDER = new Map(
+  Object.entries(STORY_SERVICE_TIER_SUPPORT),
+);
 
 const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
   (provider) => ({
@@ -57,12 +67,13 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     available: true,
     maintenance: { health: true, usage: true, installation: true },
     composerActions: [
-      ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
+      ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER.get(provider.value) ?? []),
     ],
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,
-      supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
+      supportsServiceTier:
+        STORY_SERVICE_TIER_SUPPORT_BY_PROVIDER.get(provider.value) ?? false,
       supportsNativeUserQuestion: true,
       supportsFork: true,
       supportsSessionRewind: true,
@@ -97,18 +108,21 @@ function makeAvailableModels({
   const supportedReasoningEfforts =
     makeSupportedReasoningEfforts(reasoningOptions);
 
-  return models.map((model, index) => ({
-    id: model.value,
-    model: model.value,
-    displayName: model.label,
-    ...(model.routeProviderId
-      ? { routeProviderId: model.routeProviderId }
-      : {}),
-    description: "",
-    supportedReasoningEfforts,
-    defaultReasoningEffort,
-    isDefault: markFirstDefault && index === 0,
-  }));
+  return models.map((model, index) => {
+    const availableModel: AvailableModel = {
+      id: model.value,
+      model: model.value,
+      displayName: model.label,
+      description: "",
+      supportedReasoningEfforts,
+      defaultReasoningEffort,
+      isDefault: markFirstDefault && index === 0,
+    };
+    if (model.routeProviderId !== undefined) {
+      availableModel.routeProviderId = model.routeProviderId;
+    }
+    return availableModel;
+  });
 }
 
 function makeExecutionOptions(
@@ -135,10 +149,7 @@ function createStoryQueryClient(): QueryClient {
     },
   });
 
-  const executionOptionsByProviderId: Record<
-    string,
-    SystemExecutionOptionsResponse
-  > = {
+  const executionOptionsByProviderId = {
     codex: makeExecutionOptions(
       makeAvailableModels({
         models: STORY_CODEX_MODELS,
@@ -162,7 +173,7 @@ function createStoryQueryClient(): QueryClient {
         reasoningOptions: STORY_CODEX_REASONING,
       }),
     ),
-  };
+  } satisfies Record<string, SystemExecutionOptionsResponse>;
 
   for (const [providerId, executionOptions] of Object.entries(
     executionOptionsByProviderId,
@@ -185,7 +196,7 @@ export function ModelPickerStoryQueryProvider({
 }: {
   children: ReactNode;
 }) {
-  const queryClient = useMemo(createStoryQueryClient, []);
+  const queryClient = useMemo(() => createStoryQueryClient(), []);
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

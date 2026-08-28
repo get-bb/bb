@@ -66,6 +66,7 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
     options: { ...sessionOptions, envVars: { PATH: "/usr/bin:/bin" } },
   });
   const started = await harness.waitForResponse(1);
+  // SAFETY: The thread/start fixture returns the providerThreadId field.
   const providerThreadId = (started.result as { providerThreadId: string })
     .providerThreadId;
 
@@ -92,6 +93,7 @@ it("keeps an auto-reviewed session when only escalation intent changes", async (
     options: autoAskSessionOptions,
   });
   const started = await harness.waitForResponse(1);
+  // SAFETY: The thread/start fixture returns the providerThreadId field.
   const providerThreadId = (started.result as { providerThreadId: string })
     .providerThreadId;
 

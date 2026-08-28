@@ -70,6 +70,11 @@ interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
   title?: string | null;
 }
 
+interface ThreadMetadataPatch {
+  sectionId?: string | null;
+  title?: string | null;
+}
+
 interface ReorderPinnedThreadTransactionRequest extends ReorderPinnedThreadRequest {
   id: string;
 }
@@ -396,10 +401,13 @@ export function beginThreadMetadataTransaction({
   threadId,
   title,
 }: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
-  const patch = {
-    ...(title !== undefined ? { title } : {}),
-    ...(sectionId !== undefined ? { sectionId } : {}),
-  };
+  const patch: ThreadMetadataPatch = {};
+  if (title !== undefined) {
+    patch.title = title;
+  }
+  if (sectionId !== undefined) {
+    patch.sectionId = sectionId;
+  }
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>
       applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>

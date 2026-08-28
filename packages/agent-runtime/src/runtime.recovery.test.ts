@@ -184,6 +184,7 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     const recoveryError = caught as AgentRuntimeRecoveryError;
     expect(recoveryError.code).toBe("auth_required");
     expect(recoveryError.message).toBe("Please run `fake login` first");
@@ -232,7 +233,9 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("auth_required");
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).message).toBe(
       "session expired, sign in again",
     );
@@ -373,6 +376,7 @@ describe("runtime recovery hints", () => {
     }
     expect(caught).toBeInstanceOf(Error);
     expect(caught).not.toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertions prove that caught has the standard Error contract.
     expect((caught as Error).message).toBe(
       "the agent wedged itself; restart me",
     );
@@ -448,7 +452,9 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("auth_required");
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).message).toBe(
       "session expired, sign in again",
     );
@@ -626,6 +632,7 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("auth_required");
     expect(hints).toContainEqual(
       expect.objectContaining({
@@ -652,7 +659,9 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("auth_required");
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).message).toBe(
       "Please sign in to the agent first",
     );
@@ -719,6 +728,7 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("rate_limited");
     expect(countRequests(record, "turn/start")).toBe(3);
     expect(runtime.getActiveTurnId("t-rate-exhausted")).toBeNull();
@@ -756,6 +766,7 @@ describe("runtime recovery hints", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(AgentRuntimeRecoveryError);
+    // SAFETY: The preceding assertion proves that caught has the recovery error contract.
     expect((caught as AgentRuntimeRecoveryError).code).toBe("rate_limited");
     expect(countRequests(record, "turn/start")).toBe(1);
     expect(hints).toEqual([

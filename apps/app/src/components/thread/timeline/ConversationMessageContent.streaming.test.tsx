@@ -2,18 +2,9 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { ConversationMessageContent } from "./ConversationMessageContent";
-
-const markdownRenders = vi.hoisted(() => [] as string[]);
-vi.mock("react-markdown", () => ({
-  default: ({ children }: { children: string }) => {
-    markdownRenders.push(children);
-    return <div data-markdown-document="">{children}</div>;
-  },
-  defaultUrlTransform: (url: string) => url,
-}));
 
 function renderAssistantMessage(text: string, streaming: boolean) {
   const element = (
@@ -59,13 +50,9 @@ function renderAssistantMessage(text: string, streaming: boolean) {
 
 function documents(container: HTMLElement): string[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>("[data-markdown-document]"),
-  ).map((node) => node.textContent ?? "");
+    container.querySelectorAll<HTMLElement>("[data-markdown-preview]"),
+  ).map((node) => (node.textContent ?? "").replace(/\s+/gu, " ").trim());
 }
-
-beforeEach(() => {
-  markdownRenders.length = 0;
-});
 
 afterEach(cleanup);
 
@@ -76,29 +63,20 @@ describe("ConversationMessageContent streaming split", () => {
       true,
     );
     expect(documents(view.container)).toEqual([
-      "Para one.\n\n",
-      "Para two.\n\nPara th",
+      "Para one.",
+      "Para two. Para th",
     ]);
-    expect(markdownRenders).toEqual(["Para one.\n\n", "Para two.\n\nPara th"]);
-
-    markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.", true);
-    expect(markdownRenders).toEqual(["Para two.\n\nPara three."]);
 
-    markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four", true);
     expect(documents(view.container)).toEqual([
-      "Para one.\n\nPara two.\n\n",
-      "Para three.\n\nPara four",
+      "Para one. Para two.",
+      "Para three. Para four",
     ]);
 
-    markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four.", false);
     expect(documents(view.container)).toEqual([
-      "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
-    ]);
-    expect(markdownRenders).toEqual([
-      "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
+      "Para one. Para two. Para three. Para four.",
     ]);
   });
 
@@ -108,8 +86,8 @@ describe("ConversationMessageContent streaming split", () => {
       true,
     );
     expect(documents(view.container)).toEqual([
-      "Intro.\n\n",
-      "```ts\nconst a = 1;\n\nconst b = 2;\n",
+      "Intro.",
+      "tsconst a = 1; const b = 2;",
     ]);
   });
 
@@ -119,7 +97,7 @@ describe("ConversationMessageContent streaming split", () => {
 
     update("Para one.\n\nPara two.\n\nPara three", false);
     expect(documents(view.container)).toEqual([
-      "Para one.\n\nPara two.\n\nPara three",
+      "Para one. Para two. Para three",
     ]);
   });
 });

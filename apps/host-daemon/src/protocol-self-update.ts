@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import { z } from "zod";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
@@ -12,16 +14,18 @@ export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
 export const SELF_UPDATE_MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
 
-interface UpdateVersion {
-  protocolVersion: number;
-  version: string;
-}
+const updateVersionSchema = z.object({
+  protocolVersion: z.number().int().positive().safe(),
+  version: z.string(),
+});
+type UpdateVersion = z.infer<typeof updateVersionSchema>;
 
-interface UpdateAttempt {
-  attemptedAt: number;
-  attemptCount: number;
-  protocolVersion: number;
-}
+const updateAttemptSchema = z.object({
+  attemptedAt: z.number(),
+  attemptCount: z.number().int().positive().safe(),
+  protocolVersion: z.number().int().positive().safe(),
+});
+type UpdateAttempt = z.infer<typeof updateAttemptSchema>;
 
 type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
 
@@ -54,22 +58,12 @@ interface CreateProtocolSelfUpdaterOptions {
   now?: () => number;
 }
 
-function parseUpdateVersion(value: unknown): UpdateVersion {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    !("version" in value) ||
-    typeof value.version !== "string" ||
-    !("protocolVersion" in value) ||
-    !Number.isSafeInteger(value.protocolVersion) ||
-    Number(value.protocolVersion) <= 0
-  ) {
+function parseUpdateVersion(value: JsonValue): UpdateVersion {
+  const parsed = updateVersionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("Server returned an invalid install version response");
   }
-  return {
-    protocolVersion: Number(value.protocolVersion),
-    version: value.version,
-  };
+  return parsed.data;
 }
 
 function retryDelayMs(attemptCount: number): number {
@@ -81,27 +75,10 @@ function retryDelayMs(attemptCount: number): number {
 
 async function readLastAttempt(path: string): Promise<UpdateAttempt | null> {
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "attemptedAt" in parsed &&
-      typeof parsed.attemptedAt === "number" &&
-      "attemptCount" in parsed &&
-      typeof parsed.attemptCount === "number" &&
-      Number.isSafeInteger(parsed.attemptCount) &&
-      parsed.attemptCount > 0 &&
-      "protocolVersion" in parsed &&
-      typeof parsed.protocolVersion === "number" &&
-      Number.isSafeInteger(parsed.protocolVersion) &&
-      parsed.protocolVersion > 0
-    ) {
-      return {
-        attemptedAt: parsed.attemptedAt,
-        attemptCount: parsed.attemptCount,
-        protocolVersion: parsed.protocolVersion,
-      };
-    }
+    const parsed = updateAttemptSchema.safeParse(
+      jsonValueSchema.parse(JSON.parse(await readFile(path, "utf8"))),
+    );
+    if (parsed.success) return parsed.data;
   } catch {}
   return null;
 }
@@ -195,7 +172,9 @@ export function createProtocolSelfUpdater(
             `Version check failed: ${versionResponse.status} ${versionResponse.statusText}`,
           );
         }
-        const server = parseUpdateVersion(await versionResponse.json());
+        const server = parseUpdateVersion(
+          jsonValueSchema.parse(await versionResponse.json()),
+        );
         if (server.protocolVersion <= HOST_DAEMON_PROTOCOL_VERSION) {
           options.logger.error(
             {

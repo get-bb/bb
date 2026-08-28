@@ -1,8 +1,7 @@
 import { createBrowserBbSdk } from "@bb/sdk/browser";
 import { fetchWithAppSurface } from "./app-surface";
 
-const BASE_URL =
-  typeof window === "undefined" ? "http://localhost" : window.location.origin;
+const BASE_URL = globalThis.window?.location.origin ?? "http://localhost";
 
 export const sdk = createBrowserBbSdk({
   baseUrl: BASE_URL,

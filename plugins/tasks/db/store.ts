@@ -451,15 +451,17 @@ function presetFromRow(row: PresetRow): Preset {
   };
 }
 
+interface ValidatedPresetEnvironment {
+  environmentKind: PresetEnvironmentKind;
+  baseBranch: string | null;
+  machineId: string | null;
+}
+
 function validatePresetEnvironment(input: {
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
   machineId: string | null;
-}): {
-  environmentKind: PresetEnvironmentKind;
-  baseBranch: string | null;
-  machineId: string | null;
-} {
+}): ValidatedPresetEnvironment {
   const baseBranch =
     input.baseBranch === null
       ? null
@@ -1053,11 +1055,12 @@ export function createTasksStore(db: PluginDatabase) {
     const tasks: Task[] = [];
     let cursor: string | undefined;
     do {
-      const page = listTasksPage({
+      const pageFilters: ListTasksFilters = {
         ...unpagedFilters,
         limit: TASKS_PAGE_MAX_LIMIT,
-        ...(cursor === undefined ? {} : { cursor }),
-      });
+      };
+      if (cursor !== undefined) pageFilters.cursor = cursor;
+      const page = listTasksPage(pageFilters);
       tasks.push(...page.tasks);
       cursor = page.nextCursor ?? undefined;
     } while (cursor !== undefined);

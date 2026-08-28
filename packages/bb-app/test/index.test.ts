@@ -13,7 +13,6 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -81,6 +80,26 @@ interface ConfigReloadRequest {
   host: string | undefined;
   method: string | undefined;
   url: string | undefined;
+}
+
+interface TcpAddress {
+  address: string;
+  family: string | number;
+  port: number;
+}
+
+const tcpAddressSchema = z.object({
+  address: z.string(),
+  family: z.union([z.string(), z.number()]),
+  port: z.number(),
+});
+
+function parseTcpAddress(address: string | TcpAddress | null): TcpAddress {
+  const parsed = tcpAddressSchema.safeParse(address);
+  if (!parsed.success) {
+    throw new Error("Expected test server to listen on a TCP port");
+  }
+  return parsed.data;
 }
 
 interface InvalidConfigCommandCase {
@@ -378,11 +397,7 @@ async function startConfigReloadTestServer(): Promise<ConfigReloadTestServer> {
     });
   });
 
-  const address = server.address();
-  if (typeof address === "string" || address === null) {
-    throw new Error("Expected test server to listen on a TCP port");
-  }
-  const addressInfo: AddressInfo = address;
+  const addressInfo = parseTcpAddress(server.address());
 
   return {
     async close(): Promise<void> {
@@ -431,11 +446,7 @@ async function startHostListTestServer(
     });
   });
 
-  const address = server.address();
-  if (typeof address === "string" || address === null) {
-    throw new Error("Expected test server to listen on a TCP port");
-  }
-  const addressInfo: AddressInfo = address;
+  const addressInfo = parseTcpAddress(server.address());
 
   return {
     async close(): Promise<void> {
@@ -478,7 +489,8 @@ async function captureStdout(run: () => Promise<void>): Promise<string> {
   const write = vi
     .spyOn(process.stdout, "write")
     .mockImplementation((chunk) => {
-      chunks.push(typeof chunk === "string" ? chunk : chunk.toString());
+      const stringChunk = z.string().safeParse(chunk);
+      chunks.push(stringChunk.success ? stringChunk.data : chunk.toString());
       return true;
     });
   try {
@@ -511,10 +523,7 @@ describe("bb-app launcher", () => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolvePromise);
     });
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-      throw new Error("Expected status test server to have a TCP address");
-    }
+    const address = parseTcpAddress(server.address());
 
     try {
       await waitForHostDaemonStatus({
@@ -549,10 +558,7 @@ describe("bb-app launcher", () => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolvePromise);
     });
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-      throw new Error("Expected status test server to have a TCP address");
-    }
+    const address = parseTcpAddress(server.address());
 
     try {
       await expect(
@@ -1517,11 +1523,12 @@ describe("bb-app launcher", () => {
       dataDir,
       "--server-bind-host",
       "0.0.0.0.0",
-    ]).catch((error: unknown) => error);
+    ]).catch((error: Error) => error);
 
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("BB_SERVER_BIND_HOST");
-    expect((failure as Error).message).not.toContain(envPath);
+    const parsedFailure = z.instanceof(Error).parse(failure);
+    expect(parsedFailure.message).toContain("BB_SERVER_BIND_HOST");
+    expect(parsedFailure.message).not.toContain(envPath);
   });
 
   it("rejects invalid env key names", async () => {

@@ -37,10 +37,10 @@ export function useSyncPierreWorkerPoolTheme(
     }
     if (areCodeThemePairsEqual(applied, theme)) return;
     appliedThemeByPool.set(pool, theme);
-    void pool.setRenderOptions({ theme }).catch((error: unknown) => {
+    void pool.setRenderOptions({ theme }).catch((cause: unknown) => {
       console.error(
         "Failed to apply the code theme to the Pierre worker pool",
-        error,
+        cause,
       );
     });
   }, [constructedTheme, pool, resolved, theme]);

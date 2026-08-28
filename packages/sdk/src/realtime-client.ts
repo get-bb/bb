@@ -8,6 +8,7 @@ import {
   serverMessageLenientSchema,
   type ServerMessage,
 } from "@bb/server-contract";
+import { z } from "zod";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {
   BbRealtime,
@@ -32,6 +33,8 @@ const SOCKET_OPEN = 1;
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const RECONNECT_DELAY_MULTIPLIER = 1.5;
+const realtimeMessageTypeSchema = z.object({ type: z.string() }).passthrough();
+const realtimeMessageTextSchema = z.string();
 
 interface CreateBbRealtimeClientArgs {
   transport: BbSdkTransport;
@@ -148,10 +151,11 @@ export function wrapStandardWebsocket(socket: WebSocket): BbRealtimeSocket {
 }
 
 function resolveDefaultWebsocketFactory(): BbRealtimeSocketFactory | null {
-  if (typeof WebSocket === "undefined") {
+  const websocketConstructor = globalThis.WebSocket;
+  if (websocketConstructor === undefined) {
     return null;
   }
-  return (url) => wrapStandardWebsocket(new WebSocket(url));
+  return (url) => wrapStandardWebsocket(new websocketConstructor(url));
 }
 
 function isTargetedListener(
@@ -499,24 +503,20 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private handleSocketMessage(event: BbRealtimeSocketMessageEvent): void {
-    if (typeof event.data !== "string") {
+    const textResult = realtimeMessageTextSchema.safeParse(event.data);
+    if (!textResult.success) {
       return;
     }
     let parsedMessage: unknown;
     try {
-      parsedMessage = JSON.parse(event.data);
+      parsedMessage = JSON.parse(textResult.data);
     } catch (error) {
       console.error("bb realtime ignored malformed websocket message", error);
       return;
     }
 
-    if (
-      typeof parsedMessage === "object" &&
-      parsedMessage !== null &&
-      "type" in parsedMessage &&
-      typeof (parsedMessage as { type: unknown }).type === "string" &&
-      (parsedMessage as { type: string }).type !== "changed"
-    ) {
+    const messageWithType = realtimeMessageTypeSchema.safeParse(parsedMessage);
+    if (messageWithType.success && messageWithType.data.type !== "changed") {
       return;
     }
 

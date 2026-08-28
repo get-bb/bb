@@ -42,12 +42,13 @@ export function collectPromptAttachments(
     return undefined;
   }
 
-  return {
+  const counts: PromptAttachmentCounts = {
     webImages,
     localImages,
     localFiles,
-    ...(imageUrls.length > 0 ? { imageUrls } : {}),
-    ...(localImagePaths.length > 0 ? { localImagePaths } : {}),
-    ...(localFilePaths.length > 0 ? { localFilePaths } : {}),
   };
+  if (imageUrls.length > 0) counts.imageUrls = imageUrls;
+  if (localImagePaths.length > 0) counts.localImagePaths = localImagePaths;
+  if (localFilePaths.length > 0) counts.localFilePaths = localFilePaths;
+  return counts;
 }

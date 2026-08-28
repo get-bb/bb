@@ -76,15 +76,16 @@ function seedBrowserHistory(
   threadId: string,
   entries: readonly BrowserHistoryEntry[],
 ): void {
-  if (typeof window === "undefined") {
+  const browserWindow = globalThis.window;
+  if (browserWindow === undefined) {
     return;
   }
   const storageKey = getBrowserHistoryStorageKey(threadId);
   if (entries.length === 0) {
-    window.localStorage.removeItem(storageKey);
+    browserWindow.localStorage.removeItem(storageKey);
     return;
   }
-  window.localStorage.setItem(storageKey, JSON.stringify(entries));
+  browserWindow.localStorage.setItem(storageKey, JSON.stringify(entries));
 }
 
 function PanelStage({

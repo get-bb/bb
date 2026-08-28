@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { JsonValue } from "@bb/domain";
 import { ASSEMBLER_GRAMMAR_VERSIONS } from "../src/assembler/delta-assembler.js";
 import { runBridgeConformance } from "../src/conformance/index.js";
 import type {
@@ -27,9 +28,11 @@ const requestLineSchema = z
   })
   .passthrough();
 
+type JsonRpcBody = { [key: string]: JsonValue | undefined };
+
 function startWithoutIdentityTransport(): BridgeConformanceTransport {
   const emitted: unknown[] = [];
-  const reply = (id: string | number, body: Record<string, unknown>): void => {
+  const reply = (id: string | number, body: JsonRpcBody): void => {
     emitted.push({ jsonrpc: "2.0", id, ...body });
   };
   return {
@@ -64,7 +67,10 @@ function startWithoutIdentityTransport(): BridgeConformanceTransport {
           return;
         case BRIDGE_REQUEST_METHODS.threadStart:
           reply(message.id, {
-            result: { threadId: message.params?.threadId },
+            result:
+              message.params?.threadId === undefined
+                ? {}
+                : { threadId: message.params.threadId },
           });
           return;
         default:
@@ -100,17 +106,17 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
   const stops: StubBridge["stops"] = [];
   let serial = 0;
   let sessions = 0;
-  const reply = (id: string | number, body: Record<string, unknown>): void => {
+  const reply = (id: string | number, body: JsonRpcBody): void => {
     emitted.push({ jsonrpc: "2.0", id, ...body });
   };
-  const delta = (threadId: string, deltas: unknown[]): void => {
+  const delta = (threadId: string, deltas: JsonValue[]): void => {
     emitted.push({
       jsonrpc: "2.0",
       method: "thread/delta",
       params: { threadId, deltas },
     });
   };
-  const identity = (): { providerThreadId: string } => {
+  const identity = () => {
     sessions += 1;
     return { providerThreadId: `prov-${sessions}` };
   };
@@ -167,7 +173,7 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
             });
             return;
           case BRIDGE_REQUEST_METHODS.threadStop:
-            if (typeof params.threadId !== "string") {
+            if (params.threadId === undefined) {
               reply(message.id, {
                 error: {
                   code: BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
@@ -182,11 +188,15 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
           case BRIDGE_REQUEST_METHODS.turnStart: {
             serial += 1;
             const key = { providerItemId: `stub-msg-${serial}` };
+            const accepted: JsonValue =
+              params.clientRequestId === undefined
+                ? { kind: "input.accepted" }
+                : {
+                    kind: "input.accepted",
+                    clientRequestId: params.clientRequestId,
+                  };
             delta(params.threadId ?? "", [
-              {
-                kind: "input.accepted",
-                clientRequestId: params.clientRequestId,
-              },
+              accepted,
               { kind: "turn.open" },
               {
                 kind: "item.open",
@@ -207,7 +217,12 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
               },
               { kind: "turn.boundary", status: "completed" },
             ]);
-            reply(message.id, { result: { threadId: params.threadId } });
+            reply(
+              message.id,
+              params.threadId === undefined
+                ? { result: {} }
+                : { result: { threadId: params.threadId } },
+            );
             return;
           }
           default:

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import type {
   PluginNavPanelProps,
   ExperimentalPluginFixedTabReference,
 } from "../../app-contract.js";
+import type { JsonValue } from "../../json-value.js";
 import {
   installTestPluginRuntime,
   loadPluginApp,
@@ -41,18 +42,17 @@ type TestTaskTarget = {
   taskId: string;
 };
 
+const testTaskTargetSchema = z.object({
+  kind: z.literal("task"),
+  taskId: z.string(),
+});
+
 const taskDetailsTab = {
   panelId: "tasks",
   id: "details",
   experimental_target: {
     validate(value): value is TestTaskTarget {
-      return (
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        value.kind === "task" &&
-        typeof value.taskId === "string"
-      );
+      return testTaskTargetSchema.safeParse(value).success;
     },
   },
 } satisfies ExperimentalPluginFixedTabReference<TestTaskTarget>;
@@ -115,6 +115,7 @@ function TypedRpcPanel() {
 
 afterEach(() => {
   cleanup();
+  capturedComposerVisualSetters.current = null;
   vi.restoreAllMocks();
 });
 
@@ -207,17 +208,19 @@ describe("experimental_PermissionModePicker test runtime", () => {
 function Panel({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc();
   const [items, setItems] = useState<string[] | null>(null);
-  const refresh = () => {
+  const refresh = useCallback(() => {
     void rpc
       .call("listItems", { subPath })
-      .then((result) => setItems(result as string[]))
-      .catch((error: unknown) =>
+      .then((result) => setItems(z.array(z.string()).parse(result)))
+      .catch((error) =>
         setItems([
           `error: ${error instanceof Error ? error.message : String(error)}`,
         ]),
       );
-  };
-  useEffect(refresh, []);
+  }, [rpc, subPath]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
   useRealtime("items-changed", refresh);
   if (items === null) return <div>Loading…</div>;
   return (
@@ -322,10 +325,13 @@ function SchemeLikeFileLinkProbe() {
   );
 }
 
-let capturedComposerVisualSetters: Pick<
-  PluginComposerApi,
-  "setTextEffect" | "setInputLock"
-> | null = null;
+interface CapturedComposerVisualSetters {
+  current: Pick<PluginComposerApi, "setTextEffect" | "setInputLock"> | null;
+}
+
+const capturedComposerVisualSetters: CapturedComposerVisualSetters = {
+  current: null,
+};
 
 function InlineVis({
   attributes,
@@ -344,10 +350,12 @@ function InlineVis({
 function ComposerProbe() {
   const composer = useComposer();
   const view = useComposerView();
-  capturedComposerVisualSetters = {
-    setTextEffect: composer.setTextEffect,
-    setInputLock: composer.setInputLock,
-  };
+  useEffect(() => {
+    capturedComposerVisualSetters.current = {
+      setTextEffect: composer.setTextEffect,
+      setInputLock: composer.setInputLock,
+    };
+  }, [composer.setInputLock, composer.setTextEffect]);
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
@@ -579,9 +587,10 @@ describe("loadPluginApp", () => {
               label: " Improving draft ",
               tone: "running",
             });
+            // SAFETY: This test deliberately passes malformed host input to verify runtime validation.
             (
               experimental_setThreadRowStatus as
-                | ((threadId: unknown, status: unknown) => void)
+                | ((threadId: string | number, status: JsonValue) => void)
                 | undefined
             )?.(42, {
               icon: "AiContentGenerator01",
@@ -614,8 +623,9 @@ describe("loadPluginApp", () => {
       expect.stringContaining('"threadId" must be a non-empty string'),
     );
 
+    // SAFETY: This test deliberately passes malformed host input to verify runtime validation.
     const unsafeSetter = retainedSetter as
-      | ((threadId: unknown, status: unknown) => void)
+      | ((threadId: string | number, status: JsonValue) => void)
       | undefined;
     unsafeSetter?.("thr_source", {
       icon: "   ",
@@ -759,6 +769,7 @@ describe("loadPluginApp", () => {
         definePluginApp((builder) => {
           builder.contentScripts.register({
             id: "missing",
+            // SAFETY: This test deliberately passes an invalid mount value to verify runtime validation.
             mount: undefined as never,
           });
         }),
@@ -789,6 +800,7 @@ describe("loadPluginApp", () => {
             icon: "FileText",
             path: "panel",
             component: Panel,
+            // SAFETY: This test deliberately passes an invalid component to verify runtime validation.
             experimental_sidebarAccessory: "nope" as never,
           });
         }),
@@ -831,13 +843,7 @@ describe("loadPluginApp", () => {
       validate(
         value: import("../../json-value.js").JsonValue,
       ): value is TestTaskTarget {
-        return (
-          typeof value === "object" &&
-          value !== null &&
-          !Array.isArray(value) &&
-          value.kind === "task" &&
-          typeof value.taskId === "string"
-        );
+        return testTaskTargetSchema.safeParse(value).success;
       },
     };
     const captured = await loadPluginApp(
@@ -1013,6 +1019,7 @@ describe("loadPluginApp", () => {
       definePluginApp((builder) => {
         builder.composer.customize({
           id: "nested",
+          // SAFETY: This test deliberately passes malformed host input to verify runtime validation.
           actions: {} as never,
           banners: [
             { id: "banner", component: ComposerProbe },
@@ -1049,12 +1056,14 @@ describe("loadPluginApp", () => {
         builder.composer.customize({
           id: "reused-after-malformed",
           actions: [
+            // SAFETY: This test deliberately passes malformed host input to verify runtime validation.
             { id: "same-action", component: null as never },
             { id: "same-action", component: ComposerProbe },
           ],
           banners: [
             {
               id: "same-banner",
+              // SAFETY: This test deliberately passes malformed host input to verify runtime validation.
               chrome: "dialog" as never,
               component: ComposerProbe,
             },
@@ -1630,7 +1639,7 @@ describe("renderSlot", () => {
         {},
         { context: { projectId: "proj_1", threadId: "thr_1" } },
       );
-      const setters = capturedComposerVisualSetters;
+      const setters = capturedComposerVisualSetters.current;
       if (setters === null)
         throw new Error("composer setters were not captured");
 
@@ -1662,7 +1671,7 @@ describe("renderSlot", () => {
       {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
-    const setters = capturedComposerVisualSetters;
+    const setters = capturedComposerVisualSetters.current;
     if (setters === null) throw new Error("composer setters were not captured");
 
     setters.setTextEffect({ className: "cleanup-effect" });

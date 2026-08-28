@@ -1,6 +1,9 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  type SessionMessageEntry,
+} from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   FULL_PERMISSION_OPTIONS,
@@ -84,11 +87,26 @@ it("branches the source session at the checkpoint and leaves the source untouche
   );
   const texts = forked
     .getBranch()
-    .filter((entry) => entry.type === "message")
+    .filter(
+      (
+        entry,
+      ): entry is SessionMessageEntry & {
+        message: Extract<
+          SessionMessageEntry["message"],
+          { role: "user" | "assistant" }
+        >;
+      } =>
+        entry.type === "message" &&
+        (entry.message.role === "user" || entry.message.role === "assistant"),
+    )
     .map((entry) => {
-      const message = (entry as { message: { role: string; content: unknown } })
-        .message;
-      return `${message.role}:${typeof message.content === "string" ? message.content : (message.content as { text: string }[]).map((c) => c.text).join("")}`;
+      const content = Array.isArray(entry.message.content)
+        ? entry.message.content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("")
+        : entry.message.content;
+      return `${entry.message.role}:${content}`;
     });
   expect(texts).toEqual(["user:first question", "assistant:first answer"]);
   expect(forked.getLeafId()).toBe(checkpointId);

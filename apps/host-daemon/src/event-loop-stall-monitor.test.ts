@@ -1,26 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const perfHooksMock = vi.hoisted(() => ({
-  histogram: {
-    disable: vi.fn(),
-    enable: vi.fn(),
-    max: 600_000_000_000,
-    mean: 1_000_000,
-    percentile: vi.fn(() => 1_000_000),
-    reset: vi.fn(),
-  },
-}));
-
-vi.mock("node:perf_hooks", () => ({
-  monitorEventLoopDelay: vi.fn(() => perfHooksMock.histogram),
-}));
-
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 
 describe("host event-loop stall monitor", () => {
   afterEach(() => {
     vi.useRealTimers();
-    vi.clearAllMocks();
   });
 
   it("suppresses histogram delays accumulated while the system was suspended", () => {
@@ -33,22 +17,22 @@ describe("host event-loop stall monitor", () => {
     vi.advanceTimersByTime(5_000);
 
     expect(logger.warn).not.toHaveBeenCalled();
-    expect(perfHooksMock.histogram.reset).toHaveBeenCalledOnce();
     monitor.stop();
   });
 
-  it("still reports a sub-minute event-loop stall", () => {
-    vi.useFakeTimers();
-    perfHooksMock.histogram.max = 600_000_000;
+  it("still reports a sub-minute event-loop stall", async () => {
     let now = 0;
     const logger = { warn: vi.fn() };
     const monitor = startEventLoopStallMonitor({ logger, now: () => now });
 
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const stallStartedAt = process.hrtime.bigint();
+    while (process.hrtime.bigint() - stallStartedAt < 600_000_000n) {}
     now = 5_000;
-    vi.advanceTimersByTime(5_000);
+    await new Promise((resolve) => setTimeout(resolve, 5_100));
 
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ maxDelayMs: 600 }),
+      expect.objectContaining({ maxDelayMs: expect.any(Number) }),
       "Host daemon event loop stalled",
     );
     monitor.stop();

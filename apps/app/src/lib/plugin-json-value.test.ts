@@ -23,9 +23,11 @@ describe("plugin panel JSON boundaries", () => {
     ["undefined property", { missing: undefined }],
     ["non-finite number", Number.POSITIVE_INFINITY],
   ])("rejects %s before persistence", (_name, value) => {
-    expect(() => serializePluginPanelParams(value as never)).toThrow(
-      '"params" must be a JSON value',
-    );
+    expect(() =>
+      serializePluginPanelParams(
+        /* SAFETY: The test controls this fixture and verifies its behavior. */ value as never,
+      ),
+    ).toThrow('"params" must be a JSON value');
   });
 
   it("narrows malformed or non-finite persisted values to null", () => {

@@ -38,7 +38,7 @@ interface OriginHttpRequestArgs {
 function frameBodyHeaders(
   headers: Record<string, string>,
   body: Buffer | undefined,
-): Record<string, string> {
+) {
   if (body === undefined) return headers;
   return { ...headers, "Content-Length": String(body.byteLength) };
 }
@@ -280,11 +280,14 @@ export class TunnelSession {
       return;
     }
     const { resolved } = originResult;
-    const headers = headersForLoopbackRequest(meta.headers, {
+    const loopbackOptions: Parameters<typeof headersForLoopbackRequest>[1] = {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
-      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
-    });
+    };
+    if (resolved.host !== undefined) {
+      loopbackOptions.host = resolved.host;
+    }
+    const headers = headersForLoopbackRequest(meta.headers, loopbackOptions);
     try {
       const startedAt = performance.now();
       const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
@@ -360,11 +363,14 @@ export class TunnelSession {
     }
     const { resolved } = originResult;
     const wsOrigin = resolved.origin.replace(/^http/, "ws");
-    const headers = headersForLoopbackRequest(frame.headers, {
+    const loopbackOptions: Parameters<typeof headersForLoopbackRequest>[1] = {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
-      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
-    });
+    };
+    if (resolved.host !== undefined) {
+      loopbackOptions.host = resolved.host;
+    }
+    const headers = headersForLoopbackRequest(frame.headers, loopbackOptions);
     const countsAsRemoteClient = isBareBbRealtimeWs(frame.path, frame.target);
     let socket: NodeWebSocket;
     try {

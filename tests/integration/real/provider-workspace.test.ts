@@ -85,7 +85,7 @@ describe("real provider workspace integration", () => {
             await getThreadOutput(harness.api, thread.id),
             `${providerId} workspace output`,
           );
-          expect(typeof diff.diff).toBe("string");
+          expect(diff.diff).toBeTypeOf("string");
 
           if (refreshedEnvironment.path) {
             const helloPath = path.join(refreshedEnvironment.path, "hello.txt");

@@ -18,6 +18,22 @@ const launchSelectedModel =
 let nextSession = 1;
 const loadedSessions = new Map();
 
+function isRecord(value) {
+  return (
+    value !== null &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}
+
+function isString(value) {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function stringField(value, key) {
+  const candidate = isRecord(value) ? value[key] : undefined;
+  return isString(candidate) ? candidate : undefined;
+}
+
 const acpModels = [
   {
     value: "bb-dynamic-acp-native-default",
@@ -59,22 +75,30 @@ function promptText(prompt) {
     return "";
   }
   return prompt
-    .map((entry) => (entry?.type === "text" ? entry.text : ""))
+    .map((entry) =>
+      isRecord(entry) && entry.type === "text" && isString(entry.text)
+        ? entry.text
+        : "",
+    )
     .filter((text) => text && !text.startsWith("<system_instructions>"))
     .join(" ");
 }
 
 const lines = createInterface({ input: process.stdin, terminal: false });
 lines.on("line", (line) => {
-  let message;
+  let parsed;
   try {
-    message = JSON.parse(line);
+    parsed = JSON.parse(line);
   } catch {
     return;
   }
 
+  if (!isRecord(parsed)) {
+    return;
+  }
+  const message = parsed;
   const { id, method, params } = message;
-  if (id === undefined || typeof method !== "string") {
+  if (id === undefined || !isString(method)) {
     return;
   }
 
@@ -110,8 +134,8 @@ lines.on("line", (line) => {
     }
 
     case "session/load": {
-      const sessionId = params?.sessionId;
-      if (typeof sessionId === "string") {
+      const sessionId = stringField(params, "sessionId");
+      if (sessionId !== undefined) {
         loadedSessions.set(sessionId, initialSessionModel());
         result(id, null);
         return;
@@ -124,9 +148,9 @@ lines.on("line", (line) => {
     }
 
     case "session/set_model": {
-      const sessionId = params?.sessionId;
-      const modelId = params?.modelId;
-      if (typeof sessionId !== "string" || !loadedSessions.has(sessionId)) {
+      const sessionId = stringField(params, "sessionId");
+      const modelId = stringField(params, "modelId");
+      if (sessionId === undefined || !loadedSessions.has(sessionId)) {
         write({
           id,
           error: { code: -32000, message: "unknown session" },
@@ -134,7 +158,7 @@ lines.on("line", (line) => {
         return;
       }
       if (
-        typeof modelId !== "string" ||
+        modelId === undefined ||
         !acpModels.some((model) => model.value === modelId)
       ) {
         write({
@@ -149,8 +173,8 @@ lines.on("line", (line) => {
     }
 
     case "session/prompt": {
-      const sessionId = params?.sessionId;
-      if (typeof sessionId !== "string" || !loadedSessions.has(sessionId)) {
+      const sessionId = stringField(params, "sessionId");
+      if (sessionId === undefined || !loadedSessions.has(sessionId)) {
         write({
           id,
           error: { code: -32000, message: "unknown session" },

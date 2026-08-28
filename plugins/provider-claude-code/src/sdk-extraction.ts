@@ -4,6 +4,8 @@ import {
   toPositiveNumber,
   extractResultText,
   normalizeProviderCommandOutput,
+  toOptionalRecord,
+  toOptionalString,
   textBlockSchema,
   toNonNegativeNumber,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -81,16 +83,10 @@ const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "fable",
 ]);
 
-export function getNestedParentToolUseId(message: unknown): string | undefined {
-  if (typeof message !== "object" || message === null) {
-    return undefined;
-  }
-  if (!("parent_tool_use_id" in message)) {
-    return undefined;
-  }
-  return typeof message.parent_tool_use_id === "string"
-    ? message.parent_tool_use_id
-    : undefined;
+export function getNestedParentToolUseId<TMessage>(
+  message: TMessage,
+): string | undefined {
+  return toOptionalString(toOptionalRecord(message)?.parent_tool_use_id);
 }
 
 function parseMessageContent(
@@ -234,18 +230,23 @@ export function extractClaudeCommandExecutionOutput(
     emptyPlaceholders: CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS,
   });
   if (args.toolUseResult !== null) {
-    if (typeof args.toolUseResult === "string") {
+    const stringToolUseResult = toOptionalString(args.toolUseResult);
+    if (stringToolUseResult !== undefined) {
       return (
         normalizeProviderCommandOutput({
-          text: args.toolUseResult,
+          text: stringToolUseResult,
           emptyPlaceholders: CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS,
         }) ?? normalizedContentOutput
       );
     }
+    const processToolUseResult = toOptionalRecord(args.toolUseResult);
+    if (processToolUseResult === undefined) {
+      return normalizedContentOutput;
+    }
     return (
       combineClaudeProcessOutput({
-        stdout: args.toolUseResult.stdout ?? "",
-        stderr: args.toolUseResult.stderr ?? "",
+        stdout: toOptionalString(processToolUseResult.stdout) ?? "",
+        stderr: toOptionalString(processToolUseResult.stderr) ?? "",
       }) ?? normalizedContentOutput
     );
   }

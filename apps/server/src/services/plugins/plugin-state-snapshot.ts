@@ -1,14 +1,5 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import {
-  copyFile,
-  cp,
-  mkdir,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
@@ -25,6 +16,9 @@ import {
   type InstalledPluginRow,
   type PluginStateSnapshotRow,
 } from "@bb/db";
+
+const { copyFile, cp, mkdir, readFile, rm, stat, writeFile } =
+  process.getBuiltinModule("node:fs/promises");
 
 const kvRowSchema = z.object({
   pluginId: z.string(),
@@ -104,7 +98,7 @@ const legacyInstalledPluginRowSchema = z
 async function exists(path: string): Promise<boolean> {
   return stat(path).then(
     () => true,
-    (error: unknown) => {
+    (error: Error) => {
       if (
         error instanceof Error &&
         "code" in error &&

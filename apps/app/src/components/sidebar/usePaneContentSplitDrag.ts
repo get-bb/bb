@@ -25,6 +25,7 @@ import {
   beginSplitDrag,
   decideThreadDrop,
   shouldEngageSidebarSplitDrag,
+  type SplitDragConfig,
   type SplitDragFallbackTarget,
 } from "@/lib/split-drag";
 
@@ -78,11 +79,10 @@ export function usePaneContentSplitDrag({
       const startY = event.clientY;
       const startLayout = store.get(splitLayoutAtom);
       const fallback = singlePaneFallback(startLayout);
-      beginSplitDrag({
+      const dragConfig: SplitDragConfig = {
         ghostLabel: label,
         sourceEl: rowEl,
         cancelSidebarReorderOnEngage: true,
-        ...(fallback ? { fallback } : {}),
         shouldEngage: (x, y) =>
           shouldEngageSidebarSplitDrag({
             startX,
@@ -116,7 +116,11 @@ export function usePaneContentSplitDrag({
             existing !== null ? { replace: true } : undefined,
           );
         },
-      });
+      };
+      if (fallback !== null) {
+        dragConfig.fallback = fallback;
+      }
+      beginSplitDrag(dragConfig);
     },
     [content, enabled, label, navigate, store],
   );

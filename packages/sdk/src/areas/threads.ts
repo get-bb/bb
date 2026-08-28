@@ -1,4 +1,5 @@
 import {
+  jsonValueSchema,
   parseThreadEventRow,
   type PromptInput,
   type PendingInteraction,
@@ -25,6 +26,7 @@ import type {
   ThreadConversationOutlineResponse,
   ThreadListResponse,
   ThreadOpenResponse,
+  ThreadOpenRequest,
   ThreadPaneAction,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
@@ -477,28 +479,28 @@ export interface ThreadsArea {
 }
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
-  return {
-    ...(args?.projectId ? { projectId: args.projectId } : {}),
-    ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
-    ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
-    ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
-    ...(args?.originKind ? { originKind: args.originKind } : {}),
-    ...(args?.originPluginId ? { originPluginId: args.originPluginId } : {}),
-    ...(args?.archived === undefined
-      ? {}
-      : { archived: args.archived ? "true" : "false" }),
-    ...(args?.unsectioned === undefined
-      ? {}
-      : { unsectioned: args.unsectioned ? "true" : "false" }),
-    ...(args?.includeHidden === undefined
-      ? {}
-      : { includeHidden: args.includeHidden ? "true" : "false" }),
-    ...(args?.limit === undefined ? {} : { limit: String(args.limit) }),
-    ...(args?.offset === undefined ? {} : { offset: String(args.offset) }),
-    ...(args?.hasParent === undefined
-      ? {}
-      : { hasParent: args.hasParent ? "true" : "false" }),
-  };
+  const query: ThreadListQuery = {};
+  if (args?.projectId) query.projectId = args.projectId;
+  if (args?.parentThreadId) query.parentThreadId = args.parentThreadId;
+  if (args?.sourceThreadId) query.sourceThreadId = args.sourceThreadId;
+  if (args?.sectionId) query.sectionId = args.sectionId;
+  if (args?.originKind) query.originKind = args.originKind;
+  if (args?.originPluginId) query.originPluginId = args.originPluginId;
+  if (args?.archived !== undefined) {
+    query.archived = args.archived ? "true" : "false";
+  }
+  if (args?.unsectioned !== undefined) {
+    query.unsectioned = args.unsectioned ? "true" : "false";
+  }
+  if (args?.includeHidden !== undefined) {
+    query.includeHidden = args.includeHidden ? "true" : "false";
+  }
+  if (args?.limit !== undefined) query.limit = String(args.limit);
+  if (args?.offset !== undefined) query.offset = String(args.offset);
+  if (args?.hasParent !== undefined) {
+    query.hasParent = args.hasParent ? "true" : "false";
+  }
+  return query;
 }
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
@@ -563,21 +565,19 @@ function forkJson(args: ThreadForkArgs): ForkThreadRequest {
 }
 
 function eventsListQuery(args: ThreadEventsListArgs): ThreadEventsQuery {
-  return {
-    ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
-    ...(args.beforeSeq !== undefined ? { beforeSeq: args.beforeSeq } : {}),
-    ...(args.limit !== undefined ? { limit: args.limit } : {}),
-    ...(args.order !== undefined ? { order: args.order } : {}),
-    ...(args.types !== undefined ? { types: args.types.join(",") } : {}),
-  };
+  const query: ThreadEventsQuery = {};
+  if (args.afterSeq !== undefined) query.afterSeq = args.afterSeq;
+  if (args.beforeSeq !== undefined) query.beforeSeq = args.beforeSeq;
+  if (args.limit !== undefined) query.limit = args.limit;
+  if (args.order !== undefined) query.order = args.order;
+  if (args.types !== undefined) query.types = args.types.join(",");
+  return query;
 }
 
 function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
-  return {
-    ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
-    type: args.type,
-    waitMs: args.waitMs,
-  };
+  const query: ThreadEventWaitQuery = { type: args.type, waitMs: args.waitMs };
+  if (args.afterSeq !== undefined) query.afterSeq = args.afterSeq;
+  return query;
 }
 
 function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
@@ -588,26 +588,24 @@ function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
 }
 
 function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
-  return {
-    ...(args.includeNestedRows !== undefined
-      ? { includeNestedRows: args.includeNestedRows }
-      : {}),
-    ...(args.summaryOnly !== undefined
-      ? { summaryOnly: args.summaryOnly }
-      : {}),
-    ...(args.segmentLimit !== undefined
-      ? { segmentLimit: args.segmentLimit }
-      : {}),
-    ...(args.beforeAnchorSeq !== undefined
-      ? { beforeAnchorSeq: args.beforeAnchorSeq }
-      : {}),
-    ...(args.beforeAnchorId !== undefined
-      ? { beforeAnchorId: args.beforeAnchorId }
-      : {}),
-    ...(args.afterSequence !== undefined
-      ? { afterSequence: args.afterSequence }
-      : {}),
-  };
+  const query: ThreadTimelineQuery = {};
+  if (args.includeNestedRows !== undefined) {
+    query.includeNestedRows = args.includeNestedRows;
+  }
+  if (args.summaryOnly !== undefined) query.summaryOnly = args.summaryOnly;
+  if (args.segmentLimit !== undefined) {
+    query.segmentLimit = args.segmentLimit;
+  }
+  if (args.beforeAnchorSeq !== undefined) {
+    query.beforeAnchorSeq = args.beforeAnchorSeq;
+  }
+  if (args.beforeAnchorId !== undefined) {
+    query.beforeAnchorId = args.beforeAnchorId;
+  }
+  if (args.afterSequence !== undefined) {
+    query.afterSequence = args.afterSequence;
+  }
+  return query;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -626,11 +624,18 @@ function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
   return { kind: "status", status: args.status ?? "idle" };
 }
 
-function validateThreadWaitArgs(args: ThreadWaitArgs): {
+interface ValidatedThreadWaitArgs {
   pollIntervalMs: number;
   target: ThreadWaitTarget;
   timeoutMs: number;
-} {
+}
+
+interface ThreadGetRequest {
+  param: { id: string };
+  query?: ThreadGetQuery;
+}
+
+function validateThreadWaitArgs(args: ThreadWaitArgs): ValidatedThreadWaitArgs {
   const timeoutMs = args.timeoutMs ?? DEFAULT_THREAD_WAIT_TIMEOUT_MS;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
     throw new RangeError(
@@ -674,18 +679,16 @@ function isThreadWaitTargetUnreachable(
 
 export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   const { transport } = args;
-  const getThread = (input: ThreadGetArgs) =>
-    transport.readJson(
+  const getThread = (input: ThreadGetArgs) => {
+    const request: ThreadGetRequest = { param: { id: input.threadId } };
+    if (input.include !== undefined) request.query = { include: input.include };
+    return transport.readJson(
       transport.api.v1.threads[":id"].$get(
-        {
-          param: { id: input.threadId },
-          ...(input.include === undefined
-            ? {}
-            : { query: { include: input.include } }),
-        },
+        request,
         ...signalRequestArgs(input.signal),
       ),
     );
+  };
   const events: ThreadEventsArea = {
     async list(input) {
       return transport.readJson(
@@ -712,7 +715,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       if (statusCode === 204) {
         return null;
       }
-      return parseThreadEventRow(await response.json());
+      return parseThreadEventRow(jsonValueSchema.parse(await response.json()));
     },
   };
   const interactions: ThreadInteractionsArea = {
@@ -980,13 +983,12 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async open(input) {
+      const json: ThreadOpenRequest = { file: input.file };
+      if (input.split !== undefined) json.split = input.split;
       return transport.readJson(
         transport.api.v1.threads[":id"].open.$post({
           param: { id: input.threadId },
-          json: {
-            ...(input.split === undefined ? {} : { split: input.split }),
-            file: input.file,
-          },
+          json,
         }),
       );
     },

@@ -87,24 +87,23 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 function readFetchUrl(input: RequestInfo | URL): URL {
-  if (typeof input === "string") {
-    return new URL(input);
-  }
   if (input instanceof URL) {
     return input;
   }
-  return new URL(input.url);
+  if (input instanceof Request) {
+    return new URL(input.url);
+  }
+  return new URL(input);
 }
 
-function readFetchBody(init: RequestInit | undefined): string | null {
+async function readFetchBody(
+  init: RequestInit | undefined,
+): Promise<string | null> {
   const body = init?.body;
   if (body === undefined || body === null) {
     return null;
   }
-  if (typeof body === "string") {
-    return body;
-  }
-  throw new Error("Expected string request body");
+  return new Response(body).text();
 }
 
 function createFetchRecorder(
@@ -116,7 +115,7 @@ function createFetchRecorder(
   const fetchFn: FetchFn = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
-      body: readFetchBody(init),
+      body: await readFetchBody(init),
       method: init?.method ?? "GET",
       pathname: url.pathname,
     };
@@ -372,27 +371,30 @@ async function createAppFixture(
   const fetchRecorder = createFetchRecorder(args);
   const logger = createLogger();
   const runtimeOptions: RuntimeOptionsRef = { current: null };
-  const app = await createHostDaemonApp({
+  const appOptions = {
     dataDir,
     serverUrl: "http://127.0.0.1:3334",
     hostKey: "host-key-app-test",
-    hostType: "persistent",
+    hostType: "persistent" as const,
     hostId: "host-app-test",
     hostName: "App Test Host",
     instanceId: "instance-app-test",
     logger,
     releaseLock: async () => undefined,
     localApiConfig: null,
-    createRuntime: (options) => {
+    createRuntime: (options: AgentRuntimeOptions) => {
       runtimeOptions.current = options;
       return createFakeRuntime();
     },
     fetchFn: fetchRecorder.fetchFn,
     createWebSocket: createOpeningWebSocket(),
-    ...(options.closeMachineAuthProxy
-      ? { closeMachineAuthProxy: options.closeMachineAuthProxy }
-      : {}),
-  });
+  };
+  if (options.closeMachineAuthProxy !== undefined) {
+    Object.assign(appOptions, {
+      closeMachineAuthProxy: options.closeMachineAuthProxy,
+    });
+  }
+  const app = await createHostDaemonApp(appOptions);
 
   return {
     app,

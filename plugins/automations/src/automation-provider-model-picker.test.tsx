@@ -2,66 +2,12 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ExperimentalPermissionModePickerProps,
-  ExperimentalProviderModelPickerProps,
-} from "@get-bb/plugin-sdk/app";
+import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import type { AgentExecutionUpdate, AutomationResponse } from "./rpc-types.js";
 
-vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_ProviderModelPicker: ({
-    onChange,
-    routing,
-    allowProviderChange,
-    disabled,
-  }: ExperimentalProviderModelPickerProps) => (
-    <button
-      type="button"
-      disabled={disabled}
-      data-routing-kind={routing?.kind ?? "primary"}
-      data-routing-id={
-        routing === undefined
-          ? ""
-          : routing.kind === "host"
-            ? routing.hostId
-            : routing.environmentId
-      }
-      data-provider-change-allowed={
-        allowProviderChange === false ? "false" : "true"
-      }
-      onClick={() =>
-        onChange({
-          providerId: "claude",
-          model: "claude-opus-5",
-          reasoningLevel: "ultra",
-          serviceTier: "fast",
-        })
-      }
-    >
-      Choose Claude
-    </button>
-  ),
-  experimental_PermissionModePicker: ({
-    providerId,
-    value,
-    onChange,
-    routing,
-    disabled,
-  }: ExperimentalPermissionModePickerProps) => (
-    <button
-      type="button"
-      aria-label="Permission mode"
-      disabled={disabled}
-      data-provider-id={providerId}
-      data-routing-kind={routing?.kind ?? "primary"}
-      onClick={() => onChange(providerId === "claude" ? "auto" : value)}
-    >
-      {value}
-    </button>
-  ),
-}));
+installTestPluginRuntime();
 
-import { AutomationDetailView } from "../detail-view.js";
+const { AutomationDetailView } = await import("../detail-view.js");
 
 afterEach(cleanup);
 
@@ -179,15 +125,29 @@ describe("automation provider and model picker", () => {
       />,
     );
 
-    const picker = screen.getByText("Choose Claude");
+    const picker = screen.getByTestId("bb-provider-model-picker");
     expect(picker.getAttribute("data-routing-kind")).toBe("environment");
     expect(picker.getAttribute("data-routing-id")).toBe("env_test");
     expect(picker.getAttribute("data-provider-change-allowed")).toBe("true");
-    fireEvent.click(picker);
+    fireEvent.change(screen.getByLabelText("Provider ID"), {
+      target: { value: "claude" },
+    });
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "claude-opus-5" },
+    });
+    fireEvent.change(screen.getByLabelText("Reasoning level"), {
+      target: { value: "ultra" },
+    });
+    fireEvent.change(screen.getByLabelText("Service tier"), {
+      target: { value: "fast" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply execution selection" }),
+    );
     const permission = screen.getByLabelText("Permission mode");
     expect(permission.getAttribute("data-provider-id")).toBe("claude");
     expect(permission.getAttribute("data-routing-kind")).toBe("environment");
-    fireEvent.click(permission);
+    fireEvent.change(permission, { target: { value: "auto" } });
     fireEvent.click(screen.getByText("Save Prompt"));
 
     expect(onUpdate).toHaveBeenCalledWith({

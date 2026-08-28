@@ -5,7 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  defaultAppSettings,
   type AppCommandContextKey,
   type AppCommandId,
   type AppDefaultKeybinding,
@@ -16,6 +15,9 @@ import {
   useAppCommandHandler,
   useAppCommandRunner,
 } from "./AppCommandProvider";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import * as bbDesktop from "@/lib/bb-desktop";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 
 const MOD_P = {
   key: "p",
@@ -46,17 +48,17 @@ function defaultBinding(
   };
 }
 
-const testState = vi.hoisted(() => ({
+const testState = {
   isDesktop: false,
-}));
+};
+const desktopInfoForTest =
+  /* SAFETY: This fixture only needs a non-null desktop marker. */
+  {} as ReturnType<typeof bbDesktop.getBbDesktopInfo>;
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: {
-        ...defaultAppSettings,
-        showKeyboardHints: false,
-      },
+vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(() => {
+  /* SAFETY: This faithful hook fixture supplies only the fields consumed by the provider. */
+  return {
+    data: makeSystemConfig({
       keybindings: [],
       defaultKeybindings: [
         defaultBinding("thread.new", { none: ["modalOpen"] }),
@@ -67,13 +69,13 @@ vi.mock("@/hooks/queries/system-queries", () => ({
           none: ["modalOpen", "editableFocus", "terminalFocus"],
         }),
       ],
-    },
-  }),
-}));
+    }),
+  } as ReturnType<typeof systemQueries.useSystemConfig>;
+});
 
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => (testState.isDesktop ? {} : null),
-}));
+vi.spyOn(bbDesktop, "getBbDesktopInfo").mockImplementation(() =>
+  testState.isDesktop ? desktopInfoForTest : null,
+);
 
 function Handler({ command }: { command: AppCommandId }) {
   useAppCommandHandler(command, () => true);

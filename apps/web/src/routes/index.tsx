@@ -1371,6 +1371,7 @@ const CUSTOMIZE_SCENARIO: CustomizeScenario = {
 function CustomizeBuild() {
   const { cycle, leaving } = useCycle(10600, 500);
   const run = CUSTOMIZE_SCENARIO;
+  // SAFETY: The custom property matches the CSSProperties index contract used by this mockup.
   const promptStyle = {
     "--customize-prompt-width": run.promptWidth,
   } as CSSProperties;
@@ -1701,6 +1702,7 @@ function LandingPage() {
           <div
             className="company-proof-track"
             style={
+              // SAFETY: The custom property matches the CSSProperties index contract used by this marquee.
               { "--company-proof-copies": companyProofCopies } as CSSProperties
             }
           >

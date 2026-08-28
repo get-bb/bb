@@ -326,21 +326,27 @@ describe("workflow QuickJS runtime", () => {
         limits,
       });
 
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(run({ maxAgentCalls: 0 } as never)).rejects.toThrow(
       "positive finite integer",
     );
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(
       run({ maxConcurrentAgents: Number.POSITIVE_INFINITY } as never),
     ).rejects.toThrow("positive finite integer");
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(run({ synchronousDeadlineMs: 1.5 } as never)).rejects.toThrow(
       "positive finite integer",
     );
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(run({ maxAgentCalls: 1001 } as never)).rejects.toThrow(
       "cannot exceed",
     );
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(run({ unknown: 1 } as never)).rejects.toThrow(
       "Unknown workflow runtime limit",
     );
+    // SAFETY: This test passes an invalid limit to verify boundary validation.
     await expect(
       run({ maxAgentCalls: "1; globalThis.stolenEval = eval; 1" } as never),
     ).rejects.toThrow("positive finite integer");
@@ -357,6 +363,7 @@ describe("workflow QuickJS runtime", () => {
 
     await expect(
       executeWorkflowScript({
+        // SAFETY: This test passes a cyclic value to verify boundary validation.
         args: cyclic as never,
         body: "return null;",
         capabilities,
@@ -364,6 +371,7 @@ describe("workflow QuickJS runtime", () => {
     ).rejects.toThrow("cycle");
     await expect(
       executeWorkflowScript({
+        // SAFETY: This test passes an exotic value to verify boundary validation.
         args: new Date() as never,
         body: "return null;",
         capabilities,
@@ -866,6 +874,7 @@ describe("workflow QuickJS runtime", () => {
   });
 
   it("rejects invalid workflow depth before evaluating guest source", async () => {
+    // SAFETY: This test passes an invalid depth to verify boundary validation.
     await expect(
       executeWorkflowScript({
         args: null,

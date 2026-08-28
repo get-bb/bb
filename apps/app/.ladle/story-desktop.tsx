@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
@@ -76,15 +76,18 @@ export function WithDesktopBrowser({
   browserState = null,
   children,
 }: WithDesktopBrowserProps) {
-  if (typeof window !== "undefined" && window.bbDesktop === undefined) {
-    window.bbDesktop = createStoryDesktopApi(browserState);
-  }
+  const [ready, setReady] = useState(false);
   useEffect(() => {
+    const storyWindow = globalThis.window;
+    if (storyWindow !== undefined && storyWindow.bbDesktop === undefined) {
+      storyWindow.bbDesktop = createStoryDesktopApi(browserState);
+    }
+    queueMicrotask(() => setReady(true));
     return () => {
-      if (typeof window !== "undefined") {
-        delete window.bbDesktop;
+      if (storyWindow !== undefined) {
+        delete storyWindow.bbDesktop;
       }
     };
-  }, []);
-  return <>{children}</>;
+  }, [browserState]);
+  return ready ? <>{children}</> : null;
 }

@@ -68,7 +68,7 @@ function commandUpdate({
   parsedIntents,
   status,
 }: CommandUpdateArgs): CommandExecutionUpdate {
-  return {
+  const update: CommandExecutionUpdate = {
     kind: "command",
     callId: "command-1",
     command,
@@ -76,9 +76,14 @@ function commandUpdate({
     status,
     exitCode: status === "error" ? 1 : 0,
     completedAt,
-    ...(output !== undefined ? { output } : {}),
-    ...(parsedIntents !== undefined ? { parsedIntents } : {}),
   };
+  if (output !== undefined) {
+    update.output = output;
+  }
+  if (parsedIntents !== undefined) {
+    update.parsedIntents = parsedIntents;
+  }
+  return update;
 }
 
 function delegationUpdate({
@@ -86,7 +91,7 @@ function delegationUpdate({
   output,
   status,
 }: DelegationUpdateArgs): DelegationExecutionUpdate {
-  return {
+  const update: DelegationExecutionUpdate = {
     kind: "delegation",
     callId: "delegation-1",
     toolName: "Agent",
@@ -94,8 +99,11 @@ function delegationUpdate({
     description: "Review implementation",
     status,
     completedAt,
-    ...(output !== undefined ? { output } : {}),
   };
+  if (output !== undefined) {
+    update.output = output;
+  }
+  return update;
 }
 
 function commandOutput({ output }: CommandOutputArgs): ExecutionOutputUpdate {

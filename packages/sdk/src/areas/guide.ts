@@ -13,18 +13,18 @@ export interface GuideArea {
   render(args?: GuideRenderArgs): GuideRenderResult;
 }
 
-const guideChapters: Record<string, TemplateId> = {
-  threads: "bbGuideThreads",
-  environments: "bbGuideEnvironments",
-  "agent-configuration": "bbGuideAgentConfiguration",
-  providers: "bbGuideProviders",
-  projects: "bbGuideProjects",
-  machines: "bbGuideMachines",
-  terminals: "bbGuideTerminals",
-  customization: "bbGuideCustomization",
-  plugins: "bbGuidePlugins",
-  automations: "bbGuideAutomations",
-};
+const guideChapters = new Map<string, TemplateId>([
+  ["threads", "bbGuideThreads"],
+  ["environments", "bbGuideEnvironments"],
+  ["agent-configuration", "bbGuideAgentConfiguration"],
+  ["providers", "bbGuideProviders"],
+  ["projects", "bbGuideProjects"],
+  ["machines", "bbGuideMachines"],
+  ["terminals", "bbGuideTerminals"],
+  ["customization", "bbGuideCustomization"],
+  ["plugins", "bbGuidePlugins"],
+  ["automations", "bbGuideAutomations"],
+]);
 
 const templateBodyById = new Map(
   templateDefinitions.map((template) => [template.id, template.body]),
@@ -44,9 +44,9 @@ export function createGuideArea(): GuideArea {
       if (!input.chapter) {
         return { content: renderStaticTemplate("bbGuideOverview") };
       }
-      const templateId = guideChapters[input.chapter];
+      const templateId = guideChapters.get(input.chapter);
       if (!templateId) {
-        const available = Object.keys(guideChapters).join(", ");
+        const available = [...guideChapters.keys()].join(", ");
         throw new Error(
           `Unknown guide chapter '${input.chapter}'. Available: ${available}.`,
         );

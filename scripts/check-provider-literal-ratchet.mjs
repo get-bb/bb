@@ -1,48 +1,9 @@
 #!/usr/bin/env node
-/**
- * Provider-literal ratchet (guardrail G1 of the provider-plugin migration).
- *
- * The migration's north star is that core (everything outside the provider
- * plugins) never branches on a specific provider id. Today it does so in many
- * places. This guard freezes that surface as a per-file count and lets it move
- * in one direction only: down. A change that adds a provider-id reference to a
- * core file, or introduces a new core file that carries one, fails. A change
- * that removes references must regenerate the committed baseline (`--write`) so
- * the win is a visible diff. When the baseline reaches zero the file and the
- * guard are deleted.
- *
- * Scope: provider-*id* references only — quoted id literals (`"codex"`,
- * `"claude-code"`, `"pi"`, `"acp-…"`, `"cursor"`) and the named id
- * constants/helpers (`isAcpProviderId`, `CODEX_PROVIDER_ID`,
- * `RESERVED_PROVIDER_ID_OWNERS`, …). Tool-name keying (thread-view's
- * Read/Task/TodoWrite tables) is retired by its own workstream and would add
- * false positives here, so it is not counted.
- *
- * The scanner is a pure function (`scanTree`) so it is covered by fixture
- * tests rather than by scanning the live repo. `provider-model-catalog.ts`
- * once put two ids on one line; this counts every occurrence, not matched
- * lines, so a second reference on an existing line still moves the number.
- *
- * Usage:
- *   node scripts/check-provider-literal-ratchet.mjs                 # check live vs committed baseline (exact)
- *   node scripts/check-provider-literal-ratchet.mjs --base origin/main  # also reject any increase vs the base branch (CI)
- *   node scripts/check-provider-literal-ratchet.mjs --write         # regenerate baseline (refuses to raise the total)
- *   node scripts/check-provider-literal-ratchet.mjs --list          # print every occurrence
- *
- * `BB_RATCHET_ROOT=<dir>` points the CLI at another tree (its baseline at
- * `<dir>/scripts/provider-literal-baseline.json`, its git history for
- * `--base`); the fixture tests drive the refusal paths through it.
- *
- * Allowlist: once the migration has moved every provider-id branch it can,
- * what remains in core is listed in the baseline's `allowlist` block with a
- * reason, an owner and when it dies. The check then requires every counted
- * file to be on that list (delete the reference or allowlist it) and every
- * entry to still match the live count (stale entries are removed, not kept).
- */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 export const SCAN_ROOTS = ["apps", "packages", "plugins"];
 
@@ -62,42 +23,21 @@ const EXCLUDED_SEGMENTS = new Set([
   ".ladle",
   ".storybook",
   "stories",
-  "dev", // dev-only fixture screens (apps/mobile/src/screens/dev)
+  "dev",
 ]);
-/**
- * Provider implementations are allowed to name their own provider; the
- * ratchet exists to keep provider ids out of CORE. `plugins/provider-*` is
- * one such implementation, and so is the published ACP bridge kit — the same
- * code, moved into `packages/` so the plugin SDK can re-export it
- * (`@get-bb/plugin-sdk/provider-bridge/acp`). It carries no bb provider id
- * today: it selects behavior by the agent's dialect, never by a provider id.
- */
 const EXCLUDED_PREFIXES = [
   join("plugins", "provider-"),
   join("packages", "provider-bridge-acp"),
-  // Test-only helpers: they name providers so tests can pick a model.
   join("packages", "test-helpers"),
   join("examples", ""),
 ];
 const EXCLUDED_FILE_RE =
   /\.(test|spec|stories)\.[cm]?[jt]sx?$|\.snap$|\.d\.ts$/;
-const INCLUDED_FILE_RE = /\.[cm]?[jt]sx?$/; // ts tsx js jsx mjs cjs mts cts
-
-/**
- * One global regex of every provider-id reference. Global + non-overlapping so
- * each textual occurrence is counted once. Quoted-id alternatives already
- * cover `providerId === "codex"` and `startsWith("acp-…")`, so those forms are
- * NOT listed separately — that would double-count the same line. Only the
- * named constants/helpers that are themselves the carve-out are added.
- */
+const INCLUDED_FILE_RE = /\.[cm]?[jt]sx?$/;
 export function providerLiteralRegex() {
   return new RegExp(
     [
-      // quoted provider-id literals (acp-* allows the bare `"acp-"` of
-      // startsWith). The Cursor agent's id is `acp-cursor`; a bare `"cursor"`
-      // is an editor id or a pagination cursor, never a provider.
       String.raw`["'](?:codex|claude-code|pi|acp-[a-z0-9-]*)["']`,
-      // named id constants / helpers
       String.raw`\bisAcpProviderId\b`,
       String.raw`\bACP_ID_PREFIX\b`,
       String.raw`\bCODEX_PROVIDER_ID\b`,
@@ -142,16 +82,6 @@ function walk(dir, root, out) {
   }
 }
 
-/**
- * Pure scan of a tree. `roots` defaults to the migration scope; pass a subset
- * (or a fixture root's subdirs) in tests.
- * @returns {{files: Record<string, number>, total: number, hits: Array}}
- */
-/**
- * Compare the live per-file counts with the baseline's allowlist. Returns
- * the problems as strings; an empty array means every counted file is
- * allowlisted at its current count and no entry is stale.
- */
 export function checkAllowlist(scan, allowlist) {
   const problems = [];
   const entries = allowlist ?? {};
@@ -169,14 +99,17 @@ export function checkAllowlist(scan, allowlist) {
       );
     }
     for (const field of ["reason", "owner", "diesAt"]) {
-      if (typeof entry[field] !== "string" || entry[field].trim() === "") {
+      const value = z.string().safeParse(entry[field]);
+      if (!value.success || value.data.trim() === "") {
         problems.push(`  ! ${rel}: allowlist entry has no ${field}`);
       }
     }
   }
   for (const rel of Object.keys(entries)) {
     if (!(rel in scan.files)) {
-      problems.push(`  − ${rel}: allowlisted but has no reference left — remove the entry`);
+      problems.push(
+        `  − ${rel}: allowlisted but has no reference left — remove the entry`,
+      );
     }
   }
   return problems;
@@ -224,10 +157,10 @@ function baselineFromGit(root, ref) {
   return JSON.parse(raw);
 }
 
-// --- CLI ---------------------------------------------------------------------
 function main() {
   const ROOT =
-    process.env.BB_RATCHET_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
+    process.env.BB_RATCHET_ROOT ??
+    fileURLToPath(new URL("..", import.meta.url));
   const BASELINE_PATH = join(ROOT, "scripts", "provider-literal-baseline.json");
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
@@ -290,16 +223,11 @@ function main() {
     return 0;
   }
 
-  // Base-branch guard: reject any increase vs the base branch, so an author
-  // cannot add a reference, run --write, and pass CI on the raised baseline.
   if (baseRef) {
     let base;
     try {
       base = baselineFromGit(ROOT, baseRef);
     } catch {
-      // Bootstrap or unreachable base: no committed baseline on the base ref
-      // yet, so there is nothing to ratchet against. The exact committed-vs-live
-      // check below still guards this run.
       console.log(
         `No baseline on ${baseRef}; skipping the base-branch comparison.`,
       );
@@ -323,8 +251,6 @@ function main() {
     }
   }
 
-  // Committed baseline must match live exactly, so reductions are recorded and
-  // additions on unchanged files are caught even without --base.
   const increased = [],
     newFiles = [],
     decreased = [],

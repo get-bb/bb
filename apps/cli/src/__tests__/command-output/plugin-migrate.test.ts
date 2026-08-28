@@ -9,7 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  PLUGIN_SDK_VERSION,
+  type JsonObject,
+} from "@bb/domain";
+import { z } from "zod";
 import {
   collectLogPayloads,
   readlineMocks,
@@ -40,7 +45,14 @@ afterEach(async () => {
   await rm(toolsDir, { recursive: true, force: true });
 });
 
-async function writeManifest(value: Record<string, unknown>): Promise<void> {
+const packageLayoutManifestSchema = z
+  .object({
+    devDependencies: z.record(z.string(), z.string()),
+    engines: z.object({ bbPluginSdk: z.string() }),
+  })
+  .passthrough();
+
+async function writeManifest(value: JsonObject): Promise<void> {
   await writeFile(
     join(rootDir, "package.json"),
     `${JSON.stringify(value, null, 2)}\n`,
@@ -71,11 +83,10 @@ async function writeVendoredPlugin(): Promise<void> {
   await writeFile(join(rootDir, "types", "bb-plugin-sdk.d.ts"), "// old\n");
 }
 
-async function readManifest(): Promise<Record<string, unknown>> {
-  const parsed: unknown = JSON.parse(
-    await readFile(join(rootDir, "package.json"), "utf8"),
+async function readManifest(): Promise<JsonObject> {
+  return jsonObjectSchema.parse(
+    JSON.parse(await readFile(join(rootDir, "package.json"), "utf8")),
   );
-  return parsed as Record<string, unknown>;
 }
 
 function setTty(value: boolean): void {
@@ -116,12 +127,10 @@ describe("bb plugin migrate", () => {
 
     await runCommand(["plugin", "migrate", rootDir, "--yes"], register);
 
-    const manifest = await readManifest();
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(PLUGIN_SDK_VERSION);
+    const manifest = packageLayoutManifestSchema.parse(await readManifest());
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe(
+      PLUGIN_SDK_VERSION,
+    );
     await expect(
       stat(join(rootDir, "types", "bb-plugin-sdk.d.ts")),
     ).rejects.toThrow();
@@ -176,15 +185,11 @@ describe("bb plugin migrate", () => {
 
     await runCommand(["plugin", "migrate", rootDir, "--yes"], register);
 
-    const manifest = await readManifest();
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(PLUGIN_SDK_VERSION);
-    expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
-      `>=${PLUGIN_SDK_VERSION}`,
+    const manifest = packageLayoutManifestSchema.parse(await readManifest());
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe(
+      PLUGIN_SDK_VERSION,
     );
+    expect(manifest.engines.bbPluginSdk).toBe(`>=${PLUGIN_SDK_VERSION}`);
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).not.toContain(
       "Already migrated",
     );
@@ -280,15 +285,11 @@ describe("bb plugin types on a package-layout plugin", () => {
 
     await runCommand(["plugin", "types", rootDir], register);
 
-    const manifest = await readManifest();
-    expect(
-      (manifest.devDependencies as Record<string, string>)[
-        "@get-bb/plugin-sdk"
-      ],
-    ).toBe(PLUGIN_SDK_VERSION);
-    expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
-      ">=0.2.0",
+    const manifest = packageLayoutManifestSchema.parse(await readManifest());
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe(
+      PLUGIN_SDK_VERSION,
     );
+    expect(manifest.engines.bbPluginSdk).toBe(">=0.2.0");
     const logged = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(logged).toContain(`0.2.0 → ${PLUGIN_SDK_VERSION}`);
     expect(logged).toContain("Run `npm install`");

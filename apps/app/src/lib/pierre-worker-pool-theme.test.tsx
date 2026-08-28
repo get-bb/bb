@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, render } from "@testing-library/react";
-import type { WorkerPoolManager } from "@pierre/diffs/worker";
+import { WorkerPoolManager } from "@pierre/diffs/worker";
 import { defaultResolvedCodeTheme } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyResolvedCodeTheme } from "./code-theme";
@@ -11,7 +11,10 @@ import {
 
 function createFakePool() {
   const setRenderOptions = vi.fn(() => Promise.resolve());
-  const pool = { setRenderOptions } as unknown as WorkerPoolManager;
+  const pool: WorkerPoolManager = Object.assign(
+    Object.create(WorkerPoolManager.prototype),
+    { setRenderOptions },
+  );
   return { pool, setRenderOptions };
 }
 

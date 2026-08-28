@@ -67,33 +67,36 @@ const absoluteNativeRootPathSchema = z
     "Absolute roots must be absolute paths without dot segments",
   );
 
+const providerNativeRootPathInputSchema = z.string().min(1);
+const providerNativeRootOptionsInputSchema = z
+  .object({
+    path: z.string().min(1),
+    /** Skills nest in subdirectories (the agent scans recursively). */
+    recursive: z.boolean().optional(),
+    /**
+     * Scan the same relative directory in every ancestor of the workspace
+     * up to the repository root (`project` roots only).
+     */
+    ancestors: z.boolean().optional(),
+    /**
+     * Prepended to every name under the root, a vendor plugin's
+     * `plugin-name:`; a prefixed root is listed as a plugin root.
+     */
+    namePrefix: nativeRootNamePrefixSchema.optional(),
+    /**
+     * A file, relative to a skill directory under this root, that marks the
+     * directory as a vendor plugin rather than a skill (Claude's
+     * `.claude-plugin/plugin.json`): bb skips such a directory. The plugin
+     * that knows the vendor layout declares it; core names no vendor path.
+     */
+    skipIfManifest: nativeRootManifestPathSchema.optional(),
+  })
+  .strict();
+
 /** Input-form entry: a path, or a path with options. */
 export const providerNativeRootInputSchema = z.union([
-  z.string().min(1),
-  z
-    .object({
-      path: z.string().min(1),
-      /** Skills nest in subdirectories (the agent scans recursively). */
-      recursive: z.boolean().optional(),
-      /**
-       * Scan the same relative directory in every ancestor of the workspace
-       * up to the repository root (`project` roots only).
-       */
-      ancestors: z.boolean().optional(),
-      /**
-       * Prepended to every name under the root, a vendor plugin's
-       * `plugin-name:`; a prefixed root is listed as a plugin root.
-       */
-      namePrefix: nativeRootNamePrefixSchema.optional(),
-      /**
-       * A file, relative to a skill directory under this root, that marks the
-       * directory as a vendor plugin rather than a skill (Claude's
-       * `.claude-plugin/plugin.json`): bb skips such a directory. The plugin
-       * that knows the vendor layout declares it; core names no vendor path.
-       */
-      skipIfManifest: nativeRootManifestPathSchema.optional(),
-    })
-    .strict(),
+  providerNativeRootPathInputSchema,
+  providerNativeRootOptionsInputSchema,
 ]);
 /**
  * One provider-native root as a plugin declares it: a path, or a path with
@@ -165,26 +168,38 @@ export const providerNativeRootsSchema = z
   .strict();
 export type ProviderNativeRoots = z.infer<typeof providerNativeRootsSchema>;
 
-export const EMPTY_PROVIDER_NATIVE_ROOTS: ProviderNativeRoots = Object.freeze({
-  user: Object.freeze([]) as readonly ProviderNativeRoot[] as ProviderNativeRoot[],
-  project: Object.freeze([]) as readonly ProviderNativeRoot[] as ProviderNativeRoot[],
-});
+function createEmptyProviderNativeRoots(): ProviderNativeRoots {
+  const roots: ProviderNativeRoots = { user: [], project: [] };
+  Object.freeze(roots.user);
+  Object.freeze(roots.project);
+  return Object.freeze(roots);
+}
+
+export const EMPTY_PROVIDER_NATIVE_ROOTS = createEmptyProviderNativeRoots();
 
 /** Fill an input-form entry's defaults. */
 export function normalizeProviderNativeRoot(
   entry: ProviderNativeRootInput,
 ): ProviderNativeRoot {
-  if (typeof entry === "string") {
-    return { path: entry, recursive: false, ancestors: false, namePrefix: "" };
+  const objectEntry = providerNativeRootOptionsInputSchema.safeParse(entry);
+  if (objectEntry.success) {
+    const normalized: ProviderNativeRoot = {
+      path: objectEntry.data.path,
+      recursive: objectEntry.data.recursive ?? false,
+      ancestors: objectEntry.data.ancestors ?? false,
+      namePrefix: objectEntry.data.namePrefix ?? "",
+    };
+    if (objectEntry.data.skipIfManifest !== undefined) {
+      normalized.skipIfManifest = objectEntry.data.skipIfManifest;
+    }
+    return normalized;
   }
+  const path = providerNativeRootPathInputSchema.parse(entry);
   return {
-    path: entry.path,
-    recursive: entry.recursive ?? false,
-    ancestors: entry.ancestors ?? false,
-    namePrefix: entry.namePrefix ?? "",
-    ...(entry.skipIfManifest === undefined
-      ? {}
-      : { skipIfManifest: entry.skipIfManifest }),
+    path,
+    recursive: false,
+    ancestors: false,
+    namePrefix: "",
   };
 }
 
@@ -223,15 +238,17 @@ export function providerNativeRootsAreEmpty(
  * directory of `*.md` prompt files (the default for commands).
  * `command-file`: one `*.md` file.
  */
-export const providerResolvedNativeRootShapeSchema = z.enum([
+const RESOLVED_ROOT_LAYOUT_FIELD = "shape";
+const providerResolvedNativeRootLayoutSchema = z.enum([
   "skills",
   "skill",
   "skill-file",
   "commands",
   "command-file",
 ]);
-export type ProviderResolvedNativeRootShape = z.infer<
-  typeof providerResolvedNativeRootShapeSchema
+export { providerResolvedNativeRootLayoutSchema };
+export type ProviderResolvedNativeRootLayout = z.infer<
+  typeof providerResolvedNativeRootLayoutSchema
 >;
 
 /**
@@ -249,7 +266,7 @@ const resolvedNativeRootFieldsSchema = z
     /** Only with origin `project`, for a path inside the workspace. */
     ancestors: z.boolean(),
     namePrefix: nativeRootNamePrefixSchema,
-    shape: providerResolvedNativeRootShapeSchema,
+    [RESOLVED_ROOT_LAYOUT_FIELD]: providerResolvedNativeRootLayoutSchema,
     /**
      * `skill-file` only: the skill name when the file's frontmatter names
      * none. A vendor plugin's root SKILL.md takes the plugin's name; absent
@@ -268,7 +285,7 @@ const resolvedNativeRootFieldsSchema = z
 /** A resolved root with every option explicit and the cross-field rules applied. */
 export const providerResolvedNativeRootSchema =
   resolvedNativeRootFieldsSchema.superRefine((root, context) => {
-    if (root.skipIfManifest !== undefined && root.shape !== "skills") {
+    if (root.skipIfManifest !== undefined && root["shape"] !== "skills") {
       context.addIssue({
         code: "custom",
         message: "Only a skills root carries a manifest marker",
@@ -280,7 +297,7 @@ export const providerResolvedNativeRootSchema =
         message: "Only project roots may walk ancestors",
       });
     }
-    if (root.fallbackName !== undefined && root.shape !== "skill-file") {
+    if (root.fallbackName !== undefined && root["shape"] !== "skill-file") {
       context.addIssue({
         code: "custom",
         message: "Only a skill-file root carries a fallback name",
@@ -297,7 +314,7 @@ export const providerResolvedNativeRootInputSchema =
     recursive: true,
     ancestors: true,
     namePrefix: true,
-    shape: true,
+    [RESOLVED_ROOT_LAYOUT_FIELD]: true,
   });
 export type ProviderResolvedNativeRootInput = z.input<
   typeof providerResolvedNativeRootInputSchema
@@ -314,28 +331,31 @@ export function normalizeProviderResolvedNativeRoot(
   root: ProviderResolvedNativeRootInput,
   side: keyof ProviderResolvedNativeRoots,
 ): ProviderResolvedNativeRoot {
-  return {
+  const normalized: ProviderResolvedNativeRoot = {
     path: root.path,
     origin: root.origin,
     recursive: root.recursive ?? false,
     ancestors: root.ancestors ?? false,
     namePrefix: root.namePrefix ?? "",
-    shape: root.shape ?? (side === "skills" ? "skills" : "commands"),
-    ...(root.fallbackName === undefined
-      ? {}
-      : { fallbackName: root.fallbackName }),
-    ...(side === "skills" && root.skipIfManifest !== undefined
-      ? { skipIfManifest: root.skipIfManifest }
-      : {}),
+    [RESOLVED_ROOT_LAYOUT_FIELD]:
+      root[RESOLVED_ROOT_LAYOUT_FIELD] ??
+      (side === "skills" ? "skills" : "commands"),
   };
+  if (root.fallbackName !== undefined) {
+    normalized.fallbackName = root.fallbackName;
+  }
+  if (side === "skills" && root.skipIfManifest !== undefined) {
+    normalized.skipIfManifest = root.skipIfManifest;
+  }
+  return normalized;
 }
 
-const resolvedSkillShapes = new Set<ProviderResolvedNativeRootShape>([
+const resolvedSkillLayouts = new Set<ProviderResolvedNativeRootLayout>([
   "skills",
   "skill",
   "skill-file",
 ]);
-const resolvedCommandShapes = new Set<ProviderResolvedNativeRootShape>([
+const resolvedCommandLayouts = new Set<ProviderResolvedNativeRootLayout>([
   "commands",
   "command-file",
 ]);
@@ -348,7 +368,7 @@ export const providerResolvedNativeRootsSchema = z
     skills: z
       .array(
         providerResolvedNativeRootSchema.refine(
-          (root) => resolvedSkillShapes.has(root.shape),
+          (root) => resolvedSkillLayouts.has(root["shape"]),
           "A skills root needs a skill shape",
         ),
       )
@@ -356,7 +376,7 @@ export const providerResolvedNativeRootsSchema = z
     commands: z
       .array(
         providerResolvedNativeRootSchema.refine(
-          (root) => resolvedCommandShapes.has(root.shape),
+          (root) => resolvedCommandLayouts.has(root["shape"]),
           "A commands root needs a command shape",
         ),
       )
@@ -367,11 +387,15 @@ export type ProviderResolvedNativeRoots = z.infer<
   typeof providerResolvedNativeRootsSchema
 >;
 
-export const EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS: ProviderResolvedNativeRoots =
-  Object.freeze({
-    skills: Object.freeze([]) as readonly ProviderResolvedNativeRoot[] as ProviderResolvedNativeRoot[],
-    commands: Object.freeze([]) as readonly ProviderResolvedNativeRoot[] as ProviderResolvedNativeRoot[],
-  });
+function createEmptyProviderResolvedNativeRoots(): ProviderResolvedNativeRoots {
+  const roots: ProviderResolvedNativeRoots = { skills: [], commands: [] };
+  Object.freeze(roots.skills);
+  Object.freeze(roots.commands);
+  return Object.freeze(roots);
+}
+
+export const EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS =
+  createEmptyProviderResolvedNativeRoots();
 
 /**
  * Everything the daemon scans for one provider on one host: the declared

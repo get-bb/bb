@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
+import { z } from "zod";
 import { useTheme } from "@/theme/ThemeProvider";
 import { cn } from "./cn";
 import { Icon, type IconName } from "./Icon";
@@ -29,6 +30,7 @@ export interface EmptyStatePanelProps {
 }
 
 export function EmptyStatePanel({ children, className }: EmptyStatePanelProps) {
+  const textChild = z.string().safeParse(children);
   return (
     <View
       className={cn(
@@ -36,9 +38,9 @@ export function EmptyStatePanel({ children, className }: EmptyStatePanelProps) {
         className,
       )}
     >
-      {typeof children === "string" ? (
+      {textChild.success ? (
         <Text className="text-center text-sm text-muted-foreground">
-          {children}
+          {textChild.data}
         </Text>
       ) : (
         children

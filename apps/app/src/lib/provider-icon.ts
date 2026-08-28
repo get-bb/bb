@@ -22,7 +22,7 @@ interface ProviderIconSource {
 }
 
 function isIconName(name: string): name is IconName {
-  return (ICON_NAMES as readonly string[]).includes(name);
+  return ICON_NAMES.some((iconName) => iconName === name);
 }
 
 const declaredGlyphIcons = new Map<

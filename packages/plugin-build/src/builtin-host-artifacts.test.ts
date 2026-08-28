@@ -2,6 +2,7 @@ import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import type { JsonValue } from "@bb/domain";
 import { buildPluginHost } from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
@@ -12,27 +13,27 @@ interface BuiltProviderBridge {
   readonly handleLine: (line: string) => void;
 }
 
-function isBuiltProviderBridge(value: unknown): value is BuiltProviderBridge {
-  if (typeof value !== "object" || value === null) return false;
-  return (
-    Reflect.get(value, "experimental_apiVersion") === 1 &&
-    typeof Reflect.get(value, "handleLine") === "function"
-  );
+interface BuiltHostContext {
+  readonly signal: AbortSignal;
+  readonly lifecycle: { readonly signal: AbortSignal };
+  readonly experimental_retainWorker: () => {
+    readonly dispose: () => Promise<void>;
+  };
 }
 
+type BuiltHostHandler = (
+  input: JsonValue,
+  context: BuiltHostContext,
+) => JsonValue | Promise<JsonValue>;
 interface BuiltHostEntry {
   readonly experimental_apiVersion: 1;
-  readonly handlers: Readonly<
-    Record<string, (input: unknown, context: unknown) => unknown>
-  >;
+  readonly contract: object;
+  readonly handlers: Readonly<Record<string, BuiltHostHandler>>;
 }
 
-function isBuiltHostEntry(value: unknown): value is BuiltHostEntry {
-  if (typeof value !== "object" || value === null) return false;
-  return (
-    Reflect.get(value, "experimental_apiVersion") === 1 &&
-    typeof Reflect.get(value, "handlers") === "object"
-  );
+interface BuiltHostModule {
+  readonly default: BuiltHostEntry;
+  readonly experimental_providerBridge?: BuiltProviderBridge;
 }
 
 describe("builtin host artifacts", () => {
@@ -67,13 +68,11 @@ describe("builtin host artifacts", () => {
       join(repositoryRoot, "node_modules", ".unused-toolchain"),
     );
     const built = await buildPluginHost(root, "0.9.0-test", toolchain);
-    const imported: unknown = await import(
+    // SAFETY: buildPluginHost emits the host module contract used by this test.
+    const imported = (await import(
       `${pathToFileURL(built.jsPath).href}?test=${Date.now()}`
-    );
-    const entry = Reflect.get(Object(imported), "default");
-    if (!isBuiltHostEntry(entry)) {
-      throw new Error("Keep Awake did not build a valid host entry");
-    }
+    )) as BuiltHostModule;
+    const entry = imported.default;
 
     const result = await entry.handlers.setEnabled?.(
       { enabled: false },
@@ -120,17 +119,16 @@ describe("builtin host artifacts", () => {
         join(repositoryRoot, "node_modules", ".unused-toolchain"),
       );
       const built = await buildPluginHost(root, "0.9.0-test", toolchain);
-      const imported: unknown = await import(
+      // SAFETY: buildPluginHost emits the host module contract used by this test.
+      const imported = (await import(
         `${pathToFileURL(built.jsPath).href}?test=${Date.now()}`
-      );
-      const bridge = Reflect.get(
-        Object(imported),
-        "experimental_providerBridge",
-      );
-      expect(isBuiltProviderBridge(bridge)).toBe(true);
-      const entry = Reflect.get(Object(imported), "default");
-      const contract = Reflect.get(Object(entry), "contract");
-      expect(Object.keys(Object(contract))).toEqual(
+      )) as BuiltHostModule;
+      expect(imported.experimental_providerBridge).toMatchObject({
+        experimental_apiVersion: 1,
+        handleLine: expect.any(Function),
+      });
+      const entry = imported.default;
+      expect(Object.keys(entry.contract)).toEqual(
         expect.arrayContaining(methods),
       );
     },

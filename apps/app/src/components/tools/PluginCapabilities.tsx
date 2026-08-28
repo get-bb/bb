@@ -40,11 +40,22 @@ import {
 import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 
-function pluginActivityIcon(state: "running" | "ok" | "error" | null): {
+interface PluginActivityIcon {
   name: IconName;
   className: string;
   label: string;
-} {
+}
+
+interface PluginServiceStatus {
+  label: string;
+  labelClassName?: string;
+  statusClassName?: string;
+  tone: ResourceStatusTone;
+}
+
+function pluginActivityIcon(
+  state: "running" | "ok" | "error" | null,
+): PluginActivityIcon {
   if (state === null) {
     return {
       name: "Clock",
@@ -76,12 +87,9 @@ function pluginActivityIcon(state: "running" | "ok" | "error" | null): {
   };
 }
 
-function pluginServiceStatus(state: "running" | "backoff" | "stopped"): {
-  label: string;
-  labelClassName?: string;
-  statusClassName?: string;
-  tone: ResourceStatusTone;
-} {
+function pluginServiceStatus(
+  state: "running" | "backoff" | "stopped",
+): PluginServiceStatus {
   if (state === "running") {
     return {
       label: "Running",

@@ -10,6 +10,11 @@ import plugin, {
 const ROOT = "/workspace/project";
 const HOST_ID = "host_1";
 
+type FakePluginHostOptions = NonNullable<
+  Parameters<typeof createFakePluginHost>[0]
+>;
+type InlineVisSdk = NonNullable<FakePluginHostOptions["sdk"]>;
+
 function threadWithEnv(overrides?: { path?: string | null; hostId?: string }) {
   return {
     id: "thr_1",
@@ -21,10 +26,7 @@ function threadWithEnv(overrides?: { path?: string | null; hostId?: string }) {
   };
 }
 
-async function load(sdk: {
-  threads?: { get: (args: unknown) => unknown };
-  files?: { read: (args: unknown) => unknown };
-}) {
+async function load(sdk: InlineVisSdk) {
   const host = createFakePluginHost({
     pluginId: "inline-vis",
     sdk,

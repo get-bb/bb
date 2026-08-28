@@ -115,7 +115,7 @@ export function useOverflowMeasurement({
       if (!element.isConnected) return;
       setMeasurement(nextMeasurement);
     };
-    if (typeof ResizeObserver === "undefined") {
+    if (globalThis.ResizeObserver === undefined) {
       applyMeasurement(readOverflowMeasurement(element));
       return;
     }

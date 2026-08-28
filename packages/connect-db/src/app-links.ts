@@ -11,7 +11,25 @@ export const APPLE_APP_SITE_ASSOCIATION_PATH =
   "/.well-known/apple-app-site-association";
 export const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
 
-function buildAppleAppSiteAssociation(): Record<string, unknown> {
+interface AppleAppSiteAssociation {
+  applinks: {
+    details: Array<{
+      appIDs: string[];
+      components: Array<{ "/": string }>;
+    }>;
+  };
+}
+
+interface AndroidAssetLink {
+  relation: string[];
+  target: {
+    namespace: string;
+    package_name: string;
+    sha256_cert_fingerprints: string[];
+  };
+}
+
+function buildAppleAppSiteAssociation(): AppleAppSiteAssociation {
   return {
     applinks: {
       details: [
@@ -38,7 +56,7 @@ export function parseAssetLinksFingerprints(
 
 function buildAndroidAssetLinks(
   sha256CertFingerprints: readonly string[],
-): unknown[] {
+): AndroidAssetLink[] {
   return [
     {
       relation: ["delegate_permission/common.handle_all_urls"],

@@ -15,12 +15,12 @@ interrupt, bridge-release resume (id-collision check), fork, provider
 specialties, plus an archive→unarchive→resume round trip and a final
 process sweep. Raw evidence: `/tmp/narrow-grammar-gate.md`.
 
-| provider | turn/tools | steer | interrupt | resume (no id collisions) | fork | specialty | errors |
-|---|---|---|---|---|---|---|---|
-| codex | PASS | PASS | PASS | PASS (new epoch `daf7fe3e6c-`) | PASS | spawnAgent delegation PASS | 0 |
-| claude-code | PASS | PASS | PASS | PASS (counters continue, no dupes) | PASS | backgroundTask/subagent PASS (blocking task settled before turn/completed) | 0 (+2 benign `provider/unhandled` background_tasks_changed) |
-| pi | PASS | PASS | PASS | PASS | PASS | large-session /compact PASS; tiny-session /compact → finding 1 | 0 (+2 benign queue_update) |
-| acp-cursor | PASS | PASS | PASS | PASS | finding 2 (cursor lacks fork; acp fork path verified on opencode) | accept-edits write PASS | 1 system/error (finding 2) |
+| provider    | turn/tools | steer | interrupt | resume (no id collisions)          | fork                                                              | specialty                                                                  | errors                                                      |
+| ----------- | ---------- | ----- | --------- | ---------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| codex       | PASS       | PASS  | PASS      | PASS (new epoch `daf7fe3e6c-`)     | PASS                                                              | spawnAgent delegation PASS                                                 | 0                                                           |
+| claude-code | PASS       | PASS  | PASS      | PASS (counters continue, no dupes) | PASS                                                              | backgroundTask/subagent PASS (blocking task settled before turn/completed) | 0 (+2 benign `provider/unhandled` background_tasks_changed) |
+| pi          | PASS       | PASS  | PASS      | PASS                               | PASS                                                              | large-session /compact PASS; tiny-session /compact → finding 1             | 0 (+2 benign queue_update)                                  |
+| acp-cursor  | PASS       | PASS  | PASS      | PASS                               | finding 2 (cursor lacks fork; acp fork path verified on opencode) | accept-edits write PASS                                                    | 1 system/error (finding 2)                                  |
 
 Zero `provider/error` / `session/replaced` rows for the whole run; no
 assembler errors or reconnect loops; the only orphan-snapshot warnings are
@@ -49,13 +49,13 @@ architecture (`5fc443ada..96ec52ac1`) were live-verified individually
 against a fresh dev instance from this worktree (branch @ `61d967e34`);
 the full gate was not re-run. Raw evidence: `/tmp/port-qa.md`.
 
-| port | behavior | result |
-|---|---|---|
-| #1807 (pi compact refusal) | pi thread `thr_jcnpe5eqge`: `/compact` on a tiny session emitted `provider/warning{category: "compaction-skipped", details: "Compaction failed: Nothing to compact (session too small)"}` and `turn/completed{completed}`; thread stayed `idle`, follow-up tell worked | PASS |
-| #1663 (pi string content) | same thread: ordinary multi-sentence turn completed with agentMessage text, `thread/tokenUsage/updated`, and `turn/completed{completed}` | PASS |
-| #1804 (codex replay guard) | codex thread `thr_36mv73ysnc`: stop → resume produced zero orphan-snapshot / unknown-turn-id log lines for the thread (all existing orphan drops are older, other-thread pre-turn cases), and `thread/contextWindowUsage/updated` arrived thread-scoped before the resumed turn opened | PASS |
-| #1623 (claude stop-drain) | claude thread `thr_4f3m3snstf`: mid-turn stop settled `system/thread/interrupted` + `turn/completed{interrupted}` exactly once; 0 `turn/started` from late drain over >13s; next tell opened a fresh turn that completed normally | PASS |
-| #1803 (acp classifier glance) | acp-cursor thread `thr_r3xv94btf5` in accept-edits: the write was auto-accepted as a file-change approval (no pending interaction, no command/directory prompt) and the edit landed with the exact requested content | PASS |
+| port                          | behavior                                                                                                                                                                                                                                                                               | result |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| #1807 (pi compact refusal)    | pi thread `thr_jcnpe5eqge`: `/compact` on a tiny session emitted `provider/warning{category: "compaction-skipped", details: "Compaction failed: Nothing to compact (session too small)"}` and `turn/completed{completed}`; thread stayed `idle`, follow-up tell worked                 | PASS   |
+| #1663 (pi string content)     | same thread: ordinary multi-sentence turn completed with agentMessage text, `thread/tokenUsage/updated`, and `turn/completed{completed}`                                                                                                                                               | PASS   |
+| #1804 (codex replay guard)    | codex thread `thr_36mv73ysnc`: stop → resume produced zero orphan-snapshot / unknown-turn-id log lines for the thread (all existing orphan drops are older, other-thread pre-turn cases), and `thread/contextWindowUsage/updated` arrived thread-scoped before the resumed turn opened | PASS   |
+| #1623 (claude stop-drain)     | claude thread `thr_4f3m3snstf`: mid-turn stop settled `system/thread/interrupted` + `turn/completed{interrupted}` exactly once; 0 `turn/started` from late drain over >13s; next tell opened a fresh turn that completed normally                                                      | PASS   |
+| #1803 (acp classifier glance) | acp-cursor thread `thr_r3xv94btf5` in accept-edits: the write was auto-accepted as a file-change approval (no pending interaction, no command/directory prompt) and the edit landed with the exact requested content                                                                   | PASS   |
 
 QA threads deleted, dev instance stopped, no stray processes.
 
@@ -68,17 +68,18 @@ turn-state registry, scoped-item-ids, accepted-user-messages, and item
 constructors (~1,000 published lines), and why the SDK must re-export the
 domain event vocabulary. The revision splits the job along the line the
 de-overfit audit kept rediscovering: **the bridge knows the dialect, the
-runtime knows the timeline.** Bridges emit a small grammar of parsed *semantic
-deltas* (`thread/delta` notifications); the runtime's generic adapter owns one
+runtime knows the timeline.** Bridges emit a small grammar of parsed _semantic
+deltas_ (`thread/delta` notifications); the runtime's generic adapter owns one
 assembler that mints ids, correlates accepted input, pairs and settles items,
 accumulates usage, and constructs every `ThreadEvent`.
 
 ## What the survey established (2026-08-18, both agents' full inventories in
+
 the session transcript)
 
 - **Codex is an existence proof.** Its app-server natively emits
   turn/item/delta events with provider ids; codex's `event-translation.ts`
-  output essentially *is* the target vocabulary. ACP invented its own internal
+  output essentially _is_ the target vocabulary. ACP invented its own internal
   envelope layer (`acp/turn/started`, `acp/update`, …) and assembles above it;
   pi's SDK ships text/thinking as deltas already. The per-bridge assembly on
   top of these layers is the duplicated part.
@@ -88,7 +89,7 @@ the session transcript)
   session replacement, and child death; pi stamps a checkpoint pulled from the
   live SDK at `agent_end`. None of that is parseable from provider events.
 - **Provider heuristics stay bridge-side.** Claude's background-task machine
-  (which *changes the bb turn boundary*: completion-blocking tasks suppress
+  (which _changes the bb turn boundary_: completion-blocking tasks suppress
   the provider's terminal signal), codex's delegation parent-linking FIFO, and
   ACP's tool-call reclassification all remain provider code — they conclude,
   and stamp conclusions onto deltas (`parentRef`, withheld `turn.boundary`,
@@ -116,7 +117,7 @@ the session transcript)
   settlement open turns; item/stream deltas never do (they carry an optional
   `noTurnFallback` instead — see the grammar gaps).
 - `turn.boundary { status: completed|failed|interrupted, error?,
-  providerCheckpointId?, claimIfIdle? }` — the bridge's conclusion that the
+providerCheckpointId?, claimIfIdle? }` — the bridge's conclusion that the
   turn settled. `claimIfIdle: true` marks fallback closers (pi
   `prompt/settled`) that own a turn only if accepted input is pending —
   today's `resolveProviderTerminalTurn` rule, applied centrally.
@@ -125,7 +126,7 @@ the session transcript)
   `tool {tool, args}`, `compaction {}` — and `key` is
   `{ providerItemId?, channel?, parentRef? }` (provider-native join key).
 - `item.close { key, status, resultText?, exitCode?, aggregatedOutput?,
-  item? }` — `item` present when the terminal shape differs from the opened
+item? }` — `item` present when the terminal shape differs from the opened
   one (ACP reclassification). Close-without-open is legal (assembler builds
   the bare completed item, as `buildToolResultItem`'s fallback does today).
 - `message.delta { channel: assistant|reasoning, streamKey, text }` /
@@ -216,10 +217,10 @@ run (no provider credentials in the prototype environment).
   (−361), and it is now **stateless** — the turn-state registry, scoped-item
   ids, accepted-input queue, snapshot diffing, and token accumulation are
   gone from the bridge side entirely (pi now imports zero kit assembly
-  machinery; only parsing/classification helpers remain). *(Amended with the
+  machinery; only parsing/classification helpers remain). _(Amended with the
   ACP conversion: the uniform terminal-shape close rule gave pi back one
   piece of dialect memory, the started-tool shape cache — see open
-  question 2.)*
+  question 2.)_
 - Pi bridge lifecycle: `bridge/bridge.ts` 1,155 → 1,094 (−61): entropy
   minting, per-session translator serials, and the hand-built interrupt
   `turn/completed` all collapsed into one-line delta emissions.
@@ -238,7 +239,7 @@ run (no provider credentials in the prototype environment).
 1. **`item.progress { key, message }`** — pi's non-bash
    `tool_execution_update` → `item/toolCall/progress` had no delta.
 2. **`item.open.attach: "currentOrLast"`** — pi threshold compaction opens a
-   compaction item *in the turn that just closed* without reopening one;
+   compaction item _in the turn that just closed_ without reopening one;
    plain `item.open` would fabricate a turn.
 3. **`message.close` needed a three-way settle semantic**: `text` present →
    provider-final text; absent → accumulated text (ACP); absent +
@@ -261,15 +262,15 @@ run (no provider credentials in the prototype environment).
    a thread-scoped `provider/unhandled`, or drops the delta when the bridge
    attached none (pi attaches it to tool/compaction deltas and leaves
    message deltas bare, matching old pi's coverage-filtered silence).
-9. *(ACP conversion)* **`unhandled.onlyIfNoTurn`**, **`turn.plan`**,
+9. _(ACP conversion)_ **`unhandled.onlyIfNoTurn`**, **`turn.plan`**,
    **`provider.warning.vouchedTurn`**, and the **`fileChange.changes` list**
    (multi-entry, explicit `add|update|delete` kinds) — see the ACP results
    section below.
 
 ### Behavior deviations (old translator behavior the grammar cannot express)
 
-- **Resolved: behavior-neutral (2026-08-18).** The bridge-side *no-turn
-  guards* are restored — item/stream deltas never open turns (only
+- **Resolved: behavior-neutral (2026-08-18).** The bridge-side _no-turn
+  guards_ are restored — item/stream deltas never open turns (only
   `turn.open`, a claiming `turn.boundary`, and accepted-input lifecycle
   settlement do) and turnless turn-requiring deltas surface their
   `noTurnFallback` payload as `provider/unhandled` exactly as the old
@@ -289,7 +290,7 @@ run (no provider credentials in the prototype environment).
   (`agent-runtime/src/pi/delta-translation.ts:401`, dropped when the turn
   settles) — pi's translator is therefore no longer strictly stateless,
   holding the same kind of dialect memory as ACP's merge cache.
-- `session.ended` now settles open *items* too (plan-mandated;
+- `session.ended` now settles open _items_ too (plan-mandated;
   old pi interrupt left them dangling) — a strict improvement, but it means
   interrupt timelines gain item/completed events they did not have.
 
@@ -334,7 +335,7 @@ green; @bb/server typecheck untouched-green.
   (message chunk closes thought; tool call closes both; turn end closes
   both before draining tools), preserving today's event order exactly.
 - **Turnless known updates** map to `noTurnFallback` on the primary delta;
-  known updates that translate to *nothing* even mid-turn (non-terminal
+  known updates that translate to _nothing_ even mid-turn (non-terminal
   update without progress text, non-text chunks, malformed known payloads)
   carry a new `unhandled { onlyIfNoTurn: true }` delta so the old
   "known event, no active turn → provider/unhandled" guard survives without
@@ -354,7 +355,7 @@ green; @bb/server typecheck untouched-green.
 
 ### Behavior deviations (ACP)
 
-- A `tool_call` that arrives *pending with output content already attached*
+- A `tool_call` that arrives _pending with output content already attached_
   used to surface that output on the `item/started` event
   (`aggregatedOutput`/`result` at start). Delta item shapes deliberately
   exclude output fields (`provider-acp/src/delta-translation.ts:183`), so
@@ -379,7 +380,7 @@ assembler regression check; @bb/server typecheck untouched-green.
 
 - Codex translation: `event-translation.ts` 1,094 → `delta-translation.ts`
   1,019 (−75; codex was already parsed-shape-oriented, so the win is the
-  *deleted responsibilities*, not raw lines). `translator.ts` 1,476 → 1,494
+  _deleted responsibilities_, not raw lines). `translator.ts` 1,476 → 1,494
   (+18): every stateful closure survives as dialect knowledge, now mapping
   over deltas; the raw-output recovery buffers `item.close` deltas instead
   of finished events.
@@ -403,8 +404,8 @@ assembler regression check; @bb/server typecheck untouched-green.
     keyed `turn.boundary` settles only the named turn, clearing nothing.
     `turn.open` also carries `parentRef` (delegated child turns).
 11. **`item.textDelta { key, channel: agentMessage|reasoningSummary|
-    reasoningText|plan }`** and **`item.outputDelta { key, channel:
-    command|fileChange }`** — item-keyed streaming, split into two kinds so
+reasoningText|plan }`** and **`item.outputDelta { key, channel:
+command|fileChange }`** — item-keyed streaming, split into two kinds so
     codex's synthesis exception is structural: textDelta synthesizes the
     channel's empty `item/started` for an unknown id; outputDelta NEVER
     synthesizes (a commandExecution without its command would be worse than
@@ -425,7 +426,7 @@ assembler regression check; @bb/server typecheck untouched-green.
     (codex progress may carry none), **`turn.diff { diff }`** →
     `turn/diff/updated`.
 16. **Thread metadata deltas**: `thread.started`, `thread.identity
-    { providerThreadId }`, `thread.name`, `thread.goal`,
+{ providerThreadId }`, `thread.name`, `thread.goal`,
     `thread.goalCleared`; **`provider.rateLimits { rateLimits }`** carries
     the normalized `ProviderRateLimitState`.
 17. **`provider.error` gains `errorInfo`, `providerTurnId`, `threadScoped`**
@@ -470,7 +471,7 @@ assembler regression check; @bb/server typecheck untouched-green.
   already app-visible: acp keeps sending raw toolCallIds with `turnId: null`
   and its app-visible behavior is byte-identical (its approval ids never
   matched timeline ids, before or after the acp conversion — remapping them
-  would have *changed* acp, so the flag is opt-in per bridge).
+  would have _changed_ acp, so the flag is opt-in per bridge).
 
 ### What stayed bridge-side (and why)
 

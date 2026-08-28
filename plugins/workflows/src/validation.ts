@@ -45,7 +45,7 @@ const SUPPORTED_SCHEMA_KEYWORDS = new Set([
   "writeOnly",
 ]);
 
-const UNSAFE_SCHEMA_KEYWORD_REASONS: Readonly<Record<string, string>> = {
+const UNSAFE_SCHEMA_KEYWORD_REASONS = {
   $dynamicRef: "dynamic references can create unbounded recursive validation",
   $recursiveRef: "recursive references can create unbounded validation",
   $ref: "references can create recursive or disproportionately repeated validation",
@@ -70,7 +70,7 @@ const UNSAFE_SCHEMA_KEYWORD_REASONS: Readonly<Record<string, string>> = {
   unevaluatedProperties:
     "unevaluated-property tracking can multiply validation work",
   uniqueItems: "uniqueness checks can grow superlinearly with array size",
-};
+} satisfies Readonly<Record<string, string>>;
 
 const HIDDEN_CONTROL_CHARACTER =
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u;
@@ -98,7 +98,11 @@ export function assertValidWorkflowSourceText(source: string): void {
 }
 
 function isObject(value: JsonValue): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return (
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
 }
 
 const jsonSchemaValueSchema = z.union([
@@ -106,7 +110,7 @@ const jsonSchemaValueSchema = z.union([
   z.record(z.string(), z.json()),
 ]);
 
-const storedAgentOptionsSchema = z
+const storedAgentOptionsSchema: z.ZodType<WorkflowAgentOptions> = z
   .object({
     selection: z
       .object({
@@ -122,8 +126,10 @@ const storedAgentOptionsSchema = z
   })
   .strict();
 
-export function parseStoredAgentOptions(value: unknown): WorkflowAgentOptions {
-  const options = storedAgentOptionsSchema.parse(value) as WorkflowAgentOptions;
+export function parseStoredAgentOptions(
+  value: JsonValue,
+): WorkflowAgentOptions {
+  const options = storedAgentOptionsSchema.parse(value);
   if (options.outputSchema !== null) {
     assertValidJsonSchema(options.outputSchema, "stored agent outputSchema");
   }
@@ -136,7 +142,7 @@ function optionalNonEmptyString(
 ): string | null {
   const value = object[key];
   if (value === undefined) return null;
-  if (typeof value !== "string" || value.trim() === "") {
+  if (String(value) !== value || value.trim() === "") {
     throw new Error(`agent options.${key} must be a non-empty string`);
   }
   return value;
@@ -146,21 +152,21 @@ export function assertValidJsonSchema(
   schema: JsonValue,
   path: string,
 ): asserts schema is JsonSchema {
-  if (typeof schema !== "boolean" && !isObject(schema)) {
+  if (schema !== true && schema !== false && !isObject(schema)) {
     throw new Error(`${path} must be a JSON Schema object or boolean`);
   }
   const stack: Array<{
-    value: unknown;
+    value: JsonValue;
     depth: number;
     path: string;
     exiting?: boolean;
   }> = [{ value: schema, depth: 0, path }];
-  const ancestors = new Set<object>();
+  const ancestors = new Set<JsonValue>();
   let nodes = 0;
   while (stack.length > 0) {
     const current = stack.pop()!;
     if (current.exiting) {
-      ancestors.delete(current.value as object);
+      ancestors.delete(current.value);
       continue;
     }
     nodes += 1;
@@ -175,18 +181,19 @@ export function assertValidJsonSchema(
     const value = current.value;
     if (
       value === null ||
-      typeof value === "string" ||
-      typeof value === "boolean"
+      value === true ||
+      value === false ||
+      String(value) === value
     ) {
       continue;
     }
-    if (typeof value === "number") {
-      if (!Number.isFinite(value)) {
-        throw new Error(`${current.path} contains a non-finite number`);
-      }
+    if (value === Infinity || value === -Infinity || Number.isNaN(value)) {
+      throw new Error(`${current.path} contains a non-finite number`);
+    }
+    if (Number.isFinite(value)) {
       continue;
     }
-    if (typeof value !== "object") {
+    if (!isObject(value) && !Array.isArray(value)) {
       throw new Error(`${current.path} contains a non-JSON value`);
     }
     if (ancestors.has(value)) {
@@ -219,7 +226,7 @@ export function assertValidJsonSchema(
       const keys = Reflect.ownKeys(value);
       for (let index = keys.length - 1; index >= 0; index -= 1) {
         const key = keys[index]!;
-        if (typeof key !== "string") {
+        if (String(key) !== key) {
           throw new Error(`${current.path} contains a symbol-keyed property`);
         }
         if (
@@ -267,10 +274,12 @@ export function assertValidJsonSchema(
 }
 
 function assertSupportedSchema(schema: JsonSchema, path: string): void {
-  if (typeof schema === "boolean") return;
+  if (schema === true || schema === false) return;
   for (const keyword of Object.keys(schema)) {
     if (SUPPORTED_SCHEMA_KEYWORDS.has(keyword)) continue;
-    const reason = UNSAFE_SCHEMA_KEYWORD_REASONS[keyword];
+    const reason = Object.entries(UNSAFE_SCHEMA_KEYWORD_REASONS).find(
+      ([name]) => name === keyword,
+    )?.[1];
     if (reason !== undefined) {
       throw new Error(
         `${path}.${keyword} is not supported by the safe workflow schema subset: ${reason}; schema validation runs in the Node host, outside the QuickJS deadline`,
@@ -293,7 +302,7 @@ function assertSupportedSchema(schema: JsonSchema, path: string): void {
       );
     }
     for (const [name, child] of entries) {
-      if (typeof child !== "boolean" && !isObject(child)) {
+      if (child !== true && child !== false && !isObject(child)) {
         throw new Error(`${path}.properties.${name} must be a schema`);
       }
       assertSupportedSchema(child, `${path}.properties.${name}`);
@@ -302,7 +311,7 @@ function assertSupportedSchema(schema: JsonSchema, path: string): void {
 
   const items = schema.items;
   if (items !== undefined) {
-    if (typeof items !== "boolean" && !isObject(items)) {
+    if (items !== true && items !== false && !isObject(items)) {
       throw new Error(`${path}.items must be a single schema`);
     }
     assertSupportedSchema(items, `${path}.items`);
@@ -311,7 +320,8 @@ function assertSupportedSchema(schema: JsonSchema, path: string): void {
   const additionalProperties = schema.additionalProperties;
   if (
     additionalProperties !== undefined &&
-    typeof additionalProperties !== "boolean"
+    additionalProperties !== true &&
+    additionalProperties !== false
   ) {
     if (!isObject(additionalProperties)) {
       throw new Error(
@@ -332,7 +342,9 @@ function assertSupportedSchema(schema: JsonSchema, path: string): void {
       );
     }
     if (
-      enumValues.some((value) => value !== null && typeof value === "object")
+      enumValues.some(
+        (value) => value !== null && (Array.isArray(value) || isObject(value)),
+      )
     ) {
       throw new Error(
         `${path}.enum supports only scalar values in the safe workflow schema subset`,

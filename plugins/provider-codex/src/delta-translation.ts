@@ -5,14 +5,12 @@ import {
   type ProviderRateLimitStatus,
   type ProviderRateLimitWindow,
   providerRawEventSchema,
-  type DeltaItemShape,
   type DeltaPresentation,
   type ProviderRawEvent,
   type ThreadDelta,
   type ThreadEventItemStatus,
   type ThreadEventTurnStatus,
   type JsonRpcMessage,
-  type ProviderRuntimeEvent,
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
   experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
   experimental_toolPresentation as toolPresentation,
@@ -48,6 +46,7 @@ import {
   type CodexGoalState,
 } from "./extension-kinds.js";
 import { codexVisibilityMetadata } from "./visibility.js";
+import { z } from "zod";
 
 function assertNever(value: never): never {
   throw new Error(`Unexpected value: ${String(value)}`);
@@ -68,6 +67,8 @@ interface CodexEventTranslationState {
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
+
+type DeltaItem = Extract<ThreadDelta, { kind: "item.open" }>["item"];
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
   return {
@@ -237,7 +238,7 @@ type CodexErrorParams = CodexErrorEvent["params"];
 type CodexItemTranslationResult =
   | {
       kind: "translated";
-      shape: DeltaItemShape;
+      item: DeltaItem;
       presentation: DeltaPresentation;
       status: ThreadEventItemStatus;
       approvalDenied: boolean;
@@ -246,8 +247,20 @@ type CodexItemTranslationResult =
   | { kind: "unhandled" };
 
 function getCodexErrorProviderCode(errorInfo: CodexErrorInfo): string {
-  if (typeof errorInfo === "string") {
-    return errorInfo;
+  switch (errorInfo) {
+    case "contextWindowExceeded":
+    case "sessionBudgetExceeded":
+    case "usageLimitExceeded":
+    case "serverOverloaded":
+    case "cyberPolicy":
+    case "misalignmentPolicyViolation":
+    case "internalServerError":
+    case "unauthorized":
+    case "badRequest":
+    case "threadRollbackFailed":
+    case "sandboxError":
+    case "other":
+      return errorInfo;
   }
   if ("httpConnectionFailed" in errorInfo) {
     return "httpConnectionFailed";
@@ -268,8 +281,20 @@ function getCodexErrorProviderCode(errorInfo: CodexErrorInfo): string {
 }
 
 function getCodexErrorHttpStatusCode(errorInfo: CodexErrorInfo): number | null {
-  if (typeof errorInfo === "string") {
-    return null;
+  switch (errorInfo) {
+    case "contextWindowExceeded":
+    case "sessionBudgetExceeded":
+    case "usageLimitExceeded":
+    case "serverOverloaded":
+    case "cyberPolicy":
+    case "misalignmentPolicyViolation":
+    case "internalServerError":
+    case "unauthorized":
+    case "badRequest":
+    case "threadRollbackFailed":
+    case "sandboxError":
+    case "other":
+      return null;
   }
   if ("httpConnectionFailed" in errorInfo) {
     return errorInfo.httpConnectionFailed.httpStatusCode;
@@ -292,32 +317,30 @@ function getCodexErrorHttpStatusCode(errorInfo: CodexErrorInfo): number | null {
 function getProviderErrorCategory(
   errorInfo: CodexErrorInfo,
 ): ProviderErrorCategory {
-  if (typeof errorInfo === "string") {
-    switch (errorInfo) {
-      case "contextWindowExceeded":
-        return "context-window-exceeded";
-      case "sessionBudgetExceeded":
-        return "budget-exceeded";
-      case "usageLimitExceeded":
-        return "rate-limit";
-      case "serverOverloaded":
-        return "overloaded";
-      case "cyberPolicy":
-      case "misalignmentPolicyViolation":
-        return "policy";
-      case "internalServerError":
-        return "internal";
-      case "unauthorized":
-        return "unauthorized";
-      case "badRequest":
-        return "bad-request";
-      case "threadRollbackFailed":
-        return "thread-rollback-failed";
-      case "sandboxError":
-        return "sandbox";
-      case "other":
-        return "unknown";
-    }
+  switch (errorInfo) {
+    case "contextWindowExceeded":
+      return "context-window-exceeded";
+    case "sessionBudgetExceeded":
+      return "budget-exceeded";
+    case "usageLimitExceeded":
+      return "rate-limit";
+    case "serverOverloaded":
+      return "overloaded";
+    case "cyberPolicy":
+    case "misalignmentPolicyViolation":
+      return "policy";
+    case "internalServerError":
+      return "internal";
+    case "unauthorized":
+      return "unauthorized";
+    case "badRequest":
+      return "bad-request";
+    case "threadRollbackFailed":
+      return "thread-rollback-failed";
+    case "sandboxError":
+      return "sandbox";
+    case "other":
+      return "unknown";
   }
   if ("httpConnectionFailed" in errorInfo) {
     return "connection-failed";
@@ -405,15 +428,18 @@ function toRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
   if (parsed.success) {
     return parsed.data;
   }
-  return {
+  const fallback: ProviderRawEvent = {
     jsonrpc: "2.0",
-    ...(rawEvent.id !== undefined ? { id: rawEvent.id } : {}),
     method: rawEvent.method,
     params: {
       serializationError:
         "Provider raw event params were not JSON-serializable.",
     },
   };
+  if (rawEvent.id !== undefined) {
+    fallback.id = rawEvent.id;
+  }
+  return fallback;
 }
 
 interface CodexUnhandledDeltaArgs {
@@ -431,18 +457,19 @@ function buildUnhandledCodexDeltas(
     return [];
   }
 
-  return [
-    {
-      kind: "unhandled",
-      raw: toRawEvent(args.rawEvent),
-      rawType: args.rawType ?? description.kind,
-      vouchedTurn: args.providerTurnId !== undefined,
-      ...(args.providerTurnId !== undefined
-        ? { providerTurnId: args.providerTurnId }
-        : {}),
-      ...(args.parentRef !== undefined ? { parentRef: args.parentRef } : {}),
-    },
-  ];
+  const delta: Extract<ThreadDelta, { kind: "unhandled" }> = {
+    kind: "unhandled",
+    raw: toRawEvent(args.rawEvent),
+    rawType: args.rawType ?? description.kind,
+    vouchedTurn: args.providerTurnId !== undefined,
+  };
+  if (args.providerTurnId !== undefined) {
+    delta.providerTurnId = args.providerTurnId;
+  }
+  if (args.parentRef !== undefined) {
+    delta.parentRef = args.parentRef;
+  }
+  return [delta];
 }
 
 function toTurnStatus(status: CodexTurnStatus): ThreadEventTurnStatus {
@@ -477,7 +504,7 @@ function toItemStatus(status: CodexItemStatus): ThreadEventItemStatus {
 
 function extractDynamicToolCallResult(
   contentItems: CodexDynamicToolCallContentItem[] | null,
-): unknown {
+): string | undefined {
   if (!contentItems || contentItems.length === 0) {
     return undefined;
   }
@@ -502,12 +529,12 @@ function extractDynamicToolCallResult(
 
 function buildDynamicToolCallError(
   success: boolean | null,
-  result: unknown,
+  result: string | undefined,
 ): string | undefined {
   if (success !== false) {
     return undefined;
   }
-  if (typeof result === "string" && result.trim().length > 0) {
+  if (result !== undefined && result.trim().length > 0) {
     return result;
   }
   return "Dynamic tool call failed";
@@ -517,7 +544,8 @@ function collectNonEmptyStrings(
   values: Array<string | null | undefined>,
 ): string[] {
   return values.filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
+    (value): value is string =>
+      value !== null && value !== undefined && value.length > 0,
   );
 }
 
@@ -554,11 +582,11 @@ function normalizeCodexUrl(args: CodexUrlArgs): string | null {
 }
 
 interface CodexWebItemTranslation {
-  shape: DeltaItemShape;
+  item: DeltaItem;
   presentation: DeltaPresentation;
 }
 
-function normalizeCodexWebItemShape(
+function normalizeCodexWebItem(
   item: Extract<CodexHandledThreadItem, { type: "webSearch" }>,
 ): CodexWebItemTranslation | null {
   if (!item.action) {
@@ -576,7 +604,7 @@ function normalizeCodexWebItemShape(
         return null;
       }
       return {
-        shape: { type: "webSearch", queries },
+        item: { type: "webSearch", queries },
         presentation: webSearchPresentation(queries[0]),
       };
     }
@@ -586,7 +614,7 @@ function normalizeCodexWebItemShape(
         return null;
       }
       return {
-        shape: { type: "webFetch", url, pattern: null },
+        item: { type: "webFetch", url, pattern: null },
         presentation: webFetchPresentation(url),
       };
     }
@@ -596,7 +624,7 @@ function normalizeCodexWebItemShape(
         return null;
       }
       return {
-        shape: { type: "webFetch", url, pattern: item.action.pattern ?? null },
+        item: { type: "webFetch", url, pattern: item.action.pattern ?? null },
         presentation: webFetchPresentation(url),
       };
     }
@@ -613,10 +641,12 @@ function shouldIgnoreCodexWebItem(
   return item.action === null || item.action.type === "other";
 }
 
-function toolStatusFields(status: CodexItemStatus): {
+interface CodexToolStatusFields {
   status: ThreadEventItemStatus;
   approvalDenied: boolean;
-} {
+}
+
+function toolStatusFields(status: CodexItemStatus): CodexToolStatusFields {
   return {
     status: toItemStatus(status),
     approvalDenied: status === "declined",
@@ -636,46 +666,210 @@ type CodexCollabAgentToolCall = Extract<
   { type: "collabAgentToolCall" }
 >;
 
-const COLLAB_DELEGATION_VERBS: Readonly<Record<string, string>> = {
-  spawnAgent: "Spawn agent",
-  wait: "Wait for agent",
-  resumeAgent: "Resume agent",
-  sendInput: "Send input to agent",
-  closeAgent: "Close agent",
-};
+const COLLAB_DELEGATION_VERBS = new Map<string, string>([
+  ["spawnAgent", "Spawn agent"],
+  ["wait", "Wait for agent"],
+  ["resumeAgent", "Resume agent"],
+  ["sendInput", "Send input to agent"],
+  ["closeAgent", "Close agent"],
+]);
 
 function collabDelegationLabel(item: CodexCollabAgentToolCall): string {
   if (item.prompt !== null && item.prompt.trim().length > 0) {
     return item.prompt.trim();
   }
-  return COLLAB_DELEGATION_VERBS[item.tool] ?? item.tool;
+  return COLLAB_DELEGATION_VERBS.get(item.tool) ?? item.tool;
 }
 
+const codexAgentStatesSchema = z.record(z.string(), z.json());
+type CodexAgentStates = z.infer<typeof codexAgentStatesSchema>;
+
 function summarizeCollabAgentsStates(
-  agentsStates: Record<string, unknown>,
+  agentsStates: CodexAgentStates,
 ): string | undefined {
   const lines = Object.entries(agentsStates).map(([agentThreadId, state]) => {
-    const rendered = typeof state === "string" ? state : JSON.stringify(state);
+    const parsedString = z.string().safeParse(state);
+    const rendered = parsedString.success
+      ? parsedString.data
+      : JSON.stringify(state);
     return `${agentThreadId}: ${rendered}`;
   });
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
-function translateCodexItemShape(
-  item: unknown,
+type CodexCommandExecutionItem = Extract<
+  CodexHandledThreadItem,
+  { type: "commandExecution" }
+>;
+
+function commandItem(
+  source: CodexCommandExecutionItem,
+): Extract<DeltaItem, { type: "command" }> {
+  const item: Extract<DeltaItem, { type: "command" }> = {
+    type: "command",
+    command: source.command,
+    cwd: source.cwd,
+  };
+  if (source.aggregatedOutput !== null) {
+    item.aggregatedOutput = source.aggregatedOutput;
+  }
+  if (source.exitCode !== null) {
+    item.exitCode = source.exitCode;
+  }
+  if (source.durationMs !== null) {
+    item.durationMs = source.durationMs;
+  }
+  return item;
+}
+
+type CodexFileChangeItem = Extract<
+  CodexHandledThreadItem,
+  { type: "fileChange" }
+>;
+
+function fileChangeItem(
+  source: CodexFileChangeItem,
+): Extract<DeltaItem, { type: "fileChange" }> {
+  const changes = source.changes.map((change) => {
+    const translated: Extract<
+      DeltaItem,
+      { type: "fileChange" }
+    >["changes"][number] = {
+      path: change.path,
+      kind: change.kind.type,
+    };
+    if (change.kind.type === "update" && change.kind.move_path) {
+      translated.movePath = change.kind.move_path;
+    }
+    if (change.diff) {
+      translated.diff = change.diff;
+    }
+    return translated;
+  });
+  return { type: "fileChange", changes };
+}
+
+type CodexMcpToolCallItem = Extract<
+  CodexHandledThreadItem,
+  { type: "mcpToolCall" }
+>;
+
+function mcpToolItem(
+  source: CodexMcpToolCallItem,
+): Extract<DeltaItem, { type: "tool" }> {
+  const item: Extract<DeltaItem, { type: "tool" }> = {
+    type: "tool",
+    server: source.server,
+    tool: source.tool,
+  };
+  if (source.arguments !== undefined) {
+    item.args = source.arguments;
+  }
+  if (source.error?.message !== undefined) {
+    item.error = source.error.message;
+  }
+  if (source.durationMs !== null && source.durationMs !== undefined) {
+    item.durationMs = source.durationMs;
+  }
+  return item;
+}
+
+type CodexDynamicToolCallItem = Extract<
+  CodexHandledThreadItem,
+  { type: "dynamicToolCall" }
+>;
+
+function dynamicToolItem(
+  source: CodexDynamicToolCallItem,
+  injected: CodexInjectedTool | undefined,
+  result: string | undefined,
+  error: string | undefined,
+): Extract<DeltaItem, { type: "tool" }> {
+  const item: Extract<DeltaItem, { type: "tool" }> = {
+    type: "tool",
+    tool: source.tool,
+  };
+  if (injected !== undefined) {
+    item.server = BB_TOOL_SERVER;
+  }
+  if (source.arguments !== undefined) {
+    item.args = source.arguments;
+  }
+  if (result !== undefined) {
+    item.result = result;
+  }
+  if (error !== undefined) {
+    item.error = error;
+  }
+  if (source.durationMs !== null && source.durationMs !== undefined) {
+    item.durationMs = source.durationMs;
+  }
+  return item;
+}
+
+interface CodexCollabToolArgs {
+  senderThreadId: string;
+  receiverThreadIds: string[];
+  prompt?: string;
+  model?: string;
+  reasoningEffort?: string;
+}
+
+function delegationItem(
+  source: CodexCollabAgentToolCall,
+  childRef: string,
+  agentsStates: CodexAgentStates,
+): Extract<DeltaItem, { type: "delegation" }> {
+  const item: Extract<DeltaItem, { type: "delegation" }> = {
+    type: "delegation",
+    childRef,
+    label: collabDelegationLabel(source),
+    background: false,
+  };
+  if (isTerminalCodexItemStatus(source.status)) {
+    const summary = summarizeCollabAgentsStates(agentsStates);
+    if (summary !== undefined) {
+      item.summary = summary;
+    }
+  }
+  return item;
+}
+
+function collabToolItem(
+  source: CodexCollabAgentToolCall,
+  agentsStates: CodexAgentStates,
+): Extract<DeltaItem, { type: "tool" }> {
+  const args: CodexCollabToolArgs = {
+    senderThreadId: source.senderThreadId,
+    receiverThreadIds: source.receiverThreadIds,
+  };
+  if (source.prompt) {
+    args.prompt = source.prompt;
+  }
+  if (source.model) {
+    args.model = source.model;
+  }
+  if (source.reasoningEffort) {
+    args.reasoningEffort = source.reasoningEffort;
+  }
+  return {
+    type: "tool",
+    tool: source.tool,
+    args,
+    result: agentsStates,
+  };
+}
+
+function translateCodexItem(
+  item: CodexHandledThreadItem,
   state: CodexEventTranslationState,
 ): CodexItemTranslationResult {
-  const parsed = codexHandledThreadItemSchema.safeParse(item);
-  if (!parsed.success) {
-    return { kind: "unhandled" };
-  }
-
-  const parsedItem: CodexHandledThreadItem = parsed.data;
+  const parsedItem = item;
   switch (parsedItem.type) {
     case "agentMessage":
       return {
         kind: "translated",
-        shape: { type: "agentMessage", text: parsedItem.text },
+        item: { type: "agentMessage", text: parsedItem.text },
         presentation: AGENT_MESSAGE_PRESENTATION,
         status: "completed",
         approvalDenied: false,
@@ -685,93 +879,51 @@ function translateCodexItemShape(
     case "commandExecution":
       return {
         kind: "translated",
-        shape: {
-          type: "command",
-          command: parsedItem.command,
-          cwd: parsedItem.cwd,
-          ...(parsedItem.aggregatedOutput === null
-            ? {}
-            : { aggregatedOutput: parsedItem.aggregatedOutput }),
-          ...(parsedItem.exitCode === null
-            ? {}
-            : { exitCode: parsedItem.exitCode }),
-          ...(parsedItem.durationMs === null
-            ? {}
-            : { durationMs: parsedItem.durationMs }),
-        },
+        item: commandItem(parsedItem),
         presentation: commandPresentation(parsedItem.command),
         ...toolStatusFields(parsedItem.status),
       };
     case "fileChange":
       return {
         kind: "translated",
-        shape: {
-          type: "fileChange",
-          changes: parsedItem.changes.map((change) => ({
-            path: change.path,
-            kind: change.kind.type,
-            ...(change.kind.type === "update" && change.kind.move_path
-              ? { movePath: change.kind.move_path }
-              : {}),
-            ...(change.diff ? { diff: change.diff } : {}),
-          })),
-        },
+        item: fileChangeItem(parsedItem),
         presentation: fileChangePresentation(
           parsedItem.changes.map((change) => change.path),
         ),
         ...toolStatusFields(parsedItem.status),
       };
-    case "mcpToolCall":
+    case "mcpToolCall": {
+      const parsedArguments = z.json().safeParse(parsedItem.arguments);
       return {
         kind: "translated",
-        shape: {
-          type: "tool",
-          server: parsedItem.server,
-          tool: parsedItem.tool,
-          ...(parsedItem.arguments === undefined
-            ? {}
-            : { args: parsedItem.arguments }),
-          ...(parsedItem.error?.message === undefined
-            ? {}
-            : { error: parsedItem.error.message }),
-          ...(parsedItem.durationMs === null ||
-          parsedItem.durationMs === undefined
-            ? {}
-            : { durationMs: parsedItem.durationMs }),
-        },
+        item: mcpToolItem(parsedItem),
         presentation: mcpToolPresentation({
           server: parsedItem.server,
           tool: parsedItem.tool,
-          args: parsedItem.arguments,
+          args: parsedArguments.success ? parsedArguments.data : null,
         }),
         ...toolStatusFields(parsedItem.status),
       };
+    }
     case "dynamicToolCall": {
       const result = extractDynamicToolCallResult(parsedItem.contentItems);
       const error = buildDynamicToolCallError(parsedItem.success, result);
       const injected = state.injectedToolsByName.get(parsedItem.tool);
       return {
         kind: "translated",
-        shape: {
-          type: "tool",
-          ...(injected === undefined ? {} : { server: BB_TOOL_SERVER }),
-          tool: parsedItem.tool,
-          ...(parsedItem.arguments === undefined
-            ? {}
-            : { args: parsedItem.arguments }),
-          ...(result === undefined ? {} : { result }),
-          ...(error === undefined ? {} : { error }),
-          ...(parsedItem.durationMs === null ||
-          parsedItem.durationMs === undefined
-            ? {}
-            : { durationMs: parsedItem.durationMs }),
-        },
+        item: dynamicToolItem(parsedItem, injected, result, error),
         presentation:
           injected?.presentation ?? toolPresentation(parsedItem.tool),
         ...toolStatusFields(parsedItem.status),
       };
     }
     case "collabAgentToolCall": {
+      const agentsStates = codexAgentStatesSchema.safeParse(
+        parsedItem.agentsStates,
+      );
+      if (!agentsStates.success) {
+        return { kind: "unhandled" };
+      }
       const presentation = collabAgentPresentation({
         tool: parsedItem.tool,
         prompt: parsedItem.prompt,
@@ -780,37 +932,14 @@ function translateCodexItemShape(
       if (childRef !== undefined && childRef.length > 0) {
         return {
           kind: "translated",
-          shape: {
-            type: "delegation",
-            childRef,
-            label: collabDelegationLabel(parsedItem),
-            background: false,
-            ...(isTerminalCodexItemStatus(parsedItem.status)
-              ? {
-                  summary: summarizeCollabAgentsStates(parsedItem.agentsStates),
-                }
-              : {}),
-          },
+          item: delegationItem(parsedItem, childRef, agentsStates.data),
           presentation,
           ...toolStatusFields(parsedItem.status),
         };
       }
       return {
         kind: "translated",
-        shape: {
-          type: "tool",
-          tool: parsedItem.tool,
-          args: {
-            senderThreadId: parsedItem.senderThreadId,
-            receiverThreadIds: parsedItem.receiverThreadIds,
-            ...(parsedItem.prompt ? { prompt: parsedItem.prompt } : {}),
-            ...(parsedItem.model ? { model: parsedItem.model } : {}),
-            ...(parsedItem.reasoningEffort
-              ? { reasoningEffort: parsedItem.reasoningEffort }
-              : {}),
-          },
-          result: parsedItem.agentsStates,
-        },
+        item: collabToolItem(parsedItem, agentsStates.data),
         presentation,
         ...toolStatusFields(parsedItem.status),
       };
@@ -821,11 +950,11 @@ function translateCodexItemShape(
       if (shouldIgnoreCodexWebItem(parsedItem)) {
         return { kind: "ignored" };
       }
-      const translation = normalizeCodexWebItemShape(parsedItem);
+      const translation = normalizeCodexWebItem(parsedItem);
       return translation
         ? {
             kind: "translated",
-            shape: translation.shape,
+            item: translation.item,
             presentation: translation.presentation,
             status: "completed",
             approvalDenied: false,
@@ -835,7 +964,7 @@ function translateCodexItemShape(
     case "imageView":
       return {
         kind: "translated",
-        shape: { type: "imageView", path: parsedItem.path },
+        item: { type: "imageView", path: parsedItem.path },
         presentation: imageViewPresentation(parsedItem.path),
         status: "completed",
         approvalDenied: false,
@@ -843,7 +972,7 @@ function translateCodexItemShape(
     case "reasoning":
       return {
         kind: "translated",
-        shape: {
+        item: {
           type: "reasoning",
           summary: parsedItem.summary,
           content: parsedItem.content,
@@ -855,7 +984,7 @@ function translateCodexItemShape(
     case "plan":
       return {
         kind: "translated",
-        shape: { type: "plan", text: parsedItem.text },
+        item: { type: "plan", text: parsedItem.text },
         presentation: PLAN_PRESENTATION,
         status: "completed",
         approvalDenied: false,
@@ -863,7 +992,7 @@ function translateCodexItemShape(
     case "contextCompaction":
       return {
         kind: "translated",
-        shape: { type: "compaction" },
+        item: { type: "compaction" },
         presentation: COMPACTION_PRESENTATION,
         status: "completed",
         approvalDenied: false,
@@ -873,8 +1002,14 @@ function translateCodexItemShape(
   }
 }
 
+interface CodexTranslationEvent {
+  jsonrpc?: "2.0";
+  method?: string;
+  params?: object;
+}
+
 export function translateCodexEventToDeltas(
-  event: ProviderRuntimeEvent,
+  event: CodexTranslationEvent,
   state: CodexEventTranslationState,
 ): ThreadDelta[] {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
@@ -885,8 +1020,16 @@ export function translateCodexEventToDeltas(
   const rawEvent: JsonRpcMessage = {
     jsonrpc: "2.0",
     method: envelope.data.method,
-    ...(envelope.data.params ? { params: envelope.data.params } : {}),
   };
+  if (envelope.data.params) {
+    const parsedParams = z.json().safeParse(envelope.data.params);
+    rawEvent.params = parsedParams.success
+      ? parsedParams.data
+      : {
+          serializationError:
+            "Provider raw event params were not JSON-serializable.",
+        };
+  }
 
   const parsed = codexHandledEventSchema.safeParse(rawEvent);
   if (!parsed.success) {
@@ -919,19 +1062,18 @@ export function translateCodexEventToDeltas(
         turnId: handledEvent.params.turn.id,
       });
       const status = toTurnStatus(handledEvent.params.turn.status);
-      return [
-        {
-          kind: "turn.boundary",
-          providerTurnId: handledEvent.params.turn.id,
-          status,
-          ...(handledEvent.params.turn.error?.message
-            ? { error: { message: handledEvent.params.turn.error.message } }
-            : {}),
-          ...(status === "completed" || status === "interrupted"
-            ? { providerCheckpointId: handledEvent.params.turn.id }
-            : {}),
-        },
-      ];
+      const delta: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
+        kind: "turn.boundary",
+        providerTurnId: handledEvent.params.turn.id,
+        status,
+      };
+      if (handledEvent.params.turn.error?.message) {
+        delta.error = { message: handledEvent.params.turn.error.message };
+      }
+      if (status === "completed" || status === "interrupted") {
+        delta.providerCheckpointId = handledEvent.params.turn.id;
+      }
+      return [delta];
     }
     case "thread/started": {
       const deltas: ThreadDelta[] = [
@@ -989,10 +1131,12 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
-      const translation = translateCodexItemShape(
+      const parsedItem = codexHandledThreadItemSchema.safeParse(
         handledEvent.params.item,
-        state,
       );
+      const translation = parsedItem.success
+        ? translateCodexItem(parsedItem.data, state)
+        : { kind: "unhandled" as const };
       if (translation.kind === "ignored") {
         return [];
       }
@@ -1009,23 +1153,24 @@ export function translateCodexEventToDeltas(
           {
             kind: "item.open",
             key,
-            item: translation.shape,
+            item: translation.item,
             presentation: translation.presentation,
             providerTurnId: handledEvent.params.turnId,
           },
         ];
       }
-      return [
-        {
-          kind: "item.close",
-          key,
-          status: translation.status,
-          ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
-          item: translation.shape,
-          presentation: translation.presentation,
-          providerTurnId: handledEvent.params.turnId,
-        },
-      ];
+      const delta: Extract<ThreadDelta, { kind: "item.close" }> = {
+        kind: "item.close",
+        key,
+        status: translation.status,
+        item: translation.item,
+        presentation: translation.presentation,
+        providerTurnId: handledEvent.params.turnId,
+      };
+      if (translation.approvalDenied) {
+        delta.approvalStatus = "denied";
+      }
+      return [delta];
     }
     case "item/agentMessage/delta":
       return [
@@ -1087,17 +1232,17 @@ export function translateCodexEventToDeltas(
           providerTurnId: handledEvent.params.turnId,
         },
       ];
-    case "item/mcpToolCall/progress":
-      return [
-        {
-          kind: "item.progress",
-          key: { providerItemId: handledEvent.params.itemId },
-          ...(handledEvent.params.message
-            ? { message: handledEvent.params.message }
-            : {}),
-          providerTurnId: handledEvent.params.turnId,
-        },
-      ];
+    case "item/mcpToolCall/progress": {
+      const delta: Extract<ThreadDelta, { kind: "item.progress" }> = {
+        kind: "item.progress",
+        key: { providerItemId: handledEvent.params.itemId },
+        providerTurnId: handledEvent.params.turnId,
+      };
+      if (handledEvent.params.message) {
+        delta.message = handledEvent.params.message;
+      }
+      return [delta];
+    }
     case "thread/tokenUsage/updated": {
       const { tokenUsage, turnId } = handledEvent.params;
       return [
@@ -1137,16 +1282,19 @@ export function translateCodexEventToDeltas(
           step.status === "inProgress" ? ("active" as const) : step.status,
       }));
       const explanation = handledEvent.params.explanation;
+      const item: Extract<DeltaItem, { type: "planSteps" }> = {
+        type: "planSteps",
+        steps,
+      };
+      if (explanation) {
+        item.explanation = explanation;
+      }
       return [
         {
           kind: "item.close",
           key: { channel: PLAN_STEPS_CHANNEL },
           status: "completed",
-          item: {
-            type: "planSteps",
-            steps,
-            ...(explanation ? { explanation } : {}),
-          },
+          item,
           presentation: planStepsPresentation({
             steps,
             explanation: explanation ?? null,
@@ -1167,45 +1315,48 @@ export function translateCodexEventToDeltas(
       const errorInfo = toProviderErrorInfo(
         resolveCodexErrorInfo(state, handledEvent.params),
       );
-      return [
-        {
-          kind: "provider.error",
-          message: "Provider error",
-          detail: handledEvent.params.error.additionalDetails
-            ? `${handledEvent.params.error.message}\n${handledEvent.params.error.additionalDetails}`
-            : handledEvent.params.error.message,
-          ...(handledEvent.params.willRetry !== undefined
-            ? { willRetry: handledEvent.params.willRetry }
-            : {}),
-          ...(errorInfo ? { errorInfo } : {}),
-          ...(handledEvent.params.turnId !== undefined
-            ? { providerTurnId: handledEvent.params.turnId }
-            : { threadScoped: true }),
-        },
-      ];
+      const delta: Extract<ThreadDelta, { kind: "provider.error" }> = {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: handledEvent.params.error.additionalDetails
+          ? `${handledEvent.params.error.message}\n${handledEvent.params.error.additionalDetails}`
+          : handledEvent.params.error.message,
+      };
+      if (handledEvent.params.willRetry !== undefined) {
+        delta.willRetry = handledEvent.params.willRetry;
+      }
+      if (errorInfo) {
+        delta.errorInfo = errorInfo;
+      }
+      if (handledEvent.params.turnId !== undefined) {
+        delta.providerTurnId = handledEvent.params.turnId;
+      } else {
+        delta.threadScoped = true;
+      }
+      return [delta];
     }
-    case "deprecationNotice":
-      return [
-        {
-          kind: "provider.warning",
-          category: "deprecation",
-          summary: handledEvent.params.summary,
-          ...(handledEvent.params.details
-            ? { details: handledEvent.params.details }
-            : {}),
-        },
-      ];
-    case "configWarning":
-      return [
-        {
-          kind: "provider.warning",
-          category: "config",
-          summary: handledEvent.params.summary,
-          ...(handledEvent.params.details
-            ? { details: handledEvent.params.details }
-            : {}),
-        },
-      ];
+    case "deprecationNotice": {
+      const delta: Extract<ThreadDelta, { kind: "provider.warning" }> = {
+        kind: "provider.warning",
+        category: "deprecation",
+        summary: handledEvent.params.summary,
+      };
+      if (handledEvent.params.details) {
+        delta.details = handledEvent.params.details;
+      }
+      return [delta];
+    }
+    case "configWarning": {
+      const delta: Extract<ThreadDelta, { kind: "provider.warning" }> = {
+        kind: "provider.warning",
+        category: "config",
+        summary: handledEvent.params.summary,
+      };
+      if (handledEvent.params.details) {
+        delta.details = handledEvent.params.details;
+      }
+      return [delta];
+    }
     default:
       return assertNever(handledEvent);
   }

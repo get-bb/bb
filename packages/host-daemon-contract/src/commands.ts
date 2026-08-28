@@ -890,7 +890,6 @@ const environmentProvisionCancelCommandSchema =
 const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("environment.destroy"),
-    /** Maximum time in ms to wait for the teardown script. */
     teardownTimeoutMs: z.number().int().positive(),
   })
   .strict();
@@ -1850,6 +1849,7 @@ function hostDaemonCommandDescriptorsForTransport<
 function hostDaemonCommandTypesForTransport<
   const Transport extends HostDaemonCommandTransport,
 >(transport: Transport): HostDaemonCommandTypeForTransport<Transport>[] {
+  // SAFETY: Each registry descriptor has a command type for the selected transport.
   return hostDaemonCommandDescriptorsForTransport(transport).map(
     (descriptor) => descriptor.type,
   ) as HostDaemonCommandTypeForTransport<Transport>[];
@@ -1863,6 +1863,7 @@ function hostDaemonCommandSchemaForTransport<
   const schemas = hostDaemonCommandDescriptorsForTransport(transport).map(
     (descriptor) => descriptor.schema,
   );
+  // SAFETY: Each transport registry contains at least two command schemas.
   return z.union(
     schemas as [
       HostDaemonSchemaForTransport<Transport>,
@@ -1875,6 +1876,7 @@ function hostDaemonCommandSchemaForTransport<
 function hostDaemonResultSchemaByTypeForTransport<
   const Transport extends HostDaemonCommandTransport,
 >(transport: Transport): HostDaemonResultSchemaMapForTransport<Transport> {
+  // SAFETY: The registry maps every command type to its matching result schema.
   return Object.fromEntries(
     hostDaemonCommandDescriptorsForTransport(transport).map((descriptor) => [
       descriptor.type,
@@ -1895,28 +1897,26 @@ const hostDaemonOnlineRpcCommandTypes = new Set<string>(
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
 );
 
+function isStringValue<T>(value: T): value is T & string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
 function isHostDaemonSettledCommandType(
   type: string,
 ): type is HostDaemonSettledCommandType {
   return hostDaemonSettledCommandTypes.has(type);
 }
 
-function isHostDaemonOnlineRpcCommandType(
-  type: string,
-): type is HostDaemonOnlineRpcCommandType {
-  return hostDaemonOnlineRpcCommandTypes.has(type);
+function isHostDaemonSettledCommandTypeValue<T>(
+  value: T,
+): value is T & HostDaemonSettledCommandType {
+  return isStringValue(value) && hostDaemonSettledCommandTypes.has(value);
 }
 
-function isHostDaemonSettledCommandTypeValue(
-  value: unknown,
-): value is HostDaemonSettledCommandType {
-  return typeof value === "string" && isHostDaemonSettledCommandType(value);
-}
-
-function isHostDaemonOnlineRpcCommandTypeValue(
-  value: unknown,
-): value is HostDaemonOnlineRpcCommandType {
-  return typeof value === "string" && isHostDaemonOnlineRpcCommandType(value);
+function isHostDaemonOnlineRpcCommandTypeValue<T>(
+  value: T,
+): value is T & HostDaemonOnlineRpcCommandType {
+  return isStringValue(value) && hostDaemonOnlineRpcCommandTypes.has(value);
 }
 
 export const hostDaemonSettledCommandTypeSchema =
@@ -2015,10 +2015,12 @@ export function parseHostDaemonCommandResultForCommand<
   TCommand extends HostDaemonCommand,
 >(
   command: TCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
 ): HostDaemonCommandResultForCommand<TCommand>;
 export function parseHostDaemonCommandResultForCommand(
   command: HostDaemonCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
 ): HostDaemonCommandResultForCommand {
   return hostDaemonCommandResultSchemaByType[command.type].parse(value);
@@ -2028,10 +2030,12 @@ export function parseHostDaemonOnlineRpcResultForCommand<
   TCommand extends HostDaemonOnlineRpcCommand,
 >(
   command: TCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
 ): HostDaemonOnlineRpcResultForCommand<TCommand>;
 export function parseHostDaemonOnlineRpcResultForCommand(
   command: HostDaemonOnlineRpcCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
 ): HostDaemonOnlineRpcResultForCommand {
   return hostDaemonOnlineRpcResultSchemaByType[command.type].parse(value);
@@ -2039,9 +2043,14 @@ export function parseHostDaemonOnlineRpcResultForCommand(
 
 export function parseHostDaemonRpcResultForCommand<
   TCommand extends HostDaemonRpcCommand,
->(command: TCommand, value: unknown): HostDaemonRpcResultForCommand<TCommand>;
+>(
+  command: TCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
+  value: unknown,
+): HostDaemonRpcResultForCommand<TCommand>;
 export function parseHostDaemonRpcResultForCommand(
   command: HostDaemonRpcCommand,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
 ): HostDaemonRpcResultForCommand {
   if (isHostDaemonCommand(command)) {

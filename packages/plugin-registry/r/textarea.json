@@ -4,11 +4,6 @@
   "type": "registry:ui",
   "title": "textarea",
   "description": "BB ui \"textarea\" — vendored from the BB app's own source (version-matched to this BB release).",
-  "registryDependencies": [
-    "@bb/coarse-pointer-sizing",
-    "@bb/motion",
-    "@bb/utils"
-  ],
   "files": [
     {
       "path": "registry/components/ui/textarea.tsx",
@@ -16,5 +11,10 @@
       "type": "registry:ui",
       "target": "components/ui/textarea.tsx"
     }
+  ],
+  "registryDependencies": [
+    "@bb/coarse-pointer-sizing",
+    "@bb/motion",
+    "@bb/utils"
   ]
 }

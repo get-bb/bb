@@ -2,7 +2,13 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { JsonValue } from "@bb/domain";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
+
+type ManifestJsonValue = JsonValue | ManifestJsonObject | undefined;
+interface ManifestJsonObject {
+  [key: string]: ManifestJsonValue;
+}
 
 describe("plugin manifest", () => {
   let rootDir: string;
@@ -25,17 +31,17 @@ describe("plugin manifest", () => {
 
   async function writeManifest(
     bbPluginSdk?: string,
-    bb: Record<string, unknown> = validBb,
+    bb: ManifestJsonObject = validBb,
   ): Promise<void> {
-    await writeFile(
-      join(rootDir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-contract",
-        version: "2.3.4",
-        ...(bbPluginSdk === undefined ? {} : { engines: { bbPluginSdk } }),
-        bb,
-      }),
-    );
+    const packageJson: ManifestJsonObject = {
+      name: "bb-plugin-contract",
+      version: "2.3.4",
+      bb,
+    };
+    if (bbPluginSdk !== undefined) {
+      packageJson.engines = { bbPluginSdk };
+    }
+    await writeFile(join(rootDir, "package.json"), JSON.stringify(packageJson));
   }
 
   it("accepts a valid engines.bbPluginSdk range", async () => {

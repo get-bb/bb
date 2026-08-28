@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
-import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  JsonRpcObject,
+  JsonRpcValue,
+  ProviderRuntimeEvent,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { createDeltaAssembler } from "@bb/provider-bridge-protocol/assembler";
 import type { DeltaAssembler } from "@bb/provider-bridge-protocol/assembler";
 import {
@@ -18,7 +22,6 @@ import {
 } from "./delta-translation.js";
 import { resolveAcpDialect } from "./dialect.js";
 import { ACP_TOOL_PAYLOAD_MAX_CHARS } from "./tool-classification.js";
-import type { AcpToolCallUpdateEvent } from "./wire.js";
 
 const THREAD_ID = "t-acp-translation";
 const ENTROPY = "acp-test";
@@ -72,7 +75,7 @@ function turnCompletedEvent(stopReason: string): ProviderRuntimeEvent {
   };
 }
 
-function updateEvent(update: Record<string, unknown>): ProviderRuntimeEvent {
+function updateEvent(update: JsonRpcObject): ProviderRuntimeEvent {
   return {
     jsonrpc: "2.0",
     method: ACP_UPDATE_METHOD,
@@ -88,16 +91,17 @@ function fsWriteEvent(
     content?: string;
   } = {},
 ): ProviderRuntimeEvent {
+  const params: JsonRpcObject = {
+    threadId: THREAD_ID,
+    path,
+    kind: options.kind ?? "add",
+    content: options.content ?? "hello\n",
+  };
+  if (options.oldText !== undefined) params.oldText = options.oldText;
   return {
     jsonrpc: "2.0",
     method: ACP_FS_WRITE_METHOD,
-    params: {
-      threadId: THREAD_ID,
-      path,
-      kind: options.kind ?? "add",
-      ...(options.oldText === undefined ? {} : { oldText: options.oldText }),
-      content: options.content ?? "hello\n",
-    },
+    params,
   };
 }
 
@@ -160,15 +164,11 @@ describe("acp delta translation (bridge-shared invariants)", () => {
         }),
       }),
     );
+    const startedEvent = startedEvents.find(
+      (event) => event.type === "item/started",
+    );
     const startedItemId =
-      startedEvents.find((event) => event.type === "item/started")?.type ===
-      "item/started"
-        ? (
-            startedEvents.find(
-              (event) => event.type === "item/started",
-            ) as Extract<ThreadEvent, { type: "item/started" }>
-          ).item.id
-        : "";
+      startedEvent?.type === "item/started" ? startedEvent.item.id : "";
 
     const terminalEvents = harness.translate(
       updateEvent({
@@ -363,7 +363,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
   }
 
   function compactionCompletedEvent(
-    params: Record<string, unknown>,
+    params: JsonRpcObject,
   ): ProviderRuntimeEvent {
     return {
       jsonrpc: "2.0",
@@ -445,10 +445,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     });
   });
 
-  function countChangedLines(diff: string | undefined): {
-    added: number;
-    removed: number;
-  } {
+  function countChangedLines(diff: string | undefined) {
     let added = 0;
     let removed = 0;
     for (const line of diff?.split("\n") ?? []) {
@@ -656,7 +653,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       harness: AcpEquivalenceHarness,
       toolCallId: string,
       command: string,
-      update: Record<string, unknown>,
+      update: JsonRpcObject,
     ) {
       harness.translate(
         updateEvent({
@@ -1356,7 +1353,7 @@ describe("acp delta translation (presentation)", () => {
 });
 
 describe("acp delta translation (native kinds → core kinds)", () => {
-  function openItem(update: Record<string, unknown>) {
+  function openItem(update: JsonRpcObject) {
     const harness = createHarness();
     harness.translate(turnStartedEvent());
     const events = harness.translate(
@@ -1928,7 +1925,7 @@ describe("acp delta translation (raw payloads and real results)", () => {
     const item =
       events[0]?.type === "item/completed" ? events[0].item : undefined;
     const result = item?.type === "toolCall" ? item.result : undefined;
-    expect(typeof result).toBe("string");
+    expect(result).toEqual(expect.any(String));
     expect(String(result).length).toBeLessThan(
       ACP_TOOL_PAYLOAD_MAX_CHARS + 200,
     );
@@ -2222,9 +2219,9 @@ describe("acp delta translation (dialects)", () => {
 
   function completedDialectCommand(args: {
     dialectId: string;
-    rawInput: Record<string, unknown>;
-    rawOutput: unknown;
-    content?: AcpToolCallUpdateEvent["content"];
+    rawInput: JsonRpcObject;
+    rawOutput: JsonRpcValue;
+    content?: JsonRpcValue;
     status?: "completed" | "failed";
   }) {
     const harness = dialectHarness(args.dialectId);
@@ -2238,17 +2235,14 @@ describe("acp delta translation (dialects)", () => {
         rawInput: args.rawInput,
       }),
     );
-    return completedItems(
-      harness.translate(
-        updateEvent({
-          sessionUpdate: "tool_call_update",
-          toolCallId: "call-command",
-          status: args.status ?? "completed",
-          ...(args.content === undefined ? {} : { content: args.content }),
-          rawOutput: args.rawOutput,
-        }),
-      ),
-    )[0];
+    const update: JsonRpcObject = {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-command",
+      status: args.status ?? "completed",
+      rawOutput: args.rawOutput,
+    };
+    if (args.content !== undefined) update.content = args.content;
+    return completedItems(harness.translate(updateEvent(update)))[0];
   }
 
   it("normalizes omp foreground command output and successful completion", () => {

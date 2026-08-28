@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
 import type { DiffFileEntry } from "@bb/server-contract";
 import type {
@@ -19,15 +19,6 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { DiffFileCard } from "./DiffFileCard";
-
-vi.mock("usehooks-ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("usehooks-ts")>()),
-  useIntersectionObserver: () => ({
-    ref: () => {},
-    isIntersecting: true,
-    entry: undefined,
-  }),
-}));
 
 const IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
@@ -88,6 +79,45 @@ const TEXT_PATCH = [
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class ImmediateIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly scrollMargin = "";
+      readonly thresholds = [0];
+
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+
+      observe(target: Element): void {
+        const bounds = target.getBoundingClientRect();
+        this.callback(
+          [
+            {
+              boundingClientRect: bounds,
+              isIntersecting: true,
+              intersectionRatio: 1,
+              intersectionRect: bounds,
+              rootBounds: null,
+              target,
+              time: 0,
+            },
+          ],
+          this,
+        );
+      }
+
+      unobserve(_target: Element): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    },
+  );
 });
 
 describe("DiffFileCard", () => {

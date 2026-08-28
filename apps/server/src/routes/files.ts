@@ -7,6 +7,7 @@ import {
   typedRoutes,
   type PublicApiSchema,
 } from "@bb/server-contract";
+import type { HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import { browserRequestProblem } from "../browser-request-guard.js";
@@ -41,6 +42,35 @@ interface FilePreviewLease {
   rootPath: string;
   expiresAtMs: number;
 }
+
+type ReadFileCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.read_file" }
+>;
+type WriteFileCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.write_file" }
+>;
+type ListFilesCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.list_files" }
+>;
+type ListPathsCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.list_paths" }
+>;
+type MakeDirectoryCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.mkdir" }
+>;
+type MovePathCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.move_path" }
+>;
+type RemovePathCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "host.remove_path" }
+>;
 
 function normalizeMimeType(value: string | null | undefined): string | null {
   const normalizedValue = value?.split(";")[0]?.trim().toLowerCase();
@@ -210,16 +240,15 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.read, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: ReadFileCommand = {
+        type: "host.read_file",
+        path: payload.path,
+      };
+      if (payload.rootPath !== undefined) command.rootPath = payload.rootPath;
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: payload.path,
-          ...(payload.rootPath !== undefined
-            ? { rootPath: payload.rootPath }
-            : {}),
-        },
+        command,
       });
       return context.json(result);
     } catch (error) {
@@ -230,24 +259,23 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.write, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: WriteFileCommand = {
+        type: "host.write_file",
+        path: payload.path,
+        content: payload.content,
+        contentEncoding: payload.contentEncoding ?? "utf8",
+        createParents: payload.createParents ?? false,
+      };
+      if (payload.rootPath !== undefined) command.rootPath = payload.rootPath;
+      if (payload.expectedSha256 !== undefined) {
+        command.expectedSha256 = payload.expectedSha256;
+      }
+      if (payload.mode !== undefined) command.mode = payload.mode;
       const result = await runHostFileMutation(hostId, () =>
         callHostOnlineRpc(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.write_file",
-            path: payload.path,
-            content: payload.content,
-            contentEncoding: payload.contentEncoding ?? "utf8",
-            createParents: payload.createParents ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-            ...(payload.expectedSha256 !== undefined
-              ? { expectedSha256: payload.expectedSha256 }
-              : {}),
-            ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
-          },
+          command,
         }),
       );
       return context.json(result);
@@ -259,15 +287,16 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.list, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: ListFilesCommand = {
+        type: "host.list_files",
+        path: payload.path,
+        limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
+      };
+      if (payload.query !== undefined) command.query = payload.query;
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_files",
-          path: payload.path,
-          limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
-          ...(payload.query !== undefined ? { query: payload.query } : {}),
-        },
+        command,
       });
       return context.json(result);
     } catch (error) {
@@ -278,17 +307,18 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.listPaths, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: ListPathsCommand = {
+        type: "host.list_paths",
+        path: payload.path,
+        limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
+        includeFiles: payload.includeFiles,
+        includeDirectories: payload.includeDirectories,
+      };
+      if (payload.query !== undefined) command.query = payload.query;
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: payload.path,
-          limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
-          includeFiles: payload.includeFiles,
-          includeDirectories: payload.includeDirectories,
-          ...(payload.query !== undefined ? { query: payload.query } : {}),
-        },
+        command,
       });
       return context.json(result);
     } catch (error) {
@@ -299,18 +329,17 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.mkdir, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: MakeDirectoryCommand = {
+        type: "host.mkdir",
+        path: payload.path,
+        recursive: payload.recursive ?? false,
+      };
+      if (payload.rootPath !== undefined) command.rootPath = payload.rootPath;
       const result = await runHostFileMutation(hostId, () =>
         callHostOnlineRpc(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.mkdir",
-            path: payload.path,
-            recursive: payload.recursive ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
+          command,
         }),
       );
       return context.json(result);
@@ -322,18 +351,17 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.move, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: MovePathCommand = {
+        type: "host.move_path",
+        sourcePath: payload.sourcePath,
+        destinationPath: payload.destinationPath,
+      };
+      if (payload.rootPath !== undefined) command.rootPath = payload.rootPath;
       const result = await runHostFileMutation(hostId, () =>
         callHostOnlineRpc(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.move_path",
-            sourcePath: payload.sourcePath,
-            destinationPath: payload.destinationPath,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
+          command,
         }),
       );
       return context.json(result);
@@ -345,18 +373,17 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.remove, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
+      const command: RemovePathCommand = {
+        type: "host.remove_path",
+        path: payload.path,
+        recursive: payload.recursive ?? false,
+      };
+      if (payload.rootPath !== undefined) command.rootPath = payload.rootPath;
       const result = await runHostFileMutation(hostId, () =>
         callHostOnlineRpc(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.remove_path",
-            path: payload.path,
-            recursive: payload.recursive ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
+          command,
         }),
       );
       return context.json(result);

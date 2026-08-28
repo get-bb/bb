@@ -106,10 +106,10 @@ export function useThreadStorageBrowser({
         createdModel = createThreadStorageTreeModel(handleTreeSelectionChange);
         setModel(createdModel);
       },
-      (error: unknown) => {
+      (cause: unknown) => {
         if (cancelled) return;
         console.warn(
-          `thread storage tree load failed: ${error instanceof Error ? error.message : String(error)}`,
+          `thread storage tree load failed: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
       },
     );

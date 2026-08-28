@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createClaudeDeltaHarness } from "./delta-test-harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,29 +20,54 @@ interface FixtureExpectation {
   turns: { completed: number; failed: number; interrupted: number };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+const transcriptValueSchema = z.json();
+const transcriptRecordSchema = z.record(z.string(), transcriptValueSchema);
+const expectationsSchema = z.record(
+  z.string(),
+  z.object({
+    items: z.record(z.string(), z.number()),
+    tools: z.record(z.string(), z.number()),
+    presented: z.record(z.string(), z.number()),
+    planSnapshots: z.number(),
+    unhandled: z.number(),
+    turns: z.object({
+      completed: z.number(),
+      failed: z.number(),
+      interrupted: z.number(),
+    }),
+  }),
+);
+
+type TranscriptValue = z.infer<typeof transcriptValueSchema>;
+type TranscriptRecord = z.infer<typeof transcriptRecordSchema>;
+
+function asRecord(value: TranscriptValue): TranscriptRecord | null {
+  const parsed = transcriptRecordSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
-function loadTranscript(name: string): Record<string, unknown>[] {
+function asString(value: TranscriptValue): string | null {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function loadTranscript(name: string): TranscriptRecord[] {
   return readFileSync(resolve(TRANSCRIPTS, name), "utf8")
     .trim()
     .split("\n")
     .map((line) => {
-      const parsed: unknown = JSON.parse(line);
-      if (!isRecord(parsed)) {
+      const parsed = transcriptRecordSchema.safeParse(JSON.parse(line));
+      if (!parsed.success) {
         throw new Error(`${name}: non-object line`);
       }
-      return parsed;
+      return parsed.data;
     });
 }
 
 function loadExpectations(): Record<string, FixtureExpectation> {
-  const parsed: unknown = JSON.parse(readFileSync(EXPECTED_PATH, "utf8"));
-  if (!isRecord(parsed)) {
-    throw new Error("expected.json must be an object");
-  }
-  return parsed as Record<string, FixtureExpectation>;
+  return expectationsSchema.parse(
+    JSON.parse(readFileSync(EXPECTED_PATH, "utf8")),
+  );
 }
 
 function increment(counts: Record<string, number>, key: string): void {
@@ -59,37 +85,35 @@ interface ToolUseBlock {
   name: string;
 }
 
-function toolUseBlocksOf(message: Record<string, unknown>): ToolUseBlock[] {
-  if (message.type !== "assistant" || !isRecord(message.message)) return [];
-  const content = message.message.content;
+function toolUseBlocksOf(message: TranscriptRecord): ToolUseBlock[] {
+  if (message.type !== "assistant") return [];
+  const messageRecord = asRecord(message.message);
+  if (messageRecord === null) return [];
+  const content = messageRecord.content;
   if (!Array.isArray(content)) return [];
   const blocks: ToolUseBlock[] = [];
   for (const block of content) {
-    if (
-      isRecord(block) &&
-      block.type === "tool_use" &&
-      typeof block.id === "string" &&
-      typeof block.name === "string"
-    ) {
-      blocks.push({ id: block.id, name: block.name });
-    }
+    const blockRecord = asRecord(block);
+    if (blockRecord?.type !== "tool_use") continue;
+    const id = asString(blockRecord.id);
+    const name = asString(blockRecord.name);
+    if (id !== null && name !== null) blocks.push({ id, name });
   }
   return blocks;
 }
 
-function toolResultIdsOf(message: Record<string, unknown>): string[] {
-  if (message.type !== "user" || !isRecord(message.message)) return [];
-  const content = message.message.content;
+function toolResultIdsOf(message: TranscriptRecord): string[] {
+  if (message.type !== "user") return [];
+  const messageRecord = asRecord(message.message);
+  if (messageRecord === null) return [];
+  const content = messageRecord.content;
   if (!Array.isArray(content)) return [];
   const ids: string[] = [];
   for (const block of content) {
-    if (
-      isRecord(block) &&
-      block.type === "tool_result" &&
-      typeof block.tool_use_id === "string"
-    ) {
-      ids.push(block.tool_use_id);
-    }
+    const blockRecord = asRecord(block);
+    if (blockRecord?.type !== "tool_result") continue;
+    const id = asString(blockRecord.tool_use_id);
+    if (id !== null) ids.push(id);
   }
   return ids;
 }
@@ -102,18 +126,18 @@ interface SessionRun {
   itemId(providerItemId: string): string;
 }
 
-function runSession(messages: Record<string, unknown>[]): SessionRun {
+function runSession(messages: TranscriptRecord[]): SessionRun {
   const harness = createClaudeDeltaHarness();
   const events: ThreadEvent[] = [];
   const toolUses: ToolUseBlock[] = [];
   const toolResultIds = new Set<string>();
   const sidechainToolUses = new Map<string, string[]>();
-  events.push(...harness.acceptInput("creq-transcript", THREAD_ID));
+  events.push(...harness.acceptInput("creq_23456789ab", THREAD_ID));
   for (const message of messages) {
-    const parent = message.parent_tool_use_id;
+    const parent = asString(message.parent_tool_use_id);
     for (const block of toolUseBlocksOf(message)) {
       toolUses.push(block);
-      if (typeof parent === "string") {
+      if (parent !== null) {
         const list = sidechainToolUses.get(parent) ?? [];
         list.push(block.id);
         sidechainToolUses.set(parent, list);

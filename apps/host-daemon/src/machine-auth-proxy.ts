@@ -4,8 +4,9 @@ import http, {
   type ServerResponse,
 } from "node:http";
 import https from "node:https";
-import type { AddressInfo, Socket } from "node:net";
+import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
+import { z } from "zod";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const MACHINE_HEADER = "x-bb-connect-machine";
@@ -28,6 +29,8 @@ const REJECTED_SOCKET_MESSAGES = {
   403: "Forbidden",
   405: "Method Not Allowed",
 } as const;
+
+const listeningAddressSchema = z.object({ port: z.number().int().positive() });
 
 type RejectedSocketStatus = keyof typeof REJECTED_SOCKET_MESSAGES;
 
@@ -261,10 +264,13 @@ export async function startMachineAuthProxy(
     server.listen(options.port ?? 0, LOOPBACK_HOST);
   });
 
-  const address = server.address() as AddressInfo;
-  boundPort = address.port;
+  const address = listeningAddressSchema.safeParse(server.address());
+  if (!address.success) {
+    throw new Error("Machine authentication proxy did not bind a TCP port");
+  }
+  boundPort = address.data.port;
   return {
-    serverUrl: `http://${LOOPBACK_HOST}:${address.port}`,
+    serverUrl: `http://${LOOPBACK_HOST}:${address.data.port}`,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

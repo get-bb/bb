@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { z } from "zod";
 import {
   ACP_BRIDGE_MCP_SERVER_NAME,
   type AcpMcpServerConfig,
@@ -18,8 +19,11 @@ export interface CursorMcpApproval {
   path: string;
 }
 
-function errorCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
+const errorCodeSchema = z.object({ code: z.string().optional() }).passthrough();
+
+function errorCode(error: Error): string | undefined {
+  const parsed = errorCodeSchema.safeParse(error);
+  return parsed.success ? parsed.data.code : undefined;
 }
 
 function cursorAgentCommand(command: string): boolean {
@@ -48,11 +52,7 @@ function cursorDataDirectory(
   return join(home, ".cursor");
 }
 
-function cursorMcpServerConfig(config: AcpMcpServerConfig): {
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-} {
+function cursorMcpServerConfig(config: AcpMcpServerConfig) {
   return {
     command: config.command,
     args: config.args,
@@ -98,19 +98,16 @@ async function readApprovals(path: string): Promise<string[]> {
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    if (errorCode(error) === "ENOENT") {
+    if (error instanceof Error && errorCode(error) === "ENOENT") {
       return [];
     }
     throw error;
   }
-  const value: unknown = JSON.parse(text);
-  if (
-    !Array.isArray(value) ||
-    !value.every((item) => typeof item === "string")
-  ) {
+  const parsed = z.array(z.string()).safeParse(JSON.parse(text));
+  if (!parsed.success) {
     throw new Error(`Cursor MCP approval file is not a string array: ${path}`);
   }
-  return value;
+  return parsed.data;
 }
 
 async function writeApprovals(path: string, approvals: readonly string[]) {
@@ -137,7 +134,7 @@ async function acquireApprovalLock(path: string): Promise<() => Promise<void>> {
       await mkdir(lockPath, { mode: 0o700 });
       return () => rm(lockPath, { recursive: true, force: true });
     } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
+      if (!(error instanceof Error) || errorCode(error) !== "EEXIST") {
         throw error;
       }
     }
@@ -149,7 +146,7 @@ async function acquireApprovalLock(path: string): Promise<() => Promise<void>> {
         continue;
       }
     } catch (error) {
-      if (errorCode(error) === "ENOENT") {
+      if (error instanceof Error && errorCode(error) === "ENOENT") {
         continue;
       }
       throw error;

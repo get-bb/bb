@@ -100,7 +100,7 @@ function useStreamingTickLoop(
   pauseTicks: number,
   restartKey: number,
   isPaused: boolean,
-): { step: number; cycle: number } {
+) {
   const [counter, setCounter] = useState(0);
   useEffect(() => {
     setCounter(0);

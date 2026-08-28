@@ -59,7 +59,7 @@ describe.sequential("fake provider smoke environment integration", () => {
       }
       expect(status.workspace.workingTree.state).toBe("clean");
       expect(status.workspace.workingTree.hasUncommittedChanges).toBe(false);
-      expect(typeof diff.diff).toBe("string");
+      expect(diff.diff).toEqual(expect.any(String));
       expect(branches.branches).toContain("main");
     }));
 

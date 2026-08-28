@@ -164,6 +164,11 @@ interface SegmentOptions {
   accent?: TimelineTitleSegmentAccent;
 }
 
+interface TimelineStatusVerb {
+  text: string;
+  shimmer: boolean;
+}
+
 function collapseTitleNewlines(text: string): string {
   return text.replace(/[\r\n]+/gu, " ");
 }
@@ -172,17 +177,22 @@ function segment(
   text: string,
   opts: SegmentOptions = {},
 ): TimelineTitleSegment {
-  return {
+  const result: TimelineTitleSegment = {
     text: collapseTitleNewlines(text),
     em: opts.em ?? false,
     shimmer: opts.shimmer ?? false,
     truncate: opts.truncate ?? false,
-    ...(opts.plainText !== undefined
-      ? { plainText: collapseTitleNewlines(opts.plainText) }
-      : {}),
-    ...(opts.link !== undefined ? { link: opts.link } : {}),
-    ...(opts.accent !== undefined ? { accent: opts.accent } : {}),
   };
+  if (opts.plainText !== undefined) {
+    result.plainText = collapseTitleNewlines(opts.plainText);
+  }
+  if (opts.link !== undefined) {
+    result.link = opts.link;
+  }
+  if (opts.accent !== undefined) {
+    result.accent = opts.accent;
+  }
+  return result;
 }
 
 function filterNull<T>(values: (T | null)[]): T[] {
@@ -382,13 +392,11 @@ function presentedTitle({
     }),
   ];
   if (resolvedContent) {
-    segments.push(
-      segment(resolvedContent, {
-        em,
-        truncate: true,
-        ...(plainContent === undefined ? {} : { plainText: plainContent }),
-      }),
-    );
+    const contentOptions: SegmentOptions = { em, truncate: true };
+    if (plainContent !== undefined) {
+      contentOptions.plainText = plainContent;
+    }
+    segments.push(segment(resolvedContent, contentOptions));
   }
   const durationMs = completedAt !== null ? completedAt - startedAt : null;
   const decorations: TimelineTitleDecoration[] =
@@ -825,10 +833,9 @@ function mapImageViewTitle(row: TimelineImageViewWorkRow): TimelineTitle {
   }
 }
 
-function delegationVerbForStatus(status: TimelineRowStatus): {
-  text: string;
-  shimmer: boolean;
-} {
+function delegationVerbForStatus(
+  status: TimelineRowStatus,
+): TimelineStatusVerb {
   switch (status) {
     case "pending":
       return { text: "Running subagent:", shimmer: true };
@@ -872,10 +879,7 @@ function mapDelegationTitle(row: TimelineViewDelegationWorkRow): TimelineTitle {
   });
 }
 
-function workflowVerbForStatus(status: TimelineRowStatus): {
-  text: string;
-  shimmer: boolean;
-} {
+function workflowVerbForStatus(status: TimelineRowStatus): TimelineStatusVerb {
   switch (status) {
     case "pending":
       return { text: "Running workflow:", shimmer: true };
@@ -903,10 +907,9 @@ function formatWorkflowAgentProgress(
   return `(${done}/${agents.length} agents)`;
 }
 
-function backgroundCommandVerbForStatus(status: TimelineRowStatus): {
-  text: string;
-  shimmer: boolean;
-} {
+function backgroundCommandVerbForStatus(
+  status: TimelineRowStatus,
+): TimelineStatusVerb {
   switch (status) {
     case "pending":
       return { text: "Running background command:", shimmer: true };
@@ -921,10 +924,9 @@ function backgroundCommandVerbForStatus(status: TimelineRowStatus): {
   }
 }
 
-function backgroundAgentVerbForStatus(status: TimelineRowStatus): {
-  text: string;
-  shimmer: boolean;
-} {
+function backgroundAgentVerbForStatus(
+  status: TimelineRowStatus,
+): TimelineStatusVerb {
   switch (status) {
     case "pending":
       return { text: "Running background agent:", shimmer: true };
@@ -1419,14 +1421,15 @@ function parentChangeThreadSegment(
   name: string,
   shimmer: boolean,
 ): TimelineTitleSegment {
-  return segment(name, {
+  const options: SegmentOptions = {
     em: true,
     truncate: true,
     shimmer,
-    ...(row.threadId.length > 0
-      ? { link: { kind: "thread", threadId: row.threadId } }
-      : {}),
-  });
+  };
+  if (row.threadId.length > 0) {
+    options.link = { kind: "thread", threadId: row.threadId };
+  }
+  return segment(name, options);
 }
 
 function parentChangeParentSegment(
@@ -1593,15 +1596,18 @@ export function buildTimelineActivityIntentTitles(
     if (dedupeKey !== null && dedupeKey === lastEmittedKey) {
       return;
     }
+    const activityTitleArgs: BuildTimelineActivityIntentTitleArgs = {
+      intent,
+      pending: row.status === "pending",
+    };
+    if (failureStatus !== undefined) {
+      activityTitleArgs.failureStatus = failureStatus;
+    }
     titles.push({
       id: `${row.id}:activity-intent:${index}`,
       intent,
       intentType: intent.type,
-      title: mapTimelineActivityIntentTitle({
-        intent,
-        pending: row.status === "pending",
-        ...(failureStatus ? { failureStatus } : {}),
-      }),
+      title: mapTimelineActivityIntentTitle(activityTitleArgs),
     });
     lastEmittedKey = dedupeKey;
   });

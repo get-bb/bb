@@ -62,20 +62,19 @@ function classifyAcpPermission(
 function permissionToolCallEvent(
   toolCall: AcpPermissionToolCall,
 ): AcpToolCallUpdateEvent {
-  return {
+  const event: AcpToolCallUpdateEvent = {
     sessionUpdate: "tool_call",
     toolCallId: toolCall.toolCallId,
-    ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
-    ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
-    ...(toolCall.rawKind !== undefined ? { rawKind: toolCall.rawKind } : {}),
-    ...(toolCall.content !== undefined
-      ? { content: [...toolCall.content] }
-      : {}),
-    ...(toolCall.locations !== undefined
-      ? { locations: [...toolCall.locations] }
-      : {}),
-    ...(toolCall.rawInput !== undefined ? { rawInput: toolCall.rawInput } : {}),
   };
+  if (toolCall.title !== undefined) event.title = toolCall.title;
+  if (toolCall.kind !== undefined) event.kind = toolCall.kind;
+  if (toolCall.rawKind !== undefined) event.rawKind = toolCall.rawKind;
+  if (toolCall.content !== undefined) event.content = [...toolCall.content];
+  if (toolCall.locations !== undefined) {
+    event.locations = [...toolCall.locations];
+  }
+  if (toolCall.rawInput !== undefined) event.rawInput = toolCall.rawInput;
+  return event;
 }
 
 function buildToolUseSubject(

@@ -24,6 +24,8 @@ type PluginAgentContributions = Pick<
 
 let contributions: PluginAgentContributions | undefined;
 
+type PluginDynamicInstruction = { pluginId: string; text: string };
+
 export function setPluginAgentContributions(
   next: PluginAgentContributions | undefined,
 ): void {
@@ -44,10 +46,11 @@ export async function resolvePluginAgentConfiguration(args: {
 }) {
   const active = contributions;
   if (!active?.resolveAgentConfiguration) {
+    const dynamicInstructions: PluginDynamicInstruction[] = [];
     return {
       tools: active?.listAgentTools() ?? [],
       selectedSkillIdsByPlugin: new Map<string, ReadonlySet<string>>(),
-      dynamicInstructions: [] as Array<{ pluginId: string; text: string }>,
+      dynamicInstructions,
     };
   }
   return active.resolveAgentConfiguration(args);

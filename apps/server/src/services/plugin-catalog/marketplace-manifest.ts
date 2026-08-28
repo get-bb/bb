@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { jsonValueSchema } from "@bb/domain";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   pluginMarketplaceNameSchema,
@@ -86,6 +87,11 @@ const iconSchema = z.union([
   z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
   z.object({ url: iconUrlSchema }).strict(),
 ]);
+
+const iconNameSchema = z
+  .string()
+  .regex(ICON_NAME_PATTERN, "must be a host icon name");
+const iconUrlObjectSchema = z.object({ url: iconUrlSchema }).strict();
 
 const authorSchema = z
   .object({
@@ -255,21 +261,27 @@ const marketplaceManifestSchema = z
 export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
 export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
 
-export function parseMarketplaceManifest(
-  input: unknown,
+export function parseMarketplaceManifest<Input>(
+  input: Input,
   location: string,
 ): MarketplaceManifest {
+  const jsonInput = jsonValueSchema.safeParse(input);
+  const schemaVersionProbe = z
+    .object({ schemaVersion: jsonValueSchema.optional() })
+    .passthrough()
+    .safeParse(jsonInput.success ? jsonInput.data : null);
   if (
-    typeof input === "object" &&
-    input !== null &&
-    "schemaVersion" in input &&
-    input.schemaVersion !== 1
+    schemaVersionProbe.success &&
+    schemaVersionProbe.data.schemaVersion !== undefined &&
+    schemaVersionProbe.data.schemaVersion !== 1
   ) {
     throw new Error(
-      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported value is 1`,
+      `invalid ${location}: unknown schemaVersion ${JSON.stringify(schemaVersionProbe.data.schemaVersion)}; supported value is 1`,
     );
   }
-  const parsed = marketplaceManifestSchema.safeParse(input);
+  const parsed = marketplaceManifestSchema.safeParse(
+    jsonInput.success ? jsonInput.data : null,
+  );
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
@@ -292,7 +304,8 @@ export function parseMarketplaceManifestJson(
 }
 
 export function entryIconName(entry: MarketplaceEntry): string | null {
-  return typeof entry.icon === "string" ? entry.icon : null;
+  const parsed = iconNameSchema.safeParse(entry.icon);
+  return parsed.success ? parsed.data : null;
 }
 
 export function entryIconTinted(contentType: string): boolean {
@@ -311,8 +324,9 @@ export function resolveEntryIcon(
   entry: MarketplaceEntry,
   base: MarketplaceIconBase,
 ): MarketplaceIconLocation | null {
-  if (typeof entry.icon === "string") return null;
-  const declared = entry.icon.url;
+  const parsedIcon = iconUrlObjectSchema.safeParse(entry.icon);
+  if (!parsedIcon.success) return null;
+  const declared = parsedIcon.data.url;
   const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
   if (base.kind === "url" || absolute) {
     const resolved = new URL(
@@ -379,13 +393,14 @@ export function resolvedEntrySource(
 ): ResolvedEntrySource {
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
-    return {
+    const resolved: ResolvedEntrySource = {
       source: `npm:${entry.source.npm.package}${spec.length === 0 ? "" : `@${spec}`}`,
       selection: ROOT_PLUGIN_SOURCE_SELECTION,
-      ...(entry.source.npm.registry === undefined
-        ? {}
-        : { npmRegistry: entry.source.npm.registry }),
     };
+    if (entry.source.npm.registry !== undefined) {
+      resolved.npmRegistry = entry.source.npm.registry;
+    }
+    return resolved;
   }
   const git = entry.source.git;
   return {

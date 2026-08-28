@@ -41,14 +41,15 @@ function toProviderCommand(command: HostProviderCommand): ProviderCommand {
 
 function toSkillCommand(entry: ResolvedSkillCatalogEntry): ProviderCommand {
   const { provenance, runtimeSource } = entry;
-  return {
+  const command: ProviderCommand = {
     name: runtimeSource.name,
     source: "skill",
     origin: provenance.kind === "project" ? "project" : "user",
     description: runtimeSource.description,
     argumentHint: null,
-    ...(provenance.kind === "plugin" ? { pluginId: provenance.pluginId } : {}),
   };
+  if (provenance.kind === "plugin") command.pluginId = provenance.pluginId;
+  return command;
 }
 
 function dedupeBySourceAndName(commands: ProviderCommand[]): ProviderCommand[] {

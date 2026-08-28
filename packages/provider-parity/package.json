@@ -21,7 +21,8 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
-    "@bb/thread-view": "workspace:*"
+    "@bb/thread-view": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

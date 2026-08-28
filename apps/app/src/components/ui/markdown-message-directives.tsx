@@ -57,20 +57,29 @@ interface DirectiveNode {
   type: DirectiveNodeType;
   name?: string;
   attributes?: Record<string, string | null | undefined> | null;
-  children?: unknown[];
   position?: {
     start?: { offset?: number | undefined };
     end?: { offset?: number | undefined };
   };
 }
 
-const DIRECTIVE_MARKERS: Record<DirectiveNodeType, string> = {
+interface DirectiveCandidate {
+  type: string;
+  name?: string;
+  attributes?: Record<string, string | null | undefined> | null;
+  position?: {
+    start?: { offset?: number | undefined };
+    end?: { offset?: number | undefined };
+  };
+}
+
+const DIRECTIVE_MARKERS = {
   textDirective: ":",
   leafDirective: "::",
-};
+} satisfies Record<DirectiveNodeType, string>;
 
 interface RemarkMessageDirectiveFile {
-  value: unknown;
+  value: string | Uint8Array;
 }
 
 interface MessageDirectiveElementProps {
@@ -107,13 +116,13 @@ function defaultCollisionWarn(message: string): void {
 
 export function normalizeDirectiveAttributes(
   attributes: Record<string, string | null | undefined> | null | undefined,
-): Record<string, string> {
+) {
   if (attributes === null || attributes === undefined) {
     return {};
   }
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(attributes)) {
-    if (typeof value === "string") {
+    if (value !== null && value !== undefined) {
       normalized[key] = value;
     }
   }
@@ -145,8 +154,8 @@ function directiveSourceFromNode(
   const start = node.position?.start?.offset;
   const end = node.position?.end?.offset;
   if (
-    typeof start === "number" &&
-    typeof end === "number" &&
+    start !== undefined &&
+    end !== undefined &&
     start >= 0 &&
     end >= start &&
     end <= markdownSource.length
@@ -204,13 +213,15 @@ function spliceLiteralDirective(
   return index;
 }
 
-function asDirectiveNode(node: unknown): DirectiveNode | null {
-  if (typeof node !== "object" || node === null) {
-    return null;
-  }
-  const type = (node as { type?: unknown }).type;
+function asDirectiveNode(node: DirectiveCandidate): DirectiveNode | null {
+  const type = node.type;
   if (type === "textDirective" || type === "leafDirective") {
-    return node as DirectiveNode;
+    return {
+      type,
+      name: node.name,
+      attributes: node.attributes,
+      position: node.position,
+    };
   }
   return null;
 }
@@ -222,7 +233,9 @@ export function remarkMessageDirectives(args: {
   const { mounts, registry } = args;
   return (tree: Nodes, file: RemarkMessageDirectiveFile): void => {
     const markdownSource =
-      typeof file.value === "string" ? file.value : String(file.value ?? "");
+      file.value instanceof Uint8Array
+        ? new TextDecoder().decode(file.value)
+        : file.value;
     mounts.length = 0;
     visit(tree, (node, index, parent: Parent | undefined) => {
       const directive = asDirectiveNode(node);
@@ -230,7 +243,7 @@ export function remarkMessageDirectives(args: {
         return;
       }
       const marker = DIRECTIVE_MARKERS[directive.type];
-      const name = typeof directive.name === "string" ? directive.name : "";
+      const name = directive.name ?? "";
       const attributes = normalizeDirectiveAttributes(directive.attributes);
       const source = directiveSourceFromNode(
         directive,

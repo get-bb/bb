@@ -18,7 +18,7 @@ export function readBoundedLines(args: BoundedLineReaderArgs): void {
   let discardedBytes = 0;
 
   args.input.on("data", (chunk: Buffer | string) => {
-    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    const text = Buffer.isBuffer(chunk) ? decoder.write(chunk) : chunk;
     let start = 0;
     for (;;) {
       const newlineIndex = text.indexOf("\n", start);

@@ -48,15 +48,14 @@ describe("server startup diagnostics", () => {
       name: "binds the explicit wildcard listener to IPv4 only",
     },
   ])("$name", async ({ bindHost, expectedAddress }) => {
-    const serverConfig = loadServerConfig({
-      env: {
-        BB_DATA_DIR: "/tmp/bb-server-listener-test",
-        BB_HOST_DAEMON_PORT: "49162",
-        ...(bindHost === undefined ? {} : { BB_SERVER_BIND_HOST: bindHost }),
-        BB_SERVER_PORT: "49161",
-        NODE_ENV: "development",
-      },
-    });
+    const env: NodeJS.ProcessEnv = {
+      BB_DATA_DIR: "/tmp/bb-server-listener-test",
+      BB_HOST_DAEMON_PORT: "49162",
+      BB_SERVER_PORT: "49161",
+      NODE_ENV: "development",
+    };
+    if (bindHost !== undefined) env.BB_SERVER_BIND_HOST = bindHost;
+    const serverConfig = loadServerConfig({ env });
     const server = startHttpListener({
       fetch: () => new Response("ok"),
       serverConfig: { ...serverConfig, BB_SERVER_PORT: 0 },

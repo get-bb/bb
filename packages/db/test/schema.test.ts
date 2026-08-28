@@ -770,6 +770,7 @@ describe("db rebuild schema", () => {
         updatedAt: now,
       })
       .run();
+    // SAFETY: This test omits dataDir to verify the database constraint.
     expect(() =>
       db
         .insert(hostDaemonSessions)

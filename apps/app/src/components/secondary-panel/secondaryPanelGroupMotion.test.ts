@@ -6,6 +6,7 @@ import type { MotionValue, ValueAnimationTransition } from "motion";
 import {
   SECONDARY_PANEL_BOUNDARY_SAFE_WIDTH_PX,
   createSecondaryPanelGroupMotion,
+  type SecondaryPanelGroupMotionDependencies,
 } from "./secondaryPanelGroupMotion";
 
 type RecordedAnimation = {
@@ -15,24 +16,21 @@ type RecordedAnimation = {
   value: MotionValue<number>;
 };
 
-const motionAnimationState = vi.hoisted(() => ({
-  calls: [] as RecordedAnimation[],
-}));
+type MotionAnimationState = {
+  calls: RecordedAnimation[];
+};
 
-vi.mock("motion", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion")>()),
-  animate: vi.fn(
-    (
-      value: MotionValue<number>,
-      target: number,
-      options: ValueAnimationTransition<number>,
-    ) => {
-      const stop = vi.fn();
-      motionAnimationState.calls.push({ options, stop, target, value });
-      return { stop };
-    },
-  ),
-}));
+const motionAnimationState: MotionAnimationState = {
+  calls: [],
+};
+
+const testMotionDependencies: SecondaryPanelGroupMotionDependencies = {
+  animate: (value, target, options) => {
+    const stop = vi.fn();
+    motionAnimationState.calls.push({ options, stop, target, value });
+    return { stop };
+  },
+};
 
 function createHarness() {
   const groupId = "right-panel-group";
@@ -41,7 +39,10 @@ function createHarness() {
   groupElement.setAttribute("data-panel-group-id", groupId);
   const measureGroup = vi
     .spyOn(groupElement, "getBoundingClientRect")
-    .mockReturnValue({ width: 800 } as DOMRect);
+    .mockReturnValue(
+      // SAFETY: The fixture supplies the DOMRect width that the source reads.
+      { width: 800 } as DOMRect,
+    );
   const panels = [document.createElement("div"), document.createElement("div")];
   for (const panel of panels) {
     panel.setAttribute("data-panel", "");
@@ -80,7 +81,7 @@ afterEach(() => {
 describe("createSecondaryPanelGroupMotion", () => {
   it("hides the opening boundary until the panel clears the fixed toggle", () => {
     const { boundary, group } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
 
@@ -98,7 +99,7 @@ describe("createSecondaryPanelGroupMotion", () => {
 
   it("keeps the disabled boundary hidden at the full-width layout", () => {
     const { boundary, group } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
     const animation = motionAnimationState.calls[0];
@@ -118,7 +119,7 @@ describe("createSecondaryPanelGroupMotion", () => {
 
   it("measures the group once per layout instead of on every frame", () => {
     const { group, measureGroup } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
     const measurementsAfterStart = measureGroup.mock.calls.length;
@@ -134,7 +135,7 @@ describe("createSecondaryPanelGroupMotion", () => {
 
   it("restarts an interrupted layout from its rendered flex values", () => {
     const { group, panels } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
     const openingAnimation = motionAnimationState.calls[0];
@@ -150,7 +151,7 @@ describe("createSecondaryPanelGroupMotion", () => {
 
   it("starts closing from the width applied by a resize drag", () => {
     const { group, panels } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
     const openingAnimation = motionAnimationState.calls[0];
@@ -168,7 +169,7 @@ describe("createSecondaryPanelGroupMotion", () => {
 
   it("defers the panel library's target layout until Motion completes", () => {
     const { group } = createHarness();
-    const motion = createSecondaryPanelGroupMotion();
+    const motion = createSecondaryPanelGroupMotion(testMotionDependencies);
 
     motion.setLayout(group, [60, 40], false);
 

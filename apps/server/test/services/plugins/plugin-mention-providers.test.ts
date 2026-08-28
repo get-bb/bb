@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -34,7 +35,47 @@ import { createNoopTelemetryService } from "../../../src/services/system/telemet
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
-const logger = testLogger as unknown as Logger;
+const logger = testLogger satisfies Pick<
+  Logger,
+  "debug" | "error" | "info" | "warn"
+>;
+
+const mentionProviderResponseSchema = z
+  .object({
+    pluginId: z.string(),
+    id: z.string(),
+    label: z.string(),
+    triggers: z.array(z.string()),
+  })
+  .strict();
+const mentionSearchItemResponseSchema = z
+  .object({
+    itemId: z.string(),
+    title: z.string(),
+    subtitle: z.string().nullable(),
+    icon: z.string().nullable(),
+  })
+  .strict();
+const mentionSearchGroupResponseSchema = z
+  .object({
+    pluginId: z.string(),
+    providerId: z.string(),
+    label: z.string(),
+    items: z.array(mentionSearchItemResponseSchema),
+  })
+  .strict();
+const mentionProvidersResponseSchema = z
+  .object({
+    cliCommands: z.array(z.json()),
+    mentionProviders: z.array(mentionProviderResponseSchema),
+  })
+  .strict();
+const mentionSearchResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    groups: z.array(mentionSearchGroupResponseSchema),
+  })
+  .strict();
 
 const MENTION_SOURCE = `
   let resolveCalls = 0;
@@ -184,7 +225,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       `${BASE}/api/v1/plugins/contributions`,
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { mentionProviders: unknown };
+    const body = mentionProvidersResponseSchema.parse(await response.json());
     expect(body.mentionProviders).toEqual([
       {
         pluginId: "mentions",
@@ -207,7 +248,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       `${BASE}/api/v1/plugins/mentions/search?q=fix&projectId=proj_1&threadId=thr_1`,
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; groups: unknown };
+    const body = mentionSearchResponseSchema.parse(await response.json());
     expect(body.ok).toBe(true);
     expect(body.groups).toEqual([
       {
@@ -254,7 +295,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       `${BASE}/api/v1/plugins/mentions/search?q=fix&trigger=%23&projectId=proj_1&threadId=thr_1`,
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; groups: unknown };
+    const body = mentionSearchResponseSchema.parse(await response.json());
     expect(body.ok).toBe(true);
     expect(body.groups).toEqual([
       {
@@ -294,12 +335,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const contextual = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=login`,
     );
-    const body = (await contextual.json()) as {
-      groups: Array<{
-        providerId: string;
-        items: Array<{ subtitle: string | null }>;
-      }>;
-    };
+    const body = mentionSearchResponseSchema.parse(await contextual.json());
     expect(
       body.groups.find((group) => group.providerId === "issues")?.items[0]
         ?.subtitle,
@@ -313,9 +349,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const none = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=none`,
     );
-    const noneBody = (await none.json()) as {
-      groups: Array<{ providerId: string }>;
-    };
+    const noneBody = mentionSearchResponseSchema.parse(await none.json());
     expect(noneBody.groups.some((group) => group.providerId === "issues")).toBe(
       false,
     );

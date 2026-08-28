@@ -13,14 +13,17 @@ interface BuildThreadShellEnvironmentArgs extends ThreadShellEnvironmentArgs {
 
 export function buildThreadShellEnvironment(
   args: BuildThreadShellEnvironmentArgs,
-): Record<string, string> {
-  return {
+) {
+  const environment: AgentRuntimeShellEnvironment = {
     ...(args.baseShellEnv ?? {}),
-    ...(args.projectId ? { BB_PROJECT_ID: args.projectId } : {}),
-    ...(args.threadStoragePath
-      ? { BB_THREAD_STORAGE: args.threadStoragePath }
-      : {}),
     BB_THREAD_ID: args.threadId,
     BB_ENVIRONMENT_ID: args.environmentId,
   };
+  if (args.projectId) {
+    environment.BB_PROJECT_ID = args.projectId;
+  }
+  if (args.threadStoragePath) {
+    environment.BB_THREAD_STORAGE = args.threadStoragePath;
+  }
+  return environment;
 }

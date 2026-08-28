@@ -413,7 +413,7 @@ function createFileEditMessage({
   stdout,
   threadId,
 }: CreateFileEditMessageArgs): EventProjectionFileEditMessage {
-  return {
+  const message: EventProjectionFileEditMessage = {
     kind: "file-edit",
     id: messageId(threadId, "file-edit", messageKey),
     threadId,
@@ -422,18 +422,19 @@ function createFileEditMessage({
     createdAt: meta.createdAt,
     startedAt: meta.createdAt,
     ...scopeFields,
-    ...(partial.parentToolCallId
-      ? { parentToolCallId: partial.parentToolCallId }
-      : {}),
-    ...("presentation" in partial && partial.presentation
-      ? { presentation: partial.presentation }
-      : {}),
     callId,
     changes: change ? [{ ...change }] : [],
     stdout,
     approvalStatus: fileEditPartialApprovalStatus(partial) ?? null,
     status: partial.status,
   };
+  if (partial.parentToolCallId) {
+    message.parentToolCallId = partial.parentToolCallId;
+  }
+  if ("presentation" in partial && partial.presentation) {
+    message.presentation = partial.presentation;
+  }
+  return message;
 }
 
 interface FileEditChangeEntry {

@@ -9,6 +9,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { ThreadEvent } from "@bb/domain";
+import { z } from "zod";
 import {
   compareParity,
   type ParityAllowlistEntry,
@@ -32,12 +34,21 @@ import {
 const cells = listRecordedCells(RECORDINGS_ROOT);
 const checkoutRoot = new URL("../../..", import.meta.url).pathname;
 
+const pinnedRowCountsSchema = z.record(
+  z.string(),
+  z.object({
+    events: z.int(),
+    rows: z.int(),
+    unhandled: z.int(),
+    grammarDrops: z.int(),
+  }),
+);
+
 function readPinned(): Record<string, RowCountsEntry> {
   if (!existsSync(ROW_COUNTS_PATH)) return {};
-  return JSON.parse(readFileSync(ROW_COUNTS_PATH, "utf8")) as Record<
-    string,
-    RowCountsEntry
-  >;
+  return pinnedRowCountsSchema.parse(
+    JSON.parse(readFileSync(ROW_COUNTS_PATH, "utf8")),
+  );
 }
 
 describe("recorded fixtures", () => {
@@ -121,18 +132,20 @@ describe("allowlist", () => {
   });
 
   it("masks only what an entry names and reports unused entries as stale", () => {
-    const events = [
+    const events: ThreadEvent[] = [
       {
         type: "item/completed",
         threadId: "t",
+        providerThreadId: "provider",
         scope: { kind: "turn", turnId: "t1" },
         item: { type: "agentMessage", id: "i1", text: "old" },
       },
     ];
-    const changed = [
+    const changed: ThreadEvent[] = [
       {
         type: "item/completed",
         threadId: "t",
+        providerThreadId: "provider",
         scope: { kind: "turn", turnId: "t1" },
         item: { type: "agentMessage", id: "i1", text: "new" },
       },
@@ -164,8 +177,8 @@ describe("allowlist", () => {
       },
     ];
     const comparison = compareParity(
-      { events: events as never, rows: [] },
-      { events: changed as never, rows: [] },
+      { events, rows: [] },
+      { events: changed, rows: [] },
       allowlist,
       { provider: "codex", cell: "turn-tools" },
     );

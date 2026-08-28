@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 
 import { useMemo } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SystemConfigResponse } from "@bb/server-contract";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import * as systemQueries from "@/hooks/queries/system-queries";
+import * as bbDesktop from "@/lib/bb-desktop";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   usePluginComposerHost,
   usePluginComposerHostDraft,
@@ -20,34 +25,65 @@ const mocks = vi.hoisted(() => ({
   focusHost: vi.fn(),
 }));
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      keybindings: [
-        {
-          command: "composer.focus",
-          desktopOnly: false,
-          shortcut: {
-            key: "c",
-            mod: false,
-            meta: false,
-            control: true,
-            alt: false,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: [],
-          },
-        },
-      ],
-    },
-  }),
-}));
+function queryResult<T>(data: T): UseQueryResult<T, Error> {
+  const common = {
+    dataUpdatedAt: 0,
+    error: null,
+    errorUpdatedAt: 0,
+    errorUpdateCount: 0,
+    failureCount: 0,
+    failureReason: null,
+    fetchStatus: "idle" as const,
+    isEnabled: true,
+    isError: false,
+    isFetching: false,
+    isLoadingError: false,
+    isPaused: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: async () => queryResult(data),
+  } as const;
+  return {
+    ...common,
+    data,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isInitialLoading: false,
+    isLoading: false,
+    isPending: false,
+    isSuccess: true,
+    promise: Promise.resolve(data),
+    status: "success" as const,
+  };
+}
 
-vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => null,
-}));
+const systemConfig: SystemConfigResponse = makeSystemConfig({
+  keybindings: [
+    {
+      command: "composer.focus",
+      desktopOnly: false,
+      shortcut: {
+        key: "c",
+        mod: false,
+        meta: false,
+        control: true,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: ["mainSurface", "promptAvailable"],
+        none: [],
+      },
+    },
+  ],
+});
+
+vi.spyOn(systemQueries, "useSystemConfig").mockImplementation(() =>
+  queryResult(systemConfig),
+);
+vi.spyOn(bbDesktop, "getBbDesktopInfo").mockReturnValue(null);
 
 const draft = { text: "hello", mentions: [], attachments: [] };
 

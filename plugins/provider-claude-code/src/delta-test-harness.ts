@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
+import {
+  clientTurnRequestIdSchema,
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+  type ThreadEvent,
+} from "@bb/domain";
+import { z } from "zod";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   createClaudeDeltaTranslator,
@@ -12,39 +19,45 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "./__fixtures__");
 
-function isFixtureObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-export function loadFixture(name: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(
-    readFileSync(resolve(FIXTURES, name), "utf8"),
+export function loadFixture(name: string): JsonObject {
+  const parsed = jsonObjectSchema.safeParse(
+    JSON.parse(readFileSync(resolve(FIXTURES, name), "utf8")),
   );
-  if (!isFixtureObject(parsed)) {
+  if (!parsed.success) {
     throw new Error(`Fixture ${name} did not contain an object`);
   }
-  return parsed;
+  return parsed.data;
 }
 
-export function loadSessionFixture(name: string): Record<string, unknown>[] {
+export function loadSessionFixture(name: string): JsonObject[] {
   return readFileSync(resolve(FIXTURES, "sessions", name), "utf8")
     .trim()
     .split("\n")
     .map((line) => {
-      const parsed: unknown = JSON.parse(line);
-      if (!isFixtureObject(parsed)) {
+      const parsed = jsonObjectSchema.safeParse(JSON.parse(line));
+      if (!parsed.success) {
         throw new Error(`Session fixture ${name} contained a non-object line`);
       }
-      return parsed;
+      return parsed.data;
     });
 }
+
+type FixtureObject = { [key: string]: JsonValue | undefined };
+
+interface FixtureEnvelope {
+  jsonrpc: "2.0";
+  method: string;
+  params: object;
+}
+
+type ClaudeDeltaInput = FixtureObject | FixtureEnvelope;
 
 export function spawningToolUseMessage(args: {
   toolUseId: string;
   toolName: string;
-  input?: Record<string, unknown>;
+  input?: JsonObject;
   parentToolUseId?: string;
-}): Record<string, unknown> {
+}) {
   return {
     type: "assistant",
     message: {
@@ -63,42 +76,44 @@ export function spawningToolUseMessage(args: {
   };
 }
 
-export function spawningToolUseFor(
-  taskStarted: Record<string, unknown>,
-): Record<string, unknown> {
-  const toolUseId = taskStarted.tool_use_id;
-  if (typeof toolUseId !== "string") {
+export function spawningToolUseFor(taskStarted: FixtureObject) {
+  const toolUseId = z.string().safeParse(taskStarted.tool_use_id);
+  if (!toolUseId.success) {
     throw new Error("task_started fixture has no tool_use_id");
   }
-  const description =
-    typeof taskStarted.description === "string" ? taskStarted.description : "";
+  const description = readString(taskStarted.description) ?? "";
   switch (taskStarted.task_type) {
     case "local_workflow":
       return spawningToolUseMessage({
-        toolUseId,
+        toolUseId: toolUseId.data,
         toolName: "Workflow",
         input: { script: taskStarted.prompt ?? "" },
       });
     case "local_bash":
       return spawningToolUseMessage({
-        toolUseId,
+        toolUseId: toolUseId.data,
         toolName: "Bash",
         input: { command: description, run_in_background: true },
       });
     default:
+      const input: JsonObject = {
+        description,
+        prompt: taskStarted.prompt ?? description,
+        run_in_background: true,
+      };
+      const subagentType = readString(taskStarted.subagent_type);
+      if (subagentType !== undefined) input.subagent_type = subagentType;
       return spawningToolUseMessage({
-        toolUseId,
+        toolUseId: toolUseId.data,
         toolName: "Agent",
-        input: {
-          description,
-          prompt: taskStarted.prompt ?? description,
-          run_in_background: true,
-          ...(typeof taskStarted.subagent_type === "string"
-            ? { subagent_type: taskStarted.subagent_type }
-            : {}),
-        },
+        input,
       });
   }
+}
+
+function readString(value: JsonValue | undefined): string | undefined {
+  const parsed = z.string().safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 const CLAUDE_TEST_ENTROPY = "cl-test";
@@ -109,7 +124,7 @@ export const ITEM_ID_PATTERN = /^cl-test-i\d+$/;
 interface ClaudeDeltaHarness {
   translator: ClaudeDeltaTranslator;
   translate(
-    event: unknown,
+    event: ClaudeDeltaInput,
     context?: ClaudeDeltaTranslationContext,
   ): ThreadEvent[];
   acceptInput(clientRequestId: string, threadId?: string): ThreadEvent[];
@@ -129,7 +144,8 @@ export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
     translate(event, context) {
       return assembler.assemble({
         threadId: context?.threadId ?? "",
-        deltas: translator.translate(event, context),
+        // SAFETY: Test fixtures cross the translator's runtime validation boundary here.
+        deltas: translator.translate(event as JsonValue, context),
       });
     },
     acceptInput(clientRequestId, threadId = "") {
@@ -137,7 +153,7 @@ export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
         threadId,
         deltas: translator.acceptInput(
           threadId,
-          clientRequestId as ClientTurnRequestId,
+          clientTurnRequestIdSchema.parse(clientRequestId),
         ),
       });
     },

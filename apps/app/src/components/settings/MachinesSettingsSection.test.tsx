@@ -14,36 +14,41 @@ import type { SystemConfigResponse } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
+import * as hostDaemonModule from "@/hooks/useHostDaemon";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    hosts: {
-      delete: vi.fn(),
-      list: vi.fn(),
-      retryUpdate: vi.fn(),
-      update: vi.fn(),
-    },
-    system: { config: vi.fn() },
-  },
-}));
-
-vi.mock("@/lib/ws", () => ({
-  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
+vi.spyOn(sdk.hosts, "delete");
+vi.spyOn(sdk.hosts, "list");
+vi.spyOn(sdk.hosts, "retryUpdate");
+vi.spyOn(sdk.hosts, "update");
+vi.spyOn(sdk.system, "config");
+vi.spyOn(wsManager, "subscribe").mockImplementation(() => undefined);
+vi.spyOn(wsManager, "unsubscribe").mockImplementation(() => undefined);
 
 const hostDaemon = vi.hoisted(() => ({
-  localDaemonHostId: "host_primary" as string | null,
-  platform: "darwin" as "darwin" | "linux" | "wsl" | "unknown" | null,
+  localDaemonHostId:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ "host_primary" as
+      | string
+      | null,
+  platform:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ "darwin" as
+      | "darwin"
+      | "linux"
+      | "wsl"
+      | "unknown"
+      | null,
 }));
 
-vi.mock("@/hooks/useHostDaemon", () => ({
-  useHostDaemon: () => ({
-    localDaemonHostId: hostDaemon.localDaemonHostId,
-    platform: hostDaemon.platform,
-  }),
+vi.spyOn(hostDaemonModule, "useHostDaemon").mockImplementation(() => ({
+  hasDaemon: false,
+  isLocalDaemonHost: () => false,
+  localDaemonHostId: hostDaemon.localDaemonHostId,
+  localHostId: null,
+  platform: hostDaemon.platform,
+  supportsNativeFolderPicker: false,
 }));
 
 const NOW = Date.now();

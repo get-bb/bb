@@ -1,6 +1,19 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { TasksStore } from "../db";
-import { isSideChatShapedThread } from "../shared/side-chat";
+
+interface SideChatThread {
+  originKind: string | null;
+  originPluginId: string | null;
+  visibility: string;
+}
+
+function belongsToSideChat(thread: SideChatThread): boolean {
+  return (
+    thread.originKind === "fork" &&
+    thread.originPluginId === "side-chat" &&
+    thread.visibility === "hidden"
+  );
+}
 
 interface DeliverCommentInput {
   taskId: string;
@@ -29,10 +42,6 @@ function steerPrompt(
     "Treat this as updated context for your work on this task; " +
     `reply via bb tasks comment ${taskKey} when relevant.`
   );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export async function deliverCommentToLatestAgent(
@@ -66,7 +75,7 @@ export async function deliverCommentToLatestAgent(
   let outcome: CommentDeliveryOutcome;
   try {
     const thread = await bb.sdk.threads.get({ threadId });
-    if (isSideChatShapedThread(thread)) {
+    if (belongsToSideChat(thread)) {
       outcome = {
         threadId,
         status: "skipped",
@@ -81,7 +90,7 @@ export async function deliverCommentToLatestAgent(
       outcome = { threadId, status: "delivered" };
     }
   } catch (error) {
-    const reason = errorMessage(error);
+    const reason = error instanceof Error ? error.message : String(error);
     bb.log.warn(
       `failed to deliver comment ${input.commentId} to thread ${threadId}: ${reason}`,
     );

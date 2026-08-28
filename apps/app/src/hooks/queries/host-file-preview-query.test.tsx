@@ -3,22 +3,20 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { sdk } from "@/lib/sdk";
 import { hostFilePreviewQueryKey } from "./query-keys";
 import { HEAVY_PAYLOAD_GC_TIME_MS } from "./query-policies";
 import { useHostFilePreview } from "./host-file-preview-query";
 
-const filesSdk = vi.hoisted(() => ({
-  createPreview: vi.fn(),
-  read: vi.fn(),
-}));
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: { files: filesSdk },
-}));
+const filesSdk = {
+  createPreview: vi.spyOn(sdk.files, "createPreview"),
+  read: vi.spyOn(sdk.files, "read"),
+};
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  filesSdk.createPreview.mockReset();
+  filesSdk.read.mockReset();
   vi.useRealTimers();
 });
 
@@ -161,11 +159,15 @@ describe("useHostFilePreview", () => {
       expiresAtMs: Date.now() + 60_000,
     });
     filesSdk.read.mockImplementation(
-      ({ signal }: { signal: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
+      ({ signal }: Parameters<typeof sdk.files.read>[0]) => {
+        if (signal === undefined) {
+          throw new Error("Expected an abort signal");
+        }
+        return new Promise((_resolve, reject) => {
           readSignal = signal;
           signal.addEventListener("abort", () => reject(signal.reason));
-        }),
+        });
+      },
     );
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const { rerender } = renderHook(

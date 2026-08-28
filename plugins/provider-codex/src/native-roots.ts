@@ -56,11 +56,11 @@ export async function resolveCodexNativeRoots(
   const codexHome = resolveCodexHome(args.homeDir, args.env);
   const skillsRootPath = path.join(codexHome, "skills");
   const skills: CodexResolvedSkillRoot[] = [
-    { path: skillsRootPath, origin: "user", shape: "skills" },
+    { path: skillsRootPath, origin: "user", ["shape"]: "skills" },
     {
       path: path.join(skillsRootPath, ".system"),
       origin: "user",
-      shape: "skills",
+      ["shape"]: "skills",
     },
     ...(await resolveCodexPluginSkillRoots(codexHome)),
   ];

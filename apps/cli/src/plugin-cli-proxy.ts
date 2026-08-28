@@ -3,6 +3,7 @@ import {
   resolveContextThreadId,
 } from "./context-env.js";
 import { Agent, type Dispatcher } from "undici";
+import { z } from "zod";
 import { cliFetch } from "./client.js";
 
 export interface PluginCliContributionEntry {
@@ -26,6 +27,51 @@ const RETRYABLE_CODES = new Set([
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
 ]);
+
+const pluginCliContributionSchema = z.object({
+  pluginId: z.string(),
+  name: z.string(),
+  summary: z.string(),
+  commands: z.array(
+    z.object({
+      name: z.string(),
+      summary: z.string(),
+      usage: z.string(),
+    }),
+  ),
+});
+const pluginContributionsResponseSchema = z
+  .object({ cliCommands: z.array(z.unknown()).optional() })
+  .nullable();
+const pluginListResponseSchema = z
+  .object({ plugins: z.array(z.unknown()).optional() })
+  .nullable();
+const pluginListEntrySchema = z.object({
+  id: z.string(),
+  enabled: z.boolean(),
+  status: z.unknown().optional(),
+  statusDetail: z.unknown().optional(),
+});
+const pluginCliResultSchema = z
+  .object({
+    exitCode: z.number().optional(),
+    stdout: z.unknown().optional(),
+    stderr: z.unknown().optional(),
+    error: z.unknown().optional(),
+  })
+  .nullable();
+
+interface CauseRecord {
+  cause?: unknown;
+  code?: unknown;
+  errors?: unknown;
+  name?: unknown;
+  message?: unknown;
+}
+
+function isCauseRecord(cause: unknown): cause is CauseRecord {
+  return cause !== null && Object(cause) === cause && !Array.isArray(cause);
+}
 
 type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
@@ -56,7 +102,7 @@ function diagnoseUnreachableServer(cause: unknown): UnreachableDiagnosis {
 
   while (pending.length > 0) {
     const current = pending.pop();
-    if (typeof current !== "object" || current === null) {
+    if (!isCauseRecord(current)) {
       terminalCodes.push(undefined);
       continue;
     }
@@ -65,14 +111,9 @@ function diagnoseUnreachableServer(cause: unknown): UnreachableDiagnosis {
       continue;
     }
     seen.add(current);
-    const record = current as {
-      cause?: unknown;
-      code?: unknown;
-      errors?: unknown;
-      name?: unknown;
-      message?: unknown;
-    };
-    const code = typeof record.code === "string" ? record.code : undefined;
+    const record = current;
+    const codeResult = z.string().safeParse(record.code);
+    const code = codeResult.success ? codeResult.data : undefined;
     if (code === "EPERM" || code === "EACCES") {
       blockedCode ??= code;
     }
@@ -82,8 +123,9 @@ function diagnoseUnreachableServer(cause: unknown): UnreachableDiagnosis {
     if (record.name === "TimeoutError" || record.name === "AbortError") {
       timedOut = true;
     }
-    if (typeof record.message === "string" && record.message.length > 0) {
-      messages.push(record.message);
+    const messageResult = z.string().safeParse(record.message);
+    if (messageResult.success && messageResult.data.length > 0) {
+      messages.push(messageResult.data);
     }
 
     const children: unknown[] = [];
@@ -176,11 +218,9 @@ export async function fetchPluginCliContributions(
         },
       );
       if (!response.ok) return { outcome: "invalid" };
-      let parsed: { cliCommands?: unknown } | null;
+      let parsed: z.infer<typeof pluginContributionsResponseSchema>;
       try {
-        parsed = (await response.json()) as {
-          cliCommands?: unknown;
-        } | null;
+        parsed = pluginContributionsResponseSchema.parse(await response.json());
       } catch (error) {
         if (!diagnoseUnreachableServer(error).retryable) {
           return { outcome: "invalid" };
@@ -188,16 +228,13 @@ export async function fetchPluginCliContributions(
         throw error;
       }
       const cliCommands = parsed?.cliCommands;
-      if (!Array.isArray(cliCommands)) return { outcome: "invalid" };
+      if (cliCommands === undefined) return { outcome: "invalid" };
       return {
         outcome: "ok",
-        contributions: cliCommands.filter(
-          (entry): entry is PluginCliContributionEntry =>
-            typeof entry === "object" &&
-            entry !== null &&
-            typeof (entry as { pluginId?: unknown }).pluginId === "string" &&
-            typeof (entry as { name?: unknown }).name === "string",
-        ),
+        contributions: cliCommands.flatMap((entry) => {
+          const contribution = pluginCliContributionSchema.safeParse(entry);
+          return contribution.success ? [contribution.data] : [];
+        }),
       };
     } catch (error) {
       const isLastAttempt =
@@ -231,32 +268,30 @@ export async function findDisabledPluginForCommand(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return null;
-    const parsed = (await response.json()) as { plugins?: unknown } | null;
-    if (!Array.isArray(parsed?.plugins)) return null;
-    const match = parsed.plugins.find(
-      (
-        entry,
-      ): entry is {
-        id: string;
-        enabled: boolean;
-        status?: unknown;
-        statusDetail?: unknown;
-      } =>
-        typeof entry === "object" &&
-        entry !== null &&
-        (entry as { id?: unknown }).id === name &&
-        typeof (entry as { enabled?: unknown }).enabled === "boolean" &&
-        ((entry as { enabled?: unknown }).enabled === false ||
-          (entry as { status?: unknown }).status === "disabled"),
+    const parsed = pluginListResponseSchema.safeParse(await response.json());
+    if (!parsed.success || parsed.data?.plugins === undefined) return null;
+    const entries = parsed.data.plugins.flatMap((entry) => {
+      const plugin = pluginListEntrySchema.safeParse(entry);
+      return plugin.success ? [plugin.data] : [];
+    });
+    const match = entries.find(
+      (entry) =>
+        entry.id === name &&
+        (entry.enabled === false || entry.status === "disabled"),
     );
     return match === undefined
       ? null
       : {
           id: match.id,
           enabled: match.enabled,
-          status: typeof match.status === "string" ? match.status : null,
-          statusDetail:
-            typeof match.statusDetail === "string" ? match.statusDetail : null,
+          status: (() => {
+            const result = z.string().safeParse(match.status);
+            return result.success ? result.data : null;
+          })(),
+          statusDetail: (() => {
+            const result = z.string().safeParse(match.statusDetail);
+            return result.success ? result.data : null;
+          })(),
         };
   } catch {
     return null;
@@ -277,6 +312,13 @@ interface PluginCliOutputStream {
 interface PluginCliOutputStreams {
   stdout: PluginCliOutputStream;
   stderr: PluginCliOutputStream;
+}
+
+interface PluginCliRequestBody {
+  argv: string[];
+  cwd: string;
+  threadId?: string;
+  projectId?: string;
 }
 
 async function writePluginCliOutput(
@@ -318,35 +360,48 @@ export async function runPluginCliCommand(
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        argv,
-        cwd: process.cwd(),
-        ...(threadId ? { threadId } : {}),
-        ...(projectId ? { projectId } : {}),
-      }),
+      body: JSON.stringify(
+        (() => {
+          const requestBody: PluginCliRequestBody = {
+            argv,
+            cwd: process.cwd(),
+          };
+          if (threadId) requestBody.threadId = threadId;
+          if (projectId) requestBody.projectId = projectId;
+          return requestBody;
+        })(),
+      ),
       dispatcher: getPluginCliDispatcher(),
     },
   );
-  const result = (await response.json().catch(() => null)) as {
-    exitCode?: unknown;
-    stdout?: unknown;
-    stderr?: unknown;
-    error?: unknown;
-  } | null;
-  if (result === null || typeof result.exitCode !== "number") {
+  const parsedResult = pluginCliResultSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (
+    !parsedResult.success ||
+    parsedResult.data === null ||
+    parsedResult.data.exitCode === undefined
+  ) {
     await writePluginCliOutput(
       streams.stderr,
-      typeof result?.error === "string"
-        ? result.error
-        : `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`,
+      (() => {
+        const result = z
+          .string()
+          .safeParse(parsedResult.success ? parsedResult.data?.error : null);
+        return result.success
+          ? result.data
+          : `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`;
+      })(),
     );
     return 1;
   }
-  if (typeof result.stdout === "string" && result.stdout.length > 0) {
-    await writePluginCliOutput(streams.stdout, result.stdout);
+  const stdoutResult = z.string().safeParse(parsedResult.data.stdout);
+  if (stdoutResult.success && stdoutResult.data.length > 0) {
+    await writePluginCliOutput(streams.stdout, stdoutResult.data);
   }
-  if (typeof result.stderr === "string" && result.stderr.length > 0) {
-    await writePluginCliOutput(streams.stderr, result.stderr);
+  const stderrResult = z.string().safeParse(parsedResult.data.stderr);
+  if (stderrResult.success && stderrResult.data.length > 0) {
+    await writePluginCliOutput(streams.stderr, stderrResult.data);
   }
-  return result.exitCode;
+  return parsedResult.data.exitCode;
 }

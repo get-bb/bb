@@ -61,6 +61,14 @@ function extensionSiteOf(event: ThreadEvent): ExtensionPayloadSite | null {
 
 type ValidationOutcome = { ok: true } | { ok: false; reason: string };
 
+type IssuePathSegment = PropertyKey | { readonly key: PropertyKey };
+
+function isIssuePathObject(
+  value: IssuePathSegment,
+): value is { readonly key: PropertyKey } {
+  return Object(value) === value;
+}
+
 function issuePathSegments(path: StandardSchemaV1Issue["path"]): string[] {
   if (path === undefined) {
     return [];
@@ -69,9 +77,7 @@ function issuePathSegments(path: StandardSchemaV1Issue["path"]): string[] {
     return [String(path)];
   }
   return path.map((segment) =>
-    typeof segment === "object" && segment !== null
-      ? String(segment.key)
-      : String(segment),
+    isIssuePathObject(segment) ? String(segment.key) : String(segment),
   );
 }
 
@@ -159,7 +165,7 @@ function toUnhandledEvent(
   providerId: string | null,
   reason: string,
 ): ThreadEvent {
-  return {
+  const event: Extract<ThreadEvent, { type: "provider/unhandled" }> = {
     type: "provider/unhandled",
     threadId: site.threadId,
     providerThreadId: site.providerThreadId,
@@ -171,10 +177,11 @@ function toUnhandledEvent(
       params: { kind: site.kind, payload: site.payload, reason },
     },
     scope: site.scope,
-    ...(site.parentToolCallId === undefined
-      ? {}
-      : { parentToolCallId: site.parentToolCallId }),
   };
+  if (site.parentToolCallId !== undefined) {
+    event.parentToolCallId = site.parentToolCallId;
+  }
+  return event;
 }
 
 export async function validateExtensionPayloads(

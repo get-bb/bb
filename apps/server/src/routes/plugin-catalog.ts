@@ -10,18 +10,13 @@ import type {
   PluginCatalogService,
 } from "../services/plugin-catalog/plugin-catalog-service.js";
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function entrySelector(
   entryId: string | undefined,
   marketplace: string | undefined,
 ): PluginCatalogEntrySelector | null {
-  const parsed = pluginCatalogInstallRequestSchema.safeParse({
-    entryId,
-    ...(marketplace === undefined ? {} : { marketplace }),
-  });
+  const input =
+    marketplace === undefined ? { entryId } : { entryId, marketplace };
+  const parsed = pluginCatalogInstallRequestSchema.safeParse(input);
   return parsed.success ? parsed.data : null;
 }
 
@@ -73,7 +68,10 @@ export function registerPluginCatalogRoutes(
     try {
       return context.json({ plan: await catalog.installPlan(selector) });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
 
@@ -95,7 +93,10 @@ export function registerPluginCatalogRoutes(
         plugin: await catalog.install(body.data),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
 
@@ -115,7 +116,10 @@ export function registerPluginCatalogRoutes(
         marketplace: await catalog.addMarketplace(body.data.source),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
 
@@ -130,7 +134,10 @@ export function registerPluginCatalogRoutes(
         results: await catalog.refreshMarketplaces(body.data),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
 
@@ -151,7 +158,10 @@ export function registerPluginCatalogRoutes(
         convertedPluginIds: removed.convertedPluginIds,
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
     }
   });
 }

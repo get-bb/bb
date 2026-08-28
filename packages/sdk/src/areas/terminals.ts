@@ -156,11 +156,11 @@ function terminalListQuery(scope: TerminalListScope): TerminalListQuery {
       return { threadId: scope.threadId };
     case "environment":
       return { environmentId: scope.environmentId };
-    case "host_path":
-      return {
-        hostId: scope.hostId,
-        ...(scope.cwd === undefined ? {} : { cwd: scope.cwd }),
-      };
+    case "host_path": {
+      const query: TerminalListQuery = { hostId: scope.hostId };
+      if (scope.cwd !== undefined) query.cwd = scope.cwd;
+      return query;
+    }
   }
 }
 
@@ -183,13 +183,11 @@ function terminalCreateTarget(
 }
 
 function terminalOutputQuery(args: TerminalOutputArgs): TerminalOutputQuery {
-  return {
-    ...(args.sinceSeq === undefined ? {} : { sinceSeq: args.sinceSeq }),
-    ...(args.tailBytes === undefined ? {} : { tailBytes: args.tailBytes }),
-    ...(args.limitChunks === undefined
-      ? {}
-      : { limitChunks: args.limitChunks }),
-  };
+  const query: TerminalOutputQuery = {};
+  if (args.sinceSeq !== undefined) query.sinceSeq = args.sinceSeq;
+  if (args.tailBytes !== undefined) query.tailBytes = args.tailBytes;
+  if (args.limitChunks !== undefined) query.limitChunks = args.limitChunks;
+  return query;
 }
 
 export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {

@@ -9,7 +9,9 @@ import {
   type ProviderVisibilityMetadata,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-function getMessageContentTypes(message: Record<string, unknown>): string[] {
+type ProviderRecord = Parameters<typeof getRecordProperty>[0];
+
+function getMessageContentTypes(message: ProviderRecord): string[] {
   const messagePayload = getRecordProperty(message, "message");
   const content = messagePayload?.["content"];
   if (!Array.isArray(content)) {
@@ -398,10 +400,9 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
       return { kind: "sdk/tool_use_summary" };
 
     default:
-      return {
-        kind: "sdk/unknown",
-        ...(type ? { sdkType: type } : {}),
-      };
+      const event: ClaudeUnknownSdkRawEvent = { kind: "sdk/unknown" };
+      if (type) event.sdkType = type;
+      return event;
   }
 }
 

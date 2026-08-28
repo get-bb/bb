@@ -22,18 +22,9 @@ import {
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
 import { sdk } from "@/lib/sdk";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginProviderModelPicker } from "./PluginProviderModelPicker";
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    hosts: { list: vi.fn().mockResolvedValue([]) },
-    system: {
-      config: vi.fn().mockResolvedValue({ primaryHostId: null }),
-      executionOptions: vi.fn(),
-    },
-  },
-}));
 
 const providers: ProviderInfo[] = [
   provider("codex", "Codex", "OpenAI", true),
@@ -109,6 +100,14 @@ function executionOptions(
     modelLoadError: options?.modelLoadError ?? null,
   };
 }
+
+vi.spyOn(sdk.hosts, "list").mockResolvedValue([]);
+vi.spyOn(sdk.system, "config").mockResolvedValue(
+  makeSystemConfig({ primaryHostId: null }),
+);
+const executionOptionsRequest = vi
+  .spyOn(sdk.system, "executionOptions")
+  .mockResolvedValue(executionOptions([]));
 
 function cacheCatalog(
   queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
@@ -366,7 +365,7 @@ describe("PluginProviderModelPicker", () => {
     let resolveCatalog: (
       value: SystemExecutionOptionsResponse,
     ) => void = () => {};
-    vi.mocked(sdk.system.executionOptions).mockImplementation(
+    executionOptionsRequest.mockImplementation(
       () =>
         new Promise<SystemExecutionOptionsResponse>((resolve) => {
           resolveCatalog = resolve;

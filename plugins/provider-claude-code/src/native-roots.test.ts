@@ -5,6 +5,7 @@ import type {
   ExperimentalClaudePluginRoots,
   ExperimentalVendorPluginRoots,
 } from "@get-bb/plugin-sdk/host";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   filterClaudeNativeRoots,
@@ -27,7 +28,7 @@ async function writeFileEnsuringDir(
   await writeFile(filePath, content, "utf8");
 }
 
-async function writeJson(filePath: string, value: unknown): Promise<void> {
+async function writeJson(filePath: string, value: JsonValue): Promise<void> {
   await writeFileEnsuringDir(filePath, JSON.stringify(value, null, 2));
 }
 
@@ -57,7 +58,7 @@ function commandPaths(roots: ExperimentalVendorPluginRoots): string[] {
 
 async function writePlugin(
   pluginRoot: string,
-  manifest: Record<string, unknown>,
+  manifest: Record<string, JsonValue>,
 ): Promise<void> {
   await writeJson(
     path.join(pluginRoot, ".claude-plugin", "plugin.json"),
@@ -84,7 +85,7 @@ describe("resolveClaudeNativeRoots", () => {
         {
           path: path.join(fixture.claudeDir, "skills"),
           origin: "user",
-          shape: "skills",
+          ["shape"]: "skills",
           skipIfManifest: ".claude-plugin/plugin.json",
         },
       ],
@@ -92,7 +93,7 @@ describe("resolveClaudeNativeRoots", () => {
         {
           path: path.join(fixture.claudeDir, "commands"),
           origin: "user",
-          shape: "commands",
+          ["shape"]: "commands",
         },
       ],
     });
@@ -143,7 +144,7 @@ describe("resolveClaudeNativeRoots", () => {
     expect(roots.skills[1]).toMatchObject({
       origin: "user",
       namePrefix: "moved-plugin:",
-      shape: "skills",
+      ["shape"]: "skills",
     });
   });
 
@@ -176,14 +177,14 @@ describe("resolveClaudeNativeRoots", () => {
         {
           path: path.join(fixture.claudeDir, "skills"),
           origin: "user",
-          shape: "skills",
+          ["shape"]: "skills",
           skipIfManifest: ".claude-plugin/plugin.json",
         },
         {
           path: path.join(fixture.claudeDir, "SKILL.md"),
           origin: "user",
           namePrefix: "home-plugin:",
-          shape: "skill-file",
+          ["shape"]: "skill-file",
           fallbackName: "home-plugin",
         },
       ],
@@ -191,7 +192,7 @@ describe("resolveClaudeNativeRoots", () => {
         {
           path: path.join(fixture.claudeDir, "commands"),
           origin: "user",
-          shape: "commands",
+          ["shape"]: "commands",
         },
       ],
     });
@@ -282,7 +283,7 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
           path: path.join(cacheRoot, name, "1", "commands"),
           origin: "user",
           namePrefix: `${name}:`,
-          shape: "commands",
+          ["shape"]: "commands",
         };
       });
 

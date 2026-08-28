@@ -64,7 +64,7 @@ function navigateWithoutProvider(path: string): void {
 }
 
 function currentOrigin(): string | null {
-  return typeof window === "undefined" ? null : window.location.origin;
+  return globalThis.window?.location.origin ?? null;
 }
 
 function shouldHandleRouteAnchorClick({

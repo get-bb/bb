@@ -9,9 +9,9 @@ export const PLUGIN_MENTION_TRIGGER_VALUES = [
   "~",
 ] as const satisfies readonly PluginMentionTrigger[];
 
-export function isPluginMentionTrigger(
-  value: unknown,
-): value is PluginMentionTrigger {
+export function isPluginMentionTrigger<T>(
+  value: T,
+): value is PluginMentionTrigger & T {
   switch (value) {
     case "@":
     case "#":
@@ -24,8 +24,8 @@ export function isPluginMentionTrigger(
   }
 }
 
-export function normalizePluginMentionTriggers(
-  value: unknown,
+export function normalizePluginMentionTriggers<T>(
+  value: T,
 ): readonly PluginMentionTrigger[] | null {
   if (value === undefined) {
     return [DEFAULT_PLUGIN_MENTION_TRIGGER];

@@ -18,7 +18,7 @@ type RootEntry =
   | string
   | { readonly path: string; readonly skipIfManifest?: string };
 function entryOf(entry: RootEntry) {
-  return typeof entry === "string" ? { path: entry } : entry;
+  return entry instanceof Object ? entry : { path: entry };
 }
 function plainRoots(entries: readonly RootEntry[]) {
   return entries.map(entryOf);

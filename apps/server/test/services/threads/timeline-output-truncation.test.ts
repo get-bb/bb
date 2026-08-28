@@ -58,10 +58,10 @@ describe("truncateTimelineResponseOutputs", () => {
   it("truncates a command output above the cap and keeps a marker", () => {
     const big = "x".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 5_000);
     const out = truncateTimelineResponseOutputs(response([commandRow(big)]));
-    const row = out.rows[0] as Extract<
-      TimelineRow,
-      { kind: "work"; workKind: "command" }
-    >;
+    const row = out.rows[0];
+    if (!row || row.kind !== "work" || row.workKind !== "command") {
+      throw new Error("expected a command row");
+    }
     expect(row.output.length).toBeLessThan(big.length);
     expect(row.output).toContain("more characters truncated");
     expect(
@@ -88,11 +88,14 @@ describe("truncateTimelineResponseOutputs", () => {
       children: [commandRow(big)],
     };
     const out = truncateTimelineResponseOutputs(response([turn]));
-    const turnOut = out.rows[0] as Extract<TimelineRow, { kind: "turn" }>;
-    const child = turnOut.children![0] as Extract<
-      TimelineRow,
-      { kind: "work"; workKind: "command" }
-    >;
+    const turnOut = out.rows[0];
+    if (!turnOut || turnOut.kind !== "turn") {
+      throw new Error("expected a turn row");
+    }
+    const child = turnOut.children?.[0];
+    if (!child || child.kind !== "work" || child.workKind !== "command") {
+      throw new Error("expected a command child row");
+    }
     expect(child.output).toContain("more characters truncated");
   });
 });

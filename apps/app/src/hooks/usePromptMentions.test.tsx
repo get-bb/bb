@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { JsonValue } from "@bb/domain";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -7,11 +8,9 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { usePromptMentions } from "./usePromptMentions";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { config: vi.fn() } },
-}));
+vi.spyOn(sdk.system, "config");
 
-function responseJson(body: unknown): Response {
+function responseJson(body: JsonValue): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "content-type": "application/json" },
@@ -19,9 +18,9 @@ function responseJson(body: unknown): Response {
 }
 
 function urlForFetchInput(input: RequestInfo | URL): string {
-  if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
-  return input.url;
+  if (input instanceof Request) return input.url;
+  return input;
 }
 
 afterEach(() => {

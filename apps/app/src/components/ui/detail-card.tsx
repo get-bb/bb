@@ -30,6 +30,7 @@ function labelWidthStyle(
   if (!labelWidth) {
     return undefined;
   }
+  // SAFETY: React accepts custom properties in CSSProperties at runtime.
   return { "--detail-label-width": labelWidth } as CSSProperties;
 }
 

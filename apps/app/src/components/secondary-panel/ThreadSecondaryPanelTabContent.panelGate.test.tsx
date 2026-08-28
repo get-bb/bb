@@ -6,7 +6,7 @@ import type {
   EnvironmentDiffFileResponse,
   EnvironmentDiffFilesResponse,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -20,20 +20,11 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "./ThreadSecondaryPanelTabContent";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    environments: { diffFiles: vi.fn(), diffFile: vi.fn() },
-    files: { createPreview: vi.fn(), read: vi.fn() },
-  },
-}));
-
-vi.mock("@pierre/diffs/react", async () => {
-  const React = await import("react");
-  return {
-    File: () => null,
-    VirtualizerContext: React.createContext(undefined),
-    useWorkerPool: () => null,
-  };
+beforeEach(() => {
+  vi.spyOn(sdk.environments, "diffFiles");
+  vi.spyOn(sdk.environments, "diffFile");
+  vi.spyOn(sdk.files, "createPreview");
+  vi.spyOn(sdk.files, "read");
 });
 
 const ENVIRONMENT_ID = "env-1";
@@ -58,7 +49,7 @@ const previewFile: EnvironmentDiffFileResponse = {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("GitDiffTabContent panel gating", () => {

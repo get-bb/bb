@@ -112,7 +112,6 @@ export function createPluginUpdates(
     installed: PluginResolvedUpdateVersion,
     resolution: PluginUpdateResolution,
   ): PluginUpdateCheckEntry {
-    const dev = resolution.devMode ? { devMode: true as const } : {};
     const packagedDetail =
       resolution.packagedBuildProblems !== undefined &&
       resolution.packagedBuildProblems.length > 0
@@ -130,14 +129,14 @@ export function createPluginUpdates(
               reasons: problemMessages(resolution.blocked.reasons),
             }
           : undefined;
-    const common = {
+    const common: PluginUpdateCheckEntry = {
       id,
       outcome: resolution.outcome,
       installed,
-      ...dev,
-      ...(blocked ? { blocked } : {}),
-      ...(packagedDetail ? { detail: packagedDetail } : {}),
     };
+    if (resolution.devMode !== undefined) common.devMode = true;
+    if (blocked !== undefined) common.blocked = blocked;
+    if (packagedDetail !== undefined) common.detail = packagedDetail;
     if (resolution.outcome === "update-available") {
       return { ...common, candidate: resolution.candidate };
     }
@@ -324,14 +323,15 @@ export function createPluginUpdates(
       }
       return result;
     };
-    const remote = await resolveGitUpdate({
+    const remoteArgs: Parameters<typeof resolveGitUpdate>[0] = {
       url: intent.url,
       intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
-      ...(intent.selector.kind === "range"
-        ? { probeCandidate: probeGitCandidate }
-        : {}),
-    });
+    };
+    if (intent.selector.kind === "range") {
+      remoteArgs.probeCandidate = probeGitCandidate;
+    }
+    const remote = await resolveGitUpdate(remoteArgs);
     if (remote.outcome !== "update-available") return remote;
     if (intent.selector.kind === "range") return remote;
     const staged = await stageGitCandidate({
@@ -343,21 +343,24 @@ export function createPluginUpdates(
       return { outcome: "unavailable", detail: staged.detail };
     }
     if (staged.outcome === "incompatible") {
-      return {
+      const result: Extract<
+        PluginUpdateResolution,
+        { outcome: "incompatible" }
+      > = {
         outcome: "incompatible",
         current: remote.current,
         newest: remote.candidate,
         reasons: staged.reasons,
-        ...(staged.devMode ? { devMode: true } : {}),
       };
+      if (staged.devMode !== undefined) result.devMode = true;
+      return result;
     }
-    return {
-      ...remote,
-      ...(staged.devMode ? { devMode: true } : {}),
-      ...(staged.packagedBuildProblems.length > 0
-        ? { packagedBuildProblems: staged.packagedBuildProblems }
-        : {}),
-    };
+    const result = { ...remote };
+    if (staged.devMode !== undefined) result.devMode = true;
+    if (staged.packagedBuildProblems.length > 0) {
+      result.packagedBuildProblems = staged.packagedBuildProblems;
+    }
+    return result;
   }
 
   const scheduleUpdateCheck =
@@ -387,7 +390,7 @@ export function createPluginUpdates(
     if (periodicChecksStopped) return;
     void updates
       .checkForUpdates()
-      .catch((error: unknown) => {
+      .catch((error) => {
         deps.logger.warn({ err: error }, "periodic plugin update check failed");
       })
       .finally(() => {
@@ -409,7 +412,10 @@ export function createPluginUpdates(
     const worker = async () => {
       while (next < rows.length) {
         const index = next++;
-        const row = rows[index] as InstalledPluginRow;
+        const row = rows[index];
+        if (row === undefined) {
+          throw new Error("plugin update worker received an invalid row index");
+        }
         results[index] = await withLifecycleLock(row.id, async () => {
           const current = getInstalledPlugin(deps.db, row.id);
           if (!current) {
@@ -508,32 +514,10 @@ export function createPluginUpdates(
       if (row === undefined) return undefined;
       const manifest = await readPluginManifest(row.rootDir).catch(() => null);
       const artifacts = listRecentPluginArtifacts(deps.db, id, 10);
-      return {
+      const source: PluginSourceView = {
         requested: row.source,
         resolved: installedUpdateVersion(row).display,
-        ...(row.sourceGitSubdirectory === null
-          ? {}
-          : { subdirectory: row.sourceGitSubdirectory }),
-        ...(row.sourceGitRange === null ? {} : { range: row.sourceGitRange }),
-        ...(row.sourceGitTagPrefix === null ||
-        row.sourceGitTagPrefix.length === 0
-          ? {}
-          : { tagPrefix: row.sourceGitTagPrefix }),
-        ...(row.sourceGitResolvedTag === null
-          ? {}
-          : { resolvedTag: row.sourceGitResolvedTag }),
-        ...(row.npmIntegrity === null ? {} : { integrity: row.npmIntegrity }),
-        ...(row.sourceNpmRegistry === null
-          ? {}
-          : { registry: row.sourceNpmRegistry }),
-        engines: {
-          ...(manifest?.bbEngineRange === undefined
-            ? {}
-            : { bb: manifest.bbEngineRange }),
-          ...(manifest?.bbPluginSdkRange === undefined
-            ? {}
-            : { bbPluginSdk: manifest.bbPluginSdkRange }),
-        },
+        engines: {},
         installedAt: row.installedAt,
         history: artifacts.map((artifact) => ({
           version:
@@ -543,6 +527,30 @@ export function createPluginUpdates(
           activatedAt: artifact.validatedAt ?? artifact.updatedAt,
         })),
       };
+      if (row.sourceGitSubdirectory !== null) {
+        source.subdirectory = row.sourceGitSubdirectory;
+      }
+      if (row.sourceGitRange !== null) source.range = row.sourceGitRange;
+      if (
+        row.sourceGitTagPrefix !== null &&
+        row.sourceGitTagPrefix.length > 0
+      ) {
+        source.tagPrefix = row.sourceGitTagPrefix;
+      }
+      if (row.sourceGitResolvedTag !== null) {
+        source.resolvedTag = row.sourceGitResolvedTag;
+      }
+      if (row.npmIntegrity !== null) source.integrity = row.npmIntegrity;
+      if (row.sourceNpmRegistry !== null) {
+        source.registry = row.sourceNpmRegistry;
+      }
+      if (manifest?.bbEngineRange !== undefined) {
+        source.engines.bb = manifest.bbEngineRange;
+      }
+      if (manifest?.bbPluginSdkRange !== undefined) {
+        source.engines.bbPluginSdk = manifest.bbPluginSdkRange;
+      }
+      return source;
     },
 
     async applyUpdate(id) {
@@ -670,14 +678,15 @@ export function createPluginUpdates(
           throw new Error(`plugin "${id}" disappeared after update`);
         }
         const updatedVersion = installedUpdateVersion(updatedRow);
+        const currentResolution: PluginUpdateResolution = {
+          outcome: "current",
+          current: updatedVersion,
+        };
+        if (semver.coerce(deps.appVersion)?.version === "0.0.0") {
+          currentResolution.devMode = true;
+        }
         persistUpdateEntry(
-          checkEntryFromResolution(id, updatedVersion, {
-            outcome: "current",
-            current: updatedVersion,
-            ...(semver.coerce(deps.appVersion)?.version === "0.0.0"
-              ? { devMode: true }
-              : {}),
-          }),
+          checkEntryFromResolution(id, updatedVersion, currentResolution),
         );
         return {
           ok: true,

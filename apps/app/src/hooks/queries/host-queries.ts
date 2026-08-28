@@ -65,13 +65,20 @@ export function useHostCloneDefaultPath(
 export function useHostDirectory(hostId: string | null, path: string | null) {
   return useQuery<HostDirectoryListing>({
     queryKey: hostDirectoryQueryKey(hostId, path),
-    queryFn: ({ signal }) =>
-      sdk.hosts.directory({
-        hostId: hostId as string,
-        ...(path ? { path } : {}),
-        signal,
-      }),
-    enabled: hostId != null,
+    queryFn:
+      hostId === null
+        ? skipToken
+        : ({ signal }) => {
+            const request: Parameters<typeof sdk.hosts.directory>[0] = {
+              hostId,
+              signal,
+            };
+            if (path !== null) {
+              request.path = path;
+            }
+            return sdk.hosts.directory(request);
+          },
+    enabled: hostId !== null,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });

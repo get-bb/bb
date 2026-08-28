@@ -30,7 +30,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DIRECTIONS = ["runtime→bridge", "bridge→runtime", "provider→bridge", "bridge→provider"];
+const DIRECTIONS = [
+  "runtime→bridge",
+  "bridge→runtime",
+  "provider→bridge",
+  "bridge→provider",
+];
 
 function parseArgs(argv) {
   const args = { home: undefined };
@@ -97,11 +102,14 @@ function main() {
   for (const { provider, cell, threadId, note } of cells) {
     const sourceDir = join(args.raw, provider, threadId);
     if (!existsSync(sourceDir)) {
-      throw new Error(`missing raw recording ${sourceDir} for ${provider}/${cell}`);
+      throw new Error(
+        `missing raw recording ${sourceDir} for ${provider}/${cell}`,
+      );
     }
     const cellDir = join(staging, provider, cell);
     mkdirSync(cellDir, { recursive: true });
-    const run = threadId === "_process" ? selectModelListRun(sourceDir) : undefined;
+    const run =
+      threadId === "_process" ? selectModelListRun(sourceDir) : undefined;
     const lanes = {};
     const runs = new Set();
     let firstTs = Number.POSITIVE_INFINITY;
@@ -132,7 +140,10 @@ function main() {
       bridgeRuns: runs.size,
       lines: lanes,
     };
-    writeFileSync(join(cellDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    writeFileSync(
+      join(cellDir, "manifest.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
     summary.push({ provider, cell, lines: lanes });
   }
 
@@ -158,11 +169,15 @@ function main() {
 const CELL_DESCRIPTIONS = {
   "turn-tools": "One turn: read a file, edit it, run a shell command.",
   steer: "A long turn steered mid-way with a new instruction.",
-  "stop-interrupt": "A turn interrupted by thread/stop, then a new turn on the resumed session.",
-  "approval-allow": "accept-edits mode; an out-of-sandbox command approved once.",
+  "stop-interrupt":
+    "A turn interrupted by thread/stop, then a new turn on the resumed session.",
+  "approval-allow":
+    "accept-edits mode; an out-of-sandbox command approved once.",
   "approval-deny": "accept-edits mode; an out-of-sandbox command denied.",
-  "user-question": "The agent asks the user a question and continues with the answer.",
-  subagent: "The agent delegates one task to a subagent (where the provider has one).",
+  "user-question":
+    "The agent asks the user a question and continues with the answer.",
+  subagent:
+    "The agent delegates one task to a subagent (where the provider has one).",
   resume: "A turn, a release stop, then a new turn that resumes the session.",
   fork: "A thread forked from a resumed source thread, then one turn.",
   "plan-mode": "A /plan turn (plan command mention).",
@@ -170,9 +185,12 @@ const CELL_DESCRIPTIONS = {
   "web-search": "A turn that uses web search or fetch (or a shell fallback).",
   compaction: "A thread compacted after a turn (/compact).",
   "missing-rollout": "codex: resume after the rollout file was moved away.",
-  "archived-resume": "codex: resume a thread archived natively by another app-server client.",
-  "empty-rollout": "codex: resume after the rollout file was truncated to zero bytes.",
-  "auth-failure": "A turn against an empty provider config home (401 / not logged in).",
+  "archived-resume":
+    "codex: resume a thread archived natively by another app-server client.",
+  "empty-rollout":
+    "codex: resume after the rollout file was truncated to zero bytes.",
+  "auth-failure":
+    "A turn against an empty provider config home (401 / not logged in).",
 };
 
 function describeCell(cell) {

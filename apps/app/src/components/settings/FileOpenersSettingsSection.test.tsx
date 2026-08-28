@@ -65,7 +65,7 @@ async function selectOption(trigger: HTMLElement, name: RegExp) {
 }
 
 function storedPreference(): Record<string, string> {
-  return JSON.parse(
+  return /* SAFETY: The test controls this fixture and verifies its behavior. */ JSON.parse(
     window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
   ) as Record<string, string>;
 }

@@ -18,10 +18,7 @@ interface VerticalSizeClasses {
   belowOffset: string;
 }
 
-const OVERFLOW_FADE_VERTICAL_SIZE_CLASSES: Record<
-  OverflowFadeSize,
-  VerticalSizeClasses
-> = {
+const OVERFLOW_FADE_VERTICAL_SIZE_CLASSES = {
   default: {
     height: "h-6",
     aboveOffset: "-top-6",
@@ -32,12 +29,12 @@ const OVERFLOW_FADE_VERTICAL_SIZE_CLASSES: Record<
     aboveOffset: "-top-2",
     belowOffset: "-bottom-2",
   },
-};
+} satisfies Record<OverflowFadeSize, VerticalSizeClasses>;
 
-const OVERFLOW_FADE_HORIZONTAL_WIDTH_CLASS: Record<OverflowFadeSize, string> = {
+const OVERFLOW_FADE_HORIZONTAL_WIDTH_CLASS = {
   default: "w-6",
   sm: "w-2",
-};
+} satisfies Record<OverflowFadeSize, string>;
 
 function isHorizontalPlacement(
   placement: OverflowFadePlacement,
@@ -51,10 +48,7 @@ interface OverflowFadeGradientClasses {
   "surface-raised": string;
 }
 
-const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
-  OverflowFadePlacement,
-  OverflowFadeGradientClasses
-> = {
+const OVERFLOW_FADE_GRADIENT_CLASSES = {
   above: {
     background: "bg-gradient-to-b from-transparent to-background",
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
@@ -79,12 +73,9 @@ const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
     "surface-raised":
       "bg-gradient-to-r from-transparent to-surface-raised-solid",
   },
-};
+} satisfies Record<OverflowFadePlacement, OverflowFadeGradientClasses>;
 
-const OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES: Record<
-  "above" | "below",
-  OverflowFadeGradientClasses
-> = {
+const OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES = {
   above: {
     background: "bg-gradient-to-b from-background to-transparent",
     sidebar: "bg-gradient-to-b from-sidebar to-transparent",
@@ -97,7 +88,7 @@ const OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES: Record<
     "surface-raised":
       "bg-gradient-to-b from-transparent to-surface-raised-solid",
   },
-};
+} satisfies Record<"above" | "below", OverflowFadeGradientClasses>;
 
 function getOverflowFadeGradientClass(
   placement: OverflowFadePlacement,

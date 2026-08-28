@@ -9,25 +9,28 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, extname, join, resolve, relative } from "node:path";
+import { z } from "zod";
 import type { AutomationScriptInterpreter } from "./rpc-types.js";
 
 const SCRIPT_DIR_NAME = "scripts";
 const DEFAULT_SCRIPT_FILE_NAME = "script.sh";
 
-const INTERPRETER_BY_EXTENSION: Record<string, AutomationScriptInterpreter> = {
-  ".sh": "bash",
-  ".bash": "bash",
-  ".js": "node",
-  ".mjs": "node",
-  ".py": "python3",
-};
+const INTERPRETER_BY_EXTENSION = new Map<string, AutomationScriptInterpreter>([
+  [".sh", "bash"],
+  [".bash", "bash"],
+  [".js", "node"],
+  [".mjs", "node"],
+  [".py", "python3"],
+]);
 
-const INTERPRETER_COMMAND: Record<AutomationScriptInterpreter, string> = {
+const INTERPRETER_COMMAND = {
   bash: "bash",
   sh: "sh",
   node: "node",
   python3: "python3",
-};
+} satisfies Record<AutomationScriptInterpreter, string>;
+
+const fileSystemErrorSchema = z.object({ code: z.string() }).passthrough();
 
 export function scriptsRoot(dataDir: string): string {
   return join(dataDir, SCRIPT_DIR_NAME);
@@ -48,7 +51,9 @@ function sanitizeScriptFileName(name: string): string {
 export function resolveDefaultInterpreter(
   scriptFile: string,
 ): AutomationScriptInterpreter {
-  return INTERPRETER_BY_EXTENSION[extname(scriptFile).toLowerCase()] ?? "bash";
+  return (
+    INTERPRETER_BY_EXTENSION.get(extname(scriptFile).toLowerCase()) ?? "bash"
+  );
 }
 
 export function resolveInterpreterCommand(
@@ -62,12 +67,8 @@ async function pathExists(path: string): Promise<boolean> {
     await access(path);
     return true;
   } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    const parsedError = fileSystemErrorSchema.safeParse(error);
+    if (parsedError.success && parsedError.data.code === "ENOENT") {
       return false;
     }
     throw error;

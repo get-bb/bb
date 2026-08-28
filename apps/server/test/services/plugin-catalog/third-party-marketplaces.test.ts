@@ -15,6 +15,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import type {
+  MarketplaceEntry,
+  MarketplaceManifest,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
 
 const run = promisify(execFile);
@@ -29,7 +33,11 @@ const OTHER_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></svg>',
 );
 
-function entry(overrides: Record<string, unknown> = {}) {
+type InstalledCatalogEntry =
+  | Parameters<PluginService["installCatalogPlugin"]>[0]
+  | { bundled: string };
+
+function entry(overrides: Partial<MarketplaceEntry> = {}): MarketplaceEntry {
   return {
     id: "notes",
     displayName: "Acme Notes",
@@ -46,19 +54,20 @@ function entry(overrides: Record<string, unknown> = {}) {
 
 function manifest(
   name: string,
-  plugins: unknown[],
-  overrides: Record<string, unknown> = {},
-) {
+  plugins: MarketplaceManifest["plugins"],
+): MarketplaceManifest {
   return {
     schemaVersion: 1,
     name,
     displayName: name === "acme-plugins" ? "Acme Plugins" : name,
     plugins,
-    ...overrides,
   };
 }
 
-function jsonResponse(body: unknown, headers: Record<string, string> = {}) {
+function jsonResponse(
+  body: MarketplaceManifest,
+  headers: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "content-type": "application/json", ...headers },
@@ -75,7 +84,7 @@ function svgResponse(bytes: Buffer) {
 describe("third-party marketplaces", () => {
   let db: DbConnection;
   let dataDir: string;
-  let installedCatalogEntries: unknown[];
+  let installedCatalogEntries: InstalledCatalogEntry[];
   const cleanup: string[] = [];
   const restoreEnv: (() => void)[] = [];
 
@@ -102,7 +111,7 @@ describe("third-party marketplaces", () => {
     warn?: (message: string) => void;
     resolveNpm?: PluginService["resolveCatalogNpmSource"];
   }) {
-    return createPluginCatalogService({
+    const serviceOptions: Parameters<typeof createPluginCatalogService>[0] = {
       db,
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
@@ -112,7 +121,9 @@ describe("third-party marketplaces", () => {
         installOfficialPlugin: async () => {
           throw new Error("unexpected bundled install");
         },
-        installCatalogPlugin: async (args: unknown) => {
+        installCatalogPlugin: async (
+          args: Parameters<PluginService["installCatalogPlugin"]>[0],
+        ) => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
@@ -124,13 +135,14 @@ describe("third-party marketplaces", () => {
             integrity: "sha512-listed",
           })),
       },
-      ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
-      ...(options?.warn === undefined ? {} : { warn: options.warn }),
-    });
+    };
+    if (options?.fetch !== undefined) serviceOptions.fetch = options.fetch;
+    if (options?.warn !== undefined) serviceOptions.warn = options.warn;
+    return createPluginCatalogService(serviceOptions);
   }
 
   function marketplaceFetch(
-    documents: Record<string, unknown>,
+    documents: Record<string, MarketplaceManifest>,
     icons: Record<string, Buffer> = {},
   ): MarketplaceFetch {
     return async (url) => {
@@ -159,7 +171,7 @@ describe("third-party marketplaces", () => {
 
   async function gitMarketplace(args: {
     name: string;
-    plugins: unknown[];
+    plugins: MarketplaceManifest["plugins"];
     icon?: Buffer;
   }): Promise<string> {
     const repo = await mkdtemp(join(tmpdir(), "bb-marketplace-repo-"));
@@ -989,7 +1001,7 @@ describe("third-party marketplaces", () => {
         marketplace: "acme-plugins",
         confirmedSource: plan.resolvedSource,
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         order.push("install");
         throw error;
       });

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
 import type {
   AcpNativeRootsEnvironment,
@@ -55,12 +56,12 @@ export async function readJsonFile<T>(
   filePath: string,
   schema: z.ZodType<T>,
 ): Promise<T | null> {
-  return readParsedFile(filePath, JSON.parse, schema);
+  return readParsedFile<T, JsonValue>(filePath, JSON.parse, schema);
 }
 
-export async function readParsedFile<T>(
+export async function readParsedFile<T, Parsed>(
   filePath: string,
-  parse: (content: string) => unknown,
+  parse: (content: string) => Parsed,
   schema: z.ZodType<T>,
 ): Promise<T | null> {
   let content: string;
@@ -70,7 +71,7 @@ export async function readParsedFile<T>(
     return null;
   }
 
-  let value: unknown;
+  let value: Parsed;
   try {
     value = parse(content);
   } catch {
@@ -142,16 +143,17 @@ export function skillsRoot(args: {
   recursive: boolean;
   skipIfManifest?: string;
 }): AcpResolvedSkillRoot {
-  return {
+  const root: AcpResolvedSkillRoot = {
     path: args.path,
     origin: args.origin,
     recursive: args.recursive,
-    ...(args.ancestors === true ? { ancestors: true } : {}),
-    ...(args.skipIfManifest === undefined
-      ? {}
-      : { skipIfManifest: args.skipIfManifest }),
-    shape: "skills",
+    ["shape"]: "skills",
   };
+  if (args.ancestors === true) root.ancestors = true;
+  if (args.skipIfManifest !== undefined) {
+    root.skipIfManifest = args.skipIfManifest;
+  }
+  return root;
 }
 
 export function configuredSkillRoot(args: {
@@ -164,7 +166,7 @@ export function configuredSkillRoot(args: {
       path: args.skillPath,
       origin: args.origin,
       recursive: false,
-      shape: "skill-file",
+      ["shape"]: "skill-file",
     };
   }
   return skillsRoot({

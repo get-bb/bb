@@ -4,6 +4,7 @@ import type {
   PendingInteractionApprovalDecision,
   PendingInteractionGrantedPermissionProfile,
   PendingInteractionGrantablePermissionProfile,
+  PendingInteractionUserAnswer,
   UserQuestionPendingInteractionPayload,
   UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
@@ -174,13 +175,14 @@ export function createUserQuestionPayload(
 export function createUserAnswerResolution(
   options: UserAnswerResolutionOptions = {},
 ): UserQuestionPendingInteractionResolution {
+  const answer: PendingInteractionUserAnswer = {
+    selected: options.selected ?? ["staging"],
+  };
+  if (options.freeText) answer.freeText = options.freeText;
   return {
     kind: "user_answer",
     answers: {
-      "question-1": {
-        selected: options.selected ?? ["staging"],
-        ...(options.freeText ? { freeText: options.freeText } : {}),
-      },
+      "question-1": answer,
     },
   };
 }

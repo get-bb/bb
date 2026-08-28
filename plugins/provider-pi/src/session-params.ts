@@ -70,24 +70,25 @@ export function buildPiSessionParams(
 ): PiSessionParams {
   const instructions = args.options.instructions?.trim();
   const thinkingLevel = toPiThinkingLevel(args.options.reasoningLevel);
-  return {
+  const params: PiSessionParams = {
     cwd: args.cwd,
     shellEnvOverrides: {
       BB_THREAD_ID: args.threadId,
       ...buildShellEnvOverrides(args.options.envVars),
     },
-    ...(instructions
-      ? args.instructionMode === "replace"
-        ? { baseInstructions: instructions }
-        : { appendSystemPrompt: instructions }
-      : {}),
-    ...(args.options.model ? { model: args.options.model } : {}),
-    ...(thinkingLevel ? { thinkingLevel } : {}),
-    ...(args.dynamicTools && args.dynamicTools.length > 0
-      ? { dynamicTools: args.dynamicTools }
-      : {}),
-    ...(args.additionalSkillPaths && args.additionalSkillPaths.length > 0
-      ? { additionalSkillPaths: [...args.additionalSkillPaths] }
-      : {}),
   };
+  if (instructions) {
+    if (args.instructionMode === "replace")
+      params.baseInstructions = instructions;
+    else params.appendSystemPrompt = instructions;
+  }
+  if (args.options.model) params.model = args.options.model;
+  if (thinkingLevel) params.thinkingLevel = thinkingLevel;
+  if (args.dynamicTools && args.dynamicTools.length > 0) {
+    params.dynamicTools = args.dynamicTools;
+  }
+  if (args.additionalSkillPaths && args.additionalSkillPaths.length > 0) {
+    params.additionalSkillPaths = [...args.additionalSkillPaths];
+  }
+  return params;
 }

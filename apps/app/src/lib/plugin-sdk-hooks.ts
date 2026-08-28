@@ -26,6 +26,7 @@ import type {
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import { jsonValueSchema } from "@bb/domain";
+import { z } from "zod";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -73,7 +74,37 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
-const legacySetThreadRowStatus = (_status: unknown): void => {};
+const legacySetThreadRowStatus = (): void => {};
+
+interface PluginRpcObject {}
+
+type PluginRpcInput = JsonValue | PluginRpcObject;
+
+const pluginRpcIssueSchema = z.object({
+  message: z.string(),
+  path: z.array(z.union([z.string(), z.number()])).optional(),
+});
+const pluginRpcErrorSchema = z.object({
+  message: z.string().optional(),
+  code: z.string().optional(),
+  issues: z.array(pluginRpcIssueSchema).optional(),
+});
+const pluginRpcResponseSchema = z.union([
+  z.object({ ok: z.literal(true), result: jsonValueSchema }),
+  z.object({
+    ok: z.literal(false),
+    error: z.union([z.string(), pluginRpcErrorSchema]),
+  }),
+]);
+const pluginSettingsResponseSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    values: z.record(z.string(), jsonValueSchema),
+  }),
+  z.object({ ok: z.literal(false) }),
+]);
+const pluginSettingValueSchema = z.union([z.string(), z.boolean()]);
+
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -81,24 +112,22 @@ export function isAutomationEditRoutePath(pathname: string): boolean {
   );
 }
 
-function serializePluginRpcInput(value: unknown): string {
-  const ancestors = new Set<object>();
-  function assertJson(current: unknown, path: string): void {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
-      return;
-    }
-    if (typeof current === "number") {
-      if (!Number.isFinite(current)) {
+function isObjectLike(value: PluginRpcInput): value is PluginRpcObject {
+  return value !== null && Object(value) === value;
+}
+
+function serializePluginRpcInput(value: PluginRpcInput): string {
+  const ancestors = new Set<PluginRpcObject>();
+  function assertJson(current: PluginRpcInput, path: string): void {
+    if (!isObjectLike(current)) {
+      if (
+        Number.isNaN(current) ||
+        current === Number.POSITIVE_INFINITY ||
+        current === Number.NEGATIVE_INFINITY
+      ) {
         throw new Error(`rpc input at ${path} contains a non-finite number`);
       }
       return;
-    }
-    if (typeof current !== "object") {
-      throw new Error(`rpc input at ${path} is not a JSON value`);
     }
     if (ancestors.has(current)) {
       throw new Error(`rpc input at ${path} is cyclic`);
@@ -109,14 +138,12 @@ function serializePluginRpcInput(value: unknown): string {
         current.forEach((item, index) => assertJson(item, `${path}[${index}]`));
         return;
       }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error(`rpc input at ${path} must be a plain JSON object`);
       }
-      for (const key of Reflect.ownKeys(current)) {
-        if (typeof key === "symbol") {
-          throw new Error(`rpc input at ${path} contains a symbol key`);
-        }
+      if (Object.getOwnPropertySymbols(current).length > 0) {
+        throw new Error(`rpc input at ${path} contains a symbol key`);
       }
       for (const [key, child] of Object.entries(current)) {
         assertJson(child, `${path}.${key}`);
@@ -126,15 +153,23 @@ function serializePluginRpcInput(value: unknown): string {
     }
   }
   assertJson(value, "$input");
-  return JSON.stringify(value);
+  const parsed = jsonValueSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("rpc input at $input is not a JSON value");
+  }
+  const serialized = JSON.stringify(parsed.data);
+  if (serialized === undefined) {
+    throw new Error("rpc input at $input is not a JSON value");
+  }
+  return serialized;
 }
 
 export async function callPluginRpc(
   fetchImpl: FetchLike,
   pluginId: string,
   method: string,
-  input?: unknown,
-): Promise<unknown> {
+  input?: PluginRpcInput,
+): Promise<JsonValue> {
   const serializedInput = serializePluginRpcInput(input ?? null);
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
@@ -144,33 +179,33 @@ export async function callPluginRpc(
       body: serializedInput,
     },
   );
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    result?: unknown;
-    error?: unknown;
-  } | null;
-  if (!response.ok || body?.ok !== true) {
-    const structured =
-      typeof body?.error === "object" && body.error !== null
-        ? body.error
-        : null;
+  const body = pluginRpcResponseSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!response.ok || !body.success || body.data.ok !== true) {
+    const rpcError = body.success && !body.data.ok ? body.data.error : null;
+    const structured = pluginRpcErrorSchema.safeParse(rpcError);
+    const errorText = z.string().safeParse(rpcError);
     const message =
-      structured !== null &&
-      typeof Reflect.get(structured, "message") === "string"
-        ? String(Reflect.get(structured, "message"))
-        : typeof body?.error === "string"
-          ? body.error
+      structured.success && structured.data.message !== undefined
+        ? structured.data.message
+        : errorText.success
+          ? errorText.data
           : `rpc "${method}" failed (HTTP ${response.status})`;
     const error = new Error(message);
-    if (structured !== null) {
-      const code = Reflect.get(structured, "code");
-      const issues = Reflect.get(structured, "issues");
-      if (typeof code === "string") Reflect.set(error, "code", code);
-      if (Array.isArray(issues)) Reflect.set(error, "issues", issues);
+    if (structured.success) {
+      if (structured.data.code !== undefined) {
+        Object.defineProperty(error, "code", { value: structured.data.code });
+      }
+      if (structured.data.issues !== undefined) {
+        Object.defineProperty(error, "issues", {
+          value: structured.data.issues,
+        });
+      }
     }
     throw error;
   }
-  return body.result;
+  return body.data.result;
 }
 
 export async function fetchPluginSdkSettings(
@@ -181,21 +216,17 @@ export async function fetchPluginSdkSettings(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/settings`,
   );
   if (!response.ok) return null;
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    values?: unknown;
-  } | null;
-  if (
-    body?.ok !== true ||
-    typeof body.values !== "object" ||
-    body.values === null
-  ) {
+  const body = pluginSettingsResponseSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!response.ok || !body.success || body.data.ok !== true) {
     return null;
   }
   const values: Record<string, string | boolean> = {};
-  for (const [key, value] of Object.entries(body.values)) {
-    if (typeof value === "string" || typeof value === "boolean") {
-      values[key] = value;
+  for (const [key, value] of Object.entries(body.data.values)) {
+    const setting = pluginSettingValueSchema.safeParse(value);
+    if (setting.success) {
+      values[key] = setting.data;
     }
   }
   return values;
@@ -207,17 +238,18 @@ export function useRpc<
   const pluginId = usePluginId();
   const client = useMemo(
     () => ({
-      call: (method: string, input?: unknown) =>
+      call: (method: string, input?: PluginRpcInput) =>
         callPluginRpc(fetch, pluginId, method, input),
     }),
     [pluginId],
   );
+  // SAFETY: The RPC boundary parses JSON values, and the generic contract supplies the caller's output type.
   return client as PluginRpcClient<Contract>;
 }
 
 export function useRealtime(
   channel: string,
-  handler: (payload: unknown) => void,
+  handler: (payload: JsonValue) => void,
 ): void {
   const pluginId = usePluginId();
   const handlerRef = useRef(handler);
@@ -228,7 +260,8 @@ export function useRealtime(
     () =>
       wsManager.onPluginSignal((signal) => {
         if (signal.pluginId !== pluginId || signal.channel !== channel) return;
-        handlerRef.current(signal.payload);
+        const payload = jsonValueSchema.safeParse(signal.payload);
+        if (payload.success) handlerRef.current(payload.data);
       }),
     [pluginId, channel],
   );
@@ -307,11 +340,11 @@ export function useBbNavigate(): BbNavigate {
   );
   const toPluginPanel = useCallback(
     (path: string, options?: { subPath?: string; replace?: boolean }) => {
-      const route = getPluginPanelRoutePath({
-        pluginId,
-        path,
-        ...(options?.subPath !== undefined ? { subPath: options.subPath } : {}),
-      });
+      const routeArgs =
+        options?.subPath === undefined
+          ? { pluginId, path }
+          : { pluginId, path, subPath: options.subPath };
+      const route = getPluginPanelRoutePath(routeArgs);
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
     [navigate, pluginId],
@@ -321,16 +354,18 @@ export function useBbNavigate(): BbNavigate {
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         isAutomationEditRoutePath(location.pathname);
-      void navigate(getRootComposeRoutePath(), {
-        ...(replacesAutomationEditRoute ? { replace: true } : {}),
-        state: {
-          focusPrompt: options?.focusPrompt ?? false,
-          initialPrompt: options?.initialPrompt ?? "",
-          ...(replacesAutomationEditRoute
-            ? { replaceInitialPrompt: true }
-            : {}),
-        },
-      });
+      const state = {
+        focusPrompt: options?.focusPrompt ?? false,
+        initialPrompt: options?.initialPrompt ?? "",
+      };
+      if (replacesAutomationEditRoute) {
+        void navigate(getRootComposeRoutePath(), {
+          replace: true,
+          state: { ...state, replaceInitialPrompt: true },
+        });
+        return;
+      }
+      void navigate(getRootComposeRoutePath(), { state });
     },
     [location.pathname, navigate, pluginId],
   );
@@ -401,15 +436,19 @@ function useExperimentalAppPanel(): ExperimentalAppPanel {
           ? null
           : jsonValueSchema.safeParse(options.target);
       if (targetResult !== null && !targetResult.success) return false;
-      return appNavigation.openFixedTab({
+      const request = {
         surface: options.surface,
         tab: {
           ownerId: getPluginFixedTabOwnerId(pluginId, options.tab.panelId),
           tabId: options.tab.id,
         },
-        ...(targetResult?.success === true
-          ? { target: targetResult.data }
-          : {}),
+      };
+      if (targetResult === null || !targetResult.success) {
+        return appNavigation.openFixedTab(request);
+      }
+      return appNavigation.openFixedTab({
+        ...request,
+        target: targetResult.data,
       });
     },
     [appNavigation, pluginId],

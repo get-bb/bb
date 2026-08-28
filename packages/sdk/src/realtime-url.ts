@@ -37,10 +37,11 @@ function absoluteHttpBaseUrl(baseUrl: string): URL | null {
 }
 
 function browserSameOriginRealtimeUrl(): string | null {
-  if (typeof location === "undefined") {
+  const browserLocation = globalThis.location;
+  if (browserLocation === undefined) {
     return null;
   }
-  const currentUrl = new URL(location.href);
+  const currentUrl = new URL(browserLocation.href);
   if (currentUrl.protocol !== "http:" && currentUrl.protocol !== "https:") {
     return null;
   }

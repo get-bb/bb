@@ -17,6 +17,7 @@ Coarse-pointer sizing tokens (class strings) in packages/shared-ui/src/component
 ## Theme/palette selection & persistence
 
 Two independent axes:
+
 1. **Light/dark mode** — client-local. `apps/app/src/hooks/useTheme.ts:11-30`: `atomWithStorage("bb.theme")` in localStorage, values `light|dark|system`; toggles `.dark` class on `<html>` and mirrors `<meta name="theme-color">`. `index.html:83-88` pre-paints from localStorage. NOT server-synced.
 2. **Palette** — server-owned. `GET /system/config` → `appearance: AppTheme` (`packages/server-contract/src/api/system.ts:209`; server builds it at apps/server/src/routes/system.ts:170). `AppTheme = { themeId, customCss: string|null, faviconColor, resolvedCodeTheme }` (packages/domain/src/app-theme.ts:124-134). Built-in ids: default, nord, dracula, solarized, gruvbox, catppuccin (app-theme.ts:19-26). `PUT /settings/appearance` `{themeId, faviconColor}` (public-api.ts:1351); `GET /settings/themes` catalog; SDK `sdk.theme.get/catalog/set` (packages/sdk/src/areas/theme.ts). Change broadcast via realtime `config-changed` (packages/domain/src/change-kinds.ts:56); app refetches config (system-queries.ts:466-476). Built-in palettes are **CSS strings in the frontend** (apps/app/src/lib/themes/*.ts) overriding only anchors + accents per mode; injected via `<style id="bb-app-theme">` (lib/themes/index.ts:31-42), cached in localStorage `bb.appThemeCss`. Custom themes = `<dataDir>/theme/<name>/theme.css` read server-side (apps/server/src/services/system/custom-themes.ts); plugin themes via `pluginService.readThemeCss`. Custom/plugin CSS is opaque CSS — a native app cannot apply it without a CSS parser; it CAN read `themeId` and map built-ins to native palette objects. Built-in anchor hexes per palette listed in lib/themes/{nord,dracula,solarized,gruvbox,catppuccin}.ts (e.g., nord light canvas #eceff4/ink #2e3440/primary #5e81ac; dark #2e3440/#d8dee9/#88c0d0). Catppuccin also hand-sets muted/subtle/readback.
 
@@ -27,12 +28,15 @@ Two independent axes:
 App-side `apps/app/src/components/ui/`: page-shell, sidebar (2282 lines, DOM/pointer/flushSync), tab-pill, detail-card, split-button, disclosure/height-transition (jotai), markdown-preview (react-markdown + rehype/remark + katex + mermaid), sonner toaster, image-lightbox, copy-button, truncate-start, overflow-fade, plus pure-TS token files (context-selection.ts, detail-scroll-size.ts, chromeStyleTokens.ts, activity-row-styles.ts). Usage counts in app: lib/utils 161, icon 151, button 95, coarse-pointer-sizing 49, use-compact-viewport 41, tooltip 39, dropdown-menu 32, dialog 21, empty-state 19, input 17, skeleton 14, resource-list 14, switch 8, pill 8, popover 5, context-menu 5, select 1.
 
 ## packages/core-ui
+
 Pure TypeScript, depends only on `@bb/domain` (package.json): assertNever, formatEnvironmentDisplay, pending-interaction formatting/presentation, extractErrorMessage/toRecord. No React, no DOM. `@bb/thread-view` likewise has no document/window/react-dom refs (grep returned none).
 
 ## RN equivalents & recommendation
+
 Web stack = Tailwind v4 utilities + cva + tailwind-merge + Radix. Recommend **NativeWind v4 + react-native-reusables (shadcn port using @rn-primitives)** with a generated `theme.native.ts` that mirrors the anchor→ramp math (compute oklch/oklab mixes at build time via `culori`, emit hex per token per mode per palette; RN has no `color-mix`). Rationale: same class vocabulary and cva pattern lets Button/Badge/Pill/Input variants port nearly verbatim; @rn-primitives cover dialog/dropdown/popover/select/tabs/tooltip/checkbox/switch semantics that Radix provides on web; NativeWind CSS variables per theme via `vars()` allow palette switching at runtime. Map: dialog/drawer → @gorhom/bottom-sheet (mirror the compact-viewport bottom-drawer behavior in responsive-overlay.tsx); tooltip → long-press popover or omit; scroll-area → ScrollView/FlashList; icons → `@hugeicons/react-native` (same IconSvgElement data as core-free-icons, keep ICON_MAP names); Inter → `@expo-google-fonts/inter` or bundle fontsource TTF; Fira Code → bundle. Tamagui rejected: different token/variant model, heavier compiler; plain StyleSheet rejected: loses variant reuse with 160+ cva/cn callsites.
 
 ## Key files
+
 - apps/app/src/components/ui/theme.css
 - apps/app/src/components/ui/theme.test.ts
 - apps/app/src/app.css
@@ -80,6 +84,7 @@ Web stack = Tailwind v4 utilities + cva + tailwind-merge + Radix. Recommend **Na
 - apps/app/package.json
 
 ## Reuse verdicts
+
 - packages/core-ui (@bb/core-ui): **reusable-as-is** — Pure TS + @bb/domain only (packages/core-ui/package.json; src/index.ts). No React, DOM, or node builtins in src. Reusable in Hermes.
 - packages/thread-view (@bb/thread-view): **reusable-as-is** — Pure TS projection/formatting; deps only @bb/domain, @bb/server-contract, zod; grep found no document/window/react-dom usage.
 - packages/domain app-theme.ts / code-theme.ts: **reusable-as-is** — Zod schemas + builtInThemes metadata + isBuiltInThemeId; no DOM. Native app can import BuiltInThemeId, builtInThemes, appThemeSchema.
@@ -98,6 +103,7 @@ Web stack = Tailwind v4 utilities + cva + tailwind-merge + Radix. Recommend **Na
 - apps/app/src/components/ui/{sidebar,tab-pill,page-shell,disclosure,height-transition,markdown-preview,sonner,image-lightbox}.tsx: **not-reusable** — sidebar: 2282 lines of DOM pointer/touch/wheel handling, flushSync, CSS translate; markdown-preview: react-markdown + rehype-raw/katex/mermaid (DOM); sonner and vaul are DOM. Only the pure-TS token files (context-selection.ts, detail-scroll-size.ts, chromeStyleTokens.ts, sidebar-hover-actions.ts) carry portable values.
 
 ## Risks
+
 - No native color-mix/oklch: every derived token (≈40 per mode per palette) must be precomputed offline; drift risk if theme.css changes and the generator is not re-run — recommend a test that regenerates from theme.css and diffs (mirror theme.test.ts guards).
 - Custom themes and plugin themes ship as arbitrary CSS (AppTheme.customCss, up to 256KB) — a native app can only honor built-in themeIds; users on custom palettes will see the default palette unless a subset CSS-variable parser (extract `--canvas`, `--ink`, `--primary`, etc. from `:root`/`.dark` blocks) is written.
 - Light/dark preference is per-client localStorage (`bb.theme`), not server state; native app must own its own preference and there is no cross-device sync — palette (server) and mode (local) semantics differ.
@@ -109,6 +115,7 @@ Web stack = Tailwind v4 utilities + cva + tailwind-merge + Radix. Recommend **Na
 - Tailwind v4 custom variants and `[&_svg]:size-4` descendant selectors used pervasively in shared-ui class strings are unsupported in NativeWind; naive copy-paste of cva strings will silently drop styles.
 
 ## Open questions
+
 - Should the native app honor custom/plugin themes by parsing the anchor variables out of customCss, or only support the six built-ins?
 - Should light/dark mode remain device-local (Appearance + local storage) or should a native-app preference be added server-side (would require new AppSettings field + HOST/server contract change)?
 - Is @hugeicons/react-native licensed/available for the free icon set used here (core-free-icons), and does it accept the same IconSvgElement arrays so ICON_MAP can be shared from @bb/shared-ui without importing @hugeicons/react?

@@ -2,9 +2,10 @@ import { type CSSProperties, type ReactNode } from "react";
 import { MarkdownPreview } from "./markdown-preview";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
-const STAGE_VARS = {
-  "--md-content-w": "680px",
-} as CSSProperties;
+const STAGE_VARS =
+  /* SAFETY: The test controls this fixture and verifies its behavior. */ {
+    "--md-content-w": "680px",
+  } as CSSProperties;
 
 export default {
   title: "ui/Markdown Preview",

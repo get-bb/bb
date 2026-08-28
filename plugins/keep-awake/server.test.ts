@@ -1,6 +1,7 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import plugin from "./server.js";
 
 type HostChangedSubscription = Extract<
@@ -16,6 +17,13 @@ type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
 type HostRecord = Awaited<
   ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
 >[number];
+interface LifecycleSubscriptions {
+  emitHost(changes: HostChangedEvent["changes"]): void;
+  emitReconnect(): void;
+  subscribe: BbPluginApi["sdk"]["subscribe"];
+}
+
+const hostRpcInputSchema = z.object({ enabled: z.boolean() }).passthrough();
 
 function isHostChangedSubscription(
   subscription: SdkSubscription,
@@ -46,22 +54,11 @@ function hostRecord(
   };
 }
 
-function enabledInput(input: unknown): boolean {
-  if (typeof input !== "object" || input === null) {
-    throw new Error("expected host RPC input object");
-  }
-  const enabled = Reflect.get(input, "enabled");
-  if (typeof enabled !== "boolean") {
-    throw new Error("expected host RPC enabled boolean");
-  }
-  return enabled;
+function enabledInput(input: JsonValue): boolean {
+  return hostRpcInputSchema.parse(input).enabled;
 }
 
-function lifecycleSubscriptions(): {
-  emitHost(changes: HostChangedEvent["changes"]): void;
-  emitReconnect(): void;
-  subscribe: BbPluginApi["sdk"]["subscribe"];
-} {
+function lifecycleSubscriptions(): LifecycleSubscriptions {
   let hostCallback: HostChangedSubscription["callback"] | null = null;
   let realtimeCallback: RealtimeConnectionSubscription["callback"] | null =
     null;

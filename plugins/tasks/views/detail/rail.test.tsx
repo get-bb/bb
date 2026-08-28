@@ -37,7 +37,23 @@ afterEach(cleanup);
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const BB_PROJECT_ID = "proj_bb0000000000000000000001";
 
-function projectRow(linkedBbProjectId: string | null) {
+interface ProjectRow {
+  id: string;
+  name: string;
+  prefix: string;
+  nextTaskNumber: number;
+  color: string;
+  folderId: string | null;
+  linkedBbProjectId: string | null;
+  createdAt: string;
+}
+
+interface UpdateProjectInput {
+  projectId: string;
+  linkedBbProjectId: string | null;
+}
+
+function projectRow(linkedBbProjectId: string | null): ProjectRow {
   return {
     id: PROJECT_ID,
     name: "Tasks Plugin",
@@ -81,17 +97,17 @@ function railProps(linkedBbProjectId: string | null) {
 
 describe("dispatch target rail control", () => {
   it("links a discovered bb project", async () => {
-    const updateCalls: Array<Record<string, unknown>> = [];
+    const updateCalls: UpdateProjectInput[] = [];
     const slot = renderSlot({ component: RailHarness }, railProps(null), {
       rpc: {
         listBbProjects: () => ({
           bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
         }),
-        updateProject: (input: Record<string, unknown>) => {
+        updateProject: (input: UpdateProjectInput) => {
           updateCalls.push(input);
           return {
             project: {
-              ...projectRow(input.linkedBbProjectId as string | null),
+              ...projectRow(input.linkedBbProjectId),
             },
           };
         },
@@ -109,7 +125,7 @@ describe("dispatch target rail control", () => {
   });
 
   it("shows the linked bb project's name and unlinks it", async () => {
-    const updateCalls: Array<Record<string, unknown>> = [];
+    const updateCalls: UpdateProjectInput[] = [];
     const slot = renderSlot(
       { component: RailHarness },
       railProps(BB_PROJECT_ID),
@@ -118,11 +134,11 @@ describe("dispatch target rail control", () => {
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
-          updateProject: (input: Record<string, unknown>) => {
+          updateProject: (input: UpdateProjectInput) => {
             updateCalls.push(input);
             return {
               project: {
-                ...projectRow(input.linkedBbProjectId as string | null),
+                ...projectRow(input.linkedBbProjectId),
               },
             };
           },

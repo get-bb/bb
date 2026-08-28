@@ -7,27 +7,26 @@ function toMenuAction(action: NativeMenuAction): MenuAction {
   const symbol =
     action.symbol ?? (action.icon ? sfSymbolFor(action.icon) : undefined);
   const disabled = action.disabled === true;
-  return {
+  const menuAction: MenuAction = {
     id: action.key,
     title:
       disabled && action.subtitle
         ? `${action.label} — ${action.subtitle}`
         : action.label,
-    ...(symbol ? { image: symbol } : {}),
-    ...(action.checked === undefined
-      ? {}
-      : { state: action.checked ? ("on" as const) : ("off" as const) }),
     attributes: {
       destructive: action.destructive === true,
       disabled,
     },
-    ...(action.items && action.items.length > 0
-      ? {
-          subactions: action.items.map(toMenuAction),
-          displayInline: action.inline === true,
-        }
-      : {}),
   };
+  if (symbol) menuAction.image = symbol;
+  if (action.checked !== undefined) {
+    menuAction.state = action.checked ? "on" : "off";
+  }
+  if (action.items && action.items.length > 0) {
+    menuAction.subactions = action.items.map(toMenuAction);
+    menuAction.displayInline = action.inline === true;
+  }
+  return menuAction;
 }
 
 function findAction(

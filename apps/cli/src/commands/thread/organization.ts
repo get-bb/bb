@@ -57,6 +57,24 @@ interface ReorderPinnedOptions extends JsonOptions {
   before?: string;
 }
 
+interface QueueCreateRequest {
+  threadId: string;
+  input: Array<{
+    type: "text";
+    text: string;
+    mentions: never[];
+  }>;
+  model?: string;
+}
+
+interface QueueReorderRequest {
+  threadId: string;
+  queuedMessageId: string;
+  previousQueuedMessageId: string | null;
+  nextQueuedMessageId: string | null;
+  groupBoundaryQueuedMessageId?: string;
+}
+
 const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
 function parsePositiveInteger(
@@ -72,10 +90,6 @@ function parsePositiveInteger(
     throw new Error(`${flag} must be at most ${maximum}.`);
   }
   return value;
-}
-
-function printHumanJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
 }
 
 export function registerOrganizationCommands(
@@ -172,7 +186,7 @@ export function registerOrganizationCommands(
           ),
         });
         if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        console.log(JSON.stringify(result, null, 2));
       }),
     );
 
@@ -188,7 +202,7 @@ export function registerOrganizationCommands(
           limit: parsePositiveInteger(opts.limit, "--limit"),
         });
         if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        console.log(JSON.stringify(result, null, 2));
       }),
     );
 
@@ -245,7 +259,7 @@ export function registerOrganizationCommands(
           getUrl(),
         ).threads.queuedMessages.list({ threadId });
         if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        console.log(JSON.stringify(result, null, 2));
       }),
     );
   queue
@@ -256,12 +270,15 @@ export function registerOrganizationCommands(
     .action(
       action(
         async (threadId: string, message: string, opts: QueueCreateOptions) => {
+          const request: QueueCreateRequest = {
+            threadId,
+            input: [{ type: "text", text: message, mentions: [] }],
+          };
+          if (opts.model) request.model = opts.model;
           const result = await createCliBbSdk(
             getUrl(),
           ).threads.queuedMessages.create({
-            threadId,
-            input: [{ type: "text", text: message, mentions: [] }],
-            ...(opts.model ? { model: opts.model } : {}),
+            ...request,
           });
           if (outputJson(opts, result)) return;
           console.log(
@@ -371,16 +388,19 @@ export function registerOrganizationCommands(
           messageId: string,
           opts: QueueReorderOptions,
         ) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.reorder({
+          const request: QueueReorderRequest = {
             threadId,
             queuedMessageId: messageId,
             previousQueuedMessageId: opts.after ?? null,
             nextQueuedMessageId: opts.before ?? null,
-            ...(opts.groupBoundary
-              ? { groupBoundaryQueuedMessageId: opts.groupBoundary }
-              : {}),
+          };
+          if (opts.groupBoundary) {
+            request.groupBoundaryQueuedMessageId = opts.groupBoundary;
+          }
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).threads.queuedMessages.reorder({
+            ...request,
           });
           if (outputJson(opts, result)) return;
           console.log(`Queued message ${messageId} reordered`);
@@ -436,7 +456,7 @@ export function registerOrganizationCommands(
           threadId,
         });
         if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        console.log(JSON.stringify(result, null, 2));
       }),
     );
   tabs

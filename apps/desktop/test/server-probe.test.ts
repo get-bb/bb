@@ -4,6 +4,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { probeBbServer, type ServerProbeFetch } from "../src/server-probe.js";
 
 interface TestServer {
@@ -34,7 +35,8 @@ async function startTestServer(args: StartTestServerArgs): Promise<TestServer> {
     server.listen(0, "127.0.0.1", resolvePromise);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") {
+  const parsedAddress = z.object({ port: z.number() }).safeParse(address);
+  if (!parsedAddress.success) {
     throw new Error("Expected test server to listen on a TCP port");
   }
   const testServer: TestServer = {
@@ -49,7 +51,7 @@ async function startTestServer(args: StartTestServerArgs): Promise<TestServer> {
         });
       });
     },
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${parsedAddress.data.port}`,
   };
   testServers.push(testServer);
   return testServer;

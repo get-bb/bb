@@ -26,7 +26,7 @@ export function onClientSocketMessage(
     >;
   },
   socket: ClientSocket,
-  raw: unknown,
+  raw: string | ArrayBuffer,
 ): void {
   let decoded: unknown;
   try {

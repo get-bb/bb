@@ -19,6 +19,7 @@ import {
   type SkillListResponse,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { ZodType } from "zod";
 
 export interface SkillWorkspaceArgs {
   projectId: string;
@@ -109,7 +110,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
 
   async function requestParsed<T>(
     path: string,
-    schema: { parse(value: unknown): T },
+    schema: ZodType<T>,
     init?: RequestInit,
   ): Promise<T> {
     const baseUrl = transport.baseUrl.replace(/\/$/u, "");

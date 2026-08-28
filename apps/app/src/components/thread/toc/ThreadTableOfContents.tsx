@@ -283,13 +283,13 @@ function useConversationTocItems({
 
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
-    () => typeof ResizeObserver === "undefined",
+    () => globalThis.ResizeObserver === undefined,
   );
 
   useEffect(() => {
     const host =
       rootElement?.closest<HTMLElement>("[data-scroll-overlay]") ?? null;
-    if (typeof ResizeObserver === "undefined") {
+    if (globalThis.ResizeObserver === undefined) {
       setVisible(true);
       return;
     }
@@ -298,7 +298,7 @@ function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
       return;
     }
 
-    const resizeObserver = new ResizeObserver(([entry]) => {
+    const resizeObserver = new globalThis.ResizeObserver(([entry]) => {
       if (!entry) return;
       const inlineSize =
         entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
@@ -334,11 +334,11 @@ function findTimelineRowElement(
 
 function waitForAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof window === "undefined") {
+    if (globalThis.window === undefined) {
       resolve();
       return;
     }
-    window.requestAnimationFrame(() => resolve());
+    globalThis.window.requestAnimationFrame(() => resolve());
   });
 }
 
@@ -572,9 +572,9 @@ export function ThreadTableOfContents({
       passive: true,
     });
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
+      globalThis.ResizeObserver === undefined
         ? null
-        : new ResizeObserver(scheduleActiveItemsUpdate);
+        : new globalThis.ResizeObserver(scheduleActiveItemsUpdate);
     resizeObserver?.observe(scrollElement);
 
     return () => {
@@ -667,7 +667,10 @@ export function ThreadTableOfContents({
       }}
       onFocusCapture={() => setOpen(true)}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+        if (
+          !(event.relatedTarget instanceof Node) ||
+          !event.currentTarget.contains(event.relatedTarget)
+        ) {
           setOpen(false);
         }
       }}

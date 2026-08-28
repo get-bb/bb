@@ -440,19 +440,19 @@ function getOrderedSummaryCategories(
   return categories;
 }
 
-const FILE_CHANGE_VERBS_PRESENT: Record<FileChangeAction, string> = {
+const FILE_CHANGE_VERBS_PRESENT = {
   created: "Creating",
   deleted: "Deleting",
   edited: "Editing",
   renamed: "Renaming",
-};
+} satisfies Record<FileChangeAction, string>;
 
-const FILE_CHANGE_VERBS_PAST: Record<FileChangeAction, string> = {
+const FILE_CHANGE_VERBS_PAST = {
   created: "Created",
   deleted: "Deleted",
   edited: "Edited",
   renamed: "Renamed",
-};
+} satisfies Record<FileChangeAction, string>;
 
 function fileChangeSummaryPhrase(
   counts: TimelineWorkSummaryCounts,

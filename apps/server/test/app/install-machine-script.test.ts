@@ -21,7 +21,13 @@ const SCRIPT_PATH = new URL(
 );
 const createdDirectories: string[] = [];
 
-function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
+interface InstallMachineScriptFixture {
+  binDir: string;
+  dataDir: string;
+  homeDir: string;
+}
+
+function createFixture(): InstallMachineScriptFixture {
   const root = mkdtempSync(join(tmpdir(), "bb-install-script-test-"));
   createdDirectories.push(root);
   const binDir = join(root, "bin");
@@ -503,9 +509,7 @@ describe("machine install script", () => {
     await new Promise<void>((resolve, reject) => {
       occupied.once("error", (error) => {
         const code =
-          typeof error === "object" && error !== null && "code" in error
-            ? error.code
-            : undefined;
+          error instanceof Error && "code" in error ? error.code : undefined;
         if (code === "EADDRINUSE") {
           resolve();
           return;

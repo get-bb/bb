@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ReactNode } from "react";
 import { View } from "react-native";
+import { z } from "zod";
 import { cn } from "./cn";
 import { Text } from "./Text";
 
@@ -41,10 +42,13 @@ export interface BadgeProps extends VariantProps<typeof badgeVariants> {
 }
 
 export function Badge({ variant, children, className }: BadgeProps) {
+  const textChild = z.union([z.string(), z.number()]).safeParse(children);
   return (
     <View className={cn(badgeVariants({ variant }), className)}>
-      {typeof children === "string" || typeof children === "number" ? (
-        <Text className={cn(badgeTextVariants({ variant }))}>{children}</Text>
+      {textChild.success ? (
+        <Text className={cn(badgeTextVariants({ variant }))}>
+          {textChild.data}
+        </Text>
       ) : (
         children
       )}

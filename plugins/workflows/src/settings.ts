@@ -3,6 +3,8 @@ import type {
   PluginSettingDescriptors,
   PluginSettingsValues,
 } from "@get-bb/plugin-sdk";
+import type { JsonValue } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 export const WORKFLOW_SETTING_DESCRIPTORS = {
   maxActiveRuns: {
@@ -168,15 +170,26 @@ export function parseWorkflowSettings(
 
 const LEGACY_STORED_SETTING_KEYS = new Set(["workerStallTimeoutMs"]);
 
-export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Workflow settings snapshot must be an object");
-  }
-  const object = value as Record<string, unknown>;
+const storedWorkflowSettingsSchema = z
+  .object({
+    maxActiveRuns: z.number().int().safe(),
+    maxConcurrentAgents: z.number().int().safe(),
+    maxAgentCalls: z.number().int().safe(),
+    totalRunTimeoutMs: z.number().int().safe(),
+    retentionDays: z.number().int().safe(),
+    maxNotificationBytes: z.number().int().safe(),
+  })
+  .passthrough();
+
+export function parseStoredWorkflowSettings(
+  value: JsonValue,
+): WorkflowSettings {
+  const parsed = storedWorkflowSettingsSchema.safeParse(value);
   const expected = Object.keys(INTEGER_FIELDS);
-  const actual = Object.keys(object);
+  const actual = parsed.success ? Object.keys(parsed.data) : [];
   if (
-    expected.some((key) => !Object.hasOwn(object, key)) ||
+    !parsed.success ||
+    expected.some((key) => !Object.hasOwn(parsed.data, key)) ||
     actual.some(
       (key) =>
         !Object.hasOwn(INTEGER_FIELDS, key) &&
@@ -185,15 +198,14 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   ) {
     throw new Error("Workflow settings snapshot has unexpected fields");
   }
-  const raw = Object.fromEntries(
-    expected.map((key) => {
-      const stored = object[key];
-      if (typeof stored !== "number" || !Number.isSafeInteger(stored)) {
-        throw new Error(`Workflow settings snapshot.${key} must be an integer`);
-      }
-      return [key, String(stored)];
-    }),
-  ) as Record<keyof WorkflowSettings, string>;
+  const raw = {
+    maxActiveRuns: String(parsed.data.maxActiveRuns),
+    maxConcurrentAgents: String(parsed.data.maxConcurrentAgents),
+    maxAgentCalls: String(parsed.data.maxAgentCalls),
+    totalRunTimeoutMs: String(parsed.data.totalRunTimeoutMs),
+    retentionDays: String(parsed.data.retentionDays),
+    maxNotificationBytes: String(parsed.data.maxNotificationBytes),
+  } satisfies RawWorkflowSettings;
   return parseWorkflowSettings(raw);
 }
 

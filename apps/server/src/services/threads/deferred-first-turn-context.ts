@@ -84,17 +84,16 @@ export function prependDeferredFirstTurnContext(
   if (!context) {
     return prompt;
   }
-  return {
+  const result: PromptWithGroups = {
     input: [...context.input, ...prompt.input],
-    ...(prompt.inputGroups !== undefined
-      ? {
-          inputGroups: [
-            [...context.input, ...prompt.inputGroups[0]!],
-            ...prompt.inputGroups.slice(1),
-          ],
-        }
-      : {}),
   };
+  if (prompt.inputGroups !== undefined) {
+    result.inputGroups = [
+      [...context.input, ...prompt.inputGroups[0]!],
+      ...prompt.inputGroups.slice(1),
+    ];
+  }
+  return result;
 }
 
 export function requireDeferredFirstTurnContextCurrent(

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
 import { seedHostSession, seedPrimaryHost } from "../../helpers/seed.js";
 import {
   installTestBuiltinPlugin,
   startTestServer,
 } from "../../helpers/test-app.js";
+
+const keepAwakeHostInputSchema = z.object({ enabled: z.boolean() }).strict();
 
 describe("builtin Keep Awake plugin", () => {
   it("owns its configuration and reconciles it without a core adapter", async () => {
@@ -19,14 +22,9 @@ describe("builtin Keep Awake plugin", () => {
           if (request.command.type !== "plugin.host.call") {
             throw new Error(`unexpected command ${request.command.type}`);
           }
-          const input = request.command.input;
-          if (typeof input !== "object" || input === null) {
-            throw new Error("expected host RPC input object");
-          }
-          const enabled = Reflect.get(input, "enabled");
-          if (typeof enabled !== "boolean") {
-            throw new Error("expected host RPC enabled boolean");
-          }
+          const { enabled } = keepAwakeHostInputSchema.parse(
+            request.command.input,
+          );
           return {
             ok: true,
             result: { output: { enabled, supported: true } },

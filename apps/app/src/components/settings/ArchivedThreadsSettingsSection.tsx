@@ -104,13 +104,13 @@ export function ArchivedThreadsSettingsSection() {
   const [projectId, setProjectId] = useState(ALL_PROJECTS);
   const sidebarNavigation = useSidebarNavigation();
   const searchIsActive = hasThreadSearchableQuery(search);
-  const archivedThreadsQuery = useArchivedThreads(
-    {
-      ...(projectId === ALL_PROJECTS ? {} : { projectId }),
-      kind,
-    } satisfies UseArchivedThreadsFilters,
-    { enabled: !searchIsActive },
-  );
+  const archivedThreadFilters: UseArchivedThreadsFilters = { kind };
+  if (projectId !== ALL_PROJECTS) {
+    archivedThreadFilters.projectId = projectId;
+  }
+  const archivedThreadsQuery = useArchivedThreads(archivedThreadFilters, {
+    enabled: !searchIsActive,
+  });
   const threadSearch = useThreadSearch({
     active: searchIsActive,
     limitPerGroup: ARCHIVED_THREAD_SEARCH_LIMIT,

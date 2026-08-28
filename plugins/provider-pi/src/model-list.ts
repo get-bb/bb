@@ -138,7 +138,11 @@ function describePiModel(model: PiCatalogModel): string {
   return `${provider} ${capabilities.join(", ")} model via Pi`;
 }
 
-const PI_DEFAULT_MODEL_PER_PROVIDER: Partial<Record<string, string>> = {
+interface PiDefaultModelPerProvider {
+  readonly [providerId: string]: string | undefined;
+}
+
+const PI_DEFAULT_MODEL_PER_PROVIDER: PiDefaultModelPerProvider = {
   anthropic: "claude-opus-4-8",
   openai: "gpt-5.4",
   "openai-codex": "gpt-5.6-sol",

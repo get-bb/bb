@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { JsonValue } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import {
   definePluginApp,
   experimental_useProviders,
@@ -14,11 +16,13 @@ import type {
 } from "./src/contract.js";
 
 const REALTIME_CHANNEL = "provider-retry";
+const providerRetryRealtimePayloadSchema = z
+  .object({ threadId: z.string().min(1) })
+  .passthrough();
 
-function payloadThreadId(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const threadId = (payload as { threadId?: unknown }).threadId;
-  return typeof threadId === "string" ? threadId : null;
+function payloadThreadId(payload: JsonValue): string | null {
+  const parsed = providerRetryRealtimePayloadSchema.safeParse(payload);
+  return parsed.success ? parsed.data.threadId : null;
 }
 
 function ProviderRetryBanner() {
@@ -61,7 +65,9 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
   }, [load, rpc, threadId]);
 
   useEffect(() => {
-    void load().catch(() => undefined);
+    void Promise.resolve()
+      .then(load)
+      .catch(() => undefined);
   }, [load]);
 
   useRealtime(

@@ -56,6 +56,7 @@ describe("plugin build toolchain", () => {
 
   it("returns importable module specifiers", async () => {
     const toolchain = await resolvePluginBuildToolchain(baseDir);
+    // SAFETY: The resolved esbuild specifier loads the esbuild module contract.
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
@@ -127,7 +128,7 @@ describe("plugin build toolchain", () => {
         await writeFile(fakeNpm, `#!/bin/sh\nenv > "${envDump}"\nexit 0\n`);
         await chmod(fakeNpm, 0o755);
 
-        const overrides: Record<string, string> = {
+        const overrides = {
           PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
           npm_config_allow_scripts: "@github/keytar,node-pty",
           NPM_CONFIG_IGNORE_SCRIPTS: "false",

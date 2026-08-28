@@ -1,28 +1,3 @@
-// Builds the BB plugin component registry (plugin design §5.5): shadcn
-// registry-item JSONs generated from the shared UI kit's component source, so
-// the registry can never drift from the UI the app and builtin plugins ship.
-//
-//   node packages/plugin-registry/scripts/build-registry.mjs [--check]
-//
-// Inputs:
-// - registry.json — the item list (uiItems), npm version pins, and an
-//   (currently empty) override map for swapping a component-src file for a
-//   registry-only flavor.
-// - packages/shared-ui/src/components/ui/*.tsx — component source, verbatim.
-//   @bb/shared-ui is itself the plugin/registry flavor: its portal-scope and
-//   useBrowserDimmingModal leaves are already the no-op/plugin variants (the
-//   app injects its own flavors at build time), so no override is needed.
-//
-// Every file in an item's transitive @/-import closure becomes its own
-// registry item (named from its basename), referenced via
-// registryDependencies — `npx shadcn add @bb/dialog` pulls the closure
-// automatically. Bare npm imports become item `dependencies` (react and
-// react-dom excluded: the plugin runtime provides them; the shimmed
-// radix/sonner/vaul packages are KEPT as dependencies — the build shims them
-// at bundle time, but plugin authors need their types to typecheck).
-//
-// Output: r/<item>.json + r/index.json, checked in; `--check` exits 1 on any
-// drift (wired into this package's typecheck/test like @bb/templates).
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -40,22 +15,18 @@ const config = JSON.parse(
 const overrides = new Map(Object.entries(config.overrides ?? {}));
 const dependencyPins = config.dependencyPins ?? {};
 
-/** shared-ui/src-relative path → absolute source path, honoring overrides. */
 function sourcePathFor(relPath) {
   const override = overrides.get(relPath);
   if (override) return path.join(packageRoot, override);
   return path.join(srcRoot, relPath);
 }
 
-/** Resolve an import specifier from `importerRel` to an app-src-relative path. */
 function resolveLocal(specifier, importerRel) {
   let base;
   if (specifier.startsWith("@/")) {
     base = specifier.slice(2);
   } else if (specifier.startsWith(".")) {
-    base = path.normalize(
-      path.join(path.dirname(importerRel), specifier),
-    );
+    base = path.normalize(path.join(path.dirname(importerRel), specifier));
   } else {
     return null;
   }
@@ -78,9 +49,6 @@ function resolveLocal(specifier, importerRel) {
 
 function importSpecifiersOf(content) {
   const specs = [];
-  // Static imports/re-exports, bare side-effect imports, and dynamic
-  // `import("...")` calls (icon.tsx loads its extended glyph registry that
-  // way): all three are edges a vendored copy needs to keep resolving.
   const re =
     /(?:^|\n)\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
   let match;
@@ -90,27 +58,18 @@ function importSpecifiersOf(content) {
   return specs;
 }
 
-/** npm package name of a bare specifier ("@scope/pkg/sub" → "@scope/pkg"). */
 function npmPackageOf(specifier) {
   const parts = specifier.split("/");
-  return specifier.startsWith("@")
-    ? parts.slice(0, 2).join("/")
-    : parts[0];
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
 }
 
-/** react/react-dom come from the plugin runtime; never item dependencies. */
 const RUNTIME_PROVIDED = new Set(["react", "react-dom"]);
 
-/** Item name from an app-src-relative file path. */
 function itemNameFor(relPath) {
   const base = path.basename(relPath).replace(/\.(tsx?|jsx?)$/, "");
-  // camelCase hooks (useBrowserDimmingModal) → kebab-case item names.
-  return base
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .toLowerCase();
+  return base.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
-/** shadcn item type + install target for an app-src-relative path. */
 function classify(relPath) {
   const base = path.basename(relPath);
   if (relPath.startsWith("components/ui/hooks/")) {
@@ -128,20 +87,19 @@ function classify(relPath) {
   throw new Error(`no registry mapping for ${relPath}`);
 }
 
-// ---------------------------------------------------------------------------
-// Walk every uiItem's closure; each discovered file becomes an item.
-// ---------------------------------------------------------------------------
-const fileByItem = new Map(); // itemName → relPath
+const fileByItem = new Map();
 const queue = [];
 for (const name of config.uiItems) {
   const relPath = `components/ui/${name}.tsx`;
   if (!existsSync(sourcePathFor(relPath))) {
-    throw new Error(`uiItem "${name}" has no source at packages/shared-ui/src/${relPath}`);
+    throw new Error(
+      `uiItem "${name}" has no source at packages/shared-ui/src/${relPath}`,
+    );
   }
   queue.push(relPath);
 }
 const seen = new Set();
-const itemMeta = new Map(); // relPath → { dependencies:Set, registryDependencies:Set, content }
+const itemMeta = new Map();
 while (queue.length > 0) {
   const relPath = queue.pop();
   if (seen.has(relPath)) continue;
@@ -173,19 +131,15 @@ while (queue.length > 0) {
   itemMeta.set(relPath, { content, dependencies, registryDependencies });
 }
 
-// ---------------------------------------------------------------------------
-// Emit r/<item>.json + r/index.json.
-// ---------------------------------------------------------------------------
 function pinned(pkg) {
   const pin = dependencyPins[pkg];
   return pin ? `${pkg}@${pin}` : pkg;
 }
 
-const generatedFiles = new Map(); // filename → content string
+const generatedFiles = new Map();
 const indexEntries = [];
 for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
-  const { content, dependencies, registryDependencies } =
-    itemMeta.get(relPath);
+  const { content, dependencies, registryDependencies } = itemMeta.get(relPath);
   const { type, target } = classify(relPath);
   const item = {
     $schema: "https://ui.shadcn.com/schema/registry-item.json",
@@ -193,19 +147,6 @@ for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
     type,
     title: itemName,
     description: `BB ${type.replace("registry:", "")} "${itemName}" — vendored from the BB app's own source (version-matched to this BB release).`,
-    ...(dependencies.size > 0
-      ? { dependencies: [...dependencies].sort().map(pinned) }
-      : {}),
-    ...(registryDependencies.size > 0
-      ? {
-          // Namespaced: the shadcn CLI resolves UNPREFIXED registryDependencies
-          // against the default ui.shadcn.com registry, not the originating
-          // one — cross-item references must carry @bb/ explicitly.
-          registryDependencies: [...registryDependencies]
-            .sort()
-            .map((name) => `@bb/${name}`),
-        }
-      : {}),
     files: [
       {
         path: `registry/${target}`,
@@ -215,6 +156,18 @@ for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
       },
     ],
   };
+  if (dependencies.size > 0) {
+    Object.assign(item, {
+      dependencies: [...dependencies].sort().map(pinned),
+    });
+  }
+  if (registryDependencies.size > 0) {
+    Object.assign(item, {
+      registryDependencies: [...registryDependencies]
+        .sort()
+        .map((name) => `@bb/${name}`),
+    });
+  }
   generatedFiles.set(`${itemName}.json`, JSON.stringify(item, null, 2) + "\n");
   indexEntries.push({ name: itemName, type });
 }
@@ -248,7 +201,9 @@ for (const [name, content] of generatedFiles) {
     : null;
   if (existing !== content) {
     stale = true;
-    staleReasons.push(existing === null ? `missing r/${name}` : `changed r/${name}`);
+    staleReasons.push(
+      existing === null ? `missing r/${name}` : `changed r/${name}`,
+    );
   }
 }
 
@@ -266,7 +221,9 @@ if (check) {
   for (const [name, content] of generatedFiles) {
     await writeFile(path.join(outDir, name), content);
   }
-  console.log(`wrote ${generatedFiles.size} files to r/ (${fileByItem.size} items)`);
+  console.log(
+    `wrote ${generatedFiles.size} files to r/ (${fileByItem.size} items)`,
+  );
 } else {
   console.log(`plugin registry up to date (${fileByItem.size} items)`);
 }

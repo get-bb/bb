@@ -2,29 +2,42 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import * as sidebarModule from "@/components/ui/sidebar.js";
 
 const sidebarMocks = vi.hoisted(() => ({
-  scrollElementRef: null as { current: HTMLDivElement | null } | null,
+  scrollElementRef:
+    /* SAFETY: The test controls this fixture and verifies its behavior. */ null as {
+      current: HTMLDivElement | null;
+    } | null,
 }));
 
-vi.mock("@/components/ui/sidebar.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/components/ui/sidebar.js")>();
-  return {
-    ...actual,
-    useSidebarContentElementRef: () => {
-      const contextRef = actual.useSidebarContentElementRef();
-      return sidebarMocks.scrollElementRef ?? contextRef;
-    },
-  };
+const actualUseSidebarContentElementRef =
+  sidebarModule.useSidebarContentElementRef;
+vi.spyOn(sidebarModule, "useSidebarContentElementRef").mockImplementation(
+  () => sidebarMocks.scrollElementRef ?? actualUseSidebarContentElementRef(),
+);
+
+const { SIDEBAR_CONTENT_SELECTOR, SidebarContent } = sidebarModule;
+let SidebarWindowedItems: typeof import("./SidebarWindowedItems").SidebarWindowedItems;
+
+beforeAll(async () => {
+  ({ SidebarWindowedItems } = await import("./SidebarWindowedItems"));
 });
 
-import {
-  SIDEBAR_CONTENT_SELECTOR,
-  SidebarContent,
-} from "@/components/ui/sidebar.js";
-import { SidebarWindowedItems } from "./SidebarWindowedItems";
+beforeEach(() => {
+  vi.spyOn(sidebarModule, "useSidebarContentElementRef").mockImplementation(
+    () => sidebarMocks.scrollElementRef ?? actualUseSidebarContentElementRef(),
+  );
+});
 
 const selectorMatch = SIDEBAR_CONTENT_SELECTOR.match(/^\[([\w-]+)="(.+)"\]$/);
 if (!selectorMatch) {

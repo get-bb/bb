@@ -92,7 +92,7 @@ export const projectParityRows: ParityRowProjector = ({
       workspaceRoot: "/home/user/workspace",
     },
   });
-  return JSON.parse(JSON.stringify(timeline.rows)) as unknown[];
+  return JSON.parse(JSON.stringify(timeline.rows));
 };
 
 export function readAllowlist(
@@ -105,6 +105,7 @@ export function readAllowlist(
   if (!Array.isArray(parsed)) {
     throw new Error(`${path}: expected a JSON array of allowlist entries`);
   }
+  // SAFETY: the repository-owned allowlist file contains ParityAllowlistEntry objects after the array check.
   return parsed as ParityAllowlistEntry[];
 }
 
@@ -168,20 +169,25 @@ export async function replayCell(
 ): Promise<CellInputs & { run: ParityRun }> {
   const projectRows = options.projectRows ?? projectParityRows;
   const bridge = firstPartyReplayBridge(cell.provider, options.checkoutRoot);
-  const run = await replayRecording({
+  const replayOptions = {
     recordingDir: cell.dir,
     providerId: cell.provider,
     bridge: bridge.launch,
     profile: bridge.profile,
     createAssembler: options.createAssembler ?? createParityAssembler,
-    ...(options.planFromCurrentLane === undefined
-      ? {}
-      : { planFromCurrentLane: options.planFromCurrentLane }),
-    ...(options.timeoutMs !== undefined
-      ? { timeoutMs: options.timeoutMs }
-      : {}),
-    ...(options.onStderr !== undefined ? { onStderr: options.onStderr } : {}),
-  });
+  };
+  if (options.planFromCurrentLane !== undefined) {
+    Object.assign(replayOptions, {
+      planFromCurrentLane: options.planFromCurrentLane,
+    });
+  }
+  if (options.timeoutMs !== undefined) {
+    Object.assign(replayOptions, { timeoutMs: options.timeoutMs });
+  }
+  if (options.onStderr !== undefined) {
+    Object.assign(replayOptions, { onStderr: options.onStderr });
+  }
+  const run = await replayRecording(replayOptions);
   return {
     run,
     events: run.events,

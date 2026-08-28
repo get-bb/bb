@@ -63,9 +63,9 @@ export interface ExperimentalHostEntryHarness<
   experimental_dispose(): Promise<void>;
 }
 
-async function validate<Schema extends StandardSchemaV1>(
+async function validate<Schema extends StandardSchemaV1, Value>(
   schema: Schema,
-  value: unknown,
+  value: Value,
 ): Promise<StandardSchemaV1InferOutput<Schema>> {
   const result = await schema["~standard"].validate(value);
   if (result.issues !== undefined) {
@@ -87,6 +87,7 @@ function normalizeJson<Value>(value: Value, label: string): Value {
   if (Buffer.byteLength(serialized) > RESULT_MAX_BYTES) {
     throw new Error(`${label} exceeds ${RESULT_MAX_BYTES} bytes`);
   }
+  // SAFETY: JSON.stringify and the size check prove that the parsed value has the same JSON contract as Value.
   return JSON.parse(serialized) as Value;
 }
 
@@ -220,8 +221,6 @@ export function experimental_createHostEntryHarness<
           normalizeJson(workerOutput, `host output for ${methodName}`),
         );
       } finally {
-        // Retaining a worker must be an explicit decision made by an active
-        // handler, not by work that escaped the request.
         contextOpen = false;
         activeCalls.delete(controller);
         lifecycleController.signal.removeEventListener("abort", abort);
@@ -230,6 +229,7 @@ export function experimental_createHostEntryHarness<
     },
 
     experimental_getSignals() {
+      // SAFETY: Captured signals enter through each declared signal payload schema.
       return capturedSignals as ExperimentalHostHarnessSignal<Signals>[];
     },
 

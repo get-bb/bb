@@ -81,11 +81,14 @@ export function registerOpenCommand(
                   })),
                   lineNumber,
                 };
-          const result = await sdk.threads.open({
-            threadId: target.threadId,
-            ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
-            file,
-          });
+          const result =
+            requestedSplit === undefined
+              ? await sdk.threads.open({ threadId: target.threadId, file })
+              : await sdk.threads.open({
+                  threadId: target.threadId,
+                  split: requestedSplit,
+                  file,
+                });
 
           if (
             outputJson(opts, {

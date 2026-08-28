@@ -8,6 +8,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   nativeImage,
   nativeTheme,
   net,
@@ -17,6 +18,7 @@ import {
   type Event,
   type IpcMainInvokeEvent,
   type WebContents,
+  WebContentsView,
 } from "electron";
 import { autoUpdater } from "electron-updater";
 import {
@@ -24,7 +26,7 @@ import {
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
 import type { ConnectCredential } from "@bb/connect-client";
-import type { AppKeybindings } from "@bb/domain";
+import type { AppKeybindings, JsonValue } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
   type BbDesktopInfo,
@@ -459,7 +461,7 @@ function resolveApplicationWindow(
 function sendToApplicationRenderer(
   browserWindow: BrowserWindow,
   channel: string,
-  payload: unknown,
+  payload: JsonValue,
 ): void {
   if (!browserWindow.webContents.isDestroyed()) {
     browserWindow.webContents.send(channel, payload);
@@ -518,11 +520,12 @@ function getSenderDesktopWindowState(
 function sendDesktopWindowStateChanged(
   browserWindow: DesktopBrowserWindow,
 ): void {
-  sendToApplicationRenderer(
-    browserWindow as BrowserWindow,
-    BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
-    getDesktopWindowState(browserWindow),
-  );
+  if (!browserWindow.isDestroyed()) {
+    browserWindow.webContents.send(
+      BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+      getDesktopWindowState(browserWindow),
+    );
+  }
 }
 
 function createDesktopLogger(): DesktopAutoUpdateLogger {
@@ -702,94 +705,108 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
 
 function installCurrentApplicationMenu(): void {
   const connectServers = listMenuConnectServers();
-  installApplicationMenu({
-    accelerators: currentApplicationMenuAccelerators,
-    connectServersSkipReason:
-      connectServers.length === 0 ? connectServerSyncSkipReason : null,
-    isMac: process.platform === "darwin",
-    createNewWindow() {
-      void createApplicationWindow({
-        initialUrl: currentWindowUrl,
-        stateKey: null,
-      });
+  installApplicationMenu(
+    {
+      applicationName: app.name,
+      accelerators: currentApplicationMenuAccelerators,
+      connectServersSkipReason:
+        connectServers.length === 0 ? connectServerSyncSkipReason : null,
+      isMac: process.platform === "darwin",
+      createNewWindow() {
+        void createApplicationWindow({
+          initialUrl: currentWindowUrl,
+          stateKey: null,
+        });
+      },
+      openAbout() {
+        void showAboutDialog();
+      },
+      openNewTab() {
+        const browserWindow = getFocusedApplicationWindow();
+        if (browserWindow !== null) {
+          sendToApplicationRenderer(
+            browserWindow,
+            BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+            null,
+          );
+          sendToApplicationRenderer(
+            browserWindow,
+            BB_DESKTOP_APP_COMMAND_CHANNEL,
+            "panel.newTab",
+          );
+        }
+      },
+      openNewThread() {
+        const browserWindow = getFocusedApplicationWindow();
+        if (browserWindow !== null) {
+          sendToApplicationRenderer(
+            browserWindow,
+            BB_DESKTOP_APP_COMMAND_CHANNEL,
+            "thread.new",
+          );
+        }
+      },
+      openSettings() {
+        const browserWindow = getFocusedApplicationWindow();
+        if (browserWindow !== null) {
+          sendToApplicationRenderer(
+            browserWindow,
+            BB_DESKTOP_APP_COMMAND_CHANNEL,
+            "settings.open",
+          );
+        }
+      },
+      reloadWindow(browserWindow, ignoreCache) {
+        if (!(browserWindow instanceof BrowserWindow)) {
+          return;
+        }
+        if (ignoreCache) {
+          browserWindow.webContents.reloadIgnoringCache();
+        } else {
+          browserWindow.webContents.reload();
+        }
+      },
+      sendActionToFirstResponder(action) {
+        Menu.sendActionToFirstResponder(action);
+      },
+      closeWindowOrSideTab(browserWindow) {
+        if (browserWindow === undefined) {
+          closeFocusedDetachedDevTools();
+          return;
+        }
+        if (
+          !(browserWindow instanceof BrowserWindow) ||
+          browserWindow === logViewerWindow
+        ) {
+          browserWindow.close();
+          return;
+        }
+        requestRendererWindowClose(browserWindow);
+      },
+      openServerDaemonLogs() {
+        void openServerDaemonLogs();
+      },
+      selectServer(serverId) {
+        void setActiveServerTarget(serverId);
+      },
+      setServerUrl() {
+        void openSetServerUrlDialog();
+      },
+      onServerMenuWillShow() {
+        connectServerSync?.onListRequested();
+      },
+      serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
+      servers: buildMenuServerItems(connectServers),
     },
-    openAbout() {
-      void showAboutDialog();
+    {
+      buildFromTemplate(template) {
+        return Menu.buildFromTemplate(template);
+      },
+      setApplicationMenu(menu) {
+        Menu.setApplicationMenu(menu);
+      },
     },
-    openNewTab() {
-      const browserWindow = getFocusedApplicationWindow();
-      if (browserWindow !== null) {
-        sendToApplicationRenderer(
-          browserWindow,
-          BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
-          null,
-        );
-        sendToApplicationRenderer(
-          browserWindow,
-          BB_DESKTOP_APP_COMMAND_CHANNEL,
-          "panel.newTab",
-        );
-      }
-    },
-    openNewThread() {
-      const browserWindow = getFocusedApplicationWindow();
-      if (browserWindow !== null) {
-        sendToApplicationRenderer(
-          browserWindow,
-          BB_DESKTOP_APP_COMMAND_CHANNEL,
-          "thread.new",
-        );
-      }
-    },
-    openSettings() {
-      const browserWindow = getFocusedApplicationWindow();
-      if (browserWindow !== null) {
-        sendToApplicationRenderer(
-          browserWindow,
-          BB_DESKTOP_APP_COMMAND_CHANNEL,
-          "settings.open",
-        );
-      }
-    },
-    reloadWindow(browserWindow, ignoreCache) {
-      if (!(browserWindow instanceof BrowserWindow)) {
-        return;
-      }
-      if (ignoreCache) {
-        browserWindow.webContents.reloadIgnoringCache();
-      } else {
-        browserWindow.webContents.reload();
-      }
-    },
-    closeWindowOrSideTab(browserWindow) {
-      if (browserWindow === undefined) {
-        closeFocusedDetachedDevTools();
-        return;
-      }
-      if (
-        !(browserWindow instanceof BrowserWindow) ||
-        browserWindow === logViewerWindow
-      ) {
-        browserWindow.close();
-        return;
-      }
-      requestRendererWindowClose(browserWindow);
-    },
-    openServerDaemonLogs() {
-      void openServerDaemonLogs();
-    },
-    selectServer(serverId) {
-      void setActiveServerTarget(serverId);
-    },
-    setServerUrl() {
-      void openSetServerUrlDialog();
-    },
-    onServerMenuWillShow() {
-      connectServerSync?.onListRequested();
-    },
-    serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
-    servers: buildMenuServerItems(connectServers),
-  });
+  );
 }
 
 function refreshApplicationMenu(): void {
@@ -867,12 +884,13 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   }
 
   function handleMessage(event: MessageEvent): void {
-    if (typeof event.data !== "string") {
+    const data = z.string().safeParse(event.data);
+    if (!data.success) {
       return;
     }
     try {
       const parsed = serverMessageLenientSchema.safeParse(
-        JSON.parse(event.data),
+        JSON.parse(data.data),
       );
       if (!parsed.success) {
         return;
@@ -947,7 +965,7 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
   function refresh(): void {
     void refreshSystemConfig({
       fetchImpl: (input, init) =>
-        net.fetch(input as string | Request, {
+        net.fetch(input instanceof URL ? input.href : input, {
           ...init,
           credentials: "include",
         }),
@@ -987,6 +1005,7 @@ function startRemoteSystemConfigSync(serverUrl: string): void {
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
+  // SAFETY: The desktop window factory creates every window from Electron's BrowserWindow.
   registerApplicationRendererReloadShortcut(
     (browserWindow as BrowserWindow).webContents,
   );
@@ -1587,7 +1606,7 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
-  ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
+  ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: JsonValue) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
       return;
@@ -1607,13 +1626,14 @@ function registerDesktopUpdateIpc(): void {
   });
   ipcMain.on(
     BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
-    (_event, payload: unknown) => {
-      if (typeof payload !== "string") {
+    (_event, payload: JsonValue) => {
+      const url = z.string().safeParse(payload);
+      if (!url.success) {
         return;
       }
       let parsed: URL;
       try {
-        parsed = new URL(payload);
+        parsed = new URL(url.data);
       } catch {
         return;
       }
@@ -2188,6 +2208,17 @@ async function runDesktopApp(): Promise<void> {
         isMac: process.platform === "darwin",
         keybindings: currentAppKeybindings,
       });
+    },
+    runtime: {
+      buildContextMenu(template) {
+        return Menu.buildFromTemplate(template);
+      },
+      createWebContentsView(options) {
+        return new WebContentsView(options);
+      },
+      fromPartition(partition) {
+        return session.fromPartition(partition);
+      },
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);

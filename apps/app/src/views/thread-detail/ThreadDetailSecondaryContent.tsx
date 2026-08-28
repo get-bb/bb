@@ -5,7 +5,10 @@ import {
   PluginComposerHostScopeProvider,
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import {
+  SecondaryPanelLayout,
+  type SecondaryPanelLayoutDependencies,
+} from "@/components/secondary-panel/SecondaryPanelLayout";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   ThreadMetadataCard,
@@ -51,14 +54,40 @@ interface ThreadDetailSecondaryContentProps {
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
+  dependencies?: ThreadDetailSecondaryContentDependencies;
 }
+
+interface ThreadDetailSecondaryContentDependencies {
+  LazyThreadSecondaryPanel: typeof LazyThreadSecondaryPanel;
+  SecondaryPanelLayout: typeof SecondaryPanelLayout;
+  ThreadMetadataContent: typeof ThreadMetadataContent;
+  ThreadTimelinePane: typeof ThreadTimelinePane;
+  hasAnyThreadMetadata: typeof hasAnyThreadMetadata;
+  useThreads: typeof useThreads;
+  secondaryPanelLayoutDependencies?: SecondaryPanelLayoutDependencies;
+}
+
+const defaultThreadDetailSecondaryContentDependencies: ThreadDetailSecondaryContentDependencies =
+  {
+    LazyThreadSecondaryPanel,
+    SecondaryPanelLayout,
+    ThreadMetadataContent,
+    ThreadTimelinePane,
+    hasAnyThreadMetadata,
+    useThreads,
+  };
 
 export function ThreadDetailSecondaryContent(
   props: ThreadDetailSecondaryContentProps,
 ) {
   return (
     <PluginComposerHostScopeProvider>
-      <ThreadDetailSecondaryContentBody {...props} />
+      <ThreadDetailSecondaryContentBody
+        {...props}
+        dependencies={
+          props.dependencies ?? defaultThreadDetailSecondaryContentDependencies
+        }
+      />
     </PluginComposerHostScopeProvider>
   );
 }
@@ -76,11 +105,12 @@ function ThreadDetailSecondaryContentBody({
   metadata,
   secondaryPanel,
   timeline,
+  dependencies = defaultThreadDetailSecondaryContentDependencies,
 }: ThreadDetailSecondaryContentProps) {
   const composerHost = usePluginComposerHost();
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
-  const forksQuery = useThreads(
+  const forksQuery = dependencies.useThreads(
     {
       projectId: metadata.thread.projectId,
       sourceThreadId: metadata.thread.id,
@@ -92,9 +122,9 @@ function ThreadDetailSecondaryContentBody({
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
   const metadataContent = useMemo(
     () =>
-      hasAnyThreadMetadata(metadata, hasForks) ? (
+      dependencies.hasAnyThreadMetadata(metadata, hasForks) ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ThreadMetadataContent {...metadata} />
+          <dependencies.ThreadMetadataContent {...metadata} />
         </div>
       ) : isMetadataLoading ? (
         <ThreadMetadataLoadingSkeleton />
@@ -103,7 +133,7 @@ function ThreadDetailSecondaryContentBody({
           No thread details available.
         </div>
       ),
-    [hasForks, isMetadataLoading, metadata],
+    [dependencies, hasForks, isMetadataLoading, metadata],
   );
 
   return (
@@ -113,7 +143,7 @@ function ThreadDetailSecondaryContentBody({
         !isBoundedPane && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
-      <SecondaryPanelLayout
+      <dependencies.SecondaryPanelLayout
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
@@ -124,7 +154,7 @@ function ThreadDetailSecondaryContentBody({
         drawerFallback={<ThreadMetadataLoadingSkeleton />}
         mainPanelId="thread-detail-timeline-panel"
         mainHeader={header}
-        main={<ThreadTimelinePane {...timeline} footer={footer} />}
+        main={<dependencies.ThreadTimelinePane {...timeline} footer={footer} />}
         collapse={{
           active: isConversationCollapsed,
           onToggle: onToggleConversationCollapse,
@@ -139,7 +169,7 @@ function ThreadDetailSecondaryContentBody({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <LazyThreadSecondaryPanel
+          <dependencies.LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
             drawerFallback={<ThreadMetadataLoadingSkeleton />}
             renderBrowserDeck={(activeBrowserTabId, pane) =>
@@ -163,6 +193,7 @@ function ThreadDetailSecondaryContentBody({
             metadataContent={metadataContent}
           />
         )}
+        dependencies={dependencies.secondaryPanelLayoutDependencies}
       />
     </div>
   );

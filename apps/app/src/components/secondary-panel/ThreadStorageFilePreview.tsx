@@ -1,6 +1,7 @@
 import {
   FilePreview as FilePreviewSurface,
   type FilePreviewFile,
+  type FilePreviewProps,
   type TextFilePreviewKind,
 } from "./FilePreview";
 import { hashSourceContents } from "@/components/code/source-code-budget";
@@ -33,6 +34,7 @@ interface FilePreviewBaseProps {
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
+  sourceCodeRenderer?: FilePreviewProps["sourceCodeRenderer"];
 }
 
 interface ThreadStorageFilePreviewProps extends FilePreviewBaseProps {
@@ -100,6 +102,7 @@ export function SecondaryPanelFilePreview({
   onOpenInEditor,
   onRefresh,
   statusLabel = null,
+  sourceCodeRenderer,
 }: SecondaryPanelFilePreviewProps) {
   if (error) {
     const isNotFound = error instanceof HttpError && error.status === 404;
@@ -113,6 +116,7 @@ export function SecondaryPanelFilePreview({
         isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: isNotFound ? "not-found" : "error" }}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     );
   }
@@ -128,6 +132,7 @@ export function SecondaryPanelFilePreview({
         isRefreshing={isRefreshing}
         statusLabel={statusLabel}
         state={{ kind: "loading" }}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     );
   }
@@ -172,6 +177,7 @@ export function SecondaryPanelFilePreview({
           },
           lineRange,
         }}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     );
   }
@@ -188,6 +194,7 @@ export function SecondaryPanelFilePreview({
           isRefreshing={isRefreshing}
           statusLabel={statusLabel}
           state={{ kind: "empty" }}
+          sourceCodeRenderer={sourceCodeRenderer}
         />
       );
     }
@@ -207,6 +214,7 @@ export function SecondaryPanelFilePreview({
           textPreviewKind: getTextPreviewKind(filePreview),
           file: buildTextPreviewFile({ activePath, filePreview }),
         }}
+        sourceCodeRenderer={sourceCodeRenderer}
       />
     );
   }

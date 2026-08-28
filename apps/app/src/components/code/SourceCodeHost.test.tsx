@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginSourceCodeRendererProps } from "@get-bb/plugin-sdk";
 import {
@@ -11,26 +11,23 @@ import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlo
 import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { SourceCodeHost } from "./SourceCodeHost";
+import type { BbSourceCodeProps } from "./code-rendering";
 
-const bbSourceCode = vi.hoisted(() => ({
+const bbSourceCode = {
   loaded: false,
-  lastProps: null as Record<string, unknown> | null,
-}));
+  /* SAFETY: The test fixture starts without renderer props. */
+  lastProps: null as BbSourceCodeProps | null,
+};
 
-vi.mock("./BbSourceCode", async () => {
-  const React = await import("react");
+function TestBbSourceCode(props: BbSourceCodeProps) {
   bbSourceCode.loaded = true;
-  return {
-    default: (props: Record<string, unknown>) => {
-      bbSourceCode.lastProps = props;
-      return React.createElement(
-        "div",
-        { "data-testid": "bb-source-code" },
-        "bb source",
-      );
-    },
-  };
-});
+  bbSourceCode.lastProps = props;
+  return <div data-testid="bb-source-code">bb source</div>;
+}
+
+function TestSourceCodeHost(props: ComponentProps<typeof SourceCodeHost>) {
+  return <SourceCodeHost {...props} renderer={TestBbSourceCode} />;
+}
 
 const CONTENT = "const a = 1;\nconst b = 2;\n";
 const received: PluginSourceCodeRendererProps[] = [];
@@ -72,7 +69,7 @@ describe("SourceCodeHost", () => {
       return <div data-testid="plugin-source">plugin source</div>;
     });
 
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+    render(<TestSourceCodeHost content={CONTENT} path="src/app.ts" />);
 
     await screen.findByTestId("plugin-source");
     await act(async () => {
@@ -88,7 +85,7 @@ describe("SourceCodeHost", () => {
     });
 
     render(
-      <SourceCodeHost
+      <TestSourceCodeHost
         content={CONTENT}
         path="src/app.ts"
         cacheKey="rev-2:src/app.ts"
@@ -116,7 +113,7 @@ describe("SourceCodeHost", () => {
     );
 
     render(
-      <SourceCodeHost
+      <TestSourceCodeHost
         content={CONTENT}
         path="src/app.ts"
         cacheKey="rev-2:src/app.ts"
@@ -137,13 +134,13 @@ describe("SourceCodeHost", () => {
       throw new Error("replacement exploded");
     });
 
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+    render(<TestSourceCodeHost content={CONTENT} path="src/app.ts" />);
 
     expect(await screen.findByTestId("bb-source-code")).toBeDefined();
   });
 
   it("resolves presentation defaults for BB's renderer", async () => {
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+    render(<TestSourceCodeHost content={CONTENT} path="src/app.ts" />);
 
     await screen.findByTestId("bb-source-code");
     expect(bbSourceCode.lastProps?.overflow).toBe("scroll");
@@ -181,13 +178,17 @@ describe("SourceCodeHost experimental_Original alias", () => {
     });
 
     const { rerender } = render(
-      <SourceCodeHost content={CONTENT} path="src/app.ts" />,
+      <TestSourceCodeHost content={CONTENT} path="src/app.ts" />,
     );
     expect(await screen.findByTestId("bb-source-code")).toBeDefined();
     expect(bbSourceCode.lastProps?.overflow).toBe("scroll");
 
     rerender(
-      <SourceCodeHost content={CONTENT} path="src/app.ts" overflow="wrap" />,
+      <TestSourceCodeHost
+        content={CONTENT}
+        path="src/app.ts"
+        overflow="wrap"
+      />,
     );
     await act(async () => {
       await Promise.resolve();
@@ -204,7 +205,7 @@ describe("SourceCodeHost experimental_Original alias", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     registerSourceCodeRenderer(({ Original }) => <Original />);
 
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+    render(<TestSourceCodeHost content={CONTENT} path="src/app.ts" />);
 
     expect(await screen.findByTestId("bb-source-code")).toBeDefined();
     expect(warn).not.toHaveBeenCalled();

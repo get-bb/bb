@@ -6,11 +6,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "jsx": "react-jsx",
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

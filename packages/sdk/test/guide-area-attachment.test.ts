@@ -16,6 +16,6 @@ describe("guide area attachment", () => {
     const sdk = createBrowserBbSdk({ baseUrl: "http://server" });
 
     expect(Object.hasOwn(sdk, "guide")).toBe(false);
-    expect(typeof sdk.threads.list).toBe("function");
+    expect(sdk.threads.list).toBeTypeOf("function");
   });
 });

@@ -1,21 +1,21 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "@bb/domain";
 import { defaultAppSettings } from "@bb/domain";
+import * as systemQueries from "@/hooks/queries/system-queries";
 import {
   ProvidersSettingsSection,
   reorderProviderIds,
 } from "./ProvidersSettingsSection";
 
-const mocks = vi.hoisted(() => ({
-  providers: [] as ProviderInfo[],
-}));
+interface ProviderTestState {
+  providers: ProviderInfo[];
+}
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemProviders: () => ({ data: mocks.providers, isPending: false }),
-}));
+const mocks: ProviderTestState = { providers: [] };
+const useSystemProvidersMock = vi.spyOn(systemQueries, "useSystemProviders");
 
 function provider(id: string, displayName: string): ProviderInfo {
   return {
@@ -39,7 +39,19 @@ function provider(id: string, displayName: string): ProviderInfo {
   };
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  useSystemProvidersMock.mockImplementation(
+    () =>
+      /* SAFETY: This test fixture supplies the query fields that the component reads. */ ({
+        data: mocks.providers,
+        isPending: false,
+      }) as ReturnType<typeof systemQueries.useSystemProviders>,
+  );
+});
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("ProvidersSettingsSection", () => {
   it("shows reorder handles and writes the default as a user setting", () => {
@@ -96,7 +108,7 @@ describe("ProvidersSettingsSection", () => {
     );
     expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(
-      (
+      /* SAFETY: The test controls this fixture and verifies its behavior. */ (
         screen.getByRole("button", {
           name: "Make default",
         }) as HTMLButtonElement

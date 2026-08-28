@@ -54,6 +54,7 @@ function ChangelogRoute() {
 }
 
 const RELEASES = parseChangelog(changelogMd);
+const RELEASE_META_BY_VERSION = new Map(Object.entries(RELEASE_META));
 
 function anchorId(version: string): string {
   return version.replaceAll(".", "-");
@@ -109,9 +110,9 @@ function ByMachineSidebar() {
   );
 }
 
-const RELEASE_MEDIA: Record<string, ReactNode> = {
-  "0.0.30": <ByMachineSidebar />,
-};
+const RELEASE_MEDIA = new Map<string, ReactNode>([
+  ["0.0.30", <ByMachineSidebar />],
+]);
 
 function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
   return (
@@ -136,7 +137,7 @@ function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
 }
 
 function ReleaseEntry({ release }: { release: Release }) {
-  const meta = RELEASE_META[release.version];
+  const meta = RELEASE_META_BY_VERSION.get(release.version);
   const anchor = anchorId(release.version);
   return (
     <article className="release" id={anchor}>
@@ -157,7 +158,7 @@ function ReleaseEntry({ release }: { release: Release }) {
             </p>
           ) : null,
         )}
-        {RELEASE_MEDIA[release.version]}
+        {RELEASE_MEDIA.get(release.version)}
         {release.sections.map((section) => (
           <Fragment key={section.title}>
             <h3>

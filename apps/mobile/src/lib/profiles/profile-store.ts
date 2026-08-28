@@ -57,12 +57,6 @@ function defaultGenerateId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function withoutUndefined<T extends object>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined),
-  ) as T;
-}
-
 function serializeProfile(profile: ServerProfile): string {
   const json = JSON.stringify(profile);
   const bytes = utf8ByteLength(json);
@@ -209,7 +203,20 @@ export function createProfileStore(deps: CreateProfileStoreDeps): ProfileStore {
         ) {
           throw new Error("Direct profiles have no connect handle/credential");
         }
-        const merged = { ...existing, ...withoutUndefined(patch) };
+        const merged =
+          existing.mode === "direct"
+            ? {
+                ...existing,
+                label: patch.label ?? existing.label,
+                serverUrl: patch.serverUrl ?? existing.serverUrl,
+              }
+            : {
+                ...existing,
+                label: patch.label ?? existing.label,
+                serverUrl: patch.serverUrl ?? existing.serverUrl,
+                handle: patch.handle ?? existing.handle,
+                credential: patch.credential ?? existing.credential,
+              };
         const profile = serverProfileSchema.parse(merged);
         await storage.setItem(profileStorageKey(id), serializeProfile(profile));
         setState({
