@@ -11,6 +11,7 @@ export type {
 
 export type { PullRequestActionOptions } from "./workspace.js";
 export type { GitHostCliOptions } from "./git-host.js";
+export { withGitRefMutationLock } from "./git-ref-mutation-lock.js";
 
 export {
   WorkspaceError,

@@ -16,6 +16,7 @@ import {
   listRemoteBranches,
   readDefaultBranchRefs,
   type GitProcessOptions,
+  withGitRefMutationLock,
 } from "@bb/host-workspace";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { CommandDispatchError } from "../command-dispatch-support.js";
@@ -131,10 +132,18 @@ async function refreshRemoteBranches(
     return;
   }
 
-  const inFlight = fetchRemoteBranches(cwd, {
-    timeoutMs: REMOTE_BRANCH_FETCH_TIMEOUT_MS,
-    ...options,
-  })
+  const refreshDeadline = Date.now() + REMOTE_BRANCH_FETCH_TIMEOUT_MS;
+  const inFlight = withGitRefMutationLock(
+    commonDir,
+    () => {
+      const remainingTimeoutMs = Math.max(1, refreshDeadline - Date.now());
+      return fetchRemoteBranches(cwd, {
+        ...options,
+        timeoutMs: remainingTimeoutMs,
+      });
+    },
+    { timeoutMs: REMOTE_BRANCH_FETCH_TIMEOUT_MS },
+  )
     .catch(() => undefined)
     .then(() => undefined)
     .finally(() => {

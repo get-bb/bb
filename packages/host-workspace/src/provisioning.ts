@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
@@ -17,6 +18,7 @@ import {
 import { Workspace } from "./workspace.js";
 import { tryWithCheckoutMutationLock } from "./checkout-mutation-lock.js";
 import {
+  getGitCommonDir,
   pathExists,
   readDefaultBranch,
   readGitRepositoryState,
@@ -24,6 +26,8 @@ import {
   WorkspaceError,
   type GitCommandResult,
 } from "./git.js";
+import { withGitRefMutationLock } from "./git-ref-mutation-lock.js";
+import { ProcessLocalQueuedLockTimeoutError } from "./process-local-queued-lock.js";
 import {
   runGitWithWorktreeMetadataLock,
   withWorktreeMetadataLock,
@@ -98,6 +102,51 @@ interface RunLifecycleScriptArgs extends RunSetupScriptArgs {
 }
 
 const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
+const REMOTE_BASE_FETCH_TIMEOUT_MS = 60_000;
+const REMOTE_REF_LOCK_RETRY_INTERVAL_MS = 200;
+const REMOTE_REF_LOCK_RETRY_TIMEOUT_MS = 2_000;
+
+type ConcurrentRemoteRefUpdateErrorKind = "stale-value" | "lock-file-exists";
+
+function classifyConcurrentRemoteRefUpdateError(
+  error: unknown,
+  remoteRef: string,
+): ConcurrentRemoteRefUpdateErrorKind | null {
+  if (
+    !(error instanceof WorkspaceError) ||
+    error.code !== "git_command_failed"
+  ) {
+    return null;
+  }
+
+  if (
+    error.message.endsWith(
+      `error: fetching ref ${remoteRef} failed: reference already exists`,
+    )
+  ) {
+    return "lock-file-exists";
+  }
+
+  const lockFailurePrefix = `cannot lock ref '${remoteRef}': `;
+  const lockFailureDetail = error.message.split(lockFailurePrefix)[1];
+  if (lockFailureDetail === undefined) {
+    return null;
+  }
+
+  if (
+    /^is at [0-9a-f]+ but expected [0-9a-f]+(?:\n|$)/u.test(lockFailureDetail)
+  ) {
+    return "stale-value";
+  }
+  if (
+    /^Unable to create '.+\.lock': File exists\.(?:\n|$)/u.test(
+      lockFailureDetail,
+    )
+  ) {
+    return "lock-file-exists";
+  }
+  return null;
+}
 
 function emitProgress(
   onProgress: ProgressCallback | undefined,
@@ -254,6 +303,24 @@ function isProvisionAbortError(error: unknown): boolean {
   );
 }
 
+async function waitForProvisionRetry(
+  delayMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  try {
+    await delay(
+      delayMs,
+      undefined,
+      signal !== undefined ? { signal } : undefined,
+    );
+  } catch (error) {
+    if (signal?.aborted) {
+      throw createProvisionCancelledError(error);
+    }
+    throw error;
+  }
+}
+
 async function resolveRemoteBaseBranch(
   sourcePath: string,
   baseBranch: string,
@@ -292,9 +359,10 @@ async function resolveRemoteBaseBranch(
   };
 }
 
-async function fetchRemoteBaseBranch(args: {
+export async function fetchRemoteBaseBranch(args: {
   sourcePath: string;
   baseBranch: string;
+  fetchTimeoutMs: number;
   onProgress: ProgressCallback | undefined;
   shellPath: string | undefined;
   signal: AbortSignal | undefined;
@@ -318,13 +386,77 @@ async function fetchRemoteBaseBranch(args: {
     startedAt,
   });
 
-  const refspec = `+refs/heads/${remoteBase.branch}:refs/remotes/${remoteBase.remote}/${remoteBase.branch}`;
+  const remoteRef = `refs/remotes/${remoteBase.remote}/${remoteBase.branch}`;
+  const refspec = `+refs/heads/${remoteBase.branch}:${remoteRef}`;
+  const gitProcessOptions = {
+    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+    ...(args.signal !== undefined ? { signal: args.signal } : {}),
+  };
   try {
-    await runGit(["fetch", "--quiet", remoteBase.remote, refspec], {
-      cwd: args.sourcePath,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-      signal: args.signal,
-    });
+    throwIfProvisionAborted(args.signal);
+    const commonDir = await getGitCommonDir(args.sourcePath, gitProcessOptions);
+    const fetchBaseBranch = async (): Promise<void> => {
+      try {
+        await withGitRefMutationLock(
+          commonDir,
+          () =>
+            runGit(["fetch", "--quiet", remoteBase.remote, refspec], {
+              cwd: args.sourcePath,
+              ...gitProcessOptions,
+              env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+              timeoutMs: args.fetchTimeoutMs,
+            }),
+          args.signal !== undefined ? { signal: args.signal } : {},
+        );
+      } catch (error) {
+        if (args.signal?.aborted && !isProvisionAbortError(error)) {
+          throw createProvisionCancelledError(error);
+        }
+        if (error instanceof ProcessLocalQueuedLockTimeoutError) {
+          throw new WorkspaceError(
+            "git_command_timeout",
+            `Timed out waiting to fetch ${args.baseBranch} because another Git ref update is still running`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    };
+    let staleValueRetried = false;
+    let lockFileRetryDeadline: number | undefined;
+    while (true) {
+      try {
+        await fetchBaseBranch();
+        break;
+      } catch (error) {
+        const errorKind = classifyConcurrentRemoteRefUpdateError(
+          error,
+          remoteRef,
+        );
+        if (errorKind === null) {
+          throw error;
+        }
+        if (errorKind === "stale-value") {
+          if (staleValueRetried) {
+            throw error;
+          }
+          staleValueRetried = true;
+          throwIfProvisionAborted(args.signal);
+          continue;
+        }
+
+        lockFileRetryDeadline ??= Date.now() + REMOTE_REF_LOCK_RETRY_TIMEOUT_MS;
+        const remainingRetryMs = lockFileRetryDeadline - Date.now();
+        if (remainingRetryMs <= 0) {
+          throw error;
+        }
+        throwIfProvisionAborted(args.signal);
+        await waitForProvisionRetry(
+          Math.min(REMOTE_REF_LOCK_RETRY_INTERVAL_MS, remainingRetryMs),
+          args.signal,
+        );
+      }
+    }
     emitStep({
       onProgress: args.onProgress,
       key: "git-fetch-completed",
@@ -403,6 +535,7 @@ export async function createWorktree(
   await fetchRemoteBaseBranch({
     sourcePath: args.sourcePath,
     baseBranch,
+    fetchTimeoutMs: REMOTE_BASE_FETCH_TIMEOUT_MS,
     onProgress: args.onProgress,
     shellPath: args.shellPath,
     signal: args.signal,

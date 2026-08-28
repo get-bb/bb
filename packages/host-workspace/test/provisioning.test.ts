@@ -5,17 +5,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+  type ProvisioningTranscriptEntry,
 } from "@bb/domain";
-import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  shellSingleQuote,
+  waitForSetupMarkerCount,
+} from "@bb/test-helpers";
 import { Workspace } from "../src/workspace.js";
 import {
   buildSetupScriptCommand,
   createWorktree,
+  fetchRemoteBaseBranch,
   removeWorktree,
   runSetupScript,
   runTeardownScript,
 } from "../src/provisioning.js";
-import { runGit } from "../src/git.js";
+import { getGitCommonDir, runGit } from "../src/git.js";
+import { withGitRefMutationLock } from "../src/git-ref-mutation-lock.js";
 
 const tempDirs: string[] = [];
 
@@ -244,6 +251,386 @@ describe("workspace provisioning", () => {
       cwd: targetPath,
     });
     expect(worktreeHead.stdout.trim()).toBe(remoteHead);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "recovers from known concurrent remote-ref update failures",
+    async () => {
+      const failures = [
+        "error: cannot lock ref 'refs/remotes/origin/main': is at 2222222222222222222222222222222222222222 but expected 1111111111111111111111111111111111111111",
+        "error: cannot lock ref 'refs/remotes/origin/main': Unable to create '/repo/.git/refs/remotes/origin/main.lock': File exists.",
+        "error: fetching ref refs/remotes/origin/main failed: reference already exists",
+      ];
+
+      for (const failure of failures) {
+        const { remotePath, repoPath } = await initRemoteBackedRepo();
+        const parentDir = await makeTempDir("bb-worktree-fetch-race-parent-");
+        const binPath = await makeTempDir("bb-worktree-fetch-race-bin-");
+        const failedFetchMarker = path.join(binPath, "failed-fetch");
+        const fetchLocaleMarker = path.join(binPath, "fetch-locale");
+        const gitWrapperPath = path.join(binPath, "git");
+        const targetPath = path.join(parentDir, "feature");
+        const remoteHead = await pushRemoteMainCommit(remotePath);
+        const systemPath = process.env.PATH ?? "";
+        await fs.writeFile(
+          gitWrapperPath,
+          [
+            "#!/bin/sh",
+            "set -eu",
+            `system_path=${shellSingleQuote(systemPath)}`,
+            `failed_fetch_marker=${shellSingleQuote(failedFetchMarker)}`,
+            `fetch_locale_marker=${shellSingleQuote(fetchLocaleMarker)}`,
+            'if [ "$#" -eq 4 ] && [ "$1" = "fetch" ] && [ "$2" = "--quiet" ] && [ "$3" = "origin" ] && [ "$4" = "+refs/heads/main:refs/remotes/origin/main" ] && [ ! -f "$failed_fetch_marker" ]; then',
+            '  touch "$failed_fetch_marker"',
+            '  printf "%s" "${LC_ALL:-}" > "$fetch_locale_marker"',
+            '  if [ "${LC_ALL:-}" = "C" ]; then',
+            `    echo ${shellSingleQuote(failure)} >&2`,
+            "  else",
+            "    echo \"Fehler: Referenz 'refs/remotes/origin/main' kann nicht gesperrt werden\" >&2",
+            "  fi",
+            "  exit 1",
+            "fi",
+            'PATH="$system_path" exec git "$@"',
+          ].join("\n") + "\n",
+          "utf8",
+        );
+        await fs.chmod(gitWrapperPath, 0o755);
+
+        await expect(
+          createWorktree({
+            sourcePath: repoPath,
+            targetPath,
+            branchName: "feature",
+            baseBranch: "origin/main",
+            timeoutMs: 900000,
+            shellPath: `${binPath}${path.delimiter}${systemPath}`,
+          }),
+        ).resolves.toEqual({ path: targetPath });
+        await expect(fs.stat(failedFetchMarker)).resolves.toBeDefined();
+        await expect(fs.readFile(fetchLocaleMarker, "utf8")).resolves.toBe("C");
+        await expect(
+          fs.readFile(path.join(targetPath, "remote.txt"), "utf8"),
+        ).resolves.toBe("remote\n");
+        const worktreeHead = await runGit(["rev-parse", "HEAD"], {
+          cwd: targetPath,
+        });
+        expect(worktreeHead.stdout.trim()).toBe(remoteHead);
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "waits for a live remote-ref lock before retrying the fetch",
+    async () => {
+      const { remotePath, repoPath } = await initRemoteBackedRepo();
+      const parentDir = await makeTempDir("bb-worktree-live-ref-lock-parent-");
+      const binPath = await makeTempDir("bb-worktree-live-ref-lock-bin-");
+      const firstFetchFailedMarker = path.join(
+        binPath,
+        "started-first-fetch-failed",
+      );
+      const gitWrapperPath = path.join(binPath, "git");
+      const targetPath = path.join(parentDir, "feature");
+      const remoteHead = await pushRemoteMainCommit(remotePath);
+      const commonDir = await getGitCommonDir(repoPath);
+      const remoteRefLockPath = path.join(
+        commonDir,
+        "refs",
+        "remotes",
+        "origin",
+        "main.lock",
+      );
+      await fs.mkdir(path.dirname(remoteRefLockPath), { recursive: true });
+      await fs.writeFile(remoteRefLockPath, "held\n", "utf8");
+      const systemPath = process.env.PATH ?? "";
+      await fs.writeFile(
+        gitWrapperPath,
+        [
+          "#!/bin/sh",
+          "set -eu",
+          `system_path=${shellSingleQuote(systemPath)}`,
+          `first_fetch_failed=${shellSingleQuote(firstFetchFailedMarker)}`,
+          'if [ "$#" -eq 4 ] && [ "$1" = "fetch" ] && [ "$2" = "--quiet" ] && [ "$3" = "origin" ] && [ "$4" = "+refs/heads/main:refs/remotes/origin/main" ]; then',
+          "  set +e",
+          '  PATH="$system_path" git "$@"',
+          "  status=$?",
+          "  set -e",
+          '  if [ "$status" -ne 0 ]; then touch "$first_fetch_failed"; fi',
+          '  exit "$status"',
+          "fi",
+          'PATH="$system_path" exec git "$@"',
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      await fs.chmod(gitWrapperPath, 0o755);
+
+      const provisioning = createWorktree({
+        sourcePath: repoPath,
+        targetPath,
+        branchName: "feature",
+        baseBranch: "origin/main",
+        timeoutMs: 900000,
+        shellPath: `${binPath}${path.delimiter}${systemPath}`,
+      });
+      const settledProvisioning = provisioning.then(
+        (result) => result,
+        (error: unknown) => error,
+      );
+      try {
+        await waitForSetupMarkerCount({
+          expectedCount: 1,
+          markerDir: binPath,
+          timeoutMs: 2_000,
+        });
+        await fs.rm(remoteRefLockPath);
+        await expect(settledProvisioning).resolves.toEqual({
+          path: targetPath,
+        });
+        const worktreeHead = await runGit(["rev-parse", "HEAD"], {
+          cwd: targetPath,
+        });
+        expect(worktreeHead.stdout.trim()).toBe(remoteHead);
+      } finally {
+        await fs.rm(remoteRefLockPath, { force: true });
+        await Promise.allSettled([provisioning]);
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "releases the ref lock after a targeted fetch times out",
+    async () => {
+      const { repoPath } = await initRemoteBackedRepo();
+      const uploadPackStartedPath = path.join(repoPath, "started-upload-pack");
+      const releaseUploadPackPath = path.join(repoPath, "release-upload-pack");
+      const uploadPackPath = path.join(repoPath, "stalled-upload-pack.sh");
+      await fs.writeFile(
+        uploadPackPath,
+        `#!/bin/sh\ntouch ${JSON.stringify(uploadPackStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseUploadPackPath)} ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`,
+        { encoding: "utf8", mode: 0o755 },
+      );
+      await runGit(["config", "remote.origin.uploadpack", uploadPackPath], {
+        cwd: repoPath,
+      });
+      const commonDir = await getGitCommonDir(repoPath);
+      const stalledFetch = fetchRemoteBaseBranch({
+        sourcePath: repoPath,
+        baseBranch: "origin/main",
+        fetchTimeoutMs: 250,
+        onProgress: undefined,
+        shellPath: undefined,
+        signal: undefined,
+      });
+      const stalledFetchError = stalledFetch.then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      try {
+        await waitForSetupMarkerCount({
+          expectedCount: 1,
+          markerDir: repoPath,
+          timeoutMs: 2_000,
+        });
+        const nextMutation = withGitRefMutationLock(
+          commonDir,
+          async () => undefined,
+          { timeoutMs: 2_000 },
+        );
+        await expect(stalledFetchError).resolves.toMatchObject({
+          code: "git_command_timeout",
+        });
+        await expect(nextMutation).resolves.toBeUndefined();
+      } finally {
+        await fs.writeFile(releaseUploadPackPath, "release\n", "utf8");
+        await Promise.allSettled([stalledFetch]);
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "records a failed fetch when resolving the common Git directory fails",
+    async () => {
+      const { repoPath } = await initRemoteBackedRepo();
+      const parentDir = await makeTempDir("bb-worktree-common-dir-parent-");
+      const binPath = await makeTempDir("bb-worktree-common-dir-bin-");
+      const gitWrapperPath = path.join(binPath, "git");
+      const targetPath = path.join(parentDir, "feature");
+      const systemPath = process.env.PATH ?? "";
+      await fs.writeFile(
+        gitWrapperPath,
+        [
+          "#!/bin/sh",
+          "set -eu",
+          `system_path=${shellSingleQuote(systemPath)}`,
+          'if [ "$#" -eq 2 ] && [ "$1" = "rev-parse" ] && [ "$2" = "--git-common-dir" ]; then',
+          '  echo "common dir unavailable" >&2',
+          "  exit 1",
+          "fi",
+          'PATH="$system_path" exec git "$@"',
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      await fs.chmod(gitWrapperPath, 0o755);
+      const transcript: ProvisioningTranscriptEntry[] = [];
+
+      await expect(
+        createWorktree({
+          sourcePath: repoPath,
+          targetPath,
+          branchName: "feature",
+          baseBranch: "origin/main",
+          timeoutMs: 900000,
+          shellPath: `${binPath}${path.delimiter}${systemPath}`,
+          onProgress: (entry) => transcript.push(entry),
+        }),
+      ).rejects.toMatchObject({ code: "git_command_failed" });
+      expect(
+        transcript.some(
+          (entry) =>
+            entry.type === "step" &&
+            entry.key === "git-fetch-failed" &&
+            entry.status === "failed",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "cancels while resolving the common Git directory",
+    async () => {
+      const { repoPath } = await initRemoteBackedRepo();
+      const parentDir = await makeTempDir(
+        "bb-worktree-common-dir-abort-parent-",
+      );
+      const binPath = await makeTempDir("bb-worktree-common-dir-abort-bin-");
+      const commonDirStartedPath = path.join(binPath, "started-common-dir");
+      const releaseCommonDirPath = path.join(binPath, "release-common-dir");
+      const gitWrapperPath = path.join(binPath, "git");
+      const targetPath = path.join(parentDir, "feature");
+      const systemPath = process.env.PATH ?? "";
+      await fs.writeFile(
+        gitWrapperPath,
+        [
+          "#!/bin/sh",
+          "set -eu",
+          `system_path=${shellSingleQuote(systemPath)}`,
+          `common_dir_started=${shellSingleQuote(commonDirStartedPath)}`,
+          `release_common_dir=${shellSingleQuote(releaseCommonDirPath)}`,
+          'if [ "$#" -eq 2 ] && [ "$1" = "rev-parse" ] && [ "$2" = "--git-common-dir" ]; then',
+          '  touch "$common_dir_started"',
+          '  while [ ! -f "$release_common_dir" ]; do sleep 0.01; done',
+          "fi",
+          'PATH="$system_path" exec git "$@"',
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      await fs.chmod(gitWrapperPath, 0o755);
+      const abortController = new AbortController();
+      const transcript: ProvisioningTranscriptEntry[] = [];
+      const provisioning = createWorktree({
+        sourcePath: repoPath,
+        targetPath,
+        branchName: "feature",
+        baseBranch: "origin/main",
+        timeoutMs: 900000,
+        shellPath: `${binPath}${path.delimiter}${systemPath}`,
+        signal: abortController.signal,
+        onProgress: (entry) => transcript.push(entry),
+      });
+      let cancellationTimeout: ReturnType<typeof setTimeout> | undefined;
+
+      try {
+        await waitForSetupMarkerCount({
+          expectedCount: 1,
+          markerDir: binPath,
+          timeoutMs: 2_000,
+        });
+        abortController.abort(new Error("test abort"));
+        await expect(
+          Promise.race([
+            provisioning,
+            new Promise<never>((_, reject) => {
+              cancellationTimeout = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      "Provisioning did not cancel while resolving the common Git directory",
+                    ),
+                  ),
+                2_000,
+              );
+            }),
+          ]),
+        ).rejects.toMatchObject({ code: "provision_cancelled" });
+        expect(
+          transcript.some(
+            (entry) =>
+              entry.type === "step" &&
+              entry.key === "git-fetch-failed" &&
+              entry.status === "failed",
+          ),
+        ).toBe(true);
+      } finally {
+        if (cancellationTimeout !== undefined) {
+          clearTimeout(cancellationTimeout);
+        }
+        await fs.writeFile(releaseCommonDirPath, "release\n", "utf8");
+        await Promise.allSettled([provisioning]);
+      }
+    },
+  );
+
+  it("keeps cancellation typed while waiting for a coordinated remote fetch", async () => {
+    const { repoPath } = await initRemoteBackedRepo();
+    const parentDir = await makeTempDir("bb-worktree-fetch-abort-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    const abortController = new AbortController();
+    const commonDir = await getGitCommonDir(repoPath);
+    const lockEntered = createDeferredPromise<void>();
+    const releaseLock = createDeferredPromise<void>();
+    const lockHolder = withGitRefMutationLock(commonDir, async () => {
+      lockEntered.resolve();
+      await releaseLock.promise;
+    });
+    await lockEntered.promise;
+    const fetchStarted = createDeferredPromise<void>();
+    const transcript: ProvisioningTranscriptEntry[] = [];
+
+    const provisioning = createWorktree({
+      sourcePath: repoPath,
+      targetPath,
+      branchName: "feature",
+      baseBranch: "origin/main",
+      timeoutMs: 900000,
+      signal: abortController.signal,
+      onProgress: (entry) => {
+        transcript.push(entry);
+        if (entry.key === "git-fetch-started") {
+          fetchStarted.resolve();
+        }
+      },
+    });
+
+    try {
+      await fetchStarted.promise;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      abortController.abort(new Error("test abort"));
+      await expect(provisioning).rejects.toMatchObject({
+        code: "provision_cancelled",
+      });
+      expect(
+        transcript.some(
+          (entry) =>
+            entry.type === "step" &&
+            entry.key === "git-fetch-failed" &&
+            entry.status === "failed",
+        ),
+      ).toBe(true);
+    } finally {
+      releaseLock.resolve();
+      await lockHolder;
+    }
   });
 
   it("rolls back failed worktree setup scripts", async () => {
