@@ -970,7 +970,7 @@ export function ModelReasoningPicker({
                 "px-1 pb-1 pt-0",
                 isCompactViewport
                   ? "overflow-y-auto"
-                  : "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+                  : "min-h-0 max-h-64 flex-1 overflow-y-auto overscroll-contain",
               )}
             >
               {isShowingModelError ? null : (
