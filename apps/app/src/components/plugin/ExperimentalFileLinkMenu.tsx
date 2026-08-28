@@ -47,9 +47,22 @@ export function ExperimentalFileLinkMenu({
 
   return (
     <>
-      <ContextMenuItem onSelect={() => navigation.openFilePreview(intent)}>
+      <ContextMenuItem
+        onSelect={() =>
+          navigation.openFilePreview({ ...intent, viewer: "builtin" })
+        }
+      >
         Open preview
       </ContextMenuItem>
+      {extension === "pdf" ? (
+        <ContextMenuItem
+          onSelect={() =>
+            navigation.openFilePreview({ ...intent, viewer: "download" })
+          }
+        >
+          Download PDF
+        </ContextMenuItem>
+      ) : null}
       {matchingOpeners.length > 0 ? (
         <ContextMenuSub>
           <ContextMenuSubTrigger>Open with</ContextMenuSubTrigger>
