@@ -1,8 +1,10 @@
+import { FILE_LIST_QUERY_MAX_LENGTH } from "@bb/domain";
 import type { PromptMentionResource } from "@bb/domain";
 import type {
-  PluginComposerBuiltInMention,
+  ExperimentalPluginComposerBuiltInMention,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
+import { isProjectlessProjectId } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
 
 interface PathQuery {
@@ -18,6 +20,13 @@ interface ResolvedPathEntry {
   name: string;
 }
 
+const PATH_MENTION_LISTING_LIMIT = 100;
+
+interface ResolvedPathList {
+  paths: ResolvedPathEntry[];
+  truncated: boolean;
+}
+
 type ProjectPathQuery = PathQuery & { projectId: string } & (
     | { hostId: string }
     | { hostId?: never }
@@ -27,11 +36,11 @@ interface ComposerMentionSdk {
   environments: {
     paths(
       args: PathQuery & { environmentId: string },
-    ): Promise<{ paths: ResolvedPathEntry[] }>;
+    ): Promise<ResolvedPathList>;
   };
   projects: {
     get(args: { projectId: string }): Promise<{ id: string; name: string }>;
-    paths(args: ProjectPathQuery): Promise<{ paths: ResolvedPathEntry[] }>;
+    paths(args: ProjectPathQuery): Promise<ResolvedPathList>;
   };
   threadSections: {
     get(args: { sectionId: string }): Promise<{ id: string; name: string }>;
@@ -49,7 +58,7 @@ interface ComposerMentionSdk {
     >;
     storagePaths(
       args: PathQuery & { threadId: string },
-    ): Promise<{ paths: ResolvedPathEntry[] }>;
+    ): Promise<ResolvedPathList>;
   };
 }
 
@@ -100,12 +109,17 @@ function threadIdForComposerScope(scope: PluginComposerScope): string | null {
 }
 
 async function resolvePathMention(
-  mention: Extract<PluginComposerBuiltInMention, { kind: "path" }>,
+  mention: Extract<ExperimentalPluginComposerBuiltInMention, { kind: "path" }>,
   scope: PluginComposerScope,
   client: ComposerMentionSdk,
   newThreadContext: NewThreadMentionContext | undefined,
 ): Promise<Extract<PromptMentionResource, { kind: "path" }>> {
   const requestedPath = normalizeMentionPath(mention.path);
+  if (requestedPath.length > FILE_LIST_QUERY_MAX_LENGTH) {
+    throw new Error(
+      `Mention path must be at most ${FILE_LIST_QUERY_MAX_LENGTH} characters`,
+    );
+  }
 
   const threadId =
     newThreadContext === undefined
@@ -113,68 +127,78 @@ async function resolvePathMention(
       : newThreadContext.threadStorageThreadId;
   const query = {
     query: requestedPath,
-    limit: "100",
+    limit: String(PATH_MENTION_LISTING_LIMIT),
     includeFiles: "true" as const,
     includeDirectories: "true" as const,
   };
+  const requireResolvedProjectId = (projectId: string): string => {
+    if (isProjectlessProjectId(projectId)) {
+      throw new Error("Workspace mentions require a resolved project");
+    }
+    return projectId;
+  };
 
-  let paths;
+  let listing: ResolvedPathList;
   if (mention.source === "thread-storage") {
     if (threadId === null) {
       throw new Error(
         "Thread-storage mentions require an existing thread composer",
       );
     }
-    paths = (await client.threads.storagePaths({ threadId, ...query })).paths;
+    listing = await client.threads.storagePaths({ threadId, ...query });
   } else if (newThreadContext !== undefined) {
-    paths =
+    listing =
       newThreadContext.environmentId !== null
-        ? (
-            await client.environments.paths({
-              environmentId: newThreadContext.environmentId,
-              ...query,
-            })
-          ).paths
-        : (
-            await client.projects.paths(
-              newThreadContext.hostId === null
-                ? { projectId: newThreadContext.projectId, ...query }
-                : {
-                    projectId: newThreadContext.projectId,
-                    hostId: newThreadContext.hostId,
-                    ...query,
-                  },
-            )
-          ).paths;
+        ? await client.environments.paths({
+            environmentId: newThreadContext.environmentId,
+            ...query,
+          })
+        : await client.projects.paths(
+            newThreadContext.hostId === null
+              ? {
+                  projectId: requireResolvedProjectId(
+                    newThreadContext.projectId,
+                  ),
+                  ...query,
+                }
+              : {
+                  projectId: requireResolvedProjectId(
+                    newThreadContext.projectId,
+                  ),
+                  hostId: newThreadContext.hostId,
+                  ...query,
+                },
+          );
   } else if (threadId !== null) {
     const thread = await client.threads.get({ threadId });
-    paths =
+    listing =
       thread.environmentId === null
-        ? (
-            await client.projects.paths({
-              projectId: thread.projectId,
-              ...query,
-            })
-          ).paths
-        : (
-            await client.environments.paths({
-              environmentId: thread.environmentId,
-              ...query,
-            })
-          ).paths;
+        ? await client.projects.paths({
+            projectId: requireResolvedProjectId(thread.projectId),
+            ...query,
+          })
+        : await client.environments.paths({
+            environmentId: thread.environmentId,
+            ...query,
+          });
   } else {
     if (scope.kind !== "new-thread" || scope.projectId === null) {
       throw new Error("Workspace mentions require a resolved project");
     }
-    paths = (
-      await client.projects.paths({ projectId: scope.projectId, ...query })
-    ).paths;
+    listing = await client.projects.paths({
+      projectId: requireResolvedProjectId(scope.projectId),
+      ...query,
+    });
   }
 
-  const entry = paths.find((candidate) => candidate.path === requestedPath);
+  const entry = listing.paths.find(
+    (candidate) => candidate.path === requestedPath,
+  );
   if (entry === undefined) {
     throw new Error(
-      `${mention.source} path "${requestedPath}" could not be resolved`,
+      listing.truncated
+        ? `${mention.source} path "${requestedPath}" could not be verified because the path listing was truncated`
+        : `${mention.source} path "${requestedPath}" could not be resolved. It does not exist or is not listable (hidden and ignored paths cannot be mentioned)`,
     );
   }
   return {
@@ -186,9 +210,8 @@ async function resolvePathMention(
   };
 }
 
-/** Resolve one BB-owned composer mention to its canonical stored resource. */
 export async function resolveBuiltInComposerMention(
-  mention: PluginComposerBuiltInMention,
+  mention: ExperimentalPluginComposerBuiltInMention,
   scope: PluginComposerScope,
   client: ComposerMentionSdk = sdk,
   newThreadContext?: NewThreadMentionContext,
@@ -216,5 +239,11 @@ export async function resolveBuiltInComposerMention(
     }
     case "path":
       return resolvePathMention(mention, scope, client, newThreadContext);
+    default:
+      throw new Error(
+        `Unsupported composer mention kind "${String(
+          (mention as { kind?: unknown }).kind,
+        )}"`,
+      );
   }
 }

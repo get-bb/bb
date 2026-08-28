@@ -321,18 +321,6 @@ describe("useComposer", () => {
           >
             {label}-mention
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              void composer.insertMention({
-                provider: "bad:colon",
-                id: "x",
-                label: "x",
-              })
-            }
-          >
-            {label}-bad-mention
-          </button>
         </div>
       );
     }
@@ -1284,20 +1272,24 @@ describe("useComposer", () => {
     ]);
   });
 
-  it("rejects provider ids containing ':' without touching the draft", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    registerComposerProbe("b");
+  it("rejects provider ids containing ':' without touching the draft", async () => {
+    let composer: PluginComposerApi | null = null;
+    registerComposerProbe("b", (api) => {
+      composer = api;
+    });
     render(
       <MemoryRouter initialEntries={["/"]}>
         <ComposerCustomizationMount />
         <NewThreadDraftViewer />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByText("b-bad-mention"));
+    await act(async () => {
+      if (composer === null) throw new Error("Composer did not render");
+      await expect(
+        composer.insertMention({ provider: "bad:colon", id: "x", label: "x" }),
+      ).rejects.toThrow("invalid provider id");
+    });
     expect(screen.getByTestId("draft-text").textContent).toBe("");
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("invalid provider id"),
-    );
   });
 });
 

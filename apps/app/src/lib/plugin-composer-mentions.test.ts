@@ -1,3 +1,4 @@
+import { FILE_LIST_QUERY_MAX_LENGTH, PERSONAL_PROJECT_ID } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { resolveBuiltInComposerMention } from "./plugin-composer-mentions";
 
@@ -8,14 +9,14 @@ type ComposerMentionClient = NonNullable<
 function createClient(): ComposerMentionClient {
   return {
     environments: {
-      paths: vi.fn(async () => ({ paths: [] })),
+      paths: vi.fn(async () => ({ paths: [], truncated: false })),
     },
     projects: {
       get: vi.fn(async ({ projectId }: { projectId: string }) => ({
         id: projectId,
         name: "Canonical project",
       })),
-      paths: vi.fn(async () => ({ paths: [] })),
+      paths: vi.fn(async () => ({ paths: [], truncated: false })),
     },
     threadSections: {
       get: vi.fn(async ({ sectionId }: { sectionId: string }) => ({
@@ -35,7 +36,7 @@ function createClient(): ComposerMentionClient {
           label: "Canonical thread",
         },
       ]),
-      storagePaths: vi.fn(async () => ({ paths: [] })),
+      storagePaths: vi.fn(async () => ({ paths: [], truncated: false })),
     },
   };
 }
@@ -90,6 +91,7 @@ describe("resolveBuiltInComposerMention", () => {
         paths: [
           { kind: "file" as const, path: "src/index.ts", name: "index.ts" },
         ],
+        truncated: false,
       }),
     );
     client.environments.paths = environmentPaths;
@@ -127,6 +129,7 @@ describe("resolveBuiltInComposerMention", () => {
         paths: [
           { kind: "file" as const, path: "worktree.txt", name: "worktree.txt" },
         ],
+        truncated: false,
       }),
     );
     client.environments.paths = environmentPaths;
@@ -163,6 +166,7 @@ describe("resolveBuiltInComposerMention", () => {
         paths: [
           { kind: "directory" as const, path: "reports", name: "reports" },
         ],
+        truncated: false,
       }),
     );
     client.threads.storagePaths = storagePaths;
@@ -216,5 +220,75 @@ describe("resolveBuiltInComposerMention", () => {
         client,
       ),
     ).rejects.toThrow("could not be resolved");
+  });
+
+  it("rejects workspace paths without a resolvable project", async () => {
+    const client = createClient();
+
+    await expect(
+      resolveBuiltInComposerMention(
+        { kind: "path", source: "workspace", path: "file.txt" },
+        { kind: "new-thread", projectId: PERSONAL_PROJECT_ID },
+        client,
+        {
+          projectId: PERSONAL_PROJECT_ID,
+          environmentId: null,
+          hostId: null,
+          threadStorageThreadId: null,
+        },
+      ),
+    ).rejects.toThrow("Workspace mentions require a resolved project");
+    await expect(
+      resolveBuiltInComposerMention(
+        { kind: "path", source: "workspace", path: "file.txt" },
+        { kind: "new-thread", projectId: PERSONAL_PROJECT_ID },
+        client,
+      ),
+    ).rejects.toThrow("Workspace mentions require a resolved project");
+    expect(client.projects.paths).not.toHaveBeenCalled();
+  });
+
+  it("reports truncation instead of claiming the path does not exist", async () => {
+    const client = createClient();
+    client.projects.paths = vi.fn(async () => ({
+      paths: [],
+      truncated: true,
+    }));
+
+    await expect(
+      resolveBuiltInComposerMention(
+        { kind: "path", source: "workspace", path: "src/index.ts" },
+        { kind: "new-thread", projectId: "proj_1" },
+        client,
+      ),
+    ).rejects.toThrow(
+      "could not be verified because the path listing was truncated",
+    );
+  });
+
+  it("rejects paths longer than the listing query limit", async () => {
+    const client = createClient();
+    const longPath = "a".repeat(FILE_LIST_QUERY_MAX_LENGTH + 1);
+
+    await expect(
+      resolveBuiltInComposerMention(
+        { kind: "path", source: "workspace", path: longPath },
+        { kind: "new-thread", projectId: "proj_1" },
+        client,
+      ),
+    ).rejects.toThrow("Mention path must be at most");
+    expect(client.projects.paths).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown mention kinds", async () => {
+    const client = createClient();
+
+    await expect(
+      resolveBuiltInComposerMention(
+        { kind: "bogus" } as never,
+        { kind: "new-thread", projectId: "proj_1" },
+        client,
+      ),
+    ).rejects.toThrow('Unsupported composer mention kind "bogus"');
   });
 });

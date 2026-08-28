@@ -784,17 +784,16 @@ export function useComposer(): PluginComposerApi {
   );
   const newThreadMentionContext = composerHost?.newThreadMentionContext;
 
-  const insertMention = useCallback(
+  const insertResolvedMention = useCallback(
     async (mention: PluginComposerMention) => {
       let resource: PromptTextMention["resource"];
       if ("provider" in mention) {
         const provider = mention.provider.trim();
         const label = mention.label.trim() || mention.id;
         if (provider.length === 0 || provider.includes(":")) {
-          console.warn(
-            `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
+          throw new Error(
+            `useComposer().insertMention: invalid provider id "${mention.provider}"`,
           );
-          return;
         }
         resource = {
           kind: "plugin",
@@ -811,6 +810,7 @@ export function useComposer(): PluginComposerApi {
           newThreadMentionContext,
         );
       }
+      if (!scopeOwnership.isActive()) return;
       const current = getCurrent();
       const separator =
         current.text.length === 0 || /\s$/u.test(current.text) ? "" : " ";
@@ -836,8 +836,23 @@ export function useComposer(): PluginComposerApi {
       newThreadMentionContext,
       pluginId,
       resolvedScope,
+      scopeOwnership,
       setDraft,
     ],
+  );
+
+  const insertMention = useCallback(
+    (mention: PluginComposerMention) => {
+      const insertion = insertResolvedMention(mention);
+      insertion.catch((error: unknown) => {
+        console.warn(
+          `[plugin:${pluginId}] useComposer().insertMention failed:`,
+          error,
+        );
+      });
+      return insertion;
+    },
+    [insertResolvedMention, pluginId],
   );
 
   const focus = focusActiveComposer;

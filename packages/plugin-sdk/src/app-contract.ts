@@ -1553,7 +1553,7 @@ export interface PluginComposerThreadRowStatus {
 }
 
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
-export interface PluginComposerProviderMention {
+export interface ExperimentalPluginComposerProviderMention {
   /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
   provider: string;
   /** Item id your provider's `resolve` will receive at send time. */
@@ -1563,7 +1563,7 @@ export interface PluginComposerProviderMention {
 }
 
 /** A BB-owned entity that `insertMention()` resolves before insertion. */
-export type PluginComposerBuiltInMention = { label?: never } & (
+export type ExperimentalPluginComposerBuiltInMention = { label?: never } & (
   | { kind: "thread"; threadId: string }
   | { kind: "project"; projectId: string }
   | { kind: "section"; sectionId: string }
@@ -1578,8 +1578,8 @@ export type PluginComposerBuiltInMention = { label?: never } & (
 
 /** A plugin-owned or BB-owned @-mention pill. */
 export type PluginComposerMention =
-  | PluginComposerProviderMention
-  | PluginComposerBuiltInMention;
+  | ExperimentalPluginComposerProviderMention
+  | ExperimentalPluginComposerBuiltInMention;
 
 /**
  * Programmatic access to the chat composer draft — the same shared draft the

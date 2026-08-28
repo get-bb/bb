@@ -23,7 +23,7 @@ import {
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
-  type PluginComposerBuiltInMention,
+  type ExperimentalPluginComposerBuiltInMention,
   type PluginComposerMention,
   type PluginComposerScope,
   type PluginComposerTextEffect,
@@ -1108,7 +1108,7 @@ export interface RenderSlotOptions<
     attachmentCount?: number;
     /** Resolve the pill label for each BB-owned `insertMention()` call. */
     resolveBuiltInMention?: (
-      mention: PluginComposerBuiltInMention,
+      mention: ExperimentalPluginComposerBuiltInMention,
     ) => string | Promise<string>;
   };
   /**
