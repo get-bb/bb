@@ -2340,7 +2340,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
   />;
   ```
 
-  ```ts
+  ```ts create-thread-handler
   // server.ts
   async createThread({ request, sectionId }) {
     const thread = await bb.sdk.threads.spawn({
