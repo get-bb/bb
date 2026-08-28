@@ -414,6 +414,39 @@ describe("mobile sidebar deferred realization", () => {
     expect(panel.classList).toContain("[overflow-clip-margin:6px]");
   });
 
+  it("takes the collapsed desktop panel out of the keyboard and accessibility tree", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider>
+          <Sidebar>
+            <button type="button">New thread</button>
+          </Sidebar>
+          <SidebarTrigger />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const panel = document.querySelector('[data-sidebar="panel"]');
+    if (!(panel instanceof HTMLElement)) {
+      throw new Error("Expected the desktop sidebar panel");
+    }
+    expect(panel.hasAttribute("inert")).toBe(false);
+    expect(panel.getAttribute("aria-hidden")).toBe("false");
+    expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(panel.hasAttribute("inert")).toBe(true);
+    expect(panel.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByRole("button", { name: "New thread" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(panel.hasAttribute("inert")).toBe(false);
+    expect(panel.getAttribute("aria-hidden")).toBe("false");
+    expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
+  });
+
   it("uses the shared duration spring and reverses from its current width", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>

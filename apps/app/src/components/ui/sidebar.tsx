@@ -816,11 +816,13 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
       );
     }
 
+    const isDesktopSidebarCollapsed = state === "collapsed";
+
     return (
       <div
         className="group peer text-sidebar-foreground"
         data-state={state}
-        data-collapsible={state === "collapsed" ? "offcanvas" : ""}
+        data-collapsible={isDesktopSidebarCollapsed ? "offcanvas" : ""}
         data-variant="sidebar"
         data-side="left"
       >
@@ -837,6 +839,8 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
         <div
           ref={composedDesktopPanelRef}
           data-sidebar="panel"
+          inert={isDesktopSidebarCollapsed}
+          aria-hidden={isDesktopSidebarCollapsed}
           className={cn(
             "fixed inset-y-0 left-0 z-10 flex h-(--bb-shell-height) select-none overflow-clip [overflow-clip-margin:6px] group-data-[collapsible=offcanvas]:pointer-events-none",
             "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",

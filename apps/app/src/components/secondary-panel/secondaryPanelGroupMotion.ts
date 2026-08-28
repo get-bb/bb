@@ -9,6 +9,9 @@ import { PANEL_SPRING_TRANSITION } from "@/lib/panel-motion";
 
 export const SECONDARY_PANEL_BOUNDARY_SAFE_WIDTH_PX = 80;
 
+const FULL_SIZE_PERCENT = 100;
+const FALLBACK_BOUNDARY_SAFE_SIZE_PERCENT = 10;
+
 export type SecondaryPanelGroupMotion = {
   setLayout: (
     group: ImperativePanelGroupHandle,
@@ -20,7 +23,7 @@ export type SecondaryPanelGroupMotion = {
 
 type PanelGroupElements = {
   boundaries: HTMLElement[];
-  group: HTMLElement;
+  groupWidth: number;
   panels: [HTMLElement, HTMLElement];
 };
 
@@ -39,7 +42,7 @@ function findGroupElements(
 
   return {
     panels: [mainPanel, secondaryPanel],
-    group: groupElement,
+    groupWidth: groupElement.getBoundingClientRect().width,
     boundaries: getResizeHandleElementsForGroup(groupId, groupElement).filter(
       (element) => element.hasAttribute("data-secondary-panel-boundary"),
     ),
@@ -52,19 +55,19 @@ function readFlexGrow(element: HTMLElement): number {
 }
 
 function renderPanelGroup(
-  { boundaries, group, panels }: PanelGroupElements,
+  { boundaries, groupWidth, panels }: PanelGroupElements,
   secondarySize: number,
 ): void {
-  const size = Math.min(100, Math.max(0, secondarySize));
-  panels[0].style.flexGrow = String(100 - size);
+  const size = Math.min(FULL_SIZE_PERCENT, Math.max(0, secondarySize));
+  panels[0].style.flexGrow = String(FULL_SIZE_PERCENT - size);
   panels[1].style.flexGrow = String(size);
 
-  const groupWidth = group.getBoundingClientRect().width;
   const safeSize =
     groupWidth > 0
       ? (SECONDARY_PANEL_BOUNDARY_SAFE_WIDTH_PX / groupWidth) * 100
-      : 10;
-  const opacity = size >= safeSize ? "1" : "0";
+      : FALLBACK_BOUNDARY_SAFE_SIZE_PERCENT;
+  const isBoundaryShowing = size >= safeSize && size < FULL_SIZE_PERCENT;
+  const opacity = isBoundaryShowing ? "1" : "0";
   for (const boundary of boundaries) boundary.style.opacity = opacity;
 }
 

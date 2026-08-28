@@ -1106,16 +1106,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
 }
 
 /*
- * During an active panel-resize drag, suppress flex transitions on sibling
- * panels so their size snaps to each pointer position instead of animating
- * through 220ms of intermediate layouts per frame. Opacity/visibility
- * transitions are preserved for open/close animations.
- */
-[data-panel-group]:has([data-resize-handle-active]) [data-panel] {
-  transition-property: opacity;
-}
-
-/*
  * Bottom-anchored scroll bodies (see bottom-anchored-scroll-body.tsx). The
  * class goes on the content wrapper alone: scroll anchoring skips an excluded
  * element's whole subtree, so no descendant rule is needed. A `*` descendant

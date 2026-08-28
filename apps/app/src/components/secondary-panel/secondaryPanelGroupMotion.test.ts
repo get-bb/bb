@@ -39,9 +39,9 @@ function createHarness() {
   const groupElement = document.createElement("div");
   groupElement.setAttribute("data-panel-group", "");
   groupElement.setAttribute("data-panel-group-id", groupId);
-  vi.spyOn(groupElement, "getBoundingClientRect").mockReturnValue({
-    width: 800,
-  } as DOMRect);
+  const measureGroup = vi
+    .spyOn(groupElement, "getBoundingClientRect")
+    .mockReturnValue({ width: 800 } as DOMRect);
   const panels = [document.createElement("div"), document.createElement("div")];
   for (const panel of panels) {
     panel.setAttribute("data-panel", "");
@@ -69,7 +69,7 @@ function createHarness() {
   };
   group.setLayout(layout);
 
-  return { boundary, group, panels };
+  return { boundary, group, measureGroup, panels };
 }
 
 afterEach(() => {
@@ -94,6 +94,42 @@ describe("createSecondaryPanelGroupMotion", () => {
     expect(boundary.style.opacity).toBe("0");
     animation?.value.set(safePercent);
     expect(boundary.style.opacity).toBe("1");
+  });
+
+  it("keeps the disabled boundary hidden at the full-width layout", () => {
+    const { boundary, group } = createHarness();
+    const motion = createSecondaryPanelGroupMotion();
+
+    motion.setLayout(group, [60, 40], false);
+    const animation = motionAnimationState.calls[0];
+    animation?.value.set(40);
+    animation?.options.onComplete?.();
+    expect(boundary.style.opacity).toBe("1");
+
+    motion.setLayout(group, [0, 100], false);
+    const collapsing = motionAnimationState.calls[1];
+    collapsing?.value.set(99);
+    expect(boundary.style.opacity).toBe("1");
+    collapsing?.value.set(100);
+    expect(boundary.style.opacity).toBe("0");
+    collapsing?.options.onComplete?.();
+    expect(boundary.style.opacity).toBe("0");
+  });
+
+  it("measures the group once per layout instead of on every frame", () => {
+    const { group, measureGroup } = createHarness();
+    const motion = createSecondaryPanelGroupMotion();
+
+    motion.setLayout(group, [60, 40], false);
+    const measurementsAfterStart = measureGroup.mock.calls.length;
+
+    const animation = motionAnimationState.calls[0];
+    animation?.value.set(10);
+    animation?.value.set(20);
+    animation?.value.set(40);
+    animation?.options.onComplete?.();
+
+    expect(measureGroup.mock.calls.length).toBe(measurementsAfterStart);
   });
 
   it("restarts an interrupted layout from its rendered flex values", () => {
