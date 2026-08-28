@@ -158,7 +158,7 @@ it("preserves the native checkpoint when thread/stop interrupts a turn", async (
   );
 }, 30_000);
 
-it("lets a turn/started that lands after the turn/start response win the race", async () => {
+it("keeps one lifecycle when turn/started lags the turn/start response past the grace window", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
     threadId: THREAD_ID,
@@ -175,17 +175,209 @@ it("lets a turn/started that lands after the turn/start response win the race", 
   await new Promise((resolve) => setTimeout(resolve, 500));
   const settledEvents = threadEvents();
 
-  expect(
-    settledEvents.filter((event) => event.type === "turn/started"),
-  ).toHaveLength(1);
-  expect(
-    settledEvents.filter((event) => event.type === "turn/completed"),
-  ).toHaveLength(1);
+  const started = settledEvents.filter(
+    (event) => event.type === "turn/started",
+  );
+  const completed = settledEvents.filter(
+    (event) => event.type === "turn/completed",
+  );
+  expect(started).toHaveLength(1);
+  expect(completed).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toBe("");
+  expect(completed[0]).toMatchObject({
+    status: "completed",
+    providerCheckpointId: "turn-fx-1",
+    scope: { kind: "turn", turnId },
+  });
   expect(
     settledEvents.some((event) => event.type === "item/agentMessage/delta"),
   ).toBe(true);
   expect(
     settledEvents.filter((event) => event.type === "turn/input/accepted"),
-  ).toHaveLength(1);
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_atestart23",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
   expect(events.length).toBeGreaterThan(0);
+}, 30_000);
+
+it("settles a response-proved turn as failed when codex dies before turn/started", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/respond-then-exit", mentions: [] }],
+    clientRequestId: "creq_dies234567",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+
+  const events = await waitForEvents((all) =>
+    all.some((event) => event.type === "turn/completed"),
+  );
+  const started = events.filter((event) => event.type === "turn/started");
+  const completed = events.filter((event) => event.type === "turn/completed");
+  expect(started).toHaveLength(1);
+  expect(completed).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toBe("");
+  expect(completed[0]).toMatchObject({
+    status: "failed",
+    scope: { kind: "turn", turnId },
+  });
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_dies234567",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
+}, 30_000);
+
+it("settles a turn the turn/start response reports as already completed", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/respond-completed", mentions: [] }],
+    clientRequestId: "creq_instdn2345",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+
+  const events = await waitForEvents((all) =>
+    all.some((event) => event.type === "turn/completed"),
+  );
+  const started = events.filter((event) => event.type === "turn/started");
+  const completed = events.filter((event) => event.type === "turn/completed");
+  expect(started).toHaveLength(1);
+  expect(completed).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toBe("");
+  expect(completed[0]).toMatchObject({
+    status: "completed",
+    providerCheckpointId: "turn-fx-1",
+    scope: { kind: "turn", turnId },
+  });
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_instdn2345",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
+}, 30_000);
+
+it("acknowledges a dispatch codex steers into the already-running turn", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    clientRequestId: "creq_first23456",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+  await waitForEvents((events) =>
+    events.some((event) => event.type === "turn/started"),
+  );
+
+  harness.sendRequest(3, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/steer-into-active", mentions: [] }],
+    clientRequestId: "creq_steer23456",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(3);
+  const events = await waitForEvents(
+    (all) =>
+      all.filter((event) => event.type === "turn/input/accepted").length === 2,
+  );
+
+  const started = events.filter((event) => event.type === "turn/started");
+  expect(started).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toBe("");
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_first23456",
+      scope: { kind: "turn", turnId },
+    }),
+    expect.objectContaining({
+      clientRequestId: "creq_steer23456",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
+  expect(events.filter((event) => event.type === "turn/completed")).toEqual([]);
+
+  harness.sendRequest(4, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    intent: "interrupt",
+    activeTurnId: "turn-fx-1",
+  });
+  await harness.waitForResponse(4);
+  await waitForEvents((all) =>
+    all.some(
+      (event) =>
+        event.type === "turn/completed" && event.status === "interrupted",
+    ),
+  );
+}, 30_000);
+
+it("does not resurrect a response-opened turn settled before its turn/started arrives", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/interrupt-before-start", mentions: [] }],
+    clientRequestId: "creq_prestart23",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+  await waitForEvents((events) =>
+    events.some((event) => event.type === "turn/started"),
+  );
+
+  harness.sendRequest(3, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    intent: "interrupt",
+    activeTurnId: "turn-fx-1",
+  });
+  await harness.waitForResponse(3);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const events = threadEvents();
+  const started = events.filter((event) => event.type === "turn/started");
+  expect(started).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toBe("");
+  const completed = events.filter((event) => event.type === "turn/completed");
+  expect(completed).toHaveLength(1);
+  expect(completed[0]).toMatchObject({
+    status: "interrupted",
+    scope: { kind: "turn", turnId },
+  });
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_prestart23",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
 }, 30_000);
