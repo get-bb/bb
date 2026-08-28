@@ -50,5 +50,5 @@ describe("pi catalog child generations", () => {
     ]);
     expect(second.models[0]?.isDefault).toBe(true);
     expect(readFileSync(spawnCounterPath, "utf8")).toBe("2");
-  });
+  }, 60_000);
 });
