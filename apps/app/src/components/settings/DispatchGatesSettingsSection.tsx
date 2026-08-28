@@ -60,13 +60,10 @@ const STAGE_PRESENTATION: Record<
   DispatchGateStage,
   { label: string; description: string }
 > = {
-  "thread.create": {
-    label: "New threads",
-    description: "Before a new thread is created.",
-  },
-  "turn.submit": {
-    label: "Messages",
-    description: "Before a message is sent to the agent.",
+  dispatch: {
+    label: "Dispatch",
+    description:
+      "The one checkpoint every message passes through before it reaches a provider.",
   },
   "turn.failed": {
     label: "Failures",

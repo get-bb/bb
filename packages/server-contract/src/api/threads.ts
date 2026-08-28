@@ -11,6 +11,8 @@ import {
   pluginInputsSchema,
   pluginInputsSizeProblem,
   promptInputSchema,
+  queuedMessageWaitHolderSchema,
+  queuedMessageWaitingOnSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
@@ -112,13 +114,13 @@ export const createThreadRequestSchema = z
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
     /**
-     * Epoch ms at which this thread's first turn should dispatch. Present ⇒
-     * the thread is created idle with no turn and no environment work, and the
-     * first turn becomes a user-owned dispatch hold that core's timer releases.
-     * Absent ⇒ dispatch now; no hold row is created and creation runs exactly
-     * as it did before holds existed.
+     * Epoch ms at which this thread's first message should dispatch. Present ⇒
+     * the thread is created `pending` with no turn and no environment work,
+     * and the first message parks as a queued row waiting on the clock. Absent
+     * ⇒ attempt the dispatch now; when nothing blocks it no queued row is ever
+     * created and creation runs exactly as it did before the queue existed.
      */
-    holdUntil: z.number().int().nonnegative().optional(),
+    sendAt: z.number().int().nonnegative().optional(),
     /**
      * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
      * gate sees only its own entry. Omitted means no plugin input at all,
@@ -210,15 +212,15 @@ const sendMessageRequestBaseSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
   /**
    * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
-   * or queued now; the message becomes a user-owned dispatch hold that core's
-   * timer releases into the normal send path. Absent ⇒ send now, exactly as
-   * before holds existed.
+   * now; the message parks as a queued row waiting on the clock, and the due
+   * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
    */
-  holdUntil: z.number().int().nonnegative().optional(),
+  sendAt: z.number().int().nonnegative().optional(),
   /**
    * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
-   * gate sees only its own entry. It rides the hold payload and the queued row
-   * so a message that waits reaches its gate with the input it was sent with.
+   * gate sees only its own entry. It rides the queued row, so a message that
+   * parks reaches its gate with the input it was sent with on every
+   * re-attempt.
    */
   pluginInputs: pluginInputsSchema.optional(),
 });
@@ -235,32 +237,41 @@ export const sendMessageRequestSchema = sendMessageRequestBaseSchema.superRefine
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 /**
- * How a `send` request was taken:
- * - `sent`: dispatched now (a new turn or a steer into the active turn).
- * - `queued`: placed in the thread queue; it sends when the thread is next idle.
- * - `deferred`: the thread awaits user interaction, which a prompt cannot
- *   interrupt. The server holds the message and delivers it in the requested
- *   mode as soon as the interaction settles.
+ * How a `send` request was taken.
+ *
+ * Two outcomes, because there are two: the attempt cleared and dispatched, or
+ * something blocked it and it parked. The four-way `sent`/`queued`/`deferred`/
+ * `held` split this replaces described WHICH parking mechanism took the
+ * message, and there is only one now — so the useful half of that answer, WHY
+ * it is waiting, moved onto the parked arm where it can be typed.
  */
-export const sendMessageDeliverySchema = z.enum([
-  "sent",
-  "queued",
-  "deferred",
-  // Parked in a dispatch hold: nothing runs until the hold releases.
-  "held",
-]);
+export const sendMessageDeliverySchema = z.enum(["sent", "parked"]);
 export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
 
-export const sendMessageResponseSchema = z.object({
-  ok: z.literal(true),
-  delivery: sendMessageDeliverySchema,
-});
+/**
+ * A discriminated union rather than a flat record with nullable extras: a
+ * `sent` message has no queued row and no wait, and modelling those as "null
+ * for now" would invite every caller to check fields that cannot exist.
+ */
+export const sendMessageResponseSchema = z.discriminatedUnion("delivery", [
+  z.object({ ok: z.literal(true), delivery: z.literal("sent") }),
+  z.object({
+    ok: z.literal(true),
+    delivery: z.literal("parked"),
+    /** The row now carrying this message; addressable for send-now or cancel. */
+    queuedMessageId: z.string().min(1),
+    /** Why it is waiting, as the card and `bb thread queue` render it. */
+    waitingOn: queuedMessageWaitingOnSchema,
+    /** The row's scheduled instant, when it has one. */
+    sendAt: z.number().int().nonnegative().nullable(),
+  }),
+]);
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
-// `holdUntil` is deliberately dropped: an edit rewrites a message that has
-// already been dispatched, so there is nothing left to defer.
+// `sendAt` is deliberately dropped: an edit rewrites a message that has
+// already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestBaseSchema
-  .omit({ mode: true, holdUntil: true, pluginInputs: true })
+  .omit({ mode: true, sendAt: true, pluginInputs: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -416,10 +427,12 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
-  // How many dispatches are parked on this thread right now. The count alone
-  // drives the pending-region and thread-row badges; `GET /threads/:id/holds`
-  // supplies the reasons once a surface actually renders them.
-  liveDispatchHoldCount: z.number().int().nonnegative(),
+  // How many messages are parked on this thread's queue right now — waiting on
+  // the clock, on the running turn, on provisioning, on an interaction, or on
+  // a plugin. The count alone drives the pending-region and thread-row badges;
+  // `GET /threads/:id/queued-messages` supplies the reasons once a surface
+  // actually renders them.
+  queuedMessageCount: z.number().int().nonnegative(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
@@ -468,6 +481,25 @@ export const respondPluginInteractionRequestSchema = z.object({
 });
 export type RespondPluginInteractionRequest = z.infer<
   typeof respondPluginInteractionRequestSchema
+>;
+
+/**
+ * Filters for the cross-thread queue list — the replacement for the hold
+ * list, and cross-thread for the same reason it was: "what is parked right
+ * now" is a whole-workspace question (`bb thread queue list` with no thread, a
+ * limiter plugin's own bookkeeping, a router recovering its rows after a
+ * restart) that no single thread's list can answer.
+ *
+ * `waitHolder` is the indexed one. It answers "every row this plugin is
+ * holding", which is exactly what a plugin needs on restart and what the
+ * orphan sweep needs per uninstalled plugin.
+ */
+export const queuedMessageListQuerySchema = z.object({
+  threadId: z.string().min(1).optional(),
+  waitHolder: queuedMessageWaitHolderSchema.optional(),
+});
+export type QueuedMessageListQuery = z.infer<
+  typeof queuedMessageListQuerySchema
 >;
 
 export const threadQueuedMessageListResponseSchema = z.array(

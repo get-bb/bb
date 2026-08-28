@@ -839,10 +839,10 @@ export function useComposer(): PluginComposerApi {
         // land here. Saying so beats seeding a draft the user never sees sent.
         throw new Error("This composer cannot schedule a submission.");
       }
-      if (!Number.isFinite(options.holdUntil) || options.holdUntil <= Date.now()) {
+      if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {
         throw new Error("Pick a time in the future.");
       }
-      await hostSubmit({ holdUntil: options.holdUntil });
+      await hostSubmit({ sendAt: options.sendAt });
     },
     [hostSubmit, scopeOwnership],
   );

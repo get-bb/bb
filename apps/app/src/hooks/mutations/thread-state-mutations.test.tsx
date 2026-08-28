@@ -62,7 +62,7 @@ function makeThreadResponse(
     ...makeThreadWithRuntime(thread),
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
-    liveDispatchHoldCount: 0,
+    queuedMessageCount: 0,
     ...thread,
   };
 }

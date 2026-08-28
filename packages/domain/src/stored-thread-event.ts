@@ -4,6 +4,8 @@ import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
   systemMessageSubjectSchema,
+} from "./system-message.js";
+import {
   turnRequestEventDataSchema,
   turnRequestTargetSchema,
 } from "./thread-events.js";

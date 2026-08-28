@@ -61,6 +61,7 @@ function makeQueuedMessage({
   }));
   return {
     id,
+    threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }, ...attachmentChunks],
     model: "gpt-5.5",
     reasoningLevel: "medium",

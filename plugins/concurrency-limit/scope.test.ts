@@ -82,7 +82,7 @@ describe("evaluateDispatch", () => {
         hostName: null,
         countInScope: counts({ [GLOBAL_SCOPE_KEY]: 2 }),
       }).action,
-    ).toBe("hold");
+    ).toBe("wait");
   });
 
   it("reports the global limit when both are full", () => {
@@ -99,7 +99,7 @@ describe("evaluateDispatch", () => {
         }),
       }),
     ).toEqual({
-      action: "hold",
+      action: "wait",
       scopeKey: GLOBAL_SCOPE_KEY,
       reason: "2 of 2 running on all hosts",
     });
@@ -117,7 +117,7 @@ describe("evaluateDispatch", () => {
         }),
       }),
     ).toEqual({
-      action: "hold",
+      action: "wait",
       scopeKey: hostScopeKey("host-1"),
       reason: "2 of 2 running on host mac-mini",
     });
@@ -145,8 +145,8 @@ describe("evaluateDispatch", () => {
       hostName: "x".repeat(500),
       countInScope: counts({ [hostScopeKey("host-1")]: 1 }),
     });
-    expect(verdict.action).toBe("hold");
-    if (verdict.action !== "hold") return;
+    expect(verdict.action).toBe("wait");
+    if (verdict.action !== "wait") return;
     expect(verdict.reason.length).toBe(MAX_REASON_LENGTH);
   });
 
@@ -157,8 +157,8 @@ describe("evaluateDispatch", () => {
       hostName: "   ",
       countInScope: counts({ [hostScopeKey("host-1")]: 1 }),
     });
-    expect(verdict.action).toBe("hold");
-    if (verdict.action !== "hold") return;
+    expect(verdict.action).toBe("wait");
+    if (verdict.action !== "wait") return;
     expect(verdict.reason).toBe("1 of 1 running on host host-1");
   });
 });

@@ -1,5 +1,9 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
-import { findRetryHold, listRetryHolds, type RetryHold } from "./holds.js";
+import {
+  findParkedRetry,
+  listParkedRetries,
+  type ParkedRetry,
+} from "./parked-retries.js";
 
 function requestedThreadId(
   argv: string[],
@@ -10,18 +14,18 @@ function requestedThreadId(
   );
 }
 
-function textHold(hold: RetryHold): string {
+function textParkedRetry(parked: ParkedRetry): string {
   const retry =
-    hold.resumeAt === null
+    parked.sendAt === null
       ? "pending"
-      : `retrying ${new Date(hold.resumeAt).toISOString()}`;
-  return `${hold.threadId}\t${hold.id}\t${retry}`;
+      : `retrying ${new Date(parked.sendAt).toISOString()}`;
+  return `${parked.threadId}\t${parked.id}\t${retry}`;
 }
 
 /**
- * A view over this plugin's dispatch holds.
+ * A view over the queue rows this plugin is holding.
  *
- * Every subcommand is now `bb thread holds --owner plugin:provider-retry`
+ * Every subcommand is now `bb thread queue list --wait-holder plugin:provider-retry`
  * narrowed to retries, which is why there is no state here to consult: the
  * server owns the schedule, and this reads and acts on it. `retry` is a release
  * and `cancel` is a cancel, so both do exactly what the thread view's buttons
@@ -61,22 +65,22 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
       const threadId = requestedThreadId(args, context);
 
       if (command === "status") {
-        const holds = await listRetryHolds(
+        const parked = await listParkedRetries(
           bb,
           threadId === null ? undefined : threadId,
         );
         if (json) {
           return {
             exitCode: 0,
-            stdout: `${JSON.stringify({ retries: holds }, null, 2)}\n`,
+            stdout: `${JSON.stringify({ retries: parked }, null, 2)}\n`,
           };
         }
         return {
           exitCode: 0,
           stdout:
-            holds.length === 0
+            parked.length === 0
               ? "No provider retries are pending.\n"
-              : `${holds.map(textHold).join("\n")}\n`,
+              : `${parked.map(textParkedRetry).join("\n")}\n`,
         };
       }
 
@@ -86,8 +90,8 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
           stderr: `A thread id is required: bb provider-retry ${command} <thread-id>\n`,
         };
       }
-      const hold = await findRetryHold(bb, threadId);
-      if (hold === null) {
+      const parked = await findParkedRetry(bb, threadId);
+      if (parked === null) {
         return json
           ? {
               exitCode: 1,
@@ -99,14 +103,23 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
             };
       }
       if (command === "cancel") {
-        await bb.sdk.threads.holds.cancel({ holdId: hold.id });
+        await bb.sdk.threads.queuedMessages.delete({
+          threadId: parked.threadId,
+          queuedMessageId: parked.id,
+        });
       } else {
-        await bb.sdk.threads.holds.release({ holdId: hold.id });
+        // Send now: bypasses this plugin's own wait and the row's schedule,
+        // which is exactly what "retry it now" means.
+        await bb.sdk.threads.queuedMessages.send({
+          threadId: parked.threadId,
+          queuedMessageId: parked.id,
+          mode: "auto",
+        });
       }
       if (json) {
         return {
           exitCode: 0,
-          stdout: `${JSON.stringify({ ok: true, threadId, holdId: hold.id }, null, 2)}\n`,
+          stdout: `${JSON.stringify({ ok: true, threadId, queuedMessageId: parked.id }, null, 2)}\n`,
         };
       }
       return {

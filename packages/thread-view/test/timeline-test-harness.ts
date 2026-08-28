@@ -6,7 +6,6 @@ import {
 import type {
   ApprovalPendingInteractionResolution,
   ClientTurnRequestId,
-  DispatchHoldHolder,
   PromptInput,
   ProviderRawEvent,
   ProvisioningTranscriptEntry,
@@ -262,7 +261,7 @@ interface ThreadProvisioningArgs extends EventFactoryRowOptions {
 interface DispatchHoldArgs extends EventFactoryRowOptions {
   entries?: ProvisioningTranscriptEntry[];
   holdId?: string;
-  holder?: DispatchHoldHolder;
+  holder?: string;
   /** Omitted entirely when absent, matching a hold with no message of its own. */
   inputPreview?: string;
   reason?: string;

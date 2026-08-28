@@ -56,6 +56,7 @@ function makeQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg-1",
+    threadId: "thread-1",
     content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
     reasoningLevel: "medium",
@@ -295,10 +296,13 @@ describe("thread runtime mutations", () => {
     );
   });
 
-  it("returns the server's delivery so a held message is not treated as a started turn", async () => {
+  it("returns the server's delivery so a parked message is not treated as a started turn", async () => {
     vi.mocked(sdk.threads.send).mockResolvedValue({
       ok: true,
-      delivery: "deferred",
+      delivery: "parked",
+      queuedMessageId: "qmsg-1",
+      waitingOn: { kind: "interaction" },
+      sendAt: null,
     });
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(() => useSendThreadMessage(), { wrapper });
@@ -315,7 +319,13 @@ describe("thread runtime mutations", () => {
       });
     });
 
-    expect(sendResult).toEqual({ ok: true, delivery: "deferred" });
+    expect(sendResult).toEqual({
+      ok: true,
+      delivery: "parked",
+      queuedMessageId: "qmsg-1",
+      waitingOn: { kind: "interaction" },
+      sendAt: null,
+    });
   });
 
   it("forwards execution input sources and sender thread when queueing a message", async () => {

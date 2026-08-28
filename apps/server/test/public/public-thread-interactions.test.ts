@@ -1,8 +1,4 @@
-import {
-  createQueuedThreadMessage,
-  listDeferredThreadMessages,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { createQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
 import {
   turnScope,
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
@@ -836,6 +832,14 @@ describe("public thread interaction routes", () => {
         environmentId: environment.id,
         status: "idle",
       });
+      // An `idle` thread has always run a turn, and the checkpoint resolves the
+      // execution tuple it would freeze on a parked row before it decides to
+      // park — so the fixture needs the prior turn a real thread would have.
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-blocked",
+        threadId: thread.id,
+      });
       const queuedMessage = createQueuedThreadMessage(harness.db, harness.hub, {
         threadId: thread.id,
         content: textInput("Queued message"),
@@ -844,6 +848,10 @@ describe("public thread interaction routes", () => {
         pluginInputs: null,
         reasoningLevel: "medium",
         permissionMode: "full",
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const pending = registerPendingInteraction(
         harness.deps,
@@ -881,12 +889,23 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
+      // A prompt cannot interrupt the interaction, but the message is not lost:
+      // it parks on the queue and delivers once the interaction settles (#1650).
       expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
         ok: true,
-        delivery: "deferred",
+        delivery: "parked",
+        queuedMessageId: expect.any(String),
+        waitingOn: { kind: "interaction" },
+        sendAt: null,
       });
-      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      // The parked row sits alongside the message that was already queued, and
+      // it is the only one carrying the interaction wait.
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).filter(
+          (row) => row.waitingOn !== null,
+        ),
+      ).toHaveLength(1);
 
       const startResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,
@@ -971,10 +990,16 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
+      // The queue drains when the thread is next idle, which an open
+      // interaction does not change, so an explicit queue request parks behind
+      // the running turn rather than behind the interaction.
       expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toEqual({
         ok: true,
-        delivery: "queued",
+        delivery: "parked",
+        queuedMessageId: expect.any(String),
+        waitingOn: { kind: "thread-busy" },
+        sendAt: null,
       });
       expect(
         listQueuedThreadMessages(harness.db, activeThread.id),

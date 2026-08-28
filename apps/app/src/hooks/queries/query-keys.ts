@@ -31,7 +31,6 @@ const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
 const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
 const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
-const THREAD_DISPATCH_HOLDS_QUERY_KEY = "threadDispatchHolds";
 const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 const THREAD_PENDING_INTERACTIONS_QUERY_KEY = "threadPendingInteractions";
 const TERMINALS_QUERY_KEY = "terminals";
@@ -207,13 +206,6 @@ type ThreadQueuedMessagesQueryKeyPrefix = readonly [
 ];
 type ThreadQueuedMessagesQueryKey = readonly [
   typeof THREAD_QUEUED_MESSAGES_QUERY_KEY,
-  string,
-];
-type ThreadDispatchHoldsQueryKeyPrefix = readonly [
-  typeof THREAD_DISPATCH_HOLDS_QUERY_KEY,
-];
-type ThreadDispatchHoldsQueryKey = readonly [
-  typeof THREAD_DISPATCH_HOLDS_QUERY_KEY,
   string,
 ];
 type ThreadPromptHistoryQueryKeyPrefix = readonly [
@@ -714,16 +706,6 @@ export function threadQueuedMessagesQueryKey(
 
 export function allThreadQueuedMessagesQueryKeyPrefix(): ThreadQueuedMessagesQueryKeyPrefix {
   return [THREAD_QUEUED_MESSAGES_QUERY_KEY];
-}
-
-export function threadDispatchHoldsQueryKey(
-  threadId: string,
-): ThreadDispatchHoldsQueryKey {
-  return [THREAD_DISPATCH_HOLDS_QUERY_KEY, threadId];
-}
-
-export function allThreadDispatchHoldsQueryKeyPrefix(): ThreadDispatchHoldsQueryKeyPrefix {
-  return [THREAD_DISPATCH_HOLDS_QUERY_KEY];
 }
 
 export function threadPromptHistoryQueryKey(

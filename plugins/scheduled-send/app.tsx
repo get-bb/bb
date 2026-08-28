@@ -1,7 +1,7 @@
 // bb-plugin-scheduled-send frontend — "Send later…" in the composer's + menu.
 //
 // The plugin owns the *time*, and nothing else. `useComposer()`'s
-// `experimental_submit({ holdUntil })` runs the composer's own submit pipeline
+// `experimental_submit({ sendAt })` runs the composer's own submit pipeline
 // with the draft that is on screen, so the request is byte-for-byte the one
 // Enter would have produced — attachments, @-mentions, and in the new-thread
 // composer the provider, model, reasoning level, service tier, permission mode
@@ -188,7 +188,7 @@ function SendLaterPicker() {
     setBusy(true);
     setError(null);
     try {
-      await composer.experimental_submit({ holdUntil: at });
+      await composer.experimental_submit({ sendAt: at });
       closeSendLater();
       toast.success(`Sending ${formatScheduleTime(at, Date.now())}`);
     } catch (scheduleError: unknown) {

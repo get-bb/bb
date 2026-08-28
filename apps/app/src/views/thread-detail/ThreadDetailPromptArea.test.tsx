@@ -532,13 +532,6 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
   }),
 }));
 
-vi.mock("@/hooks/mutations/dispatch-hold-mutations", () => ({
-  isDispatchHoldConflictError: () => false,
-  useCancelDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useReleaseDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useUpdateDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
-}));
-
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectDisplayName: () => null,
 }));
@@ -564,7 +557,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     mocks.useThreadQueuedMessages(threadId, options);
     return { data: mocks.queuedMessages };
   },
-  useThreadDispatchHolds: () => ({ data: [] }),
 }));
 
 function makeQueuedMessage(
@@ -572,6 +564,7 @@ function makeQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_1",
+    threadId: "thr_1",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
     reasoningLevel: "medium",

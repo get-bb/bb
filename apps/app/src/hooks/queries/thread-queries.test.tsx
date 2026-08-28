@@ -91,7 +91,7 @@ const THREAD_WITH_INCLUDES = {
   },
   activeBackgroundAgentCount: 0,
   canSpawnChild: true,
-  liveDispatchHoldCount: 0,
+  queuedMessageCount: 0,
   environment: null,
   host: null,
 } satisfies ThreadWithIncludesResponse;

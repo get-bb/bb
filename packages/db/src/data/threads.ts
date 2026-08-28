@@ -1844,6 +1844,52 @@ export interface SetThreadProviderInput {
  * only caller is a hold release, whose very next step moves the thread to
  * `starting` and notifies.
  */
+export interface SetThreadPendingStartContextInput {
+  threadId: string;
+  /** JSON-encoded context, or null to clear it as the thread leaves `pending`. */
+  pendingStartContext: string | null;
+}
+
+/**
+ * Records (or clears) how a `pending` thread will be established.
+ *
+ * Deliberately not folded into the lifecycle transition that leaves `pending`:
+ * the context is written when a first message PARKS, which is not a transition
+ * at all, and clearing it is a separate fact from the status change — a thread
+ * that fails to start still wants its status moved without losing the context
+ * a later attempt would start from.
+ */
+export function setThreadPendingStartContext(
+  db: ThreadWriteConnection,
+  input: SetThreadPendingStartContextInput,
+) {
+  return (
+    db
+      .update(threads)
+      .set({
+        pendingStartContext: input.pendingStartContext,
+        updatedAt: Date.now(),
+      })
+      .where(eq(threads.id, input.threadId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+/** The stored JSON, or null for a thread that never parked its first message. */
+export function getThreadPendingStartContext(
+  db: DbQueryConnection,
+  threadId: string,
+): string | null {
+  return (
+    db
+      .select({ pendingStartContext: threads.pendingStartContext })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.pendingStartContext ?? null
+  );
+}
+
 export function setThreadProvider(
   db: ThreadWriteConnection,
   input: SetThreadProviderInput,

@@ -11,6 +11,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -163,6 +164,15 @@ describe("thread environment decoupling (B*)", () => {
           projectId: project.id,
           environmentId: environment.id,
           status: "idle",
+        });
+        // An `idle` thread has always run a turn, and the dispatch checkpoint
+        // resolves this send's execution tuple before it reaches the
+        // environment. Without a prior turn the fixture would fail on the
+        // missing model instead of on the gone workspace.
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: `provider-send-${status}`,
+          threadId: thread.id,
         });
 
         const response = await harness.app.request(

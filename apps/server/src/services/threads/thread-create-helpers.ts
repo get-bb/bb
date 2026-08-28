@@ -151,12 +151,6 @@ export function createThreadRecord(
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
-    /**
-     * `starting` for a normal create, whose first turn dispatches right away.
-     * `idle` for a held create: nothing is running, nothing is provisioning,
-     * and the first turn waits in a dispatch hold.
-     */
-    status: "starting" | "idle";
   },
 ) {
   const sectionId = args.request.sectionId ?? null;
@@ -177,7 +171,12 @@ export function createThreadRecord(
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
       visibility: args.request.visibility,
-      status: args.status,
+      // Every thread starts `pending`, with no exception to parameterise.
+      // Creation is ungated and provisions nothing; admission happens at the
+      // first message's dispatch attempt, and clearing it is what moves the
+      // thread to `starting`. A caller that could pass `starting` here would
+      // be claiming a thread had been admitted before anything decided so.
+      status: "pending",
     });
     emitPluginThreadCreated(thread);
     return thread;

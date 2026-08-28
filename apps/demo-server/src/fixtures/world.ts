@@ -96,7 +96,7 @@ export function threadResponse(
     environmentWorkspaceDisplayKind: _environmentWorkspaceDisplayKind,
     ...thread
   } = threadListEntry(view, now);
-  return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true, liveDispatchHoldCount: 0 };
+  return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true, queuedMessageCount: 0 };
 }
 
 const PROJECT_DEFAULT_EXECUTION_OPTIONS = {
@@ -177,11 +177,13 @@ export const PLUGIN_CONTRIBUTIONS = { cliCommands: [], mentionProviders: [] };
 
 export function queuedMessage(args: {
   id: string;
+  threadId: string;
   content: ThreadQueuedMessage["content"];
   now: number;
 }): ThreadQueuedMessage {
   return {
     id: args.id,
+    threadId: args.threadId,
     content: args.content,
     model: THREAD_DEFAULT_EXECUTION_OPTIONS.model,
     reasoningLevel: THREAD_DEFAULT_EXECUTION_OPTIONS.reasoningLevel,

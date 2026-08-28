@@ -1,7 +1,6 @@
 import type {
   BackgroundTaskStatus,
   BackgroundTaskUsage,
-  DispatchHoldHolder,
   ExtensionKind,
   JsonObject,
   JsonValue,
@@ -377,7 +376,7 @@ export interface EventProjectionProvisioningMetadata {
  */
 export interface EventProjectionDispatchHoldMetadata {
   holdId: string;
-  holder: DispatchHoldHolder;
+  holder: string;
   holdStatus: SystemDispatchHoldStatus;
   reason: string;
   /**

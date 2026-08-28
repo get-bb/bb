@@ -116,6 +116,7 @@ export function toThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return threadQueuedMessageSchema.parse({
     id: row.id,
+    threadId: row.threadId,
     content: parseStoredQueuedThreadMessageContent(row),
     model: row.model,
     reasoningLevel: row.reasoningLevel,

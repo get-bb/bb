@@ -1,7 +1,7 @@
 /**
- * `--hold-until` accepts the two things a person actually types: a relative
+ * `--send-at` accepts the two things a person actually types: a relative
  * duration ("in ten minutes") or a wall-clock timestamp ("at 9am tomorrow").
- * Both resolve to the epoch-ms `holdUntil` the create/send routes take.
+ * Both resolve to the epoch-ms `sendAt` the create/send routes take.
  */
 
 const DURATION_UNIT_MS: Record<string, number> = {
@@ -28,20 +28,20 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_PATTERN =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?$/;
 
-export const HOLD_UNTIL_HELP =
-  "Defer the dispatch until an ISO 8601 timestamp (2026-08-25T09:00) or a duration from now (30s, 10m, 2h, 7d)";
+export const SEND_AT_HELP =
+  "Dispatch at an ISO 8601 timestamp (2026-08-25T09:00) or a duration from now (30s, 10m, 2h, 7d)";
 
 function formatInvalid(value: string, detail: string): Error {
   return new Error(
-    `Invalid --hold-until value '${value}'. ${detail} Expected an ISO 8601 timestamp such as 2026-08-25T09:00 or a duration such as 30s, 10m, 2h, or 7d.`,
+    `Invalid --send-at value '${value}'. ${detail} Expected an ISO 8601 timestamp such as 2026-08-25T09:00 or a duration such as 30s, 10m, 2h, or 7d.`,
   );
 }
 
 /**
- * Resolves `--hold-until` to epoch ms. `now` is injectable so the caller (and
+ * Resolves `--send-at` to epoch ms. `now` is injectable so the caller (and
  * the tests) can pin the clock a duration is measured from.
  */
-export function parseHoldUntil(value: string, now = Date.now()): number {
+export function parseSendAt(value: string, now = Date.now()): number {
   const trimmed = value.trim();
   if (trimmed === "") {
     throw formatInvalid(value, "It is empty.");
@@ -53,7 +53,7 @@ export function parseHoldUntil(value: string, now = Date.now()): number {
     const resolved = Math.round(now + amount * DURATION_UNIT_MS[duration[2]]);
     if (resolved <= now) {
       throw new Error(
-        `--hold-until must be in the future; '${value}' is zero time from now.`,
+        `--send-at must be in the future; '${value}' is zero time from now.`,
       );
     }
     return resolved;
@@ -76,29 +76,29 @@ export function parseHoldUntil(value: string, now = Date.now()): number {
   }
   if (resolved <= now) {
     throw new Error(
-      `--hold-until must be in the future; '${value}' resolves to ${new Date(resolved).toLocaleString()}, which has already passed.`,
+      `--send-at must be in the future; '${value}' resolves to ${new Date(resolved).toLocaleString()}, which has already passed.`,
     );
   }
   return resolved;
 }
 
 /**
- * Countdown for the `Resume` column. A hold with no `resumeAt` waits on its
- * owner rather than a clock, and a hold whose timer has passed is waiting on
- * the sweep, so both say so instead of printing a negative duration.
+ * Countdown for the `Send at` column. A row with no `sendAt` is waiting on
+ * something other than a clock, and a row whose instant has passed is waiting
+ * on the sweep, so both say so instead of printing a negative duration.
  */
-export function formatHoldResumeCountdown(
-  resumeAt: number | null,
+export function formatQueueSendCountdown(
+  sendAt: number | null,
   now = Date.now(),
 ): string {
-  if (resumeAt === null) return "-";
-  const remainingMs = resumeAt - now;
+  if (sendAt === null) return "-";
+  const remainingMs = sendAt - now;
   if (remainingMs <= 0) return "due";
   return `in ${formatApproximateDuration(remainingMs)}`;
 }
 
 /** Elapsed time for the `Created` column, matching `bb machine list`. */
-export function formatHoldCreatedAge(
+export function formatQueueCreatedAge(
   createdAt: number,
   now = Date.now(),
 ): string {

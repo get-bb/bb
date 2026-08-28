@@ -6,6 +6,7 @@ describe("thread queued message schema", () => {
     expect(
       threadQueuedMessageSchema.parse({
         id: "qmsg_123",
+        threadId: "thread_1",
         content: [{ type: "text", text: "Queued message", mentions: [] }],
         model: "gpt-5",
         reasoningLevel: "medium",
@@ -27,6 +28,7 @@ describe("thread queued message schema", () => {
     expect(() =>
       threadQueuedMessageSchema.parse({
         id: "qmsg_123",
+        threadId: "thread_1",
         content: [{ type: "text", text: "Queued message", mentions: [] }],
         model: "gpt-5",
         reasoningLevel: "medium",

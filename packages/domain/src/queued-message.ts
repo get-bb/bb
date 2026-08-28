@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { pluginIdSchema } from "./plugin-id.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+import {
+  systemMessageKindSchema,
+  systemMessageSubjectSchema,
+} from "./system-message.js";
 
 /**
  * The queue is the one parking lot for a dispatch that cannot run yet.
@@ -134,4 +138,65 @@ export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
 export type QueuedMessageRetryPayload = Extract<
   QueuedMessagePayload,
   { kind: "retry" }
+>;
+
+/**
+ * Core's own taxonomy for a parked row that is a SYSTEM notice rather than
+ * someone's message — today, the "your child thread finished" notice a parent
+ * gets while it is busy answering a question.
+ *
+ * Null for every ordinary row, which is the overwhelming majority. It exists
+ * because such a notice is dispatched as an `initiator: "system"` turn whose
+ * event carries this taxonomy, and a notice that parked and then dispatched
+ * without it would be a different turn than the one that would have been sent
+ * a moment earlier. The `deferred_thread_messages` table used to carry it; the
+ * queue is the one parking lot now, so it carries it here.
+ */
+export const queuedMessageSystemNoticeSchema = z.object({
+  kind: systemMessageKindSchema,
+  subject: systemMessageSubjectSchema.nullable(),
+});
+export type QueuedMessageSystemNotice = z.infer<
+  typeof queuedMessageSystemNoticeSchema
+>;
+
+/**
+ * One transcript step reported by the plugin whose wait a row is parked on.
+ * Mirrors the `step` half of `provisioningTranscriptEntry`: `key` identifies
+ * the step so repeated reports update it in place rather than appending.
+ */
+export const queuedMessageReportStepSchema = z.object({
+  key: z.string().min(1),
+  text: z.string().min(1),
+  status: z.enum(["started", "completed", "failed"]),
+});
+export type QueuedMessageReportStep = z.infer<
+  typeof queuedMessageReportStepSchema
+>;
+
+/** A tail of log output attached to the row's transcript under `key`. */
+export const queuedMessageReportOutputSchema = z.object({
+  key: z.string().min(1),
+  text: z.string(),
+});
+export type QueuedMessageReportOutput = z.infer<
+  typeof queuedMessageReportOutputSchema
+>;
+
+/**
+ * A progress report from the plugin a row is waiting on.
+ *
+ * Every field is optional because omission means "leave this as it is" — a
+ * report that only appends output must not rewrite the reason. `reason`
+ * rewrites the row's `waitingOn.reason` in place, which is the only mutable
+ * part of a wait: the kind and the holder are what the plugin already
+ * committed to when it returned `wait`.
+ */
+export const queuedMessageReportUpdateSchema = z.object({
+  reason: queuedMessageWaitReasonSchema.optional(),
+  step: queuedMessageReportStepSchema.optional(),
+  output: queuedMessageReportOutputSchema.optional(),
+});
+export type QueuedMessageReportUpdate = z.infer<
+  typeof queuedMessageReportUpdateSchema
 >;

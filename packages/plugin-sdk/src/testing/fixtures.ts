@@ -1,7 +1,7 @@
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type DispatchHoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
+type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -36,47 +36,38 @@ export function makeThreadResponse(
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
-    liveDispatchHoldCount: 0,
+    queuedMessageCount: 0,
     ...overrides,
   };
 }
 
 /**
- * A complete, deterministic `DispatchHoldResponse` for the `dispatch.*` event
- * payloads and for faking `sdk.threads.holds.list`. Defaults are a live
- * plugin-owned inline hold with no timer; override what the test is about. If
- * the contract grows a required field, this builder fails typecheck — update
- * the default here.
+ * A complete, deterministic parked queue row for the `queue.*` event payloads
+ * and for faking `sdk.threads.queuedMessages.list`. Defaults are a live inline
+ * row parked on this plugin's wait; override what the test is about. If the
+ * contract grows a required field, this builder fails typecheck — update the
+ * default here.
  */
-export function makeDispatchHoldResponse(
-  overrides: Partial<DispatchHoldResponse> = {},
-): DispatchHoldResponse {
+export function makeQueueEntry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return {
-    id: "hold_1",
-    kind: "turn",
+    id: "queued_1",
     threadId: "thread-1",
-    holder: "plugin:test-plugin",
-    userReleasable: true,
-    reason: "Held",
-    payload: {
-      kind: "inline",
-      input: [{ type: "text", text: "Held turn", mentions: [] }],
-      execution: {
-        model: "test-model",
-        serviceTier: "default",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        source: "client/turn/requested",
-      },
-      editable: true,
+    content: [{ type: "text", text: "Parked turn", mentions: [] }],
+    model: "test-model",
+    reasoningLevel: "medium",
+    permissionMode: "auto",
+    serviceTier: "default",
+    groupWithNext: false,
+    sendAt: null,
+    waitingOn: {
+      kind: "plugin",
+      pluginId: "test-plugin",
+      reason: "Waiting",
     },
-    resumeAt: null,
-    expectedReleaseAt: null,
-    staleAfterMs: null,
-    lastReportAt: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 0,
-    releasedAt: null,
-    releaseKind: null,
+    updatedAt: 0,
     ...overrides,
   };
 }

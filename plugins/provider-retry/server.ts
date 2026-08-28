@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
-import { findRetryHold, retryViewForThread } from "./src/holds.js";
+import { findParkedRetry, retryViewForThread } from "./src/parked-retries.js";
 import {
   DEFAULT_MAXIMUM_WAIT_MS,
   RESET_BUFFER_MS,
@@ -27,13 +27,13 @@ function maximumWaitMs(value: string | boolean | undefined): number | null {
 }
 
 /**
- * What a rate-limit hold is waiting for. Deliberately just the cause: the time
- * rides `resumeAt`, and every surface that shows a hold renders that itself —
- * the card above the composer puts the clock next to the reason, `bb thread
- * holds` gives it its own Resume column. Formatting it into the reason as well
- * printed it twice in both.
+ * What a rate-limited row is waiting for. Deliberately just the cause: the time
+ * rides the row's `sendAt`, and every surface that shows a parked row renders
+ * that itself — the card above the composer puts the clock next to the reason,
+ * `bb thread queue list` gives it its own Send-at column. Formatting it into
+ * the reason as well printed it twice in both.
  */
-const RATE_LIMITED_HOLD_REASON = "Rate limited";
+const RATE_LIMITED_WAIT_REASON = "Rate limited";
 
 /**
  * The decline reasons worth telling the user about.
@@ -153,7 +153,7 @@ export default async function plugin(bb: BbPluginApi) {
     );
     return {
       action: "retry",
-      reason: RATE_LIMITED_HOLD_REASON,
+      reason: RATE_LIMITED_WAIT_REASON,
       resumeAt: decision.resumeAt,
     };
   });
@@ -162,11 +162,19 @@ export default async function plugin(bb: BbPluginApi) {
    * Admission control for an account already known to be exhausted.
    *
    * A dispatch into a blocked account can only fail, and a failure costs the
-   * user a red turn plus a wait. Holding it until the window resets turns that
-   * into one card that says why. The released hold re-enters this gate, so a
+   * user a red turn plus a wait. Parking it until the window resets turns that
+   * into one card that says why. The re-attempt re-enters this gate, so a
    * window that has not actually reset simply parks it again.
+   *
+   * A `join-turn` attempt is exempt: it is joining a turn the provider already
+   * accepted, so the account is demonstrably not blocked for it, and parking a
+   * steer behind a window would strand the user mid-turn for a limit that is
+   * not being hit.
    */
-  bb.experimental_dispatch.gate("turn.submit", (context) => {
+  bb.experimental_dispatch.gate("dispatch", (context) => {
+    if (context.attempt === "join-turn") {
+      return { action: "proceed" };
+    }
     const resetsAtMs = blockedScopeResetAt(
       context.host?.id ?? null,
       context.requestedExecution.providerId,
@@ -176,32 +184,48 @@ export default async function plugin(bb: BbPluginApi) {
       return { action: "proceed" };
     }
     return {
-      action: "hold",
-      reason: RATE_LIMITED_HOLD_REASON,
-      resumeAt: resetsAtMs + RESET_BUFFER_MS,
+      action: "wait",
+      reason: RATE_LIMITED_WAIT_REASON,
+      // `retryAt` becomes the row's `sendAt`, so core's due sweep re-attempts
+      // when the window resets without this plugin holding a timer.
+      retryAt: resetsAtMs + RESET_BUFFER_MS,
     };
   });
 
-  // The user-facing narration of a retry's life. It hangs off the hold events
+  // The user-facing narration of a retry's life. It hangs off the queue events
   // rather than the gate so the note reflects what core actually did with the
-  // verdict, and so a hold the user cancels says so without this plugin
+  // verdict, and so a row the user cancels says so without this plugin
   // tracking cancellation itself.
-  bb.events.on("dispatch.released", ({ hold }) => {
-    if (hold.holder !== `plugin:${bb.pluginId}`) return;
-    if (hold.payload.kind !== "retry") return;
-    appendNote(hold.threadId, "Rate limit window reset — retrying now.", "info");
+  //
+  // `queue.dispatched` reports the wait the row was holding when it went, so
+  // "was this ours?" is answerable from the event alone.
+  const isOwnRetry = (entry: {
+    payload: { kind: string };
+    waitingOn: { kind: string; pluginId?: string } | null;
+  }): boolean =>
+    entry.payload.kind === "retry" &&
+    entry.waitingOn?.kind === "plugin" &&
+    entry.waitingOn.pluginId === bb.pluginId;
+
+  bb.events.on("queue.dispatched", ({ entry }) => {
+    if (!isOwnRetry(entry)) return;
+    appendNote(entry.threadId, "Rate limit window reset — retrying now.", "info");
   });
-  bb.events.on("dispatch.cancelled", ({ hold }) => {
-    if (hold.holder !== `plugin:${bb.pluginId}`) return;
-    if (hold.payload.kind !== "retry") return;
-    appendNote(hold.threadId, "Automatic retry cancelled.", "info");
+  bb.events.on("queue.cancelled", ({ entry }) => {
+    if (!isOwnRetry(entry)) return;
+    appendNote(entry.threadId, "Automatic retry cancelled.", "info");
   });
 
   bb.rpc.register(providerRetryRpcContract, {
     async providerRetryCancel({ threadId }) {
-      const hold = await findRetryHold(bb, threadId);
-      if (hold === null) return { cancelled: false };
-      await bb.sdk.threads.holds.cancel({ holdId: hold.id });
+      const parked = await findParkedRetry(bb, threadId);
+      if (parked === null) return { cancelled: false };
+      // Cancelling a parked dispatch is deleting its queued row — the same
+      // affordance the user has on the card, rather than a second mechanism.
+      await bb.sdk.threads.queuedMessages.delete({
+        threadId: parked.threadId,
+        queuedMessageId: parked.id,
+      });
       return { cancelled: true };
     },
     async providerRetryStatus({ threadId }) {

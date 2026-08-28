@@ -27,6 +27,7 @@ import type {
   PermissionMode,
   PluginInputs,
   PromptInput,
+  QueuedMessageWaitingOn,
   RecordedPermissionMode,
   StoredThreadEventDataForType,
   ThreadEventScope,
@@ -248,6 +249,9 @@ export function seedQueuedMessage(
     pluginInputs?: PluginInputs | null;
     senderThreadId?: string | null;
     serviceTier?: string;
+    /** Defaults to an unparked row: an ordinary queued message. */
+    waitingOn?: QueuedMessageWaitingOn | null;
+    sendAt?: number | null;
   },
 ) {
   return createQueuedThreadMessage(deps.db, deps.hub, {
@@ -259,6 +263,10 @@ export function seedQueuedMessage(
     pluginInputs: args.pluginInputs ?? null,
     senderThreadId: args.senderThreadId ?? null,
     serviceTier: args.serviceTier ?? "default",
+    waitingOn: args.waitingOn ?? null,
+    sendAt: args.sendAt ?? null,
+    payload: { kind: "inline" },
+    systemNotice: null,
   });
 }
 

@@ -11,6 +11,7 @@ import {
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import type { ThreadSendResult } from "@bb/sdk";
+import type { QueuedMessageWaitingOn } from "@bb/domain";
 import {
   confirmDestructiveAction,
   outputJson,
@@ -30,7 +31,7 @@ import {
   buildPromptInputs,
   collectOption,
 } from "./helpers.js";
-import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
+import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 import { parsePluginInputs, PLUGIN_INPUT_HELP } from "./plugin-input.js";
 
 interface ThreadUpdateCommandOptions {
@@ -77,7 +78,7 @@ interface ThreadTellCommandOptions {
   plan?: boolean;
   file?: string[];
   image?: string[];
-  holdUntil?: string;
+  sendAt?: string;
   pluginInput?: string[];
 }
 
@@ -108,14 +109,16 @@ interface PostThreadMessageArgs {
   plan?: boolean;
   files?: readonly string[];
   images?: readonly string[];
-  holdUntil?: number;
+  sendAt?: number;
   pluginInputs?: PluginInputs;
 }
 
+// The server's own answer plus the mode we asked for. `sendAt` used to be
+// echoed back here so the outcome line could name the time; the parked arm of
+// the response now carries it, along with the reason, so the CLI no longer
+// has to reconstruct what happened from the flags it sent.
 type PostThreadMessageResult = ThreadSendResult & {
   mode: ThreadTellDeliveryMode;
-  /** Resolved `--hold-until`, so the outcome line can name the dispatch time. */
-  holdUntil?: number;
 };
 
 interface ThreadUpdateBody {
@@ -435,7 +438,7 @@ export function registerActionsCommands(
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
-    .option("--hold-until <when>", HOLD_UNTIL_HELP)
+    .option("--send-at <when>", SEND_AT_HELP)
     .option(
       "--plugin-input <pluginId=json>",
       PLUGIN_INPUT_HELP,
@@ -472,9 +475,9 @@ export function registerActionsCommands(
             plan: opts.plan,
             files: opts.file,
             images: opts.image,
-            ...(opts.holdUntil === undefined
+            ...(opts.sendAt === undefined
               ? {}
-              : { holdUntil: parseHoldUntil(opts.holdUntil) }),
+              : { sendAt: parseSendAt(opts.sendAt) }),
             ...(pluginInputs === undefined ? {} : { pluginInputs }),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
@@ -567,38 +570,49 @@ async function postThreadMessage(
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
-    ...(args.holdUntil === undefined ? {} : { holdUntil: args.holdUntil }),
+    ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
     ...(args.pluginInputs === undefined
       ? {}
       : { pluginInputs: args.pluginInputs }),
   });
-  return {
-    ...response,
-    mode: args.mode,
-    ...(args.holdUntil === undefined ? {} : { holdUntil: args.holdUntil }),
-  };
+  return { ...response, mode: args.mode };
 }
 
 function describeThreadTellOutcome(
   threadId: string,
   response: PostThreadMessageResult,
 ): string {
-  if (response.delivery === "held") {
-    const when =
-      response.holdUntil === undefined
-        ? ""
-        : ` until ${new Date(response.holdUntil).toLocaleString()}`;
-    return `Thread ${threadId} message held${when}; nothing runs until it releases`;
-  }
-  if (response.delivery === "deferred") {
-    return `Thread ${threadId} is awaiting user interaction; message held and delivers once the interaction settles`;
-  }
-  if (response.delivery === "queued") {
-    return `Thread ${threadId} message queued`;
+  if (response.delivery === "parked") {
+    // The server says WHY it is waiting, so the CLI does not have to guess
+    // from the flags it happened to send. `bb thread queue list` shows the
+    // same reason for the row afterwards.
+    return `Thread ${threadId} message queued (${describeQueueWait(response)}); it dispatches when that clears`;
   }
   return response.mode === "steer"
     ? `Thread ${threadId} steered`
     : `Thread ${threadId} updated`;
+}
+
+/** One short phrase for a parked row's wait, shared by `tell` and `queue`. */
+export function describeQueueWait(row: {
+  sendAt: number | null;
+  waitingOn: QueuedMessageWaitingOn | null;
+}): string {
+  const waitingOn = row.waitingOn ?? { kind: "thread-busy" as const };
+  switch (waitingOn.kind) {
+    case "time":
+      return row.sendAt === null
+        ? "scheduled"
+        : `scheduled for ${new Date(row.sendAt).toLocaleString()}`;
+    case "thread-busy":
+      return "waiting for the current turn to finish";
+    case "provisioning":
+      return "waiting for the workspace";
+    case "interaction":
+      return "waiting for a pending interaction";
+    case "plugin":
+      return `${waitingOn.pluginId}: ${waitingOn.reason}`;
+  }
 }
 
 function resolveSenderThreadId(targetThreadId: string): string | undefined {

@@ -399,6 +399,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       threadId: thread.id,
       queuedMessageId: queued.id,
       mode: "auto",
+      sendNow: false,
     });
 
     const dispatched = await waitForQueuedCommand(

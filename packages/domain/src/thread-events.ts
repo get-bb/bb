@@ -13,8 +13,11 @@ import {
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
-import { dispatchHoldHolderSchema } from "./dispatch-hold.js";
 import { queuedMessageWaitingOnSchema } from "./queued-message.js";
+import {
+  systemMessageKindSchema,
+  systemMessageSubjectSchema,
+} from "./system-message.js";
 
 export const systemEventTypeValues = [
   "client/thread/start",
@@ -41,32 +44,11 @@ const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);
 export type ThreadTurnInitiator = z.infer<typeof threadTurnInitiatorSchema>;
 
-const systemMessageKindValues = [
-  "ownership-assigned",
-  "ownership-removed",
-  "child-needs-attention",
-  "child-completed",
-  "child-failed",
-  "child-interrupted",
-  "child-outcome-batch",
-  "unlabeled",
-] as const;
-export const systemMessageKindSchema = z.enum(systemMessageKindValues);
-export type SystemMessageKind = z.infer<typeof systemMessageKindSchema>;
-
-export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("thread"),
-    threadId: z.string(),
-    threadName: z.string(),
-  }),
-  z.object({
-    kind: z.literal("thread-batch"),
-    count: z.number(),
-  }),
-]);
-export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;
-
+/**
+ * Execution values are historical facts once recorded in the event stream.
+ * The stored-event boundary therefore accepts the two retired modes without
+ * treating either as a current public preset.
+ */
 const turnRequestOptionsSchema = recordedThreadExecutionOptionsSchema;
 
 export const turnRequestTargetSchema = z.discriminatedUnion("kind", [
@@ -300,14 +282,20 @@ export type SystemDispatchHoldStatus = z.infer<
 export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
 
 /**
- * The one timeline row a hold owns, rewritten in place as the hold progresses.
- * It sits where the held turn will land and renders exactly like
- * `system/thread-provisioning` — hence the shared transcript entry shape, which
- * is what `bb.experimental_dispatch.report` steps and output tails append to.
+ * A LEGACY timeline row, retained for decode only.
+ *
+ * Dispatch holds were replaced by parked queue rows and `system/queue-state`;
+ * nothing emits this event any more. Rows written before the rework are still
+ * in every existing database, so the arm stays so that a thread whose history
+ * contains one still renders instead of failing to decode.
+ *
+ * `holder` is a plain string here rather than the old parsed union: no code
+ * dispatches on it now, and re-deriving a closed union just to validate dead
+ * rows would keep the whole holder vocabulary alive for nothing.
  */
 export const systemDispatchHoldEventDataSchema = z.object({
   holdId: z.string().min(1),
-  holder: dispatchHoldHolderSchema,
+  holder: z.string().min(1),
   status: systemDispatchHoldStatusSchema,
   reason: z.string(),
   /**

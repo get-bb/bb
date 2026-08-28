@@ -559,7 +559,7 @@ const descriptionCases: DescriptionCase[] = [
       message: "Sandbox quota is exhausted. Free a slot first.",
       details: {
         pluginId: "policy-guard",
-        stage: "turn.submit",
+        stage: "dispatch",
       },
     },
     expected: {
@@ -573,15 +573,15 @@ const descriptionCases: DescriptionCase[] = [
     body: {
       code: "dispatch_gate_failed",
       message:
-        'The "policy-guard" plugin\'s thread.create dispatch gate failed: gate timed out after 5000ms',
+        'The "policy-guard" plugin\'s dispatch gate failed: gate timed out after 5000ms',
       details: {
         pluginId: "policy-guard",
-        stage: "thread.create",
+        stage: "dispatch",
       },
     },
     expected: {
       title: "Plugin dispatch gate failed",
-      body: 'The "policy-guard" plugin\'s thread.create dispatch gate failed: gate timed out after 5000ms. Disable that plugin to continue.',
+      body: 'The "policy-guard" plugin\'s dispatch gate failed: gate timed out after 5000ms. Disable that plugin to continue.',
       severity: "error",
     },
   },
@@ -672,7 +672,7 @@ describe("describeLifecycleError", () => {
     const body: LifecycleApiError = {
       code: "dispatch_rejected",
       message: pluginMessage,
-      details: { pluginId: "release-freeze", stage: "turn.submit" },
+      details: { pluginId: "release-freeze", stage: "dispatch" },
     };
 
     const description = describeLifecycleError({
@@ -694,8 +694,8 @@ describe("describeLifecycleError", () => {
     const body: LifecycleApiError = {
       code: "dispatch_gate_failed",
       message:
-        'The "release-freeze" plugin\'s turn.submit dispatch gate failed: handler threw',
-      details: { pluginId: "release-freeze", stage: "turn.submit" },
+        'The "release-freeze" plugin\'s dispatch gate failed: handler threw',
+      details: { pluginId: "release-freeze", stage: "dispatch" },
     };
 
     const description = describeLifecycleError({

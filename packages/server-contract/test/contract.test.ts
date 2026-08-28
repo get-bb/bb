@@ -274,10 +274,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "holdUntil is present only when the caller is scheduling the dispatch; omission means dispatch now and allocates no hold row at all.",
+      "sendAt is present only when the caller is scheduling the dispatch; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
     fields: [
-      "createThreadRequestSchema.holdUntil",
-      "sendMessageRequestSchema.holdUntil",
+      "createThreadRequestSchema.sendAt",
+      "sendMessageRequestSchema.sendAt",
     ],
   },
   {
@@ -306,18 +306,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "The hold list is unfiltered by default: omitting threadId or holder means every live hold, which is what a cross-thread pending view asks for.",
+      "The cross-thread queue list is unfiltered by default: omitting threadId or waitHolder means every live parked row, which is what a workspace-wide pending view asks for.",
     fields: [
-      "dispatchHoldListQuerySchema.threadId",
-      "dispatchHoldListQuerySchema.holder",
-    ],
-  },
-  {
-    reason:
-      "Editing a hold is a genuine partial update: omitting input reschedules without touching the draft, and omitting resumeAt edits the draft without moving the timer.",
-    fields: [
-      "updateDispatchHoldRequestSchema.input",
-      "updateDispatchHoldRequestSchema.resumeAt",
+      "queuedMessageListQuerySchema.threadId",
+      "queuedMessageListQuerySchema.waitHolder",
     ],
   },
 ];
@@ -1823,9 +1815,7 @@ describe("server-contract clients", () => {
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
-      dispatchHoldListQuerySchema: contract.dispatchHoldListQuerySchema,
-      updateDispatchHoldRequestSchema:
-        contract.updateDispatchHoldRequestSchema,
+      queuedMessageListQuerySchema: contract.queuedMessageListQuerySchema,
       forkThreadRequestSchema: contract.forkThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,

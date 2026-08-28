@@ -34,7 +34,7 @@ export {
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
 export {
-  makeDispatchHoldResponse,
+  makeQueueEntry,
   makeThreadResponse,
 } from "./fixtures.js";
 export {

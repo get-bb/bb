@@ -212,9 +212,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
-  "dispatch.held": ["hold"],
-  "dispatch.released": ["hold"],
-  "dispatch.cancelled": ["hold"],
+  "queue.parked": ["entry"],
+  "queue.dispatched": ["entry"],
+  "queue.cancelled": ["entry"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };

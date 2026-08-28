@@ -4,10 +4,6 @@ export {
   type InlineQueuedMessageEditState,
 } from "./useInlineQueuedMessageEditing";
 export {
-  useInlineHeldDispatchEditing,
-  type InlineHeldDispatchEditState,
-} from "./useInlineHeldDispatchEditing";
-export {
   useActiveComposerDraft,
   type InlineComposerDraftSession,
 } from "./useActiveComposerDraft";

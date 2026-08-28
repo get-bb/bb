@@ -906,17 +906,19 @@ bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // la
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
-bb.events.on("dispatch.held", ({ hold }) => { ... });                      // hold: DispatchHoldResponse
-bb.events.on("dispatch.released", ({ hold }) => { ... });
-bb.events.on("dispatch.cancelled", ({ hold }) => { ... });
+bb.events.on("queue.parked", ({ entry }) => { ... });                      // entry: ThreadQueuedMessage
+bb.events.on("queue.dispatched", ({ entry }) => { ... });
+bb.events.on("queue.cancelled", ({ entry }) => { ... });
 ```
 
-Nine events. The six `thread.*` ones are thread lifecycle; the three
-`dispatch.*` ones fire when a dispatch hold is created, released into its
-dispatch, or cancelled and discarded. Every listener sees every hold, so a
-plugin that only wants its own filters on
-`hold.holder === "plugin:" + bb.pluginId`. `dispatch.cancelled` is an owner's
-teardown signal.
+Nine events. The six `thread.*` ones are thread lifecycle; the three `queue.*`
+ones fire when a dispatch parks as a queued row, when a parked row's waits all
+clear and it dispatches, and when one is cancelled and discarded. Every
+listener sees every parked row, so a plugin that only wants its own filters on
+`entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
+`queue.parked` fires on a re-park too, because a row that moved from one wait
+to another is news to whoever was waiting on the old one. `queue.cancelled` is
+a waiting plugin's teardown signal.
 
 `thread.active` fires when an applied lifecycle
 transition enters the running `active` state. `thread.archived` fires after a
@@ -936,25 +938,26 @@ always in the timeline yet. To react to a thread's content, listen on
 in a handler — including `bb.sdk.threads.update({ threadId, title })` —
 cannot delay or interrupt the thread's turn.
 
-### bb.experimental_dispatch — dispatch gates and holds
+### bb.experimental_dispatch — the dispatch checkpoint
 
 A gate is the one place a plugin can *decide* about a dispatch rather than
-observe it. Gates run at the moment a turn would actually advance.
+observe it. There is ONE admission checkpoint, `"dispatch"`, and every message
+passes through it exactly once per attempt: a thread's first message, a
+follow-up, a steer, a drained queue row, a retry of a failed turn.
 
 ```ts
-bb.experimental_dispatch.gate("thread.create", (ctx) => {
-  // ctx.thread is null here; ctx.project / ctx.environment / ctx.host,
-  // ctx.input.blocks + ctx.input.text, ctx.requestedExecution,
-  // ctx.executionSources, ctx.origin / ctx.originPluginId /
-  // ctx.startedOnBehalfOf / ctx.parentThreadId, ctx.pluginInput,
-  // ctx.isReleaseReevaluation + ctx.hold.
-  if (atCapacity()) return { action: "hold", reason: "4 of 4 running" };
-  return { action: "proceed", amend: { providerId: "codex", model: "gpt-5" } };
-});
-
-bb.experimental_dispatch.gate("turn.submit", (ctx) => {
-  // ctx.thread is the ThreadResponse; providerId and environment are fixed.
+bb.experimental_dispatch.gate("dispatch", (ctx) => {
+  // ctx.thread (always present — creation is ungated, so the row exists),
+  // ctx.attempt ("start-turn" | "join-turn"), ctx.firstDispatch,
+  // ctx.project / ctx.environment / ctx.host, ctx.input.blocks + ctx.input.text,
+  // ctx.requestedExecution, ctx.executionSources, ctx.origin /
+  // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
+  // ctx.pluginInput, ctx.queuedMessage (the parked row on a re-attempt, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
+  if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
+  if (ctx.firstDispatch) {
+    return { action: "proceed", amend: { providerId: "codex", model: "gpt-5" } };
+  }
   return { action: "proceed" };
 });
 
@@ -968,100 +971,141 @@ bb.experimental_dispatch.gate("turn.failed", (ctx) => {
   }
   return {
     action: "retry",
-    reason: "Rate limited · retrying 6:30",
+    reason: "Rate limited",
     resumeAt: resetsAtMs + 15_000,
   };
 });
 
-await bb.experimental_dispatch.release(holdId, { amend: { model: "gpt-5" } });
-await bb.experimental_dispatch.report(holdId, {
+await bb.experimental_dispatch.clearWait(queuedMessageId, {
+  amend: { model: "gpt-5" },
+});
+await bb.experimental_dispatch.report(queuedMessageId, {
   reason: "Booting VM",
   step: { key: "boot", text: "Booting", status: "started" },
   output: { key: "boot", text: "…" },
-  expectedReleaseAt: Date.now() + 60_000,
-  staleAfterMs: 120_000,
 });
 ```
 
-Verdicts at the two ADMISSION stages (`thread.create`, `turn.submit`) are
-`proceed` (optionally amended), `hold` (`reason`, optional `resumeAt` epoch ms
-for core's timer) and `reject` (`message` shown to the user; the caller gets a
-409 `dispatch_rejected`).
+Verdicts at `"dispatch"` are `proceed` (optionally amended), `wait` (`reason`,
+optional `retryAt` epoch ms, which becomes the row's `sendAt` so core's due
+sweep re-attempts then) and `reject` (`message` shown to the user; the caller
+gets a 409 `dispatch_rejected`).
+
+A `wait` PARKS the message as a queued row whose `waitingOn` names your plugin
+and carries your reason verbatim. The row sits in the thread's queue with a
+card, a Send-now and a Cancel — it is the same row a user's own queued message
+uses, which is why there is no separate hold concept any more. It stays parked
+until you call `clearWait`, the user sends it now, or the orphan sweep clears
+it because your plugin stopped running.
 
 `turn.failed` is the POST-HOC stage and answers a different union: `none` or
 `retry` (`reason`, required `resumeAt`). It runs after the failure has been
-applied, so it cannot refuse or amend anything — there is nothing left to
-admit. A `retry` parks a hold that re-submits the ORIGINAL turn when released:
-the user's message is not appended again, the provider is asked the identical
-question, and the new attempt carries a retry marker so the next failure's
-`attemptNumber` is right. Cap your own retries with `attemptNumber`; core will
-park as many as you ask for. Its context omits the admission-only fields
-(`pluginInput`, `executionSources`, `isReleaseReevaluation`, `hold`) and adds
-`failure`.
+applied, so it cannot refuse or amend anything. A `retry` parks a by-reference
+queued row that re-submits the ORIGINAL turn when it dispatches: the user's
+message is not appended again, the provider is asked the identical question,
+and the new attempt carries a retry marker so the next failure's
+`attemptNumber` is right. The re-attempt runs the `"dispatch"` checkpoint like
+any other, so a retry still respects a limiter at capacity. Cap your own
+retries with `attemptNumber`; core will park as many as you ask for. Its
+context omits the attempt-only fields (`pluginInput`, `executionSources`,
+`attempt`, `firstDispatch`, `queuedMessage`) and adds `failure`.
 
-Amendments: `model`, `reasoningLevel`, `serviceTier`, `permissionMode`
-(clamped to the host ceiling) and `input` (a full replacement of the prompt
-blocks) at both stages; `providerId` and `environment` at `thread.create`
-only. An invalid amendment fails the dispatch with your plugin named.
+**Amendments and their windows.** One amendment shape, checked at runtime
+against the attempt — because with one stage, "may I amend this here?" is a
+property of the moment, not of the registration:
 
-`providerId` is amendable for exactly as long as a thread has never started —
-the invariant is a thread's provider is immutable once a PROVIDER SESSION
-exists, not once its row is inserted. So it is amendable on a fresh
-`thread.create` pass AND on the re-evaluation pass that runs when a held
-creation is released, where the row exists but nothing has run yet. It is
-refused on a thread that has taken any turn, and on a fork, whose provisioning
-clones the source provider's session. `environment` is narrower: first pass
-only, because re-resolving an environment intent at release means re-running
-most of creation.
+| Field | Allowed when |
+|---|---|
+| `input` | always, including on a `join-turn` steer |
+| `model`, `reasoningLevel`, `serviceTier`, `permissionMode` | `attempt === "start-turn"` |
+| `providerId`, `environment` | `attempt === "start-turn"` AND `firstDispatch` |
 
-The same rule reaches `release`, which takes
-`PluginDispatchReleaseAmendments` — the shared shape plus `providerId`:
+`permissionMode` is clamped to the host ceiling rather than refused. Everything
+else outside its window FAILS the attempt with your plugin named, so check
+`ctx.attempt` and `ctx.firstDispatch` before you amend. `input` staying legal
+on a steer is deliberate: it is what lets a content-policy or DLP gate cover
+steers as well as sends.
+
+`providerId` is amendable for exactly as long as a thread has never dispatched
+— the invariant is that a thread's provider is immutable once a PROVIDER
+SESSION exists, not once its row is inserted, and `firstDispatch` is that fact.
+It is refused on a thread that has taken any turn, and on a fork, whose
+provisioning clones the source provider's session. `environment` is narrower
+still: it is honoured only on the attempt that CREATES the thread, because
+re-resolving an environment intent means re-running most of creation, so a
+drain re-attempt of a still-`pending` thread refuses it.
+
+The same amendment shape reaches `clearWait`:
 
 ```ts
 // Decide slowly in the background, then apply the answer as you let go.
-await bb.experimental_dispatch.release(holdId, {
+await bb.experimental_dispatch.clearWait(queuedMessageId, {
   amend: { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
 });
 ```
 
-A refused `providerId` rejects BEFORE the hold is released, so the hold is
-still live: catch it and release again unamended rather than stranding the
-user's message.
+A refused `providerId` rejects BEFORE the wait is cleared, so the row is still
+parked: catch it and clear again unamended rather than stranding the user's
+message. A `providerId` amendment must carry a `model` — the row's frozen tuple
+names a model of the provider it is leaving.
+
+**Clearing a wait does not promise the message will run.** The full pass
+re-runs, including your own gate, so a limiter that clears while still at
+capacity simply re-parks, and a core wait the row picked up meanwhile (the
+thread went busy) parks it again on that. That is what makes a stale
+`clearWait` safe rather than a way past the checkpoint.
 
 Composition: gates run in plugin install order (reorderable per stage under
 Settings → Plugins), amendments accumulate left to right so each gate sees its
-predecessors' effects, a `reject` short-circuits, and `hold` verdicts are
-collected across the whole pass so provider and model are final before
-anything is parked. One hold row is created per pass, owned by the first
-holder. The whole pass runs under one server-wide lock, so a counting gate
-never races another dispatch.
+predecessors' effects, a `reject` short-circuits, and `wait` verdicts are
+collected across the whole pass so provider and model are final before anything
+is parked. One row is parked per pass, owned by the FIRST waiter; the rest have
+their reasons appended to that row's reason, and each of them votes again on
+the next attempt. The whole pass runs under one server-wide lock, so a counting
+gate never races another dispatch.
 
-**Fail-closed.** At the admission stages, a gate that throws or exceeds the 10s
-decision box fails the dispatch with your plugin named — it does not fall
-through. Decide in milliseconds; if the answer needs real work, return `hold`
-and finish it in a background service, then `release`. Passes re-run on
-release, on restart and on retry, so a handler must be idempotent for one
-logical dispatch.
+**Fail-closed.** At `"dispatch"`, a gate that throws or exceeds the 10s
+decision box fails the attempt with your plugin named — it does not fall
+through. Decide in milliseconds; if the answer needs real work, return `wait`
+and finish it in a background service, then `clearWait`. Passes re-run on every
+drain, on restart and on retry, so a handler must be idempotent for one logical
+dispatch.
 
 At `turn.failed`, fail-closed means the opposite, because the turn has already
 failed and the safe state is that failure standing as core wrote it: a gate
 that throws, times out or returns a malformed verdict has its verdict
 DISCARDED with your plugin named in the log, and the failure is untouched. A
 broken retry policy costs a retry; it can never make failures unrecoverable.
-The chain also stops at the first `retry` — one failure earns at most one hold.
+The chain also stops at the first `retry` — one failure earns at most one row.
+
+**Core waits you never see.** Before your gate runs, core parks a message that
+cannot run for a structural reason: a future `sendAt`, a thread already running
+a turn the message did not ask to join, a workspace still provisioning, an
+unanswered interaction. Those rows carry `waitingOn.kind` of `time`,
+`thread-busy`, `provisioning` or `interaction` and are not yours to clear.
+
+**Finding your own rows.** A `wait` verdict returns a reason, not an id — the
+id arrives on `queue.parked`. After a restart, ask for them:
+
+```ts
+const mine = await bb.sdk.threads.queue.list({
+  waitHolder: `plugin:${bb.pluginId}`,
+});
+```
 
 A caller addresses input to a specific plugin's gates with `pluginInputs` on
 `threads.spawn` / `threads.send` (`Record<pluginId, JsonValue>`, ≤8KB total);
-your gate sees only your own entry as `ctx.pluginInput`, and it rides the hold
-payload and the queued row so a message that waits reaches you unchanged.
+your gate sees only your own entry as `ctx.pluginInput`, and it rides the
+queued row so a message that parks reaches you unchanged on every re-attempt.
 
 To count in-flight work, use `bb.sdk.threads.count({ status, hostId,
 providerId, projectId, parentThreadId, groupBy })` — a real grouped
 `SELECT count(*)`, not a list you filter. Serial evaluation means you count
 your own `proceed`s as in-flight until the matching `thread.created` arrives.
-**Deadlock caution:** parent threads sit active while waiting on hidden
-children, so a limiter must exempt child threads (`parentThreadId`,
-`originPluginId`) or give them their own pool.
+A well-behaved limiter proceeds unconditionally on a `join-turn` attempt: the
+thread already holds its slot. **Deadlock caution:** parent threads sit active
+while waiting on hidden children, so a limiter must exempt child threads
+(`parentThreadId`, `originPluginId`) or give them their own pool.
 
 ### bb.experimental_threads — timeline notes
 
@@ -1084,8 +1128,8 @@ attribution cannot be forged.
 
 Notes are display-only by construction: nothing that builds a provider request
 reads thread events, so a note can never reach a model. Content meant FOR the
-agent is an attributed agent-only message, not a note. Progress ON a hold
-belongs on that hold (`experimental_dispatch.report`), which keeps it in one
+agent is an attributed agent-only message, not a note. Progress ON a parked row
+belongs on that row (`experimental_dispatch.report`), which keeps it in one
 collapsing row instead of a stream of notes.
 
 ### bb.http — HTTP routes
@@ -2366,7 +2410,7 @@ providerId }`) and `Original`, the host's declarative base for the body —
 
   Choosing the entry is **not** choosing a provider. bb submits the create
   request with `providerId` omitted and delivers `pluginInput` as your
-  plugin's `pluginInputs` entry, so your `thread.create` gate is what actually
+  plugin's `pluginInputs` entry, so your `dispatch` gate is what actually
   picks the provider and model — read it from the gate context's
   `pluginInput`. While the entry is selected the picker hides the model,
   reasoning and fast-mode rows, because nothing has chosen a model yet.
@@ -2714,10 +2758,10 @@ openThreadPanel({ actionId, title?, params? }), openUrl(url) }`.
   is committed, and it is not persisted with the draft, so a per-message
   choice never silently applies to every later message. Only your gates see
   it, and it counts against the request's 8KB `pluginInputs` budget;
-  `experimental_submit({ holdUntil })` runs THIS composer's own submit
-  pipeline with the draft on screen, parked until `holdUntil` (epoch ms)
-  instead of dispatched now — a held send in a thread, or a thread created
-  idle whose first turn is the hold. Use it instead of scheduling from your
+  `experimental_submit({ sendAt })` runs THIS composer's own submit
+  pipeline with the draft on screen, parked until `sendAt` (epoch ms)
+  instead of dispatched now — a parked message in a thread, or a thread created
+  `pending` whose first message is the parked row. Use it instead of scheduling from your
   backend: only the composer resolves the draft's attachments and @-mentions
   and, on the new-thread screen, the provider, model, reasoning level, service
   tier, permission mode and environment the user selected, so a backend

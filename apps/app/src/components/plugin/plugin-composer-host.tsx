@@ -23,7 +23,7 @@ export interface PluginComposerHost {
   focus(): void;
   /**
    * Runs this composer's own submit pipeline with the draft it holds right
-   * now, parking the result until `holdUntil` instead of dispatching it. Backs
+   * now, parking the result until `sendAt` instead of dispatching it. Backs
    * `useComposer().experimental_submit`.
    *
    * Omitted — not a no-op — by composers that have no schedulable submit of
@@ -37,7 +37,7 @@ export interface PluginComposerHost {
    * failures reject too, after the composer has restored the draft and shown
    * its own error, so the caller can drop its success UI.
    */
-  submit?(options: { holdUntil: number }): Promise<void>;
+  submit?(options: { sendAt: number }): Promise<void>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

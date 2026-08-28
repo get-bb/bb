@@ -11,9 +11,11 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import { DISPATCH_HOLD_USER_HOLDER } from "@bb/domain";
-import type { DispatchHoldHolder } from "@bb/domain";
-import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
+import type {
+  BaseBranchSpec,
+  CreateThreadEnvironmentArgs,
+  UnmanagedBranchSpec,
+} from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -36,18 +38,10 @@ import {
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
-  createThreadDispatchHold,
-  SCHEDULED_DISPATCH_HOLD_REASON,
-} from "./dispatch-holds.js";
-import {
-  dispatchExecutionSources,
-  dispatchGateHolder,
-  dispatchHoldReasonForPass,
-  hasDispatchAmendments,
-  hasDispatchGates,
-  runDispatchGatePass,
-  type DispatchAmendmentResult,
-} from "./dispatch-gates.js";
+  attemptDispatch,
+  type PendingThreadStartContext,
+} from "./dispatch-attempt.js";
+import { setThreadPendingStartContext } from "@bb/db";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
@@ -69,16 +63,11 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { deriveTitleFallback } from "./title-generation.js";
+import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
 import {
-  advanceThreadProvisioning,
-  requestThreadProvision,
-  scheduleThreadProvisioningAdvance,
-} from "./thread-provisioning.js";
-import type {
-  ThreadProvisionContext,
-  ThreadProvisionEnvironmentIntent,
-} from "./thread-provisioning-context.js";
-import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
+  resolveManagedDefaultBaseBranchSpec,
+  resolveManagedNamedBaseBranchSpec,
+} from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 
@@ -228,12 +217,6 @@ interface ResolveManagedBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
   sourcePath: string;
-}
-
-function shouldAdvanceProvisioningBeforeResponse(
-  environmentIntent: ThreadProvisionEnvironmentIntent,
-): boolean {
-  return environmentIntent.type === "direct-personal";
 }
 
 function requestUsesPersonalWorkspace(
@@ -423,20 +406,40 @@ function intentHostId(
   return intent.hostId;
 }
 
-async function createProvisioningThread(
+/**
+ * Creates the thread row and hands its first message to the dispatch
+ * checkpoint.
+ *
+ * This is the whole of thread creation's dispatch story now, and it replaced a
+ * pair of near-identical functions — one that provisioned immediately and one
+ * that parked the first turn in a hold — whose only real difference was
+ * whether anything was allowed to run yet. That is a question the checkpoint
+ * answers, so asking it here as well meant two code paths that had to be kept
+ * in agreement about forks, execution defaults, telemetry and cleanup.
+ *
+ * The row inserts `pending`: created, with its provider resolved, and nothing
+ * provisioned. Creation itself is ungated — it is a cheap row — and admission
+ * happens at the first message's attempt. A cleared attempt moves the thread
+ * to `starting` and provisions with the message riding along; a parked one
+ * leaves the thread exactly where it is, with the start context recorded so a
+ * later drain (or a later server) can start it.
+ */
+async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
     pluginAmended: boolean;
+    resolveEnvironmentIntent: (
+      environment: CreateThreadEnvironmentArgs,
+    ) => Promise<ThreadProvisionEnvironmentIntent>;
+    sendAt: number | undefined;
   },
 ) {
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
-    status: "starting",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
-  let context: ThreadProvisionContext;
   try {
     if (
       args.fork !== null &&
@@ -456,126 +459,64 @@ async function createProvisioningThread(
       hostId: intentHostId(deps, args.environmentIntent),
       threadId: thread.id,
     });
-    context = requestThreadProvision(deps, {
-      thread,
+
+    const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
-      execution,
       fork: args.fork?.descriptor ?? null,
-      input: args.request.input,
       ...(args.providerInput !== undefined
         ? { providerInput: args.providerInput }
         : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
-    });
-  } catch (error) {
-    emitPluginThreadDeleted({
-      ...thread,
-      deletedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    deleteThread(deps.db, deps.hub, thread.id);
-    throw error;
-  }
-  rememberProjectExecutionDefaultsForCreate(deps, {
-    execution,
-    pluginAmended: args.pluginAmended,
-    request: args.request,
-  });
-  if (shouldAdvanceProvisioningBeforeResponse(args.environmentIntent)) {
-    await advanceThreadProvisioning(deps, {
-      context,
+    };
+    // Recorded BEFORE the attempt, not after it parks: the attempt drives
+    // provisioning off this stack when it clears, and a context written
+    // afterwards would race that. Writing it unconditionally and clearing it
+    // when the thread leaves `pending` keeps one owner for the field.
+    setThreadPendingStartContext(deps.db, {
       threadId: thread.id,
+      pendingStartContext: JSON.stringify(startContext),
     });
-  } else {
-    scheduleThreadProvisioningAdvance(deps, context, thread.id);
-  }
-  return getThreadSafe(deps, thread.id);
-}
 
-/**
- * What a held creation parks its first turn under. Phase 1 only ever produced
- * a user-owned `holdUntil` hold; a `thread.create` gate verdict produces the
- * same row with a plugin holder and the pass's reason, which is why this is a
- * descriptor rather than a bare timestamp.
- */
-interface HeldThreadDispatchHold {
-  holder: DispatchHoldHolder;
-  reason: string;
-  resumeAt: number | null;
-  userReleasable: boolean;
-}
-
-/**
- * Held creation: everything the normal path resolves (provider, model,
- * permission ceiling, environment intent, fork point) is resolved and frozen,
- * but nothing is dispatched. The thread inserts `idle` with no turn, no
- * environment work and no provisioning intent, and the first turn becomes a
- * user-owned hold.
- *
- * No provisioning context is parked. The live context
- * (`rememberActiveThreadProvisionContext`) is in-memory and only valid while
- * the thread is `starting`, so a parked one would not survive the wait, let
- * alone a restart. The hold carries the resolved intent instead and
- * {@link releaseDispatchHoldAndDispatch} builds the context when it releases —
- * which is also what makes "release schedules provisioning" true after a
- * server restart.
- */
-async function createHeldThread(
-  deps: ThreadCreateDeps,
-  args: CreateProvisioningThreadArgs & {
-    environmentIntent: ThreadProvisionEnvironmentIntent;
-    hold: HeldThreadDispatchHold;
-    pluginAmended: boolean;
-  },
-) {
-  const thread = createThreadRecord(deps, {
-    request: args.request,
-    environmentId: args.environmentId,
-    status: "idle",
-  });
-  let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
-  try {
-    if (
-      args.fork !== null &&
-      args.fork.historyEndSequence !== null &&
-      args.request.visibility === "visible"
-    ) {
-      copyForkSourceHistory(deps, {
-        fork: thread,
-        historyEndSequence: args.fork.historyEndSequence,
-        sourceThreadId: args.fork.sourceThreadId,
-      });
-    }
-    execution = await buildExecutionOptions(deps, args.request, {
-      ...(args.executionDefaults
-        ? { projectDefaults: args.executionDefaults }
-        : {}),
-      hostId: intentHostId(deps, args.environmentIntent),
-      threadId: thread.id,
-    });
-    createThreadDispatchHold(deps, {
-      threadId: thread.id,
-      environmentId: args.environmentId,
-      holder: args.hold.holder,
+    await attemptDispatch(deps, {
+      thread,
       payload: {
-        kind: "inline",
         input: args.request.input,
-        execution,
-        pluginInputs: args.request.pluginInputs ?? {},
-      },
-      reason: args.hold.reason,
-      resumeAt: args.hold.resumeAt,
-      userReleasable: args.hold.userReleasable,
-      threadStartContext: {
-        environmentIntent: args.environmentIntent,
-        fork: args.fork?.descriptor ?? null,
-        ...(args.providerInput !== undefined
-          ? { providerInput: args.providerInput }
+        mode: "start",
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        serviceTier: execution.serviceTier,
+        permissionMode: execution.permissionMode,
+        ...(args.request.executionInputSources !== undefined
+          ? { executionInputSources: args.request.executionInputSources }
           : {}),
-        startedOnBehalfOf: args.request.startedOnBehalfOf,
-        titleProvided: Boolean(args.request.title),
+        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+        ...(args.request.pluginInputs !== undefined
+          ? { pluginInputs: args.request.pluginInputs }
+          : {}),
       },
+      source: { kind: "inline" },
+      queuePayload: { kind: "inline" },
+      creation: {
+        startContext,
+        applyEnvironmentAmendment: async (amendment) => {
+          const environmentIntent =
+            await args.resolveEnvironmentIntent(amendment);
+          const amended: PendingThreadStartContext = {
+            ...startContext,
+            environmentIntent,
+          };
+          setThreadPendingStartContext(deps.db, {
+            threadId: thread.id,
+            pendingStartContext: JSON.stringify(amended),
+          });
+          return amended;
+        },
+      },
+      origin: args.request.origin,
+      originPluginId: args.request.originPluginId ?? null,
+      startedOnBehalfOf: args.request.startedOnBehalfOf,
+      trigger: "user",
     });
   } catch (error) {
     emitPluginThreadDeleted({
@@ -742,99 +683,13 @@ export async function createThreadFromRequest(
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
-  // The `thread.create` gate pass: defaults are resolved, nothing is inserted
-  // yet, and no environment work has started — so a hold here costs no
-  // worktree, no setup script and no host resources.
-  //
-  // A `holdUntil` request skips it deliberately. That dispatch is not
-  // advancing now, and the plan settles that a user hold is not a gate
-  // verdict; the pass runs when the timer releases it instead.
-  const gateOutcome =
-    requestInput.holdUntil === undefined && hasDispatchGates("thread.create")
-      ? await runDispatchGatePass(deps, {
-          stage: "thread.create",
-          thread: null,
-          threadResponse: null,
-          project,
-          // Only a reuse request already names an environment; every other
-          // shape resolves one after this pass, so the gate sees null.
-          environmentId:
-            requestInput.environment.type === "reuse"
-              ? requestInput.environment.environmentId
-              : null,
-          input: requestInput.input,
-          requestedExecution: {
-            providerId,
-            model: requestedModel ?? executionDefaults?.model ?? null,
-            reasoningLevel:
-              requestInput.reasoningLevel ??
-              executionDefaults?.reasoningLevel ??
-              null,
-            serviceTier:
-              requestInput.serviceTier ?? executionDefaults?.serviceTier ?? null,
-            permissionMode:
-              requestInput.permissionMode ??
-              executionDefaults?.permissionMode ??
-              null,
-          },
-          executionSources: dispatchExecutionSources(
-            requestInput.executionInputSources ?? {},
-          ),
-          origin: requestInput.origin,
-          originPluginId: requestInput.originPluginId ?? null,
-          startedOnBehalfOf: requestInput.startedOnBehalfOf,
-          parentThreadId: requestInput.parentThreadId ?? null,
-          pluginInputs: requestInput.pluginInputs ?? {},
-          release: null,
-        })
-      : null;
-  const amendments: DispatchAmendmentResult | null =
-    gateOutcome?.amendments ?? null;
-  if (amendments !== null && hasDispatchAmendments(amendments)) {
-    if (amendments.input !== null) requestInput.input = amendments.input;
-    if (amendments.environment !== null) {
-      // A gate may amend to the same `project-default` marker a caller can
-      // send, so it resolves through the same server-owned policy the request
-      // did rather than reaching provisioning as a marker.
-      requestInput.environment =
-        amendments.environment.type === "project-default"
-          ? await resolveProjectDefaultThreadEnvironment(deps, {
-              projectId: requestInput.projectId,
-            })
-          : amendments.environment;
-    }
-    if (amendments.reasoningLevel !== null) {
-      requestInput.reasoningLevel = amendments.reasoningLevel;
-    }
-    if (amendments.serviceTier !== null) {
-      requestInput.serviceTier = amendments.serviceTier;
-    }
-    if (amendments.permissionMode !== null) {
-      requestInput.permissionMode = amendments.permissionMode;
-    }
-    if (amendments.providerId !== null || amendments.model !== null) {
-      // A new provider brings its own stored defaults, so the whole default
-      // resolution is redone rather than patched — the same call, with the
-      // amended values marked `plugin` so they are used but never remembered.
-      const amended = resolveProjectExecutionDefaultsForCreate(deps, {
-        executionInputSources: {
-          ...requestInput.executionInputSources,
-          ...(amendments.providerId !== null
-            ? { providerId: "plugin" as const }
-            : {}),
-          ...(amendments.model !== null ? { model: "plugin" as const } : {}),
-        },
-        model: amendments.model ?? requestInput.model,
-        projectId: requestInput.projectId,
-        providerId: amendments.providerId ?? requestInput.providerId,
-      });
-      executionDefaults = amended.executionDefaults;
-      providerId = amended.providerId;
-      requestedModel = amended.requestedModel;
-      requestInput.model = amended.requestedModel ?? requestInput.model;
-      requestInput.providerId = providerId;
-    }
-  }
+  // No gate pass here. Creation is UNGATED — a thread row is cheap, costs no
+  // worktree, no setup script and no host resources — and admission happens at
+  // the first message's dispatch attempt, where a plugin sees the thread it is
+  // deciding about and can amend its provider and environment while neither is
+  // settled yet. That collapses what used to be a `thread.create` pass plus a
+  // second re-evaluation pass when its hold released into one checkpoint that
+  // runs the same way every time.
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
@@ -885,103 +740,133 @@ export async function createThreadFromRequest(
     },
   );
 
-  let environmentId: string | null = null;
-  let environmentIntent: ThreadProvisionEnvironmentIntent;
-
-  switch (resolvedEnvironment.type) {
-    case "reuse": {
-      let environment = resolvedEnvironment.environment;
-      if (environment.status === "retiring") {
-        applyLoggedEnvironmentLifecycleEvent(deps, {
+  /**
+   * Resolves where a thread will run, for a given environment request.
+   *
+   * Extracted into a closure rather than left inline because a gate may amend
+   * the environment at the first dispatch attempt, and honouring that means
+   * re-running exactly this resolution — the workspace-path claim checks, the
+   * existing-unmanaged-environment reuse, the managed base branch — against
+   * the amended request. Two copies of it would be two policies.
+   */
+  async function resolveEnvironmentPlacement(
+    requestedEnvironment: CreateThreadEnvironmentArgs,
+  ): Promise<{
+    environmentId: string | null;
+    environmentIntent: ThreadProvisionEnvironmentIntent;
+  }> {
+    const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
+      allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
+      environment:
+        requestedEnvironment.type === "project-default"
+          ? await resolveProjectDefaultThreadEnvironment(deps, {
+              projectId: request.projectId,
+            })
+          : requestedEnvironment,
+      projectId: request.projectId,
+    });
+    let environmentId: string | null = null;
+    let environmentIntent: ThreadProvisionEnvironmentIntent;
+    switch (resolvedEnvironment.type) {
+      case "reuse": {
+        let environment = resolvedEnvironment.environment;
+        if (environment.status === "retiring") {
+          applyLoggedEnvironmentLifecycleEvent(deps, {
+            environmentId: environment.id,
+            event: { type: "retire.cancelled" },
+          });
+          environment = getEnvironment(deps.db, environment.id) ?? environment;
+        }
+        if (
+          environment.status !== "ready" &&
+          environment.status !== "provisioning"
+        ) {
+          throwEnvironmentNotReady(environment);
+        }
+        if (environment.status === "ready" && !environment.path) {
+          throwEnvironmentNotReady(environment);
+        }
+        if (environment.status === "provisioning") {
+          requireNonDestroyedHostWithStatus(deps, environment.hostId);
+        }
+        environmentId = environment.id;
+        environmentIntent = {
+          type: "reuse",
           environmentId: environment.id,
-          event: { type: "retire.cancelled" },
-        });
-        environment = getEnvironment(deps.db, environment.id) ?? environment;
-      }
-      if (
-        environment.status !== "ready" &&
-        environment.status !== "provisioning"
-      ) {
-        throwEnvironmentNotReady(environment);
-      }
-      if (environment.status === "ready" && !environment.path) {
-        throwEnvironmentNotReady(environment);
-      }
-      if (environment.status === "provisioning") {
-        requireNonDestroyedHostWithStatus(deps, environment.hostId);
-      }
-      environmentId = environment.id;
-      environmentIntent = {
-        type: "reuse",
-        environmentId: environment.id,
-      };
-      break;
-    }
-    case "host": {
-      const hostId = resolvedEnvironment.hostId;
-      const workspace = resolvedEnvironment.workspace;
-      if (workspace.type === "unmanaged") {
-        if (resolvedEnvironment.unmanagedPath === null) {
-          throw new Error(
-            "Validated unmanaged host request is missing a workspace path",
-          );
-        }
-        assertUnmanagedHostPathIsAttachable(deps, {
-          branch: workspace.branch,
-          dataDir: hostDataDir,
-          hostId,
-          path: resolvedEnvironment.unmanagedPath,
-          projectId: request.projectId,
-        });
-        const existingIntent = existingUnmanagedEnvironmentIntentByHostPath(
-          deps,
-          {
-            branch: workspace.branch,
-            hostId,
-            path: resolvedEnvironment.unmanagedPath,
-            request,
-          },
-        );
-        environmentIntent = existingIntent?.intent ?? {
-          type: "direct-unmanaged",
-          hostId,
-          path: resolvedEnvironment.unmanagedPath,
-          ...(workspace.branch ? { branch: workspace.branch } : {}),
         };
-        if (existingIntent) {
-          environmentId = existingIntent.environmentId;
-        }
         break;
       }
+      case "host": {
+        const hostId = resolvedEnvironment.hostId;
+        const workspace = resolvedEnvironment.workspace;
+        if (workspace.type === "unmanaged") {
+          if (resolvedEnvironment.unmanagedPath === null) {
+            throw new Error(
+              "Validated unmanaged host request is missing a workspace path",
+            );
+          }
+          assertUnmanagedHostPathIsAttachable(deps, {
+            branch: workspace.branch,
+            dataDir: hostDataDir,
+            hostId,
+            path: resolvedEnvironment.unmanagedPath,
+            projectId: request.projectId,
+          });
+          const existingIntent = existingUnmanagedEnvironmentIntentByHostPath(
+            deps,
+            {
+              branch: workspace.branch,
+              hostId,
+              path: resolvedEnvironment.unmanagedPath,
+              request,
+            },
+          );
+          environmentIntent = existingIntent?.intent ?? {
+            type: "direct-unmanaged",
+            hostId,
+            path: resolvedEnvironment.unmanagedPath,
+            ...(workspace.branch ? { branch: workspace.branch } : {}),
+          };
+          if (existingIntent) {
+            environmentId = existingIntent.environmentId;
+          }
+          break;
+        }
 
-      const managedSource = resolvedEnvironment.localSource;
-      if (!managedSource) {
-        throw new Error(
-          "Validated managed host request is missing a local source",
-        );
-      }
-      environmentIntent = {
-        type: "direct-managed",
-        hostId,
-        sourcePath: managedSource.path,
-        baseBranch: await resolveManagedBaseBranchForCreate(deps, {
-          baseBranch: workspace.baseBranch,
+        const managedSource = resolvedEnvironment.localSource;
+        if (!managedSource) {
+          throw new Error(
+            "Validated managed host request is missing a local source",
+          );
+        }
+        environmentIntent = {
+          type: "direct-managed",
           hostId,
           sourcePath: managedSource.path,
-        }),
-        workspaceProvisionType: workspace.type,
-      };
-      break;
+          baseBranch: await resolveManagedBaseBranchForCreate(deps, {
+            baseBranch: workspace.baseBranch,
+            hostId,
+            originKind,
+            sourcePath: managedSource.path,
+          }),
+          workspaceProvisionType: workspace.type,
+        };
+        break;
+      }
+      case "personal": {
+        environmentIntent = {
+          type: "direct-personal",
+          hostId: resolvedEnvironment.hostId,
+          workspaceProvisionType: "personal",
+        };
+        break;
+      }
     }
-    case "personal": {
-      environmentIntent = {
-        type: "direct-personal",
-        hostId: resolvedEnvironment.hostId,
-        workspaceProvisionType: "personal",
-      };
-      break;
-    }
+    return { environmentId, environmentIntent };
   }
+
+  const { environmentId, environmentIntent } =
+    await resolveEnvironmentPlacement(request.environment);
 
   const fork = resolveForkPoint(deps, {
     childHostId,
@@ -1009,36 +894,15 @@ export async function createThreadFromRequest(
       : {}),
     request,
   };
-  const pluginAmended = amendments !== null && hasDispatchAmendments(amendments);
-  // Three outcomes, in priority order: a gate held the pass (its verdict owns
-  // the row), the caller scheduled the send (`holdUntil`, user-owned), or the
-  // thread starts now. A `holdUntil` request never reaches a gate, so the two
-  // hold branches cannot both apply.
-  const gateHold =
-    gateOutcome?.kind === "hold"
-      ? ({
-          holder: dispatchGateHolder(gateOutcome.holder.pluginId),
-          reason: dispatchHoldReasonForPass(gateOutcome),
-          resumeAt: gateOutcome.holder.resumeAt,
-          // Release-now is how a user overrides a plugin's decision, and the
-          // pass that runs then skips the owning gate for exactly that reason.
-          userReleasable: true,
-        } satisfies HeldThreadDispatchHold)
-      : null;
-  const scheduledHold =
-    request.holdUntil === undefined
-      ? null
-      : ({
-          holder: DISPATCH_HOLD_USER_HOLDER,
-          reason: SCHEDULED_DISPATCH_HOLD_REASON,
-          resumeAt: request.holdUntil,
-          userReleasable: true,
-        } satisfies HeldThreadDispatchHold);
-  const hold = gateHold ?? scheduledHold;
-  const thread =
-    hold === null
-      ? await createProvisioningThread(deps, { ...createArgs, pluginAmended })
-      : await createHeldThread(deps, { ...createArgs, hold, pluginAmended });
+  const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
+    ...createArgs,
+    // Nothing amended anything before the row was inserted: the checkpoint runs
+    // after it, so a project default remembered here is the caller's own.
+    pluginAmended: false,
+    resolveEnvironmentIntent: async (environment) =>
+      (await resolveEnvironmentPlacement(environment)).environmentIntent,
+    sendAt: request.sendAt,
+  });
   deps.telemetry.capture({
     name: "thread_created",
     properties: {

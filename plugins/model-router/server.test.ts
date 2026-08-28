@@ -1,33 +1,36 @@
 // End-to-end wiring through the fake plugin host: settings and the provider
-// catalog in, a gate that holds, a hidden routing thread spawned and read, and
-// a release — amended or not — out.
+// catalog in, a gate that waits, a hidden routing thread spawned and read, and
+// a cleared wait — amended or not — out.
 //
 // Prompt assembly, JSON extraction and answer validation are covered in
 // routing.test.ts and the catalog shape in catalog.test.ts. What this file
-// checks is the part only the wiring can get wrong: that a hold is taken
+// checks is the part only the wiring can get wrong: that a row is parked
 // exactly when Auto was picked, that the routing thread cannot route itself,
-// that every way the route can fail still releases the user's message, that
-// the routing thread is always cleaned up, and that the provider is amended
-// only where a provider may still change — the last being a refused amendment
-// if it is wrong.
+// that every way the route can fail still lets the user's message go, that the
+// routing thread is always cleaned up, and that the provider is amended only
+// where a provider may still change — the last being a refused amendment if it
+// is wrong.
 
 import type {
   BbPluginApi,
-  JsonValue,
   PluginDispatchGateContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeQueueEntry,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import plugin, {
   EMPTY_ROUTING_PROMPT,
   readAutoEntry,
-  readHeldText,
-  ROUTING_HOLD_REASON,
+  readParkedText,
+  ROUTING_WAIT_REASON,
 } from "./server.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type DispatchHoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
+type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
 type ProviderInfo = Awaited<
   ReturnType<BbPluginApi["sdk"]["providers"]["list"]>
 >[number];
@@ -97,18 +100,21 @@ const CHOSE_GPT5 = '```json\n{"providerId":"codex","model":"gpt-5","reasoningLev
 
 interface ContextOverrides {
   text?: string;
-  pluginInput?: PluginDispatchGateContext<"thread.create">["pluginInput"];
+  pluginInput?: PluginDispatchGateContext<"dispatch">["pluginInput"];
   providerId?: string;
-  isReleaseReevaluation?: boolean;
+  queuedMessage?: QueueEntry | null;
   originPluginId?: string | null;
 }
 
-function createContext(
+function dispatchContext(
   overrides: ContextOverrides = {},
-): PluginDispatchGateContext<"thread.create"> {
+): PluginDispatchGateContext<"dispatch"> {
   return {
-    stage: "thread.create",
-    thread: null,
+    stage: "dispatch",
+    thread: threadResponse(),
+    attempt: "start-turn",
+    firstDispatch: true,
+    queuedMessage: overrides.queuedMessage ?? null,
     project: PROJECT,
     environment: null,
     host: null,
@@ -137,88 +143,47 @@ function createContext(
       overrides.pluginInput === undefined
         ? { entry: "default" }
         : overrides.pluginInput,
-    isReleaseReevaluation: overrides.isReleaseReevaluation ?? false,
-    hold: null,
   };
 }
 
+/**
+ * The routed thread. `pending` by default — a thread whose first message is
+ * parked has no provider session yet, which is exactly the window a provider
+ * amendment is legal in.
+ */
 function threadResponse(overrides: Partial<ThreadResponse> = {}): ThreadResponse {
-  return {
+  return makeThreadResponse({
     id: "thr_1",
     projectId: PROJECT.id,
-    environmentId: null,
     providerId: "codex",
-    title: null,
-    titleFallback: null,
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
-    lastReadAt: null,
-    latestAttentionAt: 1,
-    createdAt: 1,
-    updatedAt: 1,
+    status: "pending",
     ...overrides,
-  } as ThreadResponse;
+  });
 }
 
-type HoldPayload = DispatchHoldResponse["payload"];
-
-function inlinePayload(
-  input: Extract<HoldPayload, { kind: "inline" }>["input"],
-): HoldPayload {
-  return {
-    kind: "inline",
-    input,
-    execution: {
-      model: "gpt-5-mini",
-      serviceTier: "default",
-      reasoningLevel: "low",
-      permissionMode: "full",
-      source: "client/turn/requested",
-    },
-    editable: true,
-  };
-}
-
-function heldDispatch(
-  overrides: Partial<DispatchHoldResponse> = {},
-): DispatchHoldResponse {
-  return {
-    id: "hold_1",
-    kind: "turn",
+/** A row parked on this plugin's wait, as core would announce it. */
+function parkedRow(overrides: Partial<QueueEntry> = {}): QueueEntry {
+  return makeQueueEntry({
+    id: "queued_1",
     threadId: "thr_1",
-    holder: OWN_HOLDER,
-    userReleasable: true,
-    reason: ROUTING_HOLD_REASON,
-    payload: inlinePayload([
+    content: [
       { type: "text", text: "refactor the dispatch pipeline", mentions: [] },
-    ]),
-    resumeAt: null,
-    expectedReleaseAt: null,
-    staleAfterMs: null,
-    lastReportAt: null,
-    createdAt: 1,
-    releasedAt: null,
-    releaseKind: null,
+    ],
+    waitingOn: {
+      kind: "plugin",
+      pluginId: PLUGIN_ID,
+      reason: ROUTING_WAIT_REASON,
+    },
     ...overrides,
-  } as DispatchHoldResponse;
+  });
 }
 
 interface SetupOptions {
   settings?: Record<string, string | boolean>;
-  /** Turn events the routed thread already has; none means "never started". */
-  turnEvents?: number;
   thread?: Partial<ThreadResponse>;
   /** The routing thread's final output, or a thrower to fail the read. */
   output?: string | null;
-  liveHolds?: DispatchHoldResponse[];
+  parked?: QueueEntry[];
   spawn?: () => Promise<ThreadResponse>;
   wait?: () => Promise<unknown>;
 }
@@ -244,14 +209,8 @@ async function setup(options: SetupOptions = {}) {
       },
       threads: {
         get: async () => threadResponse(options.thread ?? {}),
-        events: {
-          list: async () =>
-            Array.from({ length: options.turnEvents ?? 0 }, () => ({
-              type: "client/turn/requested",
-            })),
-        },
-        holds: {
-          list: async () => options.liveHolds ?? [],
+        queue: {
+          list: async () => options.parked ?? [],
         },
         spawn: async (...args: unknown[]) => {
           spawned.push(args);
@@ -282,7 +241,7 @@ async function setup(options: SetupOptions = {}) {
 
 type Harness = Awaited<ReturnType<typeof setup>>["harness"];
 
-/** Run the catalog service once (which also runs hold recovery), then stop it. */
+/** Run the catalog service once (which also runs recovery), then stop it. */
 async function loadCatalog(harness: Harness): Promise<void> {
   const service = harness.behavior.runService("catalog");
   await flush();
@@ -296,24 +255,18 @@ async function flush(): Promise<void> {
   }
 }
 
-function createGate(harness: Harness) {
-  const gate = harness.registrations.dispatchGates["thread.create"];
-  if (gate === null) throw new Error("thread.create gate was not registered");
+function dispatchGate(harness: Harness) {
+  const gate = harness.registrations.dispatchGates.dispatch;
+  if (gate === null) throw new Error("the dispatch gate was not registered");
   return gate;
 }
 
-function submitGate(harness: Harness) {
-  const gate = harness.registrations.dispatchGates["turn.submit"];
-  if (gate === null) throw new Error("turn.submit gate was not registered");
-  return gate;
-}
-
-/** Drive one held dispatch through the plugin the way core would. */
+/** Drive one parked row through the plugin the way core would. */
 async function route(
   harness: Harness,
-  hold: DispatchHoldResponse = heldDispatch(),
+  entry: QueueEntry = parkedRow(),
 ): Promise<void> {
-  await harness.behavior.emitThreadEvent("dispatch.held", { hold });
+  await harness.behavior.emitThreadEvent("queue.parked", { entry });
   await flush();
 }
 
@@ -336,15 +289,15 @@ describe("readAutoEntry", () => {
   });
 });
 
-describe("readHeldText", () => {
+describe("readParkedText", () => {
   it("joins the text blocks", () => {
     expect(
-      readHeldText(
-        heldDispatch({
-          payload: inlinePayload([
+      readParkedText(
+        parkedRow({
+          content: [
             { type: "text", text: "one", mentions: [] },
             { type: "text", text: "two", mentions: [] },
-          ]),
+          ],
         }),
       ),
     ).toBe("one\ntwo");
@@ -352,62 +305,61 @@ describe("readHeldText", () => {
 });
 
 describe("the gate", () => {
-  it("holds only when Auto was picked", async () => {
+  it("waits only when Auto was picked", async () => {
     const { harness } = await setup();
     await loadCatalog(harness);
-    const gate = createGate(harness);
+    const gate = dispatchGate(harness);
 
-    expect(await gate(createContext({ pluginInput: null }))).toEqual({
+    expect(await gate(dispatchContext({ pluginInput: null }))).toEqual({
       action: "proceed",
     });
-    expect(await gate(createContext({ pluginInput: { other: 1 } }))).toEqual({
+    expect(await gate(dispatchContext({ pluginInput: { other: 1 } }))).toEqual({
       action: "proceed",
     });
-    expect(await gate(createContext())).toEqual({
-      action: "hold",
-      reason: ROUTING_HOLD_REASON,
+    expect(await gate(dispatchContext())).toEqual({
+      action: "wait",
+      reason: ROUTING_WAIT_REASON,
     });
   });
 
-  it("holds without a resumeAt, so no timer dispatches mid-decision", async () => {
-    // A timer release would send the message while the routing thread was
-    // still deciding, and the answer would arrive with nothing left to amend.
+  it("waits without a retryAt, so no timer dispatches mid-decision", async () => {
+    // A timer would send the message while the routing thread was still
+    // deciding, and the answer would arrive with nothing left to amend.
     const { harness } = await setup();
     await loadCatalog(harness);
 
-    const verdict = await createGate(harness)(createContext());
-    expect(verdict).not.toHaveProperty("resumeAt");
+    const verdict = await dispatchGate(harness)(dispatchContext());
+    expect(verdict).not.toHaveProperty("retryAt");
   });
 
   it("never routes its own spawn, which is what stops the recursion", async () => {
-    // The routing thread is itself a thread.create dispatch. Without this it
-    // would be routed by a routing thread, forever.
+    // The routing thread's own first message is a dispatch like any other.
+    // Without this it would be routed by a routing thread, forever.
     const { harness, spawned } = await setup();
     await loadCatalog(harness);
 
     expect(
-      await createGate(harness)(
-        createContext({ originPluginId: PLUGIN_ID, pluginInput: { entry: "default" } }),
+      await dispatchGate(harness)(
+        dispatchContext({
+          originPluginId: PLUGIN_ID,
+          pluginInput: { entry: "default" },
+        }),
       ),
     ).toEqual({ action: "proceed" });
     expect(spawned).toHaveLength(0);
   });
 
-  it("proceeds on a release re-evaluation instead of re-holding", async () => {
-    // Releasing re-runs this gate against the dispatch just decided. Holding
-    // again would re-hold what was released, forever.
+  it("proceeds on a re-attempt of a row it already parked", async () => {
+    // Clearing a wait re-runs this gate against the dispatch just decided.
+    // Waiting again would re-park what was just let go, forever. The row on
+    // the context is how that is told from a fresh send.
     const { harness } = await setup();
     await loadCatalog(harness);
 
     expect(
-      await createGate(harness)(createContext({ isReleaseReevaluation: true })),
-    ).toEqual({ action: "proceed" });
-    expect(
-      await submitGate(harness)({
-        ...createContext({ isReleaseReevaluation: true }),
-        stage: "turn.submit",
-        thread: threadResponse(),
-      }),
+      await dispatchGate(harness)(
+        dispatchContext({ queuedMessage: parkedRow() }),
+      ),
     ).toEqual({ action: "proceed" });
   });
 
@@ -415,7 +367,7 @@ describe("the gate", () => {
     const { harness, bb } = await setup({ settings: { routingPrompt: "  " } });
     await loadCatalog(harness);
 
-    expect(await createGate(harness)(createContext())).toEqual({
+    expect(await dispatchGate(harness)(dispatchContext())).toEqual({
       action: "proceed",
     });
     expect(harness.needsConfigurationMessages).toContain(EMPTY_ROUTING_PROMPT);
@@ -423,18 +375,18 @@ describe("the gate", () => {
   });
 
   it("proceeds when no catalog has loaded yet", async () => {
-    // Holding a send to then discover there was nothing to choose between is
+    // Parking a send to then discover there was nothing to choose between is
     // a pause that buys nothing.
     const { harness } = await setup();
 
-    expect(await createGate(harness)(createContext())).toEqual({
+    expect(await dispatchGate(harness)(dispatchContext())).toEqual({
       action: "proceed",
     });
   });
 });
 
-describe("routing a held dispatch", () => {
-  it("spawns a hidden routing thread and releases with its answer", async () => {
+describe("routing a parked row", () => {
+  it("spawns a hidden routing thread and clears the wait with its answer", async () => {
     const { harness, spawned } = await setup();
     await loadCatalog(harness);
     await route(harness);
@@ -451,23 +403,26 @@ describe("routing a held dispatch", () => {
 
     // No `providerId`: the answer chose the provider the thread already has,
     // which the "changes nothing" case below covers.
-    expect(harness.registrations.releasedDispatchHolds).toEqual([
-      { holdId: "hold_1", amend: { model: "gpt-5", reasoningLevel: "high" } },
+    expect(harness.registrations.clearedQueueWaits).toEqual([
+      {
+        queuedMessageId: "queued_1",
+        amend: { model: "gpt-5", reasoningLevel: "high" },
+      },
     ]);
   });
 
-  it("routes a never-started thread across providers", async () => {
+  it("routes a pending thread across providers", async () => {
     // The invariant is that a provider is immutable once a provider SESSION
-    // exists — a thread whose first turn is still parked has none.
+    // exists — a thread whose first turn is still parked is `pending` and has
+    // none.
     const { harness } = await setup({
-      thread: { providerId: "claude-code" },
-      turnEvents: 0,
+      thread: { providerId: "claude-code", status: "pending" },
     });
     await loadCatalog(harness);
     await route(harness);
 
-    const [release] = harness.registrations.releasedDispatchHolds;
-    expect(release?.amend).toMatchObject({
+    const [cleared] = harness.registrations.clearedQueueWaits;
+    expect(cleared?.amend).toMatchObject({
       providerId: "codex",
       model: "gpt-5",
     });
@@ -477,8 +432,7 @@ describe("routing a held dispatch", () => {
     // An amendment core refuses is a wasted round trip at best, so the menu
     // the routing thread is shown is scoped instead of the answer filtered.
     const { harness, spawned } = await setup({
-      thread: { providerId: "claude-code" },
-      turnEvents: 1,
+      thread: { providerId: "claude-code", status: "idle" },
       output: '```json\n{"providerId":"claude-code","model":"opus"}\n```',
     });
     await loadCatalog(harness);
@@ -488,9 +442,9 @@ describe("routing a held dispatch", () => {
     expect(String(request.prompt)).toContain("cannot change provider");
     expect(String(request.prompt)).not.toContain("gpt-5");
 
-    const [release] = harness.registrations.releasedDispatchHolds;
-    expect(release?.amend).not.toHaveProperty("providerId");
-    expect(release?.amend).toMatchObject({ model: "opus" });
+    const [cleared] = harness.registrations.clearedQueueWaits;
+    expect(cleared?.amend).not.toHaveProperty("providerId");
+    expect(cleared?.amend).toMatchObject({ model: "opus" });
   });
 
   it("omits a providerId that would change nothing", async () => {
@@ -501,8 +455,8 @@ describe("routing a held dispatch", () => {
     await loadCatalog(harness);
     await route(harness);
 
-    const [release] = harness.registrations.releasedDispatchHolds;
-    expect(release?.amend).not.toHaveProperty("providerId");
+    const [cleared] = harness.registrations.clearedQueueWaits;
+    expect(cleared?.amend).not.toHaveProperty("providerId");
   });
 
   it("reuses the target thread's environment when it has one", async () => {
@@ -528,25 +482,35 @@ describe("routing a held dispatch", () => {
     expect(request.environment).toEqual({ type: "project-default" });
   });
 
-  it("routes one hold once, however many times it is announced", async () => {
+  it("routes one row once, however many times it is announced", async () => {
     // A restart landing mid-flight fires both the event and the recovery pass
-    // for the same hold; two flows would spawn twice and race to release.
+    // for the same row; two flows would spawn twice and race to clear.
     const { harness, spawned } = await setup();
     await loadCatalog(harness);
-    const hold = heldDispatch();
-    await Promise.all([route(harness, hold), route(harness, hold)]);
+    const entry = parkedRow();
+    await Promise.all([route(harness, entry), route(harness, entry)]);
 
     expect(spawned).toHaveLength(1);
-    expect(harness.registrations.releasedDispatchHolds).toHaveLength(1);
+    expect(harness.registrations.clearedQueueWaits).toHaveLength(1);
   });
 
-  it("ignores holds it does not own", async () => {
+  it("ignores rows it does not own", async () => {
     const { harness, spawned } = await setup();
     await loadCatalog(harness);
-    await route(harness, heldDispatch({ holder: "plugin:scheduled-send" }));
+    await route(
+      harness,
+      parkedRow({
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "scheduled-send",
+          reason: "Sending at 09:00",
+        },
+      }),
+    );
+    await route(harness, parkedRow({ waitingOn: { kind: "thread-busy" } }));
 
     expect(spawned).toHaveLength(0);
-    expect(harness.registrations.releasedDispatchHolds).toHaveLength(0);
+    expect(harness.registrations.clearedQueueWaits).toHaveLength(0);
   });
 });
 
@@ -563,22 +527,22 @@ describe("failure and cleanup", () => {
     [
       "the answer names a provider the thread cannot use",
       {
-        turnEvents: 1,
+        thread: { status: "idle" },
         output: '```json\n{"providerId":"claude-code","model":"opus"}\n```',
       },
     ],
   ];
 
   for (const [label, options] of failures) {
-    it(`releases the message unamended when ${label}`, async () => {
+    it(`clears the wait unamended when ${label}`, async () => {
       // Auto's documented fallback is bb's own resolved provider and model. A
-      // stranded hold would be strictly worse than no routing plugin at all.
+      // stranded row would be strictly worse than no routing plugin at all.
       const { harness } = await setup(options);
       await loadCatalog(harness);
       await route(harness);
 
-      expect(harness.registrations.releasedDispatchHolds).toEqual([
-        { holdId: "hold_1", amend: undefined },
+      expect(harness.registrations.clearedQueueWaits).toEqual([
+        { queuedMessageId: "queued_1", amend: undefined },
       ]);
     });
   }
@@ -604,60 +568,69 @@ describe("failure and cleanup", () => {
     expect(deleted).toEqual(["thr_routing"]);
   });
 
-  it("releases unamended when core refuses the amended release", async () => {
-    // Core refuses a providerId amendment BEFORE it settles anything, so the
-    // hold is still live and the message can still be sent.
-    const { harness, bb } = await setup({ thread: { providerId: "claude-code" } });
+  it("clears unamended when core refuses the amended clear", async () => {
+    // Core refuses a providerId amendment BEFORE it clears anything, so the
+    // row is still parked and the message can still be sent.
+    const { harness, bb } = await setup({
+      thread: { providerId: "claude-code", status: "pending" },
+    });
     await loadCatalog(harness);
     let attempts = 0;
-    const realRelease = bb.experimental_dispatch.release.bind(
+    const realClearWait = bb.experimental_dispatch.clearWait.bind(
       bb.experimental_dispatch,
     );
-    bb.experimental_dispatch.release = async (holdId, releaseOptions) => {
+    bb.experimental_dispatch.clearWait = async (queuedMessageId, options) => {
       attempts += 1;
       if (attempts === 1) throw new Error("provider_not_amendable");
-      return realRelease(holdId, releaseOptions);
+      return realClearWait(queuedMessageId, options);
     };
     await route(harness);
 
     expect(attempts).toBe(2);
-    expect(harness.registrations.releasedDispatchHolds).toEqual([
-      { holdId: "hold_1", amend: undefined },
+    expect(harness.registrations.clearedQueueWaits).toEqual([
+      { queuedMessageId: "queued_1", amend: undefined },
     ]);
   });
 
-  it("does not route a retry hold, which carries no prompt to route", async () => {
+  it("does not route a retry row, which carries no prompt to route", async () => {
     const { harness, spawned } = await setup();
     await loadCatalog(harness);
     await route(
       harness,
-      heldDispatch({
-        payload: { kind: "retry", retryOfTurnRequestId: "req_1" },
+      parkedRow({
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "creq_aaaaaaaaaa",
+          attempt: 2,
+        },
       }),
     );
 
     expect(spawned).toHaveLength(0);
-    expect(harness.registrations.releasedDispatchHolds).toEqual([
-      { holdId: "hold_1", amend: undefined },
+    expect(harness.registrations.clearedQueueWaits).toEqual([
+      { queuedMessageId: "queued_1", amend: undefined },
     ]);
   });
 });
 
 describe("restart recovery", () => {
-  it("re-drives the live holds it already owns at startup", async () => {
-    // A restart between the hold and its release leaves a live hold with
+  it("re-drives the parked rows it already owns at startup", async () => {
+    // A restart between the park and the clear leaves a parked row with
     // nobody deciding about it; core's orphan sweep is the backstop, not the
     // plan.
     const { harness, spawned } = await setup({
-      liveHolds: [heldDispatch({ id: "hold_restarted" })],
+      parked: [parkedRow({ id: "queued_restarted" })],
     });
     await loadCatalog(harness);
     await flush();
 
+    expect(harness.inspection.sdk.callsTo("threads.queue.list")[0]?.[0]).toEqual({
+      waitHolder: OWN_HOLDER,
+    });
     expect(spawned).toHaveLength(1);
-    expect(harness.registrations.releasedDispatchHolds).toEqual([
+    expect(harness.registrations.clearedQueueWaits).toEqual([
       {
-        holdId: "hold_restarted",
+        queuedMessageId: "queued_restarted",
         amend: { model: "gpt-5", reasoningLevel: "high" },
       },
     ]);

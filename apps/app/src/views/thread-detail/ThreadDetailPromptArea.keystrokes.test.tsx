@@ -268,14 +268,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     interactions.at(-1) ?? null,
   useThreadPromptHistory: () => ({ data: [] }),
   useThreadQueuedMessages: () => ({ data: queryMocks.queuedMessages }),
-  useThreadDispatchHolds: () => ({ data: [] }),
-}));
-
-vi.mock("@/hooks/mutations/dispatch-hold-mutations", () => ({
-  isDispatchHoldConflictError: () => false,
-  useCancelDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useReleaseDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useUpdateDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
 
 const PROJECT_ID = "proj_keystrokes";
@@ -295,6 +287,7 @@ function makeThread(id: string): ThreadWithRuntime {
 function makeQueuedMessage(): ThreadQueuedMessage {
   return {
     id: "qmsg_1",
+    threadId: "thr_keystrokes",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
     reasoningLevel: "medium",

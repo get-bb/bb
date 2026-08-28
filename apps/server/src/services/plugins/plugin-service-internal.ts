@@ -1,15 +1,15 @@
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type {
-  DispatchHoldReportUpdate,
   DynamicTool,
+  QueuedMessageReportUpdate,
   Thread,
+  ThreadQueuedMessage,
 } from "@bb/domain";
-import type { PluginDispatchReleaseAmendments } from "@get-bb/plugin-sdk";
+import type { PluginDispatchAmendments } from "@get-bb/plugin-sdk";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
-  type DispatchHoldResponse,
   type InstalledPlugin,
   type PluginApplyUpdateResult,
   type PluginRuntimeStatus,
@@ -80,30 +80,31 @@ export interface PluginServiceDeps {
   onSettingsChanged?: (pluginId: string) => void;
   /**
    * Fired after a plugin stops being a registered owner — disabled or
-   * uninstalled, but *not* reloaded. Core state keyed by `plugin:<id>`
-   * (dispatch holds it owns) is released here instead of waiting for a sweep.
+   * uninstalled, but *not* reloaded. Core state keyed by `plugin:<id>` (queue
+   * rows waiting on it) is cleared here instead of waiting for a sweep.
    */
   onPluginUnregistered?: (pluginId: string) => void;
   /**
-   * Owner-scoped hold operations behind `bb.experimental_dispatch.release` and
-   * `.report`. Assembled in server.ts where the full thread services exist;
-   * omitted only by isolated plugin-runtime tests, where either call throws.
+   * Wait-holder-scoped queue operations behind
+   * `bb.experimental_dispatch.clearWait` and `.report`. Assembled in server.ts
+   * where the full thread services exist; omitted only by isolated
+   * plugin-runtime tests, where either call throws.
    */
-  dispatchHolds?: {
-    release(args: {
+  queueWaits?: {
+    clear(args: {
       pluginId: string;
-      holdId: string;
-      amend: PluginDispatchReleaseAmendments | undefined;
+      queuedMessageId: string;
+      amend: PluginDispatchAmendments | undefined;
     }): Promise<void>;
     report(args: {
       pluginId: string;
-      holdId: string;
-      update: DispatchHoldReportUpdate;
+      queuedMessageId: string;
+      update: QueuedMessageReportUpdate;
     }): Promise<boolean>;
   };
   /**
    * Display-only timeline notes behind `bb.experimental_threads.appendNote`.
-   * Assembled in server.ts alongside `dispatchHolds`; omitted only by isolated
+   * Assembled in server.ts alongside `queueWaits`; omitted only by isolated
    * plugin-runtime tests, where the call throws.
    */
   appendThreadNote?: (args: {
@@ -220,13 +221,13 @@ export interface PluginThreadEventEmitter {
   emitThreadArchived(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;
   /**
-   * Hold lifecycle. The row is already in its new state when these fire; the
+   * Queue lifecycle. The row is already in its new state when these fire; the
    * DTO is built once and shared by every listener, exactly like the thread
    * events above.
    */
-  emitDispatchHeld(hold: DispatchHoldResponse): void;
-  emitDispatchReleased(hold: DispatchHoldResponse): void;
-  emitDispatchCancelled(hold: DispatchHoldResponse): void;
+  emitQueueParked(entry: ThreadQueuedMessage): void;
+  emitQueueDispatched(entry: ThreadQueuedMessage): void;
+  emitQueueCancelled(entry: ThreadQueuedMessage): void;
 }
 
 export type PluginWireLookup<T> =

@@ -60,9 +60,6 @@ import type {
   RestartTerminalRequest,
   DeleteThreadSectionRequest,
   DeleteThreadRequest,
-  DispatchHoldListQuery,
-  DispatchHoldListResponse,
-  DispatchHoldResponse,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
   EnvironmentActionResponse,
@@ -187,6 +184,7 @@ import type {
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
+  QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
   ThreadSearchQuery,
@@ -209,7 +207,6 @@ import type {
   UpdateHostPermissionCeilingRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
-  UpdateDispatchHoldRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
   UploadedPromptAttachment,
@@ -233,12 +230,11 @@ import {
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
+  queuedMessageListQuerySchema,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
   deleteThreadRequestSchema,
-  dispatchHoldListQuerySchema,
-  updateDispatchHoldRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
@@ -1015,17 +1011,6 @@ export const publicApiRoutes = {
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
     /**
-     * The thread's live dispatch holds, oldest first — the pending region
-     * renders these alongside queued messages. Released holds are history and
-     * stay in the timeline rather than this list.
-     */
-    holds: defineRoute({
-      path: "/threads/:id/holds",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<DispatchHoldListResponse>(),
-    }),
-    /**
      * Create a queued message; senderThreadId preserves agent-to-agent context
      * until send time.
      */
@@ -1337,54 +1322,21 @@ export const publicApiRoutes = {
     }),
   },
 
-  holds: {
+  queue: {
     /**
-     * Every live dispatch hold, optionally narrowed to one thread or one
-     * holder. Cross-thread because "what is pending right now" is a
-     * whole-workspace question (`bb thread holds`, a limiter plugin's own
-     * bookkeeping) that no single thread's list can answer.
+     * Every live parked queue row, optionally narrowed to one thread or one
+     * wait holder. Cross-thread because "what is parked right now" is a
+     * whole-workspace question (`bb thread queue list` with no thread, a
+     * limiter plugin's own bookkeeping, a router recovering its rows after a
+     * restart) that no single thread's list can answer.
      */
     list: defineRoute({
-      path: "/holds",
+      path: "/queued-messages",
       method: "get",
-      request: optionalQueryRequest<EmptyInput, DispatchHoldListQuery>(
-        dispatchHoldListQuerySchema,
+      request: optionalQueryRequest<EmptyInput, QueuedMessageListQuery>(
+        queuedMessageListQuerySchema,
       ),
-      response: jsonResponse<DispatchHoldListResponse>(),
-    }),
-    get: defineRoute({
-      path: "/holds/:id",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<DispatchHoldResponse>(),
-    }),
-    /**
-     * Release now: dispatches the held turn with normal semantics (send when
-     * the thread is idle, queue when it is busy, cold-start when it never
-     * started). Releasing an already-released hold is a 409 — the dispatch it
-     * described has already happened.
-     */
-    release: defineRoute({
-      path: "/holds/:id/release",
-      method: "post",
-      request: noRequest<PathId>(),
-      response: jsonResponse<DispatchHoldResponse>(),
-    }),
-    /** Discards the held dispatch instead of running it. Always permitted. */
-    cancel: defineRoute({
-      path: "/holds/:id/cancel",
-      method: "post",
-      request: noRequest<PathId>(),
-      response: jsonResponse<DispatchHoldResponse>(),
-    }),
-    /** Edits a live hold's inline draft and/or reschedules its timer. */
-    update: defineRoute({
-      path: "/holds/:id",
-      method: "patch",
-      request: jsonRequest<PathId, UpdateDispatchHoldRequest>(
-        updateDispatchHoldRequestSchema,
-      ),
-      response: jsonResponse<DispatchHoldResponse>(),
+      response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
   },
 

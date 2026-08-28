@@ -1,4 +1,9 @@
-import { getLatestThreadSequence, listDispatchHolds, listEvents } from "@bb/db";
+import {
+  getLatestThreadSequence,
+  listEvents,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   PluginDispatchGateStage,
   PluginTurnFailedGateContext,
@@ -8,9 +13,9 @@ import {
   setDispatchGateProvider,
   type DispatchGateRegistration,
 } from "../../src/services/plugins/dispatch-gate-registry.js";
-import { releaseDispatchHoldAndDispatch } from "../../src/services/threads/dispatch-hold-release.js";
-import { parseDispatchHoldPayload } from "../../src/services/threads/dispatch-holds.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { runDueScheduledQueueSweep } from "../../src/services/threads/queue-drains.js";
+import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import {
   seedEnvironment,
   seedEvent,
@@ -24,7 +29,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 const WORKSPACE_PATH = "/tmp/turn-failed-project";
 
 type TurnFailedRegistration = DispatchGateRegistration<"turn.failed">;
-type TurnSubmitRegistration = DispatchGateRegistration<"turn.submit">;
+type DispatchRegistration = DispatchGateRegistration<"dispatch">;
 
 /**
  * The gate registry, per stage. Reading a mapped type through a generic key is
@@ -38,12 +43,11 @@ type GateRegistry = {
 function installGates(
   gates: Partial<{
     "turn.failed": TurnFailedRegistration[];
-    "turn.submit": TurnSubmitRegistration[];
+    dispatch: DispatchRegistration[];
   }>,
 ): void {
   const registry: GateRegistry = {
-    "thread.create": [],
-    "turn.submit": gates["turn.submit"] ?? [],
+    dispatch: gates.dispatch ?? [],
     "turn.failed": gates["turn.failed"] ?? [],
   };
   setDispatchGateProvider({
@@ -207,8 +211,34 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
   );
 }
 
-function liveHolds(harness: TestAppHarness, threadId: string) {
-  return listDispatchHolds(harness.db, { threadId, liveOnly: true });
+/** The thread's parked rows: a live queued row with a wait on it. */
+function parkedRows(
+  harness: TestAppHarness,
+  threadId: string,
+): ThreadQueuedMessage[] {
+  return listQueuedThreadMessages(harness.db, threadId)
+    .map(toThreadQueuedMessage)
+    .filter((entry) => entry.waitingOn !== null);
+}
+
+function onlyParkedRow(
+  harness: TestAppHarness,
+  threadId: string,
+): ThreadQueuedMessage {
+  const rows = parkedRows(harness, threadId);
+  if (rows.length !== 1 || rows[0] === undefined) {
+    throw new Error(`expected exactly one parked row, found ${rows.length}`);
+  }
+  return rows[0];
+}
+
+/**
+ * Fires the due sweep as the timer would once the retry's `resumeAt` passed.
+ * The sweep re-attempts the row through the same dispatch checkpoint an inline
+ * send uses, which is what these tests are actually about.
+ */
+async function sweepPastResume(harness: TestAppHarness): Promise<void> {
+  await runDueScheduledQueueSweep(harness.deps, Date.now() + 120_000);
 }
 
 describe("turn.failed gate context", () => {
@@ -318,12 +348,14 @@ describe("turn.failed gate context", () => {
       // Fail-closed here means the broken plugin loses its vote, not that the
       // failure becomes unrecoverable: the thread stays in error and the next
       // gate still gets to decide.
-      expect(harness.deps.db).toBeDefined();
-      expect(liveHolds(harness, thread.id)).toHaveLength(1);
+      expect(onlyParkedRow(harness, thread.id).waitingOn).toMatchObject({
+        kind: "plugin",
+        pluginId: "working-retry",
+      });
     });
   });
 
-  it("parks one hold per failure even if the failure is applied twice", async () => {
+  it("parks one retry row per failure even if the failure is applied twice", async () => {
     await withTestHarness(async (harness) => {
       installGates({
         "turn.failed": [
@@ -344,14 +376,15 @@ describe("turn.failed gate context", () => {
       failThread(harness, thread.id);
       await flushTurnFailedPass();
 
-      expect(liveHolds(harness, thread.id)).toHaveLength(1);
+      expect(parkedRows(harness, thread.id)).toHaveLength(1);
     });
   });
 });
 
-describe("retry hold dispatch", () => {
+describe("parked retry dispatch", () => {
   it("re-submits the original turn without duplicating the user's message", async () => {
     await withTestHarness(async (harness) => {
+      const resumeAt = Date.now() + 60_000;
       installGates({
         "turn.failed": [
           {
@@ -359,7 +392,7 @@ describe("retry hold dispatch", () => {
             handler: () => ({
               action: "retry",
               reason: "Rate limited",
-              resumeAt: Date.now() + 60_000,
+              resumeAt,
             }),
           },
         ],
@@ -369,19 +402,23 @@ describe("retry hold dispatch", () => {
       failThread(harness, thread.id);
       await flushTurnFailedPass();
 
-      const hold = liveHolds(harness, thread.id)[0];
-      if (hold === undefined) throw new Error("expected a retry hold");
-      const payload = parseDispatchHoldPayload(hold);
-      expect(payload).toEqual({
+      const parked = onlyParkedRow(harness, thread.id);
+      // A by-reference row: it names the request it will re-submit, waits on
+      // the plugin that asked for the retry, and is due at that plugin's
+      // `resumeAt` so the ordinary due sweep is what wakes it.
+      expect(parked.payload).toEqual({
         kind: "retry",
         retryOfTurnRequestId: requestId,
         attempt: 2,
       });
-
-      await releaseDispatchHoldAndDispatch(harness.deps, {
-        hold,
-        releaseKind: "timer",
+      expect(parked.waitingOn).toEqual({
+        kind: "plugin",
+        pluginId: "retry-policy",
+        reason: "Rate limited",
       });
+      expect(parked.sendAt).toBe(resumeAt);
+
+      await sweepPastResume(harness);
 
       const requests = turnRequests(harness, thread.id);
       expect(requests).toHaveLength(2);
@@ -404,6 +441,8 @@ describe("retry hold dispatch", () => {
         (event) => turnRequestData(event).initiator === "user",
       );
       expect(userRequests).toHaveLength(1);
+      // The row was consumed by the dispatch rather than left on the queue.
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 
@@ -427,16 +466,14 @@ describe("retry hold dispatch", () => {
           },
         ],
       });
-      const { requestId, thread } = seedFailableThread(harness, "host-attempts");
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-attempts",
+      );
 
       failThread(harness, thread.id);
       await flushTurnFailedPass();
-      const first = liveHolds(harness, thread.id)[0];
-      if (first === undefined) throw new Error("expected a retry hold");
-      await releaseDispatchHoldAndDispatch(harness.deps, {
-        hold: first,
-        releaseKind: "timer",
-      });
+      await sweepPastResume(harness);
 
       failThread(harness, thread.id);
       await flushTurnFailedPass();
@@ -444,9 +481,7 @@ describe("retry hold dispatch", () => {
       expect(attempts).toEqual([1, 2]);
       // The chain still points at the turn the user actually sent.
       expect(originals).toEqual([requestId, requestId]);
-      const second = liveHolds(harness, thread.id)[0];
-      if (second === undefined) throw new Error("expected a second hold");
-      expect(parseDispatchHoldPayload(second)).toEqual({
+      expect(onlyParkedRow(harness, thread.id).payload).toEqual({
         kind: "retry",
         retryOfTurnRequestId: requestId,
         attempt: 3,
@@ -456,17 +491,18 @@ describe("retry hold dispatch", () => {
 
   it("still respects a limiter when the retry comes back", async () => {
     await withTestHarness(async (harness) => {
-      let submitCalls = 0;
+      let dispatchCalls = 0;
       installGates({
-        "turn.submit": [
+        dispatch: [
           {
             pluginId: "concurrency-limit",
             handler: (context) => {
-              submitCalls += 1;
-              // The releasing pass must look like a re-decision, not a fresh
-              // dispatch, or a limiter would double-count it.
-              expect(context.isReleaseReevaluation).toBe(true);
-              return { action: "hold", reason: "At capacity" };
+              dispatchCalls += 1;
+              // The re-attempt must look like a re-decision about an existing
+              // parked row, not a fresh send, or a limiter would double-count
+              // it — and the row it names is the retry, not a user message.
+              expect(context.queuedMessage?.payload.kind).toBe("retry");
+              return { action: "wait", reason: "At capacity" };
             },
           },
         ],
@@ -485,20 +521,22 @@ describe("retry hold dispatch", () => {
 
       failThread(harness, thread.id);
       await flushTurnFailedPass();
-      const retryHold = liveHolds(harness, thread.id)[0];
-      if (retryHold === undefined) throw new Error("expected a retry hold");
 
-      await releaseDispatchHoldAndDispatch(harness.deps, {
-        hold: retryHold,
-        releaseKind: "timer",
-      });
+      await sweepPastResume(harness);
 
-      expect(submitCalls).toBe(1);
-      // The turn did not dispatch; it is parked again, this time by the limiter.
+      expect(dispatchCalls).toBe(1);
+      // The turn did not dispatch; the same row is parked again, this time by
+      // the limiter, and its schedule is cleared because the limiter named no
+      // retry instant.
       expect(turnRequests(harness, thread.id)).toHaveLength(1);
-      const holds = liveHolds(harness, thread.id);
-      expect(holds).toHaveLength(1);
-      expect(holds[0]?.holder).toBe("plugin:concurrency-limit");
+      const reparked = onlyParkedRow(harness, thread.id);
+      expect(reparked.waitingOn).toEqual({
+        kind: "plugin",
+        pluginId: "concurrency-limit",
+        reason: "At capacity",
+      });
+      expect(reparked.sendAt).toBeNull();
+      expect(reparked.payload.kind).toBe("retry");
     });
   });
 });

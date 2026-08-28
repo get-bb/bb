@@ -160,9 +160,9 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    const { holdUntil } = slot.inspection.composer.submits[0]!;
-    expect(holdUntil).toBeGreaterThanOrEqual(before + HOUR_MS);
-    expect(holdUntil).toBeLessThanOrEqual(Date.now() + HOUR_MS);
+    const { sendAt } = slot.inspection.composer.submits[0]!;
+    expect(sendAt).toBeGreaterThanOrEqual(before + HOUR_MS);
+    expect(sendAt).toBeLessThanOrEqual(Date.now() + HOUR_MS);
 
     // The host's own submit pipeline consumed the draft, so nothing is left to
     // schedule and the picker closes.
@@ -188,7 +188,7 @@ describe("scheduling", () => {
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
     expect(
-      slot.inspection.composer.submits[0]!.holdUntil,
+      slot.inspection.composer.submits[0]!.sendAt,
     ).toBeGreaterThanOrEqual(before + HOUR_MS);
   });
 
@@ -210,7 +210,7 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(slot.inspection.composer.submits[0]!.holdUntil).toBe(
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(
       target.getTime(),
     );
   });
@@ -248,7 +248,7 @@ describe("scheduling", () => {
     await waitFor(() =>
       expect(slot.inspection.composer.submits).toHaveLength(1),
     );
-    expect(slot.inspection.composer.submits[0]!.holdUntil).toBe(
+    expect(slot.inspection.composer.submits[0]!.sendAt).toBe(
       confirmationTime + HOUR_MS,
     );
   });

@@ -30,7 +30,7 @@ Spawning:
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
-    --hold-until <when>            Defer the first turn to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --plugin-input <pluginId>=<json>  Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
@@ -203,7 +203,7 @@ Messaging:
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
-    --hold-until <when>                    Defer the send to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --plugin-input <pluginId>=<json>       Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
@@ -211,10 +211,10 @@ Messaging:
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free. A target that is awaiting user interaction (an open question or
-  approval) cannot take a prompt; tell then holds the message and delivers it
-  in the requested mode once the interaction settles. That outcome is not a
-  failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
-  `deferred`, or `held`. A deferred message waits for a thread that failed while
+  approval) cannot take a prompt; tell then parks the message on the thread's
+  queue and dispatches it once the interaction settles. That outcome is not a
+  failure, so do not resend. `--json` reports `delivery` as `sent` or `parked`,
+  and a parked answer carries `queuedMessageId`, `waitingOn` and `sendAt`. A deferred message waits for a thread that failed while
   it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
@@ -280,7 +280,7 @@ Interactions:
 
 Queued messages:
 
-  bb thread queue list <thread-id>
+  bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
   bb thread queue create <thread-id> <message>
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
@@ -288,28 +288,22 @@ Queued messages:
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
 
-Dispatch holds:
+  A queued message is one that could not dispatch yet. Every one carries a
+  typed reason in its `Waiting on` column: waiting for the current turn to
+  finish, for the workspace, for a pending interaction, for a clock (`Send at`),
+  or for a plugin that has parked it. `queue list` with no thread id lists every
+  parked row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
+  the rows one plugin is holding.
 
-  bb thread holds [--thread <id>] [--owner <holder>]
-  bb thread release <hold-id>
-  bb thread cancel-hold <hold-id>
+  `queue send` dispatches a row now, bypassing every plugin wait and its own
+  schedule — the invariants (a running turn, an unfinished workspace, an
+  unanswered interaction) still apply, and a message that hits one simply parks
+  again. `queue delete` discards it instead. Both are always permitted.
 
-  A hold is a dispatch that is deferred rather than queued: nothing runs, and no
-  environment work starts, until the hold releases. --hold-until on spawn or
-  tell creates one owned by `user` with the reason "Scheduled", released by
-  core's timer at the requested time. Plugins and core own holds too, so
-  `--owner` filters on `user`, `plugin:<plugin-id>`, or `core:<mechanism>`.
-
-  `thread holds` lists live holds across every thread; released holds are
-  history and appear in each thread's timeline. `thread release` dispatches a
-  held turn now (a 409 means it already released, or its holder does not permit
-  a user release). `thread cancel-hold` discards the dispatch instead of running
-  it, and is always permitted.
-
-  --hold-until takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
+  --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
-  passed is rejected, as is a bare date, which has no time of day. Several live
-  holds on one thread are normal: two scheduled sends coexist.
+  passed is rejected, as is a bare date, which has no time of day. Several
+  parked rows on one thread are normal: two scheduled sends coexist.
 
 Plugin input and auto provider selection:
 
@@ -320,9 +314,9 @@ Plugin input and auto provider selection:
   --plugin-input addresses one plugin's dispatch gates without a side channel.
   The value is JSON (quote a string as '"text"'), each plugin sees only its own
   entry, the flag repeats for several plugins, and a later flag for the same
-  plugin replaces the earlier value. The input rides a hold payload and a queued
-  row, so a message that waits still reaches its gate with the input it was sent
-  with. The SDK equivalent is `pluginInputs` on `threads.spawn` / `threads.send`.
+  plugin replaces the earlier value. The input rides the queued row, so a
+  message that parks still reaches its gate with the input it was sent with on
+  every re-attempt. The SDK equivalent is `pluginInputs` on `threads.spawn` / `threads.send`.
 
   --provider auto:<pluginId>[:<entryId>] is the router convention: bb sends no
   provider at all and passes `{"entry":"<entryId>"}` to that plugin instead, so

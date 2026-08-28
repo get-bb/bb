@@ -33,13 +33,20 @@ import { GLOBAL_SCOPE_KEY, hostScopeKey } from "./scope.js";
 /**
  * How long a `proceed` stays counted before we stop believing in it.
  *
- * The matching `thread.created` / `thread.active` normally arrives in
- * milliseconds. It never arrives when the dispatch failed *after* our gate
- * said yes — an invalid amendment from a later gate, a provisioning failure, a
- * crash between the verdict and the insert. Without an expiry those phantom
- * slots would leak until reload and the limiter would strangle itself.
+ * The matching `thread.active` normally arrives in milliseconds. It never
+ * arrives when the dispatch failed *after* our gate said yes — an invalid
+ * amendment from a later gate, a provisioning failure, a crash between the
+ * verdict and the insert. Without an expiry those phantom slots would leak
+ * until reload and the limiter would strangle itself.
+ *
+ * Deliberately LONGER than the reconcile interval. An admitted thread spends
+ * its `starting` window with no lifecycle event of its own — `thread.created`
+ * now fires while it is still `pending`, i.e. before admission — so the
+ * in-flight entry is the only thing holding its slot until a reseed, which
+ * counts `starting`, takes over. A timeout shorter than that interval would
+ * leave a slow-provisioning thread uncounted in the gap between the two.
  */
-export const IN_FLIGHT_TIMEOUT_MS = 30_000;
+export const IN_FLIGHT_TIMEOUT_MS = 90_000;
 
 export interface SeedCounts {
   /** Total occupying threads. */
@@ -71,7 +78,6 @@ export class OccupancyTally {
    * `thread.create` proceeds. There is no thread id yet, so these are matched
    * to the `thread.created` event that follows by host, oldest first.
    */
-  private readonly pendingCreates: InFlight[] = [];
   /** `turn.submit` proceeds, which do have a thread id to key on. */
   private readonly pendingSubmits = new Map<string, InFlight>();
 
@@ -95,10 +101,6 @@ export class OccupancyTally {
     this.settled.clear();
   }
 
-  /** A gate said `proceed` at `thread.create`. */
-  notePendingCreate(hostId: string | null, now: number): void {
-    this.pendingCreates.push({ hostId, expiresAt: now + IN_FLIGHT_TIMEOUT_MS });
-  }
 
   /** A gate said `proceed` at `turn.submit` for an existing thread. */
   notePendingSubmit(
@@ -110,17 +112,6 @@ export class OccupancyTally {
       hostId,
       expiresAt: now + IN_FLIGHT_TIMEOUT_MS,
     });
-  }
-
-  /**
-   * `thread.created`: the row now exists and the thread is starting. This is
-   * where an anonymous create proceed becomes a tracked thread — matched by
-   * host so that a create for host A does not consume the slot reserved for a
-   * create on host B.
-   */
-  noteCreated(threadId: string, hostId: string | null): void {
-    this.consumeMatchingCreate(hostId);
-    this.markOccupied(threadId, hostId);
   }
 
   /** `thread.active`: the thread is running. */
@@ -146,9 +137,6 @@ export class OccupancyTally {
     for (const hostId of this.occupied.values()) {
       if (matchesScope(hostId, key)) total += 1;
     }
-    for (const entry of this.pendingCreates) {
-      if (matchesScope(entry.hostId, key)) total += 1;
-    }
     for (const entry of this.pendingSubmits.values()) {
       if (matchesScope(entry.hostId, key)) total += 1;
     }
@@ -157,12 +145,6 @@ export class OccupancyTally {
 
   /** Drop in-flight entries whose confirming event never arrived. */
   sweep(now: number): void {
-    for (let i = this.pendingCreates.length - 1; i >= 0; i -= 1) {
-      const entry = this.pendingCreates[i];
-      if (entry !== undefined && entry.expiresAt <= now) {
-        this.pendingCreates.splice(i, 1);
-      }
-    }
     for (const [threadId, entry] of this.pendingSubmits) {
       if (entry.expiresAt <= now) this.pendingSubmits.delete(threadId);
     }
@@ -173,33 +155,6 @@ export class OccupancyTally {
     this.occupied.set(threadId, hostId);
   }
 
-  /**
-   * Retire the reservation this newly created thread was admitted under.
-   *
-   * A null `hostId` means "not known yet" on either side, and both sides
-   * genuinely happen: the gate sees no host when the environment has not been
-   * chosen, and the freshly inserted row has no environment yet even when the
-   * gate did see one. So null matches anything, and only two *known,
-   * different* hosts are treated as different dispatches — which is the case
-   * that matters, since it is what stops a create on host B from consuming the
-   * slot reserved for one on host A.
-   *
-   * Failing to consume here is the expensive mistake: the reservation would
-   * sit alongside the thread it belongs to, counting the same dispatch twice
-   * until it expired.
-   */
-  private consumeMatchingCreate(hostId: string | null): void {
-    const exact = this.pendingCreates.findIndex(
-      (entry) => entry.hostId === hostId,
-    );
-    const index =
-      exact >= 0
-        ? exact
-        : this.pendingCreates.findIndex(
-            (entry) => entry.hostId === null || hostId === null,
-          );
-    if (index >= 0) this.pendingCreates.splice(index, 1);
-  }
 
   private baselineFor(key: ScopeKey): number {
     if (key === GLOBAL_SCOPE_KEY) return this.baselineGlobal;

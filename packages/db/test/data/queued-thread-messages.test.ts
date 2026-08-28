@@ -56,6 +56,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(queuedMessage.id).toMatch(/^qmsg_/);
@@ -76,6 +80,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const fetched = getQueuedThreadMessage(db, queuedMessage.id);
@@ -93,6 +101,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -102,6 +114,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(2);
@@ -117,6 +133,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const second = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -126,6 +146,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -170,6 +194,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(
@@ -206,6 +234,10 @@ describe("queued thread messages", () => {
         permissionMode: "full",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
 
       const result = updateQueuedThreadMessage(db, noopNotifier, {
@@ -234,6 +266,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
 
@@ -260,6 +296,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(true);
@@ -277,6 +317,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
@@ -306,6 +350,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const firstClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
     if (!firstClaim) {
@@ -368,6 +416,10 @@ describe("queued thread messages", () => {
         permissionMode: "full",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
       expect(claimedQueuedMessage?.claimedAt).toBe(1_000);
@@ -406,6 +458,10 @@ describe("queued thread messages", () => {
           permissionMode: "full",
           serviceTier: "default",
           pluginInputs: null,
+          waitingOn: null,
+          sendAt: null,
+          payload: { kind: "inline" },
+          systemNotice: null,
         },
       );
       const releasableQueuedMessage = createQueuedThreadMessage(
@@ -419,6 +475,10 @@ describe("queued thread messages", () => {
           permissionMode: "full",
           serviceTier: "default",
           pluginInputs: null,
+          waitingOn: null,
+          sendAt: null,
+          payload: { kind: "inline" },
+          systemNotice: null,
         },
       );
       const protectedClaim = claimQueuedThreadMessage(
@@ -470,6 +530,10 @@ describe("queued thread messages", () => {
         permissionMode: "full",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       nowSpy.mockReturnValueOnce(2_000);
       const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
@@ -480,6 +544,10 @@ describe("queued thread messages", () => {
         permissionMode: "full",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
 
       const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.[0];
@@ -502,6 +570,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -511,6 +583,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -520,6 +596,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -556,6 +636,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -565,6 +649,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -574,6 +662,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     expect(
       reorderQueuedThreadMessage({
@@ -620,6 +712,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -629,6 +725,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -638,6 +738,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -675,6 +779,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -684,6 +792,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -693,6 +805,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -730,6 +846,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -739,6 +859,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -748,6 +872,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -790,6 +918,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -799,6 +931,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -808,6 +944,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -847,6 +987,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -856,6 +1000,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -865,6 +1013,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -916,6 +1068,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -926,6 +1082,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -961,6 +1121,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -970,6 +1134,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -1005,6 +1173,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1014,6 +1186,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1064,6 +1240,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1073,6 +1253,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1082,6 +1266,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     const moveToFront = reorderQueuedThreadMessage({
@@ -1140,6 +1328,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1149,6 +1341,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(
@@ -1183,6 +1379,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1193,6 +1393,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1202,6 +1406,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(
@@ -1238,6 +1446,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1247,6 +1459,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1256,6 +1472,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1310,6 +1530,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1319,6 +1543,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1328,6 +1556,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
     const otherQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: otherThread.id,
@@ -1337,6 +1569,10 @@ describe("queued thread messages", () => {
       permissionMode: "full",
       serviceTier: "default",
       pluginInputs: null,
+      waitingOn: null,
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
     });
 
     expect(

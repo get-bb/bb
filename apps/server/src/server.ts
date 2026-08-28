@@ -18,7 +18,7 @@ import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
-import { registerHoldRoutes } from "./routes/holds.js";
+import { registerQueueRoutes } from "./routes/queue.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
@@ -35,11 +35,13 @@ import {
   setTurnFailedGateNotifier,
 } from "./services/threads/turn-failed.js";
 import {
-  releaseDispatchHoldForOwnerPlugin,
-  reportDispatchHoldForOwnerPlugin,
-} from "./services/threads/dispatch-hold-owner.js";
-import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
-import { releaseDispatchHoldsForUnregisteredPlugin } from "./services/threads/dispatch-hold-sweeps.js";
+  clearQueueWaitForPlugin,
+  reportQueueWaitForPlugin,
+} from "./services/threads/queue-wait-owner.js";
+import {
+  clearQueueWaitsForUnregisteredPlugin,
+  requestThreadQueueDrainForSettledInteraction,
+} from "./services/threads/queue-drains.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -576,26 +578,26 @@ export function createApp(
       deps.providerRegistry.forgetAllInstalled();
     },
     onPluginUnregistered: (pluginId) => {
-      void releaseDispatchHoldsForUnregisteredPlugin(deps, pluginId).catch(
+      void clearQueueWaitsForUnregisteredPlugin(deps, pluginId).catch(
         (error: unknown) => {
           deps.logger.warn(
             { err: error, pluginId },
-            "Failed to release dispatch holds for an unregistered plugin",
+            "Failed to clear queue waits for an unregistered plugin",
           );
         },
       );
     },
-    // `bb.experimental_dispatch.release` / `.report`, scoped to the calling
-    // plugin. Ownership is checked here rather than in the plugin API so one
+    // `bb.experimental_dispatch.clearWait` / `.report`, scoped to the calling
+    // plugin. Ownership is checked there rather than in the plugin API so one
     // rule covers the SDK, the routes and the CLI.
-    dispatchHolds: {
-      release: ({ pluginId, holdId, amend }) =>
-        releaseDispatchHoldForOwnerPlugin(deps, { pluginId, holdId, amend }),
-      report: ({ pluginId, holdId, update }) =>
+    queueWaits: {
+      clear: ({ pluginId, queuedMessageId, amend }) =>
+        clearQueueWaitForPlugin(deps, { pluginId, queuedMessageId, amend }),
+      report: ({ pluginId, queuedMessageId, update }) =>
         Promise.resolve(
-          reportDispatchHoldForOwnerPlugin(deps, {
+          reportQueueWaitForPlugin(deps, {
             pluginId,
-            holdId,
+            queuedMessageId,
             update,
           }),
         ),
@@ -608,8 +610,10 @@ export function createApp(
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
+  // Messages parked while a thread awaited user interaction stop waiting once
+  // that interaction settles (#1650); the idle drain then delivers them.
   deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
-    requestDeferredThreadMessageFlush(deps, threadId);
+    requestThreadQueueDrainForSettledInteraction(deps, threadId);
   });
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge the dispatch pipeline to this service's gates. Until this runs
@@ -648,7 +652,7 @@ export function createApp(
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
-  registerHoldRoutes(publicApi, deps);
+  registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);

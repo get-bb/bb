@@ -63,8 +63,6 @@ import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
-import { ThreadHeldDispatches } from "@/components/promptbox/banner/ThreadHeldDispatches";
-import type { HeldDispatchInlineEditor } from "@/components/promptbox/banner/HeldDispatchCard";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
@@ -77,18 +75,10 @@ import {
   useComposerAttachmentUploads,
   useDraftAttachmentUploads,
   useComposerTypeahead,
-  useInlineHeldDispatchEditing,
   useInlineQueuedMessageEditing,
   useQueuedMessageActions,
-  type InlineHeldDispatchEditState,
   type InlineQueuedMessageEditState,
 } from "@/components/thread/embedded-chat";
-import { useThreadDispatchHolds } from "@/hooks/queries/thread-queries";
-import {
-  isDispatchHoldConflictError,
-  useUpdateDispatchHold,
-} from "@/hooks/mutations/dispatch-hold-mutations";
-import { isLiveDispatchHold } from "@/lib/dispatch-holds";
 import {
   useCreateThreadQueuedMessage,
   useCancelThreadPlan,
@@ -293,50 +283,6 @@ function isInlineQueuedMessageEditSession(
 
 const ENDED_EDIT_SESSION_DRAFT = emptyPromptDraftState();
 
-/**
- * Plugin composer-host accessors for the held-dispatch inline editor. Session
- * identity is the edit session plus the hold id for the same reason the queued
- * editor pairs both: a hold that settles and a new one that opens in its place
- * would otherwise look like the same session to a late plugin write.
- */
-type InlineHeldDispatchEditSession = Pick<
-  InlineHeldDispatchEditState,
-  "editSessionId" | "holdId"
->;
-
-function isInlineHeldDispatchEditSession(
-  current: InlineHeldDispatchEditState | null,
-  session: InlineHeldDispatchEditSession,
-): current is InlineHeldDispatchEditState {
-  return (
-    current?.editSessionId === session.editSessionId &&
-    current.holdId === session.holdId
-  );
-}
-
-function readInlineHeldDispatchDraft(
-  editStateRef: RefObject<InlineHeldDispatchEditState | null>,
-  session: InlineHeldDispatchEditSession,
-  fallback: PromptDraftState,
-): PromptDraftState {
-  const current = editStateRef.current;
-  return isInlineHeldDispatchEditSession(current, session)
-    ? current.draft
-    : fallback;
-}
-
-function writeInlineHeldDispatchDraft(
-  editStateRef: RefObject<InlineHeldDispatchEditState | null>,
-  session: InlineHeldDispatchEditSession,
-  draft: PromptDraftState,
-  commit: (next: InlineHeldDispatchEditState) => void,
-): void {
-  const current = editStateRef.current;
-  if (isInlineHeldDispatchEditSession(current, session)) {
-    commit({ ...current, draft });
-  }
-}
-
 /** Plugin composer-host accessors for the queued-message inline editor (see below). */
 function readInlineQueuedMessageDraft(
   editStateRef: RefObject<InlineQueuedMessageEditState | null>,
@@ -488,34 +434,7 @@ export function ThreadDetailPromptArea({
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
-  // Held dispatches are read here as well as inside `ThreadHeldDispatches`
-  // (one shared query cache, one request): the edit session has to close
-  // itself the moment its hold sends or is cancelled, which only the live list
-  // can tell it.
-  const { data: dispatchHoldsResponse } = useThreadDispatchHolds(thread.id);
-  const liveDispatchHolds = useMemo(
-    () => (dispatchHoldsResponse ?? []).filter(isLiveDispatchHold),
-    [dispatchHoldsResponse],
-  );
-  const {
-    inlineEditingHeldDispatch,
-    inlineEditingHeldDispatchRef,
-    commitInlineHeldDispatch,
-    dismissInlineHeldDispatchEditor,
-    beginEditHeldDispatch,
-    heldDispatchDraftSession,
-  } = useInlineHeldDispatchEditing({
-    ownerThreadId: thread.id,
-    holds: liveDispatchHolds,
-    onBeginEdit: () => {
-      clearInlineAttachmentErrorRef.current();
-      setEditFocusNonce((nonce) => nonce + 1);
-    },
-  });
-  // Only one inline editor can be open, and opening either closes the other:
-  // both sessions key off the same draft plumbing below.
-  const inlineDraftSession =
-    queuedMessageDraftSession ?? heldDispatchDraftSession;
+  const inlineDraftSession = queuedMessageDraftSession;
   const inlineDraftSessionRef = useLatestRef(inlineDraftSession);
   const promptHistoryEnabled = usePromptHistoryEnabled();
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
@@ -524,8 +443,6 @@ export function ThreadDetailPromptArea({
       enabled: promptHistoryEnabled,
     },
   );
-  const updateDispatchHold = useUpdateDispatchHold();
-  const isUpdateDispatchHoldPending = updateDispatchHold.isPending;
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
@@ -549,17 +466,11 @@ export function ThreadDetailPromptArea({
       projectId,
       threadId: thread.id,
     },
-    inlineDraft:
-      inlineEditingQueuedMessage?.draft ??
-      inlineEditingHeldDispatch?.draft ??
-      null,
+    inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
     inlineSessionRef: inlineDraftSessionRef,
   });
   const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
-  );
-  const subscribeInlineHeldDispatchDraft = useComposerHostDraftNotifier(
-    inlineEditingHeldDispatch?.draft ?? null,
   );
   const subscribeSentMessageEditDraft = useComposerHostDraftNotifier(
     sentMessageEdit?.draft ?? null,
@@ -616,11 +527,6 @@ export function ThreadDetailPromptArea({
   const queuedComposerTextEffects = useComposerTextEffects(
     inlineEditingQueuedMessage
       ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
-      : null,
-  );
-  const heldDispatchComposerTextEffects = useComposerTextEffects(
-    inlineEditingHeldDispatch
-      ? `dispatch-hold:${thread.id}:${inlineEditingHeldDispatch.holdId}:${inlineEditingHeldDispatch.editSessionId}`
       : null,
   );
   const sentMessageComposerTextEffects = useComposerTextEffects(
@@ -833,10 +739,10 @@ export function ThreadDetailPromptArea({
   // touches a picker, and a host identity that changed with it would re-render
   // the whole thread shell on every model change.
   const submitScheduledRef = useRef<
-    (options: { holdUntil: number }) => Promise<void>
+    (options: { sendAt: number }) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: { holdUntil: number }) => submitScheduledRef.current(options),
+    (options: { sendAt: number }) => submitScheduledRef.current(options),
     [],
   );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
@@ -958,15 +864,15 @@ export function ThreadDetailPromptArea({
   /**
    * `handleSend` for a submission that is being scheduled rather than sent.
    *
-   * Deliberately NOT `handleSend`'s queue/send fork: the server holds a
-   * `holdUntil` send whether or not the thread is busy, so scheduling while a
-   * turn runs must produce a hold, not a queued message that dispatches the
-   * moment the turn ends. Everything else is shared — the same draft, the same
-   * resolved attachments and @-mentions, the same frozen execution tuple, the
-   * same clear-and-restore-on-failure.
+   * Deliberately NOT `handleSend`'s queue/send fork: the server parks a
+   * `sendAt` send whether or not the thread is busy, so scheduling while a
+   * turn runs must produce a parked row, not a queued message that dispatches
+   * the moment the turn ends. Everything else is shared — the same draft, the
+   * same resolved attachments and @-mentions, the same frozen execution tuple,
+   * the same clear-and-restore-on-failure.
    */
   const submitScheduled = useCallback(
-    async ({ holdUntil }: { holdUntil: number }) => {
+    async ({ sendAt }: { sendAt: number }) => {
       if (isDefaultExecutionOptionsLoading) {
         throw new Error("This thread's model options are still loading.");
       }
@@ -984,7 +890,7 @@ export function ThreadDetailPromptArea({
         promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
       try {
-        await sendMessage.mutateAsync({ ...request, holdUntil });
+        await sendMessage.mutateAsync({ ...request, sendAt });
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
@@ -1154,44 +1060,6 @@ export function ThreadDetailPromptArea({
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);
-  /**
-   * Saves the edited held message. The whole draft goes back — text, mentions
-   * and attachments — because the editor is the real composer now; the old
-   * plain-textarea path could only carry text and silently dropped the rest.
-   *
-   * A 409 means the hold released or was cancelled while the editor was open,
-   * and the refetch the mutation schedules closes the session on its own. There
-   * is nothing the user can do about the race and nothing was lost, so it is
-   * not reported — the same rule "Send now" follows.
-   */
-  const handleSaveInlineHeldDispatch = useCallback(() => {
-    if (!inlineEditingHeldDispatch || activeComposerDraftInput.length === 0) {
-      return;
-    }
-    const { holdId } = inlineEditingHeldDispatch;
-    dismissInlineHeldDispatchEditor();
-    void updateDispatchHold
-      .mutateAsync({
-        holdId,
-        input: activeComposerDraftInput,
-        threadId: thread.id,
-      })
-      .catch((error: unknown) => {
-        if (isDispatchHoldConflictError(error)) return;
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: "Failed to update the held message",
-          }),
-        );
-      });
-  }, [
-    activeComposerDraftInput,
-    dismissInlineHeldDispatchEditor,
-    inlineEditingHeldDispatch,
-    thread.id,
-    updateDispatchHold,
-  ]);
 
   const bottomComposerConfig = useMemo<FollowUpComposerProps>(
     () => ({
@@ -1358,27 +1226,6 @@ export function ThreadDetailPromptArea({
     };
   }, [compactExecutionConfig, inlineEditingQueuedMessage]);
 
-  const heldDispatchExecutionConfig = useMemo(() => {
-    if (!inlineEditingHeldDispatch) return null;
-    const { execution } = inlineEditingHeldDispatch;
-    return {
-      ...compactExecutionConfig,
-      model: {
-        ...compactExecutionConfig.model,
-        active: { model: execution.model },
-        selected: execution.model,
-      },
-      serviceTier: {
-        ...compactExecutionConfig.serviceTier,
-        value: execution.serviceTier,
-      },
-      reasoning: {
-        ...compactExecutionConfig.reasoning,
-        value: execution.reasoningLevel,
-      },
-    };
-  }, [compactExecutionConfig, inlineEditingHeldDispatch]);
-
   const bottomPermissionConfig = useMemo(
     () => ({
       value: hasConcreteDefaultExecutionOptions ? permissionMode : undefined,
@@ -1404,17 +1251,6 @@ export function ThreadDetailPromptArea({
           }
         : null,
     [bottomPermissionConfig, inlineEditingQueuedMessage],
-  );
-
-  const heldDispatchPermissionConfig = useMemo(
-    () =>
-      inlineEditingHeldDispatch
-        ? {
-            ...bottomPermissionConfig,
-            value: inlineEditingHeldDispatch.execution.permissionMode,
-          }
-        : null,
-    [bottomPermissionConfig, inlineEditingHeldDispatch],
   );
 
   const environmentSummary = useMemo(
@@ -1587,123 +1423,6 @@ export function ThreadDetailPromptArea({
     thread.id,
     typeaheadConfig,
   ]);
-  const heldDispatchEditSessionId =
-    inlineEditingHeldDispatch?.editSessionId ?? null;
-  const heldDispatchEditHoldId = inlineEditingHeldDispatch?.holdId ?? null;
-  const heldDispatchPluginComposerHost =
-    useMemo<PluginComposerHost | null>(() => {
-      if (heldDispatchEditSessionId === null || heldDispatchEditHoldId === null) {
-        return null;
-      }
-      const session = {
-        editSessionId: heldDispatchEditSessionId,
-        holdId: heldDispatchEditHoldId,
-      };
-      return {
-        // A held message is still this thread's next turn, so plugins that
-        // scope to the thread see it — there is no separate hold scope to add
-        // to the plugin API for an editor that edits the thread's own prompt.
-        scope: { kind: "thread", threadId: thread.id },
-        textEffectKey: `dispatch-hold:${thread.id}:${heldDispatchEditHoldId}:${heldDispatchEditSessionId}`,
-        getCurrent: () =>
-          readInlineHeldDispatchDraft(
-            inlineEditingHeldDispatchRef,
-            session,
-            ENDED_EDIT_SESSION_DRAFT,
-          ),
-        subscribeDraft: subscribeInlineHeldDispatchDraft,
-        setDraft: (draft) =>
-          writeInlineHeldDispatchDraft(
-            inlineEditingHeldDispatchRef,
-            session,
-            draft,
-            commitInlineHeldDispatch,
-          ),
-        focus: focusInlinePluginComposer,
-      };
-    }, [
-      commitInlineHeldDispatch,
-      focusInlinePluginComposer,
-      heldDispatchEditHoldId,
-      heldDispatchEditSessionId,
-      inlineEditingHeldDispatchRef,
-      subscribeInlineHeldDispatchDraft,
-      thread.id,
-    ]);
-  const heldDispatchEditor = useMemo<HeldDispatchInlineEditor | null>(() => {
-    if (
-      !inlineEditingHeldDispatch ||
-      !heldDispatchExecutionConfig ||
-      !heldDispatchPermissionConfig ||
-      !heldDispatchPluginComposerHost
-    ) {
-      return null;
-    }
-    const { editSessionId, holdId } = inlineEditingHeldDispatch;
-    return {
-      holdId,
-      onDismiss: dismissInlineHeldDispatchEditor,
-      content: buildInlineDraftComposer({
-        attachments: {
-          items: activeComposerDraft.attachments,
-          projectId,
-          isAttaching: isAttachingInlineFiles,
-          error: inlineAttachmentError,
-          onAttachFiles: handleAttachInlineFiles,
-          onRemove: removeActiveComposerAttachment,
-        },
-        canModifierSubmit:
-          activeComposerDraftInput.length > 0 && !isUpdateDispatchHoldPending,
-        compactPromptPlaceholder,
-        composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-hold-${holdId}`,
-        draft: activeComposerDraft,
-        editFocusNonce,
-        execution: heldDispatchExecutionConfig,
-        focusSessionKey: editSessionId,
-        historyResetKey: `${thread.id}:${editSessionId}`,
-        isSubmitting: isUpdateDispatchHoldPending,
-        onChangeMessage: handleComposerMessageChange,
-        onEscape: dismissInlineHeldDispatchEditor,
-        onSelectHistoryEntry: setActiveComposerDraft,
-        permission: heldDispatchPermissionConfig,
-        pluginComposerHost: heldDispatchPluginComposerHost,
-        promptActions,
-        promptPlaceholder,
-        submit: handleSaveInlineHeldDispatch,
-        submitMode: { kind: "ready" },
-        submitTitle: "Save (Enter)",
-        textEffects: heldDispatchComposerTextEffects,
-        threadRuntimeDisplayStatus: runtimeDisplayStatus,
-        typeahead: typeaheadConfig,
-        collapseResetKey: `dispatch-hold:${holdId}`,
-      }),
-    };
-  }, [
-    activeComposerDraft,
-    activeComposerDraftInput.length,
-    compactPromptPlaceholder,
-    dismissInlineHeldDispatchEditor,
-    editFocusNonce,
-    handleAttachInlineFiles,
-    handleComposerMessageChange,
-    handleSaveInlineHeldDispatch,
-    heldDispatchComposerTextEffects,
-    heldDispatchExecutionConfig,
-    heldDispatchPermissionConfig,
-    heldDispatchPluginComposerHost,
-    inlineAttachmentError,
-    inlineEditingHeldDispatch,
-    isAttachingInlineFiles,
-    isUpdateDispatchHoldPending,
-    projectId,
-    promptActions,
-    promptPlaceholder,
-    removeActiveComposerAttachment,
-    runtimeDisplayStatus,
-    setActiveComposerDraft,
-    thread.id,
-    typeaheadConfig,
-  ]);
   // The published value only ever flips between stable host identities (per
   // thread / per edit session): keystrokes do not notify the pane scope. While
   // an inline editor cannot render (execution/permission configs still
@@ -1712,9 +1431,7 @@ export function ThreadDetailPromptArea({
   usePublishPluginComposerHost(
     queuedMessageEditor
       ? queuedMessagePluginComposerHost
-      : heldDispatchEditor
-        ? heldDispatchPluginComposerHost
-        : normalPluginComposerHost,
+      : normalPluginComposerHost,
   );
   const sentMessageEditOperationId = sentMessageEdit?.operationId ?? null;
   const sentMessagePluginComposerHost =
@@ -1906,15 +1623,6 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : (
-          <ThreadHeldDispatches
-            thread={thread}
-            runtimeDisplayStatus={runtimeDisplayStatus}
-            restoreComposerDraft={setActiveComposerDraft}
-            inlineEditor={heldDispatchEditor}
-            onEdit={beginEditHeldDispatch}
-          />
-        )}
-        {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
             resolveMentionLink={resolveMentionLink}
@@ -1940,13 +1648,11 @@ export function ThreadDetailPromptArea({
       </>
     ),
     [
-      beginEditHeldDispatch,
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,
       expandedBannerSection,
       handleDeleteQueuedMessage,
-      heldDispatchEditor,
       beginEditQueuedMessage,
       onChangedFileClick,
       handleReorderQueuedMessage,
@@ -1976,7 +1682,6 @@ export function ThreadDetailPromptArea({
       queuedMessages,
       resolveMentionLink,
       runtimeDisplayStatus,
-      setActiveComposerDraft,
       shouldHideComposer,
       submitMode.kind,
       thread,

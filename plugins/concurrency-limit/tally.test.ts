@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GLOBAL_SCOPE_KEY, hostScopeKey } from "./scope.js";
 import { IN_FLIGHT_TIMEOUT_MS, OccupancyTally } from "./tally.js";
+import { RECONCILE_INTERVAL_MS } from "./server.js";
 
 const NOW = 1_000_000;
 const A = "host-a";
@@ -28,7 +29,7 @@ describe("seeding", () => {
     // our own record of it too would count the same thread twice, and the
     // limiter would ratchet itself shut over time.
     const tally = seeded();
-    tally.noteCreated("thr_1", A);
+    tally.noteActive("thr_1", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
     tally.seed({ global: 1, byHost: { "host-a": 1 } });
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
@@ -39,74 +40,71 @@ describe("seeding", () => {
     // so dropping in-flight entries on re-seed would briefly admit over the
     // limit every single minute.
     const tally = seeded();
-    tally.notePendingCreate(A, NOW);
+    tally.notePendingSubmit("thr_1", A, NOW);
     tally.seed({ global: 2, byHost: { "host-a": 2 } });
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(3);
   });
 });
 
 describe("in-flight proceeds", () => {
-  it("counts a create proceed before its row exists", () => {
+  it("counts a proceed before its thread starts", () => {
     // Evaluation is serial under one lock, so without this a limit of 1 admits
-    // every dispatch that arrives before the first thread's row lands.
+    // every dispatch that arrives before the first thread actually starts.
     const tally = seeded();
-    tally.notePendingCreate(A, NOW);
+    tally.notePendingSubmit("thr_1", A, NOW);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(1);
   });
 
-  it("hands a create proceed over to the thread without double counting", () => {
+  it("does not double count a proceed once its thread starts", () => {
+    // The reason `thread.created` no longer marks occupancy at all: creation
+    // is ungated, so it fires for a `pending` thread BEFORE the gate admits
+    // it, and counting both it and the gate's own in-flight entry made a limit
+    // of N behave as N-1 for as long as a thread was starting.
     const tally = seeded();
-    tally.notePendingCreate(A, NOW);
-    tally.noteCreated("thr_1", A);
-    expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
-    // The thread going active afterwards is the same occupancy, not a second.
+    tally.notePendingSubmit("thr_1", A, NOW);
     tally.noteActive("thr_1", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
   });
 
-  it("matches a create proceed to its own host rather than another's", () => {
+  it("holds an admitted thread's slot for longer than a reconcile interval", () => {
+    // `starting` produces no lifecycle event of its own, so the in-flight
+    // entry is all that holds the slot until a reseed (which counts
+    // `starting`) takes over. If it expired first, a slow-provisioning thread
+    // would stop being counted and the limiter would over-admit.
     const tally = seeded();
-    tally.notePendingCreate(A, NOW);
-    tally.notePendingCreate(B, NOW);
-    tally.noteCreated("thr_b", B);
-    // host-a's reservation must survive host-b's thread landing.
+    tally.notePendingSubmit("thr_1", A, NOW);
+    expect(tally.count(GLOBAL_SCOPE_KEY, NOW + RECONCILE_INTERVAL_MS)).toBe(1);
+  });
+
+  it("keeps each thread's proceed in its own host pool", () => {
+    const tally = seeded();
+    tally.notePendingSubmit("thr_a", A, NOW);
+    tally.notePendingSubmit("thr_b", B, NOW);
+    tally.noteActive("thr_b", B);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(1);
     expect(tally.count(hostScopeKey("host-b"), NOW)).toBe(1);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(2);
   });
 
-  it("settles a create proceed whose host was unresolved at gate time", () => {
-    // The common create case: no environment yet, so the reservation carries
-    // no host and must still be claimed by the thread that lands with one.
+  it("counts a proceed globally when its host is not known yet", () => {
+    // The common first-message case: no environment has been chosen, so the
+    // dispatch counts against the global pool but against no host's.
     const tally = seeded();
-    tally.notePendingCreate(null, NOW);
+    tally.notePendingSubmit("thr_1", null, NOW);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(0);
-    tally.noteCreated("thr_1", A);
+    expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
+    tally.noteActive("thr_1", A);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
     expect(tally.count(hostScopeKey("host-a"), NOW)).toBe(1);
   });
 
-  it("settles a create proceed whose thread landed before it had an environment", () => {
-    // The production path: the gate can see a host (the environment was
-    // pre-chosen) while the freshly inserted row still has none, because
-    // provisioning has not run. If the reservation is not claimed here it sits
-    // alongside the thread it belongs to, counting one dispatch twice until it
-    // expires — which at a limit of 1 means the pool never reopens.
-    const tally = seeded();
-    tally.notePendingCreate(A, NOW);
-    tally.noteCreated("thr_1", null);
-    expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(1);
-    tally.noteFreed("thr_1", null);
-    expect(tally.count(GLOBAL_SCOPE_KEY, NOW)).toBe(0);
-  });
-
-  it("expires a proceed whose thread never arrived", () => {
+  it("expires a proceed whose thread never started", () => {
     // A dispatch can fail after our gate said yes — an invalid amendment from
     // a later gate, a provisioning failure. Without expiry those phantom slots
     // leak until reload and the limiter strangles itself.
     const tally = seeded();
-    tally.notePendingCreate(A, NOW);
+    tally.notePendingSubmit("thr_1", A, NOW);
     expect(tally.count(GLOBAL_SCOPE_KEY, NOW + IN_FLIGHT_TIMEOUT_MS - 1)).toBe(
       1,
     );

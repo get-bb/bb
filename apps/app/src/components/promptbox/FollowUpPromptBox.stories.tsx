@@ -552,6 +552,7 @@ const environmentGoneContextBannerElement: ReactNode = (
 function makeStoryQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   return {
     id,
+    threadId: "thr_prompt_pills",
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",

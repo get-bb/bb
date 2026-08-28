@@ -7,7 +7,7 @@ import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
-import type { DispatchHoldReportUpdate } from "@bb/domain";
+import type { QueuedMessageReportUpdate } from "@bb/domain";
 import {
   adoptHttpRouteResponse,
   AGENT_TOOL_NAME_PATTERN,
@@ -62,9 +62,9 @@ import type {
   PluginCliExecutionResult,
   PluginCliResult,
   PluginDispatch,
+  PluginDispatchAmendments,
   PluginDispatchGateHandler,
   PluginDispatchGateStage,
-  PluginDispatchReleaseAmendments,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -258,15 +258,15 @@ export interface FakePluginRegistrations {
   dispatchGates: {
     [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
   };
-  /** Every `bb.experimental_dispatch.release` call, in order. */
-  releasedDispatchHolds: Array<{
-    holdId: string;
-    amend: PluginDispatchReleaseAmendments | undefined;
+  /** Every `bb.experimental_dispatch.clearWait` call, in order. */
+  clearedQueueWaits: Array<{
+    queuedMessageId: string;
+    amend: PluginDispatchAmendments | undefined;
   }>;
   /** Every `bb.experimental_dispatch.report` call, in order. */
-  reportedDispatchHolds: Array<{
-    holdId: string;
-    update: DispatchHoldReportUpdate;
+  reportedQueueWaits: Array<{
+    queuedMessageId: string;
+    update: QueuedMessageReportUpdate;
   }>;
   /** Every `bb.experimental_threads.appendNote` call, in order. */
   appendedThreadNotes: Array<{ threadId: string; note: PluginThreadNote }>;
@@ -1614,24 +1614,23 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "dispatch.held": [],
-    "dispatch.released": [],
-    "dispatch.cancelled": [],
+    "queue.parked": [],
+    "queue.dispatched": [],
+    "queue.cancelled": [],
   };
   const dispatchGates: {
     [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
   } = {
-    "thread.create": null,
-    "turn.submit": null,
+    dispatch: null,
     "turn.failed": null,
   };
-  const releasedDispatchHolds: Array<{
-    holdId: string;
-    amend: PluginDispatchReleaseAmendments | undefined;
+  const clearedQueueWaits: Array<{
+    queuedMessageId: string;
+    amend: PluginDispatchAmendments | undefined;
   }> = [];
-  const reportedDispatchHolds: Array<{
-    holdId: string;
-    update: DispatchHoldReportUpdate;
+  const reportedQueueWaits: Array<{
+    queuedMessageId: string;
+    update: QueuedMessageReportUpdate;
   }> = [];
   const appendedThreadNotes: Array<{
     threadId: string;
@@ -1899,12 +1898,12 @@ function createFakePluginHostInternal(
       }
       storeDispatchGate(dispatchGates, stage, handler);
     },
-    release(holdId, options) {
-      releasedDispatchHolds.push({ holdId, amend: options?.amend });
+    clearWait(queuedMessageId, options) {
+      clearedQueueWaits.push({ queuedMessageId, amend: options?.amend });
       return Promise.resolve();
     },
-    report(holdId, update) {
-      reportedDispatchHolds.push({ holdId, update });
+    report(queuedMessageId, update) {
+      reportedQueueWaits.push({ queuedMessageId, update });
       return Promise.resolve(true);
     },
   };
@@ -2022,20 +2021,19 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
-          "dispatch.held": threadEventHandlers["dispatch.held"].length,
-          "dispatch.released": threadEventHandlers["dispatch.released"].length,
-          "dispatch.cancelled":
-            threadEventHandlers["dispatch.cancelled"].length,
+          "queue.parked": threadEventHandlers["queue.parked"].length,
+          "queue.dispatched": threadEventHandlers["queue.dispatched"].length,
+          "queue.cancelled": threadEventHandlers["queue.cancelled"].length,
         };
       },
       get dispatchGates() {
         return { ...dispatchGates };
       },
-      get releasedDispatchHolds() {
-        return [...releasedDispatchHolds];
+      get clearedQueueWaits() {
+        return [...clearedQueueWaits];
       },
-      get reportedDispatchHolds() {
-        return [...reportedDispatchHolds];
+      get reportedQueueWaits() {
+        return [...reportedQueueWaits];
       },
       get appendedThreadNotes() {
         return [...appendedThreadNotes];

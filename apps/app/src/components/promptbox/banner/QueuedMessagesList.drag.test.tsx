@@ -10,6 +10,7 @@ const noop = () => {};
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   return {
     id,
+    threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",

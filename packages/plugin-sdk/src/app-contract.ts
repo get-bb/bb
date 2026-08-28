@@ -1262,7 +1262,7 @@ export interface PluginTimelineRendererRegistration {
  *
  * Choosing it is not choosing a provider. bb submits the create request with
  * **no** `providerId` and delivers `pluginInput` as this plugin's
- * `pluginInputs` entry, so the plugin's `thread.create` gate is what
+ * `pluginInputs` entry, so the plugin's `dispatch` gate is what
  * ultimately decides the provider and model. Entries sort among providers by
  * the user's `providerOrder` setting under the token
  * `plugin:<pluginId>:<id>`; unpinned entries sort after the unpinned
@@ -1685,7 +1685,7 @@ export interface PluginComposerApi {
   experimental_setPluginInput(input: JsonValue | null): void;
   /**
    * Submit this composer's draft through the composer's OWN submit pipeline,
-   * parked until `holdUntil` instead of dispatched now.
+   * parked until `sendAt` instead of dispatched now.
    *
    * This is a real submission, not a plugin-issued send: the host builds the
    * request exactly as pressing Enter would, so the draft's attachments and
@@ -1695,9 +1695,10 @@ export interface PluginComposerApi {
    * tuple itself, which is why sending from the backend instead would silently
    * run the message with different settings than the ones in front of the user.
    *
-   * In a thread composer the message is held rather than sent or queued. In the
-   * new-thread composer the thread is created idle and its first turn becomes
-   * the hold. Either way the resulting hold is core's: the held card above the
+   * In a thread composer the message parks as a queued row instead of being
+   * sent or queued for the next idle moment. In the new-thread composer the
+   * thread is created `pending` and its first message becomes the parked row.
+   * Either way the resulting row is core's: the queued card above the
    * composer, the countdown, Send now and Cancel all work with no further
    * plugin involvement.
    *
@@ -1729,7 +1730,7 @@ export interface ExperimentalComposerSubmitOptions {
    * Epoch ms the submission should dispatch at. Must be in the future; the
    * host does not second-guess how far ahead it is.
    */
-  holdUntil: number;
+  sendAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1914,9 +1915,9 @@ export interface NewThreadRequest {
    * submission came from `useComposer().experimental_submit` — a scheduled
    * create — and absent otherwise, which is what makes an ordinary submission
    * start work at once. Forward it to `threads.spawn` unchanged: the thread is
-   * created idle and its first turn becomes a user-releasable dispatch hold.
+   * created `pending` and its first message parks as a queued row until then.
    */
-  holdUntil?: number;
+  sendAt?: number;
 }
 
 /**

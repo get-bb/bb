@@ -14,7 +14,7 @@ import {
 import {
   PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
-  type DispatchHoldReportUpdate,
+  type QueuedMessageReportUpdate,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -33,7 +33,7 @@ import type {
   PluginDispatch,
   PluginDispatchGateHandler,
   PluginDispatchGateStage,
-  PluginDispatchReleaseAmendments,
+  PluginDispatchAmendments,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -396,18 +396,18 @@ export function createPluginApi(options: {
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
   /**
-   * Releases a hold this plugin owns, re-running the gate pipeline. Rejects
-   * when the hold belongs to somebody else. Undefined in isolated
+   * Clears the wait this plugin holds on a parked row, re-running the gate
+   * pass. Rejects when the row waits on somebody else. Undefined in isolated
    * plugin-runtime harnesses that carry no thread services.
    */
-  releaseDispatchHold?: (args: {
-    holdId: string;
-    amend: PluginDispatchReleaseAmendments | undefined;
+  clearQueueWait?: (args: {
+    queuedMessageId: string;
+    amend: PluginDispatchAmendments | undefined;
   }) => Promise<void>;
-  /** Applies an owner progress report; false when the hold is already gone. */
-  reportDispatchHold?: (args: {
-    holdId: string;
-    update: DispatchHoldReportUpdate;
+  /** Applies a progress report; false when the row is already gone. */
+  reportQueueWait?: (args: {
+    queuedMessageId: string;
+    update: QueuedMessageReportUpdate;
   }) => Promise<boolean>;
   /**
    * Appends this plugin's display-only note to a thread. Throws on an unknown
@@ -463,8 +463,8 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     declaredIconNames,
     requestInteraction,
-    releaseDispatchHold,
-    reportDispatchHold,
+    clearQueueWait,
+    reportQueueWait,
     appendThreadNote,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
@@ -497,13 +497,12 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "dispatch.held": [],
-    "dispatch.released": [],
-    "dispatch.cancelled": [],
+    "queue.parked": [],
+    "queue.dispatched": [],
+    "queue.cancelled": [],
   };
   const dispatchGates: PluginDispatchGateRecords = {
-    "thread.create": null,
-    "turn.submit": null,
+    dispatch: null,
     "turn.failed": null,
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
@@ -1334,23 +1333,23 @@ export function createPluginApi(options: {
       }
       storeDispatchGate(dispatchGates, stage, handler);
     },
-    release(holdId, options) {
+    clearWait(queuedMessageId, options) {
       assertLive();
-      if (releaseDispatchHold === undefined) {
+      if (clearQueueWait === undefined) {
         return Promise.reject(
-          new Error("dispatch holds are unavailable in this host"),
+          new Error("the dispatch queue is unavailable in this host"),
         );
       }
-      return releaseDispatchHold({ holdId, amend: options?.amend });
+      return clearQueueWait({ queuedMessageId, amend: options?.amend });
     },
-    report(holdId, update) {
+    report(queuedMessageId, update) {
       assertLive();
-      if (reportDispatchHold === undefined) {
+      if (reportQueueWait === undefined) {
         return Promise.reject(
-          new Error("dispatch holds are unavailable in this host"),
+          new Error("the dispatch queue is unavailable in this host"),
         );
       }
-      return reportDispatchHold({ holdId, update });
+      return reportQueueWait({ queuedMessageId, update });
     },
   };
 

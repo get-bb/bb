@@ -76,12 +76,21 @@ import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
-function reportHeldSendDelivery(delivery: SendMessageDelivery): void {
-  if (delivery !== "deferred") {
+/**
+ * A send that could not dispatch parks as a queued row and delivers itself
+ * once whatever blocks it clears (#1650). The message is accepted, not lost,
+ * and resending it would double-send — say so, because nothing in the timeline
+ * runs yet.
+ *
+ * Collapsed from the old `deferred` arm: every non-dispatching outcome is now
+ * one `parked` row, so there is no longer a reason-specific case to single out.
+ */
+function reportParkedSendDelivery(delivery: SendMessageDelivery): void {
+  if (delivery !== "parked") {
     return;
   }
   appToast.message(
-    "Message held until the pending question is answered. It sends by itself; do not send it again.",
+    "Message queued until this thread can take it. It sends by itself; do not send it again.",
   );
 }
 
@@ -437,7 +446,7 @@ function EmbeddedThreadChatWithComposer({
         mode: "queue-if-active",
         ...executionRequestFields,
       });
-      reportHeldSendDelivery(result.delivery);
+      reportParkedSendDelivery(result.delivery);
     },
     [
       createQueuedMessage,
@@ -525,7 +534,7 @@ function EmbeddedThreadChatWithComposer({
         ...executionRequestFields,
       })
       .then((result) => {
-        reportHeldSendDelivery(result.delivery);
+        reportParkedSendDelivery(result.delivery);
       })
       .catch((error) => {
         if (!isMountedRef.current) {

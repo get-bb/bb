@@ -77,7 +77,7 @@ export function threadResponse(
     ...base,
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
-    liveDispatchHoldCount: 0,
+    queuedMessageCount: 0,
     ...overrides,
   };
 }
@@ -131,6 +131,7 @@ export function queuedMessage(
   overrides: Partial<ThreadQueuedMessage> & { id: string },
 ): ThreadQueuedMessage {
   return {
+    threadId: "thread-1",
     content: [{ type: "text", text: `Queued ${overrides.id}`, mentions: [] }],
     model: "fake-model",
     reasoningLevel: "medium",

@@ -163,7 +163,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
-      holdUntil,
+      sendAt,
       senderThreadId,
       executionInputSources,
       pluginInputs,
@@ -176,9 +176,9 @@ export function useSendThreadMessage() {
         reasoningLevel,
         permissionMode,
         ...(pluginInputs === undefined ? {} : { pluginInputs }),
-        // Present ⇒ the server parks the send in a user-releasable dispatch
-        // hold and answers `delivery: "held"`, whatever `mode` says.
-        ...(holdUntil === undefined ? {} : { holdUntil }),
+        // Present ⇒ the server parks the send as a user-releasable queued row
+        // and answers `delivery: "parked"`, whatever `mode` says.
+        ...(sendAt === undefined ? {} : { sendAt }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
@@ -198,7 +198,7 @@ export function useSendThreadMessage() {
     },
     onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
-        delivery: data.delivery ?? "sent",
+        delivery: data.delivery,
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,

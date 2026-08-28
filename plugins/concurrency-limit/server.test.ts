@@ -1,22 +1,24 @@
 // End-to-end wiring through the fake plugin host: settings in, gate verdicts
-// out, lifecycle events driving the tally, and a freed slot releasing a hold.
+// out, lifecycle events driving the tally, and a freed slot clearing a wait.
 // The arithmetic itself is covered in tally.test.ts / scope.test.ts; what this
 // file checks is that the pieces are connected to the right inputs.
 
 import type {
   BbPluginApi,
+  PluginDispatchAttemptKind,
   PluginDispatchGateContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
+  makeQueueEntry,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import plugin from "./server.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type HoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
+type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
 type HostRecord = Awaited<
   ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
 >[number];
@@ -54,50 +56,49 @@ function emptyCount(): ThreadCountResponse {
   return { total: 0, groups: [] };
 }
 
-function holdResponse(overrides: Partial<HoldResponse> = {}): HoldResponse {
-  return {
-    id: "hold_1",
-    kind: "turn",
-    threadId: "thr_held",
-    holder: HOLDER,
-    userReleasable: true,
-    reason: "1 of 1 running on all hosts",
-    payload: {
-      kind: "inline",
-      input: [{ type: "text", text: "hi", mentions: [] }],
-      execution: {
-        model: "gpt-5",
-        permissionMode: "full",
-        reasoningLevel: "medium",
-        serviceTier: "default",
-        source: "client/turn/start",
-      },
-      editable: true,
-    },
-    resumeAt: null,
-    expectedReleaseAt: null,
-    staleAfterMs: null,
-    lastReportAt: null,
+/** A row parked on this plugin's wait, as `queue.list` and `queue.parked` give it. */
+function parkedRow(overrides: Partial<QueueEntry> = {}): QueueEntry {
+  return makeQueueEntry({
+    id: "queued_1",
+    threadId: "thr_parked",
     createdAt: 1_000,
-    releasedAt: null,
-    releaseKind: null,
+    waitingOn: {
+      kind: "plugin",
+      pluginId: PLUGIN_ID,
+      reason: "1 of 1 running on all hosts",
+    },
     ...overrides,
-  };
+  });
 }
 
 interface GateContextOverrides {
   hostId?: string | null;
-  parentThreadId?: string | null;
-  originPluginId?: string | null;
+  thread?: Partial<ThreadResponse>;
+  attempt?: PluginDispatchAttemptKind;
+  firstDispatch?: boolean;
+  queuedMessage?: QueueEntry | null;
 }
 
-function createContext(
+/**
+ * The one dispatch checkpoint's context. The thread is never null now — a new
+ * thread is inserted `pending` before its first message is decided about — so
+ * every case here names the thread it is dispatching for.
+ */
+function dispatchContext(
   overrides: GateContextOverrides = {},
-): PluginDispatchGateContext<"thread.create"> {
+): PluginDispatchGateContext<"dispatch"> {
   const hostId = overrides.hostId === undefined ? "host-a" : overrides.hostId;
+  const thread = makeThreadResponse({
+    id: "thr_1",
+    status: "pending",
+    ...overrides.thread,
+  });
   return {
-    stage: "thread.create",
-    thread: null,
+    stage: "dispatch",
+    thread,
+    attempt: overrides.attempt ?? "start-turn",
+    firstDispatch: overrides.firstDispatch ?? true,
+    queuedMessage: overrides.queuedMessage ?? null,
     project: PROJECT,
     environment: null,
     host: hostId === null ? null : hostRecord(hostId),
@@ -117,26 +118,17 @@ function createContext(
       permissionMode: null,
     },
     origin: null,
-    originPluginId: overrides.originPluginId ?? null,
+    originPluginId: null,
     startedOnBehalfOf: null,
-    parentThreadId: overrides.parentThreadId ?? null,
+    parentThreadId: null,
     pluginInput: null,
-    isReleaseReevaluation: false,
-    hold: null,
   };
-}
-
-function submitContext(
-  thread: ThreadResponse,
-  overrides: GateContextOverrides = {},
-): PluginDispatchGateContext<"turn.submit"> {
-  return { ...createContext(overrides), stage: "turn.submit", thread };
 }
 
 interface SetupOptions {
   settings?: Record<string, string>;
   counts?: ThreadCountResponse;
-  holds?: HoldResponse[];
+  parked?: QueueEntry[];
   hosts?: HostRecord[];
 }
 
@@ -147,7 +139,7 @@ async function setup(options: SetupOptions = {}) {
     sdk: {
       threads: {
         count: async () => options.counts ?? emptyCount(),
-        holds: { list: async () => options.holds ?? [] },
+        queue: { list: async () => options.parked ?? [] },
       },
       hosts: { list: async () => options.hosts ?? [hostRecord("host-a")] },
       environments: {
@@ -162,43 +154,47 @@ async function setup(options: SetupOptions = {}) {
   return { bb, harness };
 }
 
+type Harness = Awaited<ReturnType<typeof setup>>["harness"];
+
+async function flush(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 /** Run the reconciler exactly once, then stop it. */
-async function reconcileOnce(
-  harness: Awaited<ReturnType<typeof setup>>["harness"],
-): Promise<void> {
+async function reconcileOnce(harness: Harness): Promise<void> {
   const service = harness.behavior.runService("reconciler");
   // The loop awaits its full reconcile before sleeping; yielding past the
   // pending SDK promises is enough to see the seeded state.
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  await flush();
   service.controller.abort();
   await service.done;
 }
 
-function createGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
-  const gate = harness.registrations.dispatchGates["thread.create"];
-  if (gate === null) throw new Error("thread.create gate was not registered");
+function dispatchGate(harness: Harness) {
+  const gate = harness.registrations.dispatchGates.dispatch;
+  if (gate === null) throw new Error("the dispatch gate was not registered");
   return gate;
 }
 
-function submitGate(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
-  const gate = harness.registrations.dispatchGates["turn.submit"];
-  if (gate === null) throw new Error("turn.submit gate was not registered");
-  return gate;
+function clearedIds(harness: Harness): string[] {
+  return harness.registrations.clearedQueueWaits.map(
+    (entry) => entry.queuedMessageId,
+  );
 }
 
 describe("registration", () => {
-  it("registers a gate at both stages", async () => {
+  it("registers a gate at the dispatch checkpoint", async () => {
     const { harness } = await setup();
-    expect(harness.registrations.dispatchGates["thread.create"]).not.toBeNull();
-    expect(harness.registrations.dispatchGates["turn.submit"]).not.toBeNull();
+    expect(harness.registrations.dispatchGates.dispatch).not.toBeNull();
   });
 
   it("changes nothing until a limit is configured", async () => {
     // Installing the plugin must not alter dispatch behaviour; every limit
     // defaults to empty, which means unlimited.
     const { harness } = await setup();
-    expect(await createGate(harness)(createContext())).toEqual({
+    expect(await dispatchGate(harness)(dispatchContext())).toEqual({
       action: "proceed",
     });
     expect(harness.needsConfigurationMessages).toEqual([]);
@@ -214,42 +210,49 @@ describe("registration", () => {
     expect(harness.needsConfigurationMessages[0]).toContain(
       "Max concurrent threads",
     );
-    expect(await createGate(harness)(createContext())).toEqual({
+    expect(await dispatchGate(harness)(dispatchContext())).toEqual({
       action: "proceed",
     });
   });
 });
 
-describe("the create gate", () => {
-  it("holds once its own proceeds have filled the pool", async () => {
+describe("the dispatch gate", () => {
+  it("waits once its own proceeds have filled the pool", async () => {
     // Nothing is running and no event has fired: the only thing stopping the
     // second dispatch is the plugin counting the `proceed` it just returned.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    const gate = createGate(harness);
-    expect(await gate(createContext())).toEqual({ action: "proceed" });
-    expect(await gate(createContext())).toEqual({
-      action: "hold",
+    const gate = dispatchGate(harness);
+    expect(
+      await gate(dispatchContext({ thread: { id: "thr_1" } })),
+    ).toEqual({ action: "proceed" });
+    expect(
+      await gate(dispatchContext({ thread: { id: "thr_2" } })),
+    ).toEqual({
+      action: "wait",
       reason: "1 of 1 running on all hosts",
     });
   });
 
   it("exempts child and plugin-spawned threads from a full pool", async () => {
+    // Both are read off the thread now, which is the only place they live.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "0" },
     });
-    const gate = createGate(harness);
-    expect(await gate(createContext())).toEqual({
-      action: "hold",
+    const gate = dispatchGate(harness);
+    expect(await gate(dispatchContext())).toEqual({
+      action: "wait",
       reason: "0 of 0 running on all hosts",
     });
-    expect(await gate(createContext({ parentThreadId: "thr_parent" }))).toEqual(
-      { action: "proceed" },
-    );
-    expect(await gate(createContext({ originPluginId: "workflows" }))).toEqual({
-      action: "proceed",
-    });
+    expect(
+      await gate(
+        dispatchContext({ thread: { parentThreadId: "thr_parent" } }),
+      ),
+    ).toEqual({ action: "proceed" });
+    expect(
+      await gate(dispatchContext({ thread: { originPluginId: "workflows" } })),
+    ).toEqual({ action: "proceed" });
   });
 
   it("keeps separate host pools separate", async () => {
@@ -258,15 +261,17 @@ describe("the create gate", () => {
       hosts: [hostRecord("host-a", "mac-mini"), hostRecord("host-b")],
     });
     await reconcileOnce(harness);
-    const gate = createGate(harness);
-    expect(await gate(createContext({ hostId: "host-a" }))).toEqual({
-      action: "proceed",
-    });
-    expect(await gate(createContext({ hostId: "host-b" }))).toEqual({
-      action: "proceed",
-    });
-    expect(await gate(createContext({ hostId: "host-a" }))).toEqual({
-      action: "hold",
+    const gate = dispatchGate(harness);
+    expect(
+      await gate(dispatchContext({ hostId: "host-a", thread: { id: "thr_1" } })),
+    ).toEqual({ action: "proceed" });
+    expect(
+      await gate(dispatchContext({ hostId: "host-b", thread: { id: "thr_2" } })),
+    ).toEqual({ action: "proceed" });
+    expect(
+      await gate(dispatchContext({ hostId: "host-a", thread: { id: "thr_3" } })),
+    ).toEqual({
+      action: "wait",
       // The reason uses the host's display name, not its id.
       reason: "1 of 1 running on host mac-mini",
     });
@@ -283,11 +288,11 @@ describe("the create gate", () => {
     await reconcileOnce(harness);
     // Two count calls: active and starting, each grouped by host.
     expect(harness.inspection.sdk.callsTo("threads.count")).toHaveLength(2);
-    const gate = createGate(harness);
+    const gate = dispatchGate(harness);
     // Seed contributes 2 (one active + one starting from the same stub), so
     // the pool of 2 is already full.
-    expect(await gate(createContext())).toEqual({
-      action: "hold",
+    expect(await gate(dispatchContext())).toEqual({
+      action: "wait",
       reason: "2 of 2 running on all hosts",
     });
   });
@@ -300,69 +305,75 @@ describe("the create gate", () => {
     const [args] = harness.inspection.sdk.callsTo("threads.count");
     expect(args?.[0]).toMatchObject({ parentThreadId: "none" });
   });
-});
 
-describe("the submit gate", () => {
   it("does not re-admit a thread that is already running", async () => {
-    // A running thread already occupies its slot; holding its own follow-up
-    // would park it behind the pool it is itself filling.
+    // A running thread already occupies its slot; parking its own follow-up
+    // would put it behind the pool it is itself filling.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "0" },
     });
-    const active = makeThreadResponse({ id: "thr_1", status: "active" });
-    expect(await submitGate(harness)(submitContext(active))).toEqual({
-      action: "proceed",
-    });
+    const gate = dispatchGate(harness);
+    for (const status of ["active", "starting"] as const) {
+      expect(
+        await gate(
+          dispatchContext({
+            firstDispatch: false,
+            thread: { id: "thr_1", status },
+          }),
+        ),
+      ).toEqual({ action: "proceed" });
+    }
   });
 
-  it("holds an idle thread's follow-up when the pool is full", async () => {
+  it("parks a start-turn attempt on an idle thread when the pool is full", async () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "0" },
     });
-    const idle = makeThreadResponse({ id: "thr_1", status: "idle" });
-    expect(await submitGate(harness)(submitContext(idle))).toEqual({
-      action: "hold",
-      reason: "0 of 0 running on all hosts",
-    });
+    expect(
+      await dispatchGate(harness)(
+        dispatchContext({
+          attempt: "start-turn",
+          firstDispatch: false,
+          thread: { id: "thr_1", status: "idle" },
+        }),
+      ),
+    ).toEqual({ action: "wait", reason: "0 of 0 running on all hosts" });
   });
 
-  it("exempts a child thread's follow-up using the thread's own parentage", async () => {
+  it("lets a join-turn attempt through even when the pool is full", async () => {
+    // A steer joins a turn whose slot this thread already holds. Parking it
+    // would strand the user mid-turn behind a pool the turn is itself filling
+    // — and the thread's status is not evidence either way, because the row is
+    // only written after the turn starts.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "0" },
     });
-    const child = makeThreadResponse({
-      id: "thr_child",
-      status: "idle",
-      parentThreadId: "thr_parent",
-    });
-    expect(await submitGate(harness)(submitContext(child))).toEqual({
-      action: "proceed",
-    });
+    expect(
+      await dispatchGate(harness)(
+        dispatchContext({
+          attempt: "join-turn",
+          firstDispatch: false,
+          thread: { id: "thr_1", status: "idle" },
+        }),
+      ),
+    ).toEqual({ action: "proceed" });
   });
 });
 
-describe("releasing on a freed slot", () => {
-  it("releases the oldest hold it owns when a thread goes idle", async () => {
+describe("clearing a wait when a slot frees", () => {
+  it("clears the oldest wait it owns when a thread goes idle", async () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    const gate = createGate(harness);
-    await gate(createContext());
-    await gate(createContext());
+    const gate = dispatchGate(harness);
+    await gate(dispatchContext({ thread: { id: "thr_1" } }));
+    await gate(dispatchContext({ thread: { id: "thr_2" } }));
 
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({
-        id: "hold_new",
-        createdAt: 5_000,
-        reason: "1 of 1 running on all hosts",
-      }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_new", createdAt: 5_000 }),
     });
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({
-        id: "hold_old",
-        createdAt: 1_000,
-        reason: "1 of 1 running on all hosts",
-      }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_old", createdAt: 1_000 }),
     });
 
     await harness.behavior.emitThreadEvent("thread.idle", {
@@ -370,34 +381,42 @@ describe("releasing on a freed slot", () => {
       lastAssistantText: null,
     });
 
-    expect(
-      harness.registrations.releasedDispatchHolds.map((r) => r.holdId),
-    ).toEqual(["hold_old"]);
+    expect(clearedIds(harness)).toEqual(["queued_old"]);
   });
 
-  it("never releases a hold owned by someone else", async () => {
-    // A scheduled send and a core reprovision park are both live holds this
-    // plugin can see and must not touch.
+  it("never clears a wait owned by someone else", async () => {
+    // A scheduled send and a core wait are both parked rows this plugin can
+    // see and must not touch.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({ id: "hold_user", holder: "user" }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({
+        id: "queued_other",
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "scheduled-send",
+          reason: "Sending at 09:00",
+        },
+      }),
+    });
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_core", waitingOn: { kind: "thread-busy" } }),
     });
     await harness.behavior.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "thr_1", status: "idle" }),
       lastAssistantText: null,
     });
-    expect(harness.registrations.releasedDispatchHolds).toEqual([]);
+    expect(harness.registrations.clearedQueueWaits).toEqual([]);
   });
 
-  it("does not release the same hold twice for two freed threads", async () => {
-    // `dispatch.released` may not arrive before the next thread finishes.
+  it("does not clear the same wait twice for two freed threads", async () => {
+    // `queue.dispatched` may not arrive before the next thread finishes.
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({ id: "hold_1" }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_1" }),
     });
     for (const id of ["thr_1", "thr_2"]) {
       await harness.behavior.emitThreadEvent("thread.idle", {
@@ -405,31 +424,70 @@ describe("releasing on a freed slot", () => {
         lastAssistantText: null,
       });
     }
-    expect(
-      harness.registrations.releasedDispatchHolds.map((r) => r.holdId),
-    ).toEqual(["hold_1"]);
+    expect(clearedIds(harness)).toEqual(["queued_1"]);
   });
 
   it("frees a slot on failure and archival, not only on idle", async () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({ id: "hold_a" }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_a" }),
     });
     await harness.behavior.emitThreadEvent("thread.failed", {
       thread: makeThreadResponse({ id: "thr_1", status: "error" }),
       error: null,
     });
-    await harness.behavior.emitThreadEvent("dispatch.held", {
-      hold: holdResponse({ id: "hold_b" }),
+    await harness.behavior.emitThreadEvent("queue.parked", {
+      entry: parkedRow({ id: "queued_b" }),
     });
     await harness.behavior.emitThreadEvent("thread.archived", {
       thread: makeThreadResponse({ id: "thr_2" }),
     });
-    expect(
-      harness.registrations.releasedDispatchHolds.map((r) => r.holdId),
-    ).toEqual(["hold_a", "hold_b"]);
+    expect(clearedIds(harness)).toEqual(["queued_a", "queued_b"]);
+  });
+
+  it("stops offering a row once it has dispatched", async () => {
+    const { harness } = await setup({
+      settings: { maxConcurrentThreads: "1" },
+    });
+    const entry = parkedRow({ id: "queued_1" });
+    await harness.behavior.emitThreadEvent("queue.parked", { entry });
+    await harness.behavior.emitThreadEvent("queue.dispatched", { entry });
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_1", status: "idle" }),
+      lastAssistantText: null,
+    });
+    expect(harness.registrations.clearedQueueWaits).toEqual([]);
+  });
+});
+
+describe("adopting parked rows after a restart", () => {
+  it("asks only for the rows it is holding, and clears one when a slot frees", async () => {
+    // Rows this plugin parked outlive the process that parked them, and the
+    // wait-holder filter is what keeps the query indexed instead of listing
+    // the whole queue and filtering client-side.
+    const { harness } = await setup({
+      settings: { maxConcurrentThreads: "1" },
+      parked: [
+        parkedRow({ id: "queued_restarted", createdAt: 2_000 }),
+        parkedRow({
+          id: "queued_someone_else",
+          createdAt: 1_000,
+          waitingOn: { kind: "provisioning" },
+        }),
+      ],
+    });
+    await reconcileOnce(harness);
+
+    const [args] = harness.inspection.sdk.callsTo("threads.queue.list");
+    expect(args?.[0]).toEqual({ waitHolder: HOLDER });
+
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_1", status: "idle" }),
+      lastAssistantText: null,
+    });
+    expect(clearedIds(harness)).toEqual(["queued_restarted"]);
   });
 });
 
@@ -438,17 +496,18 @@ describe("the tally follows lifecycle events", () => {
     const { harness } = await setup({
       settings: { maxConcurrentThreads: "1" },
     });
-    const gate = createGate(harness);
-    await gate(createContext());
-    // The created thread takes over the in-flight reservation.
-    await harness.behavior.emitThreadEvent("thread.created", {
+    const gate = dispatchGate(harness);
+    await gate(dispatchContext({ thread: { id: "thr_1" } }));
+    await harness.behavior.emitThreadEvent("thread.active", {
       thread: makeThreadResponse({
         id: "thr_1",
-        status: "starting",
+        status: "active",
         providerId: "codex",
       }),
     });
-    expect((await gate(createContext())).action).toBe("hold");
+    expect(
+      (await gate(dispatchContext({ thread: { id: "thr_2" } }))).action,
+    ).toBe("wait");
 
     await harness.behavior.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({
@@ -458,7 +517,9 @@ describe("the tally follows lifecycle events", () => {
       }),
       lastAssistantText: null,
     });
-    expect(await gate(createContext())).toEqual({ action: "proceed" });
+    expect(
+      await gate(dispatchContext({ thread: { id: "thr_3" } })),
+    ).toEqual({ action: "proceed" });
   });
 
   it("ignores an exempt thread's lifecycle so it never consumes a slot", async () => {
@@ -472,7 +533,7 @@ describe("the tally follows lifecycle events", () => {
         parentThreadId: "thr_parent",
       }),
     });
-    expect(await createGate(harness)(createContext())).toEqual({
+    expect(await dispatchGate(harness)(dispatchContext())).toEqual({
       action: "proceed",
     });
   });
@@ -487,8 +548,8 @@ describe("the tally follows lifecycle events", () => {
       counts: { total: 1, groups: [{ key: "host-a", count: 1 }] },
     });
     await reconcileOnce(harness);
-    const gate = createGate(harness);
-    expect((await gate(createContext())).action).toBe("hold");
+    const gate = dispatchGate(harness);
+    expect((await gate(dispatchContext())).action).toBe("wait");
 
     for (const id of ["thr_c1", "thr_c2", "thr_c3"]) {
       await harness.behavior.emitThreadEvent("thread.idle", {
@@ -500,9 +561,9 @@ describe("the tally follows lifecycle events", () => {
         lastAssistantText: null,
       });
     }
-    expect((await gate(createContext())).action).toBe("hold");
-    // And nothing was released on the strength of a slot that never freed.
-    expect(harness.registrations.releasedDispatchHolds).toEqual([]);
+    expect((await gate(dispatchContext())).action).toBe("wait");
+    // And nothing was cleared on the strength of a slot that never freed.
+    expect(harness.registrations.clearedQueueWaits).toEqual([]);
   });
 
   it("resolves a thread's host through its environment", async () => {
@@ -516,13 +577,15 @@ describe("the tally follows lifecycle events", () => {
     await harness.behavior.emitThreadEvent("thread.active", {
       thread: makeThreadResponse({ id: "thr_1", environmentId: "env-b" }),
     });
-    const gate = createGate(harness);
-    expect((await gate(createContext({ hostId: "host-b" }))).action).toBe(
-      "hold",
-    );
-    expect((await gate(createContext({ hostId: "host-a" }))).action).toBe(
-      "proceed",
-    );
+    const gate = dispatchGate(harness);
+    expect(
+      (await gate(dispatchContext({ hostId: "host-b", thread: { id: "thr_2" } })))
+        .action,
+    ).toBe("wait");
+    expect(
+      (await gate(dispatchContext({ hostId: "host-a", thread: { id: "thr_3" } })))
+        .action,
+    ).toBe("proceed");
     expect(harness.inspection.sdk.callsTo("environments.get")).toHaveLength(1);
   });
 });
@@ -536,8 +599,8 @@ describe("gate latency", () => {
       hosts: [hostRecord("host-a", "mac-mini")],
     });
     await reconcileOnce(harness);
-    expect(createGate(harness)(createContext({ hostId: "host-a" }))).toEqual({
-      action: "hold",
+    expect(dispatchGate(harness)(dispatchContext({ hostId: "host-a" }))).toEqual({
+      action: "wait",
       reason: "0 of 0 running on host mac-mini",
     });
   });

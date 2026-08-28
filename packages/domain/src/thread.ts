@@ -329,6 +329,13 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  /**
+   * The thread this row is parked on. Redundant on the thread-scoped list
+   * route that first served this DTO, and load-bearing everywhere else it is
+   * now served: a `queue.*` plugin event and a cross-thread wait-holder query
+   * both hand out rows with no surrounding thread to read it from.
+   */
+  threadId: z.string(),
   content: z.array(promptInputSchema).min(1),
   model: z.string().min(1),
   reasoningLevel: reasoningLevelSchema,

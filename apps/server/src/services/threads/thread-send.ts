@@ -2,7 +2,6 @@ import {
   getEnvironment,
   getThread,
   requireThreadLifecycleEventApplied,
-  type DispatchHoldRow,
 } from "@bb/db";
 import type { DbConnection, DbTransaction } from "@bb/db";
 import type {
@@ -69,19 +68,6 @@ import {
   requireDeferredFirstTurnContextCurrent,
   resolveDeferredFirstTurnContext,
 } from "./deferred-first-turn-context.js";
-import { requirePublicProject } from "../lib/entity-lookup.js";
-import { toThreadResponseFromThread } from "./thread-runtime-display.js";
-import { createThreadDispatchHold } from "./dispatch-holds.js";
-import {
-  amendingPluginId,
-  dispatchExecutionSources,
-  dispatchGateHolder,
-  dispatchHoldReasonForPass,
-  hasDispatchAmendments,
-  hasDispatchGates,
-  runDispatchGatePass,
-  type DispatchGatePassOutcome,
-} from "./dispatch-gates.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -91,24 +77,18 @@ type SendThreadMessagePayload = SendMessageRequest & {
   inputGroups?: PromptInput[][];
 };
 
-/**
- * Set when this send is re-running the pipeline for a hold being released, so
- * the pass can tell a fresh dispatch from a re-decision and skip the gate a
- * user "Release now" overrode.
- */
-export interface SendThreadMessageGateRelease {
-  hold: DispatchHoldRow;
-  skipPluginId: string | null;
-}
-
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
-  /** Present only when a released hold is re-entering the send path. */
-  gateRelease?: SendThreadMessageGateRelease;
   /**
-   * Present only when a released retry hold is re-submitting a failed turn.
-   * Marks the turn event as attempt N of an earlier request, which is what
-   * makes the next failure's attempt number correct without a separate tally.
+   * Gate provenance for a turn the dispatch checkpoint amended. Assembled by
+   * {@link attemptDispatch}, which is where the pass runs — this function only
+   * records it on the turn event.
+   */
+  amendment?: { pluginId: string; originalInput?: PromptInput[] };
+  /**
+   * Present only when this send re-submits a failed turn. Marks the turn event
+   * as attempt N of an earlier request, which is what makes the next failure's
+   * attempt number correct without a separate tally.
    */
   retryOf?: TurnRequestRetryMarker;
   environment: Environment;
@@ -149,7 +129,7 @@ interface SendThreadMessageQueueRequestResult {
   activeThread: Thread | null;
 }
 
-interface SendThreadMessageTransactionPreflight {
+export interface SendThreadMessageTransactionPreflight {
   (args: SendThreadMessageTransactionPreflightArgs): void;
 }
 
@@ -427,57 +407,6 @@ function appendAndQueueSendThreadMessageInTransaction({
   };
 }
 
-/**
- * Converts a gated dispatch into a hold instead of sending it.
- *
- * The execution tuple frozen here is the one the whole pass agreed on, which
- * is why holds are collected across a full pass rather than short-circuiting:
- * a limiter that parked the turn must not also freeze a stale model.
- *
- * `beforeCreateInTransaction` carries the drain's queued-message consumption
- * into the hold's own insert transaction, so a drain that hits a hold consumes
- * its message exactly once — the same "consume it as a successful send would"
- * contract the normal drain path has.
- */
-function holdGatedThreadSend(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: {
-    beforeCreateInTransaction?: SendThreadMessageTransactionPreflight;
-    execution: ResolvedThreadExecutionOptions;
-    input: PromptInput[];
-    outcome: Extract<DispatchGatePassOutcome, { kind: "hold" }>;
-    payload: SendThreadMessagePayload;
-    thread: Thread;
-  },
-): void {
-  createThreadDispatchHold(deps, {
-    threadId: args.thread.id,
-    environmentId: args.thread.environmentId,
-    holder: dispatchGateHolder(args.outcome.holder.pluginId),
-    payload: {
-      kind: "inline",
-      input: args.input,
-      execution: args.execution,
-      pluginInputs: args.payload.pluginInputs ?? {},
-    },
-    reason: dispatchHoldReasonForPass(args.outcome),
-    resumeAt: args.outcome.holder.resumeAt,
-    userReleasable: true,
-    ...(hasDispatchAmendments(args.outcome.amendments)
-      ? {
-          effectiveRequest: {
-            amendedBy: args.outcome.amendments.amendedBy,
-            originalInput: args.outcome.amendments.originalInput,
-          },
-        }
-      : {}),
-    ...(args.beforeCreateInTransaction !== undefined
-      ? { beforeCreateInTransaction: args.beforeCreateInTransaction }
-      : {}),
-  });
-  deps.hub.notifyThread(args.thread.id, ["queue-changed"]);
-}
-
 export async function sendThreadMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
@@ -573,93 +502,14 @@ export async function sendThreadMessage(
       thread,
     });
   }
-  let execution = await buildExecutionOptions(deps, payload, {
+  const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
   });
-  // The `turn.submit` gate pass, at the dispatch choke point. Steers are
-  // exempt: a steer joins the turn that is already running, so there is no
-  // dispatch decision left to make and holding one would strand the user
-  // mid-turn.
-  let amendment: { pluginId: string; originalInput?: PromptInput[] } | undefined;
-  if (mode !== "steer" && hasDispatchGates("turn.submit")) {
-    const outcome = await runDispatchGatePass(deps, {
-      stage: "turn.submit",
-      thread,
-      threadResponse: toThreadResponseFromThread(deps, { thread }),
-      project: requirePublicProject(deps.db, thread.projectId),
-      environmentId: thread.environmentId,
-      input,
-      requestedExecution: {
-        providerId: thread.providerId,
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        serviceTier: execution.serviceTier,
-        permissionMode: execution.permissionMode,
-      },
-      executionSources: dispatchExecutionSources(
-        payload.executionInputSources ?? {},
-      ),
-      origin: null,
-      originPluginId: null,
-      startedOnBehalfOf: null,
-      parentThreadId: thread.parentThreadId,
-      pluginInputs: payload.pluginInputs ?? {},
-      release:
-        args.gateRelease === undefined
-          ? null
-          : {
-              hold: args.gateRelease.hold,
-              skipPluginId: args.gateRelease.skipPluginId,
-            },
-    });
-    if (outcome.kind === "hold") {
-      holdGatedThreadSend(deps, {
-        beforeCreateInTransaction: args.beforeAppendInTransaction,
-        execution,
-        input,
-        outcome,
-        payload,
-        thread,
-      });
-      return;
-    }
-    if (hasDispatchAmendments(outcome.amendments)) {
-      if (outcome.amendments.input !== null) {
-        input = outcome.amendments.input;
-        // The grouped view is a presentation of the same blocks; a wholesale
-        // replacement has no groups to preserve.
-        inputGroups = undefined;
-      }
-      execution = await buildExecutionOptions(
-        deps,
-        {
-          ...payload,
-          ...(outcome.amendments.model !== null
-            ? { model: outcome.amendments.model }
-            : {}),
-          ...(outcome.amendments.reasoningLevel !== null
-            ? { reasoningLevel: outcome.amendments.reasoningLevel }
-            : {}),
-          ...(outcome.amendments.serviceTier !== null
-            ? { serviceTier: outcome.amendments.serviceTier }
-            : {}),
-          ...(outcome.amendments.permissionMode !== null
-            ? { permissionMode: outcome.amendments.permissionMode }
-            : {}),
-        },
-        { threadId: thread.id },
-      );
-      const pluginId = amendingPluginId(outcome.amendments);
-      if (pluginId !== null) {
-        amendment = {
-          pluginId,
-          ...(outcome.amendments.originalInput !== null
-            ? { originalInput: outcome.amendments.originalInput }
-            : {}),
-        };
-      }
-    }
-  }
+  // No gate pass here. Admission is decided ONCE, at the dispatch checkpoint
+  // in `attemptDispatch`, which is this function's only caller — so a steer, a
+  // drained queue row and a fresh send are all decided by the same pass rather
+  // than by whichever branch happened to reach this file.
+  const amendment = args.amendment;
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });

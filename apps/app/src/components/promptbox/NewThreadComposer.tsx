@@ -192,7 +192,7 @@ export interface NewThreadComposerSubmission extends NewThreadRequest {
    * makes an ordinary submission start work immediately, so this is not a
    * default the composer could fill in.
    */
-  holdUntil?: number;
+  sendAt?: number;
 }
 
 export interface NewThreadComposerProps {
@@ -1037,10 +1037,10 @@ export function NewThreadComposer({
   // over every picker selection, and a host identity that moved with them
   // would republish on every provider/model/environment change.
   const submitScheduledRef = useRef<
-    (options: { holdUntil: number }) => Promise<void>
+    (options: { sendAt: number }) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: { holdUntil: number }) => submitScheduledRef.current(options),
+    (options: { sendAt: number }) => submitScheduledRef.current(options),
     [],
   );
   // Identity-stable across keystrokes; the live draft flows through
@@ -1120,7 +1120,7 @@ export function NewThreadComposer({
    * The one submission path, shared by the Enter key and by a plugin's
    * `useComposer().experimental_submit`.
    *
-   * `holdUntil` is the only difference between them: everything the user chose
+   * `sendAt` is the only difference between them: everything the user chose
    * on screen — provider, model, reasoning level, service tier, permission
    * mode, environment, attachments, @-mentions, plugin picker entry — is
    * resolved here and travels with a scheduled create exactly as it does with
@@ -1132,7 +1132,7 @@ export function NewThreadComposer({
    * programmatic caller can tell "scheduled" from "refused".
    */
   const submitDraft = useCallback(
-    async (blockedReason: string | null, holdUntil: number | null) => {
+    async (blockedReason: string | null, sendAt: number | null) => {
       const submittedDraft = promptDraft.getCurrent();
       const input = promptDraftToInput(submittedDraft);
       if (
@@ -1178,7 +1178,7 @@ export function NewThreadComposer({
         environment: submissionEnvironment,
         input,
         ...(pluginInputs === undefined ? {} : { pluginInputs }),
-        ...(holdUntil === null ? {} : { holdUntil }),
+        ...(sendAt === null ? {} : { sendAt }),
         providerDecidedByPluginEntry: entrySubmission.providerId === undefined,
       };
       isSubmittingRef.current = true;
@@ -1234,8 +1234,8 @@ export function NewThreadComposer({
     [submitDraft],
   );
   useEffect(() => {
-    submitScheduledRef.current = async ({ holdUntil }) => {
-      await submitDraft(null, holdUntil);
+    submitScheduledRef.current = async ({ sendAt }) => {
+      await submitDraft(null, sendAt);
     };
   }, [submitDraft]);
 

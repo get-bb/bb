@@ -1,12 +1,8 @@
-import {
-  getAppSettings,
-  getEnvironment,
-  getThread,
-  type DispatchHoldRow,
-} from "@bb/db";
+import { getAppSettings, getEnvironment } from "@bb/db";
 import {
   permissionModeSchema,
   promptInputSchema,
+  QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
   reasoningLevelSchema,
   serviceTierSchema,
   type DispatchGateStage,
@@ -20,6 +16,7 @@ import {
   type ReasoningLevel,
   type ServiceTier,
   type Thread,
+  type ThreadQueuedMessage,
 } from "@bb/domain";
 import {
   createThreadEnvironmentArgsSchema,
@@ -30,12 +27,11 @@ import {
   type ThreadResponse,
 } from "@bb/server-contract";
 import type {
+  PluginDispatchAttemptContext,
+  PluginDispatchAttemptKind,
   PluginDispatchExecution,
   PluginDispatchExecutionSources,
-  PluginDispatchGateStage,
-  PluginThreadCreateGateContext,
   PluginTurnFailedGateContext,
-  PluginTurnSubmitGateContext,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
@@ -47,19 +43,53 @@ import {
   type DispatchGateProvider,
   type DispatchGateRegistration,
 } from "../plugins/dispatch-gate-registry.js";
-import { toDispatchHoldResponse } from "./dispatch-holds.js";
-import { threadProviderAmendmentRefusal } from "./thread-provider-amendment.js";
+import { getLastProviderThreadId } from "./thread-events.js";
 
 type DispatchGateDeps = Pick<AppDeps, "db" | "hub" | "providerRegistry">;
 
 /**
- * The plugin id a `plugin:` holder wraps. `DispatchHoldHolder` keeps the
- * prefix discriminable at the type level, so composing one is a template
- * literal rather than a cast.
+ * Why this thread's provider can no longer change, or null when it still can.
+ *
+ * The invariant is NOT "provider is locked when the row is inserted". It is
+ * **provider is immutable once a provider session exists**: the session is the
+ * conversation, and no other provider can continue one it never started. A
+ * `pending` thread whose first message is parked has a row but no session, so
+ * it is still free to be repointed — which is the whole window a routing
+ * plugin amends in.
+ *
+ * Two facts have to hold, and each rules out something the other does not:
+ *
+ * - **The thread must have no provider session.** The event log, not the
+ *   thread row, is the authority: a thread reads `idle` both before its first
+ *   turn and between two of them, so only `providerThreadId` on the event log
+ *   can tell "never ran" from "ran and went quiet". `firstDispatch` is the
+ *   cheap in-memory statement of the same thing and the caller checks it
+ *   first; this is the durable confirmation.
+ * - **The thread must not be a fork.** A fork provisions by CLONING the source
+ *   thread's provider session, so its provider is not a free choice at all —
+ *   it is a property of the session being cloned.
  */
-export function dispatchGateHolder(pluginId: string): `plugin:${string}` {
-  return `plugin:${pluginId}`;
+export function threadProviderAmendmentRefusal(
+  deps: Pick<AppDeps, "db">,
+  // Structural pick so both the API Thread and the raw db row qualify — the
+  // refusal reads only these three facts.
+  args: { thread: Pick<Thread, "id" | "providerId" | "originKind"> },
+): string | null {
+  if (getLastProviderThreadId(deps, args.thread.id) !== null) {
+    return `this thread has already started on "${args.thread.providerId}"`;
+  }
+  if (args.thread.originKind === "fork") {
+    return "this thread is a fork, and its first turn clones the source thread's provider session";
+  }
+  return null;
 }
+
+/**
+ * Whether an attempt starts a turn or joins one that is already running. The
+ * verdict powers are identical either way — a steer is gated exactly like a
+ * send — and only the amendment surface narrows.
+ */
+export type DispatchAttemptKind = PluginDispatchAttemptKind;
 
 /** Fields a gate may amend. Ordered as they are validated and reported. */
 const DISPATCH_AMENDMENT_FIELDS = [
@@ -77,20 +107,22 @@ export type DispatchAmendmentField = (typeof DISPATCH_AMENDMENT_FIELDS)[number];
  * A gate's answer, re-parsed at the boundary. Plugin sources are untyped at
  * runtime, so the contract's TypeScript shape is a promise, not a guarantee:
  * everything a gate returns is validated here and a malformed verdict fails
- * the dispatch with the plugin named, exactly like a throw.
+ * the attempt with the plugin named, exactly like a throw.
  */
 const dispatchGateAmendmentsSchema = z
   .object({
     providerId: z.string().min(1).optional(),
+    environment: createThreadEnvironmentArgsSchema.optional(),
     model: z.string().min(1).optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
     serviceTier: serviceTierSchema.optional(),
     permissionMode: permissionModeSchema.optional(),
-    environment: createThreadEnvironmentArgsSchema.optional(),
     input: z.array(promptInputSchema).min(1).optional(),
   })
   .strict();
-type DispatchGateAmendments = z.infer<typeof dispatchGateAmendmentsSchema>;
+export type DispatchGateAmendments = z.infer<
+  typeof dispatchGateAmendmentsSchema
+>;
 
 const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -98,9 +130,9 @@ const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
     amend: dispatchGateAmendmentsSchema.optional(),
   }),
   z.object({
-    action: z.literal("hold"),
-    reason: z.string().min(1).max(200),
-    resumeAt: z.number().int().nonnegative().nullable().optional(),
+    action: z.literal("wait"),
+    reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
+    retryAt: z.number().int().nonnegative().nullable().optional(),
   }),
   z.object({ action: z.literal("reject"), message: z.string().min(1) }),
 ]);
@@ -137,120 +169,114 @@ export function amendingPluginId(
   return ids.length === 0 ? null : (ids[ids.length - 1] ?? null);
 }
 
-export interface DispatchGateHoldVerdict {
+export interface DispatchGateWaitVerdict {
   pluginId: string;
   reason: string;
-  resumeAt: number | null;
+  /** Becomes the parked row's `sendAt`, so core's due sweep re-attempts then. */
+  retryAt: number | null;
 }
 
 export type DispatchGatePassOutcome =
   | { kind: "proceed"; amendments: DispatchAmendmentResult }
   | {
-      kind: "hold";
+      kind: "wait";
       /**
-       * The pass creates ONE hold row, owned by the FIRST plugin that voted to
-       * hold. Several rows would multiply the user's Release/Cancel affordances
-       * for one decision and make "release this dispatch" ambiguous, while one
-       * row keeps a single card whose reason line names every holder. The
-       * losers' reasons ride `additionalHolders` onto the timeline event; each
-       * of them re-votes at release, so nothing is lost by not owning the row.
+       * The pass parks ONE row, owned by the FIRST plugin that voted to wait.
+       * Several rows would multiply the user's Send-now/Cancel affordances for
+       * one decision and make "send this message" ambiguous, while one row
+       * keeps a single card whose reason line names every waiter. The losers'
+       * reasons are appended to that reason; each of them votes again on the
+       * next attempt, so nothing is lost by not owning the row.
        */
-      holder: DispatchGateHoldVerdict;
-      additionalHolders: readonly DispatchGateHoldVerdict[];
+      waiter: DispatchGateWaitVerdict;
+      additionalWaiters: readonly DispatchGateWaitVerdict[];
       amendments: DispatchAmendmentResult;
     };
 
-/**
- * The stages that decide about a dispatch BEFORE it happens. `turn.failed` is
- * excluded structurally: it answers a different union and cannot amend, so
- * routing it through the admission pass would mean a request type full of
- * fields it ignores.
- */
-export type DispatchAdmissionGateStage = Exclude<
-  DispatchGateStage,
-  "turn.failed"
->;
-
 export interface DispatchGatePassRequest {
-  stage: DispatchAdmissionGateStage;
-  /** Null at `thread.create`; the target thread at `turn.submit`. */
-  thread: Thread | null;
-  /** The `turn.submit` thread's public DTO; null at `thread.create`. */
-  threadResponse: ThreadResponse | null;
+  /** The target thread; a `pending` row for a first message. */
+  thread: Thread;
+  /** The thread's public DTO, as the gate context carries it. */
+  threadResponse: ThreadResponse;
   project: Project;
   environmentId: string | null;
   input: PromptInput[];
   requestedExecution: PluginDispatchExecution;
   executionSources: PluginDispatchExecutionSources;
+  attempt: DispatchAttemptKind;
+  /** True while no message on this thread has ever cleared an attempt. */
+  firstDispatch: boolean;
+  /**
+   * Whether an `environment` amendment can still be honoured on THIS attempt.
+   *
+   * Narrower than `firstDispatch`, and deliberately not exposed to plugins:
+   * re-resolving an environment intent means re-running most of thread
+   * creation, which only the attempt that is creating the thread has on its
+   * stack. A drain re-attempt of a still-`pending` thread is `firstDispatch`
+   * and yet cannot honour one, so the two flags are genuinely different facts.
+   */
+  environmentAmendable: boolean;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
   pluginInputs: PluginInputs;
-  /**
-   * Set when this pass re-decides a hold that is being released. `skipPluginId`
-   * is the owner a user "Release now" exempts for this one pass — the user
-   * overrode that gate's decision, and re-asking it would undo the override.
-   */
-  release: {
-    hold: DispatchHoldRow;
-    skipPluginId: string | null;
-  } | null;
+  /** The parked row being re-attempted; null for an inline first attempt. */
+  queuedMessage: ThreadQueuedMessage | null;
 }
 
 /**
- * Minimum gap between a release that re-held and the next release attempt on
- * that thread.
+ * Minimum gap between a re-attempt that re-parked and the next drain attempt
+ * on that thread.
  *
- * Releasing re-runs the gate pipeline, and a pass that votes to hold again
- * creates a new hold — so an owner that releases the moment it sees
- * `dispatch.held` would spin release → re-hold → release at whatever rate its
- * event handler fires. Core owns the pacing rather than trusting owners, the
- * same way `STALE_QUEUED_MESSAGE_CLAIM_MS` in the queue owns claim recovery
- * rather than trusting senders.
+ * Clearing a wait re-runs the gate pass, and a pass that votes to wait again
+ * parks the row afresh — so a plugin that clears the moment it sees
+ * `queue.parked` would spin clear → re-park → clear at whatever rate its event
+ * handler fires. Core owns the pacing rather than trusting plugins, the same
+ * way `STALE_QUEUED_MESSAGE_CLAIM_MS` in the queue owns claim recovery rather
+ * than trusting senders.
  *
- * Only a re-hold starts the clock. A release that dispatched is not a loop and
- * must never be delayed — a timer release that re-parks for an offline host and
- * then dispatches the moment the host reconnects is one normal sequence of two
- * releases milliseconds apart. And the window is per thread, not per hold,
- * because a re-hold is a *different* row: keying it to the hold id would
- * measure nothing.
+ * Only a re-park starts the clock. An attempt that dispatched is not a loop
+ * and must never be delayed — a due scheduled send that re-parks for a busy
+ * thread and then dispatches the moment the turn ends is one normal sequence
+ * of two attempts milliseconds apart. And the window is per thread, not per
+ * row, because a re-park can land on a different row entirely.
  */
-const RELEASE_REHOLD_MIN_INTERVAL_MS = 1_000;
+const DISPATCH_REPARK_MIN_INTERVAL_MS = 1_000;
 
 /**
- * When each thread last had a release turn straight back into a hold.
- * In-memory on purpose: this paces a live spin, and a restart is already a hard
- * stop for one. Entries are dropped as they age out, so a long-lived server
- * does not accumulate one per thread ever released.
+ * When each thread last had a drain attempt turn straight back into a park.
+ * In-memory on purpose: this paces a live spin, and a restart is already a
+ * hard stop for one. Entries are dropped as they age out, so a long-lived
+ * server does not accumulate one per thread ever drained.
  */
-const lastReleaseReheldAtByThreadId = new Map<string, number>();
+const lastReparkedAtByThreadId = new Map<string, number>();
 
-function noteDispatchReleaseReheld(threadId: string): void {
+export function noteDispatchReparked(threadId: string): void {
   const now = Date.now();
-  for (const [id, at] of lastReleaseReheldAtByThreadId) {
-    if (now - at >= RELEASE_REHOLD_MIN_INTERVAL_MS) {
-      lastReleaseReheldAtByThreadId.delete(id);
+  for (const [id, at] of lastReparkedAtByThreadId) {
+    if (now - at >= DISPATCH_REPARK_MIN_INTERVAL_MS) {
+      lastReparkedAtByThreadId.delete(id);
     }
   }
-  lastReleaseReheldAtByThreadId.set(threadId, now);
+  lastReparkedAtByThreadId.set(threadId, now);
 }
 
 /**
- * True when this thread re-held on release moments ago and the next attempt
- * should wait. The caller settles nothing, so the hold stays live and the next
- * timer tick, sweep or user action tries again.
+ * True when this thread re-parked moments ago and the next drain attempt
+ * should wait. The caller does nothing, so the row stays parked and the next
+ * sweep tick, drain or user action tries again.
  */
-export function isDispatchReleaseReheldRecently(threadId: string): boolean {
-  const at = lastReleaseReheldAtByThreadId.get(threadId);
-  return at !== undefined && Date.now() - at < RELEASE_REHOLD_MIN_INTERVAL_MS;
+export function isDispatchReparkedRecently(threadId: string): boolean {
+  const at = lastReparkedAtByThreadId.get(threadId);
+  return at !== undefined && Date.now() - at < DISPATCH_REPARK_MIN_INTERVAL_MS;
 }
 
 /**
  * True when at least one plugin registered a gate for this stage. Every wiring
  * site checks this first: with no gates the dispatch path must be
  * byte-for-byte what it was before gates existed — no lock, no context
- * assembly, no hold row.
+ * assembly, no queued row.
  */
 export function hasDispatchGates(stage: DispatchGateStage): boolean {
   const provider = dispatchGateProvider();
@@ -279,7 +305,7 @@ function withEvaluationLock<T>(run: () => Promise<T>): Promise<T> {
 
 function dispatchGateFailure(
   pluginId: string,
-  stage: DispatchAdmissionGateStage,
+  stage: DispatchGateStage,
   detail: string,
 ): ApiError {
   // Fail-closed, mirroring how a throwing `deriveProviderOptions` fails the
@@ -289,18 +315,14 @@ function dispatchGateFailure(
   return new ApiError(
     502,
     "dispatch_gate_failed",
-    `The "${pluginId}" plugin's ${stage} dispatch gate failed: ${detail}`,
+    `The "${pluginId}" plugin's ${stage} gate failed: ${detail}`,
     { details: { pluginId, stage } },
   );
 }
 
-function dispatchRejection(
-  pluginId: string,
-  stage: DispatchAdmissionGateStage,
-  message: string,
-): ApiError {
+function dispatchRejection(pluginId: string, message: string): ApiError {
   return new ApiError(409, "dispatch_rejected", message, {
-    details: { pluginId, stage },
+    details: { pluginId, stage: "dispatch" },
   });
 }
 
@@ -354,8 +376,8 @@ async function decideWithinBox<T>(
 function orderedGates(
   deps: Pick<AppDeps, "db">,
   provider: DispatchGateProvider,
-  stage: PluginDispatchGateStage,
-): DispatchGateRegistration<PluginDispatchGateStage>[] {
+  stage: DispatchGateStage,
+): DispatchGateRegistration<DispatchGateStage>[] {
   const gates = provider.listGates(stage);
   if (gates.length === 0) return [];
   const preferred = getAppSettings(deps.db).dispatchGateOrder[stage] ?? [];
@@ -373,7 +395,7 @@ function orderedGates(
 /**
  * The environment/host pair a gate context carries, resolved the same way for
  * every stage so a `turn.failed` gate sees the same host record — including its
- * live connection state — that the admission gates did.
+ * live connection state — that the attempt gate did.
  */
 export function dispatchGateEnvironmentAndHost(
   deps: Pick<AppDeps, "db" | "hub">,
@@ -425,52 +447,52 @@ interface ApplyAmendmentArgs {
 /**
  * Applies one gate's amendments to the running state so the next gate in the
  * chain sees them, validating each one against the same rules a request would
- * face. An invalid amendment fails the dispatch (fail-closed) with the plugin
+ * face. An invalid amendment fails the attempt (fail-closed) with the plugin
  * named — an amendment that cannot be honored is a bug in the plugin, and
  * silently ignoring it would run the turn with settings nobody chose.
+ *
+ * The windows come from the attempt itself rather than from a per-stage type,
+ * because that is where they actually live: the same plugin, with the same
+ * registration, may legitimately amend a provider on one attempt and not on
+ * the next one for the same thread.
  */
-function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
+export function applyGateAmendment(
+  deps: DispatchGateDeps,
+  args: ApplyAmendmentArgs,
+) {
   const { amend, pluginId, request } = args;
   const fail = (detail: string): never => {
-    throw dispatchGateFailure(pluginId, request.stage, detail);
+    throw dispatchGateFailure(pluginId, "dispatch", detail);
+  };
+  const requireStartTurn = (field: string): void => {
+    if (request.attempt === "join-turn") {
+      fail(
+        `amended ${field} on a join-turn attempt; the turn is already running, so its execution is settled — only \`input\` may be amended when joining`,
+      );
+    }
   };
 
   if (amend.providerId !== undefined) {
-    if (request.stage !== "thread.create") {
+    requireStartTurn("providerId");
+    if (!request.firstDispatch) {
       fail(
-        "amended providerId on an existing thread; a thread's provider is immutable once a provider session exists",
+        "amended providerId on a thread that has already dispatched; a thread's provider is immutable once a provider session exists",
       );
     }
-    if (request.release !== null) {
-      // A release re-evaluation decides about a thread whose ROW exists. That
-      // is not the same as a thread that has RUN: the invariant is that a
-      // provider is immutable once a provider session exists, and a held
-      // creation has none yet. So the amendment is admitted here exactly when
-      // the release will still be establishing the session, and refused when
-      // the thread has already started or is a fork cloning someone else's.
-      const thread = getThread(deps.db, request.release.hold.threadId);
-      if (thread === null || thread.deletedAt !== null) {
-        throw dispatchGateFailure(
-          pluginId,
-          request.stage,
-          "amended providerId on a thread that no longer exists",
-        );
-      }
-      const refusal = threadProviderAmendmentRefusal(deps, {
-        hold: request.release.hold,
-        thread,
-      });
-      if (refusal !== null) {
-        fail(`amended providerId while releasing a hold, but ${refusal}`);
-      }
-      if (amend.model === undefined) {
-        // The hold's frozen tuple names a model of the provider being left,
-        // and a resolved tuple cannot say "re-resolve this", so a provider
-        // without a model would dispatch a model the new provider lacks.
-        fail(
-          `amended providerId to "${amend.providerId}" while releasing a hold without a model; the held turn's model belongs to the provider it is leaving`,
-        );
-      }
+    const refusal = threadProviderAmendmentRefusal(deps, {
+      thread: request.thread,
+    });
+    if (refusal !== null) {
+      fail(`amended providerId, but ${refusal}`);
+    }
+    if (amend.model === undefined) {
+      // The tuple this pass is amending was already resolved, and it names a
+      // model of the provider being left; a resolved tuple cannot say
+      // "re-resolve this". A provider without a model would dispatch a model
+      // the new provider does not offer.
+      fail(
+        `amended providerId to "${amend.providerId}" without a model; the resolved tuple's model belongs to the provider it is leaving`,
+      );
     }
     const registration = deps.providerRegistry.get(amend.providerId);
     if (registration === null || !registration.info.available) {
@@ -482,7 +504,24 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
     args.sources.providerId = "plugin";
   }
 
+  if (amend.environment !== undefined) {
+    requireStartTurn("environment");
+    if (!request.firstDispatch) {
+      fail(
+        "amended environment on a thread that has already dispatched; a thread's workspace is chosen when it is provisioned",
+      );
+    }
+    if (!request.environmentAmendable) {
+      fail(
+        "amended environment on a re-attempt; a thread's workspace can only be chosen on the attempt that creates it, so amend it on the first pass or not at all",
+      );
+    }
+    args.amendments.environment = amend.environment;
+    args.amendments.amendedBy.environment = pluginId;
+  }
+
   if (amend.model !== undefined) {
+    requireStartTurn("model");
     args.execution.model = amend.model;
     args.amendments.model = amend.model;
     args.amendments.amendedBy.model = pluginId;
@@ -490,6 +529,7 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
   }
 
   if (amend.reasoningLevel !== undefined) {
+    requireStartTurn("reasoningLevel");
     args.execution.reasoningLevel = amend.reasoningLevel;
     args.amendments.reasoningLevel = amend.reasoningLevel;
     args.amendments.amendedBy.reasoningLevel = pluginId;
@@ -497,6 +537,7 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
   }
 
   if (amend.serviceTier !== undefined) {
+    requireStartTurn("serviceTier");
     args.execution.serviceTier = amend.serviceTier;
     args.amendments.serviceTier = amend.serviceTier;
     args.amendments.amendedBy.serviceTier = pluginId;
@@ -504,10 +545,11 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
   }
 
   if (amend.permissionMode !== undefined) {
+    requireStartTurn("permissionMode");
     const hostId =
       dispatchGateEnvironmentAndHost(deps, request.environmentId).host?.id ??
       null;
-    // Never fails the dispatch for asking too much: the machine's ceiling wins
+    // Never fails the attempt for asking too much: the machine's ceiling wins
     // and the gate gets the highest mode the host and provider both allow.
     const clamped = clampPermissionModeToHost(deps, {
       hostId,
@@ -520,17 +562,10 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
     args.sources.permissionMode = "plugin";
   }
 
-  if (amend.environment !== undefined) {
-    if (request.stage !== "thread.create") {
-      fail(
-        "amended environment on an existing thread; a thread's workspace is chosen when it is created",
-      );
-    }
-    args.amendments.environment = amend.environment;
-    args.amendments.amendedBy.environment = pluginId;
-  }
-
   if (amend.input !== undefined) {
+    // Deliberately legal on a `join-turn` attempt: a steer's CONTENT is still
+    // being decided at this moment, which is what lets a content-policy or DLP
+    // gate cover steers instead of only covering sends.
     args.amendments.originalInput ??= [...args.input];
     args.input.length = 0;
     args.input.push(...amend.input);
@@ -548,14 +583,18 @@ function buildGateContext(
     request: DispatchGatePassRequest;
     sources: PluginDispatchExecutionSources;
   },
-): PluginThreadCreateGateContext | PluginTurnSubmitGateContext {
+): PluginDispatchAttemptContext {
   const { environment, host } = dispatchGateEnvironmentAndHost(
     deps,
     args.request.environmentId,
   );
   const pluginInput: JsonValue | null =
     args.request.pluginInputs[args.pluginId] ?? null;
-  const base = {
+  return {
+    stage: "dispatch",
+    thread: args.request.threadResponse,
+    attempt: args.request.attempt,
+    firstDispatch: args.request.firstDispatch,
     project: args.request.project,
     environment,
     host,
@@ -570,34 +609,19 @@ function buildGateContext(
     startedOnBehalfOf: args.request.startedOnBehalfOf,
     parentThreadId: args.request.parentThreadId,
     pluginInput,
-    isReleaseReevaluation: args.request.release !== null,
-    hold:
-      args.request.release === null
-        ? null
-        : toDispatchHoldResponse(args.request.release.hold),
-  };
-  if (args.request.stage === "thread.create") {
-    return { ...base, stage: "thread.create", thread: null };
-  }
-  if (args.request.threadResponse === null) {
-    throw new Error("turn.submit dispatch gate pass has no thread");
-  }
-  return {
-    ...base,
-    stage: "turn.submit",
-    thread: args.request.threadResponse,
+    queuedMessage: args.request.queuedMessage,
   };
 }
 
 /**
- * Runs one full gate pass.
+ * Runs one full gate pass at the single dispatch checkpoint.
  *
- * Order is install order with the user's per-stage override on top;
- * amendments accumulate left to right so every gate sees its predecessors'
- * effects; a `reject` short-circuits the pass and throws a 409; `hold` verdicts
- * are COLLECTED across the whole pass rather than short-circuiting, so the
- * provider and model a held row freezes are the ones the whole chain agreed
- * on. The operation proceeds only when a pass yields no holds.
+ * Order is install order with the user's override on top; amendments
+ * accumulate left to right so every gate sees its predecessors' effects; a
+ * `reject` short-circuits the pass and throws a 409; `wait` verdicts are
+ * COLLECTED across the whole pass rather than short-circuiting, so the
+ * provider and model a parked row freezes are the ones the whole chain agreed
+ * on. The attempt proceeds only when a pass yields no waits.
  *
  * The caller must check {@link hasDispatchGates} first; with no gates this
  * returns an empty `proceed` without touching the lock.
@@ -610,9 +634,7 @@ export async function runDispatchGatePass(
   if (provider === undefined) {
     return { kind: "proceed", amendments: emptyAmendments() };
   }
-  const gates = orderedGates(deps, provider, request.stage).filter(
-    (gate) => gate.pluginId !== request.release?.skipPluginId,
-  );
+  const gates = orderedGates(deps, provider, "dispatch");
   if (gates.length === 0) {
     return { kind: "proceed", amendments: emptyAmendments() };
   }
@@ -624,7 +646,7 @@ export async function runDispatchGatePass(
       ...request.executionSources,
     };
     const input = [...request.input];
-    const holds: DispatchGateHoldVerdict[] = [];
+    const waits: DispatchGateWaitVerdict[] = [];
 
     for (const gate of gates) {
       const context = buildGateContext(deps, {
@@ -636,7 +658,7 @@ export async function runDispatchGatePass(
       });
       const invocation = await provider.invokeGate(
         gate.pluginId,
-        `${request.stage} dispatch gate`,
+        "dispatch gate",
         () =>
           decideWithinBox(
             async () => gate.handler(context),
@@ -644,12 +666,12 @@ export async function runDispatchGatePass(
           ),
       );
       if (!invocation.ok) {
-        throw dispatchGateFailure(gate.pluginId, request.stage, invocation.error);
+        throw dispatchGateFailure(gate.pluginId, "dispatch", invocation.error);
       }
       if (!invocation.value.ok) {
         throw dispatchGateFailure(
           gate.pluginId,
-          request.stage,
+          "dispatch",
           invocation.value.error,
         );
       }
@@ -659,7 +681,7 @@ export async function runDispatchGatePass(
       if (!parsed.success) {
         throw dispatchGateFailure(
           gate.pluginId,
-          request.stage,
+          "dispatch",
           `returned an invalid verdict: ${parsed.error.issues
             .map((issue) => `${issue.path.join(".")} ${issue.message}`)
             .join("; ")}`,
@@ -667,13 +689,13 @@ export async function runDispatchGatePass(
       }
       const decision = parsed.data;
       if (decision.action === "reject") {
-        throw dispatchRejection(gate.pluginId, request.stage, decision.message);
+        throw dispatchRejection(gate.pluginId, decision.message);
       }
-      if (decision.action === "hold") {
-        holds.push({
+      if (decision.action === "wait") {
+        waits.push({
           pluginId: gate.pluginId,
           reason: decision.reason,
-          resumeAt: decision.resumeAt ?? null,
+          retryAt: decision.retryAt ?? null,
         });
         continue;
       }
@@ -690,44 +712,44 @@ export async function runDispatchGatePass(
       }
     }
 
-    const holder = holds[0];
-    if (holder === undefined) {
+    const waiter = waits[0];
+    if (waiter === undefined) {
       return { kind: "proceed", amendments };
     }
-    if (request.release !== null) {
-      noteDispatchReleaseReheld(request.release.hold.threadId);
-    }
     return {
-      kind: "hold",
-      holder,
-      additionalHolders: holds.slice(1),
+      kind: "wait",
+      waiter,
+      additionalWaiters: waits.slice(1),
       amendments,
     };
   });
 }
 
 /**
- * The hold reason for a pass, naming every plugin that voted to hold. The
- * first holder owns the row, so its reason leads; the rest are appended so the
+ * The wait reason for a pass, naming every plugin that voted to wait. The
+ * first waiter owns the row, so its reason leads; the rest are appended so the
  * user sees the whole picture on one card rather than one card per gate.
  */
-export function dispatchHoldReasonForPass(
-  outcome: Extract<DispatchGatePassOutcome, { kind: "hold" }>,
+export function dispatchWaitReasonForPass(
+  outcome: Extract<DispatchGatePassOutcome, { kind: "wait" }>,
 ): string {
-  const extra = outcome.additionalHolders
+  const extra = outcome.additionalWaiters
     .map((entry) => `${entry.pluginId}: ${entry.reason}`)
     .join("; ");
-  const reason = extra.length === 0
-    ? outcome.holder.reason
-    : `${outcome.holder.reason} (also held by ${extra})`;
-  return reason.length > 200 ? `${reason.slice(0, 199)}…` : reason;
+  const reason =
+    extra.length === 0
+      ? outcome.waiter.reason
+      : `${outcome.waiter.reason} (also waiting on ${extra})`;
+  return reason.length > QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH
+    ? `${reason.slice(0, QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH - 1)}…`
+    : reason;
 }
 
 const turnFailedGateDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("none") }),
   z.object({
     action: z.literal("retry"),
-    reason: z.string().min(1).max(200),
+    reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
     resumeAt: z.number().int().nonnegative(),
   }),
 ]);
@@ -753,24 +775,24 @@ type TurnFailedGatePassDeps = Pick<AppDeps, "db" | "logger">;
 /**
  * Runs the `turn.failed` chain.
  *
- * Two things differ from an admission pass, both because the failure has
+ * Two things differ from an attempt pass, both because the failure has
  * already been applied:
  *
- * - **A bad gate loses its vote, not the thread.** Fail-closed at an admission
- *   stage means refusing to dispatch, because the safe state is "nothing ran".
- *   Here the safe state is the failure standing exactly as core wrote it, so a
- *   gate that throws, times out or returns a malformed verdict is logged with
- *   its plugin named and SKIPPED. Propagating would let one broken retry plugin
+ * - **A bad gate loses its vote, not the thread.** Fail-closed at the attempt
+ *   means refusing to dispatch, because the safe state is "nothing ran". Here
+ *   the safe state is the failure standing exactly as core wrote it, so a gate
+ *   that throws, times out or returns a malformed verdict is logged with its
+ *   plugin named and SKIPPED. Propagating would let one broken retry plugin
  *   turn every failure into a second failure, and there is no caller left to
  *   receive the error anyway.
  * - **The first `retry` wins and stops the chain.** Nothing accumulates across
  *   a pass here — there are no amendments to collect and one failure earns at
- *   most one retry hold — so continuing past a decided retry would only ask
+ *   most one retry row — so continuing past a decided retry would only ask
  *   later gates to answer a question that is already settled.
  *
- * It still runs under the same server-wide evaluation lock as admission passes:
- * a retry policy that counts what it has in flight must not interleave with the
- * limiter deciding whether that retry may dispatch.
+ * It still runs under the same server-wide evaluation lock as attempt passes:
+ * a retry policy that counts what it has in flight must not interleave with
+ * the limiter deciding whether that retry may dispatch.
  */
 export async function runTurnFailedGatePass(
   deps: TurnFailedGatePassDeps,

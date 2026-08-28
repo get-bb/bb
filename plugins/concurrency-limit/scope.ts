@@ -67,7 +67,7 @@ export interface EvaluateDispatchArgs {
 /** A gate verdict, in the plugin's own vocabulary. */
 export type DispatchEvaluation =
   | { action: "proceed" }
-  | { action: "hold"; reason: string; scopeKey: ScopeKey };
+  | { action: "wait"; reason: string; scopeKey: ScopeKey };
 
 function truncateReason(reason: string): string {
   if (reason.length <= MAX_REASON_LENGTH) return reason;
@@ -115,7 +115,7 @@ export function evaluateDispatch(
     const count = args.countInScope(GLOBAL_SCOPE_KEY);
     if (count >= limits.global) {
       return {
-        action: "hold",
+        action: "wait",
         scopeKey: GLOBAL_SCOPE_KEY,
         reason: formatCountReason({
           count: limits.global,
@@ -131,7 +131,7 @@ export function evaluateDispatch(
     const count = args.countInScope(key);
     if (count >= limits.perHost) {
       return {
-        action: "hold",
+        action: "wait",
         scopeKey: key,
         reason: formatCountReason({
           count: limits.perHost,

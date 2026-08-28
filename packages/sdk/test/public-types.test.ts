@@ -364,7 +364,6 @@ type ExpectedThreadsKey =
   | "events"
   | "fork"
   | "get"
-  | "holds"
   | "interactions"
   | "list"
   | "markRead"
@@ -374,6 +373,7 @@ type ExpectedThreadsKey =
   | "paneAction"
   | "pin"
   | "promptHistory"
+  | "queue"
   | "queuedMessages"
   | "reorderPinned"
   | "resolveMentions"
@@ -393,7 +393,12 @@ type ExpectedThreadsKey =
   | "wait";
 
 type ExpectedThreadEventsKey = "list" | "wait";
-type ExpectedThreadHoldsKey = "cancel" | "get" | "list" | "release" | "update";
+/**
+ * The cross-thread queue area answers exactly one question — what is parked
+ * right now — so it has exactly one method. A row's own operations (send-now,
+ * edit, reorder, delete) live on `queuedMessages`.
+ */
+type ExpectedThreadQueueKey = "list";
 type ExpectedThreadInteractionsKey =
   | "cancel"
   | "get"
@@ -544,8 +549,8 @@ describe("SDK public type entrypoints", () => {
       keyof RootBbSdk["threads"]["events"]
     >().toEqualTypeOf<ExpectedThreadEventsKey>();
     expectTypeOf<
-      keyof RootBbSdk["threads"]["holds"]
-    >().toEqualTypeOf<ExpectedThreadHoldsKey>();
+      keyof RootBbSdk["threads"]["queue"]
+    >().toEqualTypeOf<ExpectedThreadQueueKey>();
     expectTypeOf<
       keyof RootBbSdk["threads"]["interactions"]
     >().toEqualTypeOf<ExpectedThreadInteractionsKey>();

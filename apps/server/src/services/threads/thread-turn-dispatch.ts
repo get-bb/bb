@@ -22,7 +22,6 @@ import {
   throwEnvironmentNotReady,
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
-import { createReprovisionDispatchHold } from "./dispatch-hold-core.js";
 import {
   appendThreadProvisioningEvent,
   getLastProviderThreadId,
@@ -170,16 +169,12 @@ export async function dispatchTurnDuringReprovision(
           systemMessageSubject: args.systemMessageSubject,
         });
         // The turn above is parked, not sent: it replays when the workspace is
-        // ready. Record that wait as a `core:reprovision` hold so it has the
-        // banner, timeline row and Cancel every other held dispatch has. The
-        // hold tracks the deferred turn — the turn still dispatches through the
-        // provisioning machinery, which settles the row on workspace-ready.
-        createReprovisionDispatchHold(args.deps, {
-          environmentId: args.environment.id,
-          execution: args.execution,
-          input: args.input,
-          threadId: args.thread.id,
-        });
+        // ready, driven by the provisioning machinery that owns that ordering.
+        // It deliberately does NOT become a queued row — the queue carries
+        // dispatches core will re-ATTEMPT, and this one is already committed
+        // to a specific replay. Messages that arrive DURING the reprovision do
+        // park, on `waitingOn: provisioning`, and the workspace-ready drain
+        // releases them.
       },
       environment: args.environment,
       projectId: args.thread.projectId,

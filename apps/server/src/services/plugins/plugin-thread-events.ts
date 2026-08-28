@@ -1,6 +1,6 @@
 import type { ApplyThreadLifecycleEventOutcome } from "@bb/db";
 import type { Thread } from "@bb/domain";
-import type { DispatchHoldResponse } from "@bb/server-contract";
+import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
 
 let emitter: PluginThreadEventEmitter | undefined;
@@ -23,19 +23,19 @@ export function emitPluginThreadDeleted(thread: Thread): void {
   emitter?.emitThreadDeleted(thread);
 }
 
-/** Called after a dispatch hold row is created (createThreadDispatchHold). */
-export function emitPluginDispatchHeld(hold: DispatchHoldResponse): void {
-  emitter?.emitDispatchHeld(hold);
+/** Called after a dispatch attempt parks as a queued row (parkDispatch). */
+export function emitPluginQueueParked(entry: ThreadQueuedMessage): void {
+  emitter?.emitQueueParked(entry);
 }
 
-/** Called after a hold is released into its dispatch (settleDispatchHold). */
-export function emitPluginDispatchReleased(hold: DispatchHoldResponse): void {
-  emitter?.emitDispatchReleased(hold);
+/** Called after a parked row's waits cleared and it dispatched. */
+export function emitPluginQueueDispatched(entry: ThreadQueuedMessage): void {
+  emitter?.emitQueueDispatched(entry);
 }
 
-/** Called after a live hold is cancelled and its dispatch discarded. */
-export function emitPluginDispatchCancelled(hold: DispatchHoldResponse): void {
-  emitter?.emitDispatchCancelled(hold);
+/** Called after a parked row is cancelled and its dispatch discarded. */
+export function emitPluginQueueCancelled(entry: ThreadQueuedMessage): void {
+  emitter?.emitQueueCancelled(entry);
 }
 
 /**

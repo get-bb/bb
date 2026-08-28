@@ -11,7 +11,7 @@ import {
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
-import { settleReprovisionDispatchHolds } from "./dispatch-hold-core.js";
+import { drainThreadQueueOnWorkspaceReady } from "./queue-drains.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -159,14 +159,11 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
 
-  // The workspace exists, so a turn parked by a reprovision is about to replay
-  // below. Settle its tracking hold here rather than after the dispatch: the
-  // wait is over at this line, and the `run.succeeded` branch below returns
-  // without dispatching anything. A cold start has no such hold and no-ops.
-  settleReprovisionDispatchHolds(deps, {
-    releaseKind: "owner",
-    threadId: args.thread.id,
-  });
+  // The workspace exists, so anything that parked waiting for it stops
+  // waiting here rather than after the dispatch below: the wait is over at
+  // this line, and the `run.succeeded` branch below returns without
+  // dispatching anything. A thread with nothing parked no-ops.
+  drainThreadQueueOnWorkspaceReady(deps, args.thread.id);
 
   if (
     args.context.request.seedWithoutRun &&

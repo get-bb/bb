@@ -19,14 +19,12 @@ import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 import { requirePublicProject } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import {
-  createThreadDispatchHold,
-  listLiveThreadDispatchHolds,
-  parseDispatchHoldPayload,
-} from "./dispatch-holds.js";
+import { listQueuedThreadMessages } from "@bb/db";
+import { parkDispatch } from "./queue-parking.js";
+import { toThreadQueuedMessage } from "./thread-queued-messages.js";
+import { buildExecutionOptions } from "./thread-commands.js";
 import {
   dispatchGateEnvironmentAndHost,
-  dispatchGateHolder,
   dispatchInputText,
   hasDispatchGates,
   runTurnFailedGatePass,
@@ -169,18 +167,18 @@ function buildTurnFailure(
 }
 
 /**
- * True when this original request already has a live retry hold.
+ * True when this original request already has a parked retry row.
  *
  * `run.failed` applies once per failure, so this is not the common path — it is
  * the guard that keeps a duplicate or replayed failure from parking the same
  * turn twice, which the user would see as two identical retry cards.
  */
-function hasLiveRetryHoldFor(
+function hasParkedRetryFor(
   deps: Pick<TurnFailedGateDeps, "db">,
   args: { threadId: string; originalRequestId: string },
 ): boolean {
-  return listLiveThreadDispatchHolds(deps, args.threadId).some((hold) => {
-    const payload = parseDispatchHoldPayload(hold);
+  return listQueuedThreadMessages(deps.db, args.threadId).some((row) => {
+    const payload = toThreadQueuedMessage(row).payload;
     return (
       payload.kind === "retry" &&
       payload.retryOfTurnRequestId === args.originalRequestId
@@ -236,31 +234,56 @@ async function runTurnFailedGatesForThread(
     return;
   }
   if (
-    hasLiveRetryHoldFor(deps, {
+    hasParkedRetryFor(deps, {
       threadId,
       originalRequestId: failure.originalRequestId,
     })
   ) {
     deps.logger.info(
       { threadId, pluginId: outcome.verdict.pluginId },
-      "Ignored a turn.failed retry verdict: this turn already has a live retry hold",
+      "Ignored a turn.failed retry verdict: this turn already has a parked retry",
     );
     return;
   }
-  createThreadDispatchHold(deps, {
-    threadId,
-    environmentId: thread.environmentId,
-    holder: dispatchGateHolder(outcome.verdict.pluginId),
-    payload: {
-      kind: "retry",
-      retryOfTurnRequestId: failure.originalRequestId,
-      attempt: failure.attemptNumber + 1,
+  // A by-reference row: it carries no message of its own, only the id of the
+  // request it will re-submit. `resumeAt` becomes its `sendAt`, so the due
+  // sweep re-attempts it — and that re-attempt runs the dispatch checkpoint
+  // like any other, which is what makes a retry respect a limiter that is at
+  // capacity instead of jumping the queue.
+  parkDispatch(deps, {
+    thread,
+    message: {
+      // The original blocks verbatim, so the provider is asked the same
+      // question the failed attempt asked rather than being nudged with a
+      // synthetic "please continue" whose meaning depends on what it
+      // remembers. Their VISIBILITY is the one thing that changes: `agent-only`
+      // is what keeps the timeline from showing the user's message a second
+      // time, using the same projection rule that has always hidden system
+      // continuations. The user's message stays where it was, on the attempt
+      // that failed. Applied here, at the park, so the frozen row carries it
+      // and every later re-attempt of this row inherits it.
+      input: failed.request.input.map((block) => ({
+        ...block,
+        visibility: "agent-only" as const,
+      })),
+      execution: await buildExecutionOptions(deps, {}, { threadId }),
+      pluginInputs: {},
+      senderThreadId: null,
+      payload: {
+        kind: "retry",
+        retryOfTurnRequestId: failure.originalRequestId,
+        attempt: failure.attemptNumber + 1,
+      },
+      systemNotice: null,
     },
-    reason: outcome.verdict.reason,
-    resumeAt: outcome.verdict.resumeAt,
-    userReleasable: true,
+    waitingOn: {
+      kind: "plugin",
+      pluginId: outcome.verdict.pluginId,
+      reason: outcome.verdict.reason,
+    },
+    sendAt: outcome.verdict.resumeAt,
+    claimed: null,
   });
-  deps.hub.notifyThread(threadId, ["queue-changed"]);
 }
 
 /**

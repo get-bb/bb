@@ -1295,16 +1295,16 @@ describe("useComposer", () => {
         <Harness withSubmit />
       </MemoryRouter>,
     );
-    const holdUntil = Date.now() + 3_600_000;
+    const sendAt = Date.now() + 3_600_000;
     await act(async () => {
-      await captured!.experimental_submit({ holdUntil });
+      await captured!.experimental_submit({ sendAt });
     });
-    expect(submit).toHaveBeenCalledWith({ holdUntil });
+    expect(submit).toHaveBeenCalledWith({ sendAt });
 
     // A time already in the past would be released on the server's next sweep
     // — an immediate send nobody asked for — so it never reaches the composer.
     await expect(
-      captured!.experimental_submit({ holdUntil: Date.now() - 1 }),
+      captured!.experimental_submit({ sendAt: Date.now() - 1 }),
     ).rejects.toThrow(/future/);
     expect(submit).toHaveBeenCalledTimes(1);
 
@@ -1315,7 +1315,7 @@ describe("useComposer", () => {
       </MemoryRouter>,
     );
     await expect(
-      captured!.experimental_submit({ holdUntil }),
+      captured!.experimental_submit({ sendAt }),
     ).rejects.toThrow(/cannot schedule/);
     expect(submit).toHaveBeenCalledTimes(1);
   });

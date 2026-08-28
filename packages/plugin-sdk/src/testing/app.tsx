@@ -172,7 +172,7 @@ export interface ComposerLog {
    * has no submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
-  submits: Array<{ holdUntil: number }>;
+  submits: Array<{ sendAt: number }>;
 }
 
 interface TestComposerStore {
@@ -1596,17 +1596,17 @@ export function renderSlot<
         composerLog.pluginInput = input;
         composerLog.pluginInputCalls.push(input);
       },
-      async experimental_submit({ holdUntil }) {
+      async experimental_submit({ sendAt }) {
         if (!composerOwnership.active) {
           throw new Error("This composer is no longer active.");
         }
         if (composerText.trim() === "") {
           throw new Error("Type a message before scheduling it.");
         }
-        if (!Number.isFinite(holdUntil) || holdUntil <= Date.now()) {
+        if (!Number.isFinite(sendAt) || sendAt <= Date.now()) {
           throw new Error("Pick a time in the future.");
         }
-        composerLog.submits.push({ holdUntil });
+        composerLog.submits.push({ sendAt });
         commitComposerText("");
       },
     },

@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   exists,
@@ -19,6 +20,8 @@ import type {
   PermissionMode,
   PluginInputs,
   PromptInput,
+  QueuedMessagePayload,
+  QueuedMessageSystemNotice,
   QueuedMessageWaitHolder,
   QueuedMessageWaitingOn,
   QueuedMessageWaitingOnKind,
@@ -50,6 +53,17 @@ export interface CreateQueuedThreadMessageInput {
    * than defaulting to `{}`.
    */
   pluginInputs: PluginInputs | null;
+  /**
+   * Why the row is parked, written in the SAME insert rather than by a
+   * follow-up update: a row that existed unparked for even one statement
+   * could be claimed by a concurrent drain, which is exactly the dispatch the
+   * wait exists to prevent.
+   */
+  waitingOn: QueuedMessageWaitingOn | null;
+  sendAt: number | null;
+  payload: QueuedMessagePayload;
+  /** Non-null only for one of core's own system notices. */
+  systemNotice: QueuedMessageSystemNotice | null;
 }
 
 export interface UpdateQueuedThreadMessageInput {
@@ -507,6 +521,17 @@ export function createQueuedThreadMessageInTransaction(
       serviceTier: input.serviceTier,
       pluginInputs:
         input.pluginInputs === null ? null : JSON.stringify(input.pluginInputs),
+      waitingOn:
+        input.waitingOn === null ? null : JSON.stringify(input.waitingOn),
+      waitHolder:
+        input.waitingOn === null ? null : waitHolderFor(input.waitingOn),
+      sendAt: input.sendAt,
+      systemNotice:
+        input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
+      payloadKind: input.payload.kind,
+      retryOfTurnRequestId:
+        input.payload.kind === "retry" ? input.payload.retryOfTurnRequestId : null,
+      retryAttempt: input.payload.kind === "retry" ? input.payload.attempt : null,
       groupWithNext: false,
       claimedAt: null,
       claimToken: null,
@@ -572,6 +597,63 @@ export function updateQueuedThreadMessage(
   return result;
 }
 
+export interface UpdateQueuedThreadMessageExecutionArgs {
+  id: string;
+  threadId: string;
+  content?: PromptInput[];
+  model?: string;
+  reasoningLevel?: string;
+  permissionMode?: PermissionMode;
+  serviceTier?: string;
+}
+
+/**
+ * Rewrites a live row's frozen message and execution tuple.
+ *
+ * Every field is a genuine partial update: this backs a plugin amending the
+ * dispatch it parked, and such an amendment is a correction to specific
+ * fields, never a full tuple. Live-only, so an amendment can never overwrite a
+ * row the drain has already claimed and is about to send.
+ */
+export function updateQueuedThreadMessageExecution(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: UpdateQueuedThreadMessageExecutionArgs,
+): QueuedThreadMessageRow | null {
+  const updated =
+    db
+      .update(queuedThreadMessages)
+      .set({
+        ...(args.content !== undefined
+          ? { content: JSON.stringify(args.content) }
+          : {}),
+        ...(args.model !== undefined ? { model: args.model } : {}),
+        ...(args.reasoningLevel !== undefined
+          ? { reasoningLevel: args.reasoningLevel }
+          : {}),
+        ...(args.permissionMode !== undefined
+          ? { permissionMode: args.permissionMode }
+          : {}),
+        ...(args.serviceTier !== undefined
+          ? { serviceTier: args.serviceTier }
+          : {}),
+        updatedAt: Date.now(),
+      })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, args.id),
+          eq(queuedThreadMessages.threadId, args.threadId),
+          liveQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+  if (updated) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return updated;
+}
+
 export function getQueuedThreadMessage(db: DbConnection, id: string) {
   return (
     db
@@ -596,6 +678,14 @@ export function hasQueuedThreadMessages(
   );
 }
 
+/**
+ * Threads a drain could move right now.
+ *
+ * `pending` is included alongside `idle`, and the environment join is a LEFT
+ * join because of it: a `pending` thread has never provisioned, so it has no
+ * environment row to join to, and an inner join silently dropped exactly the
+ * threads whose first message is waiting to start them.
+ */
 export function listIdleThreadsWithQueuedMessages(
   db: DbConnection,
 ): QueuedMessageThreadRow[] {
@@ -606,15 +696,25 @@ export function listIdleThreadsWithQueuedMessages(
     })
     .from(queuedThreadMessages)
     .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
-    .innerJoin(environments, eq(environments.id, threads.environmentId))
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
     .where(
       and(
-        eq(threads.status, "idle"),
+        inArray(threads.status, ["idle", "pending"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        notInArray(environments.status, ["destroying", "destroyed"]),
-        isNull(queuedThreadMessages.claimedAt),
-        isNull(queuedThreadMessages.claimToken),
+        // A gone environment (destroying/destroyed) is never reprovisioned, so
+        // its queued rows can never drain. Leave them out of the sweep instead
+        // of failing the same send every cycle (#1789). A thread with NO
+        // environment is not that case — it has simply not provisioned yet.
+        or(
+          isNull(threads.environmentId),
+          notInArray(environments.status, ["destroying", "destroyed"]),
+        ),
+        // Only rows an idle thread actually unblocks. A thread whose only
+        // queued row is waiting on a clock or a plugin is not a drain
+        // candidate, and listing it would re-run the whole send pipeline
+        // every sweep tick for a row that cannot move.
+        drainableQueuedThreadMessage(),
       ),
     )
     .groupBy(threads.id)
@@ -714,14 +814,18 @@ export function claimQueuedThreadMessageGroup(
         return null;
       }
 
-      const queuedMessages = listQueuedThreadMessages(
+      // Grouping is computed over the DRAINABLE rows, because a group is a
+      // batch that dispatches together and a parked row cannot. Send-now on a
+      // parked row is therefore always a claim of that row alone, which is
+      // also the honest answer: the user asked for that message, not for
+      // whatever happens to sit next to it.
+      const queuedMessages = listDrainableQueuedThreadMessages(
         tx,
         existing.threadId,
       );
       const existingIndex = queuedMessages.findIndex(
         (queuedMessage) => queuedMessage.id === id,
       );
-      if (existingIndex === -1) return null;
 
       const ids =
         existingIndex === 0
@@ -752,7 +856,7 @@ export function claimNextQueuedThreadMessageGroup(
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
-      const queuedMessages = listQueuedThreadMessages(tx, threadId);
+      const queuedMessages = listDrainableQueuedThreadMessages(tx, threadId);
       if (queuedMessages.length === 0) {
         return null;
       }
@@ -978,6 +1082,77 @@ export function setQueuedThreadMessageGroupBoundary({
   return result;
 }
 
+export interface ReparkClaimedQueuedThreadMessagesArgs {
+  /** Every row the drain claimed, lead first. */
+  claims: readonly ClaimedQueuedThreadMessageMutationArgs[];
+  threadId: string;
+  waitingOn: QueuedMessageWaitingOn;
+  sendAt: number | null;
+}
+
+/**
+ * Hands a claimed group back to the queue and parks the lead row on a wait, in
+ * ONE transaction.
+ *
+ * Two statements would leave the rows unclaimed and unparked in between, which
+ * is a window where the idle drain can pick up a message that a gate has just
+ * said must wait. Doing both under one immediate transaction closes it: from
+ * every other reader's view the group goes straight from "being dispatched" to
+ * "parked on this reason".
+ *
+ * Returns the parked lead row, or null when the claim no longer holds (the row
+ * was deleted, or a stale-claim sweep already reclaimed it) — in which case the
+ * caller has nothing left to park.
+ */
+export function reparkClaimedQueuedThreadMessages(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: ReparkClaimedQueuedThreadMessagesArgs,
+): QueuedThreadMessageRow | null {
+  const lead = args.claims[0];
+  if (lead === undefined) return null;
+  const parked = db.transaction(
+    (tx) => {
+      const now = Date.now();
+      for (const claim of args.claims) {
+        tx.update(queuedThreadMessages)
+          .set({ claimedAt: null, claimToken: null, updatedAt: now })
+          .where(
+            and(
+              eq(queuedThreadMessages.id, claim.id),
+              eq(queuedThreadMessages.claimToken, claim.claimToken),
+            ),
+          )
+          .run();
+      }
+      return (
+        tx
+          .update(queuedThreadMessages)
+          .set({
+            waitingOn: JSON.stringify(args.waitingOn),
+            waitHolder: waitHolderFor(args.waitingOn),
+            sendAt: args.sendAt,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(queuedThreadMessages.id, lead.id),
+              eq(queuedThreadMessages.threadId, args.threadId),
+              liveQueuedThreadMessage(),
+            ),
+          )
+          .returning()
+          .get() ?? null
+      );
+    },
+    { behavior: "immediate" },
+  );
+  if (parked) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return parked;
+}
+
 export function releaseQueuedMessageClaim(
   db: DbConnection,
   notifier: DbNotifier,
@@ -1135,6 +1310,107 @@ function liveQueuedThreadMessage() {
     isNull(queuedThreadMessages.claimedAt),
     isNull(queuedThreadMessages.claimToken),
   );
+}
+
+/**
+ * Rows the IDLE drain may claim: a row with no wait at all, or one waiting
+ * only on the thread being busy — which is exactly the wait an idle thread
+ * clears.
+ *
+ * Every other wait belongs to a different drain and must be invisible here, or
+ * the idle sweep would dispatch a message scheduled for 9am the moment the
+ * thread went quiet. That is also why an ineligible row does not BLOCK the
+ * ones behind it: the queue is a parking lot, not a pipeline, so a row parked
+ * on a plugin for an hour is overtaken by the follow-up the user sent after
+ * it rather than stalling the whole thread. Plain queued rows are all
+ * `thread-busy`, so among themselves they keep strict FIFO order, which is
+ * what makes today's queue behaviour unchanged.
+ */
+function drainableQueuedThreadMessage() {
+  return and(
+    liveQueuedThreadMessage(),
+    or(
+      isNull(queuedThreadMessages.waitingOn),
+      sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'thread-busy'`,
+    ),
+  );
+}
+
+/**
+ * A thread's drainable rows in queue order. This is what the claim paths read;
+ * {@link listQueuedThreadMessages} keeps showing everything, because a parked
+ * row is still on the user's queue even when no drain will touch it yet.
+ */
+export function listDrainableQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(eq(queuedThreadMessages.threadId, threadId), drainableQueuedThreadMessage()),
+    )
+    .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+    .all();
+}
+
+export interface ListQueuedThreadMessagesForApiArgs {
+  threadId?: string;
+  waitHolder?: QueuedMessageWaitHolder;
+}
+
+/**
+ * The cross-thread parked-row list behind `GET /queued-messages`. Both filters
+ * are genuinely absent by default: unfiltered means every live row in the
+ * workspace, which is what a whole-workspace pending view asks for.
+ */
+export function listQueuedThreadMessagesForApi(
+  db: DbQueryConnection,
+  args: ListQueuedThreadMessagesForApiArgs,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        liveQueuedThreadMessage(),
+        ...(args.threadId === undefined
+          ? []
+          : [eq(queuedThreadMessages.threadId, args.threadId)]),
+        ...(args.waitHolder === undefined
+          ? []
+          : [eq(queuedThreadMessages.waitHolder, args.waitHolder)]),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
+    .all();
+}
+
+/**
+ * How many live rows each of these threads has parked. One grouped query
+ * rather than one per thread: the thread list renders a badge per row and
+ * would otherwise issue a query per visible thread.
+ */
+export function listQueuedThreadMessageCountsByThreadIds(
+  db: DbQueryConnection,
+  args: { threadIds: readonly string[] },
+): { threadId: string; queuedMessageCount: number }[] {
+  if (args.threadIds.length === 0) return [];
+  return db
+    .select({
+      threadId: queuedThreadMessages.threadId,
+      queuedMessageCount: count(queuedThreadMessages.id),
+    })
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        inArray(queuedThreadMessages.threadId, [...args.threadIds]),
+        liveQueuedThreadMessage(),
+      ),
+    )
+    .groupBy(queuedThreadMessages.threadId)
+    .all();
 }
 
 /**
@@ -1299,6 +1575,30 @@ export function listQueuedThreadMessagesByWaitHolder(
     .where(
       and(
         eq(queuedThreadMessages.waitHolder, waitHolder),
+        liveQueuedThreadMessage(),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.id))
+    .all();
+}
+
+/**
+ * Every live row parked on SOME plugin's wait, across every thread.
+ *
+ * The orphan sweep asks this once per tick and then filters by which plugins
+ * are loaded, rather than asking per plugin: the set of holders is not known
+ * up front (it is whichever plugins happen to be holding something), and the
+ * partial wait index covers exactly these rows, so one range scan answers it.
+ */
+export function listQueuedThreadMessagesWithPluginWait(
+  db: DbQueryConnection,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        isNotNull(queuedThreadMessages.waitHolder),
         liveQueuedThreadMessage(),
       ),
     )

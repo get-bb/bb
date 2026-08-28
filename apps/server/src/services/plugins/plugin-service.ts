@@ -844,7 +844,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
-    buildDispatchHoldEmitter,
+    buildQueueEventEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
@@ -1370,9 +1370,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
-      emitDispatchHeld: buildDispatchHoldEmitter("dispatch.held"),
-      emitDispatchReleased: buildDispatchHoldEmitter("dispatch.released"),
-      emitDispatchCancelled: buildDispatchHoldEmitter("dispatch.cancelled"),
+      emitQueueParked: buildQueueEventEmitter("queue.parked"),
+      emitQueueDispatched: buildQueueEventEmitter("queue.dispatched"),
+      emitQueueCancelled: buildQueueEventEmitter("queue.cancelled"),
     },
 
     dispatchGates: {

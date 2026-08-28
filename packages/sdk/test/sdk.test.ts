@@ -1257,15 +1257,13 @@ describe("@bb/sdk", () => {
     });
   });
 
-  // The hold list is cross-thread by design: an omitted filter drops out of the
-  // query string entirely rather than narrowing on `undefined`.
-  it("routes dispatch hold reads and mutations onto the cross-thread hold routes", async () => {
+  // The queue list is cross-thread by design: an omitted filter drops out of
+  // the query string entirely rather than narrowing on `undefined`.
+  it("routes parked-row reads onto the cross-thread queue route and a row's own operations onto its thread", async () => {
     const queue = createFetchQueue([
       { body: [] },
-      { body: { id: "hold_1" } },
-      { body: { id: "hold_1" } },
-      { body: { id: "hold_1" } },
-      { body: { id: "hold_1" } },
+      { body: { ok: true, delivery: "sent" } },
+      { body: null, status: 204 },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1275,28 +1273,39 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await sdk.threads.holds.list();
-    await sdk.threads.holds.get({ holdId: "hold_1" });
-    await sdk.threads.holds.release({ holdId: "hold_1" });
-    await sdk.threads.holds.cancel({ holdId: "hold_1" });
-    await sdk.threads.holds.update({ holdId: "hold_1", resumeAt: 1750 });
+    await sdk.threads.queue.list();
+    await sdk.threads.queuedMessages.send({
+      threadId: "thr_123",
+      queuedMessageId: "qm_1",
+      mode: "auto",
+    });
+    await sdk.threads.queuedMessages.delete({
+      threadId: "thr_123",
+      queuedMessageId: "qm_1",
+    });
 
     expect(
       queue.requests.map((request) => `${request.method} ${request.url}`),
     ).toEqual([
-      "GET http://bb.test/api/v1/holds?",
-      "GET http://bb.test/api/v1/holds/hold_1",
-      "POST http://bb.test/api/v1/holds/hold_1/release",
-      "POST http://bb.test/api/v1/holds/hold_1/cancel",
-      "PATCH http://bb.test/api/v1/holds/hold_1",
+      "GET http://bb.test/api/v1/queued-messages?",
+      "POST http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1/send",
+      "DELETE http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1",
     ]);
-    expect(queue.requests[4].bodyText).toBe(JSON.stringify({ resumeAt: 1750 }));
+    expect(queue.requests[1].bodyText).toBe(JSON.stringify({ mode: "auto" }));
   });
 
-  it("applies both hold list filters and defers the send to a scheduled hold", async () => {
+  it("applies both queue list filters and parks a scheduled send on the queue", async () => {
     const queue = createFetchQueue([
       { body: [] },
-      { body: { ok: true, delivery: "held" } },
+      {
+        body: {
+          ok: true,
+          delivery: "parked",
+          queuedMessageId: "qm_1",
+          waitingOn: { kind: "time" },
+          sendAt: 1750,
+        },
+      },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1306,27 +1315,33 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await sdk.threads.holds.list({
+    await sdk.threads.queue.list({
       threadId: "thr_123",
-      holder: "plugin:concurrency-limit",
+      waitHolder: "plugin:concurrency-limit",
     });
     await expect(
       sdk.threads.send({
         threadId: "thr_123",
         input: [{ type: "text", text: "later", mentions: [] }],
         mode: "auto",
-        holdUntil: 1750,
+        sendAt: 1750,
       }),
-    ).resolves.toEqual({ ok: true, delivery: "held" });
+    ).resolves.toEqual({
+      ok: true,
+      delivery: "parked",
+      queuedMessageId: "qm_1",
+      waitingOn: { kind: "time" },
+      sendAt: 1750,
+    });
 
     expect(queue.requests[0].url).toBe(
-      "http://bb.test/api/v1/holds?threadId=thr_123&holder=plugin%3Aconcurrency-limit",
+      "http://bb.test/api/v1/queued-messages?threadId=thr_123&waitHolder=plugin%3Aconcurrency-limit",
     );
     expect(queue.requests[1].bodyText).toBe(
       JSON.stringify({
         input: [{ type: "text", text: "later", mentions: [] }],
         mode: "auto",
-        holdUntil: 1750,
+        sendAt: 1750,
       }),
     );
   });

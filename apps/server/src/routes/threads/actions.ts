@@ -261,6 +261,9 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const queuedMessage = await sendQueuedMessage(deps, {
       queuedMessageId: context.req.param("queuedMessageId"),
       mode: payload.mode,
+      // The route IS "Send now": the user is overriding every plugin wait and
+      // the row's own schedule. Core waits still apply.
+      sendNow: true,
       threadId: context.req.param("id"),
     });
     return context.json({ ok: true, queuedMessage });

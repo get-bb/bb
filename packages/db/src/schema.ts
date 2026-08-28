@@ -14,9 +14,6 @@ import { threadStatusValues } from "@bb/domain/thread-status";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
-  DispatchHoldHolder,
-  DispatchHoldKind,
-  DispatchHoldReleaseKind,
   EnvironmentStatus,
   FaviconColorPreference,
   HostType,
@@ -504,6 +501,19 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    // How a `pending` thread will be established once its first message clears
+    // a dispatch attempt: the resolved environment intent, the fork descriptor,
+    // the provider-facing input and the `startedOnBehalfOf`/title facts that
+    // `requestThreadProvision` needs and that nothing else persists.
+    //
+    // It lives on the THREAD rather than on the parked message because it
+    // describes how to start the thread, not what to say once it has started —
+    // and because the live provisioning context is in-memory and only valid
+    // while a thread is `starting`, so a thread parked for a week (or across a
+    // restart) would otherwise have nothing to start from. Written only when a
+    // first message actually parks, and cleared when the thread leaves
+    // `pending`, so it is NULL for every thread that started immediately.
+    pendingStartContext: text("pending_start_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -790,30 +800,14 @@ export const promptHistoryEntries = sqliteTable(
   ],
 );
 
-export const deferredThreadMessages = sqliteTable(
-  "deferred_thread_messages",
-  {
-    id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(),
-    payload: text("payload").notNull(),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    index("deferred_thread_messages_thread_created_idx").on(
-      table.threadId,
-      table.createdAt,
-      table.id,
-    ),
-  ],
-);
-
 export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {
     id: text("id").primaryKey(),
+    // JSON `{ kind, subject }` when this row is one of core's own system
+    // notices rather than somebody's message; NULL for every ordinary row.
+    // Owned by the server, which is the only thing that writes or reads it.
+    systemNotice: text("system_notice"),
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
@@ -888,58 +882,6 @@ export const queuedThreadMessages = sqliteTable(
       .where(sql`${table.waitHolder} IS NOT NULL`),
   ],
 );
-
-// A dispatch that would have run now but waits — for a timer, for the plugin
-// that held it, or for the user. The row is self-contained: releasing a hold
-// needs nothing but this row, so a hold survives restarts, plugin reloads and
-// uninstalls. Several live holds per thread are normal (two scheduled sends).
-//
-// `payload`, `amend`, `originalRequest` and `effectiveRequest` are JSON text
-// owned by the server: `payload` encodes a `DispatchHoldPayload`; the other
-// three carry the gate amendment and the before/after request audit pair that
-// keeps a silently rewriting plugin debuggable.
-export const dispatchHolds = sqliteTable(
-  "dispatch_holds",
-  {
-    id: text("id").primaryKey(),
-    kind: text("kind").$type<DispatchHoldKind>().notNull(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    payload: text("payload").notNull(),
-    holder: text("holder").$type<DispatchHoldHolder>().notNull(),
-    // False while there is nothing to release into yet. Cancel always works.
-    userReleasable: integer("user_releasable", { mode: "boolean" })
-      .notNull()
-      .default(true),
-    reason: text("reason").notNull(),
-    // When set, core's sweep auto-releases the hold once the clock reaches it.
-    resumeAt: integer("resume_at"),
-    amend: text("amend"),
-    originalRequest: text("original_request"),
-    effectiveRequest: text("effective_request"),
-    expectedReleaseAt: integer("expected_release_at"),
-    staleAfterMs: integer("stale_after_ms"),
-    lastReportAt: integer("last_report_at"),
-    createdAt: integer("created_at").notNull(),
-    releasedAt: integer("released_at"),
-    releaseKind: text("release_kind").$type<DispatchHoldReleaseKind>(),
-  },
-  (table) => [
-    // Live holds for a thread, oldest first. Partial so the index holds only
-    // live rows: released rows are retained indefinitely (no GC in v1) and
-    // would otherwise dominate it.
-    index("dispatch_holds_thread_live_idx")
-      .on(table.threadId, table.createdAt, table.id)
-      .where(sql`${table.releasedAt} IS NULL`),
-    // The timer sweep: live holds ordered by `resume_at`, so a tick reads a
-    // `resume_at <= now` range rather than scanning every hold ever created.
-    index("dispatch_holds_due_release_idx")
-      .on(table.resumeAt)
-      .where(sql`${table.releasedAt} IS NULL`),
-  ],
-);
-
 export const hostDaemonSessions = sqliteTable(
   "host_daemon_sessions",
   {

@@ -1,9 +1,9 @@
-// Tracking our own holds, so a finished thread releases the right one.
+// Tracking the rows we parked, so a finished thread clears the right one.
 //
-// A gate's `hold` verdict returns a reason, not a hold id — core creates the
-// row and announces it on `dispatch.held`. To release the *oldest hold waiting
-// on the scope that just freed*, we need to link the two, and nothing on
-// `DispatchHoldResponse` says which limit produced it.
+// A gate's `wait` verdict returns a reason, not a row id — core parks the row
+// and announces it on `queue.parked`. To clear the *oldest row waiting on the
+// scope that just freed*, we need to link the two, and nothing on the queued
+// row says which limit produced it.
 //
 // The link is ordering. Gate evaluation is strictly serial under one
 // server-wide lock, so our hold verdicts and the `dispatch.held` events that
@@ -12,14 +12,14 @@
 // that held for someone else, a restart mid-flight) degrades to "unknown
 // scope" rather than mislabelling a hold.
 //
-// Pure and I/O-free: `bb.experimental_dispatch.release` is called by the
+// Pure and I/O-free: `bb.experimental_dispatch.clearWait` is called by the
 // caller with whatever this returns.
 
 import type { ScopeKey } from "./scope.js";
 
-/** A hold we own. `scopeKey` is null when we could not attribute it. */
-export interface TrackedHold {
-  holdId: string;
+/** A row we are holding. `scopeKey` is null when we could not attribute it. */
+export interface TrackedRow {
+  queuedMessageId: string;
   threadId: string;
   createdAt: number;
   scopeKey: ScopeKey | null;
@@ -30,8 +30,8 @@ interface HoldIntent {
   scopeKey: ScopeKey;
 }
 
-/** The subset of `DispatchHoldResponse` this registry reads. */
-export interface HeldRecord {
+/** The subset of a parked queued row this registry reads. */
+export interface ParkedRecord {
   id: string;
   threadId: string;
   reason: string;
@@ -47,27 +47,27 @@ export interface HeldRecord {
  */
 const MAX_PENDING_INTENTS = 64;
 
-export class HoldRegistry {
-  private readonly live = new Map<string, TrackedHold>();
+export class ParkedRowRegistry {
+  private readonly live = new Map<string, TrackedRow>();
   private readonly intents: HoldIntent[] = [];
 
   constructor(private readonly holder: string) {}
 
-  /** Record that our gate just returned `hold` with this reason and scope. */
-  expectHold(reason: string, scopeKey: ScopeKey): void {
+  /** Record that our gate just returned `wait` with this reason and scope. */
+  expectWait(reason: string, scopeKey: ScopeKey): void {
     this.intents.push({ reason, scopeKey });
     while (this.intents.length > MAX_PENDING_INTENTS) this.intents.shift();
   }
 
   /**
-   * A `dispatch.held` event arrived. Holds owned by anyone else are ignored:
+   * A `queue.parked` event arrived. Holds owned by anyone else are ignored:
    * every listener sees every hold, and releasing another owner's hold is
    * refused by core anyway.
    */
-  noteHeld(record: HeldRecord): boolean {
+  noteParked(record: ParkedRecord): boolean {
     if (record.holder !== this.holder) return false;
     this.live.set(record.id, {
-      holdId: record.id,
+      queuedMessageId: record.id,
       threadId: record.threadId,
       createdAt: record.createdAt,
       scopeKey: this.claimIntent(record.reason),
@@ -76,17 +76,17 @@ export class HoldRegistry {
   }
 
   /**
-   * Adopt holds that already existed — the startup reconciliation for holds we
-   * created before a restart. Their scope is unknown, which makes them
-   * eligible for release by any freed scope; core re-runs our gate on release,
-   * so a release that was not actually warranted simply re-holds.
+   * Adopt rows that already existed — the startup reconciliation for rows we
+   * parked before a restart. Their scope is unknown, which makes them eligible
+   * for any freed scope; core re-runs our gate when a wait clears, so a clear
+   * that was not actually warranted simply re-parks.
    */
-  adopt(records: readonly HeldRecord[]): void {
+  adopt(records: readonly ParkedRecord[]): void {
     for (const record of records) {
       if (record.holder !== this.holder) continue;
       if (this.live.has(record.id)) continue;
       this.live.set(record.id, {
-        holdId: record.id,
+        queuedMessageId: record.id,
         threadId: record.threadId,
         createdAt: record.createdAt,
         scopeKey: null,
@@ -94,28 +94,28 @@ export class HoldRegistry {
     }
   }
 
-  /** A `dispatch.released` or `dispatch.cancelled` event arrived. */
-  noteResolved(holdId: string): void {
-    this.live.delete(holdId);
+  /** A `queue.dispatched` or `queue.cancelled` event arrived. */
+  noteResolved(queuedMessageId: string): void {
+    this.live.delete(queuedMessageId);
   }
 
   /**
    * The hold to release now that `freedScopeKeys` have a slot spare.
    *
-   * Oldest first, by hold creation time, so holds drain in the order they were
-   * placed rather than by whichever thread happened to finish. Ties break on
-   * hold id purely so the choice is deterministic across restarts and in
-   * tests. A hold with an unknown scope is eligible for any free.
+   * Oldest first, by row creation time, so rows drain in the order they were
+   * parked rather than by whichever thread happened to finish. Ties break on
+   * row id purely so the choice is deterministic across restarts and in tests.
+   * A row with an unknown scope is eligible for any free.
    */
-  oldestForScopes(freedScopeKeys: readonly ScopeKey[]): TrackedHold | null {
+  oldestForScopes(freedScopeKeys: readonly ScopeKey[]): TrackedRow | null {
     const freed = new Set(freedScopeKeys);
-    let best: TrackedHold | null = null;
+    let best: TrackedRow | null = null;
     for (const hold of this.live.values()) {
       if (hold.scopeKey !== null && !freed.has(hold.scopeKey)) continue;
       if (
         best === null ||
         hold.createdAt < best.createdAt ||
-        (hold.createdAt === best.createdAt && hold.holdId < best.holdId)
+        (hold.createdAt === best.createdAt && hold.queuedMessageId < best.queuedMessageId)
       ) {
         best = hold;
       }
@@ -123,8 +123,8 @@ export class HoldRegistry {
     return best;
   }
 
-  /** Live holds we own, for logging and tests. */
-  liveHolds(): TrackedHold[] {
+  /** Live rows we are holding, for logging and tests. */
+  liveRows(): TrackedRow[] {
     return [...this.live.values()];
   }
 

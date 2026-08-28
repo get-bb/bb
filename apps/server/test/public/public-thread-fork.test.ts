@@ -612,6 +612,7 @@ describe("public thread fork route", () => {
         threadId: fork.id,
         queuedMessageId: first.id,
         mode: "auto",
+        sendNow: false,
       });
 
       const turn = await waitForQueuedCommandAfter(

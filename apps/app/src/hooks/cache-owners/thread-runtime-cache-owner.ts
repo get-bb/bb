@@ -393,6 +393,7 @@ function buildOptimisticQueuedMessage({
 
   return {
     id: `optimistic-queued-${nanoid()}`,
+    threadId: request.id,
     content: request.input,
     model: request.model ?? defaultExecutionOptions?.model ?? "pending",
     reasoningLevel:
@@ -855,15 +856,17 @@ export function applySendThreadMessageSuccess({
   request,
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
-  if (delivery === "held" && transaction?.kind === "accepted-turn") {
-    // A scheduled send is parked in a dispatch hold: no turn started and
-    // nothing enters the transcript until it releases. Undo the whole
-    // optimistic accepted-turn — both the working thread state and the message
-    // row — because unlike the "deferred" case the message IS visible
-    // elsewhere: the held card above the composer renders it, with its
-    // countdown, Send now and Cancel, off the `queue-changed` notification
-    // the server sends. Leaving the optimistic row would show the message
-    // twice and imply it had already been sent.
+  if (delivery === "parked" && transaction?.kind === "accepted-turn") {
+    // Collapsed from the old "held"/"deferred"/"queued" three-way fork: every
+    // reason a send does not dispatch immediately now lands on one parked row
+    // in the message queue, so there is one undo to do.
+    //
+    // No turn started and nothing enters the transcript until the row sends,
+    // so undo the whole optimistic accepted-turn — both the working thread
+    // state and the message row. The message is still visible: the queue
+    // renders the parked row off the `queue-changed` notification the server
+    // sends. Leaving the optimistic row would show the message twice and imply
+    // it had already been sent.
     if (transaction.optimisticRowId) {
       removeOptimisticTimelineRow(
         queryClient,
@@ -885,27 +888,10 @@ export function applySendThreadMessageSuccess({
         input: request.input,
       }),
     );
-    // Unconditional, unlike the queued branch: the hold list is what renders
+    // Unconditional, unlike the queued branch: the queue list is what renders
     // this message now, and a `queue-changed` that crosses the response is a
-    // held card that never appears.
+    // parked row that never appears.
     invalidateThreadQueueQueries({ queryClient, threadId: request.id });
-    return;
-  }
-  if (delivery === "deferred" && transaction?.kind === "accepted-turn") {
-    if (transaction.previousThread) {
-      queryClient.setQueryData<ThreadResponse>(
-        threadQueryKey(request.id),
-        transaction.previousThread,
-      );
-    }
-    prependThreadPromptHistory(
-      queryClient,
-      request.id,
-      buildAcceptedPromptHistoryEntry({
-        createdAt: transaction.optimisticCreatedAt,
-        input: request.input,
-      }),
-    );
     return;
   }
   if (transaction?.kind === "queued-message") {

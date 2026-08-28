@@ -312,6 +312,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
+  dropQueueReworkColumns(db);
   dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
@@ -719,6 +720,32 @@ function dropQueuedMessageWaitColumns(db: DbConnection): void {
   }
 }
 
+/**
+ * Undo the queue-rework columns so their migrations replay.
+ *
+ * The two tables the rework DROPS need nothing here: `0112` drops them with
+ * `IF EXISTS`, which is what a drop migration in a replayed chain has to be —
+ * the rollback may land either side of the migration that created them.
+ */
+function dropQueueReworkColumns(db: DbConnection): void {
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((column) => column.name === "pending_start_context")) {
+    db.$client
+      .prepare("ALTER TABLE threads DROP COLUMN pending_start_context")
+      .run();
+  }
+  const queuedColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (queuedColumns.some((column) => column.name === "system_notice")) {
+    db.$client
+      .prepare("ALTER TABLE queued_thread_messages DROP COLUMN system_notice")
+      .run();
+  }
+}
+
 function dropQueuedMessagePluginInputsColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -801,6 +828,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
+  dropQueueReworkColumns(db);
   dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
@@ -1921,6 +1949,10 @@ describe("migrate", () => {
         reasoningLevel: "medium",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const inheritedQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithHistory.id,
@@ -1930,6 +1962,10 @@ describe("migrate", () => {
         reasoningLevel: "medium",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       const fallbackQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithoutHistory.id,
@@ -1939,6 +1975,10 @@ describe("migrate", () => {
         reasoningLevel: "medium",
         serviceTier: "default",
         pluginInputs: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
       });
       db.$client
         .prepare(
@@ -2010,7 +2050,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessageWaitColumns(db);
+  dropQueueReworkColumns(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -2416,7 +2457,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessageWaitColumns(db);
+  dropQueueReworkColumns(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -2519,7 +2561,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessageWaitColumns(db);
+  dropQueueReworkColumns(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -5089,7 +5132,8 @@ describe("migrate", () => {
 
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
-      dropQueuedMessageWaitColumns(db);
+  dropQueueReworkColumns(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(

@@ -89,7 +89,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
-import { settleReprovisionDispatchHolds } from "./dispatch-hold-core.js";
+import { releaseThreadQueueProvisioningWaits } from "./queue-drains.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
@@ -1206,14 +1206,11 @@ function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
 ): void {
-  // Stopping a thread that is waiting on a reprovision drops the turn that
-  // wait was for, so the hold tracking it ends here. This runs outside the
-  // transaction below because settling appends a timeline event, and it runs
-  // first so the row is never left live by an early return inside it.
-  settleReprovisionDispatchHolds(deps, {
-    releaseKind: "cancelled",
-    threadId: thread.id,
-  });
+  // Stopping a thread abandons the provisioning anything was waiting on, so
+  // those waits end here. This runs outside the transaction below because
+  // clearing a wait notifies, and it runs first so no row is left waiting on
+  // provisioning by an early return inside it.
+  releaseThreadQueueProvisioningWaits(deps, thread.id);
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
     (tx) => {

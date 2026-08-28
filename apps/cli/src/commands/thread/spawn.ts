@@ -29,7 +29,7 @@ import {
   PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
-import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
+import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 import {
   autoProviderPluginInputs,
   parsePluginInputs,
@@ -63,7 +63,7 @@ interface ThreadSpawnCommandOptions {
   sourceThread?: string;
   sourceSeqEnd?: string;
   visibility?: string;
-  holdUntil?: string;
+  sendAt?: string;
   pluginInput?: string[];
 }
 
@@ -229,7 +229,7 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
-    .option("--hold-until <when>", HOLD_UNTIL_HELP)
+    .option("--send-at <when>", SEND_AT_HELP)
     .option(
       "--plugin-input <pluginId=json>",
       PLUGIN_INPUT_HELP,
@@ -309,10 +309,10 @@ export function registerSpawnCommand(
         ) {
           throw new Error("--source-seq-end must be a non-negative integer.");
         }
-        const holdUntil =
-          opts.holdUntil === undefined
+        const sendAt =
+          opts.sendAt === undefined
             ? undefined
-            : parseHoldUntil(opts.holdUntil);
+            : parseSendAt(opts.sendAt);
         // `auto:<pluginId>[:<entryId>]` sends no providerId at all and speaks
         // to the router plugin through pluginInputs instead; an explicit
         // --plugin-input for that same plugin wins over the entry seed.
@@ -352,7 +352,7 @@ export function registerSpawnCommand(
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
-            ...(holdUntil !== undefined ? { holdUntil } : {}),
+            ...(sendAt !== undefined ? { sendAt } : {}),
             ...(pluginInputs !== undefined ? { pluginInputs } : {}),
           });
         } catch (err: unknown) {
@@ -361,9 +361,9 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
-        if (holdUntil !== undefined) {
+        if (sendAt !== undefined) {
           console.log(
-            `First turn held until ${new Date(holdUntil).toLocaleString()}; the thread stays idle until it releases.`,
+            `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
           );
         }
         // A hidden child reports to its parent too, so the promise follows the

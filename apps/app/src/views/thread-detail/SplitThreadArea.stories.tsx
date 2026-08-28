@@ -43,7 +43,7 @@ function storyThread(id: string, title: string): ThreadResponse {
     },
     activeBackgroundAgentCount: 0,
     canSpawnChild: false,
-    liveDispatchHoldCount: 0,
+    queuedMessageCount: 0,
   };
 }
 

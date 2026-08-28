@@ -299,29 +299,36 @@ or artifacts, validation performed, and blockers.
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
 - If the target thread is awaiting user interaction (an open question or
-  approval), `bb thread tell` cannot interrupt it. The message is held and
-  delivers in the requested mode once the interaction settles; the CLI prints
-  "message held". That outcome is not a failure, so do not resend. For a hard
-  stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
-  `queued`, `deferred`, or `held`. If the thread fails while the message is
-  deferred (its provider exited), the message waits until somebody retries the
-  thread.
-- Add `--hold-until <when>` to `bb thread spawn` or `bb thread tell` to schedule
-  the dispatch instead of running it now. `<when>` is an ISO 8601 timestamp
+  approval), `bb thread tell` cannot interrupt it. The message parks on the
+  thread's queue with `waitingOn.kind: "interaction"` and dispatches once the
+  interaction settles; the CLI prints that it is queued and why. That outcome
+  is not a failure, so do not resend. For a hard stop use `bb thread stop
+  <thread-id>`. `--json` reports `delivery` as `sent` or `parked`. If the thread
+  fails while the message is parked (its provider exited), the message waits
+  until somebody retries the thread.
+- Add `--send-at <when>` to `bb thread spawn` or `bb thread tell` to schedule
+  the dispatch instead of attempting it now. `<when>` is an ISO 8601 timestamp
   (`2026-08-25T09:00`, local when no offset is given) or a duration from now
   (`30s`, `10m`, `2h`, `7d`); a time in the past and a bare date are both
-  rejected. A held spawn creates the thread idle with no turn and no environment
-  work — no worktree and no setup script run until it releases — and a held tell
-  neither sends nor queues. Both report `delivery: "held"` and are released by
-  core's timer at the requested time. The SDK equivalent is `holdUntil` (epoch
-  ms) on `threads.spawn` / `threads.send`.
-- Inspect and act on deferred dispatches with `bb thread holds [--thread <id>]
-  [--owner <holder>]`, `bb thread release <hold-id>` (dispatch it now), and
-  `bb thread cancel-hold <hold-id>` (discard it). Holds are owned by `user`,
-  `plugin:<plugin-id>`, or `core:<mechanism>`, which is what `--owner` filters
-  on. The list is live-only and spans every thread; released holds are history
-  in each thread's timeline. Several live holds on one thread are normal. The
-  SDK equivalent is `threads.holds.list/get/release/cancel/update`.
+  rejected. A scheduled spawn creates the thread `pending` with no turn and no
+  environment work — no worktree and no setup script run until it is due — and a
+  scheduled tell neither sends nor runs. Both report `delivery: "parked"` and
+  dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
+  (epoch ms) on `threads.spawn` / `threads.send`.
+- A send that cannot run right now does not fail: it PARKS on the thread's
+  queue with a typed reason. `--json` reports `delivery: "parked"` plus
+  `queuedMessageId`, `waitingOn` and `sendAt`, so a script can tell "waiting for
+  the current turn" from "waiting on a plugin" without guessing. `waitingOn.kind`
+  is one of `time`, `thread-busy`, `provisioning`, `interaction` or `plugin`
+  (which also carries `pluginId` and a human reason).
+- Inspect and act on parked dispatches with `bb thread queue list [<thread-id>]
+  [--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
+  <message-id>` (send it now, bypassing every plugin wait and its schedule), and
+  `bb thread queue delete <thread-id> <message-id>` (discard it). Omitting the
+  thread lists every parked row in the workspace. The list shows `Waiting on`
+  and `Send at` columns. Several parked rows on one thread are normal. The SDK
+  equivalents are `threads.queue.list` (cross-thread) and
+  `threads.queuedMessages.list/send/update/delete` (one thread).
 - Use `bb thread count` when you need how many threads there are, never a list
   plus a row count: the count is a database aggregate, while `bb thread list`
   pages a bounded window and would miscount. Narrow with `--status
@@ -350,9 +357,10 @@ or artifacts, validation performed, and blockers.
 
 - Use `bb thread search`, `history`, `read|unread`, and `section` for the same
   organization and recall features as the sidebar. `bb thread queue` exposes
-  queued-message list/create/update/send/reorder/group/delete operations. Queue
-  updates use the listed message version to prevent overwriting a concurrent
-  edit and accept repeatable `--file` and `--image` attachment options.
+  queued-message list/create/update/send/reorder/group/delete operations, which
+  cover both ordinary queued messages and parked ones. Queue updates use the
+  listed message version to prevent overwriting a concurrent edit and accept
+  repeatable `--file` and `--image` attachment options.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.

@@ -1,25 +1,27 @@
 // bb-plugin-model-router — the "Auto" entry in bb's provider/model picker.
 //
 // Auto routes by ASKING AN AGENT. When a dispatch arrives carrying this
-// plugin's picker entry, the gate does not decide — it HOLDS the dispatch
-// ("Choosing a model…") and answers later. A background flow then spawns a
-// hidden routing thread, hands it the user's routing prompt, the request being
-// submitted and the eligible provider/model rows, waits for its answer, and
-// releases the hold with that answer as a dispatch amendment.
+// plugin's picker entry, the gate does not decide — it returns `wait`
+// ("Choosing a model…"), which parks the message as a queued row, and answers
+// later. A background flow then spawns a hidden routing thread, hands it the
+// user's routing prompt, the request being submitted and the eligible
+// provider/model rows, waits for its answer, and clears the wait with that
+// answer as a dispatch amendment.
 //
-// Holding rather than deciding inline is the whole design, and it follows from
+// Waiting rather than deciding inline is the whole design, and it follows from
 // one constraint: **a gate is boxed at 10s and is fail-closed**. Asking a real
 // agent takes longer than that box, so a gate that waited would fail the send.
-// A hold has no such limit — it is the documented way to say "this needs real
-// work" — and it costs the user a brief, visible, cancellable pause instead of
-// an error.
+// A parked row has no such limit — it is the documented way to say "this needs
+// real work" — and it costs the user a brief, visible, cancellable pause
+// instead of an error.
 //
 // Two rules shape everything below:
 //
-//   - **Auto must never strand a hold.** Every failure — spawn error, timeout,
-//     unparseable answer, hallucinated model, a refused amendment — ends in a
-//     plain unamended release, so the send proceeds on bb's own resolved
-//     provider and model. That is the documented meaning of Auto, not an error.
+//   - **Auto must never strand a parked row.** Every failure — spawn error,
+//     timeout, unparseable answer, hallucinated model, a refused amendment —
+//     ends in a plain unamended clear, so the send proceeds on bb's own
+//     resolved provider and model. That is the documented meaning of Auto, not
+//     an error.
 //   - **An amendment core cannot honour is refused.** So a choice is checked
 //     against the catalog before it is sent, a reasoning level is clamped to
 //     what the chosen model advertises, and the provider is only amended where
@@ -32,7 +34,7 @@
 import type {
   BbPluginApi,
   JsonValue,
-  PluginDispatchReleaseAmendments,
+  PluginDispatchAmendments,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import {
@@ -48,7 +50,7 @@ import {
   readRouteChoice,
 } from "./routing.js";
 
-type DispatchHoldResponse = PluginThreadEventPayloads["dispatch.held"]["hold"];
+type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
 
 /**
  * How often the catalog is rebuilt. Model lists come from host probes, so this
@@ -83,14 +85,14 @@ const ROUTING_BUDGET_MS = 90_000;
 const ROUTING_POLL_INTERVAL_MS = 500;
 
 /**
- * The reason on the hold, shown on the user's held-dispatch card.
+ * The reason on the parked row, shown on the user's queued card.
  *
- * No `resumeAt` accompanies it: a timer release would dispatch the send while
- * this plugin was still deciding, and the answer would arrive to find nothing
- * to amend. This plugin releases its own holds, and the orphan sweep is the
- * backstop if the plugin dies mid-route.
+ * No `retryAt` accompanies it: a timer would dispatch the send while this
+ * plugin was still deciding, and the answer would arrive to find nothing to
+ * amend. This plugin clears its own waits, and the orphan sweep is the backstop
+ * if the plugin dies mid-route.
  */
-export const ROUTING_HOLD_REASON = "Choosing a model…";
+export const ROUTING_WAIT_REASON = "Choosing a model…";
 
 export const EMPTY_ROUTING_PROMPT =
   "Set a routing prompt so this plugin knows how you want prompts routed.";
@@ -113,10 +115,10 @@ export function readAutoEntry(pluginInput: JsonValue | null): string | null {
   return entry;
 }
 
-/** The concatenated text of a held payload's text blocks. */
-export function readHeldText(hold: DispatchHoldResponse): string {
-  if (hold.payload.kind !== "inline") return "";
-  return hold.payload.input
+/** The concatenated text of a parked row's text blocks. */
+export function readParkedText(entry: QueueEntry): string {
+  if (entry.payload.kind !== "inline") return "";
+  return entry.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("\n");
@@ -269,16 +271,13 @@ export default async function modelRouterPlugin(
         if (signal.aborted) break;
         if (!recovered) {
           recovered = true;
-          // Holds this plugin owns can outlive the process that made them: a
-          // restart between the hold and its release leaves a live hold with
-          // nobody deciding about it. Re-driving them here is the recovery —
-          // core's orphan sweep is the last-resort backstop, not the plan.
-          //
-          // AFTER the first refresh, not before it: routing needs a catalog to
-          // offer, and a recovery that ran against an empty one would release
-          // every recovered hold unamended — turning a restart into "Auto did
-          // nothing" for exactly the sends that were waiting on it.
-          await recoverOwnHolds();
+          // Rows this plugin parked can outlive the process that parked them.
+          // Re-driving them happens AFTER the first refresh, not before it:
+          // routing needs a catalog to offer, and a recovery that ran against
+          // an empty one would clear every recovered wait unamended — turning
+          // a restart into "Auto did nothing" for exactly the sends that were
+          // waiting on it.
+          await recoverOwnParkedRows();
           if (signal.aborted) break;
         }
         await new Promise<void>((resolve) => {
@@ -304,89 +303,84 @@ export default async function modelRouterPlugin(
    *   thread. `originPluginId` is checked first and unconditionally, before
    *   even looking for an Auto entry, so no future path can reintroduce the
    *   recursion.
-   * - **A release re-evaluation.** Releasing re-runs this gate against the
-   *   dispatch we just decided about. Holding again would re-hold what we
-   *   released, forever. Our answer is already in the amendment.
+   * - **A re-attempt.** Clearing a wait re-runs this gate against the dispatch
+   *   we just decided about. Waiting again would re-park what we just let go,
+   *   forever. Our answer is already in the amendment, which core applied to
+   *   the row before the re-attempt.
    * - **Nothing to route with.** No routing prompt, or no usable catalog: bb's
    *   own resolved provider and model are still correct, and holding a send to
    *   discover that would be a pause for nothing.
    */
   function shouldRoute(context: {
-    isReleaseReevaluation: boolean;
+    isReattempt: boolean;
     originPluginId: string | null;
     pluginInput: JsonValue | null;
-    stage: string;
   }): boolean {
     if (context.originPluginId === bb.pluginId) return false;
     const entry = readAutoEntry(context.pluginInput);
     if (entry === null) return false;
-    if (context.isReleaseReevaluation) return false;
+    if (context.isReattempt) return false;
     if (routingPrompt === "") {
-      bb.log.debug(`${context.stage}: Auto picked, but no routing prompt is set`);
+      bb.log.debug("Auto picked, but no routing prompt is set");
       return false;
     }
     if (!isCatalogUsable(catalog, Date.now(), CATALOG_TTL_MS)) {
-      bb.log.debug(`${context.stage}: Auto picked, but no usable model catalog`);
+      bb.log.debug("Auto picked, but no usable model catalog");
       return false;
     }
     return true;
   }
 
-  bb.experimental_dispatch.gate("thread.create", (context) => {
+  bb.experimental_dispatch.gate("dispatch", (context) => {
     if (
       !shouldRoute({
-        isReleaseReevaluation: context.isReleaseReevaluation,
+        // A row that is already parked has been past this gate once. That is
+        // the same test the old `isReleaseReevaluation` flag made, now read
+        // off the row itself rather than off a flag core had to set.
+        isReattempt: context.queuedMessage !== null,
         originPluginId: context.originPluginId,
         pluginInput: context.pluginInput,
-        stage: "thread.create",
       })
     ) {
       return { action: "proceed" };
     }
-    // No `resumeAt`: this plugin releases its own holds, and a timer that beat
-    // it would dispatch the send the routing thread is still deciding about.
-    return { action: "hold", reason: ROUTING_HOLD_REASON };
-  });
-
-  bb.experimental_dispatch.gate("turn.submit", (context) => {
-    if (
-      !shouldRoute({
-        isReleaseReevaluation: context.isReleaseReevaluation,
-        originPluginId: context.originPluginId,
-        pluginInput: context.pluginInput,
-        stage: "turn.submit",
-      })
-    ) {
-      return { action: "proceed" };
-    }
-    return { action: "hold", reason: ROUTING_HOLD_REASON };
+    // No `retryAt`: this plugin clears its own waits, and a timer that beat it
+    // would dispatch the send the routing thread is still deciding about.
+    return { action: "wait", reason: ROUTING_WAIT_REASON };
   });
 
   // --- routing --------------------------------------------------------------
 
   /**
-   * Holds currently being routed, so one hold is never routed twice.
+   * Rows currently being routed, so one row is never routed twice.
    *
-   * Both a `dispatch.held` event and the startup recovery can name the same
-   * hold — a restart that lands mid-flight is exactly when both fire — and two
-   * flows for one hold would spawn two routing threads and race to release.
+   * Both a `queue.parked` event and the startup recovery can name the same row
+   * — a restart that lands mid-flight is exactly when both fire — and two
+   * flows for one row would spawn two routing threads and race to clear.
    */
   const routing = new Set<string>();
 
-  bb.events.on("dispatch.held", ({ hold }) => {
-    if (hold.holder !== ownHolder) return;
-    void routeHold(hold);
+  bb.events.on("queue.parked", ({ entry }) => {
+    if (entry.waitingOn?.kind !== "plugin") return;
+    if (entry.waitingOn.pluginId !== bb.pluginId) return;
+    void routeParkedRow(entry);
   });
 
-  async function recoverOwnHolds(): Promise<void> {
+  async function recoverOwnParkedRows(): Promise<void> {
     try {
-      const holds = await bb.sdk.threads.holds.list({ holder: ownHolder });
-      for (const hold of holds) {
-        void routeHold(hold);
+      // Rows this plugin is holding, across every thread — the indexed
+      // wait-holder query. A restart between the park and the clear leaves a
+      // parked row with nobody deciding about it; re-driving them here is the
+      // recovery, and core's orphan sweep is the last-resort backstop.
+      const parked = await bb.sdk.threads.queue.list({
+        waitHolder: ownHolder,
+      });
+      for (const entry of parked) {
+        void routeParkedRow(entry);
       }
     } catch (error) {
       bb.log.warn(
-        `could not list this plugin's live holds to recover them: ${errorMessage(error)}`,
+        `could not list this plugin's parked rows to recover them: ${errorMessage(error)}`,
       );
     }
   }
@@ -395,35 +389,17 @@ export default async function modelRouterPlugin(
    * Whether this thread's provider can still change.
    *
    * The invariant core enforces is that a thread's provider is immutable once
-   * a PROVIDER SESSION exists — not once its row is inserted. A thread with no
-   * `client/turn/requested` event has never asked a provider for anything, so
-   * it has no session and is still free to be repointed. Reading the event log
-   * rather than the thread row is what makes this survive a restart: `status`
-   * says `idle` both before a thread's first turn and between two of them.
+   * a PROVIDER SESSION exists — not once its row is inserted. `pending` is
+   * exactly that state, and it is a status on the thread rather than something
+   * to infer: this used to read the event log for a `client/turn/requested`
+   * row, because `idle` meant both "before the first turn" and "between two of
+   * them" and only the log could tell them apart. It no longer does.
    *
-   * A held FORK is excluded for free rather than by a special case: forking
-   * copies the source thread's history, so a fork carries turn events from the
-   * moment it exists. The one fork shape that slips through (no copied
-   * history) is caught by core, which refuses the amendment before releasing
-   * anything — so the worst case is one wasted round trip, not a failed send.
-   *
-   * Fails CLOSED to "locked". An unanswerable question means routing within
-   * the provider the thread already has, which is always legal.
+   * A fork is excluded by core, which refuses the amendment rather than
+   * applying it, so the worst case there is one wasted round trip.
    */
-  async function providerIsAmendable(threadId: string): Promise<boolean> {
-    try {
-      const events = await bb.sdk.threads.events.list({
-        threadId,
-        types: ["client/turn/requested"] as const,
-        limit: "1",
-      });
-      return events.length === 0;
-    } catch (error) {
-      bb.log.debug(
-        `could not check whether thread ${threadId} has started: ${errorMessage(error)}`,
-      );
-      return false;
-    }
+  function providerIsAmendable(thread: { status: string }): boolean {
+    return thread.status === "pending";
   }
 
   /**
@@ -500,43 +476,43 @@ export default async function modelRouterPlugin(
    * release is not — a throw anywhere in the decision degrades to "proceed on
    * bb's defaults", and the user's message is never left parked.
    */
-  async function routeHold(hold: DispatchHoldResponse): Promise<void> {
-    if (routing.has(hold.id)) return;
-    routing.add(hold.id);
+  async function routeParkedRow(entry: QueueEntry): Promise<void> {
+    if (routing.has(entry.id)) return;
+    routing.add(entry.id);
     try {
-      const amend = await decideAmendment(hold);
-      await releaseWithFallback(hold.id, amend);
+      const amend = await decideAmendment(entry);
+      await clearWaitWithFallback(entry.id, amend);
     } catch (error) {
       bb.log.warn(
-        `could not release hold ${hold.id} after routing: ${errorMessage(error)}`,
+        `could not clear the wait on ${entry.id} after routing: ${errorMessage(error)}`,
       );
     } finally {
-      routing.delete(hold.id);
+      routing.delete(entry.id);
     }
   }
 
-  /** The amendment for a held dispatch, or undefined to proceed unamended. */
+  /** The amendment for a parked dispatch, or undefined to proceed unamended. */
   async function decideAmendment(
-    hold: DispatchHoldResponse,
-  ): Promise<PluginDispatchReleaseAmendments | undefined> {
+    entry: QueueEntry,
+  ): Promise<PluginDispatchAmendments | undefined> {
     try {
-      if (hold.payload.kind !== "inline") {
-        // A retry hold references an earlier turn instead of carrying one, so
+      if (entry.payload.kind !== "inline") {
+        // A retry row references an earlier turn instead of carrying one, so
         // there is nothing to route and nothing to amend.
         return undefined;
       }
-      const thread = await bb.sdk.threads.get({ threadId: hold.threadId });
-      const amendable = await providerIsAmendable(hold.threadId);
+      const thread = await bb.sdk.threads.get({ threadId: entry.threadId });
+      const amendable = providerIsAmendable(thread);
       const lockedProviderId = amendable ? null : thread.providerId;
       const prompt = buildRoutingPrompt({
         routingPrompt,
-        text: readHeldText(hold),
+        text: readParkedText(entry),
         catalog,
         lockedProviderId,
       });
       if (prompt === null) {
         bb.log.debug(
-          `hold ${hold.id}: nothing to route — no eligible rows or no text`,
+          `${entry.id}: nothing to route — no eligible rows or no text`,
         );
         return undefined;
       }
@@ -548,16 +524,16 @@ export default async function modelRouterPlugin(
       });
       const value = readFencedJsonObject(output);
       if (value === null) {
-        bb.log.debug(`hold ${hold.id}: the routing agent answered no JSON object`);
+        bb.log.debug(`${entry.id}: the routing agent answered no JSON object`);
         return undefined;
       }
       const outcome = readRouteChoice({ value, catalog, lockedProviderId });
       if (outcome.kind === "unroutable") {
-        bb.log.debug(`hold ${hold.id}: not routing — ${outcome.reason}`);
+        bb.log.debug(`${entry.id}: not routing — ${outcome.reason}`);
         return undefined;
       }
       bb.log.debug(
-        `hold ${hold.id}: routing to ${outcome.providerId}/${outcome.model}` +
+        `${entry.id}: routing to ${outcome.providerId}/${outcome.model}` +
           (outcome.reasoningLevel === null
             ? ""
             : ` at ${outcome.reasoningLevel}`),
@@ -576,37 +552,37 @@ export default async function modelRouterPlugin(
           : {}),
       };
     } catch (error) {
-      bb.log.debug(`hold ${hold.id}: routing failed: ${errorMessage(error)}`);
+      bb.log.debug(`${entry.id}: routing failed: ${errorMessage(error)}`);
       return undefined;
     }
   }
 
   /**
-   * Release, and if the amendment is refused, release without it.
+   * Clear the wait, and if the amendment is refused, clear it without one.
    *
-   * Core refuses a `providerId` amendment BEFORE it settles anything — on a
-   * thread that has started, on a fork — so a refusal leaves the hold live and
-   * this second attempt is always available. Retrying unamended rather than
-   * retrying with a trimmed amendment is deliberate: the model that came back
-   * with the provider belongs to that provider, so half the answer is not a
-   * better answer, it is an invalid one.
+   * Core refuses a `providerId` amendment BEFORE it clears anything — on a
+   * thread that has started, on a fork — so a refusal leaves the row parked
+   * and this second attempt is always available. Retrying unamended rather
+   * than retrying with a trimmed amendment is deliberate: the model that came
+   * back with the provider belongs to that provider, so half the answer is not
+   * a better answer, it is an invalid one.
    */
-  async function releaseWithFallback(
-    holdId: string,
-    amend: PluginDispatchReleaseAmendments | undefined,
+  async function clearWaitWithFallback(
+    queuedMessageId: string,
+    amend: PluginDispatchAmendments | undefined,
   ): Promise<void> {
     try {
-      await bb.experimental_dispatch.release(
-        holdId,
+      await bb.experimental_dispatch.clearWait(
+        queuedMessageId,
         amend === undefined ? undefined : { amend },
       );
       return;
     } catch (error) {
       if (amend === undefined) throw error;
       bb.log.debug(
-        `hold ${holdId}: amended release refused, proceeding unamended: ${errorMessage(error)}`,
+        `${queuedMessageId}: amended clear refused, proceeding unamended: ${errorMessage(error)}`,
       );
     }
-    await bb.experimental_dispatch.release(holdId);
+    await bb.experimental_dispatch.clearWait(queuedMessageId);
   }
 }

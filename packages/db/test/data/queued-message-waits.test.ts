@@ -66,6 +66,10 @@ function queue(
     permissionMode: "full",
     serviceTier: "default",
     pluginInputs: null,
+    waitingOn: null,
+    sendAt: null,
+    payload: { kind: "inline" },
+    systemNotice: null,
   });
 }
 
