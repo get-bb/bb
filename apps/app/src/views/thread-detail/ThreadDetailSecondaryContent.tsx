@@ -134,7 +134,6 @@ function ThreadDetailSecondaryContentBody({
         renderPanel={({
           presentation,
           canShowNativeBrowserView,
-          inlinePanelToggle,
           isMainCollapsed,
           onToggleMainCollapse,
           resizablePanelId,
@@ -156,9 +155,9 @@ function ThreadDetailSecondaryContentBody({
               presentation === "inline" && isMainCollapsed
             }
             onToggleConversationCollapse={onToggleMainCollapse}
-            inlinePanelToggle={
-              presentation === "inline" ? "reserved" : inlinePanelToggle
-            }
+            {...(presentation === "inline"
+              ? { inlinePanelToggle: "button" as const }
+              : {})}
             resizablePanelId={resizablePanelId}
             metadataContent={metadataContent}
           />

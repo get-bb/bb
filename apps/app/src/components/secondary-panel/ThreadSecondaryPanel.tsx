@@ -3,6 +3,7 @@ import {
   type FocusEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type TransitionEvent,
   useCallback,
   useContext,
   useLayoutEffect,
@@ -89,6 +90,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import type { SplitSide } from "@/lib/split-layout";
 import { PaneArrangementButton } from "@/views/thread-detail/PaneMaximizeButton";
 import {
@@ -103,6 +105,11 @@ export type {
   SecondaryPanelRenderableTab,
 } from "./secondaryPanelTab";
 
+export function isSecondaryPanelLayoutTransition(
+  propertyName: string,
+): boolean {
+  return propertyName === "flex-grow" || propertyName === "flex-basis";
+}
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
@@ -266,8 +273,9 @@ export function ThreadSecondaryPanel({
     handleSecondaryPanelResizePointerDownCapture,
     persistedWidthPercent,
     secondaryPanelRef: panelRef,
-    secondaryResizablePanelRef,
+    secondaryResizablePanelRef: resizablePanelRef,
   } = useSecondaryPanelResize({
+    isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
   const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
@@ -304,6 +312,19 @@ export function ThreadSecondaryPanel({
     hasPanelExpandedRef.current = false;
     onCollapse();
   }, [hostLayout?.isSuppressed, onCollapse]);
+  const handlePanelTransitionEnd = useCallback(
+    (event: TransitionEvent<HTMLElement>) => {
+      if (
+        event.target !== event.currentTarget ||
+        !isSecondaryPanelLayoutTransition(event.propertyName)
+      ) {
+        return;
+      }
+
+      dispatchBrowserViewBoundsSync();
+    },
+    [],
+  );
   const isLayoutOpen =
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedTab =
@@ -977,6 +998,9 @@ export function ThreadSecondaryPanel({
         renderAsDrawer && "min-w-0 flex-1",
         !renderAsDrawer && [
           "absolute inset-y-0 left-0",
+          hostLayout === null &&
+            !isConversationCollapsed &&
+            "border-l border-border-seam",
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
         ],
@@ -1004,11 +1028,17 @@ export function ThreadSecondaryPanel({
         onPointerDown={handleSecondaryPanelResizePointerDownCapture}
       />
       <Panel
-        ref={secondaryResizablePanelRef}
+        ref={resizablePanelRef}
         id={resizablePanelId}
         collapsible
         collapsedSize={0}
-        defaultSize={0}
+        defaultSize={
+          isLayoutOpen
+            ? isConversationCollapsed
+              ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
+              : persistedWidthPercent
+            : 0
+        }
         minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
         maxSize={
           isConversationCollapsed
@@ -1017,9 +1047,13 @@ export function ThreadSecondaryPanel({
         }
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
+        onTransitionEnd={handlePanelTransitionEnd}
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
-        className={cn("min-w-0 overflow-clip", "relative")}
+        className={cn(
+          "min-w-0 overflow-clip",
+          `relative transition-[flex-grow,flex-basis] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+        )}
       >
         {asideMarkup}
       </Panel>
@@ -1129,14 +1163,13 @@ function SecondaryPanelResizeHandle({
   return (
     <PanelResizeHandle
       id="thread-detail-secondary-panel-handle"
-      data-secondary-panel-boundary=""
       disabled={!isOpen || isConversationCollapsed}
       onDragging={onDragging}
       onPointerDownCapture={(event) => onPointerDown(event.nativeEvent)}
       data-panel-resize-snap-handle=""
       hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
       className={cn(
-        "group relative shrink-0 overflow-visible transition-[width,background-color]",
+        "group relative shrink-0 overflow-visible transition-[width,opacity,background-color]",
         PANEL_RESIZE_HANDLE_LAYER_CLASS,
         PANEL_COLLAPSE_TRANSITION_CLASS,
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
@@ -1169,7 +1202,7 @@ function SecondaryPanelResizeHandle({
             "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
             isResizing
               ? "bg-accent-foreground/50"
-              : "bg-border-seam group-hover:bg-accent-foreground/35",
+              : "bg-transparent group-hover:bg-accent-foreground/35",
           )}
         />
       )}

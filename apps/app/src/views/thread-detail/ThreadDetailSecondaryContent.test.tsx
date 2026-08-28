@@ -367,7 +367,7 @@ afterEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent", () => {
-  it("reserves the standalone panel toolbar for the fixed toggle", async () => {
+  it("keeps the standalone panel hide control in the panel toolbar", async () => {
     renderThreadDetail(false);
 
     expect(
@@ -378,10 +378,10 @@ describe("ThreadDetailSecondaryContent", () => {
           { timeout: 5_000 },
         )
       ).getAttribute("data-inline-panel-toggle"),
-    ).toBe("reserved");
+    ).toBe("button");
   });
 
-  it("reserves the hosted panel toolbar for the fixed window toggle", async () => {
+  it("places the hosted panel hide control at the outer edge of its toolbar", async () => {
     renderThreadDetail(true, false, true);
 
     expect(screen.getByTestId("header").closest("[inert]")).toBeNull();
@@ -400,7 +400,7 @@ describe("ThreadDetailSecondaryContent", () => {
       (await screen.findByTestId("inline-secondary-panel")).getAttribute(
         "data-inline-panel-toggle",
       ),
-    ).toBe("reserved");
+    ).toBe("button");
   });
 
   it("keeps the thread header inside the timeline column beside the panel", async () => {

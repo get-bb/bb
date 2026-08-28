@@ -15,7 +15,6 @@ import {
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import {
   PersistentResponsiveDrawerShell,
   useResponsiveDrawerRealization,
@@ -34,10 +33,6 @@ import {
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
-import {
-  createSecondaryPanelGroupMotion,
-  type SecondaryPanelGroupMotion,
-} from "./secondaryPanelGroupMotion";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
@@ -47,7 +42,6 @@ function noopToggleMainCollapse(): void {}
 export interface SecondaryPanelRenderArgs {
   presentation: "inline" | "drawer";
   canShowNativeBrowserView: boolean;
-  inlinePanelToggle: "button" | "reserved";
   isMainCollapsed: boolean;
   onToggleMainCollapse: () => void;
   resizablePanelId?: string;
@@ -94,7 +88,6 @@ export function SecondaryPanelLayout({
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
-  const shouldReduceMotion = usePrefersReducedMotion();
   const transitionsReady = usePanelCollapseTransitionsReady(
     resetKey,
     !renderAsDrawer,
@@ -107,11 +100,6 @@ export function SecondaryPanelLayout({
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
   );
-  const panelGroupMotionRef = useRef<SecondaryPanelGroupMotion | null>(null);
-  if (panelGroupMotionRef.current === null) {
-    panelGroupMotionRef.current = createSecondaryPanelGroupMotion();
-  }
-  const panelGroupMotion = panelGroupMotionRef.current;
   const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
   useEffect(() => {
     persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
@@ -126,31 +114,18 @@ export function SecondaryPanelLayout({
       return;
     }
 
-    const secondaryWidth = !open
-      ? 0
-      : isMainCollapsed
-        ? FULL_PANEL_SIZE_PERCENT
-        : persistedSecondaryWidthRef.current;
-    panelGroupMotion.setLayout(
-      group,
-      [FULL_PANEL_SIZE_PERCENT - secondaryWidth, secondaryWidth],
-      shouldReduceMotion || !transitionsReady,
-    );
-  }, [
-    isMainCollapsed,
-    open,
-    panelGroupMotion,
-    renderAsDrawer,
-    shouldReduceMotion,
-    transitionsReady,
-  ]);
+    if (!open) {
+      group.setLayout([FULL_PANEL_SIZE_PERCENT, 0]);
+      return;
+    }
+    if (isMainCollapsed) {
+      group.setLayout([0, FULL_PANEL_SIZE_PERCENT]);
+      return;
+    }
 
-  useLayoutEffect(
-    () => () => {
-      panelGroupMotion.stop();
-    },
-    [panelGroupMotion],
-  );
+    const secondaryWidth = persistedSecondaryWidthRef.current;
+    group.setLayout([FULL_PANEL_SIZE_PERCENT - secondaryWidth, secondaryWidth]);
+  }, [isMainCollapsed, open, renderAsDrawer]);
 
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
@@ -258,8 +233,6 @@ export function SecondaryPanelLayout({
         : renderPanel({
             presentation: "inline",
             canShowNativeBrowserView,
-            inlinePanelToggle:
-              secondaryPanelHost === null ? "button" : "reserved",
             isMainCollapsed,
             onToggleMainCollapse: collapse?.onToggle ?? noopToggleMainCollapse,
             resizablePanelId,
@@ -271,7 +244,6 @@ export function SecondaryPanelLayout({
       renderAsDrawer,
       renderPanel,
       resizablePanelId,
-      secondaryPanelHost,
     ],
   );
   const drawerPanel = useMemo(
@@ -280,7 +252,6 @@ export function SecondaryPanelLayout({
         ? renderPanel({
             presentation: "drawer",
             canShowNativeBrowserView,
-            inlinePanelToggle: "button",
             isMainCollapsed: false,
             onToggleMainCollapse: collapse?.onToggle ?? noopToggleMainCollapse,
           })
@@ -354,10 +325,19 @@ export function SecondaryPanelLayout({
             {...(collapse === undefined
               ? {}
               : { collapsible: true, collapsedSize: 0 })}
-            defaultSize={FULL_PANEL_SIZE_PERCENT}
+            defaultSize={
+              isMainCollapsed
+                ? 0
+                : open && !renderAsDrawer
+                  ? FULL_PANEL_SIZE_PERCENT - persistedSecondaryWidthPercent
+                  : FULL_PANEL_SIZE_PERCENT
+            }
             minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
             order={1}
-            className="min-w-0 overflow-clip"
+            className={cn(
+              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              PANEL_COLLAPSE_TRANSITION_CLASS,
+            )}
           >
             {mainContent}
           </Panel>

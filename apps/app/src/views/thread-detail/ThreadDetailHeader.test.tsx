@@ -78,30 +78,7 @@ afterEach(() => {
 });
 
 describe("ThreadDetailHeader", () => {
-  it("keeps the desktop right-panel toggle fixed while open", () => {
-    render(
-      <PaneContext.Provider value={PANE_CONTEXT}>
-        <ThreadDetailHeader
-          actionsMenu={null}
-          childPillLabel={null}
-          isSecondaryPanelOpen
-          onOpenThreadGitAction={vi.fn()}
-          onToggleSecondaryPanel={vi.fn()}
-          threadHeaderGitActions={[]}
-          threadId={THREAD_ID}
-          threadTitle="Panel state"
-        />
-      </PaneContext.Provider>,
-    );
-
-    const button = screen.getByRole("button", { name: "Hide right panel" });
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    expect(button.parentElement?.classList).toContain("fixed");
-  });
-
-  it("leaves the open compact-panel collapse control to the drawer", () => {
-    viewportState.isCompactViewport = true;
-
+  it("leaves the open right-panel collapse control to the panel header", () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader

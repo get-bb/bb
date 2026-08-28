@@ -16,10 +16,12 @@ export type SecondaryPanelWidthChangeHandler = (
 type SecondaryPanelResizeHandler = (size: number) => void;
 
 interface UseSecondaryPanelResizeArgs {
+  isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
 }
 
 export function useSecondaryPanelResize({
+  isSecondaryPanelOpen,
   onPanelWidthChange,
 }: UseSecondaryPanelResizeArgs) {
   const [isSecondaryPanelDragging, setIsSecondaryPanelDragging] =
@@ -45,6 +47,28 @@ export function useSecondaryPanelResize({
     onResize: handleSecondaryPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
+
+  const prevOpenRef = useRef(isSecondaryPanelOpen);
+  useEffect(() => {
+    if (prevOpenRef.current === isSecondaryPanelOpen) {
+      return;
+    }
+    prevOpenRef.current = isSecondaryPanelOpen;
+
+    const panel = secondaryResizablePanelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    if (isSecondaryPanelOpen) {
+      panel.expand(lastSecondaryPanelSizeRef.current);
+      onPanelWidthChange(
+        secondaryPanelRef.current?.getBoundingClientRect().width,
+      );
+    } else {
+      panel.collapse();
+    }
+  }, [isSecondaryPanelOpen, onPanelWidthChange]);
 
   useResizeObserver({
     ref: secondaryPanelRef,

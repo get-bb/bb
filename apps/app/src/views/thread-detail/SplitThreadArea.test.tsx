@@ -52,21 +52,7 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const viewportState = vi.hoisted(() => ({ compact: false }));
-const sidebarState = vi.hoisted(() => {
-  const state = { showing: true };
-  return {
-    progress: {
-      get: () => (state.showing ? 1 : 0),
-      on: () => () => {},
-    },
-    set showing(showing: boolean) {
-      state.showing = showing;
-    },
-    get showing() {
-      return state.showing;
-    },
-  };
-});
+const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
@@ -217,7 +203,6 @@ vi.mock("react-resizable-panels", async () => {
 });
 
 vi.mock("@/components/ui/sidebar.js", () => ({
-  useSidebarDesktopMotionProgress: () => sidebarState.progress,
   useIsSidebarShowing: () => sidebarState.showing,
 }));
 
@@ -250,6 +235,13 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
             <div data-testid="workspace-panel-resize-handle" className="z-[30]">
               <span data-panel-resize-hit-target="" />
             </div>
+            {isPanelOpen ? (
+              <button
+                type="button"
+                aria-label="Hide right panel"
+                onClick={() => setIsPanelOpen(false)}
+              />
+            ) : null}
           </div>
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
@@ -1345,11 +1337,6 @@ describe("SplitThreadArea", () => {
       screen.getByTestId("workspace-panel-group").dataset.splitResizeGridRoot,
     ).toBe("");
     expect(
-      document
-        .querySelector('[data-panel-id="split-workspace-main-panel"]')
-        ?.contains(toggle),
-    ).toBe(false);
-    expect(
       screen.queryAllByTestId("split-workspace-panel-toggle"),
     ).toHaveLength(1);
     expect(screen.getByTestId("hosted-panel-thr-a")).toBeTruthy();
@@ -1357,10 +1344,13 @@ describe("SplitThreadArea", () => {
       "thr-a",
     );
     expect(screen.queryByTestId("hosted-panel-thr-b")).toBeNull();
-    const toggleButton = toggle.querySelector("button");
-    expect(toggleButton?.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.classList).not.toContain("hidden");
-    expect(toggleButton?.hasAttribute("aria-pressed")).toBe(false);
+    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(toggle.classList).toContain("hidden");
+    expect(toggle.querySelector("button")?.hasAttribute("aria-pressed")).toBe(
+      false,
+    );
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-b"));
     await screen.findByTestId("hosted-panel-thr-b");
@@ -1382,7 +1372,6 @@ describe("SplitThreadArea", () => {
         .querySelector("button")
         ?.getAttribute("aria-expanded"),
     ).toBe("false");
-    expect(toggle.querySelector("button")).toBe(toggleButton);
     expect(toggle.classList).not.toContain("hidden");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
@@ -1524,7 +1513,10 @@ describe("SplitThreadArea", () => {
 
     await screen.findByTestId("hosted-plugin-app-panel");
     fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
-    await screen.findByRole("button", { name: "Hide right panel" });
+    await within(screen.getByTestId("hosted-plugin-app-panel")).findByRole(
+      "button",
+      { name: "Hide right panel" },
+    );
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     expect(await screen.findByTestId("hosted-panel-thr-a")).toBeTruthy();
@@ -1536,7 +1528,7 @@ describe("SplitThreadArea", () => {
     ).toBeTruthy();
   });
 
-  it("keeps one pinned toggle while the hosted plugin panel opens", async () => {
+  it("drops the corner reserve while the hosted plugin panel holds the toggle", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-2";
     renderSplitArea({
@@ -1557,16 +1549,13 @@ describe("SplitThreadArea", () => {
     );
     expect(
       screen.getByTestId("split-workspace-panel-toggle").classList,
-    ).not.toContain("hidden");
+    ).toContain("hidden");
     expect(
-      screen.getAllByRole("button", { name: "Hide right panel" }),
-    ).toHaveLength(1);
-    expect(
-      within(screen.getByTestId("hosted-plugin-app-panel")).queryByRole(
+      within(screen.getByTestId("hosted-plugin-app-panel")).getByRole(
         "button",
         { name: "Hide right panel" },
       ),
-    ).toBeNull();
+    ).toBeTruthy();
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
@@ -1899,14 +1888,10 @@ describe("SplitThreadArea", () => {
     const contentRow = async (path: string) =>
       (await screen.findByText(path))
         .closest("header")
-        ?.querySelector<HTMLElement>(
-          '[data-testid="app-page-header-content-row"]',
-        );
-    expect((await contentRow("top-left"))?.style.paddingInlineStart).toBe(
-      "104px",
-    );
+        ?.querySelector('[data-testid="app-page-header-content-row"]');
+    expect((await contentRow("top-left"))?.className).toContain("pl-[104px]");
     for (const path of ["top-right", "bottom-left", "bottom-right"]) {
-      expect((await contentRow(path))?.style.paddingInlineStart).toBe("");
+      expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
     }
 
     expect(screen.getAllByRole("button", { name: /Full Screen/ })).toHaveLength(
@@ -2051,7 +2036,7 @@ describe("SplitThreadArea", () => {
     );
   });
 
-  it("drops the pane reserve while the fixed toggle overlays an open panel", async () => {
+  it("drops the corner reserve once an open panel hosts the toggle", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({

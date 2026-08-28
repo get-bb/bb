@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSecondaryPanelChromeStackClassName,
   getReservedInlinePanelToggleClassName,
+  isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
 } from "./ThreadSecondaryPanel";
 import {
@@ -14,6 +15,14 @@ import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasse
 describe("secondary panel surface tone", () => {
   it("uses the same sidebar background token as the primary sidebar", () => {
     expect(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS).toBe("bg-sidebar");
+  });
+});
+
+describe("secondary panel native browser bounds settling", () => {
+  it("recognizes the flex transitions that move the panel back to its restored position", () => {
+    expect(isSecondaryPanelLayoutTransition("flex-grow")).toBe(true);
+    expect(isSecondaryPanelLayoutTransition("flex-basis")).toBe(true);
+    expect(isSecondaryPanelLayoutTransition("opacity")).toBe(false);
   });
 });
 

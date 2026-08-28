@@ -11,7 +11,6 @@ import { memo } from "react";
 import { flushSync } from "react-dom";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MotionValue, ValueAnimationTransition } from "motion";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   Sidebar,
@@ -23,37 +22,8 @@ import {
   useSidebar,
 } from "./sidebar";
 
-type RecordedMotionAnimation = {
-  options: ValueAnimationTransition<number>;
-  target: number;
-  value: MotionValue<number>;
-};
-
-const motionAnimationState = vi.hoisted(() => ({
-  calls: [] as RecordedMotionAnimation[],
-}));
-
-vi.mock("motion", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion")>()),
-  animate: vi.fn(
-    (
-      value: MotionValue<number>,
-      target: number,
-      options: ValueAnimationTransition<number>,
-    ) => {
-      motionAnimationState.calls.push({
-        options,
-        target,
-        value,
-      });
-      return { stop: vi.fn() };
-    },
-  ),
-}));
-
 afterEach(() => {
   cleanup();
-  motionAnimationState.calls.length = 0;
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -371,7 +341,7 @@ describe("mobile sidebar deferred realization", () => {
     expect(getMobilePanel()?.dataset.state).toBe("open");
   });
 
-  it("writes the desktop width on each reader, not on the provider wrapper", () => {
+  it("writes the desktop width on the gap and panel, not on the provider wrapper", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
         <SidebarProvider width="333px" data-testid="wrapper">
@@ -383,111 +353,12 @@ describe("mobile sidebar deferred realization", () => {
     const wrapper = screen.getByTestId("wrapper");
     const gap = document.querySelector('[data-sidebar="gap"]');
     const panel = document.querySelector('[data-sidebar="panel"]');
-    const content = document.querySelector('[data-sidebar="desktop-content"]');
-    if (
-      !(gap instanceof HTMLElement) ||
-      !(panel instanceof HTMLElement) ||
-      !(content instanceof HTMLElement)
-    ) {
-      throw new Error("Expected desktop gap, panel, and content");
+    if (!(gap instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected desktop gap and panel");
     }
     expect(gap.style.getPropertyValue("--sidebar-width")).toBe("333px");
     expect(panel.style.getPropertyValue("--sidebar-width")).toBe("333px");
-    expect(content.style.getPropertyValue("--sidebar-width")).toBe("333px");
     expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("");
-  });
-
-  it("keeps the boundary-centered resize target outside the motion clip", () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarProvider>
-          <Sidebar>Sidebar content</Sidebar>
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
-
-    const panel = document.querySelector('[data-sidebar="panel"]');
-    if (!(panel instanceof HTMLElement)) {
-      throw new Error("Expected the desktop sidebar panel");
-    }
-    expect(panel.classList).toContain("overflow-clip");
-    expect(panel.classList).toContain("[overflow-clip-margin:6px]");
-  });
-
-  it("takes the collapsed desktop panel out of the keyboard and accessibility tree", () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarProvider>
-          <Sidebar>
-            <button type="button">New thread</button>
-          </Sidebar>
-          <SidebarTrigger />
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
-
-    const panel = document.querySelector('[data-sidebar="panel"]');
-    if (!(panel instanceof HTMLElement)) {
-      throw new Error("Expected the desktop sidebar panel");
-    }
-    expect(panel.hasAttribute("inert")).toBe(false);
-    expect(panel.getAttribute("aria-hidden")).toBe("false");
-    expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-
-    expect(panel.hasAttribute("inert")).toBe(true);
-    expect(panel.getAttribute("aria-hidden")).toBe("true");
-    expect(screen.queryByRole("button", { name: "New thread" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-
-    expect(panel.hasAttribute("inert")).toBe(false);
-    expect(panel.getAttribute("aria-hidden")).toBe("false");
-    expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
-  });
-
-  it("uses the shared duration spring and reverses from its current width", () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarProvider>
-          <Sidebar>Sidebar content</Sidebar>
-          <SidebarTrigger />
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
-
-    const panel = document.querySelector('[data-sidebar="panel"]');
-    if (!(panel instanceof HTMLElement)) {
-      throw new Error("Expected the desktop sidebar panel");
-    }
-    const readProgress = () => {
-      if (panel.style.width === "0px") return 0;
-      if (panel.style.width === "var(--sidebar-width)") return 1;
-      const match = panel.style.width.match(/^calc\(([-\d.]+) \*/u);
-      if (!match) throw new Error(`Unexpected width: ${panel.style.width}`);
-      return Number(match[1]);
-    };
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-    const closingAnimation = motionAnimationState.calls[0];
-    expect(closingAnimation).toMatchObject({
-      target: 0,
-      options: { type: "spring", duration: 0.5, bounce: 0.1 },
-    });
-    act(() => closingAnimation?.value.set(0.32));
-    const closingProgress = readProgress();
-    expect(closingProgress).toBeCloseTo(0.32, 2);
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-    const openingAnimation = motionAnimationState.calls[1];
-    expect(openingAnimation?.value).toBe(closingAnimation?.value);
-    expect(openingAnimation?.target).toBe(1);
-    expect(readProgress()).toBeCloseTo(closingProgress, 4);
-    act(() => openingAnimation?.value.set(0.5));
-    expect(readProgress()).toBeGreaterThan(closingProgress);
-    act(() => openingAnimation?.value.set(1));
-    expect(readProgress()).toBe(1);
   });
 
   it("renders the desktop sidebar subtree synchronously", () => {

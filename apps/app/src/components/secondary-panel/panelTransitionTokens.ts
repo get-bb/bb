@@ -1,25 +1,17 @@
 import { useEffect, useState, type CSSProperties, type Key } from "react";
-import {
-  PANEL_MOTION_DURATION_MS,
-  PANEL_SPRING_CSS_EASING,
-} from "@/lib/panel-motion";
 
 type PanelCollapseTransitionStyle = CSSProperties & {
   "--panel-collapse-duration": string;
-  "--panel-collapse-easing": string;
 };
 
 export const PANEL_COLLAPSE_TRANSITION_CLASS =
-  "duration-[var(--panel-collapse-duration,500ms)] ease-[var(--panel-collapse-easing)] motion-reduce:duration-0";
+  "duration-[var(--panel-collapse-duration,220ms)] ease-[cubic-bezier(0.32,0.72,0,1)]";
 
 export function getPanelCollapseTransitionStyle(
   transitionsReady: boolean,
 ): PanelCollapseTransitionStyle {
   return {
-    "--panel-collapse-duration": transitionsReady
-      ? `${PANEL_MOTION_DURATION_MS}ms`
-      : "0ms",
-    "--panel-collapse-easing": PANEL_SPRING_CSS_EASING,
+    "--panel-collapse-duration": transitionsReady ? "220ms" : "0ms",
   };
 }
 

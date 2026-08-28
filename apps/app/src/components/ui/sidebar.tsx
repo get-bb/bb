@@ -1,11 +1,8 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
-import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Slot } from "@radix-ui/react-slot";
-import { animate, clamp, motionValue, type MotionValue } from "motion";
 
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -17,7 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { PANEL_SPRING_TRANSITION } from "@/lib/panel-motion";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
@@ -46,13 +42,6 @@ const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
 const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
   "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0";
-
-function sidebarDesktopWidth(progress: number): string {
-  const clampedProgress = clamp(0, 1, progress);
-  if (clampedProgress === 0) return "0px";
-  if (clampedProgress === 1) return "var(--sidebar-width)";
-  return `calc(${clampedProgress} * var(--sidebar-width))`;
-}
 
 type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
@@ -423,8 +412,6 @@ const SidebarContext = React.createContext<SidebarContext | null>(null);
 const SidebarWidthContext = React.createContext<string>(SIDEBAR_WIDTH);
 
 const SidebarShowingContext = React.createContext<boolean | null>(null);
-const SidebarDesktopMotionContext =
-  React.createContext<MotionValue<number> | null>(null);
 
 const SidebarContentElementContext =
   React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
@@ -456,15 +443,6 @@ function useOptionalIsSidebarShowing(): boolean | null {
   return React.useContext(SidebarShowingContext);
 }
 
-function useSidebarDesktopMotionProgress(): MotionValue<number> {
-  const progress = React.useContext(SidebarDesktopMotionContext);
-  if (progress === null) {
-    throw new Error(
-      "useSidebarDesktopMotionProgress must be used within a SidebarProvider.",
-    );
-  }
-  return progress;
-}
 function useCloseMobileSidebar() {
   const { closeMobileSidebar } = useSidebar();
   return closeMobileSidebar;
@@ -594,14 +572,6 @@ const SidebarProvider = React.forwardRef<
 
     const [_open, _setOpen] = React.useState(defaultOpen);
     const open = openProp ?? _open;
-    const shouldReduceMotion = usePrefersReducedMotion();
-    const desktopMotionProgressRef = React.useRef<MotionValue<number> | null>(
-      null,
-    );
-    if (desktopMotionProgressRef.current === null) {
-      desktopMotionProgressRef.current = motionValue(open ? 1 : 0);
-    }
-    const desktopMotionProgress = desktopMotionProgressRef.current;
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === "function" ? value(open) : value;
@@ -614,15 +584,6 @@ const SidebarProvider = React.forwardRef<
       [setOpenProp, open],
     );
 
-    React.useLayoutEffect(() => {
-      const target = open ? 1 : 0;
-      if (shouldReduceMotion) {
-        desktopMotionProgress.jump(target);
-      } else if (desktopMotionProgress.get() !== target) {
-        animate(desktopMotionProgress, target, PANEL_SPRING_TRANSITION);
-      }
-      return () => desktopMotionProgress.stop();
-    }, [desktopMotionProgress, open, shouldReduceMotion]);
     const toggleSidebar = React.useCallback(() => {
       if (!isCompactViewport) {
         setOpen((open) => !open);
@@ -685,28 +646,27 @@ const SidebarProvider = React.forwardRef<
     return (
       <SidebarContext.Provider value={contextValue}>
         <SidebarShowingContext.Provider value={isSidebarShowing}>
-          <SidebarDesktopMotionContext.Provider value={desktopMotionProgress}>
-            <SidebarWidthContext.Provider value={width}>
-              <TooltipProvider delayDuration={300} disableHoverableContent>
-                <div
-                  style={
-                    {
-                      "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                      ...style,
-                    } as React.CSSProperties
-                  }
-                  className={cn(
-                    "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
-                    className,
-                  )}
-                  ref={ref}
-                  {...props}
-                >
-                  {children}
-                </div>
-              </TooltipProvider>
-            </SidebarWidthContext.Provider>
-          </SidebarDesktopMotionContext.Provider>
+          <SidebarWidthContext.Provider value={width}>
+            {}
+            <TooltipProvider delayDuration={300} disableHoverableContent>
+              <div
+                style={
+                  {
+                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                    ...style,
+                  } as React.CSSProperties
+                }
+                className={cn(
+                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
+                  className,
+                )}
+                ref={ref}
+                {...props}
+              >
+                {children}
+              </div>
+            </TooltipProvider>
+          </SidebarWidthContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
     );
@@ -729,30 +689,6 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
       setSuppressMobileCloseAnimation,
     } = useSidebar();
     const width = React.useContext(SidebarWidthContext);
-    const desktopMotionProgress = useSidebarDesktopMotionProgress();
-    const desktopGapRef = React.useRef<HTMLDivElement>(null);
-    const desktopPanelRef = React.useRef<HTMLDivElement>(null);
-    const desktopContentRef = React.useRef<HTMLDivElement>(null);
-    const composedDesktopPanelRef = useComposedRefs(ref, desktopPanelRef);
-    const initialDesktopProgress = clamp(0, 1, desktopMotionProgress.get());
-    const desktopAnimatedWidth = sidebarDesktopWidth(initialDesktopProgress);
-    React.useLayoutEffect(() => {
-      const applyProgress = (progress: number) => {
-        const clampedProgress = clamp(0, 1, progress);
-        const animatedWidth = sidebarDesktopWidth(clampedProgress);
-        if (desktopGapRef.current) {
-          desktopGapRef.current.style.width = animatedWidth;
-        }
-        if (desktopPanelRef.current) {
-          desktopPanelRef.current.style.width = animatedWidth;
-        }
-        if (desktopContentRef.current) {
-          desktopContentRef.current.style.opacity = String(clampedProgress);
-        }
-      };
-      applyProgress(desktopMotionProgress.get());
-      return desktopMotionProgress.on("change", applyProgress);
-    }, [desktopMotionProgress, width]);
     const widthStyle = { "--sidebar-width": width } as React.CSSProperties;
     const handleOpenMobileChange = React.useCallback(
       (nextOpen: boolean) => {
@@ -816,54 +752,43 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
       );
     }
 
-    const isDesktopSidebarCollapsed = state === "collapsed";
-
     return (
       <div
+        ref={ref}
         className="group peer text-sidebar-foreground"
         data-state={state}
-        data-collapsible={isDesktopSidebarCollapsed ? "offcanvas" : ""}
+        data-collapsible={state === "collapsed" ? "offcanvas" : ""}
         data-variant="sidebar"
         data-side="left"
       >
+        {}
         <div
-          ref={desktopGapRef}
           data-sidebar="gap"
-          style={{ ...widthStyle, width: desktopAnimatedWidth }}
+          style={widthStyle}
           className={cn(
-            "relative hidden h-full shrink-0 bg-transparent md:block",
+            "relative hidden h-full w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear md:block",
+            "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
             "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
         />
         <div
-          ref={composedDesktopPanelRef}
           data-sidebar="panel"
-          inert={isDesktopSidebarCollapsed}
-          aria-hidden={isDesktopSidebarCollapsed}
           className={cn(
-            "fixed inset-y-0 left-0 z-10 flex h-(--bb-shell-height) select-none overflow-clip [overflow-clip-margin:6px] group-data-[collapsible=offcanvas]:pointer-events-none",
-            "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) select-none flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
+            "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
+            "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
+            "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            className,
           )}
-          style={{ ...widthStyle, ...style, width: desktopAnimatedWidth }}
+          style={{ ...widthStyle, ...style }}
           {...props}
         >
           <div
-            ref={desktopContentRef}
-            data-sidebar="desktop-content"
-            className={cn(
-              "flex h-full min-w-(--sidebar-width) w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
-              "border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
-              className,
-            )}
-            style={{ ...widthStyle, opacity: initialDesktopProgress }}
+            data-sidebar="sidebar"
+            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
           >
-            <div
-              data-sidebar="sidebar"
-              className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
-            >
-              {children}
-            </div>
+            {children}
           </div>
         </div>
       </div>
@@ -2241,7 +2166,6 @@ export {
   SidebarStickyTier,
   SidebarTrigger,
   useCloseMobileSidebar,
-  useSidebarDesktopMotionProgress,
   useIsSidebarShowing,
   useOptionalIsSidebarShowing,
   useSidebar,

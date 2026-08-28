@@ -927,9 +927,8 @@
  * every animation frame; an inherited custom property change makes the
  * engine restyle every descendant of the element it is set on (measured at
  * ~20-45 µs per element, so a long thread cost 50-400 ms per frame).
- * `Sidebar` therefore sets it directly on the three elements that read it (the
- * desktop gap, panel, and content), and a change touches only those. The
- * initial value
+ * `Sidebar` therefore sets it directly on the two elements that read it (the
+ * desktop gap and panel), and a change touches only those. The initial value
  * mirrors the 16rem default in sidebar.tsx (`@property` requires an absolute
  * length here).
  */
@@ -1103,6 +1102,16 @@ body.sidebar-resizing [data-sidebar="panel"] {
     -webkit-mask-position: -200% 0%;
     mask-position: -200% 0%;
   }
+}
+
+/*
+ * During an active panel-resize drag, suppress flex transitions on sibling
+ * panels so their size snaps to each pointer position instead of animating
+ * through 220ms of intermediate layouts per frame. Opacity/visibility
+ * transitions are preserved for open/close animations.
+ */
+[data-panel-group]:has([data-resize-handle-active]) [data-panel] {
+  transition-property: opacity;
 }
 
 /*
