@@ -168,7 +168,7 @@ describe("SidebarSplitContainer", () => {
     document.body.style.userSelect = "";
   });
 
-  it("activates a focused pane outside React's state updater", async () => {
+  it("activates a pane before a descendant stops pointer propagation", async () => {
     const split = createTwoPaneState();
     const firstPaneId =
       split.layout.root.type === "split"
@@ -206,7 +206,13 @@ describe("SidebarSplitContainer", () => {
           onToggleFullScreen={vi.fn()}
           panelStateId={PANEL_STATE_ID}
           renderPane={({ paneId }) => (
-            <div data-testid={`pane-content-${paneId}`}>{paneId}</div>
+            <button
+              type="button"
+              data-testid={`pane-content-${paneId}`}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {paneId}
+            </button>
           )}
           tabs={TABS}
         />
@@ -233,6 +239,40 @@ describe("SidebarSplitContainer", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it("activates a pane when keyboard focus enters it", async () => {
+    const split = createTwoPaneState();
+    const paneIds =
+      split.layout.root.type === "split"
+        ? split.layout.root.children.flatMap((child) =>
+            child.type === "pane" ? [child.paneId] : [],
+          )
+        : [];
+    expect(paneIds).toHaveLength(2);
+    const [firstPaneId, secondPaneId] = paneIds;
+    if (firstPaneId === undefined || secondPaneId === undefined) return;
+    persistState(focusSidebarPane(split, firstPaneId));
+    const activate = vi.fn();
+
+    renderContainer({
+      activeTabId: "tab-a",
+      onActivateTab: activate,
+      renderPane: ({ paneId }) => (
+        <button type="button" data-testid={`focus-target-${paneId}`}>
+          {paneId}
+        </button>
+      ),
+    });
+    fireEvent.focus(screen.getByTestId(`focus-target-${secondPaneId}`));
+
+    await waitFor(() => expect(activate).toHaveBeenCalledWith("tab-b"));
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(
+      document.querySelector(
+        `[data-split-pane-id="${secondPaneId}"][data-focused="true"]`,
+      ),
+    ).not.toBeNull();
   });
 
   it("assigns focus and outer controls to the appropriate panes", () => {
