@@ -260,6 +260,7 @@ describe("ModelReasoningPicker", () => {
     expect(
       trigger.querySelector('[data-icon="ChevronDown"]')?.classList,
     ).toContain("text-subtle-foreground/75");
+    expect(trigger.classList).toContain("font-normal");
   });
 
   it("gives a non-SVG provider mark the same 16px trigger size as button SVGs", () => {

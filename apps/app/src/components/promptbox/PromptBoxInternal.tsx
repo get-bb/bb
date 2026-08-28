@@ -3020,7 +3020,7 @@ export function PromptBoxInternal({
                     data-promptbox-expanded-only=""
                     data-promptbox-standard-actions=""
                     inert={showVoiceActionGroup ? true : undefined}
-                    className="absolute right-2 top-2 z-20 flex items-center"
+                    className="absolute right-[13px] top-2 z-20 flex items-center"
                   >
                     <Button
                       type="button"
@@ -3037,7 +3037,7 @@ export function PromptBoxInternal({
                         PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
                       )}
                     >
-                      <Icon name="ChevronDown" className="size-3" />
+                      <Icon name="ChevronDown" className="size-3.5" />
                     </Button>
                   </div>
                 ) : null}

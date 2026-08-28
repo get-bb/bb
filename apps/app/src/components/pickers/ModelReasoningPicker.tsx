@@ -790,6 +790,7 @@ export function ModelReasoningPicker({
         OPTION_INTERACTIVE_CLASS_NAME,
         LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
+        muted && "font-normal",
         disabled && "cursor-default disabled:opacity-100",
         className,
       )}

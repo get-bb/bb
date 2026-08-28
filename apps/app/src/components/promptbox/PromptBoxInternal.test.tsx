@@ -1654,6 +1654,10 @@ describe("PromptBoxInternal size controls", () => {
     expect(collapseButton.classList).toContain("text-subtle-foreground/75");
     expect(collapseButton.classList).toContain("w-6");
     expect(collapseButton.classList).toContain("px-0");
+    expect(collapseButton.parentElement?.classList).toContain("right-[13px]");
+    expect(
+      collapseButton.querySelector('[data-icon="ChevronDown"]')?.classList,
+    ).toContain("size-3.5");
     fireEvent.click(collapseButton);
 
     expect(onCollapse).toHaveBeenCalledOnce();
