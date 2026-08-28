@@ -4,6 +4,7 @@ ALTER TABLE `queued_thread_messages` ADD `plugin_inputs` text;--> statement-brea
 ALTER TABLE `queued_thread_messages` ADD `send_at` integer;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `waiting_on` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `wait_holder` text;--> statement-breakpoint
+ALTER TABLE `queued_thread_messages` ADD `failure_reason` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `payload_kind` text DEFAULT 'inline' NOT NULL;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `retry_of_turn_request_id` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `retry_attempt` integer;--> statement-breakpoint

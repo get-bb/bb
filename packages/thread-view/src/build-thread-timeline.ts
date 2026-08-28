@@ -206,7 +206,7 @@ type TimelineWorkflowMessage = Extract<
  * do not carry their own extra fields in the read model. */
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "dispatch-hold" | "queue-state" | "parent-change" | "plugin-note"
+  "queue-state" | "parent-change" | "plugin-note"
 >;
 
 function operationKindForMessage(
@@ -217,7 +217,6 @@ function operationKindForMessage(
     case "compaction":
     case "context-clear":
     case "thread-provisioning":
-    case "dispatch-hold":
     case "queue-state":
     case "plugin-note":
     case "thread-interrupted":
@@ -305,36 +304,10 @@ function buildPluginNoteSystemRow(args: {
 }
 
 /**
- * A hold's own row shape. The three things it has to say — what it waits for,
- * which message is waiting, and what its owner has reported — are different
- * kinds of text, so they stay separate fields for the client to render rather
- * than being flattened into one detail string.
- */
-function buildDispatchHoldSystemRow(args: {
-  base: TimelineRowBase;
-  dispatchHold: NonNullable<TimelineOperationMessage["dispatchHold"]>;
-  message: TimelineOperationMessage;
-}): TimelineSystemRow {
-  return {
-    ...args.base,
-    kind: "system",
-    systemKind: "operation",
-    operationKind: "dispatch-hold",
-    title: args.message.title,
-    detail: buildDispatchHoldDetail(args.message),
-    status: args.message.status ?? null,
-    completedAt: args.message.completedAt,
-    reason: args.dispatchHold.reason,
-    inputPreview: args.dispatchHold.inputPreview ?? null,
-  };
-}
-
-/**
- * A parked row's own row shape, identical in structure to the hold row it
- * replaces: what it waits for, which message is waiting, and what the plugin
- * holding it has reported are three different kinds of text, so they stay
- * separate fields for the client to render rather than being flattened into
- * one detail string.
+ * A parked row's own row shape: what it waits for, which message is waiting,
+ * and what the plugin holding it has reported are three different kinds of
+ * text, so they stay separate fields for the client to render rather than
+ * being flattened into one detail string.
  */
 function buildQueueStateSystemRow(args: {
   base: TimelineRowBase;
@@ -570,24 +543,6 @@ function provisioningTerminalDetailLine(
         ? "Provisioning thread failed"
         : "Provisioning thread interrupted";
   return `${label} (${durationToCompactString(elapsedMs)})`;
-}
-
-/**
- * A hold row's `detail` is its owner's report and nothing else. The reason and
- * the held message are their own row fields, because one is a label and the
- * other is the user's prose — neither belongs in the monospace output block the
- * transcript renders as. The transcript uses the provisioning entry shape, so
- * it flattens the same way; this is the only place a hold's steps and log tails
- * are rendered.
- */
-function buildDispatchHoldDetail(
-  message: TimelineOperationMessage,
-): string | null {
-  const lines =
-    message.dispatchHold?.transcript?.flatMap(
-      formatProvisioningTranscriptEntryLines,
-    ) ?? [];
-  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 /**
@@ -917,27 +872,6 @@ function convertMessage(
                 base,
                 message,
                 pluginNote: message.pluginNote,
-              }),
-            ];
-      }
-      if (operationKind === "dispatch-hold") {
-        // The metadata is written with the row, so its absence means a
-        // malformed projection rather than a hold without a reason. A generic
-        // row still shows the title and the report, which beats dropping the
-        // one line explaining why the thread has not run.
-        return message.dispatchHold === undefined
-          ? [
-              buildGenericOperationSystemRow({
-                base,
-                message,
-                operationKind: "generic",
-              }),
-            ]
-          : [
-              buildDispatchHoldSystemRow({
-                base,
-                dispatchHold: message.dispatchHold,
-                message,
               }),
             ];
       }

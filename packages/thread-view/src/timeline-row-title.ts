@@ -1516,9 +1516,6 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "plugin-note") {
     return mapPluginNoteSystemTitle(row);
   }
-  if (row.systemKind === "operation" && row.operationKind === "dispatch-hold") {
-    return mapDispatchHoldSystemTitle(row);
-  }
   if (row.systemKind === "operation" && row.operationKind === "queue-state") {
     return mapQueueStateSystemTitle(row);
   }
@@ -1563,22 +1560,6 @@ function mapQueueStateSystemTitle(
   ];
   if (reason.length > 0) {
     segments.push(segment(` \u00b7 ${reason}`, { accent: "subtle", truncate: true }));
-  }
-  return makeTitle({ segments, decorations: [] });
-}
-
-function mapDispatchHoldSystemTitle(
-  row: Extract<TimelineSystemViewRow, { operationKind: "dispatch-hold" }>,
-): TimelineTitle {
-  const reason = row.reason.trim();
-  const shimmer = row.status === "pending";
-  const segments: TimelineTitleSegment[] = [
-    segment(row.title, { shimmer, truncate: true }),
-  ];
-  if (reason.length > 0) {
-    segments.push(
-      segment(` · ${reason}`, { accent: "subtle", truncate: true }),
-    );
   }
   return makeTitle({ segments, decorations: [] });
 }

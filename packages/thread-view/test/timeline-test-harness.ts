@@ -11,7 +11,6 @@ import type {
   ProvisioningTranscriptEntry,
   ResolvedThreadExecutionOptions,
   QueuedMessageWaitingOn,
-  SystemDispatchHoldStatus,
   SystemQueueStateStatus,
   SystemThreadProvisioningStatus,
   JsonValue,
@@ -270,16 +269,6 @@ interface QueueStateArgs extends EventFactoryRowOptions {
   waitingOn?: QueuedMessageWaitingOn;
 }
 
-interface DispatchHoldArgs extends EventFactoryRowOptions {
-  entries?: ProvisioningTranscriptEntry[];
-  holdId?: string;
-  holder?: string;
-  /** Omitted entirely when absent, matching a hold with no message of its own. */
-  inputPreview?: string;
-  reason?: string;
-  status: SystemDispatchHoldStatus;
-}
-
 interface SystemErrorArgs extends EventFactoryRowOptions {
   code?: string;
   detail?: string;
@@ -411,9 +400,6 @@ export interface TimelineEventFactory {
   threadProvisioning(
     args: ThreadProvisioningArgs,
   ): ThreadEventRowOfType<"system/thread-provisioning">;
-  dispatchHold(
-    args: DispatchHoldArgs,
-  ): ThreadEventRowOfType<"system/dispatch-hold">;
   queueState(
     args: QueueStateArgs,
   ): ThreadEventRowOfType<"system/queue-state">;
@@ -986,23 +972,6 @@ export function createTimelineEventFactory(
           status: args.status,
           waitingOn: args.waitingOn ?? { kind: "time" },
           sendAt: args.sendAt ?? null,
-          ...(args.inputPreview === undefined
-            ? {}
-            : { inputPreview: args.inputPreview }),
-          entries: args.entries ?? [],
-        },
-      };
-    },
-    dispatchHold(args) {
-      const base = nextThreadScopedRowBase("dispatch-hold", args);
-      return {
-        ...base,
-        type: "system/dispatch-hold",
-        data: {
-          holdId: args.holdId ?? "hold_test",
-          holder: args.holder ?? "user",
-          status: args.status,
-          reason: args.reason ?? "Scheduled",
           ...(args.inputPreview === undefined
             ? {}
             : { inputPreview: args.inputPreview }),

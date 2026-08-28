@@ -13,10 +13,8 @@ import { systemRow } from "@/test/fixtures/thread-timeline-rows";
  * scheduled send has never reported anything and still has a message worth
  * reading.
  *
- * These are the same rules the legacy `dispatch-hold` row follows — the two
- * kinds share one predicate — so this file exists to prove the new kind is
- * actually wired into it rather than silently falling through to the generic
- * `detail`-only rule.
+ * This file exists to prove the kind is actually wired into that predicate
+ * rather than silently falling through to the generic `detail`-only rule.
  */
 describe("queue-state row expandability", () => {
   it("opens for a parked row that has only the parked message", () => {
@@ -41,6 +39,14 @@ describe("queue-state row expandability", () => {
           reason: "4 of 4 running",
           inputPreview: null,
         }),
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves the rule for every other system row alone", () => {
+    expect(
+      isRowExpandable(
+        systemRow({ operationKind: "thread-provisioning", detail: null }),
       ),
     ).toBe(false);
   });

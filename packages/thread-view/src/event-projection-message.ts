@@ -11,7 +11,6 @@ import type {
   PromptTextMention,
   PluginNoteLevel,
   QueuedMessageWaitingOn,
-  SystemDispatchHoldStatus,
   SystemMessageKind,
   SystemMessageSubject,
   SystemQueueStateStatus,
@@ -304,7 +303,6 @@ const eventProjectionOperationTypeValues = [
   "deprecation",
   "thread-interrupted",
   "thread-provisioning",
-  "dispatch-hold",
   "queue-state",
   "plugin-note",
   "operation",
@@ -372,26 +370,6 @@ export interface EventProjectionProvisioningMetadata {
 }
 
 /**
- * The hold behind a `dispatch-hold` operation row. `holdStatus` is kept
- * alongside the row's lifecycle status because the two are not the same
- * question: a hold that released and a hold the owner plugin was gone for both
- * settle the row, and only the hold status distinguishes them in the title.
- */
-export interface EventProjectionDispatchHoldMetadata {
-  holdId: string;
-  holder: string;
-  holdStatus: SystemDispatchHoldStatus;
-  reason: string;
-  /**
-   * Truncated plain text of the held message. Absent — not empty — when the
-   * hold has no message of its own (a retry hold references a turn already on
-   * the timeline) and on rows recorded before holds carried a preview.
-   */
-  inputPreview?: string;
-  transcript?: EventProjectionProvisioningTranscriptEntry[];
-}
-
-/**
  * The parked queue row behind a `queue-state` operation row. `queueStatus` is
  * kept alongside the row's lifecycle status because the two are not the same
  * question: `parked` and `updated` are both pending rows, and only the queue
@@ -445,7 +423,6 @@ export interface EventProjectionOperationMessage extends EventProjectionMessageB
   >;
   completedAt: number | null;
   provisioning?: EventProjectionProvisioningMetadata;
-  dispatchHold?: EventProjectionDispatchHoldMetadata;
   queueState?: EventProjectionQueueStateMetadata;
   pluginNote?: EventProjectionPluginNoteMetadata;
   threadOperation?: EventProjectionThreadOperationMetadata;

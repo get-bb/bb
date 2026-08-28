@@ -274,10 +274,10 @@ export type SystemDispatchHoldStatus = z.infer<
 >;
 
 /**
- * Longest held-message preview carried on a `system/dispatch-hold` row. The row
- * says why a turn is waiting; the preview is only there to answer "which
- * message?", so it is sized for a couple of wrapped lines. The full message is
- * always one release away, and until then it is editable on the held card.
+ * Longest held-message preview carried on a legacy `system/dispatch-hold`
+ * event. It answered "which message is waiting?" in a couple of wrapped lines
+ * back when the event still had a row of its own. Kept because stored events
+ * are validated against this schema on decode.
  */
 export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
 
@@ -285,9 +285,11 @@ export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
  * A LEGACY timeline row, retained for decode only.
  *
  * Dispatch holds were replaced by parked queue rows and `system/queue-state`;
- * nothing emits this event any more. Rows written before the rework are still
- * in every existing database, so the arm stays so that a thread whose history
- * contains one still renders instead of failing to decode.
+ * nothing emits this event any more, and nothing renders it either — its
+ * timeline row and projection were deleted. The arm stays purely so a stored
+ * event still decodes: narrowing `threadEventSchema` would churn the daemon
+ * protocol and make existing rows undecodable. A decoded hold contributes no
+ * row, which is what a reader saw before the row shape ever existed.
  *
  * `holder` is a plain string here rather than the old parsed union: no code
  * dispatches on it now, and re-deriving a closed union just to validate dead

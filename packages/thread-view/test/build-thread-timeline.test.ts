@@ -7,6 +7,7 @@ import type {
   ProviderErrorInfo,
   ThreadEventBackgroundTaskItem,
   ThreadEventFileChange,
+  ThreadEventRow,
   ThreadEventItemStatus,
   UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
@@ -1687,108 +1688,33 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(queueRow).toMatchObject({ inputPreview: null });
   });
 
-  it("collapses a hold's events into one row and keeps a live hold pending", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        event.dispatchHold({
-          holdId: "hold_1",
-          status: "active",
-          reason: "Scheduled",
-        }),
-        event.dispatchHold({
-          holdId: "hold_1",
-          status: "active",
-          reason: "Waiting for a free slot",
-          entries: [
-            { type: "step", key: "queue", text: "Queued behind 3 threads" },
-          ],
-        }),
-      ]),
-      // Idle is exactly the state a held-before-start thread reports: the row
-      // must not be swept to "interrupted" just because nothing is running.
-      "idle",
-    );
+  /**
+   * `system/dispatch-hold` is still a decodable event type — dev databases hold
+   * stored ones and narrowing `threadEventSchema` would churn the daemon
+   * protocol — but nothing renders it any more. It has to reach the renderer's
+   * if-chain and fall out the far end, producing no row, rather than throwing
+   * or landing on a generic row that says nothing useful.
+   */
+  it("renders a stored legacy dispatch-hold event as nothing", () => {
+    const legacyHold: ThreadEventRow = {
+      id: "evt-legacy-hold-1",
+      threadId: "thread-1",
+      seq: 1,
+      createdAt: 1,
+      scope: threadScope(),
+      type: "system/dispatch-hold",
+      data: {
+        holdId: "hold_1",
+        holder: "user",
+        status: "active",
+        reason: "Scheduled",
+        entries: [],
+      },
+    };
 
-    const holdRows = collectSystemRows(rows).filter(
-      (row) => row.systemKind === "operation" && row.title === "Waiting to send",
-    );
-    expect(holdRows).toHaveLength(1);
-    expect(holdRows[0]?.status).toBe("pending");
-    // The reason is its own field; `detail` is the owner's report alone.
-    expect(holdRows[0]).toMatchObject({
-      reason: "Waiting for a free slot",
-      detail: "Queued behind 3 threads",
-    });
-  });
-
-  it("settles a hold row from its own release event", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        event.dispatchHold({ holdId: "hold_1", status: "active" }),
-        event.dispatchHold({ holdId: "hold_1", status: "cancelled" }),
-        // A late report cannot reopen a settled hold.
-        event.dispatchHold({ holdId: "hold_1", status: "active" }),
-      ]),
-      "idle",
-    );
-
-    const holdRows = collectSystemRows(rows).filter(
-      (row) =>
-        row.systemKind === "operation" && row.operationKind === "dispatch-hold",
-    );
-    expect(holdRows).toHaveLength(1);
-    expect(holdRows[0]?.title).toBe("Send cancelled");
-    expect(holdRows[0]?.status).toBe("interrupted");
-  });
-
-  it("keeps the held message on the row, and keeps it after the hold settles", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        event.dispatchHold({
-          holdId: "hold_1",
-          status: "active",
-          inputPreview: "Ship the release notes",
-        }),
-        // The release event carries the preview too, but a row that already had
-        // one must survive an event that omits it.
-        event.dispatchHold({ holdId: "hold_1", status: "released" }),
-      ]),
-      "idle",
-    );
-
-    const holdRows = collectSystemRows(rows).filter(
-      (row) =>
-        row.systemKind === "operation" && row.operationKind === "dispatch-hold",
-    );
-    expect(holdRows).toHaveLength(1);
-    expect(holdRows[0]).toMatchObject({
-      inputPreview: "Ship the release notes",
-      title: "Sent",
-    });
-  });
-
-  it("leaves the message null for a hold that has none of its own", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        // A retry hold references a turn already rendered above, and rows
-        // recorded before previews existed look exactly the same.
-        event.dispatchHold({ holdId: "hold_1", status: "active" }),
-      ]),
-      "idle",
-    );
-
-    const holdRows = collectSystemRows(rows).filter(
-      (row) =>
-        row.systemKind === "operation" && row.operationKind === "dispatch-hold",
-    );
-    expect(holdRows[0]).toMatchObject({
-      inputPreview: null,
-      reason: "Scheduled",
-    });
+    const events = fromRows([legacyHold]);
+    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
+    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
   });
 
   it("normalizes carriage-return provisioning output in operation detail", () => {

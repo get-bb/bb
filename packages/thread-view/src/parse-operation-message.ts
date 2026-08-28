@@ -18,10 +18,6 @@ import type { EventMeta } from "./event-decode.js";
 import { capitalize, messageId } from "./format-helpers.js";
 import { buildProviderUnhandledDetail } from "./provider-unhandled-detail.js";
 import {
-  dispatchHoldOperationStatus,
-  dispatchHoldTitleForStatus,
-} from "./dispatch-hold-helpers.js";
-import {
   queueStateOperationStatus,
   queueStateTitleForStatus,
 } from "./queue-state-helpers.js";
@@ -539,24 +535,6 @@ export function parseOperationMessage(
     });
   }
 
-  if (decoded.type === "system/dispatch-hold") {
-    const { holdId, holder, inputPreview, status, reason } = decoded;
-    const transcript = readProvisioningTranscript(decoded.entries);
-    return op(decoded, meta, "dispatch-hold", {
-      opType: "dispatch-hold",
-      title: dispatchHoldTitleForStatus(status),
-      status: dispatchHoldOperationStatus(status),
-      dispatchHold: {
-        holdId,
-        holder,
-        holdStatus: status,
-        reason,
-        ...(inputPreview ? { inputPreview } : {}),
-        ...(transcript ? { transcript } : {}),
-      },
-    });
-  }
-
   if (decoded.type === "system/queue-state") {
     const { queuedMessageId, inputPreview, sendAt, status, waitingOn } = decoded;
     const transcript = readProvisioningTranscript(decoded.entries);
@@ -658,8 +636,8 @@ export function interruptOperationMessage(
 ): void {
   // A parked row is pending on purpose: the thread is idle precisely because
   // nothing is dispatching. Only the row's own `dispatched`/`cancelled` event
-  // settles it, never the end-of-stream sweep. Same for a legacy hold.
-  if (message.opType === "dispatch-hold" || message.opType === "queue-state") {
+  // settles it, never the end-of-stream sweep.
+  if (message.opType === "queue-state") {
     return;
   }
   if (message.status !== "pending") return;

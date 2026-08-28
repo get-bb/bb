@@ -284,7 +284,7 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
   pluginId?: string;
   iconName?: string | null;
   level?: TimelinePluginNoteSystemRow["level"];
-  /** Dispatch-hold rows only. */
+  /** Queue-state rows only. */
   reason?: string;
   inputPreview?: string | null;
   sendAt?: number | null;
@@ -1237,16 +1237,6 @@ export function systemRow({
         nextParentThreadId: null,
         nextParentThreadTitle: null,
       },
-    };
-  }
-  if (resolvedOperationKind === "dispatch-hold") {
-    return {
-      ...base,
-      systemKind,
-      operationKind: resolvedOperationKind,
-      completedAt: resolvedCompletedAt,
-      reason: reason ?? "Scheduled",
-      inputPreview: inputPreview ?? null,
     };
   }
   if (resolvedOperationKind === "queue-state") {

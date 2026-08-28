@@ -687,8 +687,9 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * Undo migration 0110, the dispatch-queue rework.
  *
  * 0110 adds the queue's parking columns (schedule, typed wait, wait holder,
- * payload kind and its retry reference), the plugin-input and system-notice
- * sidecars, their two partial indexes, and the thread's pending start context.
+ * payload kind and its retry reference), the plugin-input, system-notice, and
+ * failure-reason sidecars, their two partial indexes, and the thread's pending
+ * start context.
  * A rewind that clears its journal row must remove all of them before the
  * replay's ADDs hit a table that already has them.
  *
@@ -713,10 +714,10 @@ function dropQueueReworkSchema(db: DbConnection): void {
     "send_at",
     "waiting_on",
     "wait_holder",
+    "failure_reason",
     "payload_kind",
     "retry_of_turn_request_id",
     "retry_attempt",
-    "failure_reason",
   ]) {
     if (!queuedColumns.some((column) => column.name === name)) continue;
     db.$client

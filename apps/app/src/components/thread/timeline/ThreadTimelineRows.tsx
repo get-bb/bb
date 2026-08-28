@@ -1207,34 +1207,6 @@ function TimelineQueueStateScheduledLine({ sendAt }: { sendAt: number }) {
   );
 }
 
-function TimelineDispatchHoldBody({
-  row,
-}: {
-  row: Extract<
-    ThreadTimelineViewRow,
-    { kind: "system"; systemKind: "operation"; operationKind: "dispatch-hold" }
-  >;
-}) {
-  if (row.inputPreview === null && !row.detail) {
-    return null;
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {row.inputPreview === null ? null : (
-        <blockquote className="whitespace-pre-wrap break-words border-l-2 border-surface-selected-border pl-3 text-sm leading-5 text-muted-foreground">
-          {row.inputPreview}
-        </blockquote>
-      )}
-      {row.detail ? (
-        <TimelineSystemDetailBlock
-          detail={row.detail}
-          streaming={row.status === "pending"}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
@@ -1341,12 +1313,6 @@ function TimelineExpandableBody({
         />
       );
     case "system":
-      if (
-        row.systemKind === "operation" &&
-        row.operationKind === "dispatch-hold"
-      ) {
-        return <TimelineDispatchHoldBody row={row} />;
-      }
       if (
         row.systemKind === "operation" &&
         row.operationKind === "queue-state"
@@ -1537,7 +1503,6 @@ export function systemOperationLeadingIcon(
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
       return "Terminal";
-    case "dispatch-hold":
     case "queue-state":
       return "Clock";
     case "plugin-note":

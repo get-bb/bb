@@ -63,11 +63,7 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
     case "conversation":
       return false;
     case "system":
-      if (
-        row.systemKind === "operation" &&
-        (row.operationKind === "dispatch-hold" ||
-          row.operationKind === "queue-state")
-      ) {
+      if (row.systemKind === "operation" && row.operationKind === "queue-state") {
         // A parked row's reason rides its title line, so the body holds only
         // the two things that need room: the parked message and the waiting
         // plugin's report. `detail` carries the report alone, which is why it
@@ -125,8 +121,7 @@ function shouldAutoExpandLiveFrontierRow(row: ThreadTimelineViewRow): boolean {
 }
 
 /**
- * A dispatch that is still waiting opens wherever it sits — a parked queue row
- * today, or a legacy hold in a thread that predates the rework. Unlike the
+ * A dispatch that is still waiting opens wherever it sits. Unlike the
  * frontier rules this does not depend on an active scope: a thread whose first
  * turn is parked is *not* running, so frontier logic would leave the one row
  * explaining the silence closed. It is not latched either, so the row closes
@@ -136,8 +131,7 @@ function isWaitingDispatchRow(row: ThreadTimelineViewRow): boolean {
   return (
     row.kind === "system" &&
     row.systemKind === "operation" &&
-    (row.operationKind === "dispatch-hold" ||
-      row.operationKind === "queue-state") &&
+    row.operationKind === "queue-state" &&
     row.status === "pending" &&
     isRowExpandable(row)
   );

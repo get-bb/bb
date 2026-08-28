@@ -69,7 +69,7 @@ export function provisioningTitleForStatus(
 
 /**
  * Transcript entries arrive as deltas, so merging is concatenation. Shared
- * with `system/dispatch-hold`, which reuses the same entry shape and the same
+ * with `system/queue-state`, which reuses the same entry shape and the same
  * delta contract.
  */
 export function mergeTranscriptEntries(
