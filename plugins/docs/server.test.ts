@@ -912,6 +912,11 @@ describe("Docs vault operations", () => {
     expect(help).toMatchObject({ exitCode: 0 });
     expect(help.stdout).toContain("pull|status|push");
 
+    const statusHelp = await harness.runCli(["status", "--help"]);
+    expect(statusHelp).toMatchObject({ exitCode: 0 });
+    expect(statusHelp.stdout).toContain("Exit 4: changes present");
+    expect(statusHelp.stdout).toContain("run bb docs push separately");
+
     const unsafePull = await harness.runCli(
       ["pull", "plan.md", "--into", "sync", "--dry-run", "--json"],
       { cwd: "/work" },

@@ -21,6 +21,19 @@ class CliUsageError extends Error {}
 
 const DOCS_CLI_USAGE =
   "Usage: bb docs <vaults|vault-add|vault-remove|list|read|pull|status|push|write|mkdir|move|remove>";
+const DOCS_STATUS_USAGE =
+  "bb docs status [workspace-dir] [--delete] [--diff] [--workspace-host <id>] [--json]";
+const DOCS_STATUS_HELP = [
+  `Usage: ${DOCS_STATUS_USAGE}`,
+  "",
+  "Exit 0: no changes.",
+  "Exit 1: the status operation failed.",
+  "Exit 2: the command usage is not valid.",
+  "Exit 3: local and remote changes conflict.",
+  "Exit 4: changes present.",
+  "",
+  "Exit 4 is a successful status result. Review the output, then run bb docs push separately.",
+].join("\n");
 
 const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
   vaults: new Set(["--json"]),
@@ -2688,8 +2701,7 @@ export default async function plugin(
       {
         name: "status",
         summary: "Show local edits, conflicts, and ignored deletions",
-        usage:
-          "bb docs status [workspace-dir] [--delete] [--diff] [--workspace-host <id>] [--json]",
+        usage: DOCS_STATUS_USAGE,
       },
       {
         name: "push",
@@ -2727,6 +2739,12 @@ export default async function plugin(
         argv[0] === "-h"
       ) {
         return { exitCode: 0, stdout: DOCS_CLI_USAGE };
+      }
+      if (
+        argv[0] === "status" &&
+        (argv[1] === "help" || argv[1] === "--help" || argv[1] === "-h")
+      ) {
+        return { exitCode: 0, stdout: DOCS_STATUS_HELP };
       }
       try {
         const args = parseCli(argv);

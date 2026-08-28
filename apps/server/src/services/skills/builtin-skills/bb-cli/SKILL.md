@@ -574,6 +574,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   file, add `--folder` for a subtree, or use `bb docs pull --all`. Edit the
   resulting ordinary files, inspect `bb docs status <dir> --diff`, then run
   `bb docs push <dir>`.
+- Status exits 0 when no changes exist and exits 4 when changes exist. Exit 4
+  is a successful result. Review its output, then run push separately. Do not
+  connect status and push with `&&`.
 - `.bb-docs-state.json` is versioned identity/concurrency state; do not edit it.
   Concurrent local and remote changes fail closed with exit 3. Pull and merge,
   then retry.
