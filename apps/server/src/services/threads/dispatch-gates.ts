@@ -1,4 +1,9 @@
-import { getAppSettings, getEnvironment, type DispatchHoldRow } from "@bb/db";
+import {
+  getAppSettings,
+  getEnvironment,
+  getThread,
+  type DispatchHoldRow,
+} from "@bb/db";
 import {
   permissionModeSchema,
   promptInputSchema,
@@ -43,6 +48,7 @@ import {
   type DispatchGateRegistration,
 } from "../plugins/dispatch-gate-registry.js";
 import { toDispatchHoldResponse } from "./dispatch-holds.js";
+import { threadProviderAmendmentRefusal } from "./thread-provider-amendment.js";
 
 type DispatchGateDeps = Pick<AppDeps, "db" | "hub" | "providerRegistry">;
 
@@ -432,15 +438,39 @@ function applyGateAmendment(deps: DispatchGateDeps, args: ApplyAmendmentArgs) {
   if (amend.providerId !== undefined) {
     if (request.stage !== "thread.create") {
       fail(
-        "amended providerId on an existing thread; a thread's provider is fixed when its row is inserted",
+        "amended providerId on an existing thread; a thread's provider is immutable once a provider session exists",
       );
     }
     if (request.release !== null) {
-      // The row already carries the provider it was inserted with, so an
-      // amendment here would silently disagree with the persisted thread.
-      fail(
-        "amended providerId while releasing a hold; the provider was locked when the thread row was inserted",
-      );
+      // A release re-evaluation decides about a thread whose ROW exists. That
+      // is not the same as a thread that has RUN: the invariant is that a
+      // provider is immutable once a provider session exists, and a held
+      // creation has none yet. So the amendment is admitted here exactly when
+      // the release will still be establishing the session, and refused when
+      // the thread has already started or is a fork cloning someone else's.
+      const thread = getThread(deps.db, request.release.hold.threadId);
+      if (thread === null || thread.deletedAt !== null) {
+        throw dispatchGateFailure(
+          pluginId,
+          request.stage,
+          "amended providerId on a thread that no longer exists",
+        );
+      }
+      const refusal = threadProviderAmendmentRefusal(deps, {
+        hold: request.release.hold,
+        thread,
+      });
+      if (refusal !== null) {
+        fail(`amended providerId while releasing a hold, but ${refusal}`);
+      }
+      if (amend.model === undefined) {
+        // The hold's frozen tuple names a model of the provider being left,
+        // and a resolved tuple cannot say "re-resolve this", so a provider
+        // without a model would dispatch a model the new provider lacks.
+        fail(
+          `amended providerId to "${amend.providerId}" while releasing a hold without a model; the held turn's model belongs to the provider it is leaving`,
+        );
+      }
     }
     const registration = deps.providerRegistry.get(amend.providerId);
     if (registration === null || !registration.info.available) {

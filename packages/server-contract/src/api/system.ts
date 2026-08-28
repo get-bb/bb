@@ -130,15 +130,6 @@ export const systemAiServicesSchema = z.object({
   inferenceFallback: z.string().min(1),
   transcription: z.string().min(1),
   services: z.array(systemAiServiceSchema),
-  /**
-   * Whether `inference` above names something this server can actually reach —
-   * a builtin provider it serves itself, or a connected plugin service that
-   * answers `inference`. The twin of `voiceTranscriptionEnabled`, and the only
-   * way a caller can tell "helper inference is not set up" from "the model was
-   * slow" without sending a request. Credentials are not checked: a builtin
-   * provider with a stale key reads as enabled and fails at call time.
-   */
-  inferenceEnabled: z.boolean(),
 });
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 

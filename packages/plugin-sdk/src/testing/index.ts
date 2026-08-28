@@ -9,10 +9,8 @@
  */
 export {
   createFakePluginHost,
-  FakeAiCompletionError,
   PluginContextStaleError,
   type CreateFakePluginHostOptions,
-  type ExperimentalFakeAiCompletionRequest,
   type FakeAgentToolRecord,
   type FakeCliRecord,
   type FakeHttpRouteRecord,

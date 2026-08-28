@@ -32,7 +32,6 @@ import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
-import { resolveInferenceAvailability } from "../services/ai/inference.js";
 import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
@@ -188,7 +187,6 @@ export function registerSystemRoutes(
           kinds: [...service.kinds],
           pluginId: service.pluginId,
         })),
-        inferenceEnabled: resolveInferenceAvailability(deps),
       },
       dataDir: deps.config.dataDir,
     };

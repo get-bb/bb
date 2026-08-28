@@ -1820,6 +1820,48 @@ export function setThreadExecutionOverride(
   return updated ?? null;
 }
 
+export interface SetThreadProviderInput {
+  threadId: string;
+  providerId: string;
+}
+
+/**
+ * Repoints a thread at a different provider.
+ *
+ * Legal only while the thread has never started — a thread's provider is
+ * immutable once a provider session exists, because the session IS the
+ * conversation and no other provider can continue it. The caller owns that
+ * check; this is the write.
+ *
+ * Both sticky execution overrides are CLEARED rather than carried over. They
+ * were validated against the previous provider's model catalog and its
+ * reasoning ladder (`resolveThreadExecutionOverrideUpdate`), so keeping them
+ * would leave the thread pinned to a model the new provider does not offer —
+ * a failure on the next turn rather than this one. The dispatch that follows
+ * the change carries its own explicit tuple.
+ *
+ * No realtime notification, matching {@link setThreadExecutionOverride}: the
+ * only caller is a hold release, whose very next step moves the thread to
+ * `starting` and notifies.
+ */
+export function setThreadProvider(
+  db: ThreadWriteConnection,
+  input: SetThreadProviderInput,
+) {
+  const updated = db
+    .update(threads)
+    .set({
+      providerId: input.providerId,
+      modelOverride: null,
+      reasoningLevelOverride: null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(threads.id, input.threadId))
+    .returning()
+    .get();
+  return updated ?? null;
+}
+
 export function markThreadAttentionRequested(
   db: ThreadWriteConnection,
   notifier: DbNotifier,

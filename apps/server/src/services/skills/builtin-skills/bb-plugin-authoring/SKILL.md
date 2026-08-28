@@ -1002,8 +1002,31 @@ park as many as you ask for. Its context omits the admission-only fields
 Amendments: `model`, `reasoningLevel`, `serviceTier`, `permissionMode`
 (clamped to the host ceiling) and `input` (a full replacement of the prompt
 blocks) at both stages; `providerId` and `environment` at `thread.create`
-only, because a thread's provider is fixed when its row is inserted. An
-invalid amendment fails the dispatch with your plugin named.
+only. An invalid amendment fails the dispatch with your plugin named.
+
+`providerId` is amendable for exactly as long as a thread has never started —
+the invariant is a thread's provider is immutable once a PROVIDER SESSION
+exists, not once its row is inserted. So it is amendable on a fresh
+`thread.create` pass AND on the re-evaluation pass that runs when a held
+creation is released, where the row exists but nothing has run yet. It is
+refused on a thread that has taken any turn, and on a fork, whose provisioning
+clones the source provider's session. `environment` is narrower: first pass
+only, because re-resolving an environment intent at release means re-running
+most of creation.
+
+The same rule reaches `release`, which takes
+`PluginDispatchReleaseAmendments` — the shared shape plus `providerId`:
+
+```ts
+// Decide slowly in the background, then apply the answer as you let go.
+await bb.experimental_dispatch.release(holdId, {
+  amend: { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
+});
+```
+
+A refused `providerId` rejects BEFORE the hold is released, so the hold is
+still live: catch it and release again unamended rather than stranding the
+user's message.
 
 Composition: gates run in plugin install order (reorderable per stage under
 Settings → Plugins), amendments accumulate left to right so each gate sees its
@@ -1412,56 +1435,6 @@ registered ids. The registration needs a `bb.host` entry; without one the
 plugin fails to load. A host artifact may export a provider bridge
 (`experimental_providerBridge`) and default-export the host entry at the same
 time.
-
-#### Asking bb for a structured answer
-
-`register` offers inference **to** bb. The other direction — your plugin asking
-bb's own configured helper model one structured question — is `complete`. It
-routes through whatever `BB_INFERENCE` names and resolves the validated JSON
-object, so you never parse a model's prose:
-
-```ts
-try {
-  const choice = await bb.experimental_aiServices.complete({
-    prompt: "Pick a model for this request...",
-    // A JSON Schema object with root type "object". No zod here: the schema
-    // goes to the model as a tool's parameters and is validated on the way
-    // back, so what you get has already been checked against it.
-    outputSchema: {
-      type: "object",
-      properties: {
-        providerId: { type: "string" },
-        model: { type: "string" },
-      },
-      required: ["providerId", "model"],
-      additionalProperties: false,
-    },
-    timeoutMs: 7_000, // the WHOLE budget; omit for bb's default. bb caps it.
-  });
-  bb.log.info(`chose ${String(choice.providerId)}`);
-} catch (error) {
-  // Matched by name, like NeedsConfigurationError — no runtime import.
-  if (error instanceof Error && error.name === "PluginAiCompletionError") {
-    // error.failure: "no-service-configured" | "timeout"
-    //              | "validation-failed" | "request-failed"
-  }
-}
-```
-
-Two things differ from bb's own helper calls, both deliberate. It makes
-**one attempt** — it does not retry onto `BB_INFERENCE_FALLBACK` — because the
-caller this exists for is a dispatch gate, which is itself boxed at 10s and
-fails its dispatch if it overruns; a hidden second attempt would turn your
-honest 7s budget into a 14s failure. And it **rejects** rather than returning
-null, so you can tell "the user has nothing configured" (worth a
-`bb.status.needsConfiguration`) from "slow this time" (worth a shrug).
-
-To check availability before you call, read
-`(await bb.sdk.system.config()).aiServices.inferenceEnabled`. It reports
-whether `BB_INFERENCE` names something this bb can reach; it does not check
-credentials, so a stale key still fails at call time. The working reference is
-`plugins/model-router`, whose gates route each prompt this way and proceed
-unamended on every failure.
 
 ### bb.providers.register — agent providers
 

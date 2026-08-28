@@ -31,9 +31,9 @@ import type {
   PluginCliContext,
   PluginCliResult,
   PluginDispatch,
-  PluginDispatchAmendments,
   PluginDispatchGateHandler,
   PluginDispatchGateStage,
+  PluginDispatchReleaseAmendments,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -402,20 +402,8 @@ export function createPluginApi(options: {
    */
   releaseDispatchHold?: (args: {
     holdId: string;
-    amend: PluginDispatchAmendments | undefined;
+    amend: PluginDispatchReleaseAmendments | undefined;
   }) => Promise<void>;
-  /**
-   * One structured helper completion for this plugin
-   * (`bb.experimental_aiServices.complete`). Rejects with a
-   * `PluginAiCompletionError` naming the cause. Undefined in isolated
-   * plugin-runtime harnesses that carry no inference deps, where the call
-   * rejects.
-   */
-  completeAiRequest?: (args: {
-    prompt: string;
-    outputSchema: Record<string, JsonValue>;
-    timeoutMs?: number;
-  }) => Promise<Record<string, JsonValue>>;
   /** Applies an owner progress report; false when the hold is already gone. */
   reportDispatchHold?: (args: {
     holdId: string;
@@ -1402,29 +1390,6 @@ export function createPluginApi(options: {
   });
   const experimental_aiServices: PluginAiServices = {
     register: aiServiceRegistrations.register,
-    complete: (request) => {
-      assertLive();
-      if (!options.completeAiRequest) {
-        return Promise.reject(
-          new Error("helper inference is unavailable in this host"),
-        );
-      }
-      // Rejected, never thrown: `complete` returns a promise, and a caller
-      // that awaits it should not also have to guard the call expression.
-      try {
-        return options.completeAiRequest({
-          prompt: request.prompt,
-          outputSchema: request.outputSchema,
-          ...(request.timeoutMs === undefined
-            ? {}
-            : { timeoutMs: request.timeoutMs }),
-        });
-      } catch (error) {
-        return Promise.reject(
-          error instanceof Error ? error : new Error(String(error)),
-        );
-      }
-    },
   };
 
   const api: BbPluginApi = {

@@ -1,6 +1,7 @@
 import {
   getStoredTurnRequestEventByRequestId,
   getThread,
+  setThreadProvider,
   type DispatchHoldRow,
 } from "@bb/db";
 import {
@@ -253,6 +254,20 @@ async function reevaluateHeldThreadStart(
           : null,
     },
   });
+  if (outcome.amendments.providerId !== null) {
+    // The provider is the one amended field with nowhere to live in the
+    // payload: it is a column on the thread row, and the dispatch below reads
+    // it from there (`requestThreadProvision` is handed the thread this
+    // release re-reads). The gate pass already refused the amendment unless
+    // this thread has never started, so writing it here cannot orphan a
+    // provider session. Applied even when the pass ended in a re-hold: the
+    // amendment happened, and the replacement hold's frozen model belongs to
+    // the amended provider.
+    setThreadProvider(deps.db, {
+      threadId: args.thread.id,
+      providerId: outcome.amendments.providerId,
+    });
+  }
   const amended: DispatchHoldInlinePayload = {
     ...args.payload,
     ...(outcome.amendments.input !== null

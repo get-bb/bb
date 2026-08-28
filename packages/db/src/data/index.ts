@@ -66,6 +66,7 @@ export {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
+  setThreadProvider,
   hasLiveThreadAtHostPath,
   hasPendingThreadShutdownInEnvironment,
   hasRevivableArchivedThreadInEnvironment,

@@ -28,9 +28,6 @@ type ExpectedBbPluginApiKey =
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
   "PluginAgents",
-  "PluginAiCompletionError",
-  "PluginAiCompletionFailure",
-  "PluginAiCompletionRequest",
   "PluginAiServiceDeclaration",
   "PluginAiServiceKind",
   "PluginAiServices",
@@ -65,6 +62,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginDispatchGateStage",
   "PluginDispatchGateStages",
   "PluginDispatchInput",
+  "PluginDispatchReleaseAmendments",
   "PluginEvents",
   "PluginHosts",
   "PluginHttp",

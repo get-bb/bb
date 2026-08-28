@@ -1318,14 +1318,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         deps.appendThreadNote({ pluginId: row.id, threadId, note });
       },
-      completeAiRequest: (args) => {
-        if (!deps.completeAiRequest) {
-          return Promise.reject(
-            new Error("helper inference is unavailable in this host"),
-          );
-        }
-        return deps.completeAiRequest({ pluginId: row.id, ...args });
-      },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");

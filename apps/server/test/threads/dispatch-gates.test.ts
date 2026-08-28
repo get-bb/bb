@@ -443,6 +443,92 @@ describe("dispatch gate failure model", () => {
     });
   });
 
+  it("lets a gate repoint a never-started thread as its hold releases", async () => {
+    // The release re-evaluation decides about a thread whose ROW exists but
+    // whose SESSION does not, and the provider is immutable only once the
+    // session is. So the amendment lands, on the row, and the thread starts
+    // where the second pass said rather than where the first one did.
+    await withTestHarness(async (harness) => {
+      const registry = emptyRegistry();
+      let pass = 0;
+      registry["thread.create"].push({
+        pluginId: "router",
+        handler: () => {
+          pass += 1;
+          if (pass === 1) {
+            return { action: "hold", reason: "Choosing a model…" } as const;
+          }
+          return {
+            action: "proceed",
+            amend: { providerId: "claude-code", model: "opus" },
+          } as const;
+        },
+      });
+      installGates(registry);
+      const { host, project } = seedGateFixture(harness, "host-gate-repoint");
+
+      const thread = await createGatedThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        providerId: "codex",
+      });
+      expect(getThread(harness.db, thread.id)?.providerId).toBe("codex");
+      const hold = liveHolds(harness, thread.id)[0];
+      if (hold === undefined) throw new Error("expected a live hold");
+
+      await releaseDispatchHoldAndDispatch(harness.deps, {
+        hold,
+        releaseKind: "owner",
+      });
+
+      expect(getThread(harness.db, thread.id)?.providerId).toBe("claude-code");
+      expect(liveHolds(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("refuses a release-time providerId amendment that names no model", async () => {
+    // The held tuple's model belongs to the provider being left, and a
+    // resolved tuple has no way to say "re-resolve this".
+    await withTestHarness(async (harness) => {
+      const registry = emptyRegistry();
+      let pass = 0;
+      registry["thread.create"].push({
+        pluginId: "router",
+        handler: () => {
+          pass += 1;
+          if (pass === 1) {
+            return { action: "hold", reason: "Choosing a model…" } as const;
+          }
+          return {
+            action: "proceed",
+            amend: { providerId: "claude-code" },
+          } as const;
+        },
+      });
+      installGates(registry);
+      const { host, project } = seedGateFixture(harness, "host-gate-repoint-nomodel");
+
+      const thread = await createGatedThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const hold = liveHolds(harness, thread.id)[0];
+      if (hold === undefined) throw new Error("expected a live hold");
+
+      const error = await expectApiError(() =>
+        releaseDispatchHoldAndDispatch(harness.deps, {
+          hold,
+          releaseKind: "owner",
+        }),
+      );
+
+      expect(error.status).toBe(502);
+      expect(error.body.message).toContain('"router"');
+      expect(error.body.message).toContain("without a model");
+      expect(getThread(harness.db, thread.id)?.providerId).toBe("codex");
+    });
+  });
+
   it("refuses a providerId amendment on an existing thread", async () => {
     await withTestHarness(async (harness) => {
       const registry = emptyRegistry();
@@ -470,7 +556,9 @@ describe("dispatch gate failure model", () => {
       );
 
       expect(error.status).toBe(502);
-      expect(error.body.message).toContain("provider is fixed");
+      expect(error.body.message).toContain(
+        "immutable once a provider session exists",
+      );
     });
   });
 });

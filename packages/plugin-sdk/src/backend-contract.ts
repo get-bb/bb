@@ -241,16 +241,38 @@ export interface PluginDispatchAmendments {
 /**
  * What a `thread.create` gate may additionally amend. `providerId` and
  * `environment` live here rather than on the shared shape because a thread's
- * provider is immutable once its row is inserted and its environment is
- * resolved at creation — amending either on an existing thread is not a
- * validation failure to be reported, it is a request that has no meaning.
- * Keeping them off `PluginDispatchAmendments` makes a `turn.submit` gate that
- * tries it fail to compile.
+ * provider is immutable once a provider session exists and its environment is
+ * resolved at creation — amending either on a thread that has already run is
+ * not a validation failure to be reported, it is a request that has no
+ * meaning. Keeping them off `PluginDispatchAmendments` makes a `turn.submit`
+ * gate that tries it fail to compile.
+ *
+ * `providerId` is accepted at a `thread.create` pass whose thread has never
+ * started — including the re-evaluation pass that runs when a held creation is
+ * released, where the row exists but no provider session does. `environment`
+ * is accepted only on the FIRST pass: re-resolving an environment intent at
+ * release would mean re-running most of creation.
  */
 export interface PluginDispatchCreateAmendments
   extends PluginDispatchAmendments {
   providerId?: string;
   environment?: CreateThreadEnvironmentArgs;
+}
+
+/**
+ * What an owner may amend as it releases its own hold.
+ *
+ * `providerId` is here and `environment` is not, and the asymmetry is the
+ * invariant: a thread's provider is immutable once a PROVIDER SESSION exists,
+ * not once its row is inserted, so a hold that parks a never-started thread's
+ * first turn may still be released onto a different provider. Core refuses the
+ * amendment — before it releases anything, so the hold survives and can be
+ * released again unamended — when the thread has already run or when it is a
+ * fork, whose provisioning clones the SOURCE provider's session.
+ */
+export interface PluginDispatchReleaseAmendments
+  extends PluginDispatchAmendments {
+  providerId?: string;
 }
 
 /**
@@ -506,12 +528,16 @@ export interface PluginDispatch {
    * gate, so a limiter that releases while still at capacity re-holds. A hold
    * owned by anyone else is refused.
    *
+   * An amendment core cannot honour — `providerId` on a thread that has
+   * already started, or on a fork — rejects BEFORE the hold is released, so
+   * the hold is still live and releasing again without it is always available.
+   *
    * Resolves after the released dispatch has been driven, which is when a
    * failure surfaces.
    */
   release(
     holdId: string,
-    options?: { amend?: PluginDispatchAmendments },
+    options?: { amend?: PluginDispatchReleaseAmendments },
   ): Promise<void>;
   /**
    * Report progress on a hold this plugin owns: a reason, a transcript step, a
@@ -1510,80 +1536,6 @@ export interface PluginAiServices {
    * as unavailable. Throws on an id another live plugin already serves.
    */
   register(declaration: PluginAiServiceDeclaration): { dispose(): void };
-  /**
-   * Ask bb's configured helper-inference model for one structured value —
-   * the consumer half of the same machinery behind thread titles and commit
-   * messages, routed through whatever `BB_INFERENCE` names (a builtin
-   * provider the server serves itself, or a service a plugin registered
-   * above).
-   *
-   * Deliberately one attempt, not bb's own retry-and-fall-back-to
-   * `BB_INFERENCE_FALLBACK` ladder: `timeoutMs` is the whole budget, so a
-   * caller that is itself time-boxed — a dispatch gate, the only reason this
-   * exists — can size its call against its own box instead of against a
-   * ladder it cannot see. Retry by calling again.
-   *
-   * Rejects rather than answering a failure result, because there is no
-   * useful value to return; see {@link PluginAiCompletionError}.
-   */
-  complete(
-    request: PluginAiCompletionRequest,
-  ): Promise<Record<string, JsonValue>>;
-}
-
-/** One structured helper completion, as {@link PluginAiServices.complete} takes it. */
-export interface PluginAiCompletionRequest {
-  /** The whole prompt; bb adds no system preamble of its own. */
-  prompt: string;
-  /**
-   * A JSON Schema object — root `type: "object"` — the answer must satisfy.
-   * It is handed to the model as a tool's parameters and the answer is
-   * validated against it before this resolves, so a value that reaches the
-   * caller has already been checked. Recursive `$ref` is refused: some
-   * providers reject an entire tool list over one.
-   */
-  outputSchema: Record<string, JsonValue>;
-  /**
-   * Whole-call budget in milliseconds. Omit to use bb's own helper-inference
-   * budget, which is what bb considers a reasonable wait for a short
-   * structured answer; bb caps whatever is passed.
-   */
-  timeoutMs?: number;
-}
-
-/**
- * Why a completion produced no value.
- *
- * `no-service-configured` means `BB_INFERENCE` names nothing this bb can
- * reach — no plugin registers it, or it is a builtin provider this build does
- * not have — and is the one cause a plugin can report to its user as
- * something to fix. `timeout` is the request's own budget expiring.
- * `validation-failed` is a model that answered without a value satisfying
- * `outputSchema`. `request-failed` is everything upstream: rate limits, a
- * signed-out host, an unavailable service.
- */
-export type PluginAiCompletionFailure =
-  | "no-service-configured"
-  | "timeout"
-  | "validation-failed"
-  | "request-failed";
-
-/**
- * What {@link PluginAiServices.complete} rejects with. Like
- * `NeedsConfigurationError`, the class stays host-side and is matched by
- * NAME, so plugin code needs no runtime import:
- *
- * ```ts
- * catch (error) {
- *   if (error instanceof Error && error.name === "PluginAiCompletionError") {
- *     // error.failure is a PluginAiCompletionFailure
- *   }
- * }
- * ```
- */
-export interface PluginAiCompletionError extends Error {
-  readonly name: "PluginAiCompletionError";
-  readonly failure: PluginAiCompletionFailure;
 }
 
 // ---------------------------------------------------------------------------
