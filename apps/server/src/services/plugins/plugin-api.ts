@@ -616,12 +616,13 @@ export function createPluginApi(options: {
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
-      statements.forEach((statement, index) => {
+      const statementHashes = statements.map(migrationStatementHash);
+      statementHashes.forEach((statementHash, index) => {
         const recordedHash = applied.get(index);
         if (
           recordedHash !== undefined &&
           recordedHash !== null &&
-          recordedHash !== migrationStatementHash(statement)
+          recordedHash !== statementHash
         ) {
           throw new Error(
             `migration ${index} does not match the recorded statement; append a new migration instead of changing or reusing an index`,
@@ -636,18 +637,16 @@ export function createPluginApi(options: {
       );
       database.transaction(() => {
         for (const row of rows) {
-          const statement = statements[row.id];
+          if (row.statement_hash !== null) continue;
           adopt.run(
-            statement === undefined
-              ? LEGACY_UNKNOWN_MIGRATION_HASH
-              : migrationStatementHash(statement),
+            statementHashes[row.id] ?? LEGACY_UNKNOWN_MIGRATION_HASH,
             row.id,
           );
         }
         statements.forEach((statement, index) => {
           if (applied.has(index)) return;
           database.exec(statement);
-          record.run(index, Date.now(), migrationStatementHash(statement));
+          record.run(index, Date.now(), statementHashes[index]);
         });
       })();
     },
