@@ -25,6 +25,47 @@ finalization + provisioning + session start exactly as today, the message
 riding the cold-start command. `waitingOn: provisioning` exists only for
 follow-ups/steers sent while a thread is mid-(re)provisioning.
 
+## Worked examples
+
+One entry point, `attemptDispatch(msg, thread)`, called identically inline
+and from the drain: (1) core waits checked first (sendAt future, thread-busy
+unless steer-mode, provisioning for follow-ups, pending interaction) — each
+parks the message with its typed waiting-on; (2) the single plugin gate pass —
+`wait(reason)` parks with `plugin(<id>)` attribution, `reject` fails,
+`proceed` may amend (provider/environment only on `firstDispatch`); (3) on a
+clear, a `pending` thread flips to `starting` (which absorbs provisioning +
+session start exactly as today, the message riding along) and a live thread
+dispatches per the message's delivery mode. The drain is nothing but
+re-calling the attempt when a wait could have cleared (sendAt due, thread
+idle, workspace ready, interaction settled, plugin `clearsWait`).
+
+- Scheduled send: parks at step 1 ("Scheduled · 9:00"); the 9am attempt runs
+  the full pass fresh.
+- Limiter: `wait("4 of 4 running")` at step 2; thread stays `pending` and
+  unprovisioned; a freed slot → `clearsWait` → full pass re-runs.
+- Sandbox provisioning: `wait("Provisioning sandbox…")`, background VM
+  create + host enroll, `clearsWait` with an environment amendment; other
+  gates still apply on the re-attempt.
+- Steer during provisioning: pure core wait (`provisioning` + steer mode);
+  the workspace-ready drain does everything.
+- Retry: `turn.failed` (unchanged) parks a by-reference row with
+  `time(resetAt)`; the re-attempt runs gates too, so retries respect the
+  limiter.
+
+Plugins learn one verdict (`wait`) and one release (`clearWait`); every
+feature is a different author of the same parked row. The happy path runs
+1→2→3 with nothing blocking and never creates a row.
+
+## Workstream split
+
+Backend (this thread): everything in this document — domain/db/server/
+plugins/SDK/CLI. UI (separate thread): `plans/dispatch-queue-rework-ui.md`,
+a self-contained brief. The boundary is the server contract; the backend
+lands the new response shapes in `packages/server-contract` as its FIRST
+commit so the UI thread can build against real types immediately. Contract
+changes are negotiated by editing the UI doc's contract section, not by
+either side unilaterally.
+
 ## Settled decisions
 
 | Decision | Choice |
