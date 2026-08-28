@@ -3,15 +3,26 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
   lt,
+  lte,
   min,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
-import type { PermissionMode, PluginInputs, PromptInput } from "@bb/domain";
+import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
+import type {
+  PermissionMode,
+  PluginInputs,
+  PromptInput,
+  QueuedMessageWaitHolder,
+  QueuedMessageWaitingOn,
+  QueuedMessageWaitingOnKind,
+} from "@bb/domain";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -1111,6 +1122,212 @@ export function deleteClaimedQueuedThreadMessageBatchInTransaction(
     }
   }
   return true;
+}
+
+/**
+ * A row is live while no drain worker holds it. Parking, re-parking and
+ * clearing a wait are all lost updates against a row that is already being
+ * dispatched, so every wait mutation is gated on liveness in the same
+ * statement that performs it.
+ */
+function liveQueuedThreadMessage() {
+  return and(
+    isNull(queuedThreadMessages.claimedAt),
+    isNull(queuedThreadMessages.claimToken),
+  );
+}
+
+/**
+ * The single place `wait_holder` is derived from `waiting_on`. Keeping it here
+ * — rather than letting callers pass a holder — is what makes the
+ * denormalization safe: the two columns are always written together, from the
+ * same value.
+ */
+function waitHolderFor(
+  waitingOn: QueuedMessageWaitingOn,
+): QueuedMessageWaitHolder | null {
+  return waitingOn.kind === "plugin"
+    ? `${QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX}${waitingOn.pluginId}`
+    : null;
+}
+
+export interface SetQueuedThreadMessageWaitingOnArgs {
+  id: string;
+  threadId: string;
+  waitingOn: QueuedMessageWaitingOn;
+  /**
+   * The row's scheduled instant. Passed on every call rather than left alone,
+   * because a re-park is a fresh statement of when this row may run: a
+   * `time` wait sets it, and every other wait kind clears it by passing null.
+   */
+  sendAt: number | null;
+}
+
+export interface ClearQueuedThreadMessageWaitingOnArgs {
+  id: string;
+  threadId: string;
+}
+
+export interface ListQueuedThreadMessagesWaitingOnKindArgs {
+  kind: QueuedMessageWaitingOnKind;
+  threadId: string;
+}
+
+/**
+ * Park a live row on a typed wait. Returns the updated row, or null when the
+ * row is gone, belongs to another thread, or has already been claimed.
+ */
+export function setQueuedThreadMessageWaitingOn(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: SetQueuedThreadMessageWaitingOnArgs,
+): QueuedThreadMessageRow | null {
+  const updated =
+    db
+      .update(queuedThreadMessages)
+      .set({
+        waitingOn: JSON.stringify(args.waitingOn),
+        waitHolder: waitHolderFor(args.waitingOn),
+        sendAt: args.sendAt,
+        updatedAt: Date.now(),
+      })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, args.id),
+          eq(queuedThreadMessages.threadId, args.threadId),
+          liveQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+
+  if (updated) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return updated;
+}
+
+/**
+ * Drop a live row's wait, leaving it an ordinary queued row eligible at the
+ * next drain. `sendAt` is cleared with it: a row with no wait is not waiting
+ * for a clock either.
+ */
+export function clearQueuedThreadMessageWaitingOn(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: ClearQueuedThreadMessageWaitingOnArgs,
+): QueuedThreadMessageRow | null {
+  const updated =
+    db
+      .update(queuedThreadMessages)
+      .set({
+        waitingOn: null,
+        waitHolder: null,
+        sendAt: null,
+        updatedAt: Date.now(),
+      })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, args.id),
+          eq(queuedThreadMessages.threadId, args.threadId),
+          liveQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+
+  if (updated) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return updated;
+}
+
+/**
+ * Rows whose scheduled instant has arrived and that a drain may act on now,
+ * oldest-due first. Threads that are archived or deleted are excluded here
+ * rather than by the caller, so a scheduled send into a thread the user threw
+ * away never wakes the sweep every cycle (the #1789 shape).
+ *
+ * The thread check is a correlated EXISTS rather than a join on purpose. A
+ * join lets SQLite drive from `threads` — scanning every live thread to find
+ * the few with a due row — which throws away the partial due index entirely.
+ * EXISTS forces the queue table to be the outer loop, so the sweep costs one
+ * index range scan plus a primary-key probe per hit.
+ */
+export function listDueScheduledQueuedThreadMessages(
+  db: DbQueryConnection,
+  now: number,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        isNotNull(queuedThreadMessages.sendAt),
+        lte(queuedThreadMessages.sendAt, now),
+        liveQueuedThreadMessage(),
+        exists(
+          db
+            .select({ live: sql`1` })
+            .from(threads)
+            .where(
+              and(
+                eq(threads.id, queuedThreadMessages.threadId),
+                isNull(threads.archivedAt),
+                isNull(threads.deletedAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.sendAt), asc(queuedThreadMessages.id))
+    .all();
+}
+
+/**
+ * Every live row a given wait owner holds. This is the query `wait_holder`
+ * exists for: the orphan sweep asks it per uninstalled plugin, and a plugin
+ * clearing its wait asks it for its own id.
+ */
+export function listQueuedThreadMessagesByWaitHolder(
+  db: DbQueryConnection,
+  waitHolder: QueuedMessageWaitHolder,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.waitHolder, waitHolder),
+        liveQueuedThreadMessage(),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.id))
+    .all();
+}
+
+/**
+ * A thread's live rows parked on one kind of wait, in queue order. Read
+ * straight out of the stored JSON so the kind has exactly one home; the
+ * thread predicate is what makes this selective, so no index on the extracted
+ * kind is warranted.
+ */
+export function listQueuedThreadMessagesWaitingOnKind(
+  db: DbQueryConnection,
+  args: ListQueuedThreadMessagesWaitingOnKindArgs,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = ${args.kind}`,
+        liveQueuedThreadMessage(),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+    .all();
 }
 
 export function deleteQueuedThreadMessage(

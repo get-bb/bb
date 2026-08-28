@@ -2,6 +2,10 @@ import { z } from "zod";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
+  queuedMessagePayloadSchema,
+  queuedMessageWaitingOnSchema,
+} from "./queued-message.js";
+import {
   promptInputSchema,
   permissionModeSchema,
   reasoningLevelSchema,
@@ -331,6 +335,28 @@ export const threadQueuedMessageSchema = z.object({
   permissionMode: permissionModeSchema,
   serviceTier: serviceTierSchema,
   groupWithNext: z.boolean(),
+  /**
+   * Epoch ms this row is scheduled to attempt dispatch, or null when it is
+   * eligible as soon as its other waits clear.
+   */
+  sendAt: z.number().int().nonnegative().nullable(),
+  /**
+   * Why this row is parked, or null for a plain queued row that is simply
+   * next in line behind the running turn. Null rather than a
+   * `{ kind: "thread-busy" }` default because rows written before waits were
+   * typed carry no reason at all, and inventing one for them would be a lie.
+   */
+  waitingOn: queuedMessageWaitingOnSchema.nullable(),
+  payload: queuedMessagePayloadSchema,
+  /**
+   * Whether the sender may still rewrite this row's input. Not derivable from
+   * `payload` alone: a `retry` row is never editable, and an `inline` row
+   * stops being editable once the drain has claimed it — and the claim is
+   * deliberately not part of this response, since it is drain bookkeeping and
+   * not something a client should reason about. The server folds both into
+   * this one answer.
+   */
+  editable: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

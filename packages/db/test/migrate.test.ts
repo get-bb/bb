@@ -312,6 +312,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
@@ -688,6 +689,36 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * column. A rewind that clears its journal row must drop the column so the
  * replay's ADD does not hit a table that already has it.
  */
+// Migration 0111 adds the queue's parking columns (schedule, typed wait, wait
+// holder, payload kind and its retry reference) plus their two partial
+// indexes. Rewind scenarios that clear its journal row must remove all of them
+// before replaying the ADDs.
+function dropQueuedMessageWaitColumns(db: DbConnection): void {
+  // Indexes first: SQLite refuses to drop a column an existing index names.
+  for (const index of [
+    "queued_thread_messages_due_idx",
+    "queued_thread_messages_wait_holder_idx",
+  ]) {
+    db.$client.prepare(`DROP INDEX IF EXISTS ${index}`).run();
+  }
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of [
+    "send_at",
+    "waiting_on",
+    "wait_holder",
+    "payload_kind",
+    "retry_of_turn_request_id",
+    "retry_attempt",
+  ]) {
+    if (!columns.some((column) => column.name === name)) continue;
+    db.$client
+      .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
+      .run();
+  }
+}
+
 function dropQueuedMessagePluginInputsColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -770,6 +801,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
+  dropQueuedMessageWaitColumns(db);
   dropQueuedMessagePluginInputsColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
@@ -1978,7 +2010,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessagePluginInputsColumn(db);
+      dropQueuedMessageWaitColumns(db);
+  dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2383,7 +2416,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessagePluginInputsColumn(db);
+      dropQueuedMessageWaitColumns(db);
+  dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2485,7 +2519,8 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-      dropQueuedMessagePluginInputsColumn(db);
+      dropQueuedMessageWaitColumns(db);
+  dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -5054,7 +5089,8 @@ describe("migrate", () => {
 
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
-      dropQueuedMessagePluginInputsColumn(db);
+      dropQueuedMessageWaitColumns(db);
+  dropQueuedMessagePluginInputsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

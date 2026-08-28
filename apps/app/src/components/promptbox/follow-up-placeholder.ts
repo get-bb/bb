@@ -22,6 +22,10 @@ export function getFollowUpPromptPlaceholder(
     // above it already says what is waiting. The old "Held until release..."
     // both named the mechanism and implied the box was unusable.
     case "held":
+    // A pending thread's composer is usable for the same reason a held one's
+    // is: the first message is parked, not rejected, and another message
+    // simply parks behind it.
+    case "pending":
     case "idle":
     case "active":
       return "Ask for a follow-up. @ to mention files, folders, sections, or threads";
@@ -47,6 +51,7 @@ export function getCompactFollowUpPromptPlaceholder(
     case "error":
       return "Send a follow-up";
     case "held":
+    case "pending":
     case "idle":
     case "active":
       return "Ask a follow-up";

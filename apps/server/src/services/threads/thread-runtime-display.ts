@@ -121,6 +121,7 @@ const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
+    case "pending":
     case "starting":
     case "idle":
     case "active":

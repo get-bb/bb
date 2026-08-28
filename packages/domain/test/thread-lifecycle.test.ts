@@ -1,3 +1,25 @@
+/**
+ * THREAD LIFECYCLE — the designed two-axis model.
+ *
+ * This is no longer the behavior-neutral inventory of the original migration:
+ * stop intent is now the `stopping` *status*, not a `stopRequestedAt`
+ * side-field. The two axes are:
+ *
+ * - Execution status (one column): pending → starting → active → stopping →
+ *   idle | error. Both the "working" intent (`active`) and the "stopping"
+ *   intent (`stopping`) are real states here. `pending` sits before all of
+ *   them: a thread that exists but has never cleared a dispatch attempt.
+ * - Record fields (orthogonal): deletedAt, archivedAt — surfaced as the only
+ *   supersession predicates (`notDeleted`, `notArchived`).
+ *
+ * `stop.requested` replaces the old `markThreadStopRequested` field write. A
+ * `stopping` row has NO run.started cell: dispatching new work into it is
+ * structurally impossible, which is the table form of the old
+ * `notStopRequested` guard. A settled stop lands on `idle` (`stop.settled` or
+ * `run.succeeded`) or `error` (`run.failed`). THREAD_LIFECYCLE and
+ * THREAD_LIFECYCLE_EVENT_PREDICATES in src/thread-lifecycle.ts are the source
+ * of truth; these assertions pin them.
+ */
 import { describe, expect, it } from "vitest";
 import {
   evaluateThreadLifecycleEvent,
@@ -54,6 +76,9 @@ describe("THREAD_LIFECYCLE table", () => {
 
   it("matches the designed two-axis transitions exactly", () => {
     expect(THREAD_LIFECYCLE).toEqual({
+      pending: {
+        "run.preparing": "starting",
+      },
       idle: {
         "run.preparing": "starting",
         "run.started": "active",
@@ -220,6 +245,66 @@ describe("evaluateThreadLifecycleEvent", () => {
         thread: rowState("starting", {
           archivedAt: 1_000,
         }),
+      }),
+    ).toEqual({ noop: "superseded", detail: "archivedAt set" });
+  });
+});
+
+/**
+ * `pending` — a thread created but never dispatched. The queue rework makes
+ * this a real status rather than a display-only decoration, so the table's
+ * one entry and, more importantly, its three DELIBERATE omissions are pinned
+ * here: each absent cell is a guarantee some other layer relies on.
+ */
+describe("pending threads", () => {
+  it("leaves pending only when a first dispatch attempt clears", () => {
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.preparing" },
+        thread: rowState("pending"),
+      }),
+    ).toEqual({ to: "starting" });
+  });
+
+  it("cannot be activated directly: a pending thread has no session", () => {
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.started" },
+        thread: rowState("pending"),
+      }),
+    ).toEqual({
+      noop: "illegal-transition",
+      detail: "no transition for run.started from status pending",
+    });
+  });
+
+  it("stays pending when an attempt fails, rather than erroring the thread", () => {
+    // A gate that rejects the first attempt fails the SEND. The thread is
+    // still unprovisioned and unstarted, so it must remain exactly where it
+    // was — the sender can amend and try again.
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.failed" },
+        thread: rowState("pending"),
+      }),
+    ).toEqual({
+      noop: "illegal-transition",
+      detail: "no transition for run.failed from status pending",
+    });
+  });
+
+  it("is not startable once archived or deleted", () => {
+    // A scheduled send whose thread the user threw away must not provision it.
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.preparing" },
+        thread: rowState("pending", { deletedAt: 1_000 }),
+      }),
+    ).toEqual({ noop: "superseded", detail: "deletedAt set" });
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.preparing" },
+        thread: rowState("pending", { archivedAt: 1_000 }),
       }),
     ).toEqual({ noop: "superseded", detail: "archivedAt set" });
   });

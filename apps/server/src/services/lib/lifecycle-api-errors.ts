@@ -99,6 +99,12 @@ export function threadNotWritableReasonForStatus(
   status: ThreadStatus,
 ): ThreadNotWritableReason {
   switch (status) {
+    // A pending thread has never dispatched, so "not started" is literally
+    // what it is. It reuses `starting`'s reason rather than earning its own:
+    // the caller's remedy is identical (wait for the first dispatch to clear),
+    // and a distinct reason would only be worth its fan-out once a surface
+    // renders pending differently.
+    case "pending":
     case "starting":
       return "not_started";
     case "idle":

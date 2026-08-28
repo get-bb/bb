@@ -16,6 +16,10 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 0,
     updatedAt: 0,
   };

@@ -371,15 +371,20 @@ export {
   claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
+  clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   hasQueuedThreadMessages,
+  listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessages,
+  listQueuedThreadMessagesByWaitHolder,
+  listQueuedThreadMessagesWaitingOnKind,
   releaseQueuedMessageClaim,
+  setQueuedThreadMessageWaitingOn,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
@@ -416,9 +421,13 @@ export type {
   UpdateDispatchHoldReportInput,
 } from "./dispatch-holds.js";
 export type {
+  ClearQueuedThreadMessageWaitingOnArgs,
+  ListQueuedThreadMessagesWaitingOnKindArgs,
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
+  SetQueuedThreadMessageGroupBoundaryArgs,
   SetQueuedThreadMessageGroupBoundaryResult,
+  SetQueuedThreadMessageWaitingOnArgs,
 } from "./queued-thread-messages.js";
 
 export {

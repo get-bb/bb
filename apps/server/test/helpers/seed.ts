@@ -33,6 +33,7 @@ import type {
   ThreadEventItemType,
   ThreadEventType,
   ThreadOriginKind,
+  ThreadStatus,
   ThreadVisibility,
   WorkspaceProvisionType,
 } from "@bb/domain";
@@ -182,7 +183,7 @@ export function seedThread(
     projectId: string;
     environmentId?: string | null;
     providerId?: string;
-    status?: "idle" | "starting" | "active" | "stopping" | "error";
+    status?: ThreadStatus;
     title?: string | null;
     parentThreadId?: string | null;
     sourceThreadId?: string | null;

@@ -121,7 +121,7 @@ Listing:
   bb thread history <id>                   List prompt history
 
   bb thread count                          Count threads without listing them
-    --status <status>                      Count threads in this status: idle, starting, active, stopping, error
+    --status <status>                      Count threads in this status: pending, idle, starting, active, stopping, error
     --host <id>                            Count threads whose environment is on this machine
     --provider <id>                        Count threads running on this provider
     --project <id>                         Count threads in this project

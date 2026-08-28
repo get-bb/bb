@@ -301,6 +301,10 @@ function makeQueuedMessage(): ThreadQueuedMessage {
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: 1,
     updatedAt: 1,
   };

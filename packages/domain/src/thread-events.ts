@@ -14,6 +14,7 @@ import {
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 import { dispatchHoldHolderSchema } from "./dispatch-hold.js";
+import { queuedMessageWaitingOnSchema } from "./queued-message.js";
 
 export const systemEventTypeValues = [
   "client/thread/start",
@@ -29,6 +30,7 @@ export const systemEventTypeValues = [
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
   "system/dispatch-hold",
+  "system/queue-state",
   "system/plugin-note",
   // Legacy persisted watchdog diagnostic; retained for read/decode/render
   // only, with no current producer.
@@ -328,6 +330,72 @@ export const systemDispatchHoldEventDataSchema = z.object({
 });
 export type SystemDispatchHoldEventData = z.infer<
   typeof systemDispatchHoldEventDataSchema
+>;
+
+const systemQueueStateStatusValues = [
+  "parked",
+  "updated",
+  "dispatched",
+  "cancelled",
+] as const;
+const systemQueueStateStatusSchema = z.enum(systemQueueStateStatusValues);
+export type SystemQueueStateStatus = z.infer<
+  typeof systemQueueStateStatusSchema
+>;
+
+/**
+ * Longest queued-message preview carried on a `system/queue-state` row. The
+ * row says why a dispatch is waiting; the preview is only there to answer
+ * "which message?", so it is sized for a couple of wrapped lines. The full
+ * message is always one send-now away, and until then an `inline` row is
+ * editable on the queued card.
+ */
+export const QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH = 240;
+
+/**
+ * The one timeline row a parked queued message owns, rewritten in place as the
+ * row progresses (`parked` → `updated`… → `dispatched` | `cancelled`). It sits
+ * where the parked turn will land and renders exactly like
+ * `system/thread-provisioning` — hence the shared transcript entry shape,
+ * which is what a waiting plugin's progress reports append to.
+ *
+ * There is no separate `reason` field: an authored reason exists only for a
+ * `plugin` wait and lives in `waitingOn.reason`, and every core wait's display
+ * string is derived by the renderer from `waitingOn.kind` plus `sendAt`. One
+ * home for the reason, so a rewritten row can never contradict itself.
+ */
+export const systemQueueStateEventDataSchema = z.object({
+  queuedMessageId: z.string().min(1),
+  status: systemQueueStateStatusSchema,
+  /**
+   * The wait as of this write. Retained verbatim on `dispatched`/`cancelled`
+   * so a settled row still says what it had been waiting for.
+   */
+  waitingOn: queuedMessageWaitingOnSchema,
+  /**
+   * Snapshot of the row's scheduled instant, so the row renders "Scheduled ·
+   * 9:00" without a second read. Null when the row is eligible as soon as its
+   * other waits clear.
+   */
+  sendAt: z.number().int().nonnegative().nullable(),
+  /**
+   * Truncated plain text of the parked message, when the row carries one of
+   * its own. Optional because omission is real: a `retry` row references a
+   * turn that is already persisted and already rendered further up the
+   * timeline, so it has no message to preview, and an `inline` row whose
+   * visible input is empty (attachments only) has nothing to say either.
+   * Absent and empty must not be confused, hence `min(1)` — a reader that sees
+   * the field can trust it.
+   */
+  inputPreview: z
+    .string()
+    .min(1)
+    .max(QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH)
+    .optional(),
+  entries: z.array(provisioningTranscriptEntrySchema),
+});
+export type SystemQueueStateEventData = z.infer<
+  typeof systemQueueStateEventDataSchema
 >;
 
 /**

@@ -24,6 +24,8 @@ import type {
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
+  QueuedMessagePayloadKind,
+  QueuedMessageWaitHolder,
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
@@ -828,6 +830,33 @@ export const queuedThreadMessages = sqliteTable(
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Epoch ms this row is scheduled to attempt dispatch. NULL means "as soon
+    // as the other waits clear", which is what an ordinary queued row is.
+    sendAt: integer("send_at"),
+    // JSON `QueuedMessageWaitingOn`: the typed reason this row is parked.
+    // NULL for a plain queued row that is simply next in line behind the
+    // running turn — including every row written before waits were typed, for
+    // which inventing a reason would be a lie.
+    //
+    // A plugin wait's authored reason lives HERE and nowhere else. There is
+    // deliberately no `wait_reason` column: nothing queries on the reason, and
+    // every read that renders it already has the whole row in hand.
+    waitingOn: text("waiting_on"),
+    // Denormalized `plugin:<id>` owner of a plugin wait, NULL otherwise.
+    // Unlike the reason, this IS queried — the orphan sweep and the
+    // per-plugin release both need "every row this plugin holds" as an
+    // indexed equality lookup, which JSON cannot serve. Written only by the
+    // same statement that writes `waiting_on`, derived from it, so the two
+    // cannot drift.
+    waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
+    payloadKind: text("payload_kind")
+      .$type<QueuedMessagePayloadKind>()
+      .notNull()
+      .default("inline"),
+    // Set together, and only on a `retry` row: the ORIGINAL request this row
+    // re-submits, and which attempt it is (2 is the first retry).
+    retryOfTurnRequestId: text("retry_of_turn_request_id"),
+    retryAttempt: integer("retry_attempt"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),
@@ -845,6 +874,18 @@ export const queuedThreadMessages = sqliteTable(
       table.sortKey,
       table.id,
     ),
+    // The due-scheduled sweep: "every unclaimed row whose send_at has
+    // arrived", ordered by when it came due. Partial on the two liveness
+    // predicates so the index holds only rows the sweep can actually act on.
+    index("queued_thread_messages_due_idx")
+      .on(table.sendAt, table.id)
+      .where(
+        sql`${table.sendAt} IS NOT NULL AND ${table.claimedAt} IS NULL AND ${table.claimToken} IS NULL`,
+      ),
+    // Plugin-holder lookup for the orphan sweep and per-plugin release.
+    index("queued_thread_messages_wait_holder_idx")
+      .on(table.waitHolder, table.id)
+      .where(sql`${table.waitHolder} IS NOT NULL`),
   ],
 );
 

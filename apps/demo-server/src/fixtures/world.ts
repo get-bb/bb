@@ -188,6 +188,10 @@ export function queuedMessage(args: {
     permissionMode: THREAD_DEFAULT_EXECUTION_OPTIONS.permissionMode,
     serviceTier: THREAD_DEFAULT_EXECUTION_OPTIONS.serviceTier,
     groupWithNext: false,
+    sendAt: null,
+    waitingOn: null,
+    payload: { kind: "inline" },
+    editable: true,
     createdAt: args.now,
     updatedAt: args.now,
   };

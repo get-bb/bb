@@ -8,6 +8,7 @@ import {
   systemOperationEventDataSchema,
   systemPluginNoteEventDataSchema,
   systemProviderTurnWatchdogEventDataSchema,
+  systemQueueStateEventDataSchema,
   systemThreadProvisioningEventDataSchema,
   systemUserQuestionLifecycleEventDataSchema,
   systemEventTypeValues,
@@ -797,6 +798,12 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
       threadId: z.string(),
     })
     .merge(systemDispatchHoldEventDataSchema),
+  z
+    .object({
+      type: z.literal("system/queue-state"),
+      threadId: z.string(),
+    })
+    .merge(systemQueueStateEventDataSchema),
   z
     .object({
       type: z.literal("system/plugin-note"),

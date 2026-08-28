@@ -59,6 +59,7 @@ export function getEventProviderThreadId(
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
     case "system/dispatch-hold":
+    case "system/queue-state":
     case "system/plugin-note":
     case "system/provider-turn-watchdog":
       return undefined;
@@ -120,6 +121,7 @@ export function getEventParentToolCallId(
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
     case "system/dispatch-hold":
+    case "system/queue-state":
     case "system/plugin-note":
     case "system/provider-turn-watchdog":
       return undefined;

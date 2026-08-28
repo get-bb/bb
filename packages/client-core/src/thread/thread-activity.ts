@@ -266,6 +266,9 @@ export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
     case "active":
     case "starting":
     case "stopping":
+    // A pending thread has never run, so it has no outcome to be unread
+    // about; it is waiting, not done.
+    case "pending":
       return false;
     default:
       return assertNever(thread.status);

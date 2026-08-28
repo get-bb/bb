@@ -1,0 +1,137 @@
+import { z } from "zod";
+import { pluginIdSchema } from "./plugin-id.js";
+import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+
+/**
+ * The queue is the one parking lot for a dispatch that cannot run yet.
+ *
+ * A send is always a dispatch attempt: when nothing blocks it, it dispatches
+ * directly and no queued row ever exists. When something blocks it, the
+ * message parks as a queued row carrying the typed reason it is waiting, and
+ * the drain re-attempts the dispatch when that reason could have cleared.
+ *
+ * These types describe what a parked row carries. The row's message itself
+ * (content, execution tuple, plugin inputs) already lives in columns, so
+ * nothing here re-encodes it.
+ */
+
+/**
+ * Why a parked row is not dispatching yet.
+ *
+ * - `time` — the row has a future `sendAt`. The instant lives in the row's
+ *   own `sendAt` field, which is what the due sweep indexes, so this arm
+ *   carries no payload of its own.
+ * - `thread-busy` — the thread is running a turn and the message asked to
+ *   wait for idle rather than steer.
+ * - `provisioning` — the thread's workspace is being (re)provisioned. Only
+ *   follow-ups and steers wait on this: a thread's first message rides the
+ *   cold-start command instead.
+ * - `interaction` — the thread has a pending interaction the user has not
+ *   settled.
+ * - `plugin` — a plugin's dispatch gate returned `wait(reason)`. This is the
+ *   only arm with an authored reason, because it is the only arm whose reason
+ *   is not derivable from the kind (plus `sendAt`) by the renderer.
+ */
+export const queuedMessageWaitingOnKindValues = [
+  "time",
+  "thread-busy",
+  "provisioning",
+  "interaction",
+  "plugin",
+] as const;
+export const queuedMessageWaitingOnKindSchema = z.enum(
+  queuedMessageWaitingOnKindValues,
+);
+export type QueuedMessageWaitingOnKind = z.infer<
+  typeof queuedMessageWaitingOnKindSchema
+>;
+
+/**
+ * A plugin's wait reason renders on the queued card and in `bb thread queue`,
+ * so it stays short enough for a couple of wrapped lines.
+ */
+export const QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH = 200;
+export const queuedMessageWaitReasonSchema = z
+  .string()
+  .min(1)
+  .max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH);
+
+export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("time") }),
+  z.object({ kind: z.literal("thread-busy") }),
+  z.object({ kind: z.literal("provisioning") }),
+  z.object({ kind: z.literal("interaction") }),
+  z.object({
+    kind: z.literal("plugin"),
+    pluginId: pluginIdSchema,
+    reason: queuedMessageWaitReasonSchema,
+  }),
+]);
+export type QueuedMessageWaitingOn = z.infer<
+  typeof queuedMessageWaitingOnSchema
+>;
+
+export type QueuedMessagePluginWaitingOn = Extract<
+  QueuedMessageWaitingOn,
+  { kind: "plugin" }
+>;
+
+export const QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX = "plugin:";
+
+/**
+ * Who owns a wait, as the denormalized `waitHolder` column stores it.
+ *
+ * This exists only because the orphan sweep and the per-plugin release both
+ * need an indexed equality lookup ("every row this plugin is holding"), which
+ * a JSON `waitingOn` cannot serve. It is written by the same single writer
+ * that writes `waitingOn`, derived from it — never set independently — so the
+ * two cannot drift. Core waits have no holder.
+ */
+export const queuedMessageWaitHolderSchema = z.templateLiteral([
+  QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX,
+  pluginIdSchema,
+]);
+export type QueuedMessageWaitHolder = z.infer<
+  typeof queuedMessageWaitHolderSchema
+>;
+
+/**
+ * What a queued row dispatches when its waits clear.
+ *
+ * `inline` carries its own message in the row's columns — the prompt blocks
+ * the sender wrote, the execution tuple frozen at park time, and the plugin
+ * inputs from the request. It is a draft that has not run, so it is editable
+ * while it waits.
+ *
+ * `retry` only references a failed turn's original request. Nothing about it
+ * is editable: the point of a retry is to re-submit the original faithfully,
+ * with no duplicated user message.
+ */
+export const queuedMessagePayloadKindValues = ["inline", "retry"] as const;
+export const queuedMessagePayloadKindSchema = z.enum(
+  queuedMessagePayloadKindValues,
+);
+export type QueuedMessagePayloadKind = z.infer<
+  typeof queuedMessagePayloadKindSchema
+>;
+
+export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("inline") }),
+  z.object({
+    kind: z.literal("retry"),
+    /**
+     * The ORIGINAL request, not the attempt that just failed. Retrying a retry
+     * re-submits the same original blocks, so this id is carried forward
+     * unchanged across attempts and `attempt` is what distinguishes them.
+     */
+    retryOfTurnRequestId: clientTurnRequestIdSchema,
+    /** Which attempt this row will dispatch: 2 is the first retry. */
+    attempt: z.number().int().min(2),
+  }),
+]);
+export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
+
+export type QueuedMessageRetryPayload = Extract<
+  QueuedMessagePayload,
+  { kind: "retry" }
+>;

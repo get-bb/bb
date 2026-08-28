@@ -115,6 +115,9 @@ function shouldRenderClientRequestedInput(
     case "idle":
     case "active":
     case "stopping":
+    // A pending thread's first message is parked and has not been accepted,
+    // so the requested input is the only record of it there is to show.
+    case "pending":
       return true;
     default:
       return assertNever(threadStatus);
@@ -128,6 +131,9 @@ export function shouldPreservePendingMessages(
   switch (threadStatus) {
     case "starting":
     case "active":
+    // The parked first message is exactly what must survive: nothing has been
+    // accepted yet, so dropping it would leave the timeline empty.
+    case "pending":
       return true;
     case "error":
     case "idle":
