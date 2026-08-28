@@ -12,7 +12,12 @@ interface CollectTimelineAutoExpansionRowIdsArgs {
 }
 
 export interface TimelineAutoExpansionRowIds {
-  liveFrontierRowIds: ReadonlySet<string>;
+  /**
+   * Rows the timeline opens for as long as the condition holds and closes
+   * again when it stops: the active scope's live frontier, plus every waiting
+   * dispatch hold.
+   */
+  liveExpandedRowIds: ReadonlySet<string>;
   terminalFrontierRowIds: ReadonlySet<string>;
 }
 
@@ -62,12 +67,12 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
         row.systemKind === "operation" &&
         row.operationKind === "dispatch-hold"
       ) {
-        // A hold keeps its reason and the held message in dedicated fields
-        // rather than in `detail`, which carries the owner's report alone. The
-        // ordinary hold has never reported anything, so testing `detail` would
-        // make the row that most needs explaining the one that cannot open.
+        // A hold's reason rides its title line, so the body holds only the two
+        // things that need room: the held message and the holder's report.
+        // `detail` carries the report alone, which is why it cannot be the
+        // whole test — a scheduled send has never reported anything and still
+        // has a message worth showing.
         return (
-          row.reason.trim().length > 0 ||
           row.inputPreview !== null ||
           (row.detail !== null && row.detail.trim().length > 0)
         );
@@ -118,6 +123,37 @@ function shouldAutoExpandLiveFrontierRow(row: ThreadTimelineViewRow): boolean {
   }
 }
 
+/**
+ * A hold that is still waiting opens wherever it sits. Unlike the frontier
+ * rules this does not depend on an active scope: a thread whose first turn is
+ * held is *not* running, so frontier logic would leave the one row explaining
+ * the silence closed. It is not latched either, so the row closes again on its
+ * own once the send goes through.
+ */
+function isWaitingDispatchHoldRow(row: ThreadTimelineViewRow): boolean {
+  return (
+    row.kind === "system" &&
+    row.systemKind === "operation" &&
+    row.operationKind === "dispatch-hold" &&
+    row.status === "pending" &&
+    isRowExpandable(row)
+  );
+}
+
+function visitForWaitingDispatchHoldAutoExpand(
+  rows: readonly ThreadTimelineViewRow[],
+  ids: Set<string>,
+): void {
+  for (const row of rows) {
+    if (isWaitingDispatchHoldRow(row)) {
+      ids.add(row.id);
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      visitForWaitingDispatchHoldAutoExpand(row.childRows, ids);
+    }
+  }
+}
+
 function shouldAutoExpandTerminalFrontierRow(
   row: ThreadTimelineViewRow,
 ): boolean {
@@ -146,6 +182,29 @@ function visitForTerminalFrontierAutoExpand(
   }
 }
 
+// Auto-expand rule:
+//
+//   1. Terminal frontier: the literal tail row in a scope. Selected terminal
+//      rows, currently system errors with detail, open when they arrive. The
+//      terminal pass descends into pending delegation childRows as nested
+//      scopes. The row component preserves that visible disclosure state after
+//      later appends; the collector does not keep old terminal rows
+//      auto-expanded.
+//
+//   2. Live frontier: only while the scope is active, find the trailing row
+//      that the agent produced (skipping user input rows). Selected live rows
+//      open while they are the current active frontier, then stop being
+//      auto-expanded when newer agent/system/work output supersedes them.
+//
+//   3. Waiting dispatch holds: scope-independent, because a held thread is by
+//      definition not running. See `isWaitingDispatchHoldRow`.
+//
+// Active containers are the timeline's top-level row list (when the thread
+// is active) and the childRows of pending delegations *inside an active
+// container*. A completed delegation closes its scope, so a pending
+// sub-delegation buried inside a completed parent does NOT auto-expand —
+// the active scope must propagate from the top-level thread runtime down
+// through every enclosing container.
 function visitForLiveFrontierAutoExpand(
   rows: readonly ThreadTimelineViewRow[],
   scopeActive: boolean,
@@ -174,11 +233,12 @@ export function collectTimelineAutoExpansionRowIds({
   scopeActive,
 }: CollectTimelineAutoExpansionRowIdsArgs): TimelineAutoExpansionRowIds {
   const terminalFrontierRowIds = new Set<string>();
-  const liveFrontierRowIds = new Set<string>();
+  const liveExpandedRowIds = new Set<string>();
   visitForTerminalFrontierAutoExpand(rows, terminalFrontierRowIds);
-  visitForLiveFrontierAutoExpand(rows, scopeActive, liveFrontierRowIds);
+  visitForLiveFrontierAutoExpand(rows, scopeActive, liveExpandedRowIds);
+  visitForWaitingDispatchHoldAutoExpand(rows, liveExpandedRowIds);
   return {
-    liveFrontierRowIds,
+    liveExpandedRowIds,
     terminalFrontierRowIds,
   };
 }

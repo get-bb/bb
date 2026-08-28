@@ -1133,15 +1133,17 @@ function TimelineSystemDetailBlock({
 }
 
 /**
- * The body of a held-dispatch row, in the order a reader needs it: why the turn
- * is waiting, which message is waiting, then whatever the hold's owner has
- * reported.
+ * The body of a held-dispatch row: the message that is waiting, then whatever
+ * the hold's owner has reported.
  *
- * The message is quoted rather than folded into the monospace report block
- * because it is the user's own prose — it gets the same left-rule treatment
- * that quoted message text gets everywhere else in the app. A hold with no
- * message of its own (a retry re-submitting a turn already rendered above)
- * simply omits it, as do rows recorded before holds carried a preview.
+ * The reason is not repeated here — it rides the row's own title line, so a
+ * collapsed hold already answers "waiting for what?" and opening it adds the
+ * thing that actually needed the space. The message keeps the left-rule quote
+ * treatment quoted message text gets everywhere else in the app, which is also
+ * what keeps it from reading as a second copy of the boxed monospace report
+ * directly beneath it — they are different kinds of text. A hold
+ * with no message of its own (a retry re-submitting a turn already rendered
+ * above) omits it, as do rows recorded before holds carried a preview.
  */
 function TimelineDispatchHoldBody({
   row,
@@ -1151,17 +1153,13 @@ function TimelineDispatchHoldBody({
     { kind: "system"; systemKind: "operation"; operationKind: "dispatch-hold" }
   >;
 }) {
-  const reason = row.reason.trim();
-  if (reason.length === 0 && row.inputPreview === null && !row.detail) {
+  if (row.inputPreview === null && !row.detail) {
     return null;
   }
   return (
     <div className="flex flex-col gap-2">
-      {reason.length > 0 ? (
-        <p className="text-xs text-subtle-foreground">{reason}</p>
-      ) : null}
       {row.inputPreview === null ? null : (
-        <blockquote className="break-words border-l-2 border-surface-selected-border pl-3 text-sm leading-5 text-muted-foreground">
+        <blockquote className="whitespace-pre-wrap break-words border-l-2 border-surface-selected-border pl-3 text-sm leading-5 text-muted-foreground">
           {row.inputPreview}
         </blockquote>
       )}
@@ -2071,7 +2069,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [rows, scopeActive],
   );
   const liveAutoExpandedRowIds = useStableReadonlySet(
-    computedAutoExpansionRowIds.liveFrontierRowIds,
+    computedAutoExpansionRowIds.liveExpandedRowIds,
   );
   const accumulatedTerminalRowIdsRef = useRef(new Set<string>());
   const accumulatedTerminalRowIds = useMemo(() => {

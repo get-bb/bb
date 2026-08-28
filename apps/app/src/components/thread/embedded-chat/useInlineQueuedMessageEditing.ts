@@ -3,6 +3,7 @@ import type { ThreadQueuedMessage } from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
+import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 
 export interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
@@ -36,6 +37,12 @@ interface UseInlineQueuedMessageEditingResult {
   ) => void;
   dismissInlineQueuedMessageEditor: () => void;
   beginEditQueuedMessage: (request: QueuedMessageEditRequest) => void;
+  /**
+   * The composer-draft seam this session presents while it is open, for the
+   * shared draft and attachment-upload hooks. Null when no message is being
+   * edited, so a caller can pick whichever inline editor is live.
+   */
+  queuedMessageDraftSession: InlineComposerDraftSession | null;
 }
 
 export function useInlineQueuedMessageEditing({
@@ -133,6 +140,27 @@ export function useInlineQueuedMessageEditing({
     [commitInlineQueuedMessage, onBeginEdit, ownerThreadId],
   );
 
+  const editSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+  const queuedMessageDraftSession =
+    useMemo<InlineComposerDraftSession | null>(() => {
+      if (editSessionId === null) {
+        return null;
+      }
+      return {
+        editSessionId,
+        // Applied against the ref, not the rendered state: see
+        // `InlineComposerDraftSession`.
+        setDraft: (update) => {
+          const current = inlineEditingQueuedMessageRef.current;
+          if (current === null) return;
+          commitInlineQueuedMessage({
+            ...current,
+            draft: update(current.draft),
+          });
+        },
+      };
+    }, [commitInlineQueuedMessage, editSessionId]);
+
   return {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
@@ -140,5 +168,6 @@ export function useInlineQueuedMessageEditing({
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
+    queuedMessageDraftSession,
   };
 }

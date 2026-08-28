@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { DispatchHoldResponse } from "@bb/server-contract";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import {
-  buildEditedDispatchHoldInput,
   isDispatchHoldStale,
   orderDispatchHoldsByExpectedDispatch,
   resolveDispatchHoldCancelOutcome,
@@ -139,24 +138,5 @@ describe("resolveDispatchHoldCancelOutcome", () => {
         liveHoldCount: 1,
       }).offerDeleteThread,
     ).toBe(false);
-  });
-});
-
-describe("buildEditedDispatchHoldInput", () => {
-  it("replaces the visible text while keeping attachments and agent-only blocks", () => {
-    const edited = buildEditedDispatchHoldInput(
-      [
-        { type: "text", text: "old", mentions: [] },
-        { type: "localFile", path: "/tmp/spec.md" },
-        { type: "text", text: "context", mentions: [], visibility: "agent-only" },
-      ],
-      "new",
-    );
-
-    expect(edited).toEqual([
-      { type: "text", text: "new", mentions: [] },
-      { type: "localFile", path: "/tmp/spec.md" },
-      { type: "text", text: "context", mentions: [], visibility: "agent-only" },
-    ]);
   });
 });

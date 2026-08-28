@@ -26,13 +26,14 @@ function maximumWaitMs(value: string | boolean | undefined): number | null {
   }
 }
 
-function retryTimeLabel(atMs: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    weekday: "short",
-  }).format(new Date(atMs));
-}
+/**
+ * What a rate-limit hold is waiting for. Deliberately just the cause: the time
+ * rides `resumeAt`, and every surface that shows a hold renders that itself —
+ * the card above the composer puts the clock next to the reason, `bb thread
+ * holds` gives it its own Resume column. Formatting it into the reason as well
+ * printed it twice in both.
+ */
+const RATE_LIMITED_HOLD_REASON = "Rate limited";
 
 /**
  * The decline reasons worth telling the user about.
@@ -152,7 +153,7 @@ export default async function plugin(bb: BbPluginApi) {
     );
     return {
       action: "retry",
-      reason: `Rate limited · retrying ${retryTimeLabel(decision.resumeAt)}`,
+      reason: RATE_LIMITED_HOLD_REASON,
       resumeAt: decision.resumeAt,
     };
   });
@@ -176,7 +177,7 @@ export default async function plugin(bb: BbPluginApi) {
     }
     return {
       action: "hold",
-      reason: `Rate limited · sending ${retryTimeLabel(resetsAtMs + RESET_BUFFER_MS)}`,
+      reason: RATE_LIMITED_HOLD_REASON,
       resumeAt: resetsAtMs + RESET_BUFFER_MS,
     };
   });

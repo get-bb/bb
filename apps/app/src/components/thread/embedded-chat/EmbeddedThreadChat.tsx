@@ -71,6 +71,7 @@ import {
 } from "@bb/client-core";
 import { useActiveComposerDraft } from "./useActiveComposerDraft";
 import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
@@ -316,10 +317,10 @@ function EmbeddedThreadChatWithComposer({
   const {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
+    queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
     ownerThreadId: threadId,
     queuedMessages,
@@ -328,6 +329,9 @@ function EmbeddedThreadChatWithComposer({
       setInlineComposerFocusNonce((nonce) => nonce + 1);
     },
   });
+  // The embedded chat has one inline editor (the queued-message one); the
+  // thread detail composer has two and picks between them.
+  const inlineDraftSessionRef = useLatestRef(queuedMessageDraftSession);
   const {
     promptDraft,
     currentPromptDraft,
@@ -339,9 +343,8 @@ function EmbeddedThreadChatWithComposer({
     removeActiveComposerAttachment,
   } = useActiveComposerDraft({
     draftScope: composer.draftScope,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   const {
     bottomAttachmentError,
@@ -355,9 +358,8 @@ function EmbeddedThreadChatWithComposer({
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
+    inlineEditSessionId: queuedMessageDraftSession?.editSessionId ?? null,
+    inlineSessionRef: inlineDraftSessionRef,
   });
   clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({

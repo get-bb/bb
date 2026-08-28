@@ -108,21 +108,6 @@ export function resolveDispatchHoldCancelOutcome({
 }
 
 /**
- * The input a saved inline edit sends. The card edits plain text, so mentions
- * are dropped (their offsets no longer describe the rewritten text) while
- * attachments and agent-only blocks are preserved untouched.
- */
-export function buildEditedDispatchHoldInput(
-  input: readonly PromptInput[],
-  text: string,
-): PromptInput[] {
-  const preserved = input.filter(
-    (chunk) => chunk.type !== "text" || chunk.visibility === "agent-only",
-  );
-  return [{ type: "text", text, mentions: [] }, ...preserved];
-}
-
-/**
  * Who to name in the card's aria label. The holder string is prefixed rather
  * than enumerated, so the plugin id is read off the prefix.
  */

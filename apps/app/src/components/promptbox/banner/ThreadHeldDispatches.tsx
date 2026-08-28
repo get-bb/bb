@@ -2,11 +2,11 @@ import { useCallback, useMemo, useState } from "react";
 import type { PromptDraftState } from "@bb/client-core";
 import type { Thread, ThreadRuntimeDisplayStatus } from "@bb/domain";
 import type { DispatchHoldResponse } from "@bb/server-contract";
-import { HeldDispatchCard } from "@/components/promptbox/banner/HeldDispatchCard";
 import {
-  HeldThreadDeleteOffer,
-  ThreadHeldBanner,
-} from "@/components/promptbox/banner/ThreadHeldBanner";
+  HeldDispatchCard,
+  type HeldDispatchInlineEditor,
+} from "@/components/promptbox/banner/HeldDispatchCard";
+import { HeldThreadDeleteOffer } from "@/components/promptbox/banner/HeldThreadDeleteOffer";
 import { useDispatchHoldActions } from "@/components/thread/embedded-chat/useDispatchHoldActions";
 import { useThreadDispatchHolds } from "@/hooks/queries/thread-queries";
 import {
@@ -19,6 +19,9 @@ export interface ThreadHeldDispatchesProps {
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
   /** Restores a cancelled hold's inline input to the composer. */
   restoreComposerDraft: (draft: PromptDraftState) => void;
+  /** The open held-message editor, owned by the composer above. */
+  inlineEditor: HeldDispatchInlineEditor | null;
+  onEdit: (hold: DispatchHoldResponse) => void;
 }
 
 interface LiveHeldDispatchesProps extends ThreadHeldDispatchesProps {
@@ -32,19 +35,23 @@ interface LiveHeldDispatchesProps extends ThreadHeldDispatchesProps {
  * the outer component so a thread without holds — nearly every thread — mounts
  * no hold mutations at all.
  *
- * A never-started thread gets the banner instead of cards: its single hold *is*
- * the thread's whole story, and rendering both would say the same thing twice
- * directly above the composer. Either way the hold's reported progress lives on
- * its timeline row.
+ * Every live hold gets the same card, including on a thread whose first turn is
+ * the held one. That thread used to get a reduced banner instead — one row for
+ * the soonest hold, a "+N more" count for the rest, and no Edit action — which
+ * meant a scheduled first message was the one message in the app you could not
+ * rewrite. `isNeverStartedThread` survives only for the delete offer, which is
+ * genuinely about the thread rather than the hold.
  */
 function LiveHeldDispatches({
   holds,
+  inlineEditor,
   isNeverStartedThread,
+  onEdit,
   onOfferDeleteThread,
   restoreComposerDraft,
   thread,
 }: LiveHeldDispatchesProps) {
-  const { cancelHold, holdActionPending, processingHold, releaseHold, saveHoldInput } =
+  const { cancelHold, holdActionPending, processingHold, releaseHold } =
     useDispatchHoldActions({
       holds,
       isNeverStartedThread,
@@ -52,23 +59,6 @@ function LiveHeldDispatches({
       restoreComposerDraft,
       threadId: thread.id,
     });
-  const [firstHold] = holds;
-
-  if (isNeverStartedThread && firstHold) {
-    return (
-      <ThreadHeldBanner
-        hold={firstHold}
-        additionalHoldCount={holds.length - 1}
-        actionDisabled={holdActionPending}
-        pendingAction={
-          processingHold?.holdId === firstHold.id ? processingHold.action : null
-        }
-        onRelease={releaseHold}
-        onCancel={cancelHold}
-      />
-    );
-  }
-
   return (
     <>
       {holds.map((hold) => (
@@ -79,9 +69,12 @@ function LiveHeldDispatches({
           pendingAction={
             processingHold?.holdId === hold.id ? processingHold.action : null
           }
+          inlineEditor={
+            inlineEditor?.holdId === hold.id ? inlineEditor : null
+          }
           onRelease={releaseHold}
           onCancel={cancelHold}
-          onSaveInput={saveHoldInput}
+          onEdit={onEdit}
         />
       ))}
     </>
@@ -93,6 +86,8 @@ function LiveHeldDispatches({
  * queued messages, ordered by when they are expected to dispatch.
  */
 export function ThreadHeldDispatches({
+  inlineEditor,
+  onEdit,
   restoreComposerDraft,
   runtimeDisplayStatus,
   thread,
@@ -125,7 +120,9 @@ export function ThreadHeldDispatches({
       {holds.length > 0 ? (
         <LiveHeldDispatches
           holds={holds}
+          inlineEditor={inlineEditor}
           isNeverStartedThread={runtimeDisplayStatus === "held"}
+          onEdit={onEdit}
           onOfferDeleteThread={offerDeleteThread}
           restoreComposerDraft={restoreComposerDraft}
           runtimeDisplayStatus={runtimeDisplayStatus}

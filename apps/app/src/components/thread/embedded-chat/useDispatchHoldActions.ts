@@ -7,12 +7,8 @@ import {
   isDispatchHoldConflictError,
   useCancelDispatchHold,
   useReleaseDispatchHold,
-  useUpdateDispatchHold,
 } from "@/hooks/mutations/dispatch-hold-mutations";
-import {
-  buildEditedDispatchHoldInput,
-  resolveDispatchHoldCancelOutcome,
-} from "@/lib/dispatch-holds";
+import { resolveDispatchHoldCancelOutcome } from "@/lib/dispatch-holds";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 interface UseDispatchHoldActionsArgs {
@@ -35,7 +31,6 @@ export interface UseDispatchHoldActionsResult {
   holdActionPending: boolean;
   releaseHold: (hold: DispatchHoldResponse) => void;
   cancelHold: (hold: DispatchHoldResponse) => void;
-  saveHoldInput: (hold: DispatchHoldResponse, text: string) => void;
 }
 
 /**
@@ -56,7 +51,6 @@ export function useDispatchHoldActions({
   } | null>(null);
   const releaseDispatchHold = useReleaseDispatchHold();
   const cancelDispatchHold = useCancelDispatchHold();
-  const updateDispatchHold = useUpdateDispatchHold();
 
   const clearProcessingHold = useCallback((holdId: string) => {
     setProcessingHold((current) =>
@@ -129,33 +123,10 @@ export function useDispatchHoldActions({
     ],
   );
 
-  const saveHoldInput = useCallback(
-    (hold: DispatchHoldResponse, text: string) => {
-      if (hold.payload.kind !== "inline") return;
-      const input = buildEditedDispatchHoldInput(hold.payload.input, text);
-      setProcessingHold({ action: "save", holdId: hold.id });
-      void updateDispatchHold
-        .mutateAsync({ holdId: hold.id, input, threadId })
-        .catch((error: unknown) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to update the held dispatch",
-            }),
-          );
-        })
-        .finally(() => {
-          clearProcessingHold(hold.id);
-        });
-    },
-    [clearProcessingHold, threadId, updateDispatchHold],
-  );
-
   return {
     processingHold,
     holdActionPending: processingHold !== null,
     releaseHold,
     cancelHold,
-    saveHoldInput,
   };
 }

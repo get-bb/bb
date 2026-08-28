@@ -1,14 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import type { DispatchHoldResponse } from "@bb/server-contract";
-import { queuedInputToDraft } from "@bb/client-core";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { durationToCompactString } from "@bb/thread-view";
@@ -18,54 +9,68 @@ import {
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
   PROMPT_STACK_ROW_CLASS,
-  PROMPT_STACK_ROW_OVERFLOW_TRIGGER_CLASS,
   PromptBannerActionButton,
-  PromptStackRowActionButton,
-  PromptStackRowActions,
   PromptStackRowPendingLabel,
+  PromptStackRowTextActions,
 } from "@/components/promptbox/banner/prompt-banner-actions";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import {
-  dispatchHoldExpectedDispatchAt,
   isDispatchHoldEditable,
   isDispatchHoldStale,
 } from "@/lib/dispatch-holds";
 import { formatScheduledTime } from "@/lib/relative-time";
 
 /** Which in-flight action a held card is running, for its button labels. */
-export type HeldDispatchAction = "release" | "cancel" | "save";
+export type HeldDispatchAction = "release" | "cancel";
+
+/**
+ * The open inline editor, owned by the composer above so a held message is
+ * edited in the real composer — mentions, attachments, plugin actions and all
+ * — exactly as a queued message or a sent message is.
+ *
+ * The card supplies its own chrome rather than wrapping this in
+ * `InlineMessageEditorFrame`: a held row is one short line that already names
+ * what is being edited and when it goes out, so the frame's "Editing …" header
+ * would be a second bar restating it. The queue needs the frame because it
+ * *replaces* a tall message row with the editor and would otherwise lose all
+ * trace of which message is open.
+ */
+export interface HeldDispatchInlineEditor {
+  content: ReactNode;
+  holdId: string;
+  onDismiss: () => void;
+}
 
 export interface HeldDispatchCardProps {
   hold: DispatchHoldResponse;
   /** True while any hold action on this thread is in flight. */
   actionDisabled: boolean;
   pendingAction: HeldDispatchAction | null;
+  /** Rendered in place of the row when this hold is the one being edited. */
+  inlineEditor: HeldDispatchInlineEditor | null;
   onRelease: (hold: DispatchHoldResponse) => void;
   onCancel: (hold: DispatchHoldResponse) => void;
-  onSaveInput: (hold: DispatchHoldResponse, text: string) => void;
+  onEdit: (hold: DispatchHoldResponse) => void;
 }
-
-const HELD_DISPATCH_ACTION_LABELS: Record<HeldDispatchAction, string> = {
-  cancel: "Cancelling...",
-  release: "Releasing...",
-  save: "Saving...",
-};
 
 /**
- * The live remainder until a hold's expected dispatch. Isolated so the ticking
- * clock re-renders one span rather than the whole pending region.
+ * What each action is called while it runs. The wording matches the button that
+ * started it — "Send now" reports "Sending…", not "Releasing…" — because
+ * "release" and "dispatch" name the mechanism rather than the thing the user
+ * asked for.
  */
-function HeldDispatchCountdown({ target }: { target: number }) {
-  const remainingMs = target - useSecondTick();
-  if (remainingMs <= 0) {
-    return null;
-  }
-  return (
-    <span className="shrink-0 tabular-nums text-muted-foreground">
-      in {durationToCompactString(remainingMs)}
-    </span>
-  );
-}
+export const HELD_DISPATCH_ACTION_LABELS: Record<HeldDispatchAction, string> = {
+  cancel: "Cancelling...",
+  release: "Sending...",
+};
+
+export const HELD_DISPATCH_SEND_LABEL = "Send now";
+export const HELD_DISPATCH_CANCEL_LABEL = "Cancel";
+/**
+ * Abandons the edit, not the send — which is why it cannot be called "Cancel"
+ * next to a Cancel that calls off the message entirely.
+ */
+const HELD_DISPATCH_DISCARD_EDIT_LABEL = "Discard";
 
 function heldDispatchScheduleLabel(
   hold: DispatchHoldResponse,
@@ -110,37 +115,50 @@ export function HeldDispatchSummary({
 }
 
 /**
+ * The line a held row lays out: its summary, then its actions. The two share a
+ * wrapping flex row rather than a fixed split so a narrow card drops the
+ * actions onto their own line instead of truncating the countdown away — the
+ * countdown is the reason the row exists.
+ */
+export function HeldDispatchRowLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-7 flex-wrap items-center gap-x-1.5 gap-y-1 py-1">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The summary half of {@link HeldDispatchRowLayout}. The basis is what makes
+ * the row wrap rather than truncate: flex breaks a line on hypothetical sizes,
+ * so declaring the summary's preferred width sends the actions to their own
+ * line on a narrow card instead of squeezing "Scheduled · 3:10 PM · in 2m 49s"
+ * down to an ellipsis.
+ */
+export const HELD_DISPATCH_SUMMARY_CLASS = "min-w-0 flex-1 basis-56";
+
+/**
  * One held dispatch in the pending region, styled as a sibling of a queued
- * message row: same padding, same hover-revealed glyph actions, same overflow
- * menu below `md`. Only the clock glyph and the waiting-for label distinguish
- * it, which is the distinction that matters.
+ * message row: same padding, same card surface. The clock glyph, the
+ * waiting-for label and the named actions are what distinguish it, which is the
+ * distinction that matters.
  */
 export function HeldDispatchCard({
   hold,
   actionDisabled,
   pendingAction,
+  inlineEditor,
   onRelease,
   onCancel,
-  onSaveInput,
+  onEdit,
 }: HeldDispatchCardProps) {
   const now = useSecondTick();
-  const [editingText, setEditingText] = useState<string | null>(null);
   const stale = isDispatchHoldStale(hold, now);
-  const editable = isDispatchHoldEditable(hold);
+  const editing = inlineEditor !== null;
   const scheduleLabel = heldDispatchScheduleLabel(hold, now);
-  const expectedDispatchAt = dispatchHoldExpectedDispatchAt(hold);
-  const showCountdown =
-    hold.resumeAt !== null || hold.expectedReleaseAt !== null;
   const silentForMs = now - (hold.lastReportAt ?? hold.createdAt);
   const busy = pendingAction !== null;
-  const startEditing = () => {
-    setEditingText(
-      hold.payload.kind === "inline"
-        ? queuedInputToDraft(hold.payload.input).text
-        : "",
-    );
-  };
-  const showEditAction = editable && editingText === null;
+  const showEditAction = isDispatchHoldEditable(hold) && !editing;
 
   return (
     <PromptStackCard
@@ -154,122 +172,64 @@ export function HeldDispatchCard({
         className={PROMPT_STACK_ROW_CLASS}
         style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
       >
-        <div className="flex min-h-7 items-center gap-1.5">
-          <div className="min-w-0 flex-1 py-1">
+        <HeldDispatchRowLayout>
+          <div className={HELD_DISPATCH_SUMMARY_CLASS}>
             <HeldDispatchSummary reason={hold.reason} stale={stale}>
               {scheduleLabel ? (
                 <span className="shrink-0 text-muted-foreground">
                   · {scheduleLabel}
                 </span>
               ) : null}
-              {showCountdown ? (
-                <HeldDispatchCountdown target={expectedDispatchAt} />
-              ) : null}
               {stale ? (
                 <span className="shrink-0 text-warning-text">
-                  No update for {durationToCompactString(silentForMs)}
+                  · No update for {durationToCompactString(silentForMs)}
                 </span>
               ) : null}
             </HeldDispatchSummary>
           </div>
-          {busy ? (
+          {inlineEditor !== null ? (
+            <PromptStackRowTextActions label="Held dispatch actions">
+              <PromptBannerActionButton
+                aria-label="Stop editing held message"
+                onClick={inlineEditor.onDismiss}
+              >
+                {HELD_DISPATCH_DISCARD_EDIT_LABEL}
+              </PromptBannerActionButton>
+            </PromptStackRowTextActions>
+          ) : busy ? (
             <PromptStackRowPendingLabel>
               {HELD_DISPATCH_ACTION_LABELS[pendingAction]}
             </PromptStackRowPendingLabel>
           ) : (
-            <>
-              <PromptStackRowActions label="Held dispatch actions">
-                {showEditAction ? (
-                  <PromptStackRowActionButton
-                    icon="Edit"
-                    label="Edit held message"
-                    disabled={actionDisabled}
-                    onClick={startEditing}
-                  />
-                ) : null}
-                {hold.userReleasable ? (
-                  <PromptStackRowActionButton
-                    icon="Play"
-                    label="Release now"
-                    disabled={actionDisabled}
-                    onClick={() => onRelease(hold)}
-                  />
-                ) : null}
-                <PromptStackRowActionButton
-                  icon="X"
-                  label="Cancel held dispatch"
-                  destructive
+            <PromptStackRowTextActions label="Held dispatch actions">
+              {showEditAction ? (
+                <PromptBannerActionButton
                   disabled={actionDisabled}
-                  onClick={() => onCancel(hold)}
-                />
-              </PromptStackRowActions>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className={PROMPT_STACK_ROW_OVERFLOW_TRIGGER_CLASS}
-                    disabled={actionDisabled}
-                    aria-label="Held dispatch actions"
-                  >
-                    <Icon
-                      name="MoreHorizontal"
-                      className="size-4"
-                      aria-hidden
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[7rem]">
-                  {showEditAction ? (
-                    <DropdownMenuItem onSelect={startEditing}>
-                      <Icon name="Edit" aria-hidden />
-                      Edit
-                    </DropdownMenuItem>
-                  ) : null}
-                  {hold.userReleasable ? (
-                    <DropdownMenuItem onSelect={() => onRelease(hold)}>
-                      <Icon name="Play" aria-hidden />
-                      Release now
-                    </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => onCancel(hold)}
-                  >
-                    <Icon name="X" aria-hidden />
-                    Cancel
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+                  onClick={() => onEdit(hold)}
+                >
+                  Edit
+                </PromptBannerActionButton>
+              ) : null}
+              {hold.userReleasable ? (
+                <PromptBannerActionButton
+                  disabled={actionDisabled}
+                  onClick={() => onRelease(hold)}
+                >
+                  {HELD_DISPATCH_SEND_LABEL}
+                </PromptBannerActionButton>
+              ) : null}
+              <PromptBannerActionButton
+                disabled={actionDisabled}
+                onClick={() => onCancel(hold)}
+              >
+                {HELD_DISPATCH_CANCEL_LABEL}
+              </PromptBannerActionButton>
+            </PromptStackRowTextActions>
           )}
-        </div>
+        </HeldDispatchRowLayout>
       </div>
-      {editingText === null ? null : (
-        <div className="flex flex-col gap-1.5 border-t border-border/35 px-2.5 py-2">
-          <textarea
-            aria-label="Edit held message"
-            className="min-h-16 w-full resize-y rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            value={editingText}
-            onChange={(event) => setEditingText(event.target.value)}
-          />
-          <div className="flex items-center justify-end gap-1.5">
-            <PromptBannerActionButton onClick={() => setEditingText(null)}>
-              Discard changes
-            </PromptBannerActionButton>
-            <PromptBannerActionButton
-              disabled={actionDisabled || editingText.trim().length === 0}
-              onClick={() => {
-                onSaveInput(hold, editingText);
-                setEditingText(null);
-              }}
-            >
-              Save
-            </PromptBannerActionButton>
-          </div>
-        </div>
+      {inlineEditor === null ? null : (
+        <div className="relative z-20 px-2.5 pb-1.5">{inlineEditor.content}</div>
       )}
     </PromptStackCard>
   );

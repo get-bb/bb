@@ -1589,7 +1589,7 @@ describe("buildThreadTimelineFromEvents", () => {
     );
 
     const holdRows = collectSystemRows(rows).filter(
-      (row) => row.systemKind === "operation" && row.title === "Dispatch held",
+      (row) => row.systemKind === "operation" && row.title === "Waiting to send",
     );
     expect(holdRows).toHaveLength(1);
     expect(holdRows[0]?.status).toBe("pending");
@@ -1617,7 +1617,7 @@ describe("buildThreadTimelineFromEvents", () => {
         row.systemKind === "operation" && row.operationKind === "dispatch-hold",
     );
     expect(holdRows).toHaveLength(1);
-    expect(holdRows[0]?.title).toBe("Dispatch cancelled");
+    expect(holdRows[0]?.title).toBe("Send cancelled");
     expect(holdRows[0]?.status).toBe("interrupted");
   });
 
@@ -1644,7 +1644,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(holdRows).toHaveLength(1);
     expect(holdRows[0]).toMatchObject({
       inputPreview: "Ship the release notes",
-      title: "Dispatch released",
+      title: "Sent",
     });
   });
 

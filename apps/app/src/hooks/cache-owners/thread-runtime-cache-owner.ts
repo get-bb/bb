@@ -854,7 +854,7 @@ export function applySendThreadMessageSuccess({
     // optimistic accepted-turn — both the working thread state and the message
     // row — because unlike the "deferred" case the message IS visible
     // elsewhere: the held card above the composer renders it, with its
-    // countdown, Release now and Cancel, off the `queue-changed` notification
+    // countdown, Send now and Cancel, off the `queue-changed` notification
     // the server sends. Leaving the optimistic row would show the message
     // twice and imply it had already been sent.
     if (transaction.optimisticRowId) {

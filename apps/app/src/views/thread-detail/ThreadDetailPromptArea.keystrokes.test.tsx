@@ -271,6 +271,13 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreadDispatchHolds: () => ({ data: [] }),
 }));
 
+vi.mock("@/hooks/mutations/dispatch-hold-mutations", () => ({
+  isDispatchHoldConflictError: () => false,
+  useCancelDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useReleaseDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useUpdateDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+}));
+
 const PROJECT_ID = "proj_keystrokes";
 
 function makeThread(id: string): ThreadWithRuntime {

@@ -373,7 +373,9 @@ describe("provider retry plugin", () => {
     expect(decision.resumeAt).toBeGreaterThanOrEqual(
       RESET_AT_MS + RESET_BUFFER_MS,
     );
-    expect(decision.reason).toContain("Rate limited");
+    // Just the cause, no time: every surface renders `resumeAt` itself, so a
+    // time here shows up twice on the card and in `bb thread holds`.
+    expect(decision.reason).toBe("Rate limited");
     // The "scheduled" narration is the hold's own card and timeline row; a
     // note here would say the same thing twice.
     expect(host.harness.registrations.appendedThreadNotes).toEqual([]);

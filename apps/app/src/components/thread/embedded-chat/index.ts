@@ -3,7 +3,14 @@ export {
   useInlineQueuedMessageEditing,
   type InlineQueuedMessageEditState,
 } from "./useInlineQueuedMessageEditing";
-export { useActiveComposerDraft } from "./useActiveComposerDraft";
+export {
+  useInlineHeldDispatchEditing,
+  type InlineHeldDispatchEditState,
+} from "./useInlineHeldDispatchEditing";
+export {
+  useActiveComposerDraft,
+  type InlineComposerDraftSession,
+} from "./useActiveComposerDraft";
 export {
   useComposerAttachmentUploads,
   useDraftAttachmentUploads,

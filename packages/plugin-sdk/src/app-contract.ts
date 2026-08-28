@@ -1698,7 +1698,7 @@ export interface PluginComposerApi {
    * In a thread composer the message is held rather than sent or queued. In the
    * new-thread composer the thread is created idle and its first turn becomes
    * the hold. Either way the resulting hold is core's: the held card above the
-   * composer, the countdown, Release now and Cancel all work with no further
+   * composer, the countdown, Send now and Cancel all work with no further
    * plugin involvement.
    *
    * Resolves once the host has accepted the submission and cleared the draft.

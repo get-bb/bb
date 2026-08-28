@@ -1,0 +1,91 @@
+# Dispatch queue rework: one parking lot, one checkpoint
+
+Rework of the dispatch-holds prototype (`plans/plugin-interception-hooks.md`,
+all three phases shipped on this branch). Replaces four parallel parking
+mechanisms — `dispatch_holds`, `deferred_thread_messages`, the
+reprovision-parked turn, and the drain-only queue — with ONE: the queue.
+Single integrated rework on this branch; no phased landing.
+
+## The model
+
+**A send is always a dispatch attempt.** If nothing blocks it, it dispatches
+directly — no queue row ever exists; today's happy path is byte-for-byte
+unchanged and allocates nothing. If something blocks it, the message **parks**
+as a queued row carrying a typed `waitingOn`, and the drain re-attempts when
+conditions change. The queue is the parking lot, not the pipeline.
+
+**Plugins get one checkpoint: the dispatch attempt.** It runs identically
+whether the attempt is inline (fresh send) or from the drain (a parked
+message becoming eligible). Thread creation itself is ungated — it is a cheap
+row; admission happens at the first message's attempt.
+
+**The first message never waits on provisioning.** A cleared first attempt
+moves the thread `pending → starting`, and `starting` absorbs environment
+finalization + provisioning + session start exactly as today, the message
+riding the cold-start command. `waitingOn: provisioning` exists only for
+follow-ups/steers sent while a thread is mid-(re)provisioning.
+
+## Settled decisions
+
+| Decision | Choice |
+|---|---|
+| Carrier | `queued_thread_messages` absorbs everything: scheduled sends, held/limited first messages, plugin deferrals, retry-by-reference rows, `deferred_thread_messages` (awaiting interaction), and the reprovision-parked turn. `dispatch_holds` and `deferred_thread_messages` are deleted |
+| Happy path | Direct dispatch, zero queue involvement, byte-for-byte today's behavior |
+| Waiting-on | Explicit and typed on each row: `time(sendAt)` \| `thread-busy` \| `provisioning` \| `interaction` \| `plugin(<id>, reason)`. Rendered on the card, shown in `bb thread queue`, updated by the drain as conditions change |
+| Delivery mode | Per-message, as today's send modes: a due message either waits for idle or steers the live turn, by its own preference. Steer-during-provisioning = parked row with immediate eligibility + steer mode; the drain firing at workspace-ready is the whole mechanism |
+| Scheduling | `sendAt` on queue rows (nullable = eligible now / when turn ends). Scheduled follow-up = parked row with `sendAt`. Scheduled spawn = `pending` thread + parked first message with `sendAt`; nothing provisions until due |
+| Thread status | New canonical status **`pending`**: created, no message has ever cleared an attempt. Leaves it the moment the first attempt clears → `starting` (which keeps its current meaning). Archival/deletion legal from `pending`. This deliberately reverses the earlier no-new-status decision |
+| Provider/env at create | **Nullable provider is deferred**: rows keep a resolved provider at insert (defaults ladder), amendable at the first cleared attempt (the shipped pre-session amendment machinery relocates there). `environmentId` stays null until provisioning, as it already does |
+| Plugin checkpoint | One gate stage — the dispatch attempt — replacing `thread.create` + `turn.submit`. Context carries `firstDispatch` (provider/environment amendments allowed only there), the same provenance/pluginInputs/typed context as today. Verdicts: `proceed` (with amendments) \| `wait` (park with reason — replaces `hold`) \| `reject`. `turn.failed` unchanged; retry verdicts create by-reference queue rows |
+| Concurrency limiting | A `wait` verdict at the attempt; the row shows `plugin:concurrency-limit · "4 of 4 running"`. Same tally, release = the plugin marking its wait cleared (drain re-attempts; gates re-run, so a stale release safely re-parks) |
+| Send now | **Bypasses every plugin check** (and `sendAt`); core waits (`provisioning`, `interaction`, `thread-busy`) are not overridable — they guard invariants. This loosens the previous skip-owner-only rule by explicit choice |
+| Fail-closed | Unchanged: a gate that throws/times out (10s) fails the attempt naming the plugin; an inline attempt surfaces the error to the sender, a drain attempt marks the row errored-visible. Orphan rule transfers: a `plugin` wait whose plugin is not running is cleared by the sweep |
+| Exactly-once | The release/claim CAS semantics transfer to row state transitions (parked → dispatching → consumed); double-drain safe as today's claim tokens already are |
+
+## What this dissolves
+
+- `dispatch_holds` table, hold service/routes, `threads.holds` SDK area,
+  `bb thread holds`/`release`/`cancel-hold` (queue surfaces take over:
+  `bb thread queue` gains waiting-on/sendAt columns and a send-now/cancel;
+  SDK `threads.queue` equivalents).
+- `deferred_thread_messages` + its sweeps (rows become `waitingOn: interaction`).
+- `core:reprovision`/`core:host-offline` hold mirroring (rows become
+  `waitingOn: provisioning` / a host-offline wait kind — decide during build
+  whether host-offline is its own typed wait or folds into provisioning).
+- The `system/dispatch-hold` event → a queue-state event on the same timeline
+  row pattern (parked/updated/dispatched/cancelled, with the message preview
+  and reason; report/progress API transfers for long plugin waits).
+- The held-card/banner UI split — everything renders as queued rows with
+  waiting-on badges (the in-flight card/queue styling unification lands first).
+- `thread.create` gate stage; `PluginDispatchCreateAmendments` merges into
+  the single attempt context.
+
+## Schema
+
+`queued_thread_messages` gains: `sendAt` (nullable ms), `waitingOn` (typed),
+`waitReason` (nullable, ≤200), `waitHolder` (nullable, `plugin:<id>` — for
+attribution/orphan sweep), `payloadKind` (`inline` \| `retry` +
+`retryOfTurnRequestId`, retry rows not editable), delivery mode (exists),
+`pluginInputs` (exists). `pending` joins `threadStatusValues` with legal
+transitions (`pending → starting`, `pending → archived/deleted`). Drop
+`dispatch_holds`, `deferred_thread_messages`. Branch is unmerged: regenerate
+this branch's migrations (0110) into the new shape rather than stacking.
+
+## Deferred / parked (explicitly out of this rework)
+
+- Nullable `provider_id` (the honest state machine's second half).
+- Virtual providers as registry citizens (the Auto-in-settings discussion) —
+  the single-checkpoint model is compatible either way.
+- Auto per-send in the thread composer UI.
+- Host CPU/RAM, sandboxes, everything already deferred by the prior plan.
+
+## Build notes
+
+- One integrated wave on this branch; every existing suite green at the end;
+  exit criteria transfer from the prior plan (restart survival, exactly-once,
+  orphan release, un-parked paths byte-identical, faithful retries).
+- The scheduled-send plugin, limiter, and router migrate to the new contract
+  in the same wave (their behaviors are unchanged; their verdict/carrier
+  vocabulary changes).
+- SDK/CLI/guide/skill surfaces updated in the same wave per repo rules;
+  plugin SDK bump; api_to_audit rewritten for the single-stage contract.

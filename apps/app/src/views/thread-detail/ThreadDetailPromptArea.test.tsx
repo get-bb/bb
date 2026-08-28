@@ -532,6 +532,13 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/mutations/dispatch-hold-mutations", () => ({
+  isDispatchHoldConflictError: () => false,
+  useCancelDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useReleaseDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useUpdateDispatchHold: () => ({ isPending: false, mutateAsync: vi.fn() }),
+}));
+
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectDisplayName: () => null,
 }));

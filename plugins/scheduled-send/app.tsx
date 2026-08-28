@@ -18,10 +18,24 @@
 // and bb's shared persistent responsive drawer on compact ones. A module-level
 // store connects the two — they are separate components mounted by the host,
 // and both identify the composer they belong to by scope.
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { toast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
+import { Label } from "@bb/shared-ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
 import {
   definePluginApp,
   experimental_Dialog as Dialog,
@@ -31,9 +45,18 @@ import {
   type PluginComposerScope,
 } from "@get-bb/plugin-sdk/app";
 import {
+  DEFAULT_SCHEDULE_PRESET_ID,
+  MAX_SCHEDULE_AHEAD_MS,
+  defaultCustomSchedule,
+  formatDateInputValue,
   formatScheduleTime,
+  formatScheduleTimeZone,
+  isSchedulePresetId,
   listSchedulePresets,
-  parseScheduleTime,
+  parseCustomScheduleTime,
+  type CustomScheduleFields,
+  type SchedulePresetId,
+  type ScheduleTimeParse,
 } from "./schedule-time.js";
 
 /** Identifies one composer instance, so the picker opens where it was asked for. */
@@ -91,14 +114,43 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const PLACEHOLDER = "30m, 2h, 9am, tomorrow 09:30, 2026-08-26T09:00";
+const CUSTOM_SCHEDULE_OPTION_ID = "custom";
+type ScheduleOptionId = SchedulePresetId | typeof CUSTOM_SCHEDULE_OPTION_ID;
+
+function isScheduleOptionId(value: string): value is ScheduleOptionId {
+  return value === CUSTOM_SCHEDULE_OPTION_ID || isSchedulePresetId(value);
+}
+
+function resolveScheduleOption(
+  optionId: ScheduleOptionId,
+  custom: CustomScheduleFields,
+  now: number,
+): ScheduleTimeParse {
+  if (optionId === CUSTOM_SCHEDULE_OPTION_ID) {
+    return parseCustomScheduleTime(custom, now);
+  }
+  const preset = listSchedulePresets(now).find(
+    (candidate) => candidate.id === optionId,
+  );
+  return preset === undefined
+    ? { ok: false, message: "That option has passed. Choose another time." }
+    : { ok: true, at: preset.at };
+}
 
 function SendLaterPicker() {
   const composer = useComposer();
   const view = useComposerView();
   const scopeKey = composerScopeKey(view.scope);
   const isOpen = useSendLaterOpen(scopeKey);
-  const [customValue, setCustomValue] = useState("");
+  const whenId = useId();
+  const customDateId = useId();
+  const customTimeId = useId();
+  const [selectedOption, setSelectedOption] = useState<ScheduleOptionId>(
+    DEFAULT_SCHEDULE_PRESET_ID,
+  );
+  const [custom, setCustom] = useState<CustomScheduleFields>(() =>
+    defaultCustomSchedule(Date.now()),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Presets and the preview are relative to a clock that has to keep moving: a
@@ -108,7 +160,11 @@ function SendLaterPicker() {
 
   useEffect(() => {
     if (!isOpen) return;
-    setNow(Date.now());
+    const openedAt = Date.now();
+    setNow(openedAt);
+    setSelectedOption(DEFAULT_SCHEDULE_PRESET_ID);
+    setCustom(defaultCustomSchedule(openedAt));
+    setError(null);
     const interval = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(interval);
   }, [isOpen]);
@@ -134,7 +190,6 @@ function SendLaterPicker() {
     try {
       await composer.experimental_submit({ holdUntil: at });
       closeSendLater();
-      setCustomValue("");
       toast.success(`Sending ${formatScheduleTime(at, Date.now())}`);
     } catch (scheduleError: unknown) {
       // The host restores the draft on failure, so the message is never lost;
@@ -145,24 +200,25 @@ function SendLaterPicker() {
     }
   }
 
-  function submitCustom(): void {
-    const parsed = parseScheduleTime(customValue, Date.now());
-    if (!parsed.ok) {
-      setError(parsed.message);
+  function submitSelection(): void {
+    const resolved = resolveScheduleOption(selectedOption, custom, Date.now());
+    if (!resolved.ok) {
+      setError(resolved.message);
       return;
     }
-    void schedule(parsed.at);
+    void schedule(resolved.at);
   }
 
-  const preview =
-    customValue.trim() === "" ? null : parseScheduleTime(customValue, now);
+  const presets = listSchedulePresets(now);
+  const preview = resolveScheduleOption(selectedOption, custom, now);
+  const visibleError = error ?? (preview.ok ? null : preview.message);
 
   return (
     <Dialog
       description={
         view.scope.kind === "new-thread"
-          ? "The thread is created now and starts working at the time you pick, with the model and environment selected here."
-          : "The message is held and sends at the time you pick."
+          ? "Choose when this thread should start. It will use the model and environment selected in the composer."
+          : "Choose when this message should send."
       }
       onOpenChange={(next) => {
         if (!next && !busy) closeSendLater();
@@ -170,60 +226,110 @@ function SendLaterPicker() {
       open={isOpen}
       title="Send later"
     >
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-wrap gap-2">
-          {listSchedulePresets(now).map((preset) => (
-            <Button
-              disabled={busy}
-              key={preset.id}
-              onClick={() => void schedule(preset.at)}
-              type="button"
-              variant="secondary"
-            >
-              {preset.label}
-              <span className="ml-1 text-muted-foreground">
-                {new Date(preset.at).toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </span>
-            </Button>
-          ))}
-        </div>
-
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitCustom();
-          }}
-        >
-          <Input
-            aria-label="Schedule for"
+      <form
+        className="flex flex-col gap-4 text-sm"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitSelection();
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={whenId}>When</Label>
+          <Select
             disabled={busy}
-            onChange={(event) => {
-              setCustomValue(event.target.value);
+            onValueChange={(value) => {
+              if (!isScheduleOptionId(value)) return;
+              setSelectedOption(value);
               setError(null);
             }}
-            placeholder={PLACEHOLDER}
-            value={customValue}
-          />
-          <Button disabled={busy || customValue.trim() === ""} type="submit">
-            Schedule
-          </Button>
-        </form>
+            value={selectedOption}
+          >
+            <SelectTrigger aria-label="When to send" id={whenId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {presets.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_SCHEDULE_OPTION_ID}>
+                Custom date and time
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        {preview?.ok === true ? (
-          <p className="text-muted-foreground">
-            Sends {formatScheduleTime(preview.at, now)}.
-          </p>
+        {selectedOption === CUSTOM_SCHEDULE_OPTION_ID ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={customDateId}>Date</Label>
+              <Input
+                disabled={busy}
+                id={customDateId}
+                max={formatDateInputValue(now + MAX_SCHEDULE_AHEAD_MS)}
+                min={formatDateInputValue(now)}
+                onChange={(event) => {
+                  setCustom((current) => ({
+                    ...current,
+                    date: event.target.value,
+                  }));
+                  setError(null);
+                }}
+                type="date"
+                value={custom.date}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={customTimeId}>Time</Label>
+              <Input
+                disabled={busy}
+                id={customTimeId}
+                onChange={(event) => {
+                  setCustom((current) => ({
+                    ...current,
+                    time: event.target.value,
+                  }));
+                  setError(null);
+                }}
+                type="time"
+                value={custom.time}
+              />
+            </div>
+          </div>
         ) : null}
-        {error === null ? null : (
+
+        {preview.ok ? (
+          <div aria-live="polite" className="rounded-md bg-muted/50 px-3 py-2">
+            <p className="font-medium">
+              Sends {formatScheduleTime(preview.at, now)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {formatScheduleTimeZone(preview.at)}
+            </p>
+          </div>
+        ) : null}
+
+        {visibleError === null ? null : (
           <p className="text-destructive" role="alert">
-            {error}
+            {visibleError}
           </p>
         )}
-      </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            disabled={busy}
+            onClick={() => closeSendLater()}
+            type="button"
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button disabled={busy || !preview.ok} type="submit">
+            {busy ? "Scheduling…" : "Schedule send"}
+          </Button>
+        </div>
+      </form>
     </Dialog>
   );
 }

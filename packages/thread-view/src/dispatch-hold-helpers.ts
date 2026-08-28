@@ -28,18 +28,26 @@ export function dispatchHoldOperationStatus(
   }
 }
 
+/**
+ * The row's headline, in the words a reader of the thread would use. "Dispatch"
+ * is the internal name for the act of starting a turn; from the outside the
+ * only visible fact is that a message is waiting to be sent, and then that it
+ * was sent or the send was called off. The specific cause — scheduled, rate
+ * limited, at capacity — is the hold's own `reason`, which rides the same
+ * title line.
+ */
 export function dispatchHoldTitleForStatus(
   status: SystemDispatchHoldStatus,
 ): string {
   switch (status) {
     case "active":
-      return "Dispatch held";
+      return "Waiting to send";
     case "released":
-      return "Dispatch released";
+      return "Sent";
     case "cancelled":
-      return "Dispatch cancelled";
+      return "Send cancelled";
     case "orphaned":
-      return "Dispatch released (owner unavailable)";
+      return "Sent (holder unavailable)";
     default:
       return assertNever(status);
   }
