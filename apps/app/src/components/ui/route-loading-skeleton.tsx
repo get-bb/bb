@@ -3,13 +3,22 @@ import { CHROME_ROW_CLASS } from "@/lib/bb-desktop";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const SHELL_BLEED_CLASS =
-  "-mx-4 -mt-4 flex h-full min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5";
+interface RouteLoadingSkeletonProps {
+  isBoundedPane: boolean;
+}
 
-export function RouteLoadingSkeleton() {
+const SHELL_CLASS = "flex h-full min-h-0 flex-1 flex-col overflow-hidden";
+const STANDALONE_SHELL_BLEED_CLASS = "-mx-4 -mt-4 md:-mx-5 md:-mt-5";
+
+export function RouteLoadingSkeleton({
+  isBoundedPane,
+}: RouteLoadingSkeletonProps) {
   return (
     <div
-      className={SHELL_BLEED_CLASS}
+      className={cn(
+        SHELL_CLASS,
+        !isBoundedPane && STANDALONE_SHELL_BLEED_CLASS,
+      )}
       role="status"
       aria-busy="true"
       aria-label="Loading"
@@ -19,7 +28,8 @@ export function RouteLoadingSkeleton() {
         className={cn(
           CHROME_ROW_CLASS,
           HEADER_SEAM_CLASS,
-          "shrink-0 gap-2 px-3 pl-12",
+          "shrink-0 gap-2",
+          isBoundedPane ? "px-4" : "px-3 pl-12",
         )}
       >
         <Skeleton className="h-4 w-40 max-w-[50%]" />

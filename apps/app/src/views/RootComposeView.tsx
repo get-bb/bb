@@ -475,7 +475,7 @@ export function LegacyProjectComposeRedirect({
     });
   }, [location.state, navigate, projectId, setRootComposeProjectId]);
 
-  return <RouteLoadingSkeleton />;
+  return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
 export function RootComposeView() {
