@@ -77,7 +77,11 @@ export function buildAttachmentContentDisposition(path: string): string {
   const fallback = filename
     .replace(/[^\x20-\x7E]/gu, "_")
     .replace(/["\\]/gu, "_");
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/gu,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 export function requestMatchesEntityTag(
