@@ -124,7 +124,10 @@ describe("listRunningThreads", () => {
     expect(byId.get(unplaced.id)).toBeNull();
   });
 
-  it("carries the provenance an exemption rule needs", () => {
+  it("counts child and plugin-spawned threads like any other", () => {
+    // Occupancy is about slots, not provenance: a child thread and a
+    // plugin-spawned one each burn a real slot on a real machine, so a row
+    // that hid them would under-report what is running.
     const { db, environmentA, project } = setup();
     const parent = createThread(db, noopNotifier, {
       environmentId: environmentA.id,
@@ -147,15 +150,8 @@ describe("listRunningThreads", () => {
       originPluginId: "workflows",
     });
 
-    const byId = new Map(listRunningThreads(db).map((row) => [row.id, row]));
-    expect(byId.get(parent.id)).toMatchObject({
-      parentThreadId: null,
-      originPluginId: null,
-      projectId: project.id,
-    });
-    expect(byId.get(child.id)?.parentThreadId).toBe(parent.id);
-    // `threads.count` has no `originPluginId` filter, which is exactly why a
-    // limiter counting through it over-held on plugin-spawned roots.
-    expect(byId.get(spawned.id)?.originPluginId).toBe("workflows");
+    expect(listRunningThreads(db).map((row) => row.id).sort()).toEqual(
+      [parent.id, child.id, spawned.id].sort(),
+    );
   });
 });

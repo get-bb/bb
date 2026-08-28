@@ -1265,34 +1265,33 @@ const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
 ];
 
 /**
- * One thread currently occupying capacity, with only the fields an admission
- * policy can act on.
+ * One thread currently occupying capacity: its id, and the machine that id is
+ * occupying.
  */
 export interface RunningThreadRow {
   id: string;
   /** The machine it runs on, or null while no environment has been chosen. */
   hostId: string | null;
-  projectId: string;
-  parentThreadId: string | null;
-  originPluginId: string | null;
 }
 
 /**
  * Every thread currently occupying capacity.
  *
- * `countThreads` answers "how many", which is enough to hold a pool but not to
- * decide *which* pool: a limiter that exempts children and plugin-spawned
- * threads cannot express that as a count filter, so it was reduced to counting
- * a superset and over-holding. These rows carry the three provenance fields an
- * exemption rule needs, and the set is bounded by what is actually running —
- * a handful of rows, not a page of threads.
+ * `countThreads` answers "how many", which holds one pool but cannot say which
+ * threads make it up — so a limiter over several pools (all hosts, one host)
+ * had to issue a count per pool and could not reconcile them. The rows answer
+ * every such question at once, and the set is bounded by what is actually
+ * running: a handful of rows, not a page of threads.
+ *
+ * The row is deliberately just `{ id, hostId }`. `hostId` is here because a
+ * per-host pool cannot be derived from an id without a query per row; anything
+ * else a caller needs it fetches by id, which keeps this from accreting a
+ * projection of the threads table.
  *
  * Archived and deleted rows are excluded because neither runs: archival stops
  * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
  * visibility is a UI fact and a hidden thread burns a slot like any other, so
- * hiding it here would under-report real occupancy. Callers that want to
- * ignore a class of thread filter on `parentThreadId`/`originPluginId`, which
- * is what "hidden" actually stands in for.
+ * hiding it here would under-report real occupancy.
  *
  * `threads_archived_status_idx` (archived_at, status) serves this directly:
  * `archived_at IS NULL` is the leading equality and the status set is the
@@ -1305,9 +1304,6 @@ export function listRunningThreads(
     .select({
       id: threads.id,
       hostId: environments.hostId,
-      projectId: threads.projectId,
-      parentThreadId: threads.parentThreadId,
-      originPluginId: threads.originPluginId,
     })
     .from(threads)
     .leftJoin(environments, eq(environments.id, threads.environmentId))

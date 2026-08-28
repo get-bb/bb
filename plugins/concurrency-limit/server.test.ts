@@ -50,16 +50,9 @@ const PROJECT = {
   updatedAt: 1,
 };
 
-/** A row of `threads.listRunning()`, defaulting to an ordinary root thread. */
+/** A row of `threads.listRunning()`. */
 function running(overrides: Partial<RunningThread> = {}): RunningThread {
-  return {
-    id: "thr_running",
-    hostId: "host-a",
-    projectId: PROJECT.id,
-    parentThreadId: null,
-    originPluginId: null,
-    ...overrides,
-  };
+  return { id: "thr_running", hostId: "host-a", ...overrides };
 }
 
 interface GateContextOverrides {
@@ -199,34 +192,25 @@ describe("the dispatch gate", () => {
     });
   });
 
-  it("excludes child and plugin-spawned threads from the running set", async () => {
-    const { gate } = await setup({
-      settings: { maxConcurrentThreads: "2" },
-      running: [
-        running({ id: "child", parentThreadId: "thr_parent" }),
-        running({ id: "spawned", originPluginId: "workflows" }),
-        running({ id: "real" }),
-      ],
-    });
-
-    // Only "real" counts, so one of two slots is taken.
-    await expect(gate(dispatchContext())).resolves.toEqual({
-      action: "proceed",
-    });
-  });
-
-  it("exempts a child thread's own dispatch from a full pool", async () => {
+  it("gates a child and a plugin-spawned thread like any other", async () => {
+    // The limit is uniform in both directions: provenance changes neither what
+    // the pool contains nor who has to wait for it. The user asked for N
+    // threads, so N is what runs — a workflow's children queue like everyone
+    // else, and a tight limit can wedge a parent that waits on them.
     const { gate } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "a" })],
     });
 
-    await expect(
-      gate(dispatchContext({ thread: { parentThreadId: "thr_parent" } })),
-    ).resolves.toEqual({ action: "proceed" });
-    await expect(
-      gate(dispatchContext({ thread: { originPluginId: "workflows" } })),
-    ).resolves.toEqual({ action: "proceed" });
+    for (const thread of [
+      { parentThreadId: "thr_parent" },
+      { originPluginId: "workflows" },
+    ]) {
+      await expect(gate(dispatchContext({ thread }))).resolves.toEqual({
+        action: "wait",
+        reason: "1 of 1 running on all hosts",
+      });
+    }
   });
 
   it("keeps separate host pools separate", async () => {

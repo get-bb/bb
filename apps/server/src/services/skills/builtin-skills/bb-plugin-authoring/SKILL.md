@@ -1094,14 +1094,13 @@ queued row so a message that parks reaches you unchanged on every re-attempt.
 
 **Limiting concurrency: ask, do not tally.** `bb.sdk.threads.listRunning()`
 returns the threads occupying capacity right now — canonical status `starting`
-or `active`, archived and deleted excluded, hidden included — as rows carrying
-`{ id, hostId, projectId, parentThreadId, originPluginId }`. Filter and group
-them however your limit is expressed; do not keep a count of your own.
+or `active`, archived and deleted excluded, hidden included — as rows of
+`{ id, hostId }`. That is an id and the machine that id is occupying; anything
+else your policy needs, fetch by id. Group them however your limit is
+expressed; do not keep a count of your own.
 
 ```ts
-const running = (await bb.sdk.threads.listRunning()).filter(
-  (thread) => thread.parentThreadId === null && thread.originPluginId === null,
-);
+const running = await bb.sdk.threads.listRunning();
 if (running.length >= limit) {
   return { action: "wait", reason: `${limit} of ${limit} running on all hosts` };
 }
@@ -1129,13 +1128,26 @@ capacity freed.
 
 `bb.sdk.threads.count({ status, hostId, providerId, projectId,
 parentThreadId, groupBy })` is still there for headline numbers — a real
-grouped `SELECT count(*)`, not a list you filter — but it cannot express the
-exemptions a limiter needs, and it carries no exactness guarantee.
+grouped `SELECT count(*)`, not a list you filter — but it answers one pool per
+request, so it cannot reconcile a global limit with a per-host one, and it
+carries no exactness guarantee.
 
-A well-behaved limiter proceeds unconditionally on a `join-turn` attempt: the
-thread already holds its slot. **Deadlock caution:** parent threads sit active
-while waiting on hidden children, so a limiter must exempt child threads
-(`parentThreadId`, `originPluginId`) or give them their own pool.
+A well-behaved limiter proceeds unconditionally on a `join-turn` attempt, and
+on a thread already `starting` or `active`: that thread holds its slot already,
+so re-deciding it would park a running thread behind the pool it is itself
+filling. That is the one rule that is correctness rather than policy.
+
+**Wedge hazard, stated rather than carved out.** The shipped limiter
+(`concurrency-limit`) counts every running thread and gates every `start-turn`
+dispatch, with no exemption for child or plugin-spawned threads. Under a tight
+limit, an orchestration pattern where a running parent waits on threads it
+spawned — the `workflows` plugin — can wedge: the parent holds a slot while the
+children it awaits sit parked behind the same limit, until other slots free or
+the user sends a child now from its queue. The limit is deliberately uniform;
+exempting a class of thread would silently overrun the number the user asked
+for. If you write a limiter whose pattern cannot tolerate that, give the
+spawned work its own pool — fetch the rows' threads and count them under a
+second limit — rather than making it free.
 
 ### bb.experimental_threads — timeline notes
 

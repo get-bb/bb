@@ -929,9 +929,9 @@ export const publicApiRoutes = {
     }),
     /**
      * The threads occupying capacity right now, as rows rather than a count.
-     * A limiter needs to know *which* threads are running to apply its
-     * exemptions — `threads.count` can only filter on what the query string
-     * exposes, which forced counting a superset and over-holding.
+     * A limiter needs to know *which* threads are running to hold several
+     * pools at once — `threads.count` answers one pool per request and cannot
+     * reconcile a global limit with a per-host one from separate counts.
      */
     running: defineRoute({
       path: "/threads/running",

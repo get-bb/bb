@@ -734,11 +734,10 @@ export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
  * `active`. Archived and deleted threads are excluded (neither runs); hidden
  * ones are not, because a hidden thread burns a real slot on a real machine.
  *
- * The fields are exactly what an admission policy acts on and nothing else:
- * `hostId` for per-machine pools, `projectId` for per-project ones, and
- * `parentThreadId`/`originPluginId` for the exemption every limiter needs (a
- * child or plugin-spawned thread is somebody's internal machinery, and
- * counting it against the pool its parent is waiting inside deadlocks).
+ * The row is an id and the machine that id is occupying, and nothing else.
+ * `hostId` is here because a per-host pool cannot be derived from an id
+ * without a query per row; every other question a caller might ask is
+ * answerable by fetching the thread it names.
  *
  * **Exact inside a dispatch gate, a snapshot everywhere else.** Gate passes run
  * one at a time under a server-wide lock, and a cleared first attempt commits
@@ -755,9 +754,6 @@ export const threadRunningEntrySchema = z.object({
   id: z.string(),
   /** The machine it runs on; null while no environment has been chosen. */
   hostId: z.string().nullable(),
-  projectId: z.string(),
-  parentThreadId: z.string().nullable(),
-  originPluginId: z.string().nullable(),
 });
 export type ThreadRunningEntry = z.infer<typeof threadRunningEntrySchema>;
 

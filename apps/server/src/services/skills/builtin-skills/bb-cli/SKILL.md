@@ -333,8 +333,8 @@ or artifacts, validation performed, and blockers.
   plus a row count: the count is a database aggregate, while `bb thread list`
   pages a bounded window and would miscount. Narrow with `--status
   <pending|idle|starting|active|stopping|error>`, `--host`, `--provider`, `--project`,
-  and `--parent <id|none>` (`none` counts threads with no parent, which is how a
-  concurrency policy exempts child threads). Archived, deleted, and hidden
+  and `--parent <id|none>` (`none` counts only threads that have no parent at
+  all; pass an id to count one thread's children). Archived, deleted, and hidden
   threads are excluded. Plain output is one number; `--by host|provider|project`
   prints a count per group (a thread with none groups under `-`) and the total.
   The SDK equivalent is `threads.count({ status, hostId, providerId, projectId,

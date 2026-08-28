@@ -1376,8 +1376,7 @@ describe("@bb/sdk", () => {
         hostId: "host_a",
         providerId: "codex",
         projectId: "proj_123",
-        // The root-parent sentinel: a limiter exempting child threads counts
-        // only threads with no parent.
+        // The root-parent sentinel: "threads with no parent at all".
         parentThreadId: "none",
         groupBy: "host",
       }),
@@ -1397,20 +1396,9 @@ describe("@bb/sdk", () => {
 
   it("lists the running threads over the running route with no query", async () => {
     const rows = [
-      {
-        id: "thr_a",
-        hostId: "host_a",
-        projectId: "proj_1",
-        parentThreadId: null,
-        originPluginId: null,
-      },
-      {
-        id: "thr_b",
-        hostId: null,
-        projectId: "proj_1",
-        parentThreadId: "thr_a",
-        originPluginId: null,
-      },
+      { id: "thr_a", hostId: "host_a" },
+      // Admitted but not yet placed: counts globally, on no host's pool.
+      { id: "thr_b", hostId: null },
     ];
     const queue = createFetchQueue([{ body: rows }]);
     const sdk = createBbSdk({
@@ -1422,8 +1410,8 @@ describe("@bb/sdk", () => {
     });
 
     await expect(sdk.threads.listRunning()).resolves.toEqual(rows);
-    // No filters at all: the occupying set is small, and every policy question
-    // a caller could ask is answerable from the rows themselves.
+    // No filters at all: the occupying set is small, and a caller that needs
+    // more than "which ids, on which hosts" fetches the threads it named.
     expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
   });
 

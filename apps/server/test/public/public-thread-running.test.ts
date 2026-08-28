@@ -17,7 +17,7 @@ async function running(harness: TestAppHarness) {
 }
 
 describe("GET /threads/running", () => {
-  it("returns the occupying threads with the fields an admission policy acts on", async () => {
+  it("returns every occupying thread as an id and the host it occupies", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-thread-running",
@@ -68,21 +68,13 @@ describe("GET /threads/running", () => {
       archiveThread(harness.db, harness.deps.hub, archived.id);
 
       const rows = await running(harness);
+      // A child and a plugin-spawned thread occupy slots like any other, so
+      // the route reports them.
       expect(new Set(rows.map((row) => row.id))).toEqual(
         new Set([root.id, child.id, spawned.id, unplaced.id]),
       );
       const byId = new Map(rows.map((row) => [row.id, row]));
-      expect(byId.get(root.id)).toEqual({
-        id: root.id,
-        hostId: host.id,
-        projectId: project.id,
-        parentThreadId: null,
-        originPluginId: null,
-      });
-      // The exemption inputs a limiter filters on are carried, not applied:
-      // the route reports facts and the policy lives in the gate.
-      expect(byId.get(child.id)?.parentThreadId).toBe(root.id);
-      expect(byId.get(spawned.id)?.originPluginId).toBe("workflows");
+      expect(byId.get(root.id)).toEqual({ id: root.id, hostId: host.id });
       expect(byId.get(unplaced.id)?.hostId).toBeNull();
     });
   });

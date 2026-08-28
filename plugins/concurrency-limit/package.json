@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Limit how many threads run at once, in total and per host.",
+  "description": "Limit how many threads run at once, in total and per host. Every running thread counts, including child and plugin-spawned ones.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Concurrency limit",
-    "description": "Limit how many threads run at once, in total and per host.",
+    "description": "Limit how many threads run at once, in total and per host. Every running thread counts, including child and plugin-spawned ones.",
     "branding": {
       "icon": "Pause"
     },

@@ -200,11 +200,14 @@ above:
   - **`sdk.threads.listRunning()`** (`GET /threads/running`, no query) returns
     the threads occupying capacity — canonical status `starting` or `active`,
     archived/deleted excluded, hidden *included* because a hidden thread burns
-    a real slot — as rows of
-    `{ id, hostId, projectId, parentThreadId, originPluginId }`. `threads.count`
-    could only filter on what its query string exposed, so a limiter counting
-    through it had to count a superset (no `originPluginId` filter) and
-    over-hold; the provenance fields are exactly the exemption inputs.
+    a real slot — as rows of `{ id, hostId }`. `threads.count` answers one pool
+    per request and cannot reconcile a global limit with a per-host one from
+    separate counts; the rows answer both from one read. The row shipped as
+    `{ id, hostId, projectId, parentThreadId, originPluginId }` and was slimmed
+    when the exemption below was removed: those three fields had exactly one
+    consumer, the exemption filter, and no surface outlives its only consumer.
+    Ids are the composition primitive — a caller that needs more than "which
+    ids, on which hosts" fetches the threads it named.
   - **Flip-before-unlock.** A cleared first dispatch now commits its
     `pending → starting` transition INSIDE the gate evaluation lock
     (`DispatchGatePassRequest.commitAdmission`), so attempt N+1 reads a
@@ -224,12 +227,29 @@ above:
     longer release their own waits when capacity frees; `clearWait` is now for
     "my own condition resolved" only. The orphan sweep is unchanged.
 
-  The limiter plugin collapsed to settings-parse + `listRunning` + exemption
-  filter + compare: `tally.ts`, `scope.ts`, `parked-rows.ts`, their tests, the
+  The limiter plugin collapsed to settings-parse + `listRunning` + compare:
+  `tally.ts`, `scope.ts`, `parked-rows.ts`, their tests, the
   `thread.*`/`queue.*` subscriptions, the `clearWait` call and the reconciler
   background service are all deleted. Reason strings, the `needsConfiguration`
-  posture, the join-turn proceed rule and both settings descriptors are
-  unchanged.
+  posture and the join-turn proceed rule are unchanged.
+
+- **Limits are uniform; the child/plugin-spawned exemption is gone.** The
+  limiter briefly did not count threads with a `parentThreadId` or an
+  `originPluginId`, and let their own dispatches through a full pool. Removed
+  in both directions: every running thread counts, every `start-turn` dispatch
+  is gated. The join-turn (and already-`starting`/`active`) proceed rule stays,
+  because a thread that already holds its slot is not asking for a new one —
+  that is correctness, not exemption.
+
+  The honest cost, now written into the plugin's description, both settings
+  descriptions and the authoring skill rather than engineered around: under a
+  tight limit, an orchestration pattern where a running parent waits on threads
+  it spawned (the `workflows` plugin) can wedge — the parent holds a slot while
+  the children it awaits sit parked behind the same limit — until other slots
+  free or the user sends a child now from its queue. The exemption bought that
+  pattern liveness by silently overrunning the number the user set, on every
+  host, for as long as the pattern ran; a limit that means what it says is
+  worth the wedge.
 
 ## Build notes
 
