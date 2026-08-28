@@ -249,6 +249,7 @@ async function waitForOutputFlush(child) {
 
 async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
   return await new Promise((resolvePromise, rejectPromise) => {
+    let exited = false;
     const timeout = setTimeout(() => {
       cleanup();
       rejectPromise(
@@ -261,6 +262,7 @@ async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
     }, startupTimeoutMs);
 
     const handleExit = (code, signal) => {
+      exited = true;
       cleanup();
       void waitForOutputFlush(child).then(() => {
         rejectPromise(
@@ -296,10 +298,12 @@ async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
     child.once("error", handleError);
     preloadReady.then(
       (result) => {
+        if (exited) return;
         cleanup();
         resolvePromise(result);
       },
       (error) => {
+        if (exited) return;
         cleanup();
         rejectPromise(error);
       },
