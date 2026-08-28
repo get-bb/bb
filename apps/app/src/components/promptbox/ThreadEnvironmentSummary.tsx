@@ -128,7 +128,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               type="button"
               aria-label="Create thread in worktree"
               onClick={onCreateNewThreadInWorktree}
-              className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground"
             >
               <Icon name="MessageSquarePlus" className="size-4" />
             </button>

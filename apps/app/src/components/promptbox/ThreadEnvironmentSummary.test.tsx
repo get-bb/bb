@@ -105,7 +105,7 @@ describe("ThreadEnvironmentSummary", () => {
   );
 
   it("explains the create-thread action in a tooltip", async () => {
-    render(
+    const { container } = render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
           environmentLabel="Worktree"
@@ -114,11 +114,17 @@ describe("ThreadEnvironmentSummary", () => {
       </TooltipProvider>,
     );
 
-    fireEvent.focus(
-      screen.getByRole("button", {
-        name: "Create thread in worktree",
-      }),
+    const createThreadButton = screen.getByRole("button", {
+      name: "Create thread in worktree",
+    });
+    expect(createThreadButton.classList).toContain("text-muted-foreground");
+    expect(createThreadButton.classList).toContain(
+      "hover:text-muted-foreground",
     );
+    expect(
+      container.querySelector('[data-icon="MessageSquarePlus"]'),
+    ).not.toBeNull();
+    fireEvent.focus(createThreadButton);
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Create thread in worktree",

@@ -865,7 +865,11 @@ function StackedCardsWithPillsRow() {
 export function ControlEmphasis() {
   return (
     <div className="mx-auto flex min-h-[28rem] w-full max-w-3xl items-end p-4">
-      <Row submitMode={{ kind: "ready" }} />
+      <Row
+        submitMode={{ kind: "ready" }}
+        permission={{ ...basePermission, value: "full" }}
+        environmentSummary={worktreeEnvironmentSummary}
+      />
     </div>
   );
 }

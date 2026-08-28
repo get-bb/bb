@@ -22,7 +22,6 @@ import {
 const OPTION_WARNING_TEXT_CLASS_NAME = "text-warning-text";
 const OPTION_WARNING_INTERACTIVE_CLASS_NAME =
   "hover:text-warning-text data-[state=open]:text-warning-text";
-const OPTION_WARNING_ICON_CLASS_NAME = "text-warning-text";
 
 export interface PickerOption<T extends string> {
   value: T;
@@ -123,12 +122,7 @@ export function OptionPicker<T extends string>({
       {disabled && !showChevronWhenDisabled ? null : (
         <Icon
           name="ChevronDown"
-          className={cn(
-            "size-3.5 shrink-0",
-            selectedIsWarning
-              ? OPTION_WARNING_ICON_CLASS_NAME
-              : "text-muted-foreground",
-          )}
+          className="size-3.5 shrink-0 text-muted-foreground"
         />
       )}
     </Button>
