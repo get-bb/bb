@@ -536,12 +536,14 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   {
     steerOnEnter: false,
     label: "Queue",
-    description: "Enter adds a follow-up. Command+Enter steers the run.",
+    description:
+      "Enter adds a follow-up. It runs when the agent stops. Command+Enter steers the run.",
   },
   {
     steerOnEnter: true,
     label: "Steer",
-    description: "Enter steers the run. Command+Enter adds a follow-up.",
+    description:
+      "Enter steers the run now. Command+Enter adds a follow-up for later.",
   },
 ] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";

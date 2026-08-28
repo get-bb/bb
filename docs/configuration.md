@@ -187,9 +187,11 @@ agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
 The "Default thread followup behavior" picker in Settings → General changes the
-active-thread composer shortcuts when no typeahead suggestion is active. It
-defaults to "Queue": Enter queues and Command+Enter steers. "Steer" swaps them:
-Enter steers and Command+Enter queues. Set it with
+active-thread composer shortcuts when no typeahead suggestion is active. A
+queued message waits and then runs when the agent stops. A steer message goes
+to the agent during the current run. The picker defaults to "Queue": Enter
+queues and Command+Enter steers. "Steer" swaps them: Enter steers and
+Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
