@@ -2261,6 +2261,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           : pluginFileOpeners.filter((opener) =>
               opener.extensions.includes(extension),
             );
+      const isPdf = extension === "pdf";
       const lineNumber = getFilePreviewLineRangeStart({
         lineRange: link.lineRange,
       });
@@ -2285,14 +2286,23 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           type: "submenu",
         });
       }
-      if (matching.length > 0) {
+      if (isPdf || matching.length > 0) {
         if (items.length > 0) {
           items.push({ id: "open-with-separator", type: "separator" });
+        }
+        if (isPdf) {
+          items.push({
+            id: "download-pdf",
+            label: "Download PDF",
+            onSelect: () => {
+              handleOpenTimelineLocalFileLink(link, { viewer: "download" });
+            },
+          });
         }
         items.push(
           {
             id: "builtin",
-            label: "Open with built-in preview",
+            label: isPdf ? "Open preview" : "Open with built-in preview",
             onSelect: () => {
               handleOpenTimelineLocalFileLink(link, { viewer: "builtin" });
             },
