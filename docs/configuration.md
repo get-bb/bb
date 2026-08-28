@@ -820,7 +820,7 @@ settings accept base-10 integer strings through Extensions → Plugins or
 | `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                 |
 | `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                      |
 | `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.            |
-| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                |
+| `retentionDays`        |        `7` |          `1`–`3650` | Days to retain completed workflow data.                |
 | `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.       |
 
 The five settings other than `maxActiveRuns` are snapshotted into each new run.

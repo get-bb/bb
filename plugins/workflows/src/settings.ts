@@ -34,7 +34,7 @@ export const WORKFLOW_SETTING_DESCRIPTORS = {
     type: "string",
     label: "Retention (days)",
     description: "Days to retain completed workflow data (1-3650).",
-    default: "30",
+    default: "7",
   },
   maxNotificationBytes: {
     type: "string",
@@ -64,7 +64,7 @@ export const DEFAULT_WORKFLOW_SETTINGS: Readonly<WorkflowSettings> =
     maxConcurrentAgents: 8,
     maxAgentCalls: 100,
     totalRunTimeoutMs: 24 * 60 * 60 * 1_000,
-    retentionDays: 30,
+    retentionDays: 7,
     maxNotificationBytes: 16 * 1_024,
   });
 
