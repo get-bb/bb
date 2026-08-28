@@ -8,6 +8,7 @@ import {
   createDesktopReleaseConfig,
   resolveDesktopReleaseChannel,
 } from "./desktop-release-channel.mjs";
+import { createPackagedAppLaunchArguments } from "./packaged-app-launch.mjs";
 import { resolvePackagedAppBinary } from "./packaged-app-paths.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,7 @@ const releaseChannel = resolveDesktopReleaseChannel(process.env);
 const releaseConfig = createDesktopReleaseConfig(releaseChannel);
 const startupTimeoutMs = 20_000;
 const exitTimeoutMs = 5_000;
+const outputFlushTimeoutMs = 2_000;
 const postReadySettleMs = 300;
 const maxCapturedOutputCharacters = 20_000;
 
@@ -236,6 +238,15 @@ function formatProcessOutput({ stdout, stderr }) {
     .join("\n\n");
 }
 
+async function waitForOutputFlush(child) {
+  await Promise.race([
+    new Promise((resolveClosed) => {
+      child.once("close", resolveClosed);
+    }),
+    sleep(outputFlushTimeoutMs),
+  ]);
+}
+
 async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
   return await new Promise((resolvePromise, rejectPromise) => {
     const timeout = setTimeout(() => {
@@ -251,16 +262,18 @@ async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
 
     const handleExit = (code, signal) => {
       cleanup();
-      rejectPromise(
-        new Error(
-          `Packaged Electron app exited before startup completed: code=${String(
-            code,
-          )} signal=${String(signal)}.\n${formatProcessOutput({
-            stdout,
-            stderr,
-          })}`,
-        ),
-      );
+      void waitForOutputFlush(child).then(() => {
+        rejectPromise(
+          new Error(
+            `Packaged Electron app exited before startup completed: code=${String(
+              code,
+            )} signal=${String(signal)}.\n${formatProcessOutput({
+              stdout,
+              stderr,
+            })}`,
+          ),
+        );
+      });
     };
     const handleError = (error) => {
       cleanup();
@@ -378,9 +391,16 @@ async function smokePackagedApp() {
   delete childEnv.BB_DESKTOP_NODE_EXEC_PATH;
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
-  const child = spawn(appBinary, [`--user-data-dir=${userDataDir}`], {
-    env: childEnv,
-  });
+  const child = spawn(
+    appBinary,
+    createPackagedAppLaunchArguments({
+      platform: process.platform,
+      userDataDir,
+    }),
+    {
+      env: childEnv,
+    },
+  );
   child.stdout.on("data", (chunk) => {
     appendOutput(stdout, chunk);
   });
