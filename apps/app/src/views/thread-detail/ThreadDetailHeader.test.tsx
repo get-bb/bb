@@ -97,6 +97,58 @@ describe("ThreadDetailHeader", () => {
     const button = screen.getByRole("button", { name: "Hide right panel" });
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(button.parentElement?.classList).toContain("fixed");
+    expect(
+      document.querySelector("[data-thread-header-panel-toggle-reserve]"),
+    ).toBeNull();
+  });
+
+  it("reserves the pinned right-panel toggle footprint while the panel is closed", () => {
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Show right panel" });
+    expect(toggle.parentElement?.classList).toContain("fixed");
+    const reserve = document.querySelector(
+      "[data-thread-header-panel-toggle-reserve]",
+    );
+    expect(reserve?.classList).toContain("header-icon-button");
+  });
+
+  it("does not reserve toggle space for the compact drawer trigger", () => {
+    viewportState.isCompactViewport = true;
+
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Show right panel" });
+    expect(toggle.parentElement?.classList).not.toContain("fixed");
+    expect(
+      document.querySelector("[data-thread-header-panel-toggle-reserve]"),
+    ).toBeNull();
   });
 
   it("leaves the open compact-panel collapse control to the drawer", () => {
