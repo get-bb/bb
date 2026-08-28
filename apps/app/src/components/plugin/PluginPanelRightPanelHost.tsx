@@ -70,6 +70,8 @@ import { getBrowserUrlHost } from "@/lib/browser-url";
 import { isRoutePath } from "@/lib/route-paths";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
+import { shouldDownloadWithFileOpenerPreference } from "@/lib/plugin-slot-resolvers";
 import {
   AppNavigationHostProvider,
   type AppFilePreviewIntent,
@@ -365,6 +367,7 @@ export function PluginPanelRightPanelHost({
     storageFiles: undefined,
     terminalSessions: undefined,
   });
+  const fileOpenerPreference = useFileOpenerPreferenceValue();
   const createTerminal = useCreateTerminal();
   const { mutateAsync: closeTerminal } = useCloseTerminal();
   const hostsQuery = useHosts();
@@ -512,6 +515,11 @@ export function PluginPanelRightPanelHost({
       selectPersistedPanelTab();
       const lineRange = toFilePreviewLineRange(normalized.location);
       const { target } = normalized;
+      const expectsDownload = shouldDownloadWithFileOpenerPreference({
+        path: target.path,
+        preference: fileOpenerPreference,
+        ...(intent.viewer !== undefined ? { override: intent.viewer } : {}),
+      });
       const tab =
         target.kind === "workspace"
           ? openTab(
@@ -544,11 +552,11 @@ export function PluginPanelRightPanelHost({
                 },
                 { viewer: intent.viewer },
               );
-      if (tab === null) return false;
+      if (tab === null) return expectsDownload;
       revealPanel();
       return true;
     },
-    [openTab, panel, revealPanel, selectPersistedPanelTab],
+    [fileOpenerPreference, openTab, panel, revealPanel, selectPersistedPanelTab],
   );
   const navigationCapabilities = useMemo(
     () => ({ openFilePreview, openFixedTab }),
