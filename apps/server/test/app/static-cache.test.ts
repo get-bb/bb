@@ -34,6 +34,15 @@ describe("production static cache headers", () => {
       join(staticDir, "favicon-32x32.png"),
       Buffer.from([0x89, 0x50, 0x4e, 0x47]),
     );
+    const serviceWorkerBody = `self.addEventListener("fetch", () => { ${"void 0;".repeat(600)} });`;
+    const serviceWorkerPath = join(staticDir, "sw.js");
+    const brotliServiceWorker = brotliCompressSync(
+      Buffer.from(serviceWorkerBody),
+    );
+    const gzipServiceWorker = gzipSync(Buffer.from(serviceWorkerBody));
+    await writeFile(serviceWorkerPath, serviceWorkerBody);
+    await writeFile(`${serviceWorkerPath}.br`, brotliServiceWorker);
+    await writeFile(`${serviceWorkerPath}.gz`, gzipServiceWorker);
 
     const harness = await createTestAppHarness();
     const serverApp = createApp(harness.deps, { staticDir });
@@ -116,6 +125,62 @@ describe("production static cache headers", () => {
       expect(iconResponse.headers.get("content-type")).toBe("image/png");
       expect(iconResponse.headers.get("cache-control")).toBe(
         "public, max-age=86400",
+      );
+
+      const serviceWorkerResponse = await serverApp.app.request("/sw.js");
+      expect(serviceWorkerResponse.status).toBe(200);
+      expect(serviceWorkerResponse.headers.get("cache-control")).toBe(
+        "no-cache",
+      );
+      expect(serviceWorkerResponse.headers.get("etag")).toMatch(
+        /^W\/"[0-9a-f]{32}"$/u,
+      );
+      const serviceWorkerEtag = serviceWorkerResponse.headers.get("etag") ?? "";
+
+      const revalidatedServiceWorkerResponse = await serverApp.app.request(
+        "/sw.js",
+        { headers: { "if-none-match": serviceWorkerEtag } },
+      );
+      expect(revalidatedServiceWorkerResponse.status).toBe(304);
+      expect(revalidatedServiceWorkerResponse.headers.get("etag")).toBe(
+        serviceWorkerEtag,
+      );
+
+      const brotliServiceWorkerResponse = await serverApp.app.request(
+        "/sw.js",
+        { headers: { "accept-encoding": "br, gzip" } },
+      );
+      expect(brotliServiceWorkerResponse.headers.get("content-encoding")).toBe(
+        "br",
+      );
+      expect(brotliServiceWorkerResponse.headers.get("etag")).toBe(
+        serviceWorkerEtag,
+      );
+      expect(brotliServiceWorkerResponse.headers.get("content-length")).toBe(
+        String(brotliServiceWorker.length),
+      );
+
+      const gzipServiceWorkerResponse = await serverApp.app.request("/sw.js", {
+        headers: { "accept-encoding": "gzip" },
+      });
+      expect(gzipServiceWorkerResponse.headers.get("content-encoding")).toBe(
+        "gzip",
+      );
+      expect(gzipServiceWorkerResponse.headers.get("etag")).toBe(
+        serviceWorkerEtag,
+      );
+      expect(gzipServiceWorkerResponse.headers.get("content-length")).toBe(
+        String(gzipServiceWorker.length),
+      );
+
+      await rm(serviceWorkerPath);
+      await rm(`${serviceWorkerPath}.br`);
+      await rm(`${serviceWorkerPath}.gz`);
+      const missingServiceWorkerResponse =
+        await serverApp.app.request("/sw.js");
+      expect(missingServiceWorkerResponse.status).toBe(404);
+      expect(await missingServiceWorkerResponse.text()).not.toContain(
+        "index-test.js",
       );
 
       const apiMissResponse = await serverApp.app.request(

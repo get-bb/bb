@@ -57,6 +57,9 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { startPwaUpdateRegistration } from "./lib/pwa-update";
+
+startPwaUpdateRegistration();
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({

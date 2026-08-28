@@ -4,6 +4,7 @@ import { defineConfig, type UserConfig } from "vite";
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
 import { bundleStats } from "./vite-bundle-stats.js";
 import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
@@ -16,6 +17,23 @@ export const sharedViteConfig = {
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
+    VitePWA({
+      devOptions: { enabled: false },
+      includeAssets: [],
+      includeManifestIcons: false,
+      injectRegister: false,
+      manifest: false,
+      registerType: "prompt",
+      strategies: "generateSW",
+      workbox: {
+        clientsClaim: true,
+        globPatterns: ["assets/**"],
+        inlineWorkboxRuntime: true,
+        navigateFallback: null,
+        runtimeCaching: [],
+        skipWaiting: false,
+      },
+    }),
     bundleStats(),
     fontPreload(),
   ],

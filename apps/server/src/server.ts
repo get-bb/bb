@@ -134,7 +134,7 @@ interface StaticResponseHeadersArgs {
   urlPath: string;
 }
 
-const STATIC_INDEX_CACHE_CONTROL = "no-cache";
+const STATIC_REVALIDATED_CACHE_CONTROL = "no-cache";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const STATIC_PUBLIC_FILE_CACHE_CONTROL = "public, max-age=86400";
 const WEB_SOCKET_SHUTDOWN_CODE = 1001;
@@ -170,8 +170,8 @@ function staticCacheControlForPath(urlPath: string): string {
   if (urlPath.startsWith("/assets/")) {
     return STATIC_ASSET_CACHE_CONTROL;
   }
-  if (urlPath.endsWith(".html")) {
-    return STATIC_INDEX_CACHE_CONTROL;
+  if (urlPath.endsWith(".html") || urlPath === "/sw.js") {
+    return STATIC_REVALIDATED_CACHE_CONTROL;
   }
   return STATIC_PUBLIC_FILE_CACHE_CONTROL;
 }
@@ -193,15 +193,17 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   return headers;
 }
 
-const shellEtagCache = new Map<
+const revalidatedFileEtagCache = new Map<
   string,
   { etag: string; mtimeMs: number; size: number }
 >();
 
-async function shellEtag(filePath: string): Promise<string | undefined> {
+async function revalidatedFileEtag(
+  filePath: string,
+): Promise<string | undefined> {
   try {
     const fileStat = await stat(filePath);
-    const cached = shellEtagCache.get(filePath);
+    const cached = revalidatedFileEtagCache.get(filePath);
     if (
       cached !== undefined &&
       cached.size === fileStat.size &&
@@ -213,7 +215,7 @@ async function shellEtag(filePath: string): Promise<string | undefined> {
       .update(await readFile(filePath))
       .digest("hex");
     const etag = `W/"${digest.slice(0, 32)}"`;
-    shellEtagCache.set(filePath, {
+    revalidatedFileEtagCache.set(filePath, {
       etag,
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
@@ -262,8 +264,8 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
     urlPath: string;
   }): Promise<Response> => {
     const etag =
-      args.contentType === "text/html"
-        ? await shellEtag(args.filePath)
+      args.contentType === "text/html" || args.urlPath === "/sw.js"
+        ? await revalidatedFileEtag(args.filePath)
         : undefined;
     if (
       etag !== undefined &&
@@ -321,7 +323,7 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
         });
       }
     } catch {}
-    if (urlPath.startsWith("/assets/")) {
+    if (urlPath.startsWith("/assets/") || urlPath === "/sw.js") {
       return context.notFound();
     }
     return serveStaticAppFile({
