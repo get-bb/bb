@@ -388,8 +388,12 @@ describe("host.inspect_git_source dispatch", () => {
       );
 
       const harness = createHarness();
-      const branchListing = dispatchOnlineRpcCommand(
-        { type: "host.list_branches", path: repoPath, limit: 50 },
+      const sourceInspection = dispatchOnlineRpcCommand(
+        {
+          type: "host.inspect_git_source",
+          path: repoPath,
+          remoteRefresh: "blocking",
+        },
         harness.dispatchOptions(),
       );
       let provisioning: Promise<HostWorkspace> | undefined;
@@ -414,13 +418,13 @@ describe("host.inspect_git_source dispatch", () => {
         await expect(fs.access(targetedFetchMarker)).rejects.toThrow();
 
         await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
-        await branchListing;
+        await sourceInspection;
         const workspace = await provisioning;
         expect(workspace.path).toBe(targetPath);
         await expect(fs.access(targetedFetchMarker)).resolves.toBeUndefined();
       } finally {
         await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
-        await Promise.allSettled([branchListing]);
+        await Promise.allSettled([sourceInspection]);
         const provisionResult = await Promise.allSettled(
           provisioning ? [provisioning] : [],
         );
