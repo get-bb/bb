@@ -1,1 +1,0 @@
-ALTER TABLE `threads` ADD `pending_start_context` text;

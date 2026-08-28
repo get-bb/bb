@@ -1,1 +1,0 @@
-ALTER TABLE `queued_thread_messages` ADD `system_notice` text;

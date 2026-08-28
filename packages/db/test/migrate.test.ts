@@ -312,9 +312,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+  dropQueueReworkSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -645,8 +643,8 @@ function dropEventToolNameColumn(db: DbConnection): void {
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
+  // The same rewind also rewinds the later deferred-message table (0108).
   db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
-  db.$client.prepare("DROP TABLE IF EXISTS dispatch_holds").run();
   // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
@@ -686,15 +684,19 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
 }
 
 /**
- * The dispatch-hold migration adds the queued-message plugin-input sidecar
- * column. A rewind that clears its journal row must drop the column so the
- * replay's ADD does not hit a table that already has it.
+ * Undo migration 0110, the dispatch-queue rework.
+ *
+ * 0110 adds the queue's parking columns (schedule, typed wait, wait holder,
+ * payload kind and its retry reference), the plugin-input and system-notice
+ * sidecars, their two partial indexes, and the thread's pending start context.
+ * A rewind that clears its journal row must remove all of them before the
+ * replay's ADDs hit a table that already has them.
+ *
+ * The table 0110 DROPs (`deferred_thread_messages`, added by 0108) needs
+ * nothing here. Every rewind that clears 0110's journal row also clears
+ * 0108's, so the replay recreates the table before 0110 drops it again.
  */
-// Migration 0111 adds the queue's parking columns (schedule, typed wait, wait
-// holder, payload kind and its retry reference) plus their two partial
-// indexes. Rewind scenarios that clear its journal row must remove all of them
-// before replaying the ADDs.
-function dropQueuedMessageWaitColumns(db: DbConnection): void {
+function dropQueueReworkSchema(db: DbConnection): void {
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
     "queued_thread_messages_due_idx",
@@ -702,10 +704,12 @@ function dropQueuedMessageWaitColumns(db: DbConnection): void {
   ]) {
     db.$client.prepare(`DROP INDEX IF EXISTS ${index}`).run();
   }
-  const columns = db.$client
+  const queuedColumns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
   for (const name of [
+    "system_notice",
+    "plugin_inputs",
     "send_at",
     "waiting_on",
     "wait_holder",
@@ -713,46 +717,17 @@ function dropQueuedMessageWaitColumns(db: DbConnection): void {
     "retry_of_turn_request_id",
     "retry_attempt",
   ]) {
-    if (!columns.some((column) => column.name === name)) continue;
+    if (!queuedColumns.some((column) => column.name === name)) continue;
     db.$client
       .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
       .run();
   }
-}
-
-/**
- * Undo the queue-rework columns so their migrations replay.
- *
- * The two tables the rework DROPS need nothing here: `0112` drops them with
- * `IF EXISTS`, which is what a drop migration in a replayed chain has to be —
- * the rollback may land either side of the migration that created them.
- */
-function dropQueueReworkColumns(db: DbConnection): void {
   const threadColumns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
     .all();
   if (threadColumns.some((column) => column.name === "pending_start_context")) {
     db.$client
       .prepare("ALTER TABLE threads DROP COLUMN pending_start_context")
-      .run();
-  }
-  const queuedColumns = db.$client
-    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
-    .all();
-  if (queuedColumns.some((column) => column.name === "system_notice")) {
-    db.$client
-      .prepare("ALTER TABLE queued_thread_messages DROP COLUMN system_notice")
-      .run();
-  }
-}
-
-function dropQueuedMessagePluginInputsColumn(db: DbConnection): void {
-  const columns = db.$client
-    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
-    .all();
-  if (columns.some((column) => column.name === "plugin_inputs")) {
-    db.$client
-      .prepare("ALTER TABLE queued_thread_messages DROP COLUMN plugin_inputs")
       .run();
   }
 }
@@ -828,9 +803,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+  dropQueueReworkSchema(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
@@ -2050,9 +2023,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2457,9 +2428,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2561,9 +2530,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+      dropQueueReworkSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -5132,9 +5099,7 @@ describe("migrate", () => {
 
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
-  dropQueueReworkColumns(db);
-  dropQueuedMessageWaitColumns(db);
-  dropQueuedMessagePluginInputsColumn(db);
+      dropQueueReworkSchema(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

@@ -93,7 +93,7 @@ interim backend UI can stay functional-but-plain until the visuals arrive.
 | Provider/env at create | **Nullable provider is deferred**: rows keep a resolved provider at insert (defaults ladder), amendable at the first cleared attempt (the shipped pre-session amendment machinery relocates there). `environmentId` stays null until provisioning, as it already does |
 | Plugin checkpoint | One gate stage — the dispatch attempt — replacing `thread.create` + `turn.submit`. Context carries `firstDispatch` (provider/environment amendments allowed only there), the same provenance/pluginInputs/typed context as today. Verdicts: `proceed` (with amendments) \| `wait` (park with reason — replaces `hold`) \| `reject`. `turn.failed` unchanged; retry verdicts create by-reference queue rows |
 | Concurrency limiting | A `wait` verdict at the attempt; the row shows `plugin:concurrency-limit · "4 of 4 running"`. Same tally, release = the plugin marking its wait cleared (drain re-attempts; gates re-run, so a stale release safely re-parks) |
-| Send now | **Bypasses every plugin check** (and `sendAt`); core waits (`provisioning`, `interaction`, `thread-busy`) are not overridable — they guard invariants. This loosens the previous skip-owner-only rule by explicit choice |
+| Send now | **Bypasses every plugin check** (and `sendAt`). `provisioning` and `interaction` waits are not overridable — they guard invariants; `thread-busy` clears via a join-turn steer, so send-now works on ordinary queued rows. Loosens the previous skip-owner-only rule by explicit choice |
 | Fail-closed | Unchanged: a gate that throws/times out (10s) fails the attempt naming the plugin; an inline attempt surfaces the error to the sender, a drain attempt marks the row errored-visible. Orphan rule transfers: a `plugin` wait whose plugin is not running is cleared by the sweep |
 | Exactly-once | The release/claim CAS semantics transfer to row state transitions (parked → dispatching → consumed); double-drain safe as today's claim tokens already are |
 
@@ -133,6 +133,45 @@ this branch's migrations (0110) into the new shape rather than stacking.
   the single-checkpoint model is compatible either way.
 - Auto per-send in the thread composer UI.
 - Host CPU/RAM, sandboxes, everything already deferred by the prior plan.
+
+## As shipped (implementation deltas)
+
+All waves are implemented on this branch. Deliberate deltas from the text
+above:
+
+- **Send-now and `thread-busy`**: ordinary queued rows ARE `thread-busy`
+  waits, and send-now dispatches as a join-turn attempt that legitimately
+  clears by steering — so send-now is available there (hiding it would have
+  stripped it from every plain queued row). Only `provisioning` and
+  `interaction` waits re-park on every attempt and hide the button.
+- **Never-started threads render as queue rows, not a banner**: the queued
+  message list is status-independent, so a pending thread's parked first
+  message is just a row with reason/countdown/Send-now/Cancel; a pending
+  thread whose queue empties gets the delete-thread offer, derived from that
+  condition rather than tracked as a flag.
+- **Scheduled spawns survive restarts via `threads.pending_start_context`**
+  (the relocated cold-start record); Wave 2 also added
+  `queued_thread_messages.system_notice` so parked parent-system notices
+  keep their taxonomy.
+- **Host-offline folded into the `provisioning` wait kind**; the periodic
+  drain replaces reconnect-triggered release. The reprovision-parked turn
+  keeps its deferred-event replay (sequencing invariant); only its tracking
+  row moved to the queue.
+- **`SendMessageResponse` is now `sent | parked`** — the old four-way enum
+  named which parking mechanism, and there is only one.
+- **Environment amendments are refused on drain re-attempts** even though
+  they report firstDispatch (re-resolving an intent needs creation on the
+  stack) — same boundary the hold contract had.
+- **Delivery-mode signal is not renderable yet**: the queued-message
+  response carries no deliveryMode field; the visual-prototyping brief's
+  row for it is design-ahead-of-contract.
+- **Mobile needs no native work**: it is a WebView shell around the PWA;
+  the responsive app surfaces are the mobile queue UI.
+- **The branch's migrations are squashed** into one
+  `0110_wild_warlock.sql` on main's 0109 (preserving the real
+  `deferred_thread_messages` drop; `dispatch_holds` nets out and never
+  appears). Daemon protocol ended at 174 across the rework's acceptance
+  widenings.
 
 ## Build notes
 
