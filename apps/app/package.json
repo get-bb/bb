@@ -93,7 +93,6 @@
     "katex": "^0.16.22",
     "lucide-react": "^1.23.0",
     "mermaid": "^11.15.0",
-    "motion": "^13.1.0",
     "nanoid": "^5.1.6",
     "partysocket": "^1.1.16",
     "react": "^19.0.0",

@@ -22,10 +22,7 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
-import {
-  SecondaryPanelLayout,
-  type SecondaryPanelRenderArgs,
-} from "@/components/secondary-panel/SecondaryPanelLayout";
+import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
   LazyHostScopedFilePreviewTabContent,
@@ -871,9 +868,14 @@ export function PluginPanelRightPanelHost({
     ({
       presentation,
       canShowNativeBrowserView,
-      inlinePanelToggle,
       resizablePanelId,
-    }: SecondaryPanelRenderArgs) => {
+    }: {
+      presentation: "inline" | "drawer";
+      canShowNativeBrowserView: boolean;
+      isMainCollapsed: boolean;
+      onToggleMainCollapse: () => void;
+      resizablePanelId?: string;
+    }) => {
       const renderDeck = (
         activeBrowserTabId: string | null,
         canHandleBrowserCommands: boolean,
@@ -921,7 +923,6 @@ export function PluginPanelRightPanelHost({
           onOpenNewTab={openNewTab}
           isConversationCollapsed={false}
           onToggleConversationCollapse={() => undefined}
-          inlinePanelToggle={inlinePanelToggle}
           renderAsDrawer={presentation === "drawer"}
           resizablePanelId={resizablePanelId}
         />

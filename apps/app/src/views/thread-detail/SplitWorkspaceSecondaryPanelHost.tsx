@@ -18,7 +18,6 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
@@ -37,6 +36,7 @@ import {
 import { useRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
 import {
   getPanelCollapseTransitionStyle,
+  PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
@@ -44,10 +44,6 @@ import {
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import { usePanelResizeSnap } from "@/components/secondary-panel/usePanelResizeSnap";
-import {
-  createSecondaryPanelGroupMotion,
-  type SecondaryPanelGroupMotion,
-} from "@/components/secondary-panel/secondaryPanelGroupMotion";
 import {
   type PaneSecondaryPanelRegistry,
   usePaneSecondaryPanelModel,
@@ -71,13 +67,7 @@ export function SplitWorkspaceSecondaryPanelHost({
 }: SplitWorkspaceSecondaryPanelHostProps) {
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
-  const panelGroupMotionRef = useRef<SecondaryPanelGroupMotion | null>(null);
-  if (panelGroupMotionRef.current === null) {
-    panelGroupMotionRef.current = createSecondaryPanelGroupMotion();
-  }
-  const panelGroupMotion = panelGroupMotionRef.current;
   const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
-  const shouldReduceMotion = usePrefersReducedMotion();
   const shortcut = useAppCommandShortcut("panel.toggle");
 
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
@@ -116,61 +106,33 @@ export function SplitWorkspaceSecondaryPanelHost({
     if (model.isOpen !== isPanelVisible) model.onToggle();
   }, [focusedPaneId, isPanelVisible, model]);
 
-  const panelLayoutTargetRef = useRef({
-    isMainCollapsed: model?.isMainCollapsed === true,
-    isOpen,
-    isPaneMaximized,
-    panelWidthPercent,
-  });
-  panelLayoutTargetRef.current = {
-    isMainCollapsed: model?.isMainCollapsed === true,
-    isOpen,
-    isPaneMaximized,
-    panelWidthPercent,
-  };
-  const applyPanelLayout = useCallback(
-    (reduceMotion: boolean) => {
-      const group = panelGroupRef.current;
-      if (group === null) return;
-      if (group.getLayout().length !== 2) return;
-
-      const target = panelLayoutTargetRef.current;
-      const secondaryWidth =
-        target.isPaneMaximized || !target.isOpen
-          ? 0
-          : target.isMainCollapsed
-            ? MAIN_PANEL_OPEN_SIZE_PERCENT
-            : target.panelWidthPercent;
-      panelGroupMotion.setLayout(
-        group,
-        [MAIN_PANEL_OPEN_SIZE_PERCENT - secondaryWidth, secondaryWidth],
-        reduceMotion,
-      );
-    },
-    [panelGroupMotion],
-  );
-
-  useLayoutEffect(() => {
-    applyPanelLayout(shouldReduceMotion || model?.transitionsReady === false);
+  useEffect(() => {
+    const group = panelGroupRef.current;
+    if (group === null) return;
+    if (group.getLayout().length !== 2) return;
+    if (isPaneMaximized) {
+      group.setLayout([MAIN_PANEL_OPEN_SIZE_PERCENT, 0]);
+      return;
+    }
+    if (!isOpen) {
+      group.setLayout([MAIN_PANEL_OPEN_SIZE_PERCENT, 0]);
+      return;
+    }
+    if (model?.isMainCollapsed) {
+      group.setLayout([0, MAIN_PANEL_OPEN_SIZE_PERCENT]);
+      return;
+    }
+    group.setLayout([
+      MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent,
+      panelWidthPercent,
+    ]);
   }, [
-    applyPanelLayout,
+    focusedPaneId,
     isOpen,
     isPaneMaximized,
     model?.isMainCollapsed,
-    model?.transitionsReady,
-    shouldReduceMotion,
+    panelWidthPercent,
   ]);
-
-  useEffect(() => {
-    applyPanelLayout(true);
-  }, [applyPanelLayout, focusedPaneId, model?.contentKey]);
-
-  useLayoutEffect(
-    () => () => {
-      panelGroupMotion.stop();
-    },
-    [panelGroupMotion],
-  );
 
   const toggleWindowPanel = () => {
     if (model !== null) {
@@ -220,8 +182,8 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const toggleIconName = useRightPanelToggleIconName();
-  const showsCornerToggle = !isPaneMaximized;
-  const pinsCornerToggle = showsCornerToggle;
+  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
     [isOpen, isPaneMaximized, pinsCornerToggle],
@@ -271,20 +233,32 @@ export function SplitWorkspaceSecondaryPanelHost({
             id="split-workspace-main-panel"
             collapsible
             collapsedSize={0}
-            defaultSize={MAIN_PANEL_OPEN_SIZE_PERCENT}
+            defaultSize={
+              isPaneMaximized
+                ? MAIN_PANEL_OPEN_SIZE_PERCENT
+                : model?.isMainCollapsed
+                  ? 0
+                  : isOpen
+                    ? MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent
+                    : MAIN_PANEL_OPEN_SIZE_PERCENT
+            }
             minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
             order={1}
-            className="min-w-0 overflow-clip"
+            className={cn(
+              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              PANEL_COLLAPSE_TRANSITION_CLASS,
+            )}
           >
+            {}
             <div className="relative flex h-full min-h-0 min-w-0">
               {children}
             </div>
           </Panel>
           {model === null ? (
             <>
+              {}
               <PanelResizeHandle
                 id="split-workspace-empty-secondary-panel-handle"
-                data-secondary-panel-boundary=""
                 disabled={!isOpen}
                 onDragging={handleEmptyPanelDragging}
                 onPointerDownCapture={(event) =>
@@ -293,8 +267,9 @@ export function SplitWorkspaceSecondaryPanelHost({
                 data-panel-resize-snap-handle=""
                 hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
                 className={cn(
-                  "relative shrink-0 overflow-visible bg-border-seam transition-colors hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
                   PANEL_RESIZE_HANDLE_LAYER_CLASS,
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
                   isOpen
                     ? "w-px cursor-col-resize opacity-100"
                     : "pointer-events-none w-0 opacity-0",
@@ -311,13 +286,16 @@ export function SplitWorkspaceSecondaryPanelHost({
                 id="split-workspace-empty-secondary-panel"
                 collapsible
                 collapsedSize={0}
-                defaultSize={0}
+                defaultSize={isOpen ? panelWidthPercent : 0}
                 minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
                 maxSize={THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT}
                 onCollapse={handleEmptyPanelCollapse}
                 onResize={handleEmptyPanelResize}
                 order={2}
-                className="min-w-0 overflow-clip"
+                className={cn(
+                  "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
+                )}
               >
                 <div
                   data-testid="split-workspace-empty-panel-state"

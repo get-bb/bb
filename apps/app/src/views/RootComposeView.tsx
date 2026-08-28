@@ -1726,7 +1726,8 @@ function RootComposeSurface({
     },
     [openWorkspaceFile],
   );
-  const showPinnedToggle = (paneContext?.secondaryPanelHost ?? null) === null;
+  const showPinnedToggle =
+    (paneContext?.secondaryPanelHost ?? null) === null && !isSecondaryPanelOpen;
   const rootPanelToggle = showPinnedToggle ? (
     <div
       className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
@@ -1804,6 +1805,7 @@ function RootComposeSurface({
     }
     return (
       <div className="flex">
+        {}
         <div
           aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
           className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted py-0 pl-2.5 pr-1 text-xs font-medium text-muted-foreground"
