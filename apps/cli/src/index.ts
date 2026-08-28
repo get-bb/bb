@@ -77,6 +77,7 @@ async function tryPluginCommandProxy(
       getUrl(),
       match.pluginId,
       process.argv.slice(3),
+      match.commands,
     ),
   );
 }

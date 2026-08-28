@@ -57,13 +57,19 @@ interface ReorderPinnedOptions extends JsonOptions {
   before?: string;
 }
 
+const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
+
 function parsePositiveInteger(
   value: string | undefined,
   flag: string,
+  maximum?: number,
 ): string | undefined {
   if (value === undefined) return undefined;
   if (!/^\d+$/u.test(value) || Number(value) < 1) {
     throw new Error(`${flag} must be a positive integer.`);
+  }
+  if (maximum !== undefined && Number(value) > maximum) {
+    throw new Error(`${flag} must be at most ${maximum}.`);
   }
   return value;
 }
@@ -150,13 +156,20 @@ export function registerOrganizationCommands(
   parent
     .command("search <query>")
     .description("Search threads and messages")
-    .option("--limit <count>", "Maximum results per group")
+    .option(
+      "--limit <count>",
+      `Maximum results per group (1-${THREAD_SEARCH_LIMIT_PER_GROUP_MAX})`,
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (query: string, opts: SearchOptions) => {
         const result = await createCliBbSdk(getUrl()).threads.search({
           query,
-          limitPerGroup: parsePositiveInteger(opts.limit, "--limit"),
+          limitPerGroup: parsePositiveInteger(
+            opts.limit,
+            "--limit",
+            THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
+          ),
         });
         if (outputJson(opts, result)) return;
         printHumanJson(result);

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  getHelpOutput,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -12,6 +13,23 @@ describe("bb thread organization commands", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
+
+  it("shows and enforces the thread search result limit", async () => {
+    const help = await getHelpOutput(["thread", "search"], register);
+    expect(help).toContain("Maximum results per group (1-50)");
+
+    const search = vi.fn();
+    stubServerApi({ "v1.threads.search.$get": search });
+
+    await expect(
+      runCommand(["thread", "search", "query", "--limit", "51"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --limit must be at most 50.",
+    );
+    expect(search).not.toHaveBeenCalled();
+  });
 
   it("creates a named thread section", async () => {
     const create = vi.fn(async () => ({

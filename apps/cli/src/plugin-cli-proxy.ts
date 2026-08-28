@@ -306,11 +306,20 @@ export async function runPluginCliCommand(
   baseUrl: string,
   pluginId: string,
   argv: string[],
+  commands: readonly PluginCliContributionEntry["commands"][number][] = [],
   streams: PluginCliOutputStreams = {
     stdout: process.stdout,
     stderr: process.stderr,
   },
 ): Promise<number> {
+  const command = commands.find((entry) => entry.name === argv[0]);
+  if (
+    command !== undefined &&
+    argv.slice(1).some((arg) => arg === "--help" || arg === "-h")
+  ) {
+    await writePluginCliOutput(streams.stdout, command.usage);
+    return 0;
+  }
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
   const response = await cliFetch(
