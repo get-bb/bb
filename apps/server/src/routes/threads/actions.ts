@@ -7,6 +7,7 @@ import {
   reorderPinnedThread,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  unarchiveThread,
   unpinThread,
   updateQueuedThreadMessage,
   updateThread,
@@ -75,7 +76,6 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
-import { unarchiveThreadAndCancelRetention } from "../../services/threads/thread-retention.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -565,7 +565,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    unarchiveThreadAndCancelRetention(deps, thread.id);
+    unarchiveThread(deps.db, deps.hub, thread.id);
     const environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)
       : null;

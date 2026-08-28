@@ -3,12 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
-import { getThreadRetentionSchedule, setThreadSettings } from "@bb/db";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
 import type { ThreadCreateServiceRequest } from "../../../src/services/threads/thread-create-request.js";
-import { archiveThreadAndHiddenSourceForks } from "../../../src/services/threads/thread-archive.js";
-import { runArchivedConversationRetentionSweep } from "../../../src/services/threads/thread-retention.js";
 import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
 import {
   createTestAppHarness,
@@ -353,46 +350,6 @@ describe("plugin thread lifecycle events", () => {
       expect(recorded[0]?.thread.deletedAt).toEqual(expect.any(Number));
     } finally {
       delete globals.__deletedEvents;
-      await cleanup();
-    }
-  });
-
-  it("delivers thread.deleted from archived conversation retention", async () => {
-    const recorded: RecordedThreadPayload[] = [];
-    globals.__retentionDeletedEvents = recorded;
-    const { harness, cleanup } = await setUpPluginHarness(`
-      export default function plugin(bb: any) {
-        bb.events.on("thread.deleted", (payload: any) => {
-          (globalThis as any).__retentionDeletedEvents.push(payload);
-        });
-      }
-    `);
-    try {
-      const { environment, project, thread } = seedThreadFixture(harness, {
-        thread: { status: "idle" },
-      });
-      setThreadSettings(harness.db, {
-        archivedConversationRetention: "30-days",
-      });
-      archiveThreadAndHiddenSourceForks(harness.deps, {
-        environment,
-        thread,
-      });
-      const schedule = getThreadRetentionSchedule(harness.db, thread.id);
-      if (!schedule || schedule.conversationDeleteDueAt === null) {
-        throw new Error("Expected a conversation retention deadline");
-      }
-
-      await runArchivedConversationRetentionSweep(harness.deps, {
-        now: schedule.conversationDeleteDueAt,
-      });
-
-      await vi.waitFor(() => expect(recorded).toHaveLength(1));
-      expect(recorded[0]?.thread.id).toBe(thread.id);
-      expect(recorded[0]?.thread.projectId).toBe(project.id);
-      expect(recorded[0]?.thread.deletedAt).toEqual(expect.any(Number));
-    } finally {
-      delete globals.__retentionDeletedEvents;
       await cleanup();
     }
   });

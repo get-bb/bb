@@ -1,10 +1,6 @@
 import { atom } from "jotai";
 import { DEFAULTS } from "@bb/config/defaults";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultThreadSettings,
-} from "@bb/domain";
+import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -21,7 +17,6 @@ import { wsManager } from "./ws";
 
 const unavailableSystemConfig: SystemConfigResponse = {
   generalSettings: defaultAppSettings,
-  threadSettings: defaultThreadSettings,
   keybindings: [],
   defaultKeybindings: [],
   keybindingOverrides: [],

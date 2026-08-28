@@ -340,7 +340,6 @@ type ExpectedSystemKey =
   | "transcribeVoice"
   | "updateExperiments"
   | "updateGeneralSettings"
-  | "updateThreadSettings"
   | "updateKeyboardSettings"
   | "providerStates"
   | "usageLimits"

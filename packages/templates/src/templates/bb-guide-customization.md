@@ -62,7 +62,7 @@ service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
   bb-app config set BB_INFERENCE <provider/model>
   bb-app config set BB_INFERENCE_FALLBACK <provider/model>
 
-Server-backed app settings
+Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
@@ -81,7 +81,7 @@ Settings → General includes `showUnhandledProviderEvents`, which defaults to
 false in packaged builds. Turn it on to show raw provider events bb does not yet
 understand; development builds always show these diagnostic rows.
 
-Settings → Threads includes `steerActiveThreadOnEnter`, which defaults to
+Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
 thread and Command+Enter queue a follow-up; when disabled, those actions are
 reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
@@ -96,7 +96,6 @@ entries stay in the config file.
   bb settings show
   bb settings ai-services
   bb settings general <key> <value>
-  bb settings threads <key> <value>
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
@@ -110,10 +109,6 @@ settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
-
-`bb settings threads` accepts any key from `threadSettings`. The
-`archivedConversationRetention` setting accepts `forever` (the default) or
-`30-days`.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.

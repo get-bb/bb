@@ -2,14 +2,12 @@ import {
   getAppSettings,
   getAppKeybindingOverrides,
   getExperiments,
-  getThreadSettings,
   getStoredFaviconColor,
   getStoredThemeId,
   hasActiveThreadAttention,
   setAppSettings,
   setAppKeybindingOverrides,
   setExperiments,
-  setThreadSettings,
   setStoredAppearance,
 } from "@bb/db";
 import {
@@ -156,7 +154,6 @@ export function registerSystemRoutes(
     ];
     return {
       generalSettings: getAppSettings(deps.db),
-      threadSettings: getThreadSettings(deps.db),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -204,12 +201,6 @@ export function registerSystemRoutes(
     setAppSettings(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getAppSettings(deps.db));
-  });
-
-  put(routes.threadSettings, (context, payload) => {
-    setThreadSettings(deps.db, payload);
-    deps.hub.notifySystem(["config-changed"]);
-    return context.json(getThreadSettings(deps.db));
   });
 
   put(routes.keyboardSettings, (context, payload) => {

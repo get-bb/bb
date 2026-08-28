@@ -11,7 +11,6 @@ import {
 
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
-  { icon: "MessageSquare", id: "threads", label: "Threads" },
   { icon: "Bot", id: "providers", label: "Providers" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },

@@ -4,7 +4,6 @@ import {
   defaultAppTheme,
   defaultExperiments,
   defaultFeatureFlags,
-  defaultThreadSettings,
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 
@@ -13,7 +12,6 @@ export function makeSystemConfig(
 ): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
-    threadSettings: defaultThreadSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],

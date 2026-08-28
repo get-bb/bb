@@ -5,11 +5,9 @@ import {
   appSettingsSchema,
   experimentKeySchema,
   experimentsSchema,
-  threadSettingsSchema,
   type AppSettings,
   type AppShortcut,
   type Experiments,
-  type ThreadSettings,
 } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -93,31 +91,6 @@ function updateGeneralSetting(
   );
 }
 
-function updateThreadSetting(
-  settings: ThreadSettings,
-  key: string,
-  value: string,
-): ThreadSettings {
-  const settingKey = threadSettingsSchema.keyof().safeParse(key);
-  if (!settingKey.success) {
-    throw new Error(
-      `Unknown thread setting '${key}'. Known settings: ${threadSettingsSchema
-        .keyof()
-        .options.join(", ")}.`,
-    );
-  }
-
-  for (const candidate of generalSettingValueCandidates(value)) {
-    const updated = threadSettingsSchema.safeParse({
-      ...settings,
-      [settingKey.data]: candidate,
-    });
-    if (updated.success) return updated.data;
-  }
-
-  throw new Error(`Invalid value '${value}' for '${settingKey.data}'.`);
-}
-
 function updateExperiment(
   experiments: Experiments,
   key: string,
@@ -193,22 +166,6 @@ export function registerSettingsCommands(
         const config = await sdk.system.config();
         const result = await sdk.system.updateGeneralSettings(
           updateGeneralSetting(config.generalSettings, key, value),
-        );
-        if (outputJson(opts, result)) return;
-        console.log(`${key} updated`);
-      }),
-    );
-
-  settings
-    .command("threads <key> <value>")
-    .description("Set a Settings → Threads preference")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (key: string, value: string, opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        const result = await sdk.system.updateThreadSettings(
-          updateThreadSetting(config.threadSettings, key, value),
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);

@@ -1,4 +1,4 @@
-import type { ComponentProps, CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { AppPageHeader } from "@/components/layout/AppPageHeader";
 import { SettingsSidebarContent } from "@/components/settings/SettingsSidebar";
@@ -20,13 +20,7 @@ import {
 
 export type SettingsStoryRoute =
   | { kind: "machine"; id: string }
-  | { kind: "section"; id: SettingsStorySectionId };
-
-export type SettingsStorySectionId = SettingsSectionId;
-
-type SettingsSidebarNavigation = ComponentProps<
-  typeof SettingsSidebarContent
->["navigation"];
+  | { kind: "section"; id: SettingsSectionId };
 
 export function useSettingsStoryRoute(): SettingsStoryRoute {
   const { pathname } = useLocation();
@@ -47,7 +41,7 @@ export function SettingsStoryChrome({
   children,
   contentOwnsPageShell = false,
 }: {
-  activeSection?: SettingsStorySectionId;
+  activeSection?: SettingsSectionId;
   children: ReactNode;
   contentOwnsPageShell?: boolean;
 }) {
@@ -63,14 +57,12 @@ export function SettingsStoryChrome({
       <SettingsSidebarContent
         appRoutePath="/"
         isResizing={false}
-        navigation={
-          {
-            activePluginId: null,
-            activeSection: resolvedActiveSection,
-            pluginEntries: [],
-            sections: SETTINGS_NAV_SECTIONS,
-          } as SettingsSidebarNavigation
-        }
+        navigation={{
+          activePluginId: null,
+          activeSection: resolvedActiveSection,
+          pluginEntries: [],
+          sections: SETTINGS_NAV_SECTIONS,
+        }}
         onResizeMouseDown={() => {}}
         showTopReserve
         testIdPrefix="settings-story"

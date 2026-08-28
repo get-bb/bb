@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  defaultAppSettings,
-  defaultExperiments,
-  defaultThreadSettings,
-} from "@bb/domain";
+import { defaultAppSettings, defaultExperiments } from "@bb/domain";
 import {
   runCommand,
-  getHelpOutput,
   setupCommandOutputTestEnvironment,
   stubServerApi,
 } from "../helpers/command-output-harness.js";
@@ -18,12 +13,6 @@ describe("bb settings commands", () => {
 
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
-
-  it("lists the Threads settings surface in help", async () => {
-    const help = await getHelpOutput(["settings"], register);
-    expect(help).toContain("threads [options] <key> <value>");
-    expect(help).toContain("Set a Settings → Threads preference");
-  });
 
   it("updates one general setting while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
@@ -97,50 +86,6 @@ describe("bb settings commands", () => {
     expect(put).toHaveBeenCalledWith({
       json: { ...defaultAppSettings, steerActiveThreadOnEnter: true },
     });
-  });
-
-  it("updates archived conversation retention through thread settings", async () => {
-    const put = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        threadSettings: defaultThreadSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.threads.$put": put,
-    });
-
-    await runCommand(
-      ["settings", "threads", "archivedConversationRetention", "30-days"],
-      register,
-    );
-
-    expect(put).toHaveBeenCalledWith({
-      json: { archivedConversationRetention: "30-days" },
-    });
-  });
-
-  it("rejects unsupported archived conversation retention", async () => {
-    const put = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        threadSettings: defaultThreadSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.threads.$put": put,
-    });
-
-    await expect(
-      runCommand(
-        ["settings", "threads", "archivedConversationRetention", "90-days"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid value '90-days'"),
-    );
-    expect(put).not.toHaveBeenCalled();
   });
 
   it("enables the changelog preview experiment", async () => {

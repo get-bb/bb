@@ -5,7 +5,6 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import type {
   SidebarBootstrapResponse,
-  SystemCliSkillsStatusResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
@@ -15,7 +14,6 @@ import {
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
   sidebarNavigationQueryKey,
-  systemCliSkillsQueryKey,
   systemConfigQueryKey,
   systemVersionQueryKey,
 } from "../src/hooks/queries/query-keys";
@@ -142,14 +140,6 @@ const systemVersion = {
   upgradeCommand: "npx bb-app@latest",
 } satisfies SystemVersionResponse;
 
-const cliSkillsStatus = {
-  machines: SETTINGS_STORY_HOSTS.map((host) => ({
-    hostId: host.id,
-    hostName: host.name,
-    status: "installed",
-  })),
-} satisfies SystemCliSkillsStatusResponse;
-
 const settingsUpdateMachine = {
   host: SETTINGS_STORY_PRIMARY_HOST,
   isPrimary: true,
@@ -218,7 +208,6 @@ function createSettingsStoryQueryClient() {
   });
   queryClient.setQueryData(hostsQueryKey(), SETTINGS_STORY_HOSTS);
   queryClient.setQueryData(systemConfigQueryKey(), systemConfig);
-  queryClient.setQueryData(systemCliSkillsQueryKey(), cliSkillsStatus);
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
   queryClient.setQueryData(sidebarNavigationQueryKey(), sidebarNavigation);
   queryClient.setQueryData(pluginMarketplacesQueryKey(), []);

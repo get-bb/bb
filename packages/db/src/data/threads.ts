@@ -1807,7 +1807,7 @@ export function archiveThread(
 }
 
 export function unarchiveThread(
-  db: ThreadWriteConnection,
+  db: DbConnection,
   notifier: DbNotifier,
   id: string,
 ) {
