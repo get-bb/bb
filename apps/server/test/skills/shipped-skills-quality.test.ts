@@ -1,33 +1,30 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { listBundledPluginRegistrations } from "../../src/services/plugins/builtin-registry.js";
+import { readPluginManifest } from "../../src/services/plugins/manifest.js";
+import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
+function skillDirectories(
+  rootPath: string,
+): ReadonlyArray<readonly [string, string]> {
+  if (!existsSync(rootPath)) return [];
+  return readdirSync(rootPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => [entry.name, path.join(rootPath, entry.name)] as const);
+}
 
+const pluginManifests = await Promise.all(
+  listBundledPluginRegistrations().map((plugin) =>
+    readPluginManifest(plugin.rootDir),
+  ),
+);
 const SHIPPED_SKILLS = [
-  ["bb-cli", "apps/server/src/services/skills/builtin-skills/bb-cli"],
-  [
-    "bb-plugin-authoring",
-    "apps/server/src/services/skills/builtin-skills/bb-plugin-authoring",
-  ],
-  [
-    "skill-creator",
-    "apps/server/src/services/skills/builtin-skills/skill-creator",
-  ],
-  [
-    "submit-a-plugin",
-    "apps/server/src/services/skills/builtin-skills/submit-a-plugin",
-  ],
-  ["automations", "plugins/automations/skills/automations"],
-  ["share-server-links", "plugins/connect/skills/share-server-links"],
-  ["docs", "plugins/docs/skills/docs"],
-  ["inline-vis", "plugins/inline-vis/skills/inline-vis"],
-  ["memory", "plugins/memory/skills/memory"],
-  ["secrets", "plugins/secrets/skills/secrets"],
-  ["tasks", "plugins/tasks/skills/tasks"],
-  ["workflows", "plugins/workflows/skills/workflows"],
-] as const;
+  ...skillDirectories(resolveBuiltinSkillsRootPath()),
+  ...pluginManifests.flatMap((manifest) =>
+    manifest.skillsRootPaths.flatMap(skillDirectories),
+  ),
+].sort(([left], [right]) => left.localeCompare(right));
 
 function lineCount(text: string): number {
   return text.trimEnd().split("\n").length;
@@ -36,8 +33,7 @@ function lineCount(text: string): number {
 describe("shipped skills", () => {
   it.each(SHIPPED_SKILLS)(
     "%s uses concise frontmatter and one-level progressive disclosure",
-    (expectedName, relativeRoot) => {
-      const skillRoot = path.join(REPO_ROOT, relativeRoot);
+    (expectedName, skillRoot) => {
       const skill = readFileSync(path.join(skillRoot, "SKILL.md"), "utf8");
       const frontmatter = skill.match(
         /^---\nname: ([^\n]+)\ndescription: ([^\n]+)\n---\n/,
