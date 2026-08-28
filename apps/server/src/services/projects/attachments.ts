@@ -1,4 +1,6 @@
 // oxlint-disable-next-line no-restricted-imports
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
@@ -12,6 +14,7 @@ import {
 } from "node:path";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { PromptInput } from "@bb/domain";
+import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
 import mimeTypes from "mime-types";
 import { ApiError } from "../../errors.js";
@@ -37,16 +40,61 @@ interface ValidatePromptAttachmentReferencesArgs {
   projectId: string;
 }
 
+interface PreparePromptAttachmentInputGroupsArgs extends Omit<
+  ValidatePromptAttachmentReferencesArgs,
+  "input"
+> {
+  inputGroups: readonly PromptInput[][];
+  readHostFile: (
+    path: string,
+  ) => Promise<HostDaemonOnlineRpcResultByType["host.read_file"]>;
+}
+
+type StoredPromptAttachmentType = "localFile" | "localImage";
+
+interface StoreAttachmentBytesArgs {
+  bytes: Uint8Array;
+  dataDir: string;
+  mimeType?: string;
+  originalName: string;
+  projectId: string;
+  type: StoredPromptAttachmentType;
+}
+
 function sanitizeFilename(name: string): string {
-  const base = basename(name).replace(/[^a-zA-Z0-9._-]+/gu, "-");
+  const base = basename(name.replaceAll("\\", "/")).replace(
+    /[^a-zA-Z0-9._-]+/gu,
+    "-",
+  );
   return base.length > 0 ? base : "attachment";
 }
 
-function buildStoredFilename(originalName: string): string {
+function buildStoredFilename(
+  originalName: string,
+  mimeType: string | undefined,
+  type: StoredPromptAttachmentType,
+): string {
   const sanitized = sanitizeFilename(originalName);
-  const extension = extname(sanitized);
+  const originalExtension = extname(sanitized);
+  const normalizedMimeType = mimeType?.split(";")[0]?.trim().toLowerCase();
+  const originalExtensionMimeType = mimeTypes.lookup(sanitized);
+  const inferredExtension = normalizedMimeType
+    ? mimeTypes.extension(normalizedMimeType)
+    : false;
+  const useInferredImageExtension =
+    type === "localImage" &&
+    inferredExtension !== false &&
+    originalExtensionMimeType !== normalizedMimeType;
+  const extension =
+    useInferredImageExtension || originalExtension.length === 0
+      ? inferredExtension
+        ? `.${inferredExtension}`
+        : originalExtension
+      : originalExtension;
   const stem =
-    extension.length > 0 ? sanitized.slice(0, -extension.length) : sanitized;
+    originalExtension.length > 0
+      ? sanitized.slice(0, -originalExtension.length)
+      : sanitized;
   return `${stem}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
 }
 
@@ -142,9 +190,63 @@ export async function validatePromptAttachmentReferences(
   }
 }
 
-function isHeifImageUpload(file: File): boolean {
-  const mimeType = (file.type.split(";")[0] ?? "").trim().toLowerCase();
+function isHeifImageMimeType(rawMimeType: string | undefined): boolean {
+  const mimeType = (rawMimeType?.split(";")[0] ?? "").trim().toLowerCase();
   return HEIF_IMAGE_MIME_TYPES.has(mimeType);
+}
+
+function attachmentSizeLimitBytes(type: StoredPromptAttachmentType): number {
+  return type === "localImage" ? IMAGE_LIMIT_BYTES : FILE_LIMIT_BYTES;
+}
+
+function validateAttachmentMetadata(args: {
+  mimeType: string | undefined;
+  sizeBytes: number;
+  type: StoredPromptAttachmentType;
+}): void {
+  if (args.type === "localImage" && isHeifImageMimeType(args.mimeType)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
+    );
+  }
+  const sizeLimit = attachmentSizeLimitBytes(args.type);
+  if (args.sizeBytes > sizeLimit) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Attachment exceeds ${Math.floor(sizeLimit / (1024 * 1024))}MB limit`,
+    );
+  }
+}
+
+async function storeAttachmentBytes(
+  args: StoreAttachmentBytesArgs,
+): Promise<UploadedPromptAttachment> {
+  validateAttachmentMetadata({
+    mimeType: args.mimeType,
+    sizeBytes: args.bytes.byteLength,
+    type: args.type,
+  });
+
+  const dir = projectAttachmentDir(args.dataDir, args.projectId);
+  await mkdir(dir, { recursive: true });
+
+  const storedName = buildStoredFilename(
+    args.originalName,
+    args.mimeType,
+    args.type,
+  );
+  await writeFile(join(dir, storedName), args.bytes);
+
+  return {
+    type: args.type,
+    path: storedName,
+    name: args.originalName,
+    ...(args.mimeType ? { mimeType: args.mimeType } : {}),
+    sizeBytes: args.bytes.byteLength,
+  };
 }
 
 export async function storeAttachment(
@@ -152,38 +254,168 @@ export async function storeAttachment(
   projectId: string,
   file: File,
 ): Promise<UploadedPromptAttachment> {
-  if (isHeifImageUpload(file)) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
-    );
-  }
   const isImage = (file.type || "").startsWith("image/");
-  const sizeLimit = isImage ? IMAGE_LIMIT_BYTES : FILE_LIMIT_BYTES;
-  if (file.size > sizeLimit) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Attachment exceeds ${Math.floor(sizeLimit / (1024 * 1024))}MB limit`,
-    );
-  }
-
-  const dir = projectAttachmentDir(dataDir, projectId);
-  await mkdir(dir, { recursive: true });
-
-  const storedName = buildStoredFilename(file.name);
-  const outputPath = join(dir, storedName);
-  const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(outputPath, bytes);
-
-  return {
-    type: isImage ? "localImage" : "localFile",
-    path: storedName,
-    name: file.name,
+  const type = isImage ? "localImage" : "localFile";
+  validateAttachmentMetadata({
     mimeType: file.type || undefined,
     sizeBytes: file.size,
+    type,
+  });
+  return storeAttachmentBytes({
+    bytes: new Uint8Array(await file.arrayBuffer()),
+    dataDir,
+    mimeType: file.type || undefined,
+    originalName: file.name,
+    projectId,
+    type,
+  });
+}
+
+function hostPathFromImageReference(pathOrUrl: string): string | null {
+  if (isAbsolute(pathOrUrl) || win32.isAbsolute(pathOrUrl)) {
+    return pathOrUrl;
+  }
+  if (!pathOrUrl.toLowerCase().startsWith("file:")) {
+    return null;
+  }
+
+  try {
+    const url = new URL(pathOrUrl);
+    if (url.protocol !== "file:") {
+      return null;
+    }
+    const pathname = decodeURIComponent(url.pathname);
+    if (/^\/[a-zA-Z]:\//u.test(pathname)) {
+      return pathname.slice(1);
+    }
+    return url.hostname ? `//${url.hostname}${pathname}` : pathname;
+  } catch {
+    return null;
+  }
+}
+
+function originalNameFromHostPath(path: string): string {
+  const normalized = path.replaceAll("\\", "/");
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || "image";
+}
+
+function decodeHostFileBytes(
+  result: HostDaemonOnlineRpcResultByType["host.read_file"],
+): Uint8Array {
+  const bytes = Buffer.from(result.content, result.contentEncoding);
+  if (bytes.byteLength !== result.sizeBytes) {
+    throw new ApiError(
+      502,
+      "attachment_size_mismatch",
+      `Host image size mismatch: expected ${result.sizeBytes} bytes, received ${bytes.byteLength}`,
+    );
+  }
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  if (sha256 !== result.sha256) {
+    throw new ApiError(
+      502,
+      "attachment_checksum_mismatch",
+      "Host image checksum did not match the bytes received",
+    );
+  }
+  return bytes;
+}
+
+function inferPngMimeType(bytes: Uint8Array): "image/png" | undefined {
+  return bytes.byteLength >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+    ? "image/png"
+    : undefined;
+}
+
+export async function preparePromptAttachmentInputGroups(
+  args: PreparePromptAttachmentInputGroupsArgs,
+): Promise<PromptInput[][]> {
+  for (const input of args.inputGroups) {
+    await validatePromptAttachmentReferences({
+      dataDir: args.dataDir,
+      input,
+      projectId: args.projectId,
+    });
+  }
+
+  const storedPathByHostPath = new Map<string, Promise<string | null>>();
+  const prepareInput = async (input: PromptInput): Promise<PromptInput> => {
+    if (input.type !== "localImage") {
+      return input;
+    }
+    const hostPath = hostPathFromImageReference(input.path);
+    if (!hostPath) {
+      return input;
+    }
+    let storedPath = storedPathByHostPath.get(hostPath);
+    if (!storedPath) {
+      storedPath = (async () => {
+        let hostFile: HostDaemonOnlineRpcResultByType["host.read_file"];
+        try {
+          hostFile = await args.readHostFile(hostPath);
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            error.body.code === "file_too_large"
+          ) {
+            return null;
+          }
+          throw error;
+        }
+        const declaredMimeType =
+          hostFile.mimeType || mimeTypes.lookup(hostPath) || undefined;
+        if (
+          isHeifImageMimeType(declaredMimeType) ||
+          hostFile.sizeBytes > IMAGE_LIMIT_BYTES
+        ) {
+          return null;
+        }
+        const bytes = decodeHostFileBytes(hostFile);
+        const mimeType = declaredMimeType ?? inferPngMimeType(bytes);
+        const attachment = await storeAttachmentBytes({
+          bytes,
+          dataDir: args.dataDir,
+          ...(mimeType ? { mimeType } : {}),
+          originalName: originalNameFromHostPath(hostPath),
+          projectId: args.projectId,
+          type: "localImage",
+        });
+        return attachment.path;
+      })();
+      storedPathByHostPath.set(hostPath, storedPath);
+    }
+    const path = await storedPath;
+    return path === null ? input : { ...input, path };
   };
+
+  try {
+    return await Promise.all(
+      args.inputGroups.map((input) => Promise.all(input.map(prepareInput))),
+    );
+  } catch (error) {
+    const storedPaths = (
+      await Promise.allSettled(storedPathByHostPath.values())
+    ).flatMap((result) =>
+      result.status === "fulfilled" && result.value !== null
+        ? [result.value]
+        : [],
+    );
+    const attachmentDir = projectAttachmentDir(args.dataDir, args.projectId);
+    await Promise.allSettled(
+      storedPaths.map((path) =>
+        rm(resolveAttachmentPath(attachmentDir, path), { force: true }),
+      ),
+    );
+    throw error;
+  }
 }
 
 interface StoredAttachmentContent {

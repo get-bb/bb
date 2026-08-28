@@ -24,7 +24,6 @@ import {
 } from "../lib/error-log-fields.js";
 import { goneThreadEnvironmentDetails } from "../lib/lifecycle-api-errors.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   deferThreadMessage,
   parseDeferredThreadMessagePayload,
@@ -42,6 +41,7 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "./thread-send.js";
+import { prepareThreadPromptInputForPersistence } from "./durable-prompt-attachments.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -73,14 +73,16 @@ export async function acceptThreadSendRequest(
       senderThreadId: payload.senderThreadId,
       targetThread: thread,
     });
-    await validatePromptAttachmentReferences({
-      dataDir: deps.config.dataDir,
+    const preparedInput = await prepareThreadPromptInputForPersistence(deps, {
       input: payload.input,
-      projectId: thread.projectId,
+      thread,
     });
     deferThreadMessage(deps, {
       threadId: thread.id,
-      payload: { kind: "send", request: payload },
+      payload: {
+        kind: "send",
+        request: { ...payload, input: preparedInput },
+      },
     });
     return { ok: true, delivery: "deferred" };
   }

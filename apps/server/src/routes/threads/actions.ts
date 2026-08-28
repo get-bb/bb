@@ -38,7 +38,6 @@ import {
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
-import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
   createQueuedMessageForThread,
   sendQueuedMessage,
@@ -76,6 +75,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
+import { prepareThreadPromptInputForPersistence } from "../../services/threads/durable-prompt-attachments.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -304,13 +304,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadIsWritable(thread);
-    await validatePromptAttachmentReferences({
-      dataDir: deps.config.dataDir,
+    const preparedInput = await prepareThreadPromptInputForPersistence(deps, {
       input: payload.input,
-      projectId: thread.projectId,
+      thread,
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
-      content: payload.input,
+      content: preparedInput,
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,

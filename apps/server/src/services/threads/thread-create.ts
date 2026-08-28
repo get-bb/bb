@@ -31,7 +31,6 @@ import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
@@ -68,6 +67,7 @@ import {
 } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
+import { preparePromptInputGroupsForPersistence } from "./durable-prompt-attachments.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -637,11 +637,6 @@ export async function createThreadFromRequest(
       );
     }
   }
-  await validatePromptAttachmentReferences({
-    dataDir: deps.config.dataDir,
-    input: requestInput.input,
-    projectId: requestInput.projectId,
-  });
   await deps.providerRegistry.whenRegistrationsSettled();
   const { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
@@ -656,7 +651,7 @@ export async function createThreadFromRequest(
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
-  const request: ThreadCreateServiceRequest = {
+  const requestBeforeAttachmentPreparation: ThreadCreateServiceRequest = {
     ...requestRest,
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
@@ -680,10 +675,27 @@ export async function createThreadFromRequest(
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
-    environment: request.environment,
-    projectId: request.projectId,
+    environment: requestBeforeAttachmentPreparation.environment,
+    projectId: requestBeforeAttachmentPreparation.projectId,
   });
   const childHostId = childHostIdForResolvedEnvironment(resolvedEnvironment);
+  const preparedInputGroups = await preparePromptInputGroupsForPersistence(
+    deps,
+    {
+      hostId: childHostId,
+      inputGroups: [
+        requestBeforeAttachmentPreparation.input,
+        ...(options.providerInput !== undefined ? [options.providerInput] : []),
+      ],
+      projectId: requestBeforeAttachmentPreparation.projectId,
+    },
+  );
+  const request: ThreadCreateServiceRequest = {
+    ...requestBeforeAttachmentPreparation,
+    input: preparedInputGroups[0] ?? [],
+  };
+  const preparedProviderInput =
+    options.providerInput === undefined ? undefined : preparedInputGroups[1];
   const hostDataDir = (
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId })
   ).dataDir;
@@ -820,8 +832,8 @@ export async function createThreadFromRequest(
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
     fork,
-    ...(options.providerInput !== undefined
-      ? { providerInput: options.providerInput }
+    ...(preparedProviderInput !== undefined
+      ? { providerInput: preparedProviderInput }
       : {}),
     request,
   });

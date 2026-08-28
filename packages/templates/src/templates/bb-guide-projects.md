@@ -59,7 +59,10 @@ Attachments:
 
   Uploads use multipart bytes and return a server-managed attachment DTO. Pass
   its relative `path` to thread --file/--image input. Those thread flags never
-  read a client path: absolute values remain paths for the execution host.
+  read a client path. An absolute --image path is read from the execution host
+  and normally copied into durable project storage before prompt persistence;
+  HEIC/HEIF images and images over 10MB retain their execution-host path for
+  compatibility. Absolute --file paths remain execution-host paths.
   image/* uploads are limited to 10MB; other files are limited to 25MB.
   image/heic and image/heif uploads are rejected because no renderer or
   provider can decode them; convert them to JPEG or PNG first.

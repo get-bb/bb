@@ -60,13 +60,16 @@ import {
   throwSenderThreadInvalid,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
   resolveDeferredFirstTurnContext,
 } from "./deferred-first-turn-context.js";
+import {
+  preparePromptInputForPersistence,
+  preparePromptInputGroupsForPersistence,
+} from "./durable-prompt-attachments.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -438,6 +441,20 @@ export async function sendThreadMessage(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
   ));
+  if (inputGroups === undefined) {
+    input = await preparePromptInputForPersistence(deps, {
+      hostId: environment.hostId,
+      input,
+      projectId: thread.projectId,
+    });
+  } else {
+    inputGroups = await preparePromptInputGroupsForPersistence(deps, {
+      hostId: environment.hostId,
+      inputGroups,
+      projectId: thread.projectId,
+    });
+    input = groupedInputForRuntime(inputGroups);
+  }
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
     tx,
   }) => {
@@ -449,11 +466,6 @@ export async function sendThreadMessage(
       });
     }
   };
-  await validatePromptAttachmentReferences({
-    dataDir: deps.config.dataDir,
-    input,
-    projectId: thread.projectId,
-  });
   const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;

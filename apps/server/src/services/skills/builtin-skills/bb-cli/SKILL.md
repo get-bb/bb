@@ -189,8 +189,12 @@ message agents, or inspect projects, providers, and environments.
   Codex and resolves its provider-reported default model on the target machine.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
-  flags pass host-readable absolute paths (or relative server-upload tokens)
-  through to the runtime; they do not read files on the CLI machine.
+  flags do not read files on the CLI machine. The server reads an absolute
+  `--image` from the execution host and normally persists it as a durable
+  project attachment; HEIC/HEIF images and images over 10MB retain their
+  execution-host path for compatibility. Absolute `--file` paths remain
+  runtime paths, and relative server-upload tokens retain their existing
+  attachment behavior.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Use `bb thread fork <source-thread-id>` to clone a provider session. The
   fork inherits the source conversation in its timeline. It creates an idle
