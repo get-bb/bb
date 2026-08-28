@@ -12,7 +12,6 @@ describe("resolveConversationCollapseControl", () => {
     expect(state.action).toBe("enter-full-screen");
     expect(state.label).toBe("Full Screen");
     expect(state.isFullScreen).toBe(false);
-    // The shared four-arrow glyph clearly expands the panel to fill the canvas.
     expect(state.iconName).toBe("Maximize2");
 
     state.onClick();
@@ -29,7 +28,6 @@ describe("resolveConversationCollapseControl", () => {
     expect(state.action).toBe("exit-full-screen");
     expect(state.label).toBe("Exit Full Screen");
     expect(state.isFullScreen).toBe(true);
-    // The matching four-arrow collapse glyph restores the split layout.
     expect(state.iconName).toBe("Minimize2");
 
     state.onClick();

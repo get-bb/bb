@@ -14,17 +14,6 @@ export interface ResourceCollectionMode<Mode extends string> {
   accessibleLabel?: string;
 }
 
-/**
- * A resource collection with multiple projections of the same domain.
- *
- * Modes are views, not new resources: the active view owns the body and its
- * contextual actions while collection identity and description stay stable.
- */
-/**
- * Either a tabbed collection (all three mode props together) or a single-view
- * one (none of them) — the two shapes are the only constructible states, so a
- * tablist can never render keyboard-dead (no active tab) or with no-op tabs.
- */
 type ResourceCollectionModeProps<Mode extends string> =
   | { modes?: undefined; activeMode?: undefined; onModeChange?: undefined }
   | {
@@ -49,27 +38,16 @@ export function ResourceCollectionPage<Mode extends string>({
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  /**
-   * Applied inside each header band (description, tabs/actions). Full-bleed
-   * pages use it to re-center the bands onto the content column while the
-   * scrolling child spans the whole pane.
-   */
   bandClassName?: string;
 } & ResourceCollectionModeProps<Mode>) {
   const modeList = modes ?? [];
   const hasModes = modeList.length > 0;
-  // The union ties onModeChange to modes, but destructuring drops that link
-  // for the narrower; the fallback is unreachable by construction.
   const changeMode = onModeChange ?? (() => {});
   const activeTabId = hasModes ? `${id}-${activeMode}-tab` : undefined;
   const activePanelId = hasModes ? `${id}-${activeMode}-panel` : undefined;
   return (
     <div className={cn("flex h-full min-h-0 flex-col gap-5", className)}>
-      {/* Every band in the collection carries the same pr-3 scrollbar gutter as
-          the results below, so description, tabs, toolbar, and rows all share
-          one content width. The description keeps its own line; pages without
-          mode tabs put their create control in the toolbar row instead of
-          spending a band on it. */}
+      {}
       <div className="pr-3">
         <div className={bandClassName}>
           <ResourceTabDescription>{description}</ResourceTabDescription>
@@ -161,11 +139,6 @@ export function ResourceCollectionPage<Mode extends string>({
   );
 }
 
-/**
- * One bounded collection body shared by Installed and Browse projections.
- * The toolbar and pagination remain stable while this component owns the
- * collection's only scrollable region.
- */
 export function ResourceCollectionViewport({
   toolbar,
   children,
@@ -183,11 +156,6 @@ export function ResourceCollectionViewport({
   viewportRef?: Ref<HTMLDivElement>;
   className?: string;
   contentClassName?: string;
-  /**
-   * Applied inside the toolbar and footer bands (and by callers to their
-   * scrolled content). Full-bleed pages use it to re-center each band onto
-   * the content column while the scroller itself spans the whole pane.
-   */
   bandClassName?: string;
 }) {
   return (
@@ -195,9 +163,7 @@ export function ResourceCollectionViewport({
       className={cn("flex h-full min-h-0 flex-col gap-5", className)}
       data-resource-collection-viewport
     >
-      {/* Every band carries the same pr-3 right gutter as the scroll viewport
-          below (12px gutter, 8px scrollbar, 4px clearance), so the toolbar,
-          results, and footer all end on the same content edge. */}
+      {}
       {toolbar ? (
         <div className="shrink-0 pr-3">
           <div className={bandClassName}>{toolbar}</div>
@@ -253,7 +219,6 @@ export function ResourceOverviewSection({
   );
 }
 
-/** Responsive browse projection shared by resource collection pages. */
 export function ResourceBrowseGrid({
   children,
   className,
@@ -493,10 +458,6 @@ type ResourceBrowseCardProps = {
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
-  /**
-   * Keep the full-card pointer target out of the tab order when a header action
-   * already exposes the exact same operation to keyboard users.
-   */
   pointerOnlyOpen?: boolean;
 } & (
   | { openLabel: string; onOpen: () => void }

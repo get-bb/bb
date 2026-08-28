@@ -12,9 +12,6 @@ import {
   SCHEDULE_TIMEZONE_MAX_LENGTH,
 } from "./limits.js";
 
-// The limits live in the import-free ./limits.js so the frontend can read a
-// number without bundling zod; these re-exports keep the backend's existing
-// imports and the package's `./rpc-types` export map entry unchanged.
 export {
   AUTOMATION_RUNS_LIMIT_MAX,
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
@@ -181,8 +178,6 @@ export const automationExecutionSchema = z.discriminatedUnion("mode", [
 ]);
 export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
 
-// Desktop v0.40.0 persisted this otherwise-canonical empty-prompt shape.
-// Only update recovery may use it; every persisted write stays canonical.
 export const repairableAutomationExecutionSchema = z.union([
   automationExecutionSchema,
   automationAgentExecutionSchema.extend({ prompt: z.literal("") }),
@@ -208,12 +203,6 @@ const automationExecutionRequestSchema = automationExecutionSchema.superRefine(
   requireExactlyOneScriptSource,
 );
 
-/**
- * Execution as returned to clients. Script automations add `storedScriptPath`:
- * the absolute path of the plugin's private copy that runs execute. The copy is
- * a snapshot taken at create/update time; edits to the original `--script-file`
- * source do not reach it.
- */
 const automationResponseExecutionSchema = z.discriminatedUnion("mode", [
   automationAgentExecutionSchema,
   automationScriptExecutionSchema
@@ -242,7 +231,6 @@ const agentExecutionUpdateSchema = z
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
-    /** Null explicitly clears a tier that the previous provider supported. */
     serviceTier: serviceTierSchema.nullable().optional(),
     permissionMode: permissionModeSchema.optional(),
     target: agentExecutionTargetSchema.optional(),

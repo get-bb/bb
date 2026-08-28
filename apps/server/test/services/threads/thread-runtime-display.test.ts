@@ -35,8 +35,6 @@ import {
 import { NotificationHub } from "../../../src/ws/hub.js";
 import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
 
-// Plan-mode eligibility is the provider's declared `plan` composer action, so
-// the banner path needs the real first-party declarations.
 const providerRegistry = await createTestProviderRegistry();
 
 interface SetupResult {
@@ -266,9 +264,6 @@ describe("thread runtime display", () => {
     const { db, hostId, hub } = setup();
     const now = 60_000;
     const session = openTestSession({ db, hostId });
-    // Well past the short pending-interaction grace, still inside the
-    // active-work window: the thread has not been interrupted yet, so the
-    // DTO must keep advertising the reconnect window.
     const closedAt = now - DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS + 1_000;
     closeTestSession({
       closedAt,

@@ -155,7 +155,6 @@ describe("plugin catalog queries", () => {
         iconTinted: false,
         category: "Project management",
         source: "npm:@bb-plugins/todoist",
-        // A server from before the field defaults to no link.
         repositoryUrl: null,
         marketplace: "acme-plugins",
         marketplaceDisplayName: "Acme Plugins",
@@ -164,7 +163,6 @@ describe("plugin catalog queries", () => {
         official: false,
         author: { name: "Acme", url: "https://acme.dev" },
         installed: false,
-        // Likewise: a server from before the field reports no count.
         installs: null,
         compatible: false,
         incompatibleReason: "requires bb >= 0.15",

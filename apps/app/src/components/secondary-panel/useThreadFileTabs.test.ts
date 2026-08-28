@@ -428,7 +428,6 @@ describe("useThreadFileTabs plugin panel tabs", () => {
       paramsJson: '{"n":1}',
     });
 
-    // Identical params: no new tab, but the title refreshes.
     act(() =>
       result.current.openPluginPanel({
         pluginId: "demo",
@@ -443,7 +442,6 @@ describe("useThreadFileTabs plugin panel tabs", () => {
       "Issue #1 (renamed)",
     );
 
-    // Different params: a sibling tab opens and becomes active.
     act(() =>
       result.current.openPluginPanel({
         pluginId: "demo",
@@ -657,7 +655,6 @@ describe("useThreadFileTabs file opener diversion", () => {
       }),
     );
 
-    // A git-ref snapshot never diverts, even for a matching extension.
     act(() =>
       result.current.openTab({
         kind: "workspace-file-preview",
@@ -672,7 +669,6 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activePluginPanelTab).toBeNull();
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
 
-    // Unmatched extension stays built-in too.
     act(() =>
       result.current.openTab({
         kind: "workspace-file-preview",
@@ -688,8 +684,6 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
   });
 
-  // File search replaces the new-tab screen rather than appending a tab, but
-  // it must use the same opener resolution as links and `bb thread open`.
   it("diverts a workspace file picked from the file search", () => {
     registerNotesOpener();
     const { result } = renderThreadHook(() =>
@@ -718,13 +712,15 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
     const params = JSON.parse(
       result.current.activePluginPanelTab?.paramsJson ?? "null",
-    ) as { path: string; source: { kind: string; environmentId: string | null } };
+    ) as {
+      path: string;
+      source: { kind: string; environmentId: string | null };
+    };
     expect(params.path).toBe("notes/todo.md");
     expect(params.source).toMatchObject({
       kind: "workspace",
       environmentId: "env_1",
     });
-    // The new-tab screen is replaced, not appended to.
     expect(result.current.isNewTabActive).toBe(false);
     expect(
       result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
@@ -891,7 +887,6 @@ describe("useThreadFileTabs file opener diversion", () => {
       }),
     );
 
-    // "builtin" override skips the automatic opener entirely.
     act(() =>
       result.current.openTab(
         {
@@ -909,7 +904,6 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activePluginPanelTab).toBeNull();
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
 
-    // A forced opener can still select a registered provider explicitly.
     act(() =>
       result.current.openTab(
         {
@@ -933,8 +927,6 @@ describe("useThreadFileTabs file opener diversion", () => {
 });
 
 describe("useThreadFileTabs legacy side-chat tabs", () => {
-  // The native side chat is gone. Its persisted tabs must not reappear in the
-  // strip, and they must not break the rest of a thread's stored tabs.
   it("drops tabs persisted before the native side chat was removed", () => {
     const threadId = "legacy-side-chat";
     const browserTab = createBrowserFixedPanelTab({

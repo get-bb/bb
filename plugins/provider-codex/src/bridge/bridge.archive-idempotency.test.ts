@@ -6,16 +6,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
 
-/**
- * Codex's archive and unarchive are not idempotent at the app-server layer:
- * archiving an archived rollout fails with "no rollout found for thread id …"
- * and unarchiving a live one with "no archived rollout found for thread id …".
- * bb's thread/archive and thread/unarchive ask for a final state, so the
- * bridge answers those two failures as success. thread/discard is an archive
- * underneath but keeps its failure: a discard of an unknown rollout stays
- * visible.
- */
-
 const THREAD_ID = "thr_archive_idempotency_1";
 const PROVIDER_THREAD_ID = "rollout-archive-idempotency-1";
 
@@ -28,8 +18,6 @@ let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archive-ws-"));
-  // Every maintenance request runs on a fresh app-server child, so the fake's
-  // archive state has to outlive one child for it to refuse the duplicate.
   const fakeScriptPath = join(workspaceDir, "fake-codex-script.json");
   writeFileSync(
     fakeScriptPath,

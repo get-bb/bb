@@ -5,19 +5,6 @@ import {
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 
-/**
- * The first-party provider plugins are the ONLY source of built-in
- * providers — the core catalog seed is deleted. So this is no longer a diff
- * against a "before" snapshot (there is nothing to diff against); it is a
- * golden pin on what the declarations must produce.
- *
- * What it guards is the same regression the old takeover merge existed to
- * prevent: the facts that used to be preserved from the seed because the
- * declaration had no slot for them — codex archive/rename mirroring, for one —
- * are now declared, and a wrong or missing declaration silently turns a
- * flagship behavior off.
- */
-
 const FIRST_PARTY_PROVIDER_DECLARATIONS = [
   {
     builtinName: "provider-codex",
@@ -133,9 +120,6 @@ const ALWAYS_VISIBLE_PROVIDER_IDS = FIRST_PARTY_PROVIDER_DECLARATIONS.filter(
 ).map((plugin) => plugin.providerId);
 
 function expectedLogoUrl(providerId: string): string {
-  // Served from the icon byte snapshot on the registration by the
-  // provider-logo route (the raw plugin-assets route serves only branding
-  // variants and built bundles).
   return `/api/v1/system/providers/${providerId}/logo`;
 }
 
@@ -161,15 +145,11 @@ describe("first-party provider plugins", () => {
       { seedFirstPartyProviders: false },
       async (harness) => {
         const registry = harness.deps.providerRegistry;
-        // No seed underneath: nothing exists until the plugins load.
         expect(registry.list()).toEqual([]);
 
         await installFirstPartyProviderPlugins(harness);
 
         const after = registry.list();
-        // Install order: the bundled plugin list ranks codex, claude-code,
-        // pi, then acp — not plugin load order (alphabetical by plugin id,
-        // which would put acp-cursor first).
         expect(after.map((entry) => entry.info.id)).toEqual(PROVIDER_IDS);
 
         for (const [index, registration] of after.entries()) {
@@ -183,12 +163,8 @@ describe("first-party provider plugins", () => {
           expect(registration.info.logoUrl, label).toBe(
             plugin.hasLogo ? expectedLogoUrl(plugin.providerId) : null,
           );
-          // The URL alone proves nothing: the route serves the byte snapshot
-          // taken at registration, and a declared icon whose file is absent
-          // leaves the snapshot empty behind a well-formed URL.
           expect(registration.icon !== undefined, label).toBe(plugin.hasLogo);
           expect(registration.visibility, label).toBe(plugin.visibility);
-          // The facts the takeover merge used to carry over from the seed.
           expect(
             registration.info.capabilities.supportsThreadArchive,
             label,
@@ -200,12 +176,6 @@ describe("first-party provider plugins", () => {
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
           );
-          // Fork is declared per agent, not per tier: the ACP bridge refuses
-          // `session/fork` for agents whose `initialize` reply does not
-          // advertise it (cursor-agent, grok), so a declaration above what the
-          // agent answers makes POST /threads/fork create a thread that dies
-          // on start (#1833). The declaration is the server's fork gate and
-          // the app's fork affordance, so it must match the agent.
           expect(registration.serverCapabilities.fork, label).toBe(plugin.fork);
           expect(registry.supportsFork(plugin.providerId), label).toBe(
             plugin.fork !== "none",
@@ -213,12 +183,9 @@ describe("first-party provider plugins", () => {
           expect(registration.info.maintenance.usage, label).toBe(
             plugin.supportsUsage,
           );
-          // The implementation and its static options ride the plugin's own
-          // bridge artifact.
           expect(registration.info.id, label).toBe(plugin.providerId);
         }
 
-        // The composed provider listing (GET /system/providers path) agrees.
         const infos = await listSystemProviderInfos(harness.deps, {});
         expect(infos.map((info) => info.id)).toEqual(
           ALWAYS_VISIBLE_PROVIDER_IDS,
@@ -226,8 +193,6 @@ describe("first-party provider plugins", () => {
         expect(infos.map((info) => info.logoUrl)).toEqual(
           ALWAYS_VISIBLE_PROVIDER_IDS.map(expectedLogoUrl),
         );
-        // The client-facing fork flag (the app's "Fork into new thread"
-        // affordance) agrees with the declaration.
         expect(
           infos.map((info) => [info.id, info.capabilities.supportsFork]),
         ).toEqual(
@@ -240,10 +205,6 @@ describe("first-party provider plugins", () => {
   }, 60_000);
 
   it("pins the client-read ProviderInfo fields of the four core providers", async () => {
-    // Registry equality: the fields clients already read must come out of the
-    // declarations exactly as they did before the target-state fields were
-    // projected. A declaration edit that moves one of these is a product
-    // change, not a refactor.
     await withTestHarness(
       { seedFirstPartyProviders: false },
       async (harness) => {
@@ -346,7 +307,6 @@ describe("first-party provider plugins", () => {
             supportsServiceTier: true,
             supportsNativeUserQuestion: false,
             permissionModes: ["accept-edits", "full"],
-            // cursor-agent does not advertise ACP session/fork (#1833).
             supportsFork: false,
             supportsSessionRewind: false,
             modelCatalogScope: "host",
@@ -354,7 +314,6 @@ describe("first-party provider plugins", () => {
           composerActions: [skills],
         });
 
-        // The new projections are filled from the declarations.
         const claude = harness.deps.providerRegistry.get("claude-code");
         expect(claude?.info.strings?.signInHint).toMatch(/claude/);
         expect(claude?.info.reasoningLevels?.map((level) => level.id)).toEqual([
@@ -386,9 +345,6 @@ describe("first-party provider plugins", () => {
         await installFirstPartyProviderPlugins(harness);
         expect(registry.get("pi")?.pluginId).toBe("provider-pi");
 
-        // With the seed deleted there is nothing to degrade to: the provider
-        // is gone, and every policy accessor says so rather than keeping a
-        // stale claim alive.
         await harness.pluginService.setEnabled("provider-pi", false);
 
         expect(registry.get("pi")).toBeNull();
@@ -408,7 +364,6 @@ describe("first-party provider plugins", () => {
         const infos = await listSystemProviderInfos(harness.deps, {});
         expect(infos.find((info) => info.id === "pi")).toBeUndefined();
 
-        // Re-enabling restores it in its install position, not at the end.
         await harness.pluginService.setEnabled("provider-pi", true);
         expect(registry.get("pi")?.pluginId).toBe("provider-pi");
         expect(registry.list().map((entry) => entry.info.id)).toEqual(

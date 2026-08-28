@@ -21,20 +21,10 @@ const IGNORED_DOCUMENTATION_DIRECTORIES = new Set([
   "node_modules",
 ]);
 
-/**
- * This walks the whole checkout while the `packages` CI shard runs every other
- * package's tests concurrently, so it has to ignore paths those tests own.
- * Dot-directories cover VCS internals, tool caches, and the scratch trees
- * siblings create inside their own package roots — the plugin registry's
- * `.vendor-fixture-*` and agent-runtime's `.bb-codex-outside-*`. None are
- * project documentation, and descending into them both races their cleanup and
- * can report a generated copy of a file instead of its real source.
- */
 function isScannableDirectory(name: string): boolean {
   return !name.startsWith(".") && !IGNORED_DOCUMENTATION_DIRECTORIES.has(name);
 }
 
-/** Paths a concurrent test deletes mid-walk are not project documentation. */
 function readIfPresent(path: string): string {
   try {
     return readFileSync(path, "utf8");
@@ -204,10 +194,10 @@ describe("workflows CLI argument validation", () => {
       },
       host: { id: "host-test", name: "host" },
       provider: {
-      id: "codex",
-      model: "gpt-test",
-      capabilities: { supportsNativeUserQuestion: false },
-    },
+        id: "codex",
+        model: "gpt-test",
+        capabilities: { supportsNativeUserQuestion: false },
+      },
       origin: { kind: null, pluginId: null },
     });
     expect(author.tools.map((tool) => tool.name)).toEqual(["bb_workflow_run"]);

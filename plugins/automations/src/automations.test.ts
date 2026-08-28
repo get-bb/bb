@@ -204,9 +204,6 @@ describe("data migrations", () => {
   });
 
   it("settles older duplicate running rows so single-flight can be introduced on history", () => {
-    // Databases from before single-flight could hold several running rows for
-    // one automation (manual runs never checked). The migration must not fail
-    // closed on that history: it keeps the newest row and settles the rest.
     const db = new Database(":memory:");
     db.exec(migrations[0] ?? "");
     db.prepare(
@@ -243,7 +240,6 @@ describe("data migrations", () => {
       skipReason: string | null;
       finishedAt: number | null;
     }>;
-    // Newest by started_at, then id: run_third survives.
     expect(rows.map((row) => [row.id, row.status])).toEqual([
       ["run_first", "skipped"],
       ["run_second", "skipped"],
@@ -251,7 +247,6 @@ describe("data migrations", () => {
     ]);
     expect(rows[0]!.skipReason).toMatch(/single-flight/);
     expect(rows[0]!.finishedAt).not.toBeNull();
-    // And the invariant now holds: a second running row is refused.
     expect(() => insertRun.run("run_fourth", 2000)).toThrow(/UNIQUE/);
   });
 });
@@ -329,7 +324,6 @@ describe("startup reconciliation", () => {
       expect(settled.status).toBe("skipped");
       expect(settled.skipReason).toMatch(/interrupted/);
       expect(settled.finishedAt).not.toBeNull();
-      // Single-flight releases: a new run can start.
       expect(getRunningAutomationRun(db, run.automationId)).toBeNull();
     }
     expect(published.length).toBeGreaterThan(0);
@@ -396,7 +390,6 @@ describe("startup reconciliation", () => {
       })[0]!;
       expect([testCase.id, run.status]).toEqual([testCase.id, testCase.status]);
     }
-    // A failed turn counts like a live failure; an interruption does not.
     expect(getAutomation(db, "auto_error")!.consecutiveFailures).toBe(1);
     expect(getAutomation(db, "auto_gone")!.consecutiveFailures).toBe(0);
   });
@@ -1137,10 +1130,6 @@ describe("automation service", () => {
 });
 
 describe("automation CLI --script-file", () => {
-  // Regression for get-bb/bb#1649: `--script-file` stores a snapshot copy of
-  // the source, so later edits to the source do nothing. The CLI must read the
-  // file on the invoking host (relative to the caller's cwd), print both paths
-  // with a note, and expose the stored copy path in `show`.
   type FileReadCall = { hostId: string | undefined; path: string };
 
   async function setup() {
@@ -1170,7 +1159,6 @@ describe("automation CLI --script-file", () => {
             ? { id: threadId, environment: { hostId: "host_laptop" } }
             : { id: threadId, environment: null },
       },
-      // Fake host file API: records the host and reads the local disk.
       files: {
         read: async ({ hostId, path }: { hostId?: string; path: string }) => {
           reads.push({ hostId, path });
@@ -1222,8 +1210,6 @@ describe("automation CLI --script-file", () => {
     const sourcePath = join(t.srcDir, "hello.sh");
     await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 1"\n');
     try {
-      // The plugin CLI runs server-side; a relative path must resolve against
-      // the invoking CLI's cwd, not the server process cwd.
       const created = await t.cli.run(
         [
           "create",
@@ -1240,7 +1226,6 @@ describe("automation CLI --script-file", () => {
       );
       expect(created.exitCode).toBe(0);
       const automationId = idFrom(created.stdout);
-      // Outside a thread the read targets the server's primary host.
       expect(t.reads).toEqual([{ hostId: undefined, path: sourcePath }]);
       const storedPath = join(
         automationScriptDir(t.pluginDataDir, automationId),
@@ -1269,7 +1254,6 @@ describe("automation CLI --script-file", () => {
         timeoutMs: 120_000,
         storedScriptPath: storedPath,
       });
-      // Every route that returns the automation carries the stored path.
       const listed = await t.cli.run(
         ["list", "--project", "proj_test", "--json"],
         {},
@@ -1285,8 +1269,6 @@ describe("automation CLI --script-file", () => {
         storedPath,
       );
 
-      // Editing the source does not change the stored copy; only a fresh
-      // `update --script-file` refreshes it.
       await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 2"\n');
       await expect(readFile(storedPath, "utf8")).resolves.toContain(
         "VERSION 1",
@@ -1464,15 +1446,12 @@ describe("bb CLI injection for script runs", () => {
         BB_CLI_DIR: "/other/dir",
       })[0],
     ).toBe("/daemon/bundle/bb");
-    // The server process gets BB_CLI_DIR, not BB_CLI, from the launcher.
     expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
       "/daemon/bundle/bb",
     );
   });
 
   it("expands PATH itself so every candidate is absolute", () => {
-    // The resolved value is handed to scripts as BB_CLI, which is documented
-    // as absolute; a bare "bb" would re-resolve if a script edits PATH.
     expect(bbBinaryCandidates({ PATH: "/usr/bin:/opt/tools" })).toEqual([
       "/usr/bin/bb",
       "/opt/tools/bb",
@@ -1485,15 +1464,12 @@ describe("bb CLI injection for script runs", () => {
   });
 
   it("drops entries that would resolve against the wrong directory", () => {
-    // An empty PATH entry means the cwd, which for a script run is the
-    // automation scripts directory — a `bb` dropped there is not the CLI.
     expect(bbBinaryCandidates({ PATH: "/usr/bin::/bin" })).toEqual([
       "/usr/bin/bb",
       "/bin/bb",
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
-    // Blank or relative env pointers are skipped, not resolved against cwd.
     expect(
       bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "", PATH: "" }),
     ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
@@ -1506,8 +1482,6 @@ describe("bb CLI injection for script runs", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
       "/daemon/bundle:/usr/bin:/bin",
     );
-    // Guard against a relative path ever reaching here: dirname() would be "."
-    // and would put the scripts directory ahead of the system PATH.
     expect(scriptPathEnv("bb", "/usr/bin:/bin")).toBe("/usr/bin:/bin");
     expect(scriptPathEnv(null, "/usr/bin:/bin")).toBe("/usr/bin:/bin");
     expect(scriptPathEnv("/daemon/bundle/bb", undefined)).toBe(
@@ -1529,12 +1503,8 @@ async function isProcessRunning(pid: number): Promise<boolean> {
     const stat = await readFile(`/proc/${pid}/stat`, "utf8");
     const closingParen = stat.lastIndexOf(")");
     const state = stat.slice(closingParen + 2, closingParen + 3);
-    // Container PID 1 may leave a terminated descendant as a zombie briefly.
-    // A zombie cannot execute and therefore satisfies process containment.
     return state !== "Z" && state !== "X";
   } catch (error) {
-    // The process can exit between the signal probe above and this read;
-    // Linux then answers ESRCH (not ENOENT) for the vanished /proc entry.
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ESRCH") return false;
     throw error;
@@ -1561,13 +1531,9 @@ describe("script process containment", () => {
         projectId: "proj_test",
         scriptFile: "script.sh",
         interpreter: "bash",
-        // Leave enough startup headroom for loaded CI hosts while still proving
-        // that the timeout, rather than normal script completion, owns cleanup.
         timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
       });
-      // The runner prefixes a warning line when no bb CLI is on PATH (CI), so
-      // read the labeled pid line rather than assuming the pid comes first.
       const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
       const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
       expect(result.timedOut).toBe(true);

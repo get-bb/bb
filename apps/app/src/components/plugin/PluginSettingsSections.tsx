@@ -5,11 +5,6 @@ import {
 import { PluginSlotMount } from "./PluginSlotMount";
 import { ResourceDetailPanel } from "@bb/shared-ui/resource-detail";
 
-/**
- * Plugin `settingsSection` slot mounts, rendered on that plugin's canonical
- * Plugins detail page below the host-rendered declarative form.
- * Each section is contained in its own per-plugin error boundary.
- */
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(

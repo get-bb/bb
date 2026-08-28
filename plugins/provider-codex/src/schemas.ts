@@ -503,8 +503,6 @@ const codexErrorInfoSchema = z.union([
   z.literal("other"),
 ]);
 export type CodexErrorInfo = z.infer<typeof codexErrorInfoSchema>;
-// Fails to compile if regeneration changes the generated error contract
-// without the shared runtime admission boundary changing with it.
 const codexErrorInfoSchemaMatchesGenerated: GeneratedCodexErrorInfo extends CodexErrorInfo
   ? CodexErrorInfo extends GeneratedCodexErrorInfo
     ? true

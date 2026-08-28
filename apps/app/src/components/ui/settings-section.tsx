@@ -6,10 +6,6 @@ interface SettingsSectionProps {
   children: ReactNode;
   description?: string;
   title: ReactNode;
-  /**
-   * Extra classes for the card, e.g. a section whose whole body is one link
-   * and needs a positioning context and a hover state.
-   */
   bodyClassName?: string;
 }
 
@@ -85,12 +81,6 @@ export const SettingsRow = forwardRef<HTMLDivElement, SettingsRowProps>(
 );
 SettingsRow.displayName = "SettingsRow";
 
-/**
- * Where a setting's control sits relative to its label: beside it on wide
- * viewports (`"inline"`, the row every toggle and picker uses) or below the
- * label and description at full width (`"below"`, for a multi-line editor
- * that needs the row's whole width).
- */
 export type SettingsControlPlacement = "inline" | "below";
 
 interface SettingsWithControlProps {

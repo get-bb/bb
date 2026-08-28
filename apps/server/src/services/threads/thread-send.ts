@@ -79,11 +79,6 @@ type SendThreadMessagePayload = SendMessageRequest & {
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
-  /**
-   * Internal edit-message path. Presence forces a new provider session;
-   * a string forks from a staged provider session and null starts fresh
-   * (which also makes the request a thread-start rather than a new turn).
-   */
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
     onCommandSettled?: () => void | Promise<void>;
@@ -118,7 +113,6 @@ interface SendThreadMessageQueueRequestArgs {
 }
 
 interface SendThreadMessageQueueRequestResult {
-  /** The post-transition row when queueing the request activated the thread. */
   activeThread: Thread | null;
 }
 
@@ -260,11 +254,6 @@ export function resolveMessageSenderThreadId(
   if (senderThread.deletedAt !== null) {
     throwSenderThreadInvalid("deleted");
   }
-  // Sender attribution is allowed across projects: the cross-thread message
-  // template tells the receiving agent to reply via
-  // `bb thread tell {{senderThreadId}}`, which is how coordinator/worker
-  // threads in different projects message each other. Existence and not-deleted
-  // are still required so the reply target is a live thread.
 
   return senderThread.id;
 }
@@ -430,16 +419,10 @@ export async function sendThreadMessage(
             senderThreadId,
           })
         : payload.input;
-  // Plugin mentions resolve once at send time (plugin design §4.9): each
-  // unique mention becomes an agent-only context input appended after the
-  // user's message; a resolve failure throws a 422 before anything is
-  // persisted or dispatched.
   const pluginMentionContext = await resolvePluginMentionContextInputs(input);
   if (pluginMentionContext.length > 0) {
     input = [...input, ...pluginMentionContext];
     if (inputGroups !== undefined && inputGroups.length > 0) {
-      // Keep the grouped view aligned with the flat runtime input: the
-      // context rides the final group so a grouped send carries it too.
       const lastGroup = inputGroups[inputGroups.length - 1]!;
       inputGroups = [
         ...inputGroups.slice(0, -1),
@@ -471,8 +454,6 @@ export async function sendThreadMessage(
     input,
     projectId: thread.projectId,
   });
-  // Agent-originated CLI sends still appear as normal turn requests in the
-  // timeline, while initiator lets policy distinguish the source.
   const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
@@ -539,8 +520,6 @@ export async function sendThreadMessage(
   if (mode === "start") {
     const commandArgs = {
       thread,
-      // Normal sends target the existing provider session. A history
-      // replacement deliberately starts from a staged provider fork instead.
       fork: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -587,13 +566,6 @@ export async function sendThreadMessage(
       queueInTransaction: ({ tx }) => {
         const dispatchKind = command.mode;
         const currentThread = getThread(tx, thread.id);
-        // Dispatching a turn IS the thread becoming active. A warm
-        // `turn.submit` and a cold `thread.start` are the same event from the
-        // thread's view, so an `idle` cold-start activates exactly like an
-        // `error` cold-start — a failed start walks either back through
-        // `run.failed`. (Other statuses fall through unchanged: pre-start
-        // threads are already rejected by `ensureThreadCanStartRequest`, and a
-        // `stopping`/superseded thread must not be reactivated here.)
         if (
           dispatchKind === "turn.submit" ||
           currentThread?.status === "error" ||

@@ -107,12 +107,9 @@ const defaultBranchRelationSchema = z.enum([
   "diverged",
   "unknown",
 ]);
-export type DefaultBranchRelation = z.infer<
-  typeof defaultBranchRelationSchema
->;
+export type DefaultBranchRelation = z.infer<typeof defaultBranchRelationSchema>;
 
 export const projectSourceCheckoutSchema = z.object({
-  /** Local branches under refs/heads, safe for checkout and write targets. */
   branches: z.array(z.string()),
   branchesTruncated: z.boolean(),
   checkout: gitCheckoutRefSchema,
@@ -121,14 +118,8 @@ export const projectSourceCheckoutSchema = z.object({
   hasUncommittedChanges: z.boolean(),
   operation: workspaceGitOperationSchema,
   originDefaultBranch: z.string().min(1).nullable(),
-  /** Remote-tracking branches under refs/remotes, for base/diff selection. */
   remoteBranches: z.array(z.string()),
   remoteBranchesTruncated: z.boolean(),
-  /**
-   * Exact classification of the requested branch/ref, resolved before branch
-   * list pagination so callers can validate selected refs even when they are
-   * not present in the current page.
-   */
   selectedBranch: gitBranchRefClassificationSchema.nullable(),
 });
 export type ProjectSourceCheckout = z.infer<typeof projectSourceCheckoutSchema>;

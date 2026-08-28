@@ -5,9 +5,6 @@ import {
   threadStatusSchema,
 } from "@bb/domain";
 
-/** Base public error envelope shared by server routes. Route-specific schemas
- *  may extend this with typed fields such as structured `details` while
- *  preserving the common top-level `code` / `message` / `retryable` shape. */
 export const apiErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string(),

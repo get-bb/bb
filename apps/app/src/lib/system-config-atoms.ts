@@ -15,7 +15,6 @@ import {
 } from "./local-host-daemon-access";
 import { wsManager } from "./ws";
 
-// Offline/unavailable app behavior should fail closed independently of server defaults.
 const unavailableSystemConfig: SystemConfigResponse = {
   generalSettings: defaultAppSettings,
   keybindings: [],
@@ -38,7 +37,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   primaryHostId: null,
   primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,
-  // The chooser's defaults with no registered services.
   aiServices: {
     inference: DEFAULTS.inferenceModel,
     inferenceFallback: DEFAULTS.inferenceFallbackModel,
@@ -162,12 +160,6 @@ async function fetchLocalHostConnectionWithRetry({
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// System config — fetched from the server on startup and re-fetched on
-// reconnects. The first websocket connection only refreshes when the initial
-// load failed, so a healthy startup doesn't immediately duplicate the request.
-// ---------------------------------------------------------------------------
-
 const systemConfigRefreshTickAtom = atom(0);
 systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
   const unsubscribeConnected = wsManager.onConnected(({ reconnected }) => {
@@ -195,12 +187,6 @@ const systemConfigAtom = atom(async (get) => {
   get(systemConfigRefreshTickAtom);
   return loadSystemConfig();
 });
-
-// ---------------------------------------------------------------------------
-// Local host daemon status — probed from the host daemon on startup. Re-probes
-// on server connects/reconnects and host status changes while some UI is
-// subscribed to it. No-daemon is a normal state (e.g., mobile browser).
-// ---------------------------------------------------------------------------
 
 const localHostStatusRefreshTickAtom = atom(0);
 localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
@@ -241,11 +227,6 @@ export const localHostDaemonAccessStateAtom = atom<
   });
 });
 
-/**
- * Deliberately request browser-local helper access from a user interaction.
- * The status request is what causes browsers to offer the loopback permission;
- * no permission API exists that can request it directly.
- */
 export const requestLocalHostDaemonAccessAtom = atom(
   null,
   async (get, set): Promise<boolean> => {
@@ -281,12 +262,10 @@ const localHostConnectionAtom = atom<Promise<LocalHostDaemonConnection | null>>(
   },
 );
 
-/** The local daemon status, or null if no daemon is reachable. */
 export const localHostStatusAtom = atom<
   Promise<HostDaemonStatusSnapshot | null>
 >(async (get) => (await get(localHostConnectionAtom))?.status ?? null);
 
-/** Whether the local host daemon API is reachable. */
 export const localHostDaemonReachableAtom = atom<Promise<boolean>>(
   async (get) => {
     const localHostStatus = await get(localHostStatusAtom);
@@ -294,7 +273,6 @@ export const localHostDaemonReachableAtom = atom<Promise<boolean>>(
   },
 );
 
-/** The host ID reported by the local daemon, even before its server session opens. */
 export const localHostDaemonHostIdAtom = atom<Promise<string | null>>(
   async (get) => {
     const localHostStatus = await get(localHostStatusAtom);
@@ -302,7 +280,6 @@ export const localHostDaemonHostIdAtom = atom<Promise<string | null>>(
   },
 );
 
-/** The local machine's connected host ID, or null if no daemon session is open. */
 export const localHostIdAtom = atom<Promise<string | null>>(async (get) => {
   const localHostStatus = await get(localHostStatusAtom);
   if (!localHostStatus?.connected) {
@@ -311,7 +288,6 @@ export const localHostIdAtom = atom<Promise<string | null>>(async (get) => {
   return localHostStatus.hostId;
 });
 
-/** Workspace open targets available through the local host daemon. */
 export const localWorkspaceOpenTargetsAtom = atom<
   Promise<WorkspaceOpenTarget[]>
 >(async (get) => {
@@ -323,15 +299,6 @@ export const localWorkspaceOpenTargetsAtom = atom<
   return fetchWorkspaceOpenTargets(connection.port);
 });
 
-// ---------------------------------------------------------------------------
-// Derived: host daemon port (sync access after config resolves)
-// ---------------------------------------------------------------------------
-
-/**
- * The candidate local helper ports this browser may probe. A remote web origin
- * only probes them after loopback access was already granted or explicitly
- * requested by the user.
- */
 const localHostDaemonProbePortsAtom = atom<Promise<readonly number[]>>(
   async (get) => {
     const config = await get(systemConfigAtom);
@@ -343,7 +310,6 @@ const localHostDaemonProbePortsAtom = atom<Promise<readonly number[]>>(
   },
 );
 
-/** The selected browser-local helper port, or null when none is reachable. */
 export const hostDaemonPortAtom = atom<Promise<number | null>>(async (get) => {
   return (await get(localHostConnectionAtom))?.port ?? null;
 });

@@ -18,9 +18,6 @@ import type {
   TimelineRow,
 } from "@bb/server-contract";
 
-// The minimap now sources items from the conversation-outline query, so the
-// component needs a QueryClient unless we mock the hook. Mocking also lets us
-// drive the outline (and the scroll surface) directly without a provider tree.
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: vi.fn(),
 }));
@@ -43,13 +40,6 @@ import {
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
-/**
- * Models the part of ResizeObserver the TOC depends on: `observe` delivers the
- * target's current content box immediately, and the content box is the border
- * box minus horizontal padding. The TOC reads that entry instead of forcing a
- * style recalculation, so the arithmetic belongs here in the platform stand-in
- * rather than in the component.
- */
 class ResizeObserverMock implements ResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
 
@@ -110,7 +100,6 @@ function TocHost({
   timelineRows,
 }: {
   hasOlderTimelineRows?: boolean;
-  /** Horizontal padding on each side, as the real scroll overlay has. */
   hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
@@ -350,7 +339,6 @@ beforeEach(() => {
     captureScrollAnchor: vi.fn(),
   } as unknown as ReturnType<typeof useBottomAnchoredScroll>);
 
-  // Default: outline not loaded, so the minimap falls back to timelineRows.
   setOutline(undefined);
 });
 
@@ -414,9 +402,6 @@ describe("ThreadTableOfContents", () => {
     );
   });
 
-  // The overlay pads itself, so its border box runs 24px ahead of the content
-  // box both the `@container` rule and the ResizeObserver entry report. The JS
-  // boundary and the CSS breakpoint must agree.
   it("does not request the outline when padding hides the TOC", () => {
     render(
       <TocHost
@@ -678,15 +663,12 @@ describe("ThreadTableOfContents", () => {
       },
     ]);
 
-    // timelineRows is empty: the minimap lists the full thread from the outline,
-    // not just the loaded window.
     render(<TocHost timelineRows={[]} />);
     openTocPanel();
 
     expect(await screen.findByText("First question")).not.toBeNull();
     expect(screen.getByText("Second question")).not.toBeNull();
     expect(screen.getByText("Image attachment")).not.toBeNull();
-    // The agent tab is offered because the outline has assistant messages.
     expect(screen.getByText("Agent messages")).not.toBeNull();
   });
 
@@ -876,8 +858,6 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
-    // The target isn't in the loaded window; loadOlder simulates it paginating
-    // in, mirroring the real controller prepending older rows to the DOM.
     const loadOlder = vi.fn(() => {
       scrollElement.appendChild(timelineRowElement("u_old"));
     });
@@ -949,7 +929,6 @@ describe("ThreadTableOfContents", () => {
     openTocPanel();
     fireEvent.click(await screen.findByText("Unreachable"));
 
-    // hasOlder is false, so the loop body never runs; no scroll, no pagination.
     await waitFor(() => expect(loadOlder).not.toHaveBeenCalled());
     expect(scrollElementIntoView).not.toHaveBeenCalled();
   });
@@ -1038,14 +1017,11 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("finds active items with logarithmic row measurements", () => {
-    const allItems = Array.from(
-      { length: 256 },
-      (_, index): TocItem => ({
-        id: `item-${index}`,
-        label: `Message ${index}`,
-        role: index % 2 === 0 ? "user" : "assistant",
-      }),
-    );
+    const allItems = Array.from({ length: 256 }, (_, index): TocItem => ({
+      id: `item-${index}`,
+      label: `Message ${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
     const manyUserItems = allItems.filter((item) => item.role === "user");
     const manyAgentItems = allItems.filter((item) => item.role === "assistant");
     const visibleIndex = 200;

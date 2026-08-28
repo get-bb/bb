@@ -51,14 +51,6 @@ interface SecondaryPanelLayoutProps {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
-  /**
-   * Identity of the physical resizable host. Defaults to `resetKey` for
-   * surfaces whose content identity and host identity are the same.
-   *
-   * A routed surface can keep this stable while `resetKey` changes so the
-   * mounted main subtree survives navigation, while drawer realization and
-   * transition readiness still reset for the new content.
-   */
   panelGroupKey?: Key;
   resetKey: Key;
   contentKey: string;
@@ -76,13 +68,6 @@ interface SecondaryPanelLayoutProps {
   composerHost: PluginComposerHost | null;
 }
 
-/**
- * The common layout for a page with a right-hand secondary panel.
- *
- * Page components provide their main content and the panel itself. This
- * component owns the responsive split/drawer behavior that must stay identical
- * between new-thread and thread-detail pages.
- */
 export function SecondaryPanelLayout({
   open,
   onToggle,
@@ -115,8 +100,6 @@ export function SecondaryPanelLayout({
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
   );
-  // Width changes should not interrupt an active resize drag. The saved width
-  // is only read when another event changes the layout.
   const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
   useEffect(() => {
     persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
@@ -127,9 +110,6 @@ export function SecondaryPanelLayout({
     if (group === null || renderAsDrawer) {
       return;
     }
-    // A page may not render its secondary panel until it has content. The
-    // panel group validates layouts against its currently registered panels,
-    // so a two-entry layout would throw while only the main panel exists.
     if (group.getLayout().length !== 2) {
       return;
     }
@@ -181,8 +161,6 @@ export function SecondaryPanelLayout({
 
   useLayoutEffect(() => {
     cancelCompactDrawerContentSettleFrame();
-    // Native browser visibility is external to React and must be revoked
-    // before paint when the drawer identity changes.
     // oxlint-disable-next-line react/set-state-in-effect
     setIsCompactDrawerContentSettled(false);
   }, [cancelCompactDrawerContentSettleFrame, open, renderAsDrawer, resetKey]);
@@ -334,10 +312,9 @@ export function SecondaryPanelLayout({
         <PanelGroup
           key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
+          data-split-resize-grid-root=""
           direction="horizontal"
           className="@container h-full min-w-0 flex-1"
-          // A clipped group cannot be programmatically scrolled by an iframe's
-          // scrollIntoView call, which would otherwise move the entire page.
           style={{
             overflow: "clip",
             ...getPanelCollapseTransitionStyle(transitionsReady),

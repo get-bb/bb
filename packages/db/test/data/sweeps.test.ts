@@ -609,13 +609,10 @@ describe("sweepManagedEnvironments", () => {
       status: "idle",
     });
 
-    // Not a candidate while thread is active
     expect(sweepManagedEnvironments(db)).toHaveLength(0);
 
-    // Archive the thread
     archiveThread(db, noopNotifier, thread.id);
 
-    // Now it's a candidate
     const candidates = sweepManagedEnvironments(db);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.id).toBe(env.id);
@@ -788,8 +785,6 @@ describe("pruneDestroyedEnvironments", () => {
       .where(eq(environments.id, environment.id))
       .run();
 
-    // `updatedBefore` is matched against `updatedAt`, the same clock every
-    // metadata write bumps; there is no destroy timestamp to fall back on.
     updateEnvironmentMetadata(db, noopNotifier, environment.id, {
       name: "renamed",
     });
@@ -829,7 +824,6 @@ describe("pruneDestroyedEnvironments", () => {
       return environment;
     }
 
-    // Insert out of age order so the result can only come from ORDER BY.
     const nineDaysOld = createDestroyedEnvironment("/tmp/destroyed-9d", 9 * day);
     const tenDaysOld = createDestroyedEnvironment("/tmp/destroyed-10d", 10 * day);
     const eightDaysOld = createDestroyedEnvironment("/tmp/destroyed-8d", 8 * day);
@@ -933,8 +927,6 @@ describe("pruneDestroyedEnvironments", () => {
         .where(eq(table.id, id))
         .get()?.environmentId;
 
-    // The per-environment DELETE must still fire ON DELETE SET NULL with
-    // foreign_keys=ON; the rows themselves survive.
     expect(environmentPointer(threads, stale.thread.id)).toBeNull();
     expect(environmentPointer(events, stale.eventId)).toBeNull();
     expect(environmentPointer(threads, fresh.thread.id)).toBe(fresh.environment.id);

@@ -1,12 +1,3 @@
-// The static part of the demo world: project, host, and the small
-// per-thread responses. Typed against @bb/server-contract so a contract
-// change fails `typecheck` instead of reaching a reviewer as a crash.
-//
-// Times are relative to the request clock. A frozen timestamp would read as
-// "12 minutes ago" on the day it was written and "3 weeks ago" when the
-// reviewer opens the app, and it would also sort the app's own optimistic
-// rows (stamped with the device clock) above rows the server appends.
-
 import type {
   Host,
   ResolvedThreadExecutionOptions,
@@ -31,12 +22,9 @@ import type { DemoThreadSeed } from "./timelines.js";
 const DAY_MS = 24 * 60 * 60_000;
 const MINUTE_MS = 60_000;
 
-/** A thread as the list and detail routes see it at one instant. */
 export interface DemoThreadView {
   seed: DemoThreadSeed;
-  /** True while a scripted reply is still pending. */
   busy: boolean;
-  /** Last activity: the seed's age, or the latest sent message. */
   updatedAt: number;
 }
 
@@ -44,7 +32,6 @@ export function seedUpdatedAt(seed: DemoThreadSeed, now: number): number {
   return now - seed.minutesAgo * MINUTE_MS;
 }
 
-/** When the seeded conversation of a thread started, 30 minutes before its last activity. */
 export function seedStartedAt(seed: DemoThreadSeed, now: number): number {
   return seedUpdatedAt(seed, now) - 30 * MINUTE_MS;
 }
@@ -186,7 +173,6 @@ export const SYSTEM_VERSION: SystemVersionResponse = {
   upgradeCommand: "npx bb-app@latest",
 };
 
-/** `GET /plugins/contributions` has no contract type; this mirrors the server route. */
 export const PLUGIN_CONTRIBUTIONS = { cliCommands: [], mentionProviders: [] };
 
 export function queuedMessage(args: {

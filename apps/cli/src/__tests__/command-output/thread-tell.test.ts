@@ -151,9 +151,6 @@ describe("bb thread tell command output", () => {
     });
   });
 
-  // Plan mode is keyed on the structured /plan command mention the composer
-  // sends, never on literal text; without the mention the Claude CLI answers
-  // "/plan isn't available in this environment" (#2019).
   it("bb thread tell --plan sends the composer's /plan command mention", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

@@ -453,8 +453,6 @@ function describeParsedClaudeRawEvent(
       return { kind, coverage: "unknown" };
     }
 
-    // Internal command queue telemetry used by remote Claude surfaces for
-    // lifecycle acknowledgements. It has no transcript or turn semantics.
     case "sdk/command_lifecycle":
       return { kind: "sdk/command_lifecycle", coverage: "noise" };
 
@@ -488,8 +486,6 @@ function describeParsedClaudeRawEvent(
             kind: `sdk/system:${event.subtype}`,
             coverage: "normalized",
           };
-        // Supported task types translate into backgroundTask item events.
-        // Unsupported task types remain normalized noise.
         case "task_notification":
         case "task_progress":
         case "task_started":
@@ -499,11 +495,6 @@ function describeParsedClaudeRawEvent(
             coverage: "normalized",
           };
         case "init":
-        // Known SDK system signals bb intentionally does not render — async
-        // hook lifecycle (hook_started/progress/response), slash-command list
-        // changes, the bg-agent turn-over signal, the live thinking-token
-        // estimate, and assorted control-channel notices. Classified as noise
-        // so they never surface as provider/unhandled debug rows.
         case "commands_changed":
         case "elicitation_complete":
         case "files_persisted":
@@ -535,9 +526,6 @@ function describeParsedClaudeRawEvent(
     case "sdk/rate_limit_event":
       return { kind: "sdk/rate_limit_event", coverage: "noise" };
 
-    // Heartbeat/summary streams; intentionally unrendered (the projection
-    // would append noise output lines), classified so they never surface as
-    // provider/unhandled debug rows.
     case "sdk/tool_progress":
       return { kind: "sdk/tool_progress", coverage: "noise" };
 

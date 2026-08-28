@@ -924,8 +924,6 @@ describe("editThreadMessage", () => {
         harness,
         (queued) => queued.command.type === "thread.rewind.prepare",
       );
-      // Resolving skips the ineligible grouped candidate and lands on
-      // sequence 7, whose preceding root turn has checkpoint-first.
       expect(rewind.command).toMatchObject({
         retainThroughProviderCheckpoint: "checkpoint-first",
       });
@@ -1305,8 +1303,6 @@ describe("editThreadMessage", () => {
     });
   });
 
-  // The gate is the provider's declared rewind support, not an id list: ACP
-  // forks tip-only and cannot recreate a session at an earlier point.
   it("rejects an edit on a provider that declares no session rewind", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness, {

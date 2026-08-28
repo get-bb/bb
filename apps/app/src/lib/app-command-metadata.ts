@@ -9,7 +9,6 @@ interface AppCommandMetadata {
   command: AppCommandId;
   description: string;
   label: string;
-  /** Whether the quick palette lists it. Settings → Keyboard shows them all. */
   paletteVisible: boolean;
 }
 
@@ -26,11 +25,6 @@ function command(
   return { command: id, description, label, paletteVisible: true };
 }
 
-/**
- * Rebindable, but no palette row: the numbered accelerator families (26
- * near-identical rows), the relative cycle commands (meant to be repeated
- * against visible feedback), and opening the palette itself.
- */
 function paletteHiddenCommand(
   id: AppCommandId,
   label: string,

@@ -190,7 +190,6 @@ describe("storage", () => {
     ]);
     db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
 
-    // A later load appends a statement; the first must not re-run.
     const again = bb.storage.database();
     expect(again).toBe(db);
     bb.storage.migrate(again, [
@@ -199,6 +198,37 @@ describe("storage", () => {
     ]);
     const rows = again.prepare("SELECT body, starred FROM notes").all();
     expect(rows).toEqual([{ body: "hello", starred: 0 }]);
+    expect(() =>
+      bb.storage.migrate(again, [
+        "CREATE TABLE replacements (id INTEGER PRIMARY KEY)",
+      ]),
+    ).toThrow(/migration 0 does not match the recorded statement/);
+  });
+
+  it("reserves unknown legacy migration indexes", () => {
+    const { bb } = createFakePluginHost();
+    const db = bb.storage.database();
+    db.exec(
+      "CREATE TABLE notes (id INTEGER PRIMARY KEY); CREATE TABLE _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL); INSERT INTO _bb_migrations VALUES (0, 1), (2, 1)",
+    );
+
+    bb.storage.migrate(db, ["CREATE TABLE notes (id INTEGER PRIMARY KEY)"]);
+
+    expect(
+      db
+        .prepare("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .all(),
+    ).toEqual([
+      { id: 0, statement_hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { id: 2, statement_hash: "legacy-unknown" },
+    ]);
+    expect(() =>
+      bb.storage.migrate(db, [
+        "CREATE TABLE notes (id INTEGER PRIMARY KEY)",
+        "SELECT 1",
+        "SELECT 2",
+      ]),
+    ).toThrow(/migration 2 does not match the recorded statement/);
   });
 
   it("database() replaces a handle the plugin closed itself, like the host", () => {
@@ -264,11 +294,9 @@ describe("settings", () => {
       prev: { token: undefined, mode: "fast", enabled: true },
     });
 
-    // Same effective values → no listener call.
     await harness.setSettings({ mode: "slow" });
     expect(changes).toHaveLength(1);
 
-    // null unsets → back to the default.
     await harness.setSettings({ mode: null });
     expect(changes).toHaveLength(2);
     expect(await handle.get()).toMatchObject({ mode: "fast" });
@@ -285,8 +313,6 @@ describe("settings", () => {
         broken: { type: "select", label: "B", options: ["a"], default: "z" },
       }),
     ).toThrow('default for setting "broken" must be one of its options');
-    // A secret is a one-line password field; a multi-line secret has no
-    // rendering, so the pair is refused where every other descriptor rule is.
     expect(() =>
       bb.settings.define({
         pem: {
@@ -449,7 +475,6 @@ describe("http", () => {
         status: 201,
         headers: { "content-type": "application/json", "x-foreign": "yes" },
       });
-      // Not `instanceof Response` in this realm; same structural shape.
       return {
         status: real.status,
         statusText: real.statusText,
@@ -716,7 +741,6 @@ describe("sdk", () => {
     );
     harness.sdk.stub("projects.list", async () => []);
     await expect(bb.sdk.projects.list({})).resolves.toEqual([]);
-    // Both calls were recorded, including the unstubbed one.
     expect(harness.sdk.callsTo("projects.list")).toHaveLength(2);
   });
 });
@@ -796,9 +820,8 @@ describe("agent tools", () => {
       presentation,
     );
     expect(harness.registrations.agentTools[1]?.presentation).toBeNull();
-    const resolved = await harness.resolveAgentConfiguration(
-      configurationContext,
-    );
+    const resolved =
+      await harness.resolveAgentConfiguration(configurationContext);
     expect(resolved.tools.map((tool) => tool.presentation)).toEqual([
       presentation,
       null,
@@ -817,15 +840,22 @@ describe("agent tools", () => {
       parameters: { type: "object" },
       execute: () => "ok",
     });
-    expect(() => bb.agents.registerTool(tool("stamp_tool", "tooled/stamp"))).not.toThrow();
-    expect(() => bb.agents.registerTool(tool("undeclared_tool", "tooled/seal"))).toThrow(
+    expect(() =>
+      bb.agents.registerTool(tool("stamp_tool", "tooled/stamp")),
+    ).not.toThrow();
+    expect(() =>
+      bb.agents.registerTool(tool("undeclared_tool", "tooled/seal")),
+    ).toThrow(
       'tool "undeclared_tool" presentation.icon "tooled/seal" is not an icon declared by plugin "tooled"',
     );
-    expect(() => bb.agents.registerTool(tool("foreign_tool", "other-plugin/stamp"))).toThrow(
+    expect(() =>
+      bb.agents.registerTool(tool("foreign_tool", "other-plugin/stamp")),
+    ).toThrow(
       'tool "foreign_tool" presentation.icon "other-plugin/stamp" is not an icon declared by plugin "tooled"',
     );
-    // A host glyph is never a declared-icon question.
-    expect(() => bb.agents.registerTool(tool("host_tool", "Zap"))).not.toThrow();
+    expect(() =>
+      bb.agents.registerTool(tool("host_tool", "Zap")),
+    ).not.toThrow();
   });
 
   it("rejects a presentation with the production host's exact messages", () => {
@@ -858,7 +888,6 @@ describe("agent tools", () => {
     );
     expect(() =>
       // @ts-expect-error — a plugin compiled against its own types can still
-      // pass a glyph name where the contract wants { glyph }.
       register({ icon: "Book" }),
     ).toThrow('tool "lookup_doc" presentation.icon must be { glyph: string }');
     expect(() =>
@@ -872,7 +901,6 @@ describe("agent tools", () => {
     const declared = {
       label: { pending: "Looking up a doc", completed: "Looked up a doc" },
       icon: { glyph: "Book" },
-      // Undeclared fields are dropped, not carried into the record.
       extra: { markup: "<b>" },
     };
     bb.agents.registerTool({
@@ -1089,8 +1117,6 @@ describe("dispose", () => {
       }),
     ).rejects.toThrow('rpc method "version" is already registered');
 
-    // Failed replacement registrations never poison or partially replace the
-    // current load.
     await expect(host.harness.callRpc("version")).resolves.toBe("old");
     await expect(host.bb.storage.kv.get("cursor")).resolves.toEqual({
       page: 2,
@@ -1146,7 +1172,6 @@ describe("dispose", () => {
       "used a stale API handle",
     );
     expect(() => bb.sdk).toThrow("stale");
-    // A second dispose is a no-op.
     await harness.dispose();
   });
 });
@@ -1243,15 +1268,16 @@ describe("providers.register", () => {
     expect(() =>
       register(
         agentDeclaration({
-          maintenance: { usage: "yes" as unknown as boolean, installation: false },
+          maintenance: {
+            usage: "yes" as unknown as boolean,
+            installation: false,
+          },
         }),
       ),
     ).toThrow(/maintenance.usage must be a boolean/);
     expect(() =>
       register(agentDeclaration({ icon: "./../outside.svg" })),
     ).toThrow(/icon must not escape the plugin directory/);
-    // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
-    // is a host glyph name. A path without the prefix is neither.
     expect(() => register(agentDeclaration({ icon: "/abs/icon.svg" }))).toThrow(
       /icon looks like a path but does not start with "\.\/"/,
     );
@@ -1276,8 +1302,6 @@ describe("providers.register", () => {
         }),
       ),
     ).toThrow(/experimental_bridgeOptions\.timeout must be finite JSON/);
-    // A bare glyph name is the other half of the grammar and is accepted; this
-    // one commits, so it goes last.
     expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
   });
 
@@ -1321,22 +1345,19 @@ describe("providers.register", () => {
 
     expect(harness.registrations.providerRegistrations).toHaveLength(1);
     const registered = harness.registrations.providerRegistrations[0]!;
-    // Normalized frozen copy: trimmed display name, contract fields only.
     expect(registered.displayName).toBe("My Agent");
     expect(Object.isFrozen(registered)).toBe(true);
     expect(Object.isFrozen(registered.capabilities)).toBe(true);
     expect(registered.experimental_visibility).toBe("always");
 
-    // Live ids are collision-rejected until disposed.
     expect(() => bb.providers.register(agentDeclaration())).toThrow(
       /already registered/,
     );
 
     handle.dispose();
-    handle.dispose(); // idempotent
+    handle.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);
 
-    // A disposed id can be re-registered (settings-driven re-declaration).
     bb.providers.register(
       agentDeclaration({ displayName: "Second Declaration" }),
     );
@@ -1376,39 +1397,43 @@ describe("providers.register", () => {
 
     bb.providers.register(declaration);
 
-    expect(
-      harness.registrations.providerRegistrations[0]?.maintenance,
-    ).toEqual({ health: false, usage: false, installation: false });
+    expect(harness.registrations.providerRegistrations[0]?.maintenance).toEqual(
+      { health: false, usage: false, installation: false },
+    );
   });
 
   it("clears registrations on dispose", async () => {
     const { bb, harness } = createFakePluginHost();
-    bb.providers.register(
-      agentDeclaration({ id: "my-second-agent" }),
-    );
+    bb.providers.register(agentDeclaration({ id: "my-second-agent" }));
     expect(
       harness.registrations.providerRegistrations.map((entry) => entry.id),
     ).toEqual(["my-second-agent"]);
 
     await harness.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);
-    expect(() =>
-      bb.providers.register(agentDeclaration()),
-    ).toThrow("used a stale API handle");
+    expect(() => bb.providers.register(agentDeclaration())).toThrow(
+      "used a stale API handle",
+    );
   });
 });
 
 describe("experimental_aiServices.register", () => {
-  const declaration = { id: "acme-ai", displayName: "Acme AI", kinds: ["inference" as const] };
+  const declaration = {
+    id: "acme-ai",
+    displayName: "Acme AI",
+    kinds: ["inference" as const],
+  };
 
   it("refuses the ids the server serves directly, like production", () => {
     const { bb } = createFakePluginHost();
     for (const id of ["openai", "anthropic"]) {
-      expect(() => bb.experimental_aiServices.register({ ...declaration, id })).toThrow(
-        /is reserved: the server serves it directly/u,
-      );
+      expect(() =>
+        bb.experimental_aiServices.register({ ...declaration, id }),
+      ).toThrow(/is reserved: the server serves it directly/u);
     }
-    expect(() => bb.experimental_aiServices.register(declaration)).not.toThrow();
+    expect(() =>
+      bb.experimental_aiServices.register(declaration),
+    ).not.toThrow();
   });
 
   it("refuses a plugin that declares no bb.host entry, like production", () => {

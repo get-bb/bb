@@ -26,11 +26,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@bb/shared-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -102,9 +98,6 @@ const BRANCH_LABEL_PREFIXES = [
 ] as const;
 const CURRENT_PARENTHESES_LABEL_PREFIX = "Current (";
 const DETACHED_LABEL_PREFIX = "Detached";
-// Match `DropdownMenuItem` / `DropdownMenuLabel` typography and density so the
-// branch popover reads as the same family of menu as the other pickers
-// (text-xs, px-2 py-[0.3125rem]).
 const BRANCH_PICKER_ROW_CLASS_NAME =
   "flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-left text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground";
 const BRANCH_PICKER_HEADER_BASE_CLASS_NAME =
@@ -393,8 +386,6 @@ function BranchPickerSectionHeader({
   sticky = true,
   className,
 }: BranchPickerSectionHeaderProps) {
-  // Sticky headers cover the scroll gutter while keeping label text aligned
-  // with option rows.
   const positionClassName = sticky
     ? BRANCH_PICKER_HEADER_STICKY_CLASS_NAME
     : "px-2";
@@ -445,8 +436,6 @@ function BranchPickerUnavailableRow({
       <Icon
         name={icon}
         className={cn(
-          // Center the 14px icon on the label's 16px first line; on coarse
-          // pointers icon and line are both 20px, so no offset.
           "mt-px text-muted-foreground max-md:pointer-coarse:mt-0",
           COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
         )}
@@ -665,33 +654,18 @@ export interface BranchPickerProps {
   onClear?: () => void;
   onCreateBaseChange?: (branch: string) => void;
   onSearchQueryChange?: (query: string) => void;
-  /** When provided, branch-changing choices are disabled with this reason. */
   optionDisabledReason?: string | null;
   optionDisabledTitle?: string;
-  /** When provided, the create-new row is disabled with this reason. */
   createDisabledReason?: string | null;
   createDisabledTitle?: string;
-  /**
-   * When provided, the popover surfaces a "Create new branch" action item.
-   * The server is responsible for naming the new branch — this picker only
-   * captures the user's intent.
-   */
   onCreate?: () => void;
-  /**
-   * When true, the trigger renders the create-new affordance instead of a
-   * branch name. Pair with onCreate.
-   */
   isCreatingNew?: boolean;
   onOpenChange?: (open: boolean) => void;
   className?: string;
   variant?: "default" | "minimal" | "option";
-  /** Render with the dim, hover-to-foreground treatment used inside the prompt box. Only meaningful with variant="minimal" or "option". */
   muted?: boolean;
-  /** Render with the popover open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
-  /** Whether the popover blocks page interaction. Defaults to true; pass false in stories. */
   modal?: boolean;
-  /** Popover alignment relative to the trigger. Use "end" when the picker is pinned to the right edge of its container. */
   popoverAlign?: "start" | "end";
 }
 
@@ -821,9 +795,6 @@ export function BranchPicker({
     (isCreatingNew
       ? formatCreateBranchTriggerLabel(value)
       : (value ?? unresolvedTriggerLabel));
-  // The trigger emphasises a plain branch value (or the "New branch" state) so
-  // the committed selection stands out from muted prefix copy like
-  // "Branch from:". Override callers can format their own label.
   const triggerHasPlainBranchValue =
     emphasizeTriggerValue &&
     triggerLabelOverride === undefined &&

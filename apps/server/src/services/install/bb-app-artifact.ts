@@ -65,14 +65,6 @@ interface ResolvedBbAppPackage {
   root: string;
 }
 
-/**
- * Locates the bb-app package by probing the layouts the server actually runs
- * from and validating each candidate's package.json, instead of trusting
- * NODE_ENV: a source checkout can run with a production env (CI integration
- * harness) and a packaged install always sits two levels above the server
- * entry. The layout also decides the build strategy — a repo checkout must
- * build bb-app before packing, a packaged install just packs itself.
- */
 export async function resolveBbAppPackage(
   serverEntryUrl: string,
 ): Promise<ResolvedBbAppPackage> {
@@ -88,9 +80,7 @@ export async function resolveBbAppPackage(
     try {
       const packageJson = await readBbAppPackageJson(candidate.root);
       return { ...candidate, packageJson };
-    } catch {
-      // Try the next layout.
-    }
+    } catch {}
   }
   throw new Error(
     `Unable to locate the bb-app package from ${serverEntryDir}; tried ${candidates
@@ -127,7 +117,6 @@ export function createBbAppArtifactService(
       `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
     );
     await mkdir(cacheDir, { recursive: true });
-    // Clean up the metadata sidecar older installs persisted; nothing reads it.
     await rm(`${tarballPath}.json`, { force: true });
 
     if (resolved.layout === "repo") {
@@ -148,11 +137,6 @@ export function createBbAppArtifactService(
     if (!packedName) {
       throw new Error("npm pack did not report a tarball name");
     }
-    // Publish by atomic rename rather than deleting first: a failed build then
-    // leaves the previously served artifact in place instead of stranding
-    // daemons with no installable package at all. npm pack writes
-    // `bb-app-<version>.tgz`, which can never collide with the
-    // `-protocol-<n>`-suffixed destination in the same directory.
     const packedPath = join(cacheDir, packedName);
     await rename(packedPath, tarballPath);
     return tarballPath;
@@ -160,11 +144,6 @@ export function createBbAppArtifactService(
 
   return {
     getTarballPath(): Promise<string> {
-      // Build once per process from the package this process is running, so a
-      // restart into a different source build at the same version and protocol
-      // still serves the current bits. Memoizing the promise (assigned
-      // synchronously) collapses concurrent callers onto one build; clearing it
-      // on rejection keeps a transient build failure from being cached forever.
       artifactPromise ??= buildTarball().catch((error: unknown) => {
         artifactPromise = undefined;
         throw error;

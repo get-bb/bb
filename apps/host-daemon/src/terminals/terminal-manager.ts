@@ -22,20 +22,8 @@ const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
-// The PTY starts before browser xterm can attach, so a shell can send its
-// required DA1 startup query while no terminal emulator is present. Although
-// browser xterm supports DA1, bb suppresses replies generated from replayed
-// output because the same output may have been processed before a reconnect.
-// Answer DA1 at the always-present PTY boundary and remove the query from
-// output so a later browser cannot send a duplicate response. If detached
-// query support grows beyond DA1, use one authoritative headless emulator
-// instead of adding more protocol-specific handlers here.
 const PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN = /\u001b\[(?:0)?c/g;
 const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = "\u001b[?1;2c";
-// One 64 KiB output chunk can hold more than 20,000 DA1 queries. node-pty
-// copies each reply into an unbounded write queue, so a terminal process could
-// exhaust host daemon memory. Send one bounded write for each output chunk.
-// A shell needs only one answer for each startup query.
 const MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK = 8;
 const NODE_PTY_NATIVE_DIRS: readonly string[] = [
   path.join("build", "Release"),
@@ -209,9 +197,6 @@ const nodePtyAdapter: TerminalPtyAdapter = {
       rows: args.rows,
     });
     return {
-      // The pty child is a session leader, so its pid is also its process
-      // group id. Signal the whole group so background jobs die with the
-      // shell instead of surviving with a cwd in a removed workspace.
       kill: (signal) =>
         killProcessGroup({
           child: { pid: pty.pid, kill: (groupSignal) => pty.kill(groupSignal) },
@@ -356,8 +341,6 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
     BB_TERMINAL_SESSION_ID: args.terminalId,
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
-    // zsh emits a highlighted "%" by default when a prompt follows output
-    // without a newline. It becomes noisy when scrollback is replayed.
     PROMPT_EOL_MARK: "",
     TERM: "xterm-256color",
   };
@@ -431,8 +414,6 @@ function consumePrimaryDeviceAttributesQueries(
   data: string,
 ): PrimaryDeviceAttributesQueryResult {
   const input = pendingQuery + data;
-  // Hold only a suffix that can become a complete DA1 query in the next PTY
-  // output chunk. finishTerminalSession flushes it unchanged if the PTY exits.
   const nextPendingQuery: PendingPrimaryDeviceAttributesQuery = input.endsWith(
     "\u001b[0",
   )
@@ -764,11 +745,6 @@ export class TerminalManager {
   private closeTerminal(args: CloseTerminalArgs): void {
     const session = this.sessions.get(args.terminalId);
     if (!session) {
-      // Close is idempotent across the server/daemon boundary. The server can
-      // still have a running row after the daemon has already forgotten the
-      // PTY (for example, when an earlier exit message was lost). A silent
-      // return leaves that row running forever because the server is waiting
-      // for this acknowledgement before it completes the close request.
       this.options.sendMessage({
         type: "terminal.exited",
         terminalId: args.terminalId,

@@ -288,14 +288,10 @@ export async function createHostDaemonApp(
   }
 
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
-    // Interactive registration creates server-owned turn-scoped timeline state,
-    // so the server must first observe the provider turn/started for that turn.
     await eventSink.flush();
   }
 
   async function flushThreadEventsBeforeToolCall(): Promise<void> {
-    // Dynamic tool calls can append server-owned turn-scoped events, so the
-    // server must first observe any provider turn/started already emitted.
     await eventSink.flush();
   }
 
@@ -866,10 +862,6 @@ export async function createHostDaemonApp(
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
       sessionState.value = session.sessionId;
-      // Apply the HTTP session snapshot before the first await. A plugin may
-      // declare shares after session/open and immediately push generation 1;
-      // applying generation 0 synchronously prevents that newer websocket
-      // replacement from being overwritten by the initial empty snapshot.
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
       await pluginHostManager.reconcileGenerations(
         session.pluginHostGenerations,
@@ -956,8 +948,6 @@ export async function createHostDaemonApp(
       await localApi?.close();
       connectTunnel.shutdown();
       await watchManager.shutdown();
-      // Tear down the isolated parcel watcher child (SIGKILL + clear timers) so
-      // the daemon's event loop can drain and the child is not orphaned.
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
       await runtimeManager.shutdownAll();

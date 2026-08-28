@@ -116,10 +116,8 @@ interface NewThreadComposerPromptOptions {
   autoFocus?: boolean;
   banner?: ReactNode;
   header?: ReactNode;
-  /** When present, submission is blocked and this reason is shown on the submit button. */
   blockedReason?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
-  /** Override the host bound to this prompt box; omission uses this Composer's host. */
   pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
   allowNoProject?: boolean;
@@ -359,11 +357,6 @@ function resolvePanelThreadId(
   );
 }
 
-/**
- * The one owner of normal new-thread composition. Page/plugin wrappers keep
- * their layout and creation side effects; this component owns the selections,
- * draft, attachments, request, and prompt-box configuration.
- */
 export function NewThreadComposer({
   projectId: requestedProjectId,
   onProjectChange,
@@ -380,10 +373,6 @@ export function NewThreadComposer({
   const promptBoxRef = useRef<PromptBoxHandle>(null);
 
   const sidebarNavigationQuery = useSidebarNavigation();
-  // Until the sidebar bootstrap settles, `projectId` below is only the
-  // requested candidate: it may not exist and would then fall back to the
-  // personal project. Queries keyed by projectId wait for the settled value
-  // so a cold start does not fetch (and cache) data for the wrong project.
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
     [sidebarNavigationQuery.data],
@@ -392,12 +381,6 @@ export function NewThreadComposer({
   const candidateKnown =
     isProjectlessProjectId(requestedCandidate) ||
     (projects?.some((project) => project.id === requestedCandidate) ?? false);
-  // Replayed bootstrap data (a placeholder from the last page load) may not
-  // know a project that was created since. It must not demote that project
-  // to the personal project: a submit in that window would create the thread
-  // in the wrong project. Treat the replay as settled only when it already
-  // knows the requested project; otherwise hold the candidate and wait for
-  // the live response.
   const replayKnowsCandidate =
     !sidebarNavigationQuery.isPlaceholderData || candidateKnown;
   const sidebarNavigationSettled =
@@ -451,10 +434,6 @@ export function NewThreadComposer({
       ? null
       : new Map(hosts.map((host) => [host.id, host.name]));
   }, [hostsQuery.data]);
-  // The sidebar bootstrap already carries every unarchived thread of the
-  // selected project (`projectId` always resolves to a project in it once it
-  // has loaded), so the worktree-reuse options derive from that cache instead
-  // of a second, refetch-prone `GET /threads?projectId=` per composer mount.
   const projectThreads = useMemo(() => {
     const navigation = sidebarNavigationQuery.data;
     if (!navigation) return undefined;
@@ -462,8 +441,6 @@ export function NewThreadComposer({
     return navigation.projects.find((project) => project.id === projectId)
       ?.threads;
   }, [isProjectless, projectId, sidebarNavigationQuery.data]);
-  // While the bootstrap is still in flight the picker shows a loading label
-  // and no per-project request is issued (see B28).
   const reuseThreadOptionsLoading =
     projectThreads === undefined && !sidebarNavigationSettled;
   const reuseThreadOptions = useMemo(
@@ -697,10 +674,6 @@ export function NewThreadComposer({
     isHostMode && parsedEnvironment.mode === "worktree";
   const managedWorktreeUnavailable =
     requestsManagedWorktree && worktreeUnavailable;
-  // Branch data enriches the picker and can downgrade a confirmed non-Git or
-  // commitless source, but loading it is not a creation prerequisite. A
-  // default worktree request is resolved authoritatively by the server during
-  // thread creation, including a host.list_branches inspection.
   useEffect(() => {
     if (
       !worktreeUnavailable ||
@@ -1014,8 +987,6 @@ export function NewThreadComposer({
     () => promptDraftToInput(currentDraft),
     [currentDraft],
   );
-  // Identity-stable across keystrokes; the live draft flows through
-  // getCurrent/subscribeDraft (see PluginComposerHost).
   const pluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "new-thread", projectId },
@@ -1035,9 +1006,6 @@ export function NewThreadComposer({
   );
 
   const seededExecutionInputSources = useMemo(
-    // The server discards requested provider/model values that have no source
-    // and re-derives them from project defaults. Preserve explicit provenance
-    // so SDK-provided seeds survive threads.spawn unchanged.
     (): CreateExecutionInputSources => ({
       ...(seed?.providerId !== undefined
         ? { providerId: "explicit" as const }
@@ -1063,10 +1031,6 @@ export function NewThreadComposer({
       supportsServiceTier,
     ],
   );
-  // Root forks own their source environment independently of the picker. While
-  // reusable worktrees are loading (or the source has no current option), keep
-  // the seeded environment so the page can build the native fork request. A
-  // component-local plugin composer still requires a fully resolved picker.
   const submissionEnvironment =
     selectedEnvironment ??
     (selectionScope === "new-thread" ? seed?.environment : undefined) ??
@@ -1133,9 +1097,6 @@ export function NewThreadComposer({
         await onSubmit(request);
         clearReuseEnvironment();
       } catch {
-        // The caller owns error presentation. Restore the submitted draft only
-        // when the optimistic clear succeeded and nothing replaced it while the
-        // request was pending.
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }
@@ -1352,8 +1313,6 @@ export function NewThreadComposer({
               isUploading ||
               isCopyingAttachments ||
               isSubmitting,
-            // A lock renders the picker as a plain label; the transient busy
-            // states must not resize the trigger and shift the row beside it.
             showChevronWhenDisabled: !locks.project,
           }}
           execution={{

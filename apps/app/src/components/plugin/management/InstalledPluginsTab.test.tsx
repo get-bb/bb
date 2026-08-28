@@ -72,7 +72,6 @@ describe("InstalledPluginRow", () => {
     expect(
       screen.getByText("requires bb >=0.38.0 <0.39.0, this is 0.39.0"),
     ).toBeTruthy();
-    // The switch stays "on" (the user enabled it) but says so honestly.
     expect(
       screen
         .getByRole("switch", {

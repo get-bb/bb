@@ -3,18 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface BundledPluginDefinition {
-  /**
-   * Directory name under `plugins/` and under the packaged builtin-plugins
-   * dir; also the `builtin:<name>` source name.
-   */
   name: string;
-  /** derivePluginId(packageName); declared statically so ids are reservable without manifest reads. */
   pluginId: string;
-  /** true = reconcile installs when missing; false = store-only, installed on demand. */
   autoInstall: boolean;
-  /** enabled value on first install (auto or store). */
   defaultEnabled: boolean;
-  /** Browse-tab grouping; only meaningful for store entries. */
   category?: string;
 }
 
@@ -29,7 +21,6 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
-/** Every bundled plugin's source lives under `<repoRoot>/plugins/<name>`. */
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const PLUGIN_CATALOG_CATEGORIES = [
@@ -90,12 +81,6 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
     category: "Interface",
   },
-  // First-party agent provider plugins: each declares one of the providers
-  // the core catalog used to seed. With the seed deleted these declarations
-  // are the only source, so disabling one removes its provider. Their order
-  // here IS the install order — the provider picker's default order and the
-  // initial default provider come from it (bundled plugins rank first, in
-  // this order; every other plugin ranks by install time).
   {
     name: "provider-codex",
     pluginId: "provider-codex",
@@ -129,7 +114,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "plugin-api-docs",
     pluginId: "plugin-api-docs",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Developer tools",
   },
   {
@@ -156,17 +141,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
     category: "Workflow management",
   },
-].map(
-  (plugin): BundledPluginDefinition => ({
-    ...plugin,
-    autoInstall: true,
-  }),
-);
+].map((plugin): BundledPluginDefinition => ({
+  ...plugin,
+  autoInstall: true,
+}));
 
-/**
- * Official plugins ship bundled with the app like builtins, but are not
- * auto-installed: they appear in the plugin store and install on demand.
- */
 export const OFFICIAL_PLUGINS = [
   {
     name: "github",
@@ -192,12 +171,10 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
-].map(
-  (plugin): BundledPluginDefinition => ({
-    ...plugin,
-    autoInstall: false,
-  }),
-);
+].map((plugin): BundledPluginDefinition => ({
+  ...plugin,
+  autoInstall: false,
+}));
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,
@@ -214,12 +191,6 @@ export function builtinPluginSource(name: string): string {
   return `builtin:${name}`;
 }
 
-/**
- * Bundled plugin roots live in three layouts:
- * - packaged server: <server dist>/builtin-plugins/<name> (written at packaging)
- * - built-from-source server (bundle at apps/server/dist): <repoRoot>/plugins/<name>
- * - source checkout (module at apps/server/src/services/plugins): <repoRoot>/plugins/<name>
- */
 export function resolveBuiltinPluginRootPathForModuleDir(
   args: ResolveBuiltinPluginRootPathArgs,
 ): string {
@@ -230,7 +201,6 @@ export function resolveBuiltinPluginRootPathForModuleDir(
   );
   if (existsSync(packagedCandidate)) return packagedCandidate;
 
-  // apps/server/dist → repo root is three levels up.
   const builtCheckoutCandidate = path.resolve(
     args.moduleDir,
     "../../..",

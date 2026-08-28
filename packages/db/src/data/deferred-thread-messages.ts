@@ -14,17 +14,8 @@ import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { createDeferredThreadMessageId } from "../ids.js";
 import { deferredThreadMessages, environments, threads } from "../schema.js";
 
-/**
- * The two thread statuses a held message can reach the provider from: a
- * `steer`/`steer-if-active` row resolves to a steer on `active` and to a start
- * on `idle`. `starting`, `stopping` and `error` all refuse the send.
- */
 const DELIVERABLE_THREAD_STATUSES: ThreadStatus[] = ["active", "idle"];
 
-/**
- * An environment with a destroy in flight or already gone is never
- * reprovisioned, so nothing addressed to it can ever run again (#1789).
- */
 const GONE_ENVIRONMENT_STATUSES: EnvironmentStatus[] = [
   "destroying",
   "destroyed",
@@ -36,7 +27,6 @@ export type DeferredThreadMessageRow =
 export interface CreateDeferredThreadMessageInput {
   threadId: string;
   kind: string;
-  /** JSON-encoded message; the server owns the shape behind each `kind`. */
   payload: string;
 }
 
@@ -55,10 +45,6 @@ export function createDeferredThreadMessage(
   return row;
 }
 
-/**
- * Oldest first: deferred messages deliver in arrival order. Rows created in
- * the same millisecond have random ids, so the insertion rowid breaks ties.
- */
 export function listDeferredThreadMessages(
   db: DbQueryConnection,
   threadId: string,
@@ -74,18 +60,6 @@ export function listDeferredThreadMessages(
     .all();
 }
 
-/**
- * Threads whose held messages can be delivered right now: visible, in a status
- * that accepts a send, and attached to a live environment.
- *
- * A thread in `error`, `starting` or `stopping` is deliberately absent. Its
- * rows are not lost — they wait for the status that can take them, which a user
- * retry, a start that lands, or a stop that finishes produces, and the sweep
- * picks the thread up on the tick after that. Listing it here instead would
- * re-run the whole send pipeline and log a delivery failure on every sweep tick
- * for as long as the thread sits there: the pattern #1789 removed from the
- * queued-message sweep (see listIdleThreadsWithQueuedMessages).
- */
 export function listThreadIdsWithDeliverableDeferredThreadMessages(
   db: DbQueryConnection,
 ): string[] {
@@ -107,16 +81,6 @@ export function listThreadIdsWithDeliverableDeferredThreadMessages(
     .map((row) => row.threadId);
 }
 
-/**
- * Threads whose held messages can never be delivered: the thread is archived or
- * deleted, or its environment is gone. A held row is only ever created for a
- * thread with a live provider session, so a null `environmentId` here means the
- * environment row was pruned after a destroy, not that the thread never ran.
- *
- * These rows are dropped rather than retried. The set is disjoint from
- * {@link listThreadIdsWithDeliverableDeferredThreadMessages}, so the sweep can
- * walk both without visiting a thread twice.
- */
 export function listThreadIdsWithUndeliverableDeferredThreadMessages(
   db: DbQueryConnection,
 ): string[] {
@@ -139,7 +103,6 @@ export function listThreadIdsWithUndeliverableDeferredThreadMessages(
     .map((row) => row.threadId);
 }
 
-/** Returns true when the row still existed, so a caller can claim it. */
 export function deleteDeferredThreadMessage(
   db: DbQueryConnection,
   args: { id: string; threadId: string },

@@ -12,11 +12,6 @@ export type ResourceStatusTone = "success" | "warning" | "error" | "muted";
 
 export const RESOURCE_ROUTE_LABEL_EVENT = "bb:resource-route-label";
 
-/**
- * Supplies the loaded resource name to the host shell without coupling the
- * shell to a particular resource API. The DOM event also crosses the frontend
- * plugin boundary, where React context is not shared with the host bundle.
- */
 export function useResourceRouteLabel(label: string | null | undefined) {
   useEffect(() => {
     if (!label || typeof window === "undefined") return;

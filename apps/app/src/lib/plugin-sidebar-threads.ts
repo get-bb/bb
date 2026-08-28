@@ -16,27 +16,8 @@ import {
 } from "@bb/client-core";
 import { isThreadRead } from "@bb/client-core";
 
-/**
- * The ONE place a host `ThreadListEntry` becomes the plugin-facing
- * `PluginSidebarThread`. Two mappers would drift; this one is unit-tested
- * against the host's own indicator precedence.
- *
- * `hasUnsubmittedDraft` is deliberately not part of the mapping: an
- * unsubmitted composer draft is per-client, per-composer state that the
- * built-in row reads with its own hook, and one array-wide mapper cannot call
- * a hook per thread.
- *
- * So `indicator` never reports "draft" or "working-draft". The one visible
- * consequence: an idle, unread, successful thread that also holds a draft
- * reads as "unread-success" here where the built-in row paints "draft". Every
- * other state is unaffected, because a draft outranks nothing else.
- */
 export function toPluginSidebarThread(
   entry: ThreadListEntry,
-  /**
-   * Machine names by host id. The plugin cannot resolve a bare host id, so
-   * the host resolves it here and hands over a name the row can print.
-   */
   hostNamesById: ReadonlyMap<string, string> = new Map(),
 ): PluginSidebarThread {
   const isUnreadDone = isUnreadDoneThread(entry);
@@ -74,9 +55,6 @@ export function toPluginSidebarThread(
     },
     indicator,
     indicatorLabel: getThreadListIndicatorLabel(indicator),
-    // Plain read state, not `isUnreadDoneThread`: a plugin list may show
-    // child threads and running threads, both of which that helper excludes
-    // by design (it answers "should this row show a done dot").
     isUnread: !isThreadRead(entry),
     isPinned: entry.pinnedAt !== null,
     isArchived: entry.archivedAt !== null,
@@ -94,8 +72,6 @@ export function toPluginSidebarThread(
         ? null
         : {
             id: entry.environmentHostId,
-            // An unknown host still gets a row: fall back to the id rather
-            // than dropping the machine entirely.
             name:
               hostNamesById.get(entry.environmentHostId) ??
               entry.environmentHostId,

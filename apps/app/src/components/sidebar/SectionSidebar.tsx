@@ -64,10 +64,6 @@ export function SectionSidebarRow({
   );
 }
 
-/**
- * A sidebar row that runs an action instead of navigating. The mobile shell
- * uses it to reach a native screen the page cannot render itself.
- */
 export function SectionSidebarActionRow({
   children,
   label,
@@ -110,14 +106,6 @@ export function SectionSidebarLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Shared shell for focused app sections such as Settings and Tools.
- *
- * `mobileHosted` renders the body without its own `<Sidebar>` shell: on
- * compact viewports AppLayoutSidebar owns one persistent drawer panel and
- * hosts this body inside it, so switching between the app sidebar and a
- * section sidebar never remounts the panel or the app sidebar's thread list.
- */
 export function SectionSidebar({
   backLabel,
   backTo,

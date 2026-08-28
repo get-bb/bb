@@ -96,12 +96,6 @@ async function writeRuntimePackageJson(args: {
   );
 }
 
-/**
- * Runs `<pluginRoot>/scripts/stage-assets.mjs` when a plugin has one. The
- * script's side effects are its contract: it populates `dist/` with runtime
- * files the bundlers cannot produce (the Monaco plugin copies Monaco's AMD
- * build in this way).
- */
 async function runStageAssets(sourceRoot: string): Promise<void> {
   const scriptPath = path.join(sourceRoot, "scripts", "stage-assets.mjs");
   if (!(await exists(scriptPath))) return;
@@ -116,7 +110,6 @@ async function copyBuiltinPlugin(args: {
   targetRoot: string;
 }): Promise<void> {
   if (args.build) {
-    // Resolves from this repo's own devDependencies; no download here.
     const toolchain = await resolvePluginBuildToolchain(
       path.join(serverRoot, "node_modules", ".bb-toolchain"),
     );
@@ -132,9 +125,6 @@ async function copyBuiltinPlugin(args: {
     if (packageJson.bb.host !== undefined) {
       await buildPluginHost(args.sourceRoot, args.bbVersion, toolchain);
     }
-    // A plugin that needs files on disk at runtime (rather than bundled into
-    // its server/app) stages them into `dist/` here, because `RUNTIME_DIRS`
-    // below is all that ships. Optional: most plugins have no such script.
     await runStageAssets(args.sourceRoot);
   }
 
@@ -156,11 +146,6 @@ async function copyBuiltinPlugin(args: {
       await readFile(path.join(args.sourceRoot, "package.json"), "utf8"),
     ),
   );
-  // Every asset the manifest declares ships; an asset a plugin names only in
-  // code (a `./icons/x.svg` provider icon in a declaration) is invisible
-  // here and is absent from the packaged plugin. A builtin provider declares
-  // its logos under `bb.branding.experimental_icons` and references them by
-  // namespaced glyph for that reason.
   const logo = packageJson.bb.branding.logo;
   const compactIcon = isPluginOwnedIconPath(packageJson.bb.branding.icon ?? "")
     ? packageJson.bb.branding.icon

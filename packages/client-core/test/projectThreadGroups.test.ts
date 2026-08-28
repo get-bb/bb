@@ -431,13 +431,11 @@ describe("buildProjectThreadGroups", () => {
       }),
     ];
 
-    // Default heuristic pins active rows ahead of idle ones.
     expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
       "active-old",
       "idle-new",
     ]);
 
-    // The created comparator ignores status and sorts purely by createdAt desc.
     expect(
       summarizeItems(
         buildProjectThreadGroups(threads, compareByCreatedAtDescending),
@@ -557,8 +555,6 @@ describe("section bucketing", () => {
       ],
     );
 
-    // Same idle/attention threads tie-break on codepoint id; flat sections render
-    // as a block above the loose "Standalone" thread.
     expect(summarizeItems(items)).toEqual([
       { section: "chronological::sec_work", name: "Work", items: ["c"] },
       {
@@ -618,8 +614,6 @@ describe("section bucketing", () => {
       ],
     );
 
-    // Only the top-level parent picks the bucket; the child stays nested under it
-    // and does not create a second section row.
     expect(summarizeItems(items)).toEqual([
       {
         section: "chronological::sec_work",
@@ -789,8 +783,6 @@ describe("section bucketing", () => {
       [{ id: "sec_work", name: "Work" }],
     );
 
-    // The child follows its parent into the section as a nested row rather than
-    // splitting out as a loose top-level thread.
     expect(summarizeItems(items)).toEqual([
       {
         section: "chronological::sec_work",
@@ -906,7 +898,6 @@ describe("resolveSidebarProjectId", () => {
     const resolve = createSidebarProjectIdResolver(spyingMap);
 
     expect(all.map(resolve)).toEqual(Array(all.length).fill("proj_a"));
-    // Root and child resolve once; each grandchild stops at the cached child.
     expect(lookups).toEqual([
       "thr_root",
       "thr_child",

@@ -15,7 +15,6 @@ describe("AttachmentPreview", () => {
   beforeEach(() => {
     created = 0;
     revoked.length = 0;
-    // jsdom's URL has no object-URL methods; install recording stand-ins.
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: () => `blob:local-${++created}`,
@@ -40,7 +39,6 @@ describe("AttachmentPreview", () => {
       "photo-1-abc.png",
       new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
     );
-    // A non-image never gets an object URL.
     registerLocalAttachmentPreview(
       "notes-1-abc.txt",
       new Blob(["hi"], { type: "text/plain" }),

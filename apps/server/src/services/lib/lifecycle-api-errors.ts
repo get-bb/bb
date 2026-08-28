@@ -58,13 +58,6 @@ export function destroyedThreadEnvironmentDetails(
   return threadEnvironmentUnavailableDetails("destroyed", environment.status);
 }
 
-/**
- * The single definition of "the environment is gone": an environment with a
- * destroy RPC in flight (`destroying`) or already gone (`destroyed`) is never
- * reprovisioned, so any work request against it is rejected with the
- * "environment is gone" surface the frontend banner keys off. `retiring` is
- * deliberately absent because it is revivable before destroy starts.
- */
 export function goneThreadEnvironmentDetails(
   environment: ThreadEnvironmentStatusFields,
 ): ThreadEnvironmentUnavailableErrorDetails | null {

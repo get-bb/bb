@@ -50,7 +50,6 @@ describe("ToolsSidebar", () => {
     expect(row("My skills").getAttribute("href")).toBe(
       "/extensions/skills?view=library",
     );
-    // The back row must point at the remembered app route, not merely exist.
     expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");
   });
 
@@ -63,12 +62,10 @@ describe("ToolsSidebar", () => {
     ["/extensions/skills/registry", "Browse skills"],
     ["/extensions/skills?view=library", "My skills"],
     ["/extensions/skills/library/my-skill", "My skills"],
-    // The pre-Library detail path still resolves during its redirect window.
     ["/extensions/skills/installed/my-skill", "My skills"],
     ["/extensions/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
   ])("marks exactly one active page for %s", (path, expected) => {
     renderAt(path);
-    // Exclusivity: two lit rows must fail, not just a missing expected row.
     const activeRows = PAGE_ROWS.filter(
       (name) => row(name).getAttribute("aria-current") === "page",
     );

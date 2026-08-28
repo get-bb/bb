@@ -31,11 +31,11 @@ message agents, or inspect projects, providers, and environments.
   the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
   must also publish the port to the host.
 
-## Environment Setup Script
+## Environment Setup And Teardown Scripts
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
-  documents the repo-level `.bb-env-setup.sh` setup hook and the
-  `.worktreeinclude` file.
+  documents the repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks,
+  and the `.worktreeinclude` file.
 - A new worktree checks out tracked files only. Commit a `.worktreeinclude`
   file at the repo root to list untracked files, such as `.env`, that bb must
   copy from the source checkout. It uses gitignore pattern syntax. bb copies
@@ -416,11 +416,11 @@ or artifacts, validation performed, and blockers.
 
 ## Inspecting Results
 
-- Use `bb thread search`, `history`, `read|unread`, and `section` for the same
-  organization and recall features as the sidebar. `bb thread queue` exposes
-  queued-message list/create/update/send/reorder/group/delete operations. Queue
-  updates use the listed message version to prevent overwriting a concurrent
-  edit and accept repeatable `--file` and `--image` attachment options.
+- Use `bb thread search <query> [--limit <1-50>]` for sidebar search features.
+  Use `bb thread history`, `read|unread`, and `section` for organization and
+  recall features. `bb thread queue` exposes queued-message operations. Queue
+  updates use the listed version and accept repeatable `--file` and `--image`
+  attachment options.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
@@ -574,6 +574,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   file, add `--folder` for a subtree, or use `bb docs pull --all`. Edit the
   resulting ordinary files, inspect `bb docs status <dir> --diff`, then run
   `bb docs push <dir>`.
+- Status exits 0 when no changes exist and exits 4 when changes exist. Exit 4
+  is a successful result. Review its output, then run push separately. Do not
+  connect status and push with `&&`.
 - `.bb-docs-state.json` is versioned identity/concurrency state; do not edit it.
   Concurrent local and remote changes fail closed with exit 3. Pull and merge,
   then retry.

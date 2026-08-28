@@ -154,7 +154,6 @@ const settingsUpdateMachine = {
 const noJobs: ReadonlySet<string> = new Set();
 const noop = () => {};
 
-/** The representative, side-effect-free Updates route inside the Settings story. */
 export function SettingsUpdatesStory() {
   const navigate = useNavigate();
   return (
@@ -224,7 +223,6 @@ function createSettingsStoryQueryClient() {
   return queryClient;
 }
 
-/** Deterministic production-query fixtures shared by every Settings route. */
 export function SettingsStoryFixtures({ children }: { children: ReactNode }) {
   const [queryClient] = useState(createSettingsStoryQueryClient);
   return (

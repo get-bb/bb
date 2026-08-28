@@ -76,7 +76,6 @@ function systemConfig(): SystemConfigResponse {
   });
 }
 
-/** Sidebar bootstrap with two projects on the primary host, one on dev-vm. */
 function stubSidebarBootstrapFetch(): void {
   vi.stubGlobal(
     "fetch",
@@ -232,7 +231,6 @@ describe("MachinesSettingsSection", () => {
     );
     expect(updateStatus.className).toContain("min-w-0");
     expect(updateStatus.className).not.toContain("shrink-0");
-    // The action lives in the row menu so the rows keep one shape.
     await openHostMenu("dev-vm");
     const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
     const retryItem = await screen.findByRole("menuitem", {
@@ -342,7 +340,6 @@ describe("MachinesSettingsSection", () => {
 
     expect(await screen.findByText("Accept Edits")).toBeDefined();
     expect(screen.getByText("Full Access")).toBeDefined();
-    // The control itself lives on the machine page.
     expect(
       screen.queryByRole("button", { name: /Permission limit for/ }),
     ).toBeNull();

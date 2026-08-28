@@ -316,13 +316,6 @@ export function registerSpawnCommand(
             ...(permissionMode ? { permissionMode } : {}),
             ...(visibility ? { visibility } : {}),
             environment,
-            // The typed $post client types this body against the schema's
-            // output shape, where startedOnBehalfOf/originKind
-            // (`.default(null)`) are required — so a normal spawn passes the
-            // explicit null the server would otherwise fill. (A fork sets
-            // these; the CLI never does. z.input would re-optionalize the
-            // SDK arg type but the underlying $post still requires them, so the
-            // null lives here.)
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
@@ -336,8 +329,6 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
-        // A hidden child reports to its parent too, so the promise follows the
-        // parent link alone.
         if (
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()

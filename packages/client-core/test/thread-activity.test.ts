@@ -101,9 +101,6 @@ describe("thread-activity", () => {
       ["isPlanModeActive", "plan-mode"],
       ["isGoalActive", "goal"],
     ] as const)("shows %s as %s over the runtime spinner", (flag, kind) => {
-      // The runtime stays active for as long as a question or approval is open,
-      // so the spinner must not mask it. Plan and goal describe the running turn
-      // and shimmer on their own, so they outrank it too.
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,

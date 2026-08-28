@@ -74,9 +74,6 @@ describe("provider registry policy accessors", () => {
     expect(registry.supportsFork("codex")).toBe(true);
   });
 
-  // The ACP tier is gone: every ACP agent — bb's known list and the ones a
-  // user configures in the plugin's settings — is a registration like any
-  // other, so an unregistered acp-* id is simply unknown.
   it("answers for an unregistered acp-* id exactly as for any unknown id", () => {
     const registry = createProviderRegistryService();
     expect(registry.getServerCapabilities("acp-custom-agent")).toBeNull();
@@ -93,10 +90,6 @@ describe("provider registry policy accessors", () => {
     expect(registry.supportsFork("nope")).toBe(false);
   });
 
-  // A disabled provider plugin removes its provider outright. The compaction
-  // accessor used to keep answering `true` for codex from a catalog string
-  // list even with no registration; that would have been the one accessor
-  // claiming a capability for a provider that no longer exists.
   it("stops claiming capabilities for a provider whose plugin is gone", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register(
@@ -119,11 +112,6 @@ describe("provider registry policy accessors", () => {
 });
 
 describe("provider registry ordering", () => {
-  // Listing order is plugin install order, not registration order: plugins
-  // load alphabetically by plugin id and a disable/re-enable moves a
-  // registration to the end, so order must not come from registration order.
-  // Bundled plugins rank by their bundled position (they install first, at
-  // bootstrap); everything else ranks by install time.
   it("lists bundled plugins first in bundled order, then others by install time", () => {
     const registry = createProviderRegistryService();
     registerProvider(registry, "late-agent", "late", {
@@ -220,18 +208,14 @@ describe("provider registry ordering", () => {
       installedAt: 0,
     });
 
-    // Pinned ids lead in the user's order (an unknown id is ignored); the
-    // rest keep install order.
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
       "acp-cursor",
       "pi",
       "codex",
     ]);
-    // A default naming no registered provider answers null, never the id.
     expect(registry.getUserDefaultProviderId()).toBeNull();
     preferences.defaultProviderId = "codex";
     expect(registry.getUserDefaultProviderId()).toBe("codex");
-    // Preferences are read per call: a settings change applies at once.
     preferences.providerOrder = [];
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
       "codex",
@@ -254,8 +238,6 @@ describe("provider registry", () => {
     ).toThrow(/already registered/);
   });
 
-  // Flat ids: no reservation table. Any plugin may claim an id nobody holds,
-  // and the first live registration wins until it is disposed.
   it("frees an id the moment its registration is disposed", () => {
     const registry = createProviderRegistryService();
     for (const providerId of ["codex", "pi", "acp-cursor", "acp-anything"]) {
@@ -286,8 +268,6 @@ describe("provider registry", () => {
     expect(registry.get("plugin-provider")).toBeNull();
     expect(registry.list()).toHaveLength(0);
 
-    // Disposing twice, or after a re-registration, must not remove a newer
-    // registration for the same id.
     const second = registry.register(
       minimalProviderRegistration({
         pluginId: "other-plugin",
@@ -328,10 +308,6 @@ describe("provider registry", () => {
     expect(unrelatedProviderReady).toBe(true);
   });
 
-  // Every ACP agent has its own registration now, so a wait is released by
-  // that agent's own registration and by nothing else. A sibling ACP provider
-  // used to release it, which meant a request could proceed against a
-  // provider that had not registered.
   it("releases an ACP wait only on that agent's own registration", async () => {
     const registry = createProviderRegistryService({
       deferRegistrationsSettled: true,

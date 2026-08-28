@@ -14,14 +14,6 @@ import {
 import { getSecondaryPanelChromeStackClassName } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { AppPageHeader } from "./AppPageHeader";
 
-/**
- * App chrome must not take part in native text selection (#1440). A mouse drag
- * that starts on a `user-select: none` element never begins a selection, and
- * Select All skips such elements, so marking the chrome *regions* keeps
- * sidebar labels, title bars and composer toolbars out of drags and Cmd-A
- * while conversation content, editors and diagnostics stay selectable.
- */
-
 afterEach(() => {
   cleanup();
 });
@@ -80,9 +72,6 @@ describe("app chrome opts out of text selection", () => {
   });
 
   it("restores native selection on editable controls inside opted-out chrome", () => {
-    // `user-select: auto` resolves from the parent, so without this rule
-    // WebKit would refuse to select text in the inline thread-title rename
-    // input.
     const css = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../../app.css"),
       "utf8",

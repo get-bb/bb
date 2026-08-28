@@ -137,8 +137,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       }[];
     }) => (
       <div data-testid="follow-up-prompt-box">
-        {/* Mirrors the real stack: plugin banners for the composer scope, then
-          the caller's stack, then the pending interaction (if any). */}
+        {}
         <div data-testid="prompt-stack">
           {pluginComposerHost ? (
             <ComposerBannersSlot
@@ -850,8 +849,6 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(onCancel).toHaveBeenCalledTimes(1);
 
-    // Escape in the edit composer cancels too; the bottom composer keeps its
-    // default Escape behavior (no onEscape).
     expect(
       within(bottomComposer!).queryByRole("button", {
         name: "Escape composer",
@@ -1490,7 +1487,6 @@ describe("ThreadDetailPromptArea", () => {
       "rfn-pass-a-balance",
     ]);
 
-    // Expanding one workflow must not expand its concurrent sibling.
     fireEvent.click(cards[1]!);
     expect(
       screen
@@ -1570,13 +1566,10 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.queryByRole("button", { name: "Editor action" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(document.querySelector(".pending-rule")).toBeNull();
-    // The composer is retained (blocked, hidden) rather than swapped out, so
-    // approving does not rebuild the editor.
     expect(screen.getByTestId("composer-hidden").textContent).toBe("true");
     expect(screen.getByTestId("submit-mode").textContent).toBe(
       "blocked:pending-interaction",
     );
-    // The reduced pending stack keeps the queued drawer and todo card out.
     expect(screen.queryByTestId("queued-message-list")).toBeNull();
   });
 
@@ -1629,8 +1622,6 @@ describe("ThreadDetailPromptArea", () => {
       screen
         .getAllByTestId("composer-stack-item")
         .map((item) => item.textContent),
-      // The banner routes a plugin request to the plugin's slot itself
-      // (ThreadPendingInteractionBanner.test.tsx); the stack only orders it.
     ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
   });
 

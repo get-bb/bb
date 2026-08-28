@@ -29,11 +29,6 @@ function formatRefreshedAt(marketplace: PluginMarketplace): string {
   return `Refreshed ${new Date(marketplace.lastRefreshAt).toLocaleString()}`;
 }
 
-/**
- * Add and remove the marketplaces bb reads plugin catalogs from. Adding one
- * installs nothing and removing one uninstalls nothing: the server owns both
- * policies, and this page only calls the routes.
- */
 export function MarketplacesSettingsSection() {
   const queryClient = useQueryClient();
   const [source, setSource] = useState("");

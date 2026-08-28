@@ -5,8 +5,6 @@ import type {
   EventProjectionProvisioningTranscriptEntry,
 } from "./event-projection-types.js";
 
-// --- Helpers used by build-event-projection.ts (event -> draft projection) ---
-
 export function readProvisioningTranscript(
   entries: ProvisioningTranscriptEntry[] | undefined,
 ): EventProjectionProvisioningTranscriptEntry[] | undefined {

@@ -188,10 +188,6 @@ export function Overview() {
   );
 }
 
-// Drag-into-section affordance: the section highlights as a drop target, and
-// after a short hover it springs open with an empty placeholder slot. The
-// dragged row keeps its own title (like dragging a queued message), so the
-// placeholder stays blank rather than duplicating the title.
 export function DragInto() {
   return (
     <StoryCard>

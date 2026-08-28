@@ -84,7 +84,6 @@ describe("route path helpers", () => {
     );
     for (const path of [
       "/extensions",
-      // Legacy prefix: old /tools links stay routable so they can redirect.
       "/tools",
       "/tools/plugins/github",
       "/extensions/skills",

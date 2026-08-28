@@ -896,8 +896,6 @@ describe("workflow service policy integration", () => {
   });
 
   it("publishes a workflow-runs signal for the origin thread on start, claim, and cancel", async () => {
-    // The composer banner polls only while it shows an active run; these
-    // signals are how an idle thread learns that a run appeared or ended.
     const test = setup();
     harnesses.push(test.harness);
     const signalsFor = (threadId: string) =>
@@ -913,12 +911,10 @@ describe("workflow service policy integration", () => {
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     await eventually(() => expect(test.childCount()).toBe(1));
-    // Claim (queued -> running).
     expect(signalsFor("origin").length).toBeGreaterThanOrEqual(2);
     const beforeStop = signalsFor("origin").length;
     await expect(test.service.stop(run.id)).resolves.toBe(true);
     expect(signalsFor("origin").length).toBeGreaterThan(beforeStop);
-    // A second stop of an already-cancelled run publishes nothing.
     const afterStop = signalsFor("origin").length;
     await expect(test.service.stop(run.id)).resolves.toBe(false);
     expect(signalsFor("origin")).toHaveLength(afterStop);

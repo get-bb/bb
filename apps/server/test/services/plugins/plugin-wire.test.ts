@@ -7,8 +7,6 @@ import {
 } from "../../helpers/test-app.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
 
-// The harness config uses serverPort 3334, so this host is on the local-app
-// origin allowlist the "local" auth mode enforces.
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
@@ -189,7 +187,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     );
     expect(sameOrigin.status).toBe(200);
 
-    // config.appUrl (https://bb.example.test) is part of the allowlist.
     const appOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: "https://bb.example.test" } },
@@ -208,15 +205,12 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: expect.stringContaining("not a local BB app origin"),
     });
 
-    // Merely copying a known BB port is insufficient when the hostile origin
-    // hostname is unrelated to the request hostname.
     const copiedPort = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: "http://evil.example:3334" } },
     );
     expect(copiedPort.status).toBe(403);
 
-    // Direct LAN/Tailscale serving binds the app origin to the request host.
     const sameOriginLan = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
       { headers: { origin: "http://100.64.158.8:3334" } },
@@ -229,9 +223,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     );
     expect(sameOriginReverseProxy.status).toBe(200);
 
-    // Direct development WebSockets use the dev origin hostname with the
-    // backend port, while Vite's HTTP proxy preserves the browser-facing host
-    // in X-Forwarded-Host.
     const directDev = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
       { headers: { origin: "http://100.64.158.8:5173" } },
@@ -342,7 +333,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
     const viaHeader = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/guarded`,
-      // Token routes are for webhooks: a foreign origin is fine.
       { headers: { "x-bb-plugin-token": token, origin: EVIL_ORIGIN } },
     );
     expect(viaHeader.status).toBe(200);
@@ -500,7 +490,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     );
     expect(await swapped.json()).toEqual({ message: "hello v2" });
 
-    // v2 registers no rpc handlers: the old method is gone.
     const staleRpc = await rpc(harness, "echo", { x: 1 });
     expect(staleRpc.status).toBe(404);
   });
@@ -668,9 +657,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   });
 
   it("rpc resolves the handler after the body arrives, so a reload during the body read never runs a stale handler", async () => {
-    // The handler closes over its load generation: a binding resolved
-    // before the body read (and invalidated by the mid-read reload) would
-    // answer with the disposed instance's generation.
     const genDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-gen",
       serverSource: `
@@ -707,11 +693,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
-        // Node fetch requires half-duplex for streamed request bodies.
         duplex: "half",
       } as RequestInit,
     );
-    // Let the dispatcher reach its body read, then swap the handler.
     await new Promise((resolveTick) => setTimeout(resolveTick, 25));
     await harness.pluginService.reload("gen");
     releaseBody();

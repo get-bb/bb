@@ -288,10 +288,6 @@ export function seedEvent<TType extends ThreadEventType>(
   ]);
 }
 
-/**
- * Seeds a stored provider turn for tests that exercise server-side behavior
- * after daemon ingestion has already persisted turn/started.
- */
 export function seedTurnStarted(
   deps: Pick<AppDeps, "db" | "hub">,
   args: SeedTurnStartedArgs,

@@ -40,8 +40,6 @@ describe("public thread default routes", () => {
         hostId: host.id,
         path: "/tmp/thread-defaults-create",
       });
-      // Host-default app creation is default-shaping; seed the source
-      // environment so this route test can assert the queued start directly.
       seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
@@ -407,8 +405,6 @@ describe("public thread default routes", () => {
           providerId: "codex",
         },
       ]);
-      // The Codex catalog is host-scoped, so the probe carries no workspace
-      // path (it would only fragment the server's model-list memo).
       expect(providerResponder.requests[0].command).not.toHaveProperty("cwd");
     });
   });

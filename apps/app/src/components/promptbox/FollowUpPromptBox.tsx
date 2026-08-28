@@ -109,12 +109,6 @@ function PromptBoxWithScrollAnchor({
   );
 }
 
-// Elastic compensation: when nothing is stacked above the textarea, the
-// textarea defaults to FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT so the
-// prompt area is already at "with-banner" height on first paint. As the stack
-// (context banner + queued messages) grows, the textarea min-height shrinks
-// by the same amount — total prompt-area height stays constant and the
-// thread timeline does not shift when the context banner mounts.
 const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
@@ -129,8 +123,6 @@ const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   projectId: null,
 } as const;
 
-// The submit-mode discriminated union lives in @bb/client-core so the shared
-// submission policy and the native composer read the same shape.
 export type {
   FollowUpBlockedReason,
   FollowUpSubmitMode,
@@ -138,31 +130,19 @@ export type {
 
 export interface FollowUpComposerProps {
   history: HistoryConfig;
-  /** True while the send/queue mutation is in flight. Orthogonal to submitMode. */
   isFollowUpSubmitting: boolean;
   message: string;
   mentionRanges: readonly PromptTextMention[];
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
-  /**
-   * Escape pressed in the editor with no higher-priority consumer open.
-   * The sent-message editor passes its cancel action; when omitted, Escape
-   * blurs the editor (the bottom and queued-message composers' behavior).
-   */
   onEscape?: () => void;
-  /** Accessible label and tooltip for the primary submit action. */
   submitTitle?: string;
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
-  /**
-   * While the runtime is active, use Enter for steer and the modifier shortcut
-   * for queue. False preserves the default Enter-to-queue behavior.
-   */
   steerActiveThreadOnEnter: boolean;
   submitMode: FollowUpSubmitMode;
-  /** Used by the scroll-to-bottom button to know whether the runtime is actively streaming. */
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
 }
 
@@ -173,76 +153,26 @@ type ContextWindowUsage = ComponentProps<
 export interface FollowUpPromptBoxProps {
   id?: string;
   attachments: AttachmentsConfig;
-  /**
-   * Slot for the stack of context cards above the prompt input — today
-   * <ContextBanner> + <QueuedMessagesList>, both wrapped in PromptStackCard
-   * chrome. The caller composes whatever should render above the composer
-   * and passes it as a single element. Pass null to hide the stack entirely.
-   */
   stack: ReactNode | null;
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
-  /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
-  /**
-   * Token usage indicator shown to the right of the permission picker. Null
-   * means no usage available yet (e.g. thread just created); the indicator is
-   * hidden in that case.
-   */
   contextWindowUsage: ContextWindowUsage | null;
-  /**
-   * Execution controls (provider + model + service tier + reasoning) rendered
-   * in PromptBox's footer slot. Callers omit provider.onChange so the picker
-   * renders the provider as locked — follow-ups can't change provider, the
-   * thread is already committed.
-   */
   execution: ExecutionControlsProps;
-  /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
-  /**
-   * Render all footer controls (model/reasoning + permission pickers) as
-   * non-interactive, dimmed labels. The composer text input stays editable.
-   */
   readOnly?: boolean;
-  /** Override only the execution controls' readonly state. */
   executionReadOnly?: boolean;
-  /** Override only the permission picker's readonly state. */
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
-  /** Suppress plugin customizations while a retained secondary composer is inactive. */
   suppressPluginComposerCustomizations?: boolean;
-  /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
-  /** Active scope used to filter and lifecycle-key plugin banner slots. */
   pluginComposerScope?: PluginComposerScope | null;
   textEffects?: readonly ComposerTextEffectSource[];
-  /** Scope key for resetting a manually collapsed prompt box on thread change. */
   collapseResetKey: string | number;
-  /**
-   * Changing this refocuses the composer caret to the end — e.g. after editing a
-   * queued message restores its text into the draft.
-   */
   focusEndKey?: string | number;
-  /**
-   * Whether this is the pane's primary composer (the main thread box) rather
-   * than a secondary one such as a side-chat composer, which stays mounted but
-   * hidden. Only the primary composer answers the pane-scoped Cmd+Shift+C /
-   * Cmd+Shift+M fallback when the caret is outside every composer. Defaults to
-   * true; side chats pass false. Marks the composer shell via
-   * `data-app-composer-role` so the model picker can read the same signal.
-   */
   isPrimaryComposer?: boolean;
-  /** Inline queue editors do not own a timeline scroll control. */
   showScrollToBottomButton?: boolean;
-  /**
-   * A pending interaction (permission request, user question) that takes the
-   * composer's place. The composer editor stays MOUNTED but hidden while this
-   * is set: the previous implementation swapped the whole composer out of the
-   * tree, so every approval tore down and rebuilt the TipTap editor and the
-   * composer's pickers, and the draft-restoring remount landed in the same
-   * task as the approval's timeline update. Rendered as the last stack item.
-   */
   pendingInteraction?: ReactNode;
 }
 
@@ -353,11 +283,6 @@ function FollowUpPromptBoxWithComposer({
     isSubmitting: composer.isFollowUpSubmitting || isStopping,
   });
   const promptBoxRef = useRef<PromptBoxHandle>(null);
-  // Scope Cmd+Shift+C to the focused pane's primary composer. Every mounted
-  // composer registers this handler — including side-chat composers that stay
-  // mounted while hidden — so gating on both the focused pane and "primary"
-  // keeps a hidden side chat from stealing the chord. Standalone/single-pane
-  // surfaces have no pane context and default to focused.
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
   const focusDefault = useCallback(() => {
@@ -455,8 +380,6 @@ function FollowUpPromptBoxWithComposer({
         if (hasFinished) return;
         hasFinished = true;
         removeSignals();
-        // AppLayout updates its visual-viewport height in the same animation
-        // frame. Expanding here keeps the composer and keyboard on one paint.
         animationFrame = window.requestAnimationFrame(() => {
           animationFrame = null;
           pendingFocusExpansionCleanupRef.current = null;
@@ -496,15 +419,8 @@ function FollowUpPromptBoxWithComposer({
         const composerElement = composerInteractionRef.current;
         if (!composerElement) return;
 
-        // Focus events for the element losing focus run before the browser has
-        // assigned the next active element. Waiting one frame makes collapse a
-        // decision about settled focus state instead of pointer intent.
         if (composerElement.contains(document.activeElement)) return;
 
-        // Responsive popovers and dropdowns portal their content outside the
-        // composer. Their shared trigger contract exposes open state through
-        // aria-haspopup + aria-expanded, so focus in an owned overlay must not
-        // collapse the composer behind it.
         if (
           composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
         ) {
@@ -530,10 +446,6 @@ function FollowUpPromptBoxWithComposer({
           return;
         }
 
-        // The software keyboard's dismiss control usually leaves focus on the
-        // document before the viewport grows. Keep the expanded composer
-        // stable during that native animation, then compact it as soon as the
-        // visible viewport reports the keyboard has actually closed.
         const keyboardViewportHeight = visualViewport.height;
         let fallbackTimeout: number | null = null;
         let hasFinished = false;
@@ -604,9 +516,6 @@ function FollowUpPromptBoxWithComposer({
       ? composer.onSubmit
       : composer.onModifierSubmit
     : undefined;
-  // While the interaction owns the surface the pickers are hidden with the
-  // editor; keep them disabled too so their keyboard chords (model picker
-  // toggle/cycle) cannot open a popover anchored to a hidden trigger.
   const executionControlsDisabled =
     (executionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
@@ -641,9 +550,6 @@ function FollowUpPromptBoxWithComposer({
     (permissionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const permissionPickerDisabled =
     permissionReadOnlyResolved || permissionPickerDisabledByPlanMode;
-  // Side chat and active plan mode render the same permission picker as the
-  // main thread, but non-interactive so the displayed effective mode cannot
-  // diverge from the provider mode driving the current turn.
   const permissionControl = useMemo(
     () => (
       <PermissionModePicker
@@ -676,9 +582,6 @@ function FollowUpPromptBoxWithComposer({
     setStackHeight(measured);
   }, []);
 
-  // Take one initial border-box measurement before paint. Later measurements
-  // use ResizeObserver's supplied border-box size, which avoids a synchronous
-  // offsetHeight read after each timeline or composer render.
   useLayoutEffect(() => {
     const element = stackRef.current;
     if (element) {
@@ -700,10 +603,6 @@ function FollowUpPromptBoxWithComposer({
     observer.observe(element);
     return () => observer.disconnect();
   }, [applyStackHeight]);
-  // The elastic pre-size keeps the prompt area's total height constant as the
-  // stack (context banner + queued messages) mounts/unmounts so the timeline
-  // doesn't shift. Callers that need the main-thread prompt height should pass
-  // an empty stack instead of null.
   const elasticTextareaMinHeight =
     stack === null
       ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT
@@ -718,8 +617,6 @@ function FollowUpPromptBoxWithComposer({
       className="relative z-20"
       data-follow-up-composer=""
       data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
-      // Hidden, not unmounted: the editor keeps its DOM, draft, and history
-      // across the interaction (see `pendingInteraction`).
       hidden={hasPendingInteraction}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
@@ -836,7 +733,6 @@ interface DefaultFollowUpComposerProps {
   stackRef: RefObject<HTMLDivElement | null>;
 }
 
-/** BB's presentation for a host-owned follow-up Composer controller. */
 function DefaultFollowUpComposer({
   active,
   composerElement,

@@ -413,11 +413,8 @@ describe("fixed panel tab storage churn", () => {
       await waitFor(() => {
         expect(result.current.state.secondary.tabs).toEqual([remoteTab]);
       });
-      // Server tabs match the persisted tabs: reconciliation must not touch
-      // storage on mount.
       expect(setItem).not.toHaveBeenCalledWith(storageKey, expect.anything());
 
-      // A no-op updater must not reach the storage atom either.
       act(() => {
         result.current.update((current) => current);
       });
@@ -441,7 +438,6 @@ describe("fixed panel tab storage churn", () => {
       window.localStorage.setItem(firstKey, expiredBlob);
 
       const first = renderHook(() => useFixedPanelTabsStorageMaintenance());
-      // Never in the same task as the route change that mounted the view.
       expect(window.localStorage.getItem(firstKey)).not.toBeNull();
       act(() => {
         vi.runAllTimers();
@@ -449,7 +445,6 @@ describe("fixed panel tab storage churn", () => {
       expect(window.localStorage.getItem(firstKey)).toBeNull();
       first.unmount();
 
-      // A later thread navigation mounts the hook again: no second scan.
       const secondKey = getFixedPanelTabsStateStorageKey({ threadId: "two" });
       window.localStorage.setItem(secondKey, expiredBlob);
       renderHook(() => useFixedPanelTabsStorageMaintenance());

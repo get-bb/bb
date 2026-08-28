@@ -37,7 +37,6 @@ export interface WorkflowRunRow {
   error: string | null;
   phase: string | null;
   replaySafetyVersion: number;
-  /** Legacy durable field retained for stored-row compatibility; always null. */
   replayBarrierIndex: number | null;
   notificationSent: boolean;
   notificationOutcome: "pending" | "delivered" | "abandoned";

@@ -218,19 +218,6 @@ clients fall back). Settle whether a row persisted with a namespaced glyph
 should ever be rewritten when the plugin renames or removes the icon; today
 rows are never rewritten and simply fall back.
 
-## Mention search aliases (`PluginMentionItem.experimental_searchAliases`)
-
-**What it does.** Lets a mention provider attach up to eight non-visible search
-names to a result, each bounded to 256 UTF-8 bytes. bb combines those aliases
-with the visible title to compute exact, prefix, and other cross-source
-relevance on desktop and mobile. Providers cannot supply numeric ranks.
-
-**Audit before stabilizing.** Confirm the count and byte limits against real
-identity shapes; decide whether aliases should remain provider-authored or
-become a host-owned identity field; verify case folding and whitespace rules
-for non-English names; and confirm exact aliases should continue outranking
-weaker built-in matches without changing within-section ordering.
-
 ## `experimental_buildBridgeToolCallContent`
 
 **Kept experimental (2026-08-22).** it still accepts two input shapes (ordered `contentBlocks` and the legacy aggregate `{ content, images }`) though every first-party caller now passes the ordered form, and no image MIME/size policy exists at the server boundary; drop the legacy input and settle the policy, then stabilize.

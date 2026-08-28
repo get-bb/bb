@@ -955,6 +955,18 @@ body.sidebar-resizing [data-sidebar="panel"] {
 }
 
 @layer utilities {
+  /* Let the title's outer ellipsis clip through rich pills in reading order
+   * instead of treating each inline-flex pill as one replaceable box. */
+  .bb-sidebar-thread-title .prompt-mention-pill {
+    display: inline;
+  }
+
+  .bb-sidebar-thread-title .prompt-mention-pill > :first-child {
+    display: inline-block;
+    margin-inline-end: 0.125rem;
+    vertical-align: -0.2em;
+  }
+
   /*
    * The sweep animates `background-position` / `mask-position`, which the
    * compositor cannot run: every frame is a main-thread repaint. `will-change:

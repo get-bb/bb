@@ -880,8 +880,6 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      // A prompt cannot interrupt the interaction, but the message is not lost:
-      // it waits and delivers once the interaction settles (#1650).
       expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
         ok: true,
@@ -972,16 +970,14 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      // The queue drains when the thread is next idle, which an open
-      // interaction does not change, so an explicit queue request queues.
       expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toEqual({
         ok: true,
         delivery: "queued",
       });
-      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        1,
-      );
+      expect(
+        listQueuedThreadMessages(harness.db, activeThread.id),
+      ).toHaveLength(1);
     });
   });
 

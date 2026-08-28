@@ -1,14 +1,5 @@
 // @vitest-environment jsdom
 
-/**
- * The Extensions detail pages share a shell, but the thing that actually keeps
- * them consistent is each tool type's *recipe*: which semantic sections appear,
- * in which order, under which label, and which of them are allowed to
- * disappear. These tests read the recipe straight off the rendered DOM via
- * `data-resource-detail-section`, so reordering, relabelling, or dropping a
- * required section fails here rather than silently drifting.
- */
-
 import {
   act,
   cleanup,
@@ -110,7 +101,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** The rendered recipe: each section's kind and its visible label, in order. */
 function renderedRecipe(container: HTMLElement): Array<[string, string]> {
   return [...container.querySelectorAll("[data-resource-detail-section]")].map(
     (section) => [
@@ -593,9 +583,6 @@ describe("Plugin detail recipe", () => {
 
 describe("Detail page header slots", () => {
   it("renders actions, provenance badge, and overflow menu together", () => {
-    // These used to be mutually exclusive — passing `actions` suppressed the
-    // other two, which silently dropped the registry skill page's overflow
-    // menu. All three now compose; this fails if the suppression returns.
     const { container } = render(
       <SkillDetailView
         title="writing-voice"
@@ -685,7 +672,6 @@ describe("Skill detail recipe", () => {
       },
     );
     try {
-      // Two 121+ line sections separated by blank lines → two chunks.
       const section = (marker: string) =>
         `## ${marker}\n${Array.from({ length: 125 }, (_, i) => `${marker} line ${i}`).join("\n")}\n`;
       const content = `${section("alpha")}\n${section("omega")}`;
@@ -717,7 +703,6 @@ describe("Skill detail recipe", () => {
       });
 
       expect(screen.getByText(/omega line 0/)).toBeTruthy();
-      // Everything is shown: the sentinel retires.
       expect(
         container.querySelector("[data-resource-infinite-sentinel]"),
       ).toBeNull();
@@ -727,7 +712,6 @@ describe("Skill detail recipe", () => {
   });
 
   it("never splits a chunk inside a code fence", () => {
-    // A fence spanning the would-be boundary must hold the chunk open.
     const fenced = [
       "intro",
       "",
@@ -1298,8 +1282,6 @@ describe("Automation detail recipe", () => {
     );
 
     expect(screen.getByRole("img", { name: "Skipped" })).toBeTruthy();
-    // Not CircleDashed: icon.tsx aliases it to Spinner, so a skipped run drew
-    // the same shape as a running one.
     const icon = container.querySelector('[data-icon="ArrowTurnForward"]');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute("class")).toContain("text-subtle-foreground");

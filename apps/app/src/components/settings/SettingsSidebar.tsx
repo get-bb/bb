@@ -21,16 +21,12 @@ interface SettingsSidebarProps {
   isResizing: boolean;
   showTopReserve: boolean;
   appRoutePath: string;
-  /** Render the body only, inside a compact drawer panel owned by the caller. */
   mobileHosted?: boolean;
 }
 
 type SettingsSidebarNavigation = Pick<
   SettingsNavState,
-  | "activePluginId"
-  | "activeSection"
-  | "pluginEntries"
-  | "sections"
+  "activePluginId" | "activeSection" | "pluginEntries" | "sections"
 >;
 
 interface SettingsSidebarContentProps extends SettingsSidebarProps {
@@ -38,7 +34,6 @@ interface SettingsSidebarContentProps extends SettingsSidebarProps {
   testIdPrefix?: string;
 }
 
-/** Shared Settings navigation renderer for production and full-page stories. */
 export function SettingsSidebarContent({
   onResizeMouseDown,
   isResizing,
@@ -48,8 +43,7 @@ export function SettingsSidebarContent({
   navigation,
   testIdPrefix = "settings",
 }: SettingsSidebarContentProps) {
-  const { activePluginId, activeSection, pluginEntries, sections } =
-    navigation;
+  const { activePluginId, activeSection, pluginEntries, sections } = navigation;
 
   return (
     <SectionSidebar
@@ -144,7 +138,6 @@ export function SettingsSidebarContent({
   );
 }
 
-/** Focused Settings navigation using the shared section-sidebar shell. */
 export function SettingsSidebar({
   onResizeMouseDown,
   isResizing,

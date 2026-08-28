@@ -125,10 +125,7 @@ function StoryPage({ children }: { children: ReactNode }) {
   );
 }
 
-/** The default-off changelog preview experiment in its enabled state. */
 export function ChangelogPreviewExperiment() {
-  // A review story must always expose the initial state, even when this
-  // browser already exercised dismissal for the same bundled release.
   window.localStorage.removeItem(
     "bb.settings.updates.dismissed-changelog-version",
   );
@@ -266,11 +263,6 @@ function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
   };
 }
 
-/**
- * Every state Settings → Updates can reach, once, using the production rows.
- * Keep this separate from the representative page stories: this is the
- * reviewed vocabulary catalogue, while those stories exercise page density.
- */
 export function UpdateStates() {
   const providerUpdate = machineOf({
     host: makeHost({ id: "state-provider-update", name: "workstation" }),
@@ -523,7 +515,6 @@ export function UpdateStates() {
   );
 }
 
-/** Multiple machines, each owning its app, daemon, or provider update rows. */
 export function MultiMachine() {
   const workstation = machineOf({
     host: makeHost({ id: "host-primary", name: "workstation" }),
@@ -574,7 +565,6 @@ export function MultiMachine() {
   );
 }
 
-/** The same hierarchy without a redundant all-machines wrapper. */
 export function SingleMachine() {
   const workstation = machineOf({
     host: makeHost({ id: "host-primary", name: "workstation" }),
@@ -588,7 +578,6 @@ export function SingleMachine() {
   );
 }
 
-/** A settled machine keeps the existing explicit bb app confirmation. */
 export function NoUpdatesAvailable() {
   const workstation = machineOf({
     host: makeHost({ id: "host-primary", name: "workstation" }),

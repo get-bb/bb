@@ -52,7 +52,6 @@ function toPluginSourceDetail(
   };
 }
 
-/** Null when the plugin is unknown or the server predates the route. */
 async function fetchPluginSource(
   fetchImpl: FetchLike,
   pluginId: string,
@@ -96,7 +95,6 @@ export async function installCatalogPlugin(
   return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
-/** The true resolved source an install would use, fetched before confirming. */
 async function fetchCatalogInstallPlan(
   fetchImpl: FetchLike,
   args: { entryId: string; marketplace?: string },
@@ -104,11 +102,6 @@ async function fetchCatalogInstallPlan(
   return createPluginsClient(fetchImpl).catalog.installPlan(args);
 }
 
-/**
- * Resolve an install before the user confirms it. Third-party entries pay a
- * network round trip for the resolved tag and commit, so this never runs until
- * the confirmation is actually open.
- */
 export function useCatalogInstallPlan(
   args: { entryId: string; marketplace?: string } | null,
 ) {
@@ -117,8 +110,6 @@ export function useCatalogInstallPlan(
     queryKey: pluginCatalogInstallPlanQueryKey(request),
     queryFn: () => fetchCatalogInstallPlan(fetch, request),
     enabled: args !== null,
-    // The plan describes one confirmation, and a git range resolves to a
-    // different commit over time: never serve it from cache.
     staleTime: 0,
     gcTime: 0,
     retry: false,
@@ -231,23 +222,17 @@ export interface PluginCatalogSearchEntry {
   description: string;
   icon: string | null;
   iconUrl: string | null;
-  /** Mask `iconUrl` with the text color instead of showing its own colors. */
   iconTinted: boolean;
   category: string;
   source: string;
-  /** Public repository or package page of the entry's code; null when none. */
   repositoryUrl: string | null;
   marketplace: string;
   marketplaceDisplayName: string;
-  /** Stable publisher identity, for grouping; never the label, which a
-   * marketplace chooses for itself. */
   publisherKey: string;
-  /** Publisher badge: the marketplace's name, or `BB Official` when bundled. */
   publisherLabel: string;
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
-  /** Distinct BB installations that reported installing it; null when unknown. */
   installs: number | null;
   compatible: boolean;
   incompatibleReason: string | null;

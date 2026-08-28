@@ -353,9 +353,6 @@ function dispatchThroughEditorTarget({
 }
 
 async function selectPromptAction(label: string) {
-  // The prompt schedules passive autofocus on its first animation frame. Let
-  // that settle before opening the portaled menu so the frame cannot move
-  // focus back to the editor while the menu item is being selected.
   await waitFor(() =>
     expect(document.activeElement).toBe(getPromptEditorElement()),
   );
@@ -368,9 +365,6 @@ async function selectPromptAction(label: string) {
   const menu = await screen.findByRole("menu", { name: "Prompt actions" });
   const menuItem = within(menu).getByRole("menuitem", { name: label });
   fireEvent.click(menuItem);
-  // Radix removes the portaled menu asynchronously. Let that close settle so
-  // a following test or second action cannot select an item from the stale
-  // closing portal.
   await waitFor(() =>
     expect(screen.queryByRole("menu", { name: "Prompt actions" })).toBeNull(),
   );
@@ -512,10 +506,6 @@ function mockIPadOSWebKit(): () => void {
 
 afterEach(async () => {
   cleanup();
-  // TipTap's React hook defers editor destruction by 1 ms so a Strict Mode
-  // remount can reuse the instance. Let that teardown finish while this
-  // test's jsdom window is still alive instead of leaking it into the next
-  // test (or the environment shutdown after the final test).
   await new Promise<void>((resolve) => setTimeout(resolve, 2));
   resetPluginLogoStoreForTest();
   resetPluginSlotStoreForTest();
@@ -1531,10 +1521,6 @@ describe("PromptBoxInternal submit shortcuts", () => {
         />,
       );
 
-      // A `compositionend` with no matching `compositionstart` leaves the view
-      // outside a composition. ProseMirror ignores that event, so the 500 ms
-      // guard must ignore it too, or it would swallow a real Magic Keyboard
-      // Enter.
       const editor = getPromptEditorElement();
       fireEvent.compositionEnd(editor, { data: "候補" });
       fireEvent.keyDown(editor, {
@@ -1586,7 +1572,6 @@ describe("PromptBoxInternal escape", () => {
 
     expect(onEscape).toHaveBeenCalledTimes(1);
     expect(wasNotCanceled).toBe(false);
-    // The cancel action owns what happens next; the editor must not also blur.
     expect(document.activeElement).toBe(getPromptEditorElement());
   });
 
@@ -2246,9 +2231,6 @@ describe("PromptBoxInternal compact layout", () => {
     const editor = getPromptEditorElement();
     const submit = screen.getByRole("button", { name: "Submit (Enter)" });
 
-    // TipTap derives isFocused from focus and blur events. Model the iOS
-    // window where its blur event has arrived but the contenteditable still
-    // owns native focus and therefore still controls the software keyboard.
     editor.dispatchEvent(new FocusEvent("blur"));
     expect(document.activeElement).toBe(editor);
 
@@ -2794,7 +2776,6 @@ describe("PromptBoxInternal mention triggers", () => {
     itemId: "issue:owner/repo#42",
     providerLabel: "GitHub issues",
     title: "#42 Fix login bug",
-    searchAliases: [],
     subtitle: "owner/repo",
     icon: null,
     replacement: "#42 Fix login bug",
@@ -3114,20 +3095,12 @@ describe("PromptBoxInternal selection reveal", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`);
     const { promptBoxRef } = renderPromptBox(lines.join("\n"));
 
-    await focusPromptEnd(promptBoxRef);
-    await nextAnimationFrame();
-
     const scrollContainer = document.querySelector(
       "[data-promptbox-editor-scroll]",
     );
     if (!(scrollContainer instanceof HTMLElement)) {
       throw new Error("Prompt editor scroll container was not rendered");
     }
-    // jsdom does not lay out, so emulate a 100px viewport scrolled to the
-    // middle of the document. The selection anchor sits below the viewport
-    // (where the drag started) and the head sits above it (where the pointer
-    // is now). The browser's own drag autoscroll has already moved the
-    // viewport up toward the head.
     let scrollTop = 500;
     Object.defineProperty(scrollContainer, "scrollTop", {
       configurable: true,
@@ -3152,10 +3125,15 @@ describe("PromptBoxInternal selection reveal", () => {
       });
 
     try {
-      await waitFor(() => expect(view).not.toBeNull());
-      const liveView = view as unknown as EditorView;
+      await focusPromptEnd(promptBoxRef);
+      await nextAnimationFrame();
+
+      expect(view).not.toBeNull();
+      if (view === null) {
+        throw new Error("Expected focus reveal to capture the editor view");
+      }
+      const liveView: EditorView = view;
       const { doc } = liveView.state;
-      // The focusEnd reveal above captured `view`; reset the baseline it set.
       scrollTop = 500;
       await act(async () => {
         liveView.dispatch(
@@ -3166,9 +3144,6 @@ describe("PromptBoxInternal selection reveal", () => {
       });
       await nextAnimationFrame();
 
-      // The reveal must follow the head upward (scrollTop decreases). Before
-      // the fix it revealed `selection.to` (the anchor) and yanked the
-      // viewport back down, fighting the drag autoscroll on every pointer move.
       expect(scrollTop).toBeLessThan(500);
     } finally {
       coordsAtPosSpy.mockRestore();
@@ -3461,7 +3436,6 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() =>
       expect(latestValue(changes)).toBe(CREATE_PLUGIN_PROMPT_ACTION.text),
     );
-    // The seed is a sentence opener, not a command, so it carries no pill.
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
@@ -3804,9 +3778,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    // The command mention is applied (and therefore submitted), not left as
-    // bare text — Codex reads the mention to trigger compaction and Claude
-    // sends the `/compact` text as-is.
     expect(latestChange(changes)?.mentions).toEqual([
       {
         start: 0,
@@ -3835,7 +3806,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
-    // The pill is still inserted so the user can add arguments before sending.
     expect(latestChange(changes)?.mentions?.[0]?.resource).toMatchObject({
       name: "review",
       origin: "user",
@@ -3938,9 +3908,6 @@ describe("PromptBoxInternal command typeahead navigation", () => {
   });
 
   it("hoists an exactly-named user command above the skills section", async () => {
-    // Suggestions arrive in section order (skills first), the way the server
-    // hands them back — the exact-match hoist is PromptBoxInternal's job, so
-    // every composer that renders through it gets the same order.
     const { changes, promptBoxRef } = renderPromptBox("/plan", {
       commandSuggestions: [
         {
@@ -3992,9 +3959,6 @@ describe("PromptBoxInternal command typeahead navigation", () => {
     if (!(menu instanceof HTMLElement)) {
       throw new Error("Expected command menu");
     }
-    // The exact match leads, and its section stays whole rather than splitting
-    // around the skills — one header per section keeps rendered order equal to
-    // the array Arrow/Enter walk.
     expect(
       within(menu)
         .getAllByRole("button")
@@ -4058,7 +4022,6 @@ describe("voice recording escape", () => {
       />,
     );
 
-    // Stand in for the composer's own bubble-phase Escape-to-dismiss listener.
     const dismiss = vi.fn();
     const onWindowEscape = (event: Event) => {
       if ((event as KeyboardEvent).key === "Escape") dismiss();

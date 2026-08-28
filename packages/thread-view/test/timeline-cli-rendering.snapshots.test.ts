@@ -166,10 +166,6 @@ describe("timeline CLI rendering snapshots", () => {
   });
 
   it("shows provider-injected input as a system-initiated steer of its turn", () => {
-    // A Pi extension woke the thread (`pi.sendMessage` with `triggerTurn`):
-    // no client request exists, the runtime recorded a `userMessage` item.
-    // It must not become a `message` row: timeline pagination anchors pages on
-    // those and only knows the ones backed by `client/turn/requested`.
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [
       event.clientTurnRequested({
@@ -1219,9 +1215,6 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(rootTurn).toBeDefined();
     expect(delegation).toBeDefined();
-    // Delegation children render flat — no synthetic turn wrapper. Each
-    // child row carries the delegation's scoped id prefix so it does not
-    // collide with rows from the root turn.
     expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
       false,
     );
@@ -1239,8 +1232,6 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderIdleTimeline([
       event.turnStarted(),
-      // A same-provider child (the delegation's child runs in the spawning
-      // provider thread): the next turn started there is the child's.
       event.delegationStarted({
         itemId: "delegation-1",
         childRef: "root-provider",
@@ -2074,11 +2065,6 @@ describe("timeline CLI rendering snapshots", () => {
   });
 
   it("renders pending delegation children as flat rows even with mixed statuses", () => {
-    // Regression: a pending delegation whose subagent stream contains a mix
-    // of pending, errored, and completed messages must NOT synthesize a
-    // turn wrapper around its children. Previously a synthetic scoped turn
-    // aggregated child statuses (error > pending) and rendered as
-    // "Worked for X" while the subagent was still running.
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
       threadId: "thread-1",
@@ -2127,10 +2113,6 @@ describe("timeline CLI rendering snapshots", () => {
       false,
     );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThanOrEqual(3);
-    // A regression that re-introduces a synthetic turn wrapper would
-    // produce a "Worked for X" or "Working for X" label inside the
-    // delegation block. Pin the rendered text so the contract is checked
-    // end-to-end, not just via row-kind structure.
     expect(timeline.text).not.toContain("Worked for");
     expect(timeline.text).not.toContain("Working for");
   });
@@ -2337,10 +2319,6 @@ describe("timeline CLI rendering snapshots", () => {
   });
 
   it("projects a persisted codex plan notification as a plan-steps row beside the work", () => {
-    // `turn/plan/updated` used to be excluded from every window and dropped
-    // by the projection. It now decodes into a `planSteps` item at read time
-    // (legacy-thread-events.ts), so an old codex thread shows its plan and
-    // the todo banner reads it.
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([
       event.turnStarted(),

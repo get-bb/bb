@@ -471,7 +471,6 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
   }
 }
 
-/** One chrome-wrapped story with real navigation between Settings subpages. */
 export function FullPage() {
   const navigate = useNavigate();
   const route = useSettingsStoryRoute();

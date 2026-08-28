@@ -142,7 +142,6 @@ describe("AutomationOverviewView", () => {
       />,
     );
 
-    // One trigger replaces the separate Projects and Status dropdowns.
     expect(screen.queryByRole("button", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
     const filtersTrigger = screen.getByRole("button", { name: "Filters" });
@@ -198,10 +197,8 @@ describe("AutomationOverviewView", () => {
     expect(
       screen.getByRole("menuitemcheckbox", { name: "bb" }).ariaChecked,
     ).toBe("true");
-    // The project selection on its own still matches the fixture.
     expect(rowTitles()).toEqual(["Nightly digest"]);
 
-    // Picking a Status option must not clear the Projects selection.
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Paused" }));
     expect(
       screen.getByRole("menuitemcheckbox", { name: "bb" }).ariaChecked,
@@ -212,9 +209,6 @@ describe("AutomationOverviewView", () => {
     expect(
       screen.getByRole("menuitemcheckbox", { name: "Active" }).ariaChecked,
     ).toBe("false");
-    // Groups AND together: the fixture is enabled, so "bb" and "Paused" cannot
-    // both be satisfied and the list empties rather than falling back to the
-    // union of the two selections.
     expect(rowTitles()).toEqual([]);
     expect(
       screen.getByText("No automations match these filters."),
@@ -227,8 +221,6 @@ describe("AutomationOverviewView", () => {
       }),
     ).toBeTruthy();
 
-    // Clearing just the status selection restores the row under the still-set
-    // project filter.
     fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Paused" }));
     expect(
@@ -254,18 +246,12 @@ describe("AutomationOverviewView", () => {
       />,
     );
 
-    // Assert the treatment that is actually rendered. These triggers compose
-    // TooltipTrigger over DropdownMenuTrigger, so the tooltip's data-state wins
-    // on the shared element and any `data-[state=open]:` styling would be dead.
-    // The app-wide selection surface (CONTEXT_SELECTION_SURFACE_CLASS).
     const ENGAGED = ["bg-state-active", "text-foreground"];
     const classesOf = (el: HTMLElement) => new Set(el.className.split(/\s+/));
     const isEngaged = (el: HTMLElement) => {
       const classes = classesOf(el);
       return ENGAGED.every((engagedClass) => classes.has(engagedClass));
     };
-    // An open Radix menu marks the rest of the page aria-hidden, so query the
-    // triggers through the DOM rather than the accessibility tree.
     const byLabel = (prefix: string) => {
       const el = container.querySelector<HTMLElement>(
         `button[aria-label^="${prefix}"]`,
@@ -276,13 +262,11 @@ describe("AutomationOverviewView", () => {
     const filters = () => byLabel("Filters");
     const sort = () => byLabel("Sort:");
 
-    // At rest neither trigger carries a fill, so neither reads as pressed.
     for (const trigger of [filters(), sort()]) {
       expect(isEngaged(trigger)).toBe(false);
       expect(classesOf(trigger).has("bg-state-active")).toBe(false);
     }
 
-    // Opening either menu engages that trigger and only that trigger.
     fireEvent.pointerDown(filters());
     expect(isEngaged(filters())).toBe(true);
     expect(isEngaged(sort())).toBe(false);
@@ -295,7 +279,6 @@ describe("AutomationOverviewView", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(isEngaged(sort())).toBe(false);
 
-    // A filter holding a selection keeps the same treatment once closed.
     fireEvent.pointerDown(filters());
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.keyDown(document, { key: "Escape" });
@@ -319,7 +302,6 @@ describe("AutomationOverviewView", () => {
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Automation name, ascending",
     });
-    // Same sort glyph as the Plugins and Skills toolbars, in both directions.
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
     const projectOption = screen.getByRole("menuitemradio", {
@@ -331,7 +313,6 @@ describe("AutomationOverviewView", () => {
     expect(projectOption.getAttribute("aria-disabled")).toBe("true");
     expect(projectOption.getAttribute("aria-checked")).toBe("false");
     expect(nameOption.getAttribute("aria-checked")).toBe("true");
-    // Only the trailing direction arrow remains; no leading option icons.
     expect(iconNames(projectOption)).toEqual(["ArrowUp"]);
     expect(iconNames(nameOption)).toEqual(["ArrowUp"]);
     fireEvent.click(nameOption);

@@ -29,40 +29,15 @@ export interface ProjectSelectorCreateProjectConfig {
 
 interface ProjectSelectorProps {
   projects: readonly ProjectSelectorOption[];
-  /**
-   * Selected project id, or `null` for the no-project case. Only emit/accept
-   * `null` when `allowNoProject` is true — callers in required mode can wrap
-   * their handler with a null guard (the picker won't emit `null` then).
-   */
   value: string | null;
   onChange: (projectId: string | null) => void;
-  /**
-   * When true, adds a "Don't work in a project" item and lets the trigger
-   * render the "Work in a project" empty state when `value === null`. Default
-   * false: the no-project item is hidden and `value` is assumed to be a valid
-   * project id (the trigger has no empty state).
-   */
   allowNoProject?: boolean;
-  /** When provided, adds a "New project" action. */
   createProject?: ProjectSelectorCreateProjectConfig;
-  /** Render as a non-interactive label while preserving the selected project. */
   disabled?: boolean;
-  /**
-   * The project list has not loaded yet. The trigger shows a neutral
-   * "Loading projects" label (never the misleading "Work in a project" empty
-   * state) and stays non-interactive until the list settles.
-   */
   isLoading?: boolean;
-  /**
-   * Keep the chevron visible while disabled. Use it when the picker is only
-   * transiently locked (submitting, uploading) so the trigger keeps the same
-   * width and the pickers beside it don't shift.
-   */
   showChevronWhenDisabled?: boolean;
   className?: string;
-  /** Render with the menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
-  /** Whether the menu blocks page interaction. Defaults to Radix's true. */
   modal?: boolean;
 }
 
@@ -81,9 +56,6 @@ export function ProjectSelector({
 }: ProjectSelectorProps) {
   const disabled = disabledProp || isLoading;
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
-  // When allowNoProject is false and the caller's value doesn't match any
-  // project (shouldn't happen in normal use), the trigger falls back to the
-  // first project so it's never blank.
   const fallback = !allowNoProject && !selected ? projects[0] : null;
   const triggerLabel = isLoading
     ? "Loading projects…"

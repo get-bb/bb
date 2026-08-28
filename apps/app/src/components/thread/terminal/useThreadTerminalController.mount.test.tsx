@@ -63,7 +63,6 @@ describe("shouldMountTerminalViewForPanel", () => {
         isPanelPersistedOpen: true,
       }),
     ).toBe(true);
-    // Persisted-open from another device, never shown here: keep xterm cold.
     expect(
       shouldMountTerminalViewForPanel({
         hasPanelOpened: false,
@@ -71,7 +70,6 @@ describe("shouldMountTerminalViewForPanel", () => {
         isPanelPersistedOpen: true,
       }),
     ).toBe(false);
-    // Compact drawer swiped closed after it was open: keep the view alive.
     expect(
       shouldMountTerminalViewForPanel({
         hasPanelOpened: true,
@@ -79,7 +77,6 @@ describe("shouldMountTerminalViewForPanel", () => {
         isPanelPersistedOpen: true,
       }),
     ).toBe(true);
-    // Persisted panel closed: nothing to retain.
     expect(
       shouldMountTerminalViewForPanel({
         hasPanelOpened: true,
@@ -123,18 +120,13 @@ describe("useThreadTerminalController terminal view mounting", () => {
     });
     expect(result.current.shouldMountTerminalView).toBe(true);
 
-    // Drawer hidden, panel still persisted open: retain the mounted view and
-    // keep the running session retained for a transient disconnect.
     rerender({ isPanelOpen: false, isPanelPersistedOpen: true });
     expect(result.current.shouldMountTerminalView).toBe(true);
     expect(result.current.activeSession?.id).toBe(session.id);
 
-    // Persisted panel closed too: release the view.
     rerender({ isPanelOpen: false, isPanelPersistedOpen: false });
     expect(result.current.shouldMountTerminalView).toBe(false);
 
-    // Persisted-open again without this client showing it: stay cold until
-    // the panel is actually opened here.
     rerender({ isPanelOpen: false, isPanelPersistedOpen: true });
     expect(result.current.shouldMountTerminalView).toBe(false);
     rerender({ isPanelOpen: true, isPanelPersistedOpen: true });

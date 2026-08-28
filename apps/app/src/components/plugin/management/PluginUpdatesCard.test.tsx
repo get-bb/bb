@@ -59,7 +59,6 @@ afterEach(() => {
 
 describe("pluginHasUpdateSurfaces", () => {
   it("hides update surfaces for bundled plugins regardless of provenance", () => {
-    // A store-installed official: catalog provenance over a bundled source.
     expect(
       pluginHasUpdateSurfaces(
         plugin({ provenance: "catalog", source: "builtin:github" }),
@@ -70,7 +69,6 @@ describe("pluginHasUpdateSurfaces", () => {
         plugin({ provenance: "builtin", source: "builtin:secrets" }),
       ),
     ).toBe(false);
-    // Managed direct/catalog installs keep manual update controls.
     expect(pluginHasUpdateSurfaces(plugin({ provenance: "direct" }))).toBe(
       true,
     );

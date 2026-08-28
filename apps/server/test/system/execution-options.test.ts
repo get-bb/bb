@@ -49,7 +49,6 @@ function providerDiscoveryHealth(installed: boolean) {
   };
 }
 
-/** One entry of the ACP plugin's `customAgents` setting. */
 const EXAMPLE_AGENT_SETTING = {
   id: "example-agent",
   displayName: "Example Agent",
@@ -156,8 +155,6 @@ describe("appendCustomModels", () => {
       defaultReasoningEffort: "medium",
       isDefault: false,
     });
-    // Dynamic ACP ids resolve to the shared ACP policy ladder, the same one
-    // that validates reasoning overrides for these providers.
     expect(
       models[0].supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
@@ -217,8 +214,6 @@ describe("appendCustomModels", () => {
       selectedOnlyModels: [retiredModel],
     });
 
-    // The catalog's accurate metadata wins over the synthesized entry, and the
-    // promoted model leaves the selected-only pool so it never appears twice.
     expect(models).toEqual([retiredModel]);
     expect(selectedOnlyModels).toEqual([]);
   });
@@ -618,9 +613,7 @@ describe("resolveSystemExecutionOptions", () => {
     async ({ failStatusRequest }) => {
       await withTestHarness(
         {
-          extraProviders: [
-            await configuredAcpProvider(EXAMPLE_AGENT_SETTING),
-          ],
+          extraProviders: [await configuredAcpProvider(EXAMPLE_AGENT_SETTING)],
         },
         async (harness) => {
           const warn = vi.fn();
@@ -721,9 +714,7 @@ describe("resolveSystemExecutionOptions", () => {
   it("keeps configured providers and custom models when no host can be resolved", async () => {
     await withTestHarness(
       {
-        extraProviders: [
-          await configuredAcpProvider(EXAMPLE_AGENT_SETTING),
-        ],
+        extraProviders: [await configuredAcpProvider(EXAMPLE_AGENT_SETTING)],
         customModels: [
           {
             providerId: "codex",
@@ -808,8 +799,6 @@ describe("resolveSystemExecutionOptions", () => {
           providerId: "claude-code",
           code: "failed",
         });
-        // A transient failure serves the provisional alias catalog, and custom
-        // models stay appended after it.
         expect(response.models.map((model) => model.model)).toEqual([
           "claude-fable-5",
           "claude-opus-5[1m]",
@@ -873,8 +862,6 @@ describe("resolveSystemExecutionOptions", () => {
           "claude-opus-5",
           "claude-example-preview",
         ]);
-        // The toggle filters after the memoized probe, so it never re-probes
-        // the daemon.
         expect(
           responder.requests.filter(
             (request) => request.command.type === "provider.list_models",
@@ -895,8 +882,6 @@ describe("resolveSystemExecutionOptions", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-provider-models-streamer-mode",
         });
-        // A provider whose only models come from config.json must still
-        // resolve a default for a thread created without an explicit model.
         registerProviderHostRpcResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
@@ -942,8 +927,6 @@ describe("resolveSystemExecutionOptions", () => {
         providerId: "claude-code",
       });
 
-      // The catalog is provisional, so the error must still be reported:
-      // callers gate thread model recovery on `modelLoadError` being null.
       expect(response.modelLoadError).toEqual({
         providerId: "claude-code",
         code: "timeout",
@@ -989,8 +972,6 @@ describe("resolveSystemExecutionOptions", () => {
           providerId: "claude-code",
         });
 
-        // These are actionable setup states the app routes to an install/auth
-        // prompt. Offering models would only defer the failure to submit time.
         expect(response.modelLoadError).toEqual({
           providerId: "claude-code",
           code: errorCode,
@@ -1089,8 +1070,6 @@ describe("resolveSystemExecutionOptions", () => {
               available: true,
               composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
-                // A configured agent declares no fork: bb has not read its
-                // `initialize` reply (#1833).
                 supportsFork: false,
                 supportsServiceTier: true,
                 permissionModes: ["accept-edits", "full"],
@@ -1133,9 +1112,6 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
-  // The HTTP listener deliberately starts serving before plugins load, and
-  // providers now exist only while their plugin is loaded, so a request that
-  // lands in that window must wait instead of reporting no providers at all.
   it("waits for plugin provider registrations before answering with an empty registry", async () => {
     await withTestHarness(
       { seedFirstPartyProviders: false },
@@ -1153,7 +1129,6 @@ describe("resolveSystemExecutionOptions", () => {
         });
 
         const providersPromise = listSystemProviderInfos(harness.deps, {});
-        // Plugin startup lands after the request already began.
         await registerFirstPartyProviders(registry);
         registry.markRegistrationsSettled();
 
@@ -1190,7 +1165,6 @@ describe("resolveSystemExecutionOptions", () => {
             "provider-claude-code",
             "provider-codex",
           ],
-          // Pi's bridge is its plugin's artifact like every other provider's.
           artifacts: harness.deps.pluginHostArtifacts,
         });
 
@@ -1200,8 +1174,6 @@ describe("resolveSystemExecutionOptions", () => {
         ]);
         expect(response.modelLoadError).toBeNull();
 
-        // Full plugin startup is intentionally still outstanding. It may
-        // complete later and invalidate this partial boot-time roster.
         registry.markRegistrationsSettled();
       },
     );
@@ -1304,10 +1276,6 @@ describe("resolveSystemExecutionOptions", () => {
   );
 });
 
-/**
- * A daemon socket that holds every `provider.list_models` request until the
- * test releases it, so two callers can be observed sharing one probe.
- */
 function registerHeldModelListResponder(
   harness: TestAppHarness,
   args: { hostId: string; sessionId: string; modelId: string },
@@ -1561,8 +1529,6 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
         ),
       ).toHaveLength(2);
 
-      // A reconnected daemon may run a different CLI or account: its first
-      // probe must not be answered from the previous session's memo.
       harness.hub.unregisterDaemon(session.id);
       const nextSession = seedSession(harness.deps, host.id);
       const nextResponder = registerProviderHostRpcResponder(harness, {

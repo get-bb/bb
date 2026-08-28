@@ -139,10 +139,6 @@ function getRoot(): HTMLElement {
   return root;
 }
 
-// A resize drag must touch only the two elements that read the width. Writing
-// the live width on the app root (an inherited custom property), or setting
-// `cursor`/`user-select` on body, restyles every element in the document on
-// every frame — in a long thread that was ~50-400 ms per mouse move.
 describe("AppLayout sidebar resize drag", () => {
   let frameCallbacks: FrameRequestCallback[];
 
@@ -208,7 +204,6 @@ describe("AppLayout sidebar resize drag", () => {
     expect(root.getAttribute("style")).toBe(rootStyleBefore);
     expect(document.body.style.cursor).toBe("");
     expect(document.body.style.userSelect).toBe("");
-    // Not committed until mouseup.
     expect(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)).toBe("320");
 
     act(() => {
@@ -240,8 +235,6 @@ describe("AppLayout sidebar resize drag", () => {
     );
     if (!overlay) throw new Error("overlay did not mount");
     expect(overlay.className).toContain("cursor-col-resize");
-    // Inserting a node before a sibling invalidates that sibling's whole
-    // subtree; after it, nothing.
     expect(
       root.compareDocumentPosition(overlay) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

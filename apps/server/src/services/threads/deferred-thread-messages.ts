@@ -11,17 +11,9 @@ import { sendMessageRequestSchema } from "@bb/server-contract";
 import { z } from "zod";
 import type { AppDeps } from "../../types.js";
 
-// A thread that awaits user interaction (an AskUserQuestion, a command
-// approval, a plugin input request) cannot take a prompt. Messages addressed to
-// it while blocked used to be refused with a 409 (sends) or silently dropped
-// (parent system messages), so the recipient never learned they existed
-// (#1650). They now wait in `deferred_thread_messages` and deliver, in arrival
-// order and in the mode the sender asked for, once the interaction settles.
-// `thread-send-request.ts` owns the delivery side.
 export const deferredThreadMessagePayloadSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("send"),
-    /** The public `send` request exactly as the sender posted it. */
     request: sendMessageRequestSchema,
   }),
   z.object({

@@ -89,9 +89,6 @@ async function createNamedBaseBranchThread(
 }
 
 describe("named managed-worktree base branch", () => {
-  // Issue #1770: `--base-branch main` used to reach the daemon verbatim, and
-  // the daemon only fetches remote-qualified bases, so a checkout whose local
-  // main was behind origin seeded every new worktree from the stale commit.
   it("bases on origin when the named default branch is behind origin", async () => {
     await withTestHarness(async (harness) => {
       await expect(
@@ -151,8 +148,6 @@ describe("named managed-worktree base branch", () => {
         hostId: host.id,
         path: SOURCE_PATH,
       });
-      // An unmanaged checkout sitting on local main. A fork continues that
-      // conversation, so it must start from the branch the source is on.
       const environment = seedEnvironment(harness.deps, {
         branchName: "main",
         hostId: host.id,

@@ -8,20 +8,7 @@ interface OverflowFadeProps {
   className?: string;
   placement: OverflowFadePlacement;
   tone?: OverflowFadeTone;
-  /**
-   * Places a vertical fade inside the named edge of its containing block.
-   * The default places vertical fades just outside the edge, which is useful
-   * for fixed footers. Horizontal fades are already inset and are unchanged.
-   */
   inset?: boolean;
-  /**
-   * Named size variants so the fade thickness stays sanctioned. For vertical
-   * placements (`above`/`below`) the variant drives height + the matching
-   * negative offset; for horizontal placements (`left`/`right`) it drives the
-   * fade width. `default` is 1.5rem (page-level fades over body content); `sm`
-   * is 0.5rem (sidebar fades where rows are short and a tall fade would mask
-   * whole rows).
-   */
   size?: OverflowFadeSize;
 }
 
@@ -64,12 +51,6 @@ interface OverflowFadeGradientClasses {
   "surface-raised": string;
 }
 
-// Each fade runs transparent (content side) → surface color (outer edge). Both
-// gradient stops are spelled out as full literals per placement+tone so
-// Tailwind's content scanner keeps them — building `from-${color}` dynamically
-// would purge the classes. Pairing the transparent and surface stops here (one
-// `from-*`, one `to-*`) also prevents the collision where two `from-*` classes
-// fight over one stop and leave the other unset, degenerating the gradient.
 const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
   OverflowFadePlacement,
   OverflowFadeGradientClasses

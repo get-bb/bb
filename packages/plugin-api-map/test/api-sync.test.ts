@@ -1,13 +1,3 @@
-/**
- * The Plugin Guide is bb's only plugin API documentation, so nothing else
- * catches it going stale. These tests read the SDK's own contract sources and
- * fail when the map and the API disagree in either direction:
- *
- *  - a surface naming a symbol the SDK no longer exports (renamed, removed);
- *  - a registration slot the SDK ships that no surface documents.
- *
- * Both failures are actionable in the same place: `src/surfaces.ts`.
- */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -29,8 +19,6 @@ function read(...parts: string[]): string {
 const APP_CONTRACT = read("app-contract.ts");
 const CONTRACT_SOURCES = [
   APP_CONTRACT,
-  // The public entry points, so a card can name a component or hook and not
-  // just the interface behind it.
   read("app.ts"),
   read("index.ts"),
   read("backend-contract.ts"),
@@ -41,7 +29,6 @@ const CONTRACT_SOURCES = [
   read("testing", "host.ts"),
 ].join("\n");
 
-/** Every name the SDK contract sources declare as an export. */
 const EXPORTED = new Set(
   [
     ...CONTRACT_SOURCES.matchAll(
@@ -73,9 +60,6 @@ describe("public SDK inventory", () => {
   });
 
   it("matches every non-internal published declaration subpath", () => {
-    // This is intentionally an exact declaration-shape gate, not only an
-    // export-name list: adding a BbPluginApi property or an interface method
-    // must fail CI even when its enclosing exported type already has a card.
     expect(createSdkPublicApiInventory()).toEqual(readSdkPublicApiInventory());
   });
 });
@@ -91,23 +75,16 @@ describe("surface-to-SDK links", () => {
         }
       }
     }
-    // A rename that lands here means the card still describes the old API.
     expect(missing).toEqual([]);
   });
 });
 
-/**
- * The registration type each `app.slots.*` / `app.composer.*` /
- * `app.contentScripts.*` method takes, read straight out of the interface
- * bodies so a slot added to the SDK shows up here with no edit.
- */
 function registrationTypes(interfaceName: string): Map<string, string> {
   const body = APP_CONTRACT.match(
     new RegExp(`export interface ${interfaceName} \\{([\\s\\S]*?)\\n\\}`),
   )?.[1];
   if (!body) throw new Error(`${interfaceName} not found in app-contract.ts`);
   const found = new Map<string, string>();
-  // Method signatures, on one line or wrapped across several.
   for (const match of body.matchAll(
     /^ {2}([A-Za-z_][A-Za-z0-9_]*)\(\s*(?:registration:\s*)?([A-Za-z_][A-Za-z0-9_]*)/gm,
   )) {
@@ -123,15 +100,12 @@ describe("registration slot coverage", () => {
       ...registrationTypes("PluginAppComposer"),
       ...registrationTypes("PluginAppContentScripts"),
     ];
-    // Sanity-check the parse itself: a regex that silently matched nothing
-    // would make this test pass for the wrong reason forever.
     expect(slots.length).toBeGreaterThanOrEqual(15);
 
     const documented = new Set(SURFACES.flatMap((s) => s.apiSymbols));
     const uncovered = slots
       .filter(([, type]) => !documented.has(type))
       .map(([method, type]) => `app.${method}() takes ${type}`);
-    // A new slot with no card is a surface plugin authors cannot discover.
     expect(uncovered).toEqual([]);
   });
 });

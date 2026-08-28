@@ -78,9 +78,6 @@ afterEach(() => {
 });
 
 describe("ThreadDetailHeader", () => {
-  // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
-  // guards it for every header instead of this one call site.
-
   it("leaves the open right-panel collapse control to the panel header", () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
@@ -102,8 +99,6 @@ describe("ThreadDetailHeader", () => {
     ).toBeNull();
   });
 
-  // A compact viewport opens the right panel as a bottom drawer, so the show
-  // trigger has to disclose that edge rather than the wide-viewport one.
   it.each([
     { expectedIcon: "PanelBottom", isCompactViewport: true },
     { expectedIcon: "PanelRight", isCompactViewport: false },
@@ -159,7 +154,9 @@ describe("ThreadDetailHeader", () => {
       </PaneContext.Provider>,
     );
 
-    expect(screen.getByRole("button", { name: /Full Screen/ })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Maximize pane/ }),
+    ).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "Hide right panel" }),
     ).toBeNull();

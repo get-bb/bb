@@ -5,14 +5,6 @@ type PluginMentionSuggestion = Extract<
   PromptMentionSuggestion,
   { kind: "plugin" }
 >;
-
-/**
- * Map GET /plugins/mentions/search groups onto mention-menu suggestions
- * (plugin design §4.9). Group order is server-owned (plugin id, then
- * registration order); rows keep their provider's label so the menu can
- * section them per provider. The inserted pill text (`replacement`) is the
- * item title — the resource's `itemId` carries the machine reference.
- */
 export function buildPluginMentionSuggestions(
   groups: readonly PluginMentionSearchGroup[],
 ): PluginMentionSuggestion[] {
@@ -28,7 +20,6 @@ export function buildPluginMentionSuggestions(
         itemId: item.itemId,
         providerLabel: group.label,
         title,
-        searchAliases: item.searchAliases,
         subtitle: item.subtitle,
         icon: item.icon,
         replacement: title,

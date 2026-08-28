@@ -239,8 +239,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
-// The lazy secondary panel's inline placeholder registers a real `Panel`
-// while the chunk loads; the layout mock below has no PanelGroup to host it.
 vi.mock("react-resizable-panels", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-resizable-panels")>()),
   Panel: ({ children }: { children?: ReactNode }) => (
@@ -610,8 +608,6 @@ describe("PluginPanelRightPanelHost", () => {
     secondaryPanelState.splitPanelStateId = undefined;
     secondaryPanelState.tabKinds = [];
     localStorage.clear();
-    // Clearing storage is not enough on its own: the per-thread atoms cache
-    // whatever storage held when they were first created.
     resetFixedPanelTabsStateForTest();
   });
 
@@ -619,10 +615,6 @@ describe("PluginPanelRightPanelHost", () => {
     cleanup();
   });
 
-  // The host's own trigger is portaled into the page header, so it does not
-  // inherit the glyph the thread header resolves. A compact viewport opens
-  // this panel as a bottom drawer (SecondaryPanelLayout), and the trigger has
-  // to disclose that edge.
   it("shows the drawer glyph on the trigger for a compact viewport", async () => {
     viewportState.isCompactViewport = true;
     renderHost();

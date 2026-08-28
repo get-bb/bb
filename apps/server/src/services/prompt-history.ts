@@ -109,8 +109,6 @@ function comparePromptHistoryEntries(
     return right.createdAt - left.createdAt;
   }
   if (left.state !== right.state) {
-    // Keep queued messages ahead of accepted rows on timestamp ties so recall
-    // prefers the still-editable queued version.
     return left.state === "queued" ? -1 : 1;
   }
   return right.id.localeCompare(left.id);
@@ -136,8 +134,6 @@ function buildPromptHistoryEntries<TRow>({
     try {
       entries.push(buildEntry(row));
     } catch {
-      // Legacy malformed rows cannot be recalled, so omit them from the
-      // visible history. The write path prevents new empty-input rows.
       continue;
     }
   }
@@ -222,11 +218,7 @@ export function recordAcceptedPromptHistoryEntry(
   deps: PromptHistoryRecordDeps,
   args: RecordAcceptedPromptHistoryEntryArgs,
 ): boolean {
-  // Prompt history is user-editable composer state. Provider-only context
-  // belongs on the accepted turn request, never in a recalled draft.
   const input = args.input.filter((item) => item.visibility !== "agent-only");
-  // Empty input also reaches this path when an idle side-chat/fork provider
-  // session is preloaded. The stored schema requires at least one item.
   if (input.length === 0) {
     return false;
   }

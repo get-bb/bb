@@ -34,9 +34,6 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
-  // get-bb/bb#1860: the picker can change mid-turn. The steer must carry the
-  // selection like the normal send does, or the server falls back to the
-  // active turn's execution tuple.
   it("steers with the selected execution options", () => {
     expect(
       buildFollowUpShortcutRequest({

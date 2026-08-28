@@ -20,8 +20,6 @@ import {
 } from "@/lib/plugin-slots";
 import { DiffFileCard } from "./DiffFileCard";
 
-// The diff body defers its renderer until the card scrolls into view. jsdom
-// has no layout, so report every observed sentinel as visible.
 vi.mock("usehooks-ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("usehooks-ts")>()),
   useIntersectionObserver: () => ({
@@ -159,8 +157,6 @@ describe("DiffFileCard", () => {
   });
 
   it("renders its text body through the shared host diff boundary", async () => {
-    // The point of the boundary: one `experimental_diffRenderer` registration
-    // has to reach BB's own diff panel, not just plugin-rendered diffs.
     const seen: { patch: string; path: string; view: string }[] = [];
     setPluginSlotRegistrations("demo", {
       homepageSections: [],
@@ -188,8 +184,6 @@ describe("DiffFileCard", () => {
     });
 
     expect(await screen.findByTestId("plugin-diff-body")).toBeTruthy();
-    // The caller had the real bytes, so the replacement gets those — not a
-    // reconstruction.
     expect(seen.at(-1)?.patch).toBe(TEXT_PATCH);
     expect(seen.at(-1)?.path).toBe("src/file.ts");
     expect(seen.at(-1)?.view).toBe("unified");

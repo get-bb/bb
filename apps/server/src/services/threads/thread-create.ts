@@ -151,20 +151,6 @@ async function resolveCatalogExecutionDefaults(
   });
 }
 
-/**
- * Resolve the native-fork point for a source-derived thread, or null when it
- * cannot be provisioned as a fork. Both forks and side chats are native forks:
- * they clone the source thread's provider session at its branch point so the
- * new thread carries the conversation history, and they inherit the source's
- * timeline through that same point (a fork then waits idle; a side chat runs
- * its question turn). Forking requires: a live source thread (any non-null
- * originKind), a provider that supports native fork, a source that already has
- * a provider session, and a new workspace on the same host as the source (a
- * cross-host clone of a provider session is not possible).
- * Returns null when the request has no source provenance or the source session
- * cannot be cloned; the consumer treats a null fork point for a source-derived
- * thread as an unforkable error rather than a silent fresh start.
- */
 function resolveForkPoint(
   deps: Pick<ThreadCreateDeps, "db" | "providerRegistry">,
   args: ResolveForkPointArgs,
@@ -175,8 +161,6 @@ function resolveForkPoint(
   if (!deps.providerRegistry.supportsFork(args.providerId)) {
     return null;
   }
-  // A provider session ID is opaque to every other provider, so a fork is
-  // possible only when the source and the child use the same provider.
   if (args.sourceThread.providerId !== args.providerId) {
     return null;
   }
@@ -328,15 +312,6 @@ function requireLiveSourceThread(
   return sourceThread;
 }
 
-/**
- * Pick the ref a new managed worktree starts from. `host.list_branches`
- * refreshes the remote-tracking refs and reports how the local default branch
- * relates to origin; the default spec and a plain name that is the default
- * branch both prefer origin when local is equal or behind. A fork names the
- * branch its source environment is on, so it keeps that branch verbatim.
- * Origin-qualified names are already authoritative and are fetched by
- * provisioning, so they do not need this inspection.
- */
 async function resolveManagedBaseBranchForCreate(
   deps: ThreadCreateDeps,
   args: ResolveManagedBaseBranchForCreateArgs,
@@ -345,9 +320,6 @@ async function resolveManagedBaseBranchForCreate(
     args.baseBranch.kind === "named" &&
     (args.originKind !== null || args.baseBranch.name.startsWith("origin/"))
   ) {
-    // Forks continue from their source ref verbatim. An origin-qualified ref is
-    // already unambiguous and provisioning fetches that exact remote branch, so
-    // neither case needs the default-branch relationship inspection below.
     return args.baseBranch;
   }
 
@@ -385,12 +357,6 @@ interface AssertUnmanagedHostPathIsAttachableArgs {
   projectId: string;
 }
 
-/**
- * The environment claim on a path is project-scoped, but the directory is
- * physical and shared. Guard the two things that scoping cannot: attaching in
- * place to another project's bb-managed worktree, and rewriting the working
- * tree while another project works in the same folder.
- */
 function assertUnmanagedHostPathIsAttachable(
   deps: ThreadCreateDeps,
   args: AssertUnmanagedHostPathIsAttachableArgs,
@@ -459,7 +425,6 @@ function existingUnmanagedEnvironmentIntentByHostPath(
   };
 }
 
-/** Machine a provisioning intent lands on, for the permission ceiling. */
 function intentHostId(
   deps: ThreadCreateDeps,
   intent: ThreadProvisionEnvironmentIntent,
@@ -483,12 +448,6 @@ async function createProvisioningThread(
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
   try {
-    // The clone the provider makes of the source session is invisible to the
-    // timeline, so a fork inherits the source's conversation rows through the
-    // same branch point before its own thread-start rows are appended. Only a
-    // visible fork does: it is the thread page the user continues on. A hidden
-    // fork is an aside (a side chat) or a plugin worker rendered by its owner
-    // next to the source, so its own timeline holds only what it adds.
     if (
       args.fork !== null &&
       args.fork.historyEndSequence !== null &&
@@ -504,8 +463,6 @@ async function createProvisioningThread(
       ...(args.executionDefaults
         ? { projectDefaults: args.executionDefaults }
         : {}),
-      // The environment usually does not exist yet, so the machine's
-      // permission ceiling comes from the provisioning intent.
       hostId: intentHostId(deps, args.environmentIntent),
       threadId: thread.id,
     });
@@ -546,17 +503,10 @@ async function createProvisioningThread(
 }
 
 interface ResolveCreateThreadVisibilityArgs {
-  /** Resolved hierarchy parent; null for roots and forks. */
   parentThread: Pick<Thread, "visibility"> | null;
   requestedVisibility: ThreadVisibility | undefined;
 }
 
-/**
- * Visibility default for a new thread. An explicit request always wins. A
- * hierarchy child otherwise inherits its parent, so sub-agents delegated by a
- * hidden thread stay out of navigation with it. A side chat is forked with an
- * explicit `hidden` by the plugin that owns it.
- */
 function resolveCreateThreadVisibility(
   args: ResolveCreateThreadVisibilityArgs,
 ): ThreadVisibility {
@@ -570,9 +520,7 @@ export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
   options: {
-    /** Provider-facing input when it differs from the persisted start seed. */
     providerInput?: ThreadCreateServiceRequestInput["input"];
-    /** Source environment selected by the public fork route. */
     forkSourceEnvironmentId?: string;
   } = {},
 ) {
@@ -595,8 +543,6 @@ export async function createThreadFromRequest(
       'originPluginId requires origin "plugin"',
     );
   }
-  // Resolve the server-owned "project-default" environment marker into a
-  // concrete environment before any workspace/provisioning logic runs.
   const requestInput = {
     ...rawRequestInput,
     environment:
@@ -606,10 +552,6 @@ export async function createThreadFromRequest(
           })
         : rawRequestInput.environment,
   };
-  // Plugin mentions resolve once at send time (plugin design §4.9): each
-  // unique mention becomes an agent-only context input appended after the
-  // user's message; a resolve failure throws a 422 before the thread is
-  // created.
   const pluginMentionContext = await resolvePluginMentionContextInputs(
     requestInput.input,
   );
@@ -649,8 +591,6 @@ export async function createThreadFromRequest(
       })
     : null;
   if (originKind !== null && sourceThread !== null) {
-    // Forks and side chats are not hierarchy children, but they still consume
-    // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
     assertValidParentThread(deps, {
       parentThreadId: sourceThread.id,
     });
@@ -671,9 +611,6 @@ export async function createThreadFromRequest(
     requestInput.environment.environmentId === sourceThread.environmentId
       ? sourceThread.environmentId
       : undefined);
-  // Provenance coherence + anti-forgery. The validated source/parent thread
-  // anchors senderThreadId so a caller cannot claim a start on behalf of an
-  // arbitrary or cross-project thread.
   if (requestInput.startedOnBehalfOf !== null) {
     const senderThread = sourceThread ?? parentThread;
     if (senderThread === null) {
@@ -692,10 +629,6 @@ export async function createThreadFromRequest(
           : "startedOnBehalfOf.senderThreadId must match sourceThreadId",
       );
     }
-    // Seeding a thread-start without a provider run (startedOnBehalfOf) is
-    // only meaningful for a tagged source-derived spawn. Requiring originKind
-    // keeps the two signals coupled so the thread is excluded from reshaping
-    // the project's stored execution defaults.
     if (originKind === null) {
       throw new ApiError(
         400,
@@ -709,9 +642,6 @@ export async function createThreadFromRequest(
     input: requestInput.input,
     projectId: requestInput.projectId,
   });
-  // Providers register with plugin startup, which the listener does not wait
-  // for: without this, a thread created on boot sees an empty registry and
-  // fails with "no provider available".
   await deps.providerRegistry.whenRegistrationsSettled();
   const { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
@@ -738,9 +668,6 @@ export async function createThreadFromRequest(
       requestedVisibility: requestInput.visibility,
     }),
     environment: resolveCreateThreadEnvironment({
-      // Source-derived forks already resolve their environment before this
-      // call. Applying ordinary child defaults here would turn an isolated
-      // personal fork back into source reuse.
       parentThread:
         forkSourceEnvironmentId !== undefined
           ? null
@@ -880,10 +807,6 @@ export async function createThreadFromRequest(
     sourceThread,
   });
 
-  // A fork/side-chat must clone the source provider session. If that clone
-  // cannot be resolved (source has no active session, provider lacks fork
-  // support, or the target is cross-host), do not fall back to a fresh
-  // history-less thread.start.
   if (request.originKind !== null && fork === null) {
     throw new ApiError(
       400,

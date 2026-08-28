@@ -29,7 +29,6 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   const { useEffect } = await vi.importActual<typeof import("react")>("react");
   return {
     AppSidebar: ({ mobileHosted }: { mobileHosted?: { hidden: boolean } }) => {
-      // Stands in for ProjectList: mount work we must not repeat per trip.
       useEffect(() => {
         mountCounts.appSidebar += 1;
       }, []);
@@ -165,8 +164,6 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
       screen.getByRole("button", { name: "Navigate to settings" }),
     );
 
-    // The route/mode changes immediately, but the visible body is held for
-    // the one compositor-driven close so the slide does not swap content.
     expect(getMobilePanel()).toBe(panel);
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
@@ -174,7 +171,6 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
 
     settleMobileToggle();
 
-    // Same panel element; the app body is hidden, not unmounted.
     expect(getMobilePanel()).toBe(panel);
     expect(panel.dataset.state).toBe("closed");
     expect(getAppSidebarBody().hidden).toBe(true);
@@ -198,14 +194,12 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
       screen.getByRole("button", { name: "Navigate back to app" }),
     );
 
-    // Held during the close ...
     expect(screen.getByTestId("tools-sidebar-body")).toBeTruthy();
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(getMobilePanel().style.translate).toBe("-100%");
 
     settleMobileToggle();
 
-    // ... then the app body shows again without a remount.
     expect(getMobilePanel()).toBe(panel);
     expect(screen.queryByTestId("tools-sidebar-body")).toBeNull();
     expect(getAppSidebarBody().hidden).toBe(false);

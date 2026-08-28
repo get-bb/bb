@@ -7,23 +7,15 @@ import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 
-/** Shared by the mount and the host's crash check. */
 const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
-  /** BB's list bound to this sidebar instance. */
   original: ReactNode;
-  /** Compatibility value for the removed sidebar search field. */
   searchQuery: string;
   onNavigate: () => void;
 }
 
-/**
- * Mounts the active `experimental_threadList` slot in the sidebar's scroll
- * area, keyed by generation so a plugin reload remounts it with fresh
- * error-boundary state.
- */
 export function PluginThreadList({
   replacement,
   original,

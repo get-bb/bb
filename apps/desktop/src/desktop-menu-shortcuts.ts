@@ -12,7 +12,6 @@ export interface ApplicationMenuAccelerators {
   openSettings: string | undefined;
 }
 
-/** Native fallback used before the server-owned binding config is available. */
 export const DEFAULT_APPLICATION_MENU_ACCELERATORS: ApplicationMenuAccelerators =
   {
     closeWindowOrSideTab: "CommandOrControl+W",

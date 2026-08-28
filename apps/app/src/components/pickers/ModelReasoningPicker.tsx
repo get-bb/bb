@@ -107,15 +107,9 @@ const REASONING_CYCLE_COMMANDS = [
   "modelPicker.cycleReasoningBackward",
 ] as const;
 
-// Below this many models (primary + selected-only) the list is short enough to
-// scan by eye, so the search box is more clutter than help.
 const MODEL_SEARCH_MIN_OPTIONS = 5;
 const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-52 max-w-80";
 
-// Splits a trailing parenthetical off a model label (e.g. "Opus 4.8 (1M)" →
-// base "Opus 4.8", tag "1M") so the tag can render as a small, muted suffix
-// without the parentheses. Labels without a trailing "(…)" pass through
-// unchanged (tag null).
 function splitModelLabelTag(label: string): ModelLabelParts {
   const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
   if (!match) {
@@ -124,11 +118,6 @@ function splitModelLabelTag(label: string): ModelLabelParts {
   return { base: match[1], tag: match[2] };
 }
 
-/**
- * Build a loose fuzzy RegExp from a plain-text query.
- * Each character is matched in order with `.*` between them, so
- * "gpt4" matches "GPT-4 Turbo".
- */
 export function buildFuzzyRegex(query: string): RegExp {
   const pattern = query
     .split("")
@@ -137,9 +126,6 @@ export function buildFuzzyRegex(query: string): RegExp {
   return new RegExp(pattern, "i");
 }
 
-// Filter options by fuzzy-matching against text the caller derives from each
-// option. Pass the *rendered* text (see `modelSearchText`) so search matches
-// what the user actually sees on screen.
 function fuzzyFilter<T>(
   options: readonly T[],
   normalizedQuery: string,
@@ -150,10 +136,6 @@ function fuzzyFilter<T>(
   return options.filter((option) => regex.test(getText(option)));
 }
 
-// The text a model row is matched against: the visible (brand-stripped) label
-// plus the raw model id, so typing either the on-screen label or the id finds
-// the model. Filtering on the raw label would match brand words that were
-// stripped from the rendered row, surprising the user.
 function modelSearchText(
   option: ModelPickerOption,
   brandPrefix: string | undefined,
@@ -161,14 +143,6 @@ function modelSearchText(
   return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
-/**
- * A keyboard-navigable row in the model list. Each entry maps 1:1 to a rendered,
- * highlightable row and drives arrow movement, Enter handling, and the active
- * descendant id — so the fragile hand-computed index math lives in one tested
- * place. The desktop "More models" submenu is intentionally excluded (it stays
- * pointer/native-focus driven); during an active search its filtered options are
- * flattened inline instead, keeping every match reachable from the keyboard.
- */
 type ModelNavRow =
   | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
@@ -186,19 +160,17 @@ export function buildModelNavRows({
   isSearching: boolean;
   showMoreModels: boolean;
 }): ModelNavRow[] {
-  const rows: ModelNavRow[] = modelOptions.map(
-    (option): ModelNavRow => ({ kind: "model", option }),
-  );
+  const rows: ModelNavRow[] = modelOptions.map((option): ModelNavRow => ({
+    kind: "model",
+    option,
+  }));
   if (moreModelOptions.length === 0) return rows;
 
-  // While searching, flatten every match into one list so results otherwise
-  // hidden behind the compact toggle or the desktop submenu stay reachable.
   if (isSearching) {
     for (const option of moreModelOptions) rows.push({ kind: "model", option });
     return rows;
   }
 
-  // Compact (not searching): a toggle expands the extra models inline.
   if (isCompactViewport) {
     rows.push({ kind: "more-toggle" });
     if (showMoreModels) {
@@ -208,72 +180,39 @@ export function buildModelNavRows({
     }
   }
 
-  // Desktop (not searching): the extra models live in the hover submenu, which
-  // is rendered separately and left out of keyboard nav.
   return rows;
 }
 
 interface ModelReasoningPickerProps {
-  // Provider state
   providerRouting?: SystemProvidersQuery;
   providerOptions: readonly ProviderPickerOption[];
   selectedProviderId: string;
-  /** Omit to render the provider as locked (tabs hidden, can't switch). */
   onSelectedProviderChange?: (value: string) => void;
-  /** Reports a provider only after its live catalog resolves a coherent default. */
   onProviderPreviewResolved?: (value: ResolvedProviderPreview) => void;
-  /** Prevent preview selection until the provider catalog is authoritative. */
   requireVerifiedProviderPreview?: boolean;
   hasMultipleProviders: boolean;
-  // Model state
   modelValue: string;
   modelOptions: readonly ModelPickerOption[];
-  /** Models rendered behind a collapsed "More models" row. */
   moreModelOptions?: readonly ModelPickerOption[];
   modelIsLoading?: boolean;
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   onModelChange: (value: string) => void;
-  /**
-   * Optional case-normaliser for raw model names returned during a provider
-   * handoff. The picker itself drops the brand prefix at render — callers only
-   * need to pass this when the provider API returns un-cased ids.
-   */
   formatModelLabel?: (displayName: string) => string;
-  // Reasoning state — supported efforts are per-model, so callers derive
-  // these options from the SELECTED model and reconcile the level on model
-  // change via `reconcileReasoningLevel` in @bb/domain.
   reasoningValue: ReasoningLevel;
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   onReasoningChange: (value: ReasoningLevel) => void;
-  // Fast mode / service tier
   fastModeEnabled: boolean;
   onFastModeChange: (enabled: boolean) => void;
   showFastModeToggle: boolean;
-  /** Whether composer model-picker commands and hints apply. Defaults to true. */
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
-  /**
-   * The committed provider's declared label for its fast tier (the toggle
-   * reads `<label> mode`); a previewed provider's own declaration wins while
-   * previewing. Defaults to "Fast".
-   */
   fastModeLabel?: string;
-  /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
-  /** Render with the popover open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
-  /** Whether the popover blocks page interaction. Defaults to true. */
   modal?: boolean;
-  /** Horizontal popover alignment. Defaults to "start". */
   align?: "start" | "center" | "end";
-  /**
-   * Render the trigger as a non-interactive, dimmed label showing the same
-   * model/reasoning summary — the popover never opens. Used by read-only
-   * surfaces (e.g. the side chat) so they render the identical control as their
-   * interactive counterpart, just disabled.
-   */
   disabled?: boolean;
   footerAction?: ModelReasoningPickerFooterAction;
 }
@@ -332,27 +271,18 @@ export function ModelReasoningPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
-  // Unique per picker instance so the active-descendant ids never collide when
-  // more than one ModelReasoningPicker is mounted on the page.
   const navId = useId();
   const listboxId = `${navId}-listbox`;
   const optionDomId = (index: number) => `${navId}-opt-${index}`;
 
-  // A controlled parent may need one render to apply a provider-tab change.
-  // Keep showing the clicked provider's cached/querying catalog during that
-  // handoff so the tab responds immediately without flashing the old models.
   const [previewProviderId, setPreviewProviderId] = useState<string | null>(
     null,
   );
-  // "More models" expansion is per-open: it resets when the popover closes.
   const [showMoreModels, setShowMoreModels] = useState(false);
   const [moreModelsOpen, setMoreModelsOpen] = useState(false);
   const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
     useState(selectedProviderId);
 
-  // A controlled provider change commits any pending preview. Reset during
-  // render so an external rehydration cannot paint an old provider's browse
-  // state for a frame. This deliberately leaves `open` untouched.
   if (trackedSelectedProviderId !== selectedProviderId) {
     setTrackedSelectedProviderId(selectedProviderId);
     setPreviewProviderId(null);
@@ -390,9 +320,6 @@ export function ModelReasoningPicker({
           providerLabel: selectedProviderLabel,
         })
       : "Could not load models.";
-  // Strip the brand prefix at render — the trigger always shows the committed
-  // provider, so we use `selectedProviderId` (not `activeProviderId`, which
-  // can be a preview).
   const triggerModelLabel = modelIsLoading
     ? "Loading models..."
     : hasSelectedModel
@@ -418,8 +345,6 @@ export function ModelReasoningPicker({
     ? (selectedReasoningOption?.label ?? null)
     : null;
 
-  // Shares its cache key with the committed `useSystemExecutionOptions` call
-  // in the caller's hook, so the controlled-provider handoff is a cache hit.
   const isPreviewing =
     previewProviderId !== null && previewProviderId !== selectedProviderId;
   const previewQuery = useSystemExecutionOptions({
@@ -441,8 +366,6 @@ export function ModelReasoningPicker({
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
 
-  // The previewed provider's own declaration labels its reasoning levels and
-  // its fast tier while previewing (each provider declares its own names).
   const previewProvider = useMemo(
     () =>
       isPreviewing
@@ -544,9 +467,6 @@ export function ModelReasoningPicker({
     providerOptions.length > 1 &&
     (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
-  // Filtered model lists (client-side fuzzy search scoped to the active
-  // provider). Matching uses the rendered (brand-stripped) label plus the model
-  // id so search reflects what the user sees.
   const activeBrandPrefix = activeProvider?.brandPrefix;
   const filteredModelOptions = useMemo(() => {
     return fuzzyFilter(activeModelOptions, normalizedQuery, (option) =>
@@ -560,8 +480,6 @@ export function ModelReasoningPicker({
     );
   }, [activeMoreModelOptions, normalizedQuery, activeBrandPrefix]);
 
-  // The single navigable-row model that drives arrow keys, Enter, active
-  // highlighting, and active-descendant ids.
   const navRows = useMemo(
     () =>
       buildModelNavRows({
@@ -580,15 +498,9 @@ export function ModelReasoningPicker({
     ],
   );
 
-  // The active index clamped to the rows currently on screen. When the list
-  // shrinks (e.g. the query narrows it) a now-out-of-range index simply reads as
-  // "nothing highlighted" until the user arrows again — no reactive clamping
-  // effect required, and it can never point past the end.
   const highlightedIndex =
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
 
-  // When previewing a different provider, resolve fast-mode toggle from that
-  // provider's capabilities instead of the committed provider's.
   const effectiveShowFastModeToggle =
     hasActiveModelOptions &&
     (serviceTierSupportByProvider
@@ -607,9 +519,6 @@ export function ModelReasoningPicker({
       ? hasActiveModelOptions && !activeModelIsLoading
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
-  // Reset the per-open browse state after the close animation. Desktop content
-  // unmounts at that point. The compact drawer stays mounted, so its settlement
-  // callback performs the same reset without changing the visible close frame.
   const resetBrowseState = useCallback(() => {
     setPreviewProviderId(null);
     setShowMoreModels(false);
@@ -646,17 +555,12 @@ export function ModelReasoningPicker({
       const nextPreviewProviderId =
         open && providerId !== selectedProviderId ? providerId : null;
       setPreviewProviderId(nextPreviewProviderId);
-      // Every provider owns a different model list. Never carry a filter or
-      // keyboard highlight across that boundary.
       setSearchQuery("");
       setActiveIndex(-1);
     },
     [onSelectedProviderChange, open, selectedProviderId],
   );
 
-  // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
-  // Standalone/single-pane surfaces have no pane context and default to
-  // focused/non-split.
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
   const isSplitPane = paneContext?.isSplitPane ?? false;
@@ -668,8 +572,6 @@ export function ModelReasoningPicker({
         target instanceof HTMLElement
           ? target.closest("[data-app-composer]")
           : null;
-      // Two composers of the same pane share its `[data-split-pane-id]` wrapper;
-      // a lone surface has none, so this stays false there.
       const pickerPane =
         triggerRef.current?.closest("[data-split-pane-id]") ?? null;
       const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
@@ -677,8 +579,6 @@ export function ModelReasoningPicker({
         disabled: disabled ?? false,
         isFocusedPane,
         isSplitPane,
-        // The main/new-thread composer is primary; a side chat marks itself
-        // secondary via data-app-composer-role.
         isPrimaryComposer:
           pickerComposer?.getAttribute("data-app-composer-role") !==
           "secondary",
@@ -717,15 +617,6 @@ export function ModelReasoningPicker({
     50,
     commandShortcutsEnabled,
   );
-  // The cycle chords rotate the COMMITTED provider and its lists, never a
-  // previewed tab's, so the shortcut means the same thing whether the popover is
-  // open or shut. A preview in progress is dropped so the visible tab keeps
-  // matching the committed selection.
-  //
-  // An in-scope chord ALWAYS returns true, even with nowhere to rotate to. A
-  // false result makes the command provider bail before `preventDefault()`, and
-  // macOS would then insert the composed Option character (Option+M → "µ") into
-  // the prompt. Owning the chord and doing nothing is the correct no-op.
   useIndexedAppCommandHandlers(
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
@@ -782,15 +673,10 @@ export function ModelReasoningPicker({
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       if (previewSelectionBlocked) return;
-      // A controlled parent that has not rendered the provider change yet
-      // still needs a concrete model when the user immediately picks one of
-      // the new provider's reasoning levels.
       if (isPreviewing && previewSelection?.selectedModel) {
         onModelChange(previewSelection.selectedModel);
       }
       onReasoningChange(level);
-      // Keep the combined picker open so the model and reasoning effort can be
-      // changed together without reopening it between selections.
       setPreviewProviderId(null);
       setMoreModelsOpen(false);
     },
@@ -813,17 +699,11 @@ export function ModelReasoningPicker({
     setMoreModelsOpen(false);
   }, [footerAction]);
 
-  // Typing resets the highlight to "none" so a narrowing query never leaves a
-  // stale row selected; the user arrows into the fresh results.
   const handleQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
     setActiveIndex(-1);
   }, []);
 
-  // Keyboard navigation inside the model list while the search input has focus.
-  // All movement/selection is driven by `navRows`, so the index math has a
-  // single source of truth shared with rendering. Arrow updates clamp any stale
-  // index (a list that shrank out from under the highlight) back into range.
   const handleSearchKeyDown = useCallback<
     KeyboardEventHandler<HTMLInputElement>
   >(
@@ -865,14 +745,12 @@ export function ModelReasoningPicker({
     [navRows, highlightedIndex, handleModelSelect],
   );
 
-  // Scroll the active item into view.
   useEffect(() => {
     if (highlightedIndex < 0) return;
     const el = document.getElementById(`${navId}-opt-${highlightedIndex}`);
     el?.scrollIntoView({ block: "nearest" });
   }, [highlightedIndex, navId]);
 
-  // Auto-focus the search input on open (desktop only).
   useEffect(() => {
     if (!open || isCompactViewport || isPointerCoarse) return;
     const frame = window.requestAnimationFrame(() => {
@@ -894,10 +772,6 @@ export function ModelReasoningPicker({
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
-  // The trigger renders identically whether interactive or disabled — the only
-  // difference is the `disabled` button state and a dropped chevron — so fully
-  // read-only surfaces show the same model label in the same position as their
-  // editable counterpart.
   const trigger = (
     <Button
       ref={triggerRef}
@@ -1013,14 +887,12 @@ export function ModelReasoningPicker({
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
-          // The provider tabs and the search field stay pinned; the menu body
-          // below them owns the only scroll region (see MenuHoverProvider).
           !isCompactViewport &&
             "max-h-[var(--radix-popover-content-available-height)] overflow-hidden",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
-        {/* Provider icon tabs */}
+        {}
         {showProviderTabs ? (
           <div
             className={cn(
@@ -1084,22 +956,14 @@ export function ModelReasoningPicker({
         ) : null}
 
         <MenuHoverProvider>
-          {/* Menu body — the single desktop scroll region. The model rows, the
-            reasoning rows and the footer controls scroll together, so one wheel
-            or touch gesture reaches every option. A second scroller on the model
-            list captured the gesture that started over the models and left the
-            rows below it unreachable in a short viewport. */}
+          {}
           <div
             className={cn(
               !isCompactViewport &&
                 "min-h-0 flex-1 overflow-y-auto overscroll-contain",
             )}
           >
-            {/* Model list — keyed by the active provider so each provider mounts a
-            fresh subtree. Rows are keyed by model id, but reusing one subtree
-            across provider switches was observed to leave the previous
-            provider's rows on screen; remounting per provider guarantees the
-            list always matches the active tab. */}
+            {}
             <div
               key={activeProviderId || "no-provider"}
               role={showSearchInput ? "listbox" : undefined}
@@ -1107,8 +971,6 @@ export function ModelReasoningPicker({
               aria-label={showSearchInput ? "Models" : undefined}
               className={cn(
                 "px-1 pb-1 pt-0",
-                // Compact keeps its own block so the drawer's section labels stick
-                // exactly as before. Desktop shares the menu body's scroll region.
                 isCompactViewport && "overflow-y-auto",
               )}
             >
@@ -1142,9 +1004,6 @@ export function ModelReasoningPicker({
                         id={domId}
                         role={showSearchInput ? "option" : undefined}
                         isActive={active}
-                        // The menu always reflects the provider whose models it
-                        // lists (committed or previewed) — strip with the
-                        // active provider's declared prefix.
                         label={stripModelBrandPrefix(
                           option.label,
                           activeBrandPrefix,
@@ -1156,10 +1015,7 @@ export function ModelReasoningPicker({
                       />
                     );
                   })}
-                  {/* Desktop, not searching: the selected-only models live in a
-                    hover submenu that is excluded from keyboard nav. During a
-                    search they are flattened into `navRows` above so every match
-                    stays reachable from the keyboard. */}
+                  {}
                   {!isCompactViewport &&
                   !isSearching &&
                   filteredMoreModelOptions.length > 0 ? (
@@ -1210,9 +1066,7 @@ export function ModelReasoningPicker({
               )}
             </div>
 
-            {/* Reasoning section — the committed model's levels, or (while
-            previewing) the previewed provider's default-model levels. Like the
-            model list, nothing is checked during preview until committed. */}
+            {}
             {showReasoningSection ? (
               <>
                 <div className="border-t border-border" />
@@ -1233,7 +1087,7 @@ export function ModelReasoningPicker({
               </>
             ) : null}
 
-            {/* Fast mode toggle */}
+            {}
             {effectiveShowFastModeToggle ? (
               <>
                 <div className="border-t border-border" />
@@ -1278,8 +1132,6 @@ export function ModelReasoningPicker({
   );
 }
 
-// Mirrors DropdownMenuLabel spacing/typography while staying sticky in the
-// scrollable model list.
 function MenuSectionLabel({ children }: { children: ReactNode }) {
   const isCompactViewport = useIsCompactViewport();
 
@@ -1394,11 +1246,6 @@ function MoreModelsSubmenu({
     }, 0);
   }, []);
 
-  // Close the moment the pointer moves to a sibling row — i.e. this trigger is
-  // no longer the menu's last-hovered item. No close-delay, so the trigger tile
-  // and the submenu clear at 0ms. While the pointer is inside the submenu the
-  // trigger stays the MAIN menu's last-hovered item (the submenu items have
-  // their own hover scope), so this does not fire and the submenu stays open.
   useEffect(() => {
     if (open && !isLastHovered) {
       onOpenChange(false);
@@ -1482,11 +1329,6 @@ function MoreModelsSubmenu({
   );
 }
 
-// Renders nothing; exists only to fire `onReset` when it unmounts. Mounted
-// inside PopoverContent, so its unmount coincides with the popover fully
-// closing (after the exit animation), which is when the browse state should
-// reset — not during the visible close. Kept stable via a ref so a re-render
-// never triggers a spurious reset.
 function ResetBrowseStateOnContentUnmount({
   onReset,
 }: {
@@ -1531,9 +1373,6 @@ function MenuRowButton({
       id={id}
       role={role}
       disabled={disabled}
-      // In the searchable listbox the active row is the combobox's
-      // aria-activedescendant, so it carries aria-selected; reasoning/submenu
-      // rows keep default button semantics.
       aria-selected={role === "option" ? Boolean(isActive) : undefined}
       onClick={onClick}
       className={cn(
@@ -1610,9 +1449,7 @@ interface ModelSearchInputProps {
   query: string;
   onQueryChange: (query: string) => void;
   onKeyDown: KeyboardEventHandler<HTMLInputElement>;
-  /** Id of the listbox this combobox controls (for `aria-controls`). */
   listboxId: string;
-  /** Id of the virtually-focused option, or undefined when none is active. */
   activeOptionId: string | undefined;
 }
 
@@ -1629,9 +1466,6 @@ function ModelSearchInput({
       <div className="relative">
         <Icon
           name="Search"
-          // size-4 + left-1.5 puts this icon at the same x (12px from the
-          // popover edge, center 20px) as the Fast mode "Zap" icon below, so the
-          // two leading icons line up vertically.
           className="pointer-events-none absolute left-1.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
         />
         <Input

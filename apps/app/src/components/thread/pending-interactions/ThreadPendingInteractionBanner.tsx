@@ -70,7 +70,6 @@ interface UserQuestionPendingInteractionBannerProps {
 }
 
 interface BannerShellProps {
-  /** Heading line. Omitted when the body supplies its own (e.g. the question form). */
   title?: string;
   errorMessage?: string | null;
   footer?: ReactNode;
@@ -89,13 +88,6 @@ interface BuildApprovalSubjectInput {
   subject: ApprovalBannerSubject;
 }
 
-/**
- * Renders one pending interaction by its family (docs/provider-plugin-api.md
- * §4): approvals with the decision buttons a permission mode could have
- * pressed; the open requests with their core renderers (`user_question`,
- * `plan_review`) or, for a `"<pluginId>/<kind>"` request, the plugin's
- * `pendingInteraction` slot component.
- */
 export function ThreadPendingInteractionBanner({
   interaction,
   sourceThread,
@@ -133,8 +125,6 @@ export function ThreadPendingInteractionBanner({
         />
       );
     default:
-      // A plugin form, whoever raised it: a plugin's own request is
-      // cancelled; a provider's plugin-defined request ends with its turn.
       return (
         <div
           data-testid="plugin-request-banner"
@@ -172,12 +162,6 @@ interface PlanReviewRequestBannerProps {
   threadId: string;
 }
 
-/**
- * A finished plan waiting for the user's verdict — a request, not an
- * approval: no permission mode answers "ready to code?". Today's wire still
- * resolves it through the `plan` approval subject's decisions, which this
- * banner labels as the plan verdict they are.
- */
 function PlanReviewRequestBanner({
   interaction,
   request,
@@ -355,8 +339,6 @@ function ThreadUserQuestionPendingInteractionBanner({
 }: UserQuestionPendingInteractionBannerProps) {
   const isResolving = interaction.status === "resolving";
 
-  // No shell title: the form supplies its own heading (the current question
-  // prompt) plus the question tab strip.
   return (
     <BannerShell sourceThread={sourceThread}>
       <UserQuestionAnswerForm
@@ -403,9 +385,6 @@ function ApprovalDecisionButton({
 function approvalDecisionButtonVariant(
   decision: PendingInteractionApprovalDecision,
 ): "default" | "outline" | "ghost" {
-  // Three-level hierarchy: filled primary for the safest yes, outline for the
-  // longer-lived yes, ghost for the dismissive no. Keeps Deny visible without
-  // letting it compete with the affirmative actions.
   switch (decision) {
     case "allow_once":
       return "default";
@@ -446,15 +425,7 @@ function ApprovalDetailList({
   );
 }
 
-/**
- * The tool-use ask rendered from the bridge's presentation alone: the same
- * glyph, tint and headline its timeline row shows, the tool name, and the
- * bridge's Markdown detail. No client-side tool-name table is involved.
- */
 function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
-  // The same resolution as the timeline row: a plugin-declared icon by its
-  // namespaced glyph when the inventory still has it, else the host glyph,
-  // else Terminal.
   const iconUrl = usePluginIconUrl(ask.icon.glyph);
   return (
     <div
@@ -483,8 +454,6 @@ function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
         <p className="mt-1 text-xs text-muted-foreground">Tool: {ask.tool}</p>
       ) : null}
       {ask.detail !== null ? (
-        // The bridge's detail is agent-authored Markdown; like the timeline
-        // row's body, it never fetches an image before the user decides.
         <MarkdownPreview
           content={ask.detail}
           className="mt-1 text-xs text-muted-foreground"
@@ -506,10 +475,6 @@ function buildApprovalSubject({
       const command = rawCommand
         ? (extractShellCommandFromString(rawCommand) ?? rawCommand)
         : null;
-      // The cwd value is a self-describing absolute path, so the "Cwd: "
-      // prefix from the shared formatter reads as redundant in the banner.
-      // Strip the label here; other prefixed lines (Action:, Session grant:)
-      // need their labels to be readable.
       const detailLines = formatPendingInteractionSubjectDetailLines(
         interaction,
       )
@@ -583,8 +548,6 @@ function labelForApprovalDecision(
   decision: PendingInteractionApprovalDecision,
   subjectKind: PendingInteractionApprovalSubject["kind"],
 ): string {
-  // A plan verdict decides whether the work starts, not what the agent may
-  // touch, so the permission vocabulary would misdescribe both buttons.
   if (subjectKind === "plan") {
     return decision === "deny" ? "Keep planning" : "Approve plan";
   }

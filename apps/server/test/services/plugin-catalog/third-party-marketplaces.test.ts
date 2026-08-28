@@ -129,7 +129,6 @@ describe("third-party marketplaces", () => {
     });
   }
 
-  /** A fetch that serves one https marketplace manifest plus its icons. */
   function marketplaceFetch(
     documents: Record<string, unknown>,
     icons: Record<string, Buffer> = {},
@@ -143,11 +142,6 @@ describe("third-party marketplaces", () => {
     };
   }
 
-  /**
-   * Point git at a local fixture for an https URL, for the duration of one
-   * test. A listed entry url must be https, so this is how the real ls-remote
-   * path runs against a real repository without a network.
-   */
   async function useGitUrlRewrite(url: string, repo: string): Promise<void> {
     const configFile = join(dataDir, "gitconfig");
     await writeFile(
@@ -163,7 +157,6 @@ describe("third-party marketplaces", () => {
     });
   }
 
-  /** A real git repository holding a marketplace manifest and a local icon. */
   async function gitMarketplace(args: {
     name: string;
     plugins: unknown[];
@@ -184,9 +177,6 @@ describe("third-party marketplaces", () => {
       await mkdir(join(repo, "icons"), { recursive: true });
       await writeFile(join(repo, "icons", "notes.svg"), args.icon);
     }
-    // -c core.excludesFile=/dev/null: a developer's global gitignore must not
-    // shape the fixture (the common macOS `Icon?` rule matches `icons/` and
-    // silently drops the icon file, failing the icon assertions locally).
     await run("git", ["-c", "core.excludesFile=/dev/null", "add", "."], {
       cwd: repo,
     });
@@ -212,13 +202,10 @@ describe("third-party marketplaces", () => {
       entryCount: 1,
     });
     expect(added.resolvedCommit).toMatch(/^[0-9a-f]{40}$/u);
-    // Adding a marketplace installs nothing.
     expect(installedCatalogEntries).toEqual([]);
-    // The icon came from the checkout, not from a URL.
     expect(
       getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
     ).toBe("image/svg+xml");
-    // Nothing survives on disk: the manifest and icons live in the database.
     expect(
       await rm(join(dataDir, "marketplaces", "staging"), {
         recursive: true,
@@ -226,7 +213,6 @@ describe("third-party marketplaces", () => {
       }).then(() => true),
     ).toBe(true);
 
-    // A second commit reaches the store only through a refresh.
     await writeFile(
       join(repo, "marketplace.json"),
       JSON.stringify(
@@ -336,7 +322,6 @@ describe("third-party marketplaces", () => {
     await expect(catalog.removeMarketplace("bb-community")).rejects.toThrow(
       /cannot be removed/,
     );
-    // The impostor never became a row, and bb-community kept its own catalog.
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
       "bb-community",
       "acme-plugins",
@@ -385,8 +370,6 @@ describe("third-party marketplaces", () => {
         pluginId: "notes",
         source: "npm:bb-plugin-notes",
         selection: { kind: "root" },
-        // The confirmed version and integrity travel to the installer, which
-        // refuses anything else.
         expectedNpmVersion: "1.4.2",
         expectedNpmIntegrity: "sha512-listed",
       },
@@ -425,8 +408,6 @@ describe("third-party marketplaces", () => {
       fetch: marketplaceFetch({ [OFFICIAL_URL]: manifest("bb-community", []) }),
     });
 
-    // The store lists bundled plugins under bb-community, so the qualified form
-    // the Browse card sends must resolve to the bundled copy.
     await expect(
       catalog.install({ entryId: "docs", marketplace: "bb-community" }),
     ).rejects.toThrow(/bundled installation stopped by test|unavailable/u);
@@ -538,8 +519,6 @@ describe("third-party marketplaces", () => {
     const removed = await catalog.removeMarketplace("acme-plugins");
     expect(removed.convertedPluginIds).toEqual(["notes"]);
 
-    // Provenance became direct, and every field the update pipeline reads is
-    // untouched — the plugin keeps tracking its recorded git range.
     const row = getInstalledPlugin(db, "notes");
     expect(row).toMatchObject({
       provenance: "direct",
@@ -587,7 +566,6 @@ describe("third-party marketplaces", () => {
     );
     const acme = getPluginMarketplaceIcon(db, "acme-plugins", "notes");
     expect(official?.contentHash).not.toBe(acme?.contentHash);
-    // Neither marketplace can read the other's rows.
     expect(
       getPluginMarketplaceIcon(db, "bb-community", "notes"),
     ).toBeUndefined();
@@ -595,7 +573,6 @@ describe("third-party marketplaces", () => {
       getPluginMarketplaceIcon(db, "acme-plugins", "official-notes"),
     ).toBeUndefined();
 
-    // Removing one marketplace drops only its icons.
     await catalog.removeMarketplace("acme-plugins");
     expect(
       getPluginMarketplaceIcon(db, "bb-community", "official-notes"),
@@ -634,8 +611,6 @@ describe("third-party marketplaces", () => {
     ]);
     expect(results[1]?.error).toContain("503");
 
-    // The official catalog refreshed normally, and the failed marketplace kept
-    // serving its last-known-good catalog.
     const marketplaces = catalog.listMarketplaces();
     expect(marketplaces[0]).toMatchObject({
       name: "bb-community",
@@ -678,8 +653,6 @@ describe("third-party marketplaces", () => {
       ]),
     ).toEqual([
       ["bb-community", "Interface", "official-notes"],
-      // A third-party marketplace has no curated vocabulary, so its first tag
-      // becomes the section label.
       ["acme-plugins", "Git Tools", "notes"],
       ["acme-plugins", "Git Tools", "zebra"],
     ]);
@@ -692,9 +665,6 @@ describe("third-party marketplaces", () => {
   });
 
   describe("install plans", () => {
-    // A listed git url must be https, so the fixture repository is reached
-    // through git's own `insteadOf` rewrite. The resolver still runs the real
-    // ls-remote path against a real repository with real tags.
     it("resolves a third-party git range to its current tag and commit", async () => {
       const repo = await mkdtemp(join(tmpdir(), "bb-plugin-repo-"));
       cleanup.push(repo);
@@ -752,8 +722,6 @@ describe("third-party marketplaces", () => {
           subdir: "plugins/notes",
           range: "^1.0.0",
           tagPrefix: "notes/",
-          // The range excludes v2.0.0, and the plan names the commit the
-          // selected tag points at right now.
           resolvedTag: "notes/v1.2.0",
           resolvedCommit: expected,
         },
@@ -768,7 +736,6 @@ describe("third-party marketplaces", () => {
             entry({
               source: {
                 git: {
-                  // The ".invalid" TLD never resolves, so ls-remote fails fast.
                   url: "https://acme.invalid/missing.git",
                   ref: "v9.9.9",
                 },
@@ -838,7 +805,6 @@ describe("third-party marketplaces", () => {
               id: "official-notes",
               source: {
                 git: {
-                  // Unreachable on purpose: an official plan must not resolve.
                   url: "https://github.invalid/bb/plugins.git",
                   range: "^1.0.0",
                 },
@@ -909,7 +875,6 @@ describe("third-party marketplaces", () => {
       entryId: "notes",
       marketplace: "acme-plugins",
     });
-    // The plan names exact code, not just the range the listing tracks.
     expect(plan).toMatchObject({
       kind: "marketplace",
       resolvedSource: {
@@ -922,8 +887,6 @@ describe("third-party marketplaces", () => {
     });
     if (plan.kind !== "marketplace") throw new Error("expected a marketplace");
 
-    // The range now resolves elsewhere: the confirmation no longer describes
-    // what the install would fetch, so the install refuses.
     resolvedVersion = "1.5.0";
     await expect(
       catalog.install({
@@ -934,7 +897,6 @@ describe("third-party marketplaces", () => {
     ).rejects.toThrow(/source changed after confirmation/u);
     expect(installedCatalogEntries).toEqual([]);
 
-    // Confirming the current resolution installs, bound to that exact pair.
     const current = await catalog.installPlan({
       entryId: "notes",
       marketplace: "acme-plugins",
@@ -1004,8 +966,6 @@ describe("third-party marketplaces", () => {
           }),
         ]),
       }),
-      // The install re-resolves the source; hold it there so a removal has a
-      // real window to delete the row underneath the install.
       resolveNpm: async () => {
         resolveCalls += 1;
         if (resolveCalls > 1) await gate;
@@ -1043,8 +1003,6 @@ describe("third-party marketplaces", () => {
       "catalog installation stopped by test",
     );
     await expect(removal).resolves.toMatchObject({ convertedPluginIds: [] });
-    // The removal waited: it cannot delete or retarget the row between the
-    // install plan and the catalog provenance write.
     expect(order).toEqual(["install", "removal"]);
     expect(installedCatalogEntries).toEqual([
       expect.objectContaining({ marketplace: "acme-plugins" }),

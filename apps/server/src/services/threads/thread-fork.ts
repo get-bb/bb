@@ -103,8 +103,6 @@ export async function createThreadForkFromRequest(
   const sourceThread = requireForkSourceThread(deps, request.sourceThreadId);
   requireForkCapableProvider(deps, sourceThread);
   const sourceEnvironment = requireSourceEnvironment(deps, sourceThread);
-  // A fork continues the source conversation, so it defaults to the source's
-  // recorded execution options rather than provider defaults.
   const sourceExecution = getLastExecutionOptions(deps, sourceThread.id);
   const visibleInput = request.input ?? [];
   const agentContextSeed = request.agentContextSeed ?? [];

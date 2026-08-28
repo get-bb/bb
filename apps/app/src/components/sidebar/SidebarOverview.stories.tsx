@@ -93,9 +93,6 @@ const loadedSidebarNavigation = {
         createdAt: 85,
         updatedAt: 85,
       }),
-      // A projectless parent + delegated child: exercises depth-0 alignment
-      // with the project headers and the indent guide under an expanded
-      // projectless thread.
       makeThreadListEntry({
         id: "thr_story_personal_parent",
         projectId: PERSONAL_PROJECT_ID,
@@ -157,9 +154,6 @@ const loadedSidebarNavigation = {
           createdAt: 180,
           updatedAt: 180,
         }),
-        // A delegated parent → child pair: renders at project depth 1/2 with
-        // the disclosure chevron after the parent title and the indent guide
-        // running under the expanded child.
         makeThreadListEntry({
           id: "thr_story_ancestor",
           projectId: bbProject.id,
@@ -270,7 +264,7 @@ function SidebarFrame({ children }: SidebarFrameProps) {
           <div className="shrink-0 px-2 py-2">
             <ProjectListActionButtons onNewChat={noop} />
           </div>
-          {/* Extensions rides in the nav list, exactly as AppSidebar mounts it. */}
+          {}
           <PluginNavSidebarItems toolsRoutePath={getSkillsRoutePath()} />
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
@@ -479,9 +473,7 @@ function OrganizationSidebar({
               persistedMode,
             );
           }
-        } catch {
-          // The story can still use its isolated store if persistence is blocked.
-        }
+        } catch {}
       }
     }
 

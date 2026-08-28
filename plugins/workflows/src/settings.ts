@@ -49,7 +49,6 @@ type RawWorkflowSettings = PluginSettingsValues<
   typeof WORKFLOW_SETTING_DESCRIPTORS
 >;
 
-/** Validated policy values used by the workflow service and runtime. */
 export interface WorkflowSettings {
   maxActiveRuns: number;
   maxConcurrentAgents: number;
@@ -136,7 +135,6 @@ function parseBoundedInteger(raw: string, field: IntegerField): number {
   return parsed;
 }
 
-/** Parse the host's string settings once, at the plugin/service boundary. */
 export function parseWorkflowSettings(
   values: Readonly<RawWorkflowSettings>,
 ): WorkflowSettings {
@@ -170,7 +168,6 @@ export function parseWorkflowSettings(
 
 const LEGACY_STORED_SETTING_KEYS = new Set(["workerStallTimeoutMs"]);
 
-/** Parse a persisted run snapshot, tolerating only known removed fields. */
 export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Workflow settings snapshot must be an object");
@@ -208,7 +205,6 @@ interface WorkflowSettingsHandle {
   ): void;
 }
 
-/** Register the descriptors and expose only parsed settings to consumers. */
 export function registerWorkflowSettings(
   bb: Pick<BbPluginApi, "settings">,
 ): WorkflowSettingsHandle {
@@ -227,9 +223,7 @@ export function registerWorkflowSettings(
           let parsedPrevious = lastValid;
           try {
             parsedPrevious = parseWorkflowSettings(previous);
-          } catch {
-            // A valid save must recover even when it replaces corrupt state.
-          }
+          } catch {}
           lastValid = parsedNext;
           listener(parsedNext, parsedPrevious);
         } catch (error) {

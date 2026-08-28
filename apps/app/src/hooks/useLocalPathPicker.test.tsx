@@ -67,9 +67,6 @@ afterEach(() => {
 });
 
 describe("useLocalPathPicker", () => {
-  // The dialog reports the machine it actually resolved a path on. An explicit
-  // null means "no machine selected" and must not silently fall back to the
-  // primary host — the create would land on the wrong machine.
   it("drops a submit that carries no machine", () => {
     const submit = vi.fn();
     const { result } = renderHook(() =>
@@ -120,11 +117,6 @@ describe("useLocalPathPicker", () => {
   });
 });
 
-/**
- * Choosing between the native folder picker and the in-app dialog. This lived
- * in `useQuickCreateProject` until a second caller needed the same behavior; it
- * is shared here so every path-entry caller agrees.
- */
 describe("useLocalPathPicker openPathEntry", () => {
   it("opens the dialog instead of the native picker when several machines exist", () => {
     mocks.hosts = [atum, host("host_thoth", "Thoth")];

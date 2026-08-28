@@ -132,9 +132,6 @@ export function parseDesktopVersionFeed(
     };
   }
 
-  // Both platforms publish a feed into the same release tag, so a swapped or
-  // mis-uploaded asset is now possible where it was not before. A feed that
-  // does not describe this build must never raise an update prompt.
   if (parsedFeed.data.platform !== args.platform) {
     return {
       kind: "malformed",

@@ -148,22 +148,6 @@ export function queuedMessagePayloadFromSendRequest(
   };
 }
 
-/**
- * Admits a queued message against the current thread and environment rows.
- * Returns the provider thread id so the caller can decide on auto-send without
- * a second event-history read.
- *
- * A queued message can only drain into the thread's environment. A gone
- * environment (`destroying`/`destroyed`) is never reprovisioned, so accepting
- * the message would park it in the queue forever while the thread keeps
- * reporting `idle` (#1789). Refuse with the same 409 the direct send path
- * returns.
- *
- * A thread with no environment row is accepted while it has never run: the
- * queue is how messages wait for provisioning. Once the thread has a provider
- * thread id, a missing environment means the row was pruned after destroy, and
- * the direct send path already refuses with `never_attached`.
- */
 function admitQueuedMessage(
   db: DbQueryConnection,
   thread: Thread,
@@ -206,9 +190,6 @@ export async function createQueuedMessageForThread(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
-  // The awaits above can interleave with an archive or environment destroy, so
-  // admit against the rows as they are at insert time, in the same immediate
-  // transaction as the insert.
   const { currentThread, providerThreadId, queuedMessage } =
     deps.db.transaction(
       (tx) => {
@@ -428,16 +409,9 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     }),
   );
   let input = groupedInputForRuntime(inputGroups);
-  // Plugin mentions resolve once at send time (plugin design §4.9), exactly
-  // like the direct-send path in sendThreadMessage: this fast path dispatches
-  // straight to the daemon, so it must append the same agent-only context
-  // inputs itself. A resolve failure throws before the claim is consumed, so
-  // the message stays queued instead of silently losing its context.
   const pluginMentionContext = await resolvePluginMentionContextInputs(input);
   if (pluginMentionContext.length > 0) {
     input = [...input, ...pluginMentionContext];
-    // Keep the grouped view aligned with the flat runtime input: the
-    // context rides the final group so a grouped send carries it too.
     const lastGroup = inputGroups[inputGroups.length - 1]!;
     inputGroups = [
       ...inputGroups.slice(0, -1),
@@ -532,13 +506,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         { event: { type: "run.started" }, threadId: thread.id },
       );
       if (!outcome.applied) {
-        // The thread was deleted, archived, or began stopping in the race
-        // window between the auto-send entry guard and this dispatch:
-        // run.started is superseded by its notDeleted/notArchived
-        // predicate (and is structurally absent from `stopping`). Roll back
-        // the claim consumption and the queued client/turn/requested append
-        // so the message stays queued and no host command is sent — the entry
-        // guard skips the thread on the next sweep tick.
         throw createQueuedMessageClaimLostError();
       }
       return { activeThread: outcome.thread, command };

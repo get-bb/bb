@@ -16,8 +16,6 @@ export default {
 const noop = () => {};
 const asyncNoop = async () => {};
 
-// Matches the dialog's custom DialogContent className: p-0 + tight border +
-// 34rem width, leaving the form to own its own padding.
 const stageClassName =
   "max-w-[34rem] gap-0 overflow-hidden border-border p-0 shadow-sm";
 

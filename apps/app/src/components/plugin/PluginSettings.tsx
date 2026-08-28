@@ -34,26 +34,11 @@ import {
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
-/**
- * Plugin configuration rendered inside the canonical Plugins detail surface.
- * Declarative settings remain host-rendered, while `settingsSection` slots
- * can provide richer plugin-owned controls. Secrets are write-only: the
- * server reports only `{ set }`, and an empty secret input leaves it unchanged.
- * A string marked `experimental_multiline` is a monospace textarea below its
- * label at full width; every other control sits beside its label.
- */
-
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
-/**
- * A multi-line field sizes itself to its content between six and twenty-four
- * rows where `field-sizing: content` is supported (the min/max heights), and
- * falls back to a `rows` count derived from the value elsewhere: one row per
- * line plus one to type into, within the same bounds.
- */
 const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
 const MULTILINE_TEXTAREA_CLASS =
@@ -198,7 +183,6 @@ function PluginSettingField({
     );
   }
 
-  // type === "string" (including secrets).
   const isSecret = descriptor.secret === true;
   const secretIsSet =
     isSecret &&
@@ -237,7 +221,6 @@ function PluginSettingField({
   );
 }
 
-/** Host-rendered declarative settings form for a plugin detail page. */
 export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const queryClient = useQueryClient();
   const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
@@ -260,8 +243,6 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const view = viewQuery.data ?? null;
   if (view === null || Object.keys(view.schema).length === 0) return null;
 
-  // Secrets are write-only; an untouched or emptied secret input means
-  // "leave unchanged", so it never rides the update payload.
   const changedValues: Record<string, unknown> = {};
   for (const [key, draft] of Object.entries(drafts)) {
     const descriptor = view.schema[key];
@@ -323,22 +304,12 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   );
 }
 
-/**
- * Statuses whose factory ran, so a settings schema exists server-side. A
- * needs-configuration plugin MUST be configurable here — that status exists
- * precisely to send the user to this form — and degraded plugins are loaded
- * too. Errored/missing/incompatible plugins have no schema to render.
- */
 const PLUGIN_STATUSES_WITH_SETTINGS = [
   "running",
   "needs-configuration",
   "degraded",
 ];
 
-/**
- * The Settings-page home for one plugin's configuration. The Extensions
- * detail page links here rather than hosting the form itself.
- */
 export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
@@ -359,9 +330,6 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
-  // Mirrors the Extensions detail page: the same header anatomy and section
-  // stack, with a "Plugin details" section that is the counterpart of the
-  // detail page's Configuration section (each one sentence linking across).
   return (
     <div className="mx-auto w-full max-w-5xl">
       <div className="flex items-center gap-3">
@@ -411,7 +379,6 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
   );
 }
 
-/** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
   const hasSettingsSections = settingsSections.some(

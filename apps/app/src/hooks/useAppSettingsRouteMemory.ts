@@ -28,18 +28,9 @@ function isGlobalSettingsRoute(pathname: string): boolean {
 }
 
 function isPluginSettingsCompatibilityRoute(pathname: string): boolean {
-  // Only the bare /settings/plugins list is legacy — it redirects to the
-  // Extensions collection. /settings/plugins/:pluginId is a real Settings
-  // page now that Settings hosts plugin configuration, so it participates in
-  // settings route memory like any other section.
   return matchPath(SETTINGS_PLUGINS_ROUTE_PATH, pathname) !== null;
 }
 
-/**
- * Remembers the most recently visited core-app and global Settings routes
- * while the app shell is mounted. Extensions route memory is intentionally
- * scoped to its mounted sidebar; leaving Extensions resets its entry route.
- */
 export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
   const currentRoutePath = getLocationRoutePath(location);

@@ -44,15 +44,10 @@ import {
 type PaletteMode = "commands" | "threads";
 
 export interface CommandPaletteProps {
-  /** The surface's thread and project, handed to plugin rows. */
   threadId: string | null;
   projectId: string | null;
 }
 
-/**
- * Type to filter the commands that apply right now, then run one with Enter.
- * Mounted once by `AppLayout` and opened by `palette.open`.
- */
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
@@ -70,9 +65,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const [recents, setRecents] = useState<readonly string[]>(() =>
     readPaletteRecents(),
   );
-  // Where availability, dispatch, and focus-on-close all point.
   const openTargetRef = useRef<EventTarget | null>(null);
-  // Set when a row is chosen, read once focus has been restored.
   const pendingRunRef = useRef<(() => void) | null>(null);
 
   const buildActions = useCallback(
@@ -135,15 +128,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   );
   const resultCount =
     mode === "commands" ? rankedCommands.length : threadItems.length;
-  // Typing can shrink the list under the selection.
   const activeIndex =
     resultCount === 0 ? -1 : Math.min(highlightedIndex, resultCount - 1);
 
-  /**
-   * Focus stays in the search field, so nothing scrolls the highlighted row
-   * into view on its own. Keyboard moves only: scrolling on hover would yank
-   * the list out from under the pointer.
-   */
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
@@ -189,10 +176,6 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     [navigate],
   );
 
-  /**
-   * Restore focus before running, so a command that focuses something does not
-   * have it taken back by the dialog's own restoration a tick later.
-   */
   const handleAfterCloseAutoFocus = useCallback(() => {
     const pending = pendingRunRef.current;
     pendingRunRef.current = null;
@@ -282,7 +265,6 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             className="size-4 shrink-0 text-muted-foreground"
           />
           <input
-            // Opened by a chord expressly to type into.
             autoFocus
             role="combobox"
             aria-expanded
@@ -299,8 +281,6 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
               setQuery(nextQuery);
               if (!nextQuery.startsWith(">")) setThreadItems([]);
               setHighlightedIndex(0);
-              // `activeIndex` may not change, so the effect above cannot do
-              // this: send the scrolled container back to the first row.
               if (listRef.current !== null) listRef.current.scrollTop = 0;
             }}
             onKeyDown={handleKeyDown}
@@ -360,7 +340,6 @@ function PaletteRow({
   onSelect: () => void;
 }) {
   return (
-    // A listbox option the input points at, not a focusable control.
     <div
       id={id}
       role="option"

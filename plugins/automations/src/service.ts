@@ -186,10 +186,6 @@ async function discardUncommittedScript(args: {
   }
 }
 
-/**
- * Adds `storedScriptPath` (the absolute path of the private copy that runs
- * execute) to script automations that have a stored script file.
- */
 function withStoredScriptPath(
   pluginDataDir: string,
   automation: AutomationResponse,

@@ -1,37 +1,10 @@
-/**
- * The product-shape inventory behind the Plugin Guide: every surface a plugin
- * can plug into, in plain language. This file is the whole of bb's plugin API
- * documentation, so it has to stay current with the SDK — each surface names
- * the SDK symbols it documents and api-sync.test.ts fails the build when the
- * two drift apart.
- *
- * Each surface reads as plain product capability: what becomes possible in
- * that part of bb once a plugin owns it.
- *
- * `firstParty` lists the shipped bb plugins that use each surface today,
- * taken from a registration-call inventory of plugins/* in the bb repo.
- */
-
 export interface PluginSurface {
   id: string;
   title: string;
-  /** Lead sentence, ending in the phrase the bullets hang off. */
   summary: string;
-  /** What a plugin can do on this surface, one capability per line. */
   bullets: string[];
-  /**
-   * One scannable line for capability grids; the prose stays in the detail
-   * card. Only the pixel-less surfaces need one today.
-   */
   tagline?: string;
-  /**
-   * The SDK symbols this surface documents. Not shown in the UI: it is the
-   * tie between a card and the API it describes, and api-sync.test.ts fails
-   * when one of them is renamed or removed, or when a new registration slot
-   * ships with no card naming its type.
-   */
   apiSymbols: string[];
-  /** First-party bb plugins that ship on this surface today (display names). */
   firstParty?: string[];
   experimental?: boolean;
 }
@@ -47,14 +20,8 @@ export interface SurfaceGroup {
     | "headless";
   title: string;
   blurb: string;
-  /** Product anatomy stays spatial; non-spatial documentation can reflow. */
   fixtureKind: "spatial" | "capability-grid";
   surfaces: PluginSurface[];
-  /**
-   * Named clusters for a group that lists its surfaces instead of drawing
-   * them. Every surface id in the group appears in exactly one section
-   * (surfaces.test.ts enforces it).
-   */
   sections?: readonly {
     title: string;
     surfaceIds: readonly string[];
@@ -63,11 +30,6 @@ export interface SurfaceGroup {
 
 export type FixtureResponsiveStrategy = "scale-together" | "reflow";
 
-/**
- * Responsive behavior follows fixture meaning, never an author's per-page
- * preference. Product anatomy scales as one composition; the one non-spatial
- * capability grid uses ordinary document reflow.
- */
 export function fixtureResponsiveStrategy(
   group: Pick<SurfaceGroup, "fixtureKind">,
 ): FixtureResponsiveStrategy {
@@ -513,8 +475,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
     id: "headless",
     title: "Plugin backend",
     fixtureKind: "capability-grid",
-    // The grid below names all ten capabilities with their own taglines, so
-    // the blurb does not list them again.
     blurb: "The parts of the plugin API with no interface of their own.",
     sections: [
       {
@@ -656,6 +616,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Ship a Node entry point bb starts on demand on the machine it calls",
           "Call that worker from its server code over typed RPC",
           "Do work that has to happen on the machine itself, such as watching files or holding a wake lock",
+          "Declare desired loopback ports once and let bb deliver retained declarations when an enrolled machine reconnects",
         ],
         apiSymbols: ["PluginHosts"],
         firstParty: ["Keep Awake", "Remote access"],
@@ -670,6 +631,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Get a key-value store for small values such as flags and cursors",
           "Get its own SQLite database, with migrations, for larger or relational data",
+          "Reject a changed or reused migration number before it can hide a schema change",
           "Read and write only its own namespace; other plugins cannot see it",
         ],
         apiSymbols: ["PluginStorage"],
@@ -767,11 +729,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   },
 ];
 
-/**
- * Which slide each surface is drawn on, so a card that names another surface
- * can say where to find it — the same page's marker number, or the other
- * page by name.
- */
 export const GROUP_BY_SURFACE_ID: ReadonlyMap<
   string,
   { id: SurfaceGroup["id"]; title: string }

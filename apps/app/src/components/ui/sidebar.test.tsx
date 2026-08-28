@@ -28,8 +28,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// Matches SIDEBAR_MOBILE_DRAG_SETTLE_MS: the deferred mobile open and close
-// flip React state only after the slide transition window has elapsed.
 const MOBILE_TOGGLE_SETTLE_MS = 220;
 
 function settleMobileToggle() {
@@ -182,8 +180,6 @@ describe("useIsSidebarShowing", () => {
     expect(screen.getByTestId("showing").textContent).toBe("false");
     const settled = showingRenders.length;
 
-    // A provider commit that changes the full context object but not the
-    // visible bit (page header and retained secondary panel read only the bit).
     fireEvent.click(screen.getByRole("button", { name: "suppress" }));
     expect(showingRenders).toHaveLength(settled);
 
@@ -193,8 +189,6 @@ describe("useIsSidebarShowing", () => {
     const afterOpen = showingRenders.length;
     expect(afterOpen).toBe(settled + 1);
 
-    // Close: the closing-flag commit must not reach the reader; only the
-    // deferred openMobile flip does.
     fireEvent.click(screen.getByRole("button", { name: "close" }));
     expect(showingRenders).toHaveLength(afterOpen);
     settleMobileToggle();
@@ -223,8 +217,6 @@ function getMobilePanel(): HTMLElement | null {
   return panel instanceof HTMLElement ? panel : null;
 }
 
-// Matches SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS: the closed compact drawer
-// realizes its subtree at the latest this long after boot.
 const MOBILE_REALIZE_TIMEOUT_MS = 1000;
 
 function settleMobileRealization() {
@@ -252,9 +244,6 @@ describe("mobile sidebar deferred realization", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();
 
-    // The panel element itself is mounted from the first commit (the swipe
-    // helpers select it), but its subtree stays out of the boot critical
-    // path while the drawer is closed.
     const closedPanel = getMobilePanel();
     expect(closedPanel).not.toBeNull();
     expect(closedPanel?.dataset.state).toBe("closed");
@@ -263,7 +252,6 @@ describe("mobile sidebar deferred realization", () => {
 
     settleMobileRealization();
 
-    // Same panel element; only the subtree was realized (no remount).
     expect(getMobilePanel()).toBe(closedPanel);
     expect(closedPanel?.dataset.state).toBe("closed");
     expect(closedPanel?.textContent).toContain("Sidebar content");
@@ -292,7 +280,6 @@ describe("mobile sidebar deferred realization", () => {
       expect(idleTimeout).toBe(MOBILE_REALIZE_TIMEOUT_MS);
       expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
 
-      // Frames alone must not realize: idle is the signal in this browser.
       act(() => {
         vi.advanceTimersByTime(100);
       });
@@ -315,8 +302,6 @@ describe("mobile sidebar deferred realization", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
-    // The slide starts from inline styles while React state stays closed;
-    // the subtree must commit during that window, not after the settle.
     const openingPanel = getMobilePanel();
     expect(openingPanel?.dataset.state).toBe("closed");
     expect(openingPanel?.textContent).toContain("Sidebar content");
@@ -325,7 +310,6 @@ describe("mobile sidebar deferred realization", () => {
     expect(getMobilePanel()?.dataset.state).toBe("open");
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
 
-    // Retained across close: the latch never resets.
     fireEvent.click(screen.getByTestId("sidebar-mobile-backdrop"));
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("closed");
@@ -340,9 +324,6 @@ describe("mobile sidebar deferred realization", () => {
     let panelStyledForSlideInTap = false;
     let realizedInTapFlush = true;
     act(() => {
-      // flushSync stands in for the tap's discrete event: it flushes only the
-      // urgent lane, so the transition-priority realize commit is still
-      // pending when the samples are taken and lands when act exits.
       flushSync(() => {
         trigger.click();
       });
@@ -352,9 +333,6 @@ describe("mobile sidebar deferred realization", () => {
         panel?.textContent?.includes("Sidebar content") ?? false;
     });
 
-    // The tap's own flush only starts the slide (inline drag styles); the
-    // subtree mounts in the interruptible commit that follows, so the first
-    // frame of the slide never waits on the realize commit.
     expect(panelStyledForSlideInTap).toBe(true);
     expect(realizedInTapFlush).toBe(false);
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
@@ -363,10 +341,6 @@ describe("mobile sidebar deferred realization", () => {
     expect(getMobilePanel()?.dataset.state).toBe("open");
   });
 
-  // The width is an inherited custom property unless registered otherwise
-  // (theme.css registers it non-inherited). Either way it must be written on
-  // the elements that read it and never on the provider wrapper: the wrapper
-  // is the app root, and a per-frame change there restyles the whole app.
   it("writes the desktop width on the gap and panel, not on the provider wrapper", () => {
     render(
       <CompactViewportOverrideProvider isCompactViewport={false}>
@@ -406,9 +380,6 @@ describe("mobile sidebar persistence", () => {
     renderCompactSidebarHarness();
     settleMobileRealization();
 
-    // The rows stay mounted while the drawer is closed, so reopening
-    // replays no mount cost (#1261) — but the closed panel must not be
-    // reachable by taps or focus.
     const closedPanel = getMobilePanel();
     expect(closedPanel).not.toBeNull();
     expect(closedPanel?.textContent).toContain("Sidebar content");
@@ -421,11 +392,8 @@ describe("mobile sidebar persistence", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
-    // The open is also deferred: the slide-in starts from inline styles
-    // while React state stays closed, then the commit lands after settle.
     const openingPanel = getMobilePanel();
     expect(openingPanel?.dataset.state).toBe("closed");
-    // jsdom normalizes the "-0%" the helper writes to "0%".
     expect(openingPanel?.style.translate).toBe("0%");
     settleMobileToggle();
 
@@ -433,10 +401,6 @@ describe("mobile sidebar persistence", () => {
     expect(openPanel?.dataset.state).toBe("open");
     expect(openPanel?.hasAttribute("inert")).toBe(false);
 
-    // The open drawer is modal WITHOUT marking siblings inert: an `inert`
-    // flip on the content inset forces a style re-resolution of that whole
-    // subtree (~hundreds of ms on a long timeline in WebKit). The backdrop
-    // blocks pointer input and the keydown trap owns Tab instead.
     const panelParent = openPanel?.parentElement;
     const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
     for (const sibling of panelParent?.children ?? []) {
@@ -444,9 +408,6 @@ describe("mobile sidebar persistence", () => {
     }
     expect(inset?.hasAttribute("inert")).toBe(false);
 
-    // Backdrop dismissal starts the slide-out immediately (inline settle
-    // styles) and flips React state only after the settle window, so the
-    // exit animation never waits on the close commit's style recalc.
     fireEvent.click(backdrop);
     const closingPanel = getMobilePanel();
     expect(closingPanel?.dataset.state).toBe("open");
@@ -477,26 +438,18 @@ describe("mobile sidebar persistence", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
-    // React state stays closed for the settle window, so the class-driven
-    // backdrop state still reads pointer-events-none while the panel is
-    // still `inert`. The inline override must intercept taps immediately,
-    // or a rapid second tap falls through onto the page below.
     const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
     expect(getMobilePanel()?.dataset.state).toBe("closed");
     expect(backdrop.style.pointerEvents).toBe("auto");
 
-    // A tap the backdrop absorbs mid-slide must not cancel the open; the
-    // settle guard swallows the dismiss.
     fireEvent.click(backdrop);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    // The commit clears the override; the open-state class owns taps now.
     expect(backdrop.style.pointerEvents).toBe("");
 
     fireEvent.click(backdrop);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("closed");
-    // No stale override may keep the closed backdrop interactive.
     expect(backdrop.style.pointerEvents).not.toBe("auto");
   });
 
@@ -507,8 +460,7 @@ describe("mobile sidebar persistence", () => {
         <SidebarProvider>
           <Sidebar>Sidebar content</Sidebar>
           <SidebarInset>Main content</SidebarInset>
-          {/* Mirrors AppLayout's SidebarTriggerOverlay: a sibling of the
-              panel, pinned above it. */}
+          {}
           <div data-testid="trigger-overlay">
             <SidebarTrigger />
           </div>
@@ -522,13 +474,10 @@ describe("mobile sidebar persistence", () => {
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    // The overlay must stay interactive while the drawer is open so a
-    // second press can close it.
     expect(overlay.hasAttribute("inert")).toBe(false);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
 
     fireEvent.click(trigger);
-    // The state flip defers past the slide-out; the panel is already moving.
     expect(getMobilePanel()?.dataset.state).toBe("open");
     expect(getMobilePanel()?.style.translate).toBe("-100%");
 
@@ -537,7 +486,6 @@ describe("mobile sidebar persistence", () => {
     expect(getMobilePanel()?.hasAttribute("inert")).toBe(true);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
-    // A third press reopens (deferred like every open).
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
@@ -567,7 +515,6 @@ describe("mobile sidebar persistence", () => {
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    // The row exists only once the open realized the drawer subtree.
     const row = screen.getByRole("button", { name: "Sidebar row" });
 
     act(() => trigger.focus());
@@ -580,8 +527,6 @@ describe("mobile sidebar persistence", () => {
     fireEvent.keyDown(trigger, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(row);
 
-    // Focus that escaped into the (non-inert) inset is recaptured by the
-    // next Tab instead of walking the app behind the modal drawer.
     act(() => insetAction.focus());
     fireEvent.keyDown(insetAction, { key: "Tab" });
     expect(document.activeElement).toBe(trigger);
@@ -639,15 +584,12 @@ describe("mobile sidebar swipe-open touch listener scoping", () => {
     const prose = screen.getByText("Selectable message prose");
     const addSpy = vi.spyOn(window, "addEventListener");
 
-    // Deeper than the edge zone: this is a scroll far more often than a
-    // swipe, so it must never make the browser wait on the main thread.
     fireTouch(prose, "touchstart", createTouch(120, 160));
 
     const registrations = touchMoveRegistrations(addSpy);
     expect(registrations).toHaveLength(1);
     expect(registrations[0]?.[2]).toEqual({ passive: true });
 
-    // The passive session still recognizes and completes the swipe.
     const move = new Event("touchmove", { bubbles: true, cancelable: true });
     Object.defineProperties(move, {
       touches: { value: createTouchList(createTouch(260, 164)) },
@@ -655,7 +597,6 @@ describe("mobile sidebar swipe-open touch listener scoping", () => {
     });
     fireEvent(window, move);
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    // ... without calling preventDefault from the passive listener.
     expect(move.defaultPrevented).toBe(false);
   });
 
@@ -690,8 +631,6 @@ describe("mobile sidebar text-selection arbitration", () => {
     fireTouch(window, "touchmove", createTouch(260, 164));
 
     expect(getMobilePanel()?.dataset.state).toBe("open");
-    // The swipe path flips React state directly; the subtree must realize
-    // in that same commit so the dragged-in panel is not empty.
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
   });
 
@@ -700,13 +639,11 @@ describe("mobile sidebar text-selection arbitration", () => {
 
     fireTouch(prose, "touchstart", createTouch(120, 160));
 
-    // The tap path must stay free of forced layout reads (#1269).
     expect(getScrollWidthReads()).toBe(0);
 
     fireTouch(window, "touchmove", createTouch(260, 164));
     fireTouch(window, "touchmove", createTouch(280, 164));
 
-    // Exactly one probe per gesture, then the swipe cancels.
     expect(getScrollWidthReads()).toBe(1);
     expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
@@ -732,7 +669,6 @@ describe("mobile sidebar text-selection arbitration", () => {
     prose.remove();
     fireTouch(window, "touchmove", createTouch(260, 164));
 
-    // A detached target reports empty computed style; never probe or open.
     expect(getScrollWidthReads()).toBe(0);
     expect(getMobilePanel()?.dataset.state).toBe("closed");
   });

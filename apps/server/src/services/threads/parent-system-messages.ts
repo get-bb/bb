@@ -49,10 +49,6 @@ import {
 
 const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
-// Family-B taxonomy stamping carried alongside the message input from each emit
-// site to the persisted `client/turn/requested` event. `senderThreadId` is null
-// for these `initiator: "system"` messages, so the subject must be stamped at
-// emit time.
 export interface ParentSystemMessageTaxonomy {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -176,12 +172,6 @@ export function buildParentSystemInputFromTemplateSlot(
   });
 }
 
-/**
- * Canonical display label for a thread that is the subject of a parent-facing
- * system message: the trimmed title, or the thread id when untitled. Shared by
- * the stamped `systemMessageSubject.threadName` and the body's `@thread`
- * mention label so the two can't drift.
- */
 export function parentSystemThreadLabel(thread: {
   id: string;
   title: string | null;
@@ -321,8 +311,6 @@ async function queueReadyParentSystemMessage(
 
   const command = await prepareReadyThreadTurnCommand(deps, {
     thread: args.thread,
-    // A parent system message targets an already-started thread; forking only
-    // happens at create time.
     fork: null,
     input: args.input,
     requestId,
@@ -339,7 +327,6 @@ async function queueReadyParentSystemMessage(
     providerId: args.thread.providerId,
     syncGeneratedTitle: false,
   });
-  // The post-transition row when dispatching the message activated the thread.
   const activeThread: Thread | null = deps.db.transaction(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
@@ -408,9 +395,6 @@ export async function queueParentSystemMessage(
     return false;
   }
   if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
-    // A prompt cannot interrupt an open question or approval, and dropping the
-    // notice left the parent believing its child had gone silent (#1650). It
-    // waits and flushes when the parent's interactions settle.
     deferThreadMessage(deps, {
       threadId: parentThread.id,
       payload: {

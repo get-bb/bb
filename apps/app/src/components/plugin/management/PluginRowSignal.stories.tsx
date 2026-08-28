@@ -58,13 +58,6 @@ function StateRow({
   );
 }
 
-/**
- * Every state of the installed row's status/action slot around updates,
- * following the multi-state pattern: scroll one story, review the surface.
- * The control is a quiet neutral button whose tinted download mark carries the
- * tone; it names a version only when the version is readable — git sources
- * report commit hashes, which belong (shortened) in the dialog, not the row.
- */
 export const UpdateStates = () => (
   <div className="flex max-w-xl flex-col gap-3 p-4">
     <StateRow label="Semver update — button names the version">
@@ -81,9 +74,7 @@ export const UpdateStates = () => (
         onStatusClick={() => {}}
       />
     </StateRow>
-    <StateRow label="No update available — the slot stays empty">
-      {/* pluginRowSignal() returns null here; the row renders nothing. */}
-    </StateRow>
+    <StateRow label="No update available — the slot stays empty">{}</StateRow>
     <StateRow label="Status signal (unrelated failure) keeps its tone">
       <PluginRowSignalView
         signal={{
@@ -100,11 +91,6 @@ export const UpdateStates = () => (
   </div>
 );
 
-/**
- * The confirmation dialog for a git-sourced update: the title and rollback
- * note shorten the commit hash to seven characters, while the collapsed
- * details grid keeps the full value for precision.
- */
 export const UpdateDialogShortHash = () => {
   const [queryClient] = useState(() => new QueryClient());
   const [open, setOpen] = useState(true);

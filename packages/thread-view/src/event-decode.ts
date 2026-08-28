@@ -2,7 +2,6 @@ import { buildThreadEvent, getThreadEventScopeTurnId } from "@bb/domain";
 import type { ThreadEvent, ThreadEventRow } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 
-/** Extract the optional turnId from any decoded ThreadEvent. */
 export function getEventTurnId(decoded: ThreadEvent): string | undefined {
   return getThreadEventScopeTurnId(decoded.scope);
 }
@@ -125,7 +124,6 @@ export function getEventParentToolCallId(
   }
 }
 
-/** Row metadata that travels alongside the decoded event. */
 export interface EventMeta {
   id: string;
   seq: number;

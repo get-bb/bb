@@ -7,7 +7,6 @@ type SectionMentionSuggestion = Extract<
   { kind: "section" }
 >;
 
-/** A thread section the mention menu can offer. */
 export interface SectionMentionCandidate {
   id: string;
   name: string;

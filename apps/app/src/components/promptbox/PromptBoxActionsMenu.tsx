@@ -57,11 +57,6 @@ export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
   text: "/automation ",
 };
 
-/**
- * Seeds the composer with the plugin prompt prefix the plugin library uses, so
- * the user finishes one sentence and the agent reaches the plugin-authoring
- * skill. There is no provider command for it, so the text is inserted as is.
- */
 export const CREATE_PLUGIN_PROMPT_ACTION: PromptBoxAction = {
   kind: "plugin",
   text: CREATE_PLUGIN_PROMPT,
@@ -92,8 +87,6 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Automation",
     icon: "Repeat",
   },
-  // The icons follow the Tools navigation sections, so "Skills" and "Plugin"
-  // read the same here as they do in the sidebar. See tools-navigation.ts.
   plugin: {
     label: "Plugin",
     icon: "ElectricPlugs",
@@ -103,11 +96,6 @@ const PROMPT_ACTION_PRESENTATION = {
   { label: string; icon: IconName }
 >;
 
-/**
- * Adds the app-owned prompt actions to the provider-owned ones. Providers
- * describe only their own composer commands, so bb appends the actions it owns
- * itself and keeps a provider entry when the provider already supplies one.
- */
 export function withAppPromptActions(
   actions: readonly PromptBoxAction[],
 ): PromptBoxAction[] {
@@ -193,8 +181,6 @@ export function PromptBoxActionsMenu({
           aria-label="Prompt actions"
           className={cn(
             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
-            // Outdent so the "+" glyph lines up with the placeholder/text
-            // (toolbar px-3.5 + button px-2 sits 6px right of the editor's px-4).
             "-ml-1.5",
           )}
         >

@@ -42,13 +42,6 @@ import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { CatalogEntryIcon } from "./plugin-ui";
 
-/**
- * The Browse page: hero → one CTA row (create + install-from-source) → then
- * ONE of two mutually exclusive bodies. Browsing shows the search toolbar and
- * the installable grid; composing swaps that for the example cards, since the
- * examples exist to feed the open composer. Every create-shaped affordance
- * opens the hero's inline composer in place; nothing navigates away.
- */
 export function BrowsePluginsTab({
   onInstall,
   onOpenPlugin,
@@ -56,12 +49,9 @@ export function BrowsePluginsTab({
 }: {
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
-  /** Opens the Add-plugin dialog; rendered beside the hero CTA. */
   onInstallFromSource: () => void;
 }) {
   const [query, setQuery] = useState("");
-  // Example cards and the page button open the hero's inline composer through
-  // this request; nonces make a repeated click on the same card still land.
   const [searchParams, setSearchParams] = useSearchParams();
   const creationViewActive = searchParams.get("view") === "create";
   const [heroRequest, setHeroRequest] = useState<{
@@ -79,9 +69,6 @@ export function BrowsePluginsTab({
       nonce: nextComposerRequestNonce(),
       ...(seed === undefined ? {} : { seed }),
     });
-  // Creation is a real navigation entry so the app shell's existing sidebar
-  // Back control owns the return to Browse. POP/forward navigation then drives
-  // the inline composer without adding another page-local back affordance.
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
     setHeroRequest({
@@ -89,12 +76,9 @@ export function BrowsePluginsTab({
       ...(creationViewActive ? {} : { close: true }),
     });
   }
-  // The composer lives in the hero at the top; opening it from a card further
-  // down must bring it into view or the click appears to do nothing.
   useEffect(() => {
     if (heroRequest === null) return;
     const viewport = document.getElementById("plugins-browse-results");
-    // Optional call: jsdom implements elements without scrollTo.
     viewport?.scrollTo?.({
       top: 0,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -102,17 +86,11 @@ export function BrowsePluginsTab({
         : "smooth",
     });
   }, [heroRequest]);
-  // Empty means unfiltered, matching the Type filters on Installed and Skills.
   const [categories, setCategories] = useState<string[]>([]);
-  // Browse is a store, so it opens on popularity: the most installed plugins
-  // are the ones a first visit should see. Alphabetical stays one click away.
   const [sortMode, setSortMode] = useState<BrowseSortMode>("installs");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  // Browse offers installs, so an entry this BB cannot install is noise here.
-  // The search API still returns incompatible entries with their reasons for
-  // the CLI, where the "requires newer bb" status is the useful signal.
   const entries = (searchQuery.data ?? []).filter((entry) => entry.compatible);
   const availableCategories: string[] = [];
   for (const entry of entries) {
@@ -129,20 +107,11 @@ export function BrowsePluginsTab({
     id: name,
     label: name,
   }));
-  // Only the curated marketplace publishes counts, so a catalog without a
-  // single count has nothing to order by; offering the mode would sort the
-  // grid by name and look broken.
   const installsKnown = entries.some((entry) => entry.installs !== null);
-  // Falling back carries the fallback's own default direction: the count sort
-  // opens descending, and inheriting that would show an unexplained Z→A grid.
   const effectiveSortMode =
     sortMode === "installs" && !installsKnown ? "alpha" : sortMode;
   const effectiveSortDirection =
     effectiveSortMode === sortMode ? sortDirection : "asc";
-  // Picking the mode already showing flips direction, as on the other
-  // collections. A new mode starts at the direction that reads as its default:
-  // A→Z for names, most-installed-first for popularity. The comparison is
-  // against the mode on screen, so the menu's checked row always toggles.
   const changeSort = (next: string) => {
     if (next !== "alpha" && next !== "installs") return;
     if (next === effectiveSortMode) {
@@ -162,21 +131,13 @@ export function BrowsePluginsTab({
     effectiveSortMode,
     effectiveSortDirection,
   );
-  // A single group needs no heading — with nothing to contrast against, naming
-  // it would add page chrome that tells the user nothing. Bundled plugins and
-  // the curated marketplace are two publishers, so in practice headings show.
   const showPublisherHeadings = groups.length > 1;
 
   return (
     <ResourceCollectionViewport scrollId="plugins-browse-results">
-      {/* One wrapper owns the page rhythm and centers the content column: the
-          scroller spans the whole pane so the wheel works from the gutters.
-          (Spacing utilities on the scroll viewport itself never fire: Radix
-          interposes a display:table div, so the sections would not be siblings
-          of each other there.) */}
+      {}
       <div className={cn("space-y-7", TOOLS_PAGE_BAND_CLASSES)}>
-        {/* The create control sits at the page's top right, like every other
-            collection's actions row; the hero keeps only its showcase. */}
+        {}
         <div className="flex items-center justify-end gap-3">
           <div className="flex items-stretch">
             <Button
@@ -216,14 +177,10 @@ export function BrowsePluginsTab({
         />
 
         {composing ? (
-          /* The examples exist to feed the open composer, so they appear only
-             in this state — browsing and composing are mutually exclusive
-             bodies below one stable hero. */
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section>
-            {/* Compact and centered under the hero: the search scopes the
-                grid below, and full width here would read as page chrome. */}
+            {}
             <div className="mx-auto w-full max-w-[32rem]">
               <ResourceToolbar
                 searchValue={query}
@@ -341,21 +298,6 @@ interface PublisherGroup {
   entries: PluginCatalogSearchEntry[];
 }
 
-/**
- * Group the catalog by publisher, as a flat grid within each one. Category
- * stays a filter, not a layout. Encounter order is the server's order, so
- * grouping never reshuffles it.
- *
- * Publisher, not marketplace: the plugins bundled with the app are listed
- * under the marketplace bb curates, so grouping by marketplace filed all of
- * them under that marketplace's name and told the user BB Community wrote
- * plugins that ship in the build.
- *
- * Groups key on `publisherKey`, never on the label. A marketplace names itself,
- * so grouping on the label let a third-party marketplace merge its entries into
- * another publisher's group — and inherit that group's heading, including the
- * absence of the third-party note.
- */
 function groupByPublisher(
   entries: readonly PluginCatalogSearchEntry[],
   sortMode: BrowseSortMode,
@@ -378,9 +320,6 @@ function groupByPublisher(
   for (const group of groups) {
     group.entries.sort((left, right) => {
       if (sortMode === "installs") {
-        // An entry the sidecar does not name has an unknown count, not zero,
-        // so it sinks to the bottom in both directions rather than claiming
-        // either end of the popularity order.
         if (left.installs === null || right.installs === null) {
           if (left.installs !== null) return -1;
           if (right.installs !== null) return 1;
@@ -392,8 +331,6 @@ function groupByPublisher(
         const result = left.displayName.localeCompare(right.displayName);
         if (result !== 0) return sortDirection === "asc" ? result : -result;
       }
-      // Names break count ties so equally installed plugins stay in a stable,
-      // readable order instead of the server's arbitrary one.
       const byName = left.displayName.localeCompare(right.displayName);
       if (byName !== 0) return byName;
       return left.entryId.localeCompare(right.entryId);
@@ -402,10 +339,6 @@ function groupByPublisher(
   return groups;
 }
 
-/**
- * Store counts are read at a glance, not audited: "1.2k" carries the scale a
- * card needs, and the exact number stays in the title attribute.
- */
 const INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -454,19 +387,12 @@ function BrowseCard({
   const descriptionArea = (
     <span className="block min-h-[2lh]">{description}</span>
   );
-  // Why an entry cannot be installed outranks who wrote it.
   const byline =
     !entry.compatible && entry.incompatibleReason !== null ? (
       <span className="text-warning-text">{entry.incompatibleReason}</span>
     ) : entry.author !== null ? (
       <span>By: {entry.author.name}</span>
     ) : undefined;
-  // The publisher label, not the marketplace's raw display name: a third-party
-  // manifest names itself, and the raw name would print a reserved BB label on
-  // the card that the server already refused to grant.
-  // The repository link sits with the publisher label: both say where the
-  // plugin comes from. The card footer ignores pointer events so clicks fall
-  // through to the open button; the link opts back in to take its own click.
   const repositoryLink =
     entry.repositoryUrl === null ? null : (
       <a
@@ -477,8 +403,7 @@ function BrowseCard({
         className="pointer-events-auto inline-flex items-center gap-0.5 leading-none underline underline-offset-2 hover:text-foreground"
       >
         repo
-        {/* Optical nudge: centered against the line box, the glyph sits a
-            pixel above the x-height of the lowercase label beside it. */}
+        {}
         <Icon
           name="ExternalLink"
           className="size-2.5 shrink-0 translate-y-px"
@@ -486,8 +411,6 @@ function BrowseCard({
         />
       </a>
     );
-  // Only the curated marketplace publishes counts, so this is null for every
-  // third-party listing and for any entry its sidecar does not name.
   const installs =
     entry.installs === null ? null : (
       <span
@@ -505,8 +428,6 @@ function BrowseCard({
     footerParts.length === 0 ? undefined : (
       <span className="text-2xs text-subtle-foreground">
         {footerParts.map((part, index) => (
-          // Index keys: the parts are a fixed, ordered set, not a reorderable
-          // list, so position is their identity.
           <Fragment key={index}>
             {index > 0 ? " · " : null}
             {part}

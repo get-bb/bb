@@ -2,17 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
 
 interface CopyToClipboardOptions {
-  /** Toast message shown on success (set to `null` to suppress). */
   successMessage?: string | null;
-  /** Toast message shown on failure (set to `null` to suppress). */
   errorMessage?: string | null;
 }
 
-/**
- * Copies through the browser's legacy editing command. Unlike the async
- * Clipboard API, this remains available on plain-HTTP LAN origins when it is
- * called synchronously from a user gesture.
- */
 function copyWithEditingCommand(text: string): boolean {
   if (
     typeof document === "undefined" ||
@@ -72,10 +65,6 @@ function copyWithEditingCommand(text: string): boolean {
   return copied;
 }
 
-/**
- * Copies text using the modern API where available, with a user-gesture
- * fallback for browsers serving bb from a non-secure LAN origin.
- */
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   if (
     typeof navigator !== "undefined" &&
@@ -84,18 +73,11 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     try {
       await navigator.clipboard.writeText(text);
       return true;
-    } catch {
-      // A present Clipboard API can still reject because of origin policy or
-      // permissions. The synchronous editing command may remain available.
-    }
+    } catch {}
   }
   return copyWithEditingCommand(text);
 }
 
-/**
- * Copies text to the clipboard and surfaces success/failure via appToast.
- * Returns `true` on success, `false` on failure.
- */
 export async function copyToClipboardWithToast(
   text: string,
   {

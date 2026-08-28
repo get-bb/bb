@@ -1056,8 +1056,6 @@ describe("useComposer", () => {
             threadId: "thr_scope_owner",
             queuedMessageId,
           },
-          // A host can retain its editable surface while its logical scope
-          // changes, as root compose does when the selected project changes.
           textEffectKey: "shared-scope-effect",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -1233,7 +1231,6 @@ describe("useComposer", () => {
       },
     ]);
 
-    // A second mention lands after the first with a preserved gap.
     fireEvent.click(screen.getByText("n-mention"));
     expect(screen.getByTestId("draft-text").textContent).toBe(
       "ideas.md ideas.md ",
@@ -1367,8 +1364,6 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Leave panel" }));
     await act(async () => {});
     expect(screen.getByText("home")).toBeDefined();
-    // The sheet outlives the route through a grace window (a remount across
-    // navigation reuses it); only then does the final release detach it.
     expect(
       document.head.querySelector('link[data-bb-plugin-css="demo"]'),
     ).not.toBeNull();
@@ -1491,7 +1486,6 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
     const rememberedRow = screen.getByRole("button", { name: "Demo board" });
 
-    // The live registration lands under the same key: no remount, no flash.
     act(() => {
       setPluginSlotRegistrations(
         "demo",
@@ -1537,8 +1531,6 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
 
   it("stays quiet for an unknown panel until plugin frontends have booted", () => {
     resetPluginFrontendBootStateForTest();
-    // A reload or deep link renders the route before registrations arrive;
-    // that moment must not read as an error.
     render(
       <MemoryRouter initialEntries={["/plugins/ghost/board"]}>
         <Routes>
@@ -1598,7 +1590,6 @@ describe("plugin panel shared title bar and full-bleed body", () => {
         <PluginPanelHeaderActions panel={panel} subPath="" />
       </>,
     );
-    // The header center survives; the accessory is hidden, not chip-ified.
     expect(screen.getByText("Demo board")).toBeDefined();
     expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
   });
@@ -1761,9 +1752,6 @@ describe("plugin thread panel actions", () => {
 
   it("contains a throwing run and declines non-JSON params without opening", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // What each declined openPanel reported back to the plugin: a bad
-    // `params` must surface as false, never as a throw the plugin has to
-    // catch (the host swallows run errors, so a throw would be invisible).
     const declines: boolean[] = [];
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
@@ -1811,10 +1799,6 @@ describe("plugin thread panel actions", () => {
   });
 
   it("reports an accepted open as true from both panel action kinds", () => {
-    // The contract every openPanel entry point shares: an accepted open is
-    // true. Both action kinds are exercised in one test because the value of
-    // the boolean is that a plugin registering more than one kind can branch
-    // on it uniformly.
     const accepted: boolean[] = [];
     setPluginSlotRegistrations(
       "demo",
@@ -2251,10 +2235,6 @@ describe("plugin file opener tabs", () => {
   });
 });
 
-/**
- * A bundle built against an SDK before 0.4.16 reads `experimental_Original`
- * (renamed `Original` in 0.4.16). The host passes both for one release.
- */
 describe("file opener experimental_Original alias", () => {
   beforeEach(() => {
     resetDeprecatedAliasWarningsForTests();

@@ -834,10 +834,6 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<WorkspacePathListResponse>(),
     }),
-    /**
-     * Execute an environment action such as commit or squash_merge.
-     * Returns 409 when the action is blocked by environment state.
-     */
     actions: defineRoute({
       path: "/environments/:id/actions",
       method: "post",
@@ -966,17 +962,6 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadChildSummaryResponse>(),
     }),
-    /**
-     * Send a message to a thread.
-     * mode=queue-if-active queues when the thread is active; otherwise it
-     * starts a turn. mode=steer-if-active steers when the thread is active;
-     * otherwise it starts a turn. Legacy mode=auto starts idle threads and
-     * uses the provider's auto target for active turns.
-     * A thread that awaits user interaction cannot take a prompt: every mode
-     * but `start` is then held (`delivery: "deferred"`) and delivered once the
-     * interaction settles; `start` still fails with 409
-     * `awaiting_user_interaction`.
-     */
     send: defineRoute({
       path: "/threads/:id/send",
       method: "post",
@@ -985,10 +970,6 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<SendMessageResponse>(),
     }),
-    /**
-     * Replace an accepted root user turn and every later turn. A running
-     * thread is stopped and allowed to settle before history is rewritten.
-     */
     editMessage: defineRoute({
       path: "/threads/:id/edit-message",
       method: "post",
@@ -1003,10 +984,6 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
-    /**
-     * Create a queued message; senderThreadId preserves agent-to-agent context
-     * until send time.
-     */
     createQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "post",
@@ -1024,10 +1001,6 @@ export const publicApiRoutes = {
       >(updateQueuedMessageRequestSchema),
       response: jsonResponse<ThreadQueuedMessage>(),
     }),
-    /**
-     * Send a previously queued message in the requested mode, then delete the
-     * queued message.
-     */
     sendQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId/send",
       method: "post",

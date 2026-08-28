@@ -1,10 +1,5 @@
 import type { ProviderInfo } from "@bb/domain";
 
-/**
- * A `ProviderInfo` the way the server projects a registered provider: the
- * plugin's declared logo is served as `logoUrl`, which is the only source of
- * a provider's brand mark in the app (core vendors none).
- */
 export function makeProviderInfo(
   overrides: Partial<ProviderInfo> & Pick<ProviderInfo, "id">,
 ): ProviderInfo {

@@ -563,9 +563,9 @@ describe("MarkdownPreview thread mentions", () => {
     vi.useFakeTimers();
     try {
       const threadId = "thr_2222222222";
-    vi.mocked(sdk.threads.resolveMentions)
-      .mockRejectedValueOnce(new Error("temporary failure"))
-      .mockRejectedValueOnce(new Error("temporary failure"));
+      vi.mocked(sdk.threads.resolveMentions)
+        .mockRejectedValueOnce(new Error("temporary failure"))
+        .mockRejectedValueOnce(new Error("temporary failure"));
       renderMarkdown(
         <ThreadTitleMentions title={`Review @thread:${threadId}`} />,
         [],
@@ -747,8 +747,6 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    // The token is not a mention here, so it stays verbatim prose — one text
-    // node, no pill and no directive mount.
     const paragraph = container.querySelector("p");
     expect(paragraph?.textContent).toBe("@thread:thr_child[label]");
     expect(paragraph?.querySelector("a")).toBeNull();
@@ -958,7 +956,6 @@ describe("MarkdownPreview thread mentions", () => {
       <MarkdownPreview content="See @thread:thr_child for the report." />,
     );
 
-    // No mentions prop → no remark plugin → token is plain text, no pill anchor.
     expect(screen.queryByText("Rebuild comments")).toBeNull();
     expect(
       screen.getByText(/@thread:thr_child/u, { exact: false }),

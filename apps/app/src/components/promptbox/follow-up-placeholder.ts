@@ -1,13 +1,6 @@
 import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
 import { assertNever } from "@bb/core-ui";
 
-/**
- * Placeholder copy for the follow-up prompt-box, derived from the thread's
- * runtime display status. Lives in its own module so stories can share the
- * same derivation as production
- * (ThreadDetailPromptArea) — keeping placeholder text from drifting across
- * surfaces.
- */
 export function getFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {
@@ -32,7 +25,6 @@ export function getFollowUpPromptPlaceholder(
   }
 }
 
-/** Short copy that remains fully visible in the one-line mobile composer. */
 export function getCompactFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {

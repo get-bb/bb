@@ -346,13 +346,6 @@ function isSilentRun(run: AutomationRunResponse): boolean {
   );
 }
 
-/**
- * Glyphs and labels come from the shared run-state vocabulary in `@bb/domain`
- * — the same map Settings → Updates and `bb updates` read — so the two
- * surfaces cannot drift. Only the colour classes are local: a run history
- * colours success green because a succeeded run is its headline, where the
- * Updates page mutes it because up-to-date is its resting state.
- */
 const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
@@ -422,9 +415,6 @@ function RunRow({
   const visual = AUTOMATION_RUN_STATUS_VISUALS[run.status];
   const running = run.status === "running";
   const openable = run.runMode === "agent" && run.threadId !== null;
-  // The whole row is the affordance when there is a thread, so the destination
-  // stays keyboard-reachable without a separate visible button competing with
-  // the timestamp on every line.
   const RowTag = openable ? "button" : "div";
   const line = (
     <RowTag

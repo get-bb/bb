@@ -53,7 +53,6 @@ function provider(
   };
 }
 
-/** The first-party roster with the copy its plugins declare. */
 const FIRST_PARTY_PROVIDERS: ProviderInfo[] = [
   provider("codex", "Codex", true, {
     signInHint: "Run `codex` to sign in and see your usage.",
@@ -62,7 +61,8 @@ const FIRST_PARTY_PROVIDERS: ProviderInfo[] = [
   }),
   provider("claude-code", "Claude Code", true, {
     signInHint: "Run `claude` to sign in and see your usage.",
-    expiredHint: "Your Claude session expired. Run `claude`, then reload usage.",
+    expiredHint:
+      "Your Claude session expired. Run `claude`, then reload usage.",
     installUrl: "https://claude.com/claude-code",
   }),
   provider("acp-cursor", "Cursor", true, {
@@ -78,8 +78,6 @@ afterEach(cleanup);
 function renderContent(
   props: ComponentProps<typeof UsageLimitsSettingsSectionContent>,
 ) {
-  // The roster (names and declared copy) comes from the provider list; a
-  // test that passes none gets the first-party roster, as the live query would.
   return render(
     <TooltipProvider>
       <UsageLimitsSettingsSectionContent
@@ -315,11 +313,12 @@ describe("UsageLimitsSettingsSectionContent", () => {
 
 describe("UsageLimitsSettingsSectionContent marks", () => {
   it("draws each provider's declared logo beside its usage block", () => {
-    // Core vendors no brand marks: the block draws the logo the provider's
-    // plugin declared (served as logoUrl), passed through from the roster.
     renderContent({
       providers: [
-        { ...provider("codex", "Codex"), logoUrl: "/api/v1/system/providers/codex/logo" },
+        {
+          ...provider("codex", "Codex"),
+          logoUrl: "/api/v1/system/providers/codex/logo",
+        },
       ],
       usage: {},
       isLoading: false,

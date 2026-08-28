@@ -15,11 +15,6 @@ export interface SecondaryPanelPaneRenderContext {
   onFocusPane: () => void;
 }
 
-/**
- * One closable right-panel tab, including its persisted model, chrome, and
- * pane-local content. Keeping these together prevents the panel from joining
- * parallel representations by id when tabs move between split panes.
- */
 export interface SecondaryPanelRenderableTab {
   contentFillsRegion?: boolean;
   label: string;

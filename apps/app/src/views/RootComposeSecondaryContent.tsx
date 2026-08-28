@@ -18,26 +18,6 @@ import { useOptionalPaneContext } from "./thread-detail/PaneContext";
 
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
-// Where root compose pins its right-panel toggle in the viewport corner (see
-// rootPanelToggle in RootComposeView, which passes its selected position here).
-// The window
-// drag strip below must carve this same footprint back out of the macOS drag
-// region while the panel is closed: Electron resolves app-regions in DOM order
-// (later wins), and the strip renders after the fixed toggle, so a no-drag on
-// the toggle itself would just be re-added by the strip's own drag rect. The
-// carve has to live inside the strip, and this constant keeps the two footprints
-// from drifting apart.
-// The toggle is `fixed`, so it positions against the viewport, whose origin
-// is under the translucent status bar in an iOS standalone PWA. Without the
-// safe-area insets it lands on the status bar and collides with the battery.
-// The insets are 0 everywhere else, so desktop and Safari keep the same
-// offsets.
-//
-// The top offset centers the toggle on the same axis as the pinned sidebar
-// trigger, which CHROME_ROW_CLASS box-centers in a 48px row (center = 24px).
-// The button box is 28px normally and 36px under a coarse pointer, so the
-// offset has to change with it: 24 - 28/2 = 10px, and 24 - 36/2 = 6px. A single
-// offset lines up in one pointer mode and sits 4px low in the other.
 export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
 
@@ -91,9 +71,6 @@ export function RootComposeSecondaryContent({
   const composerHost = usePluginComposerHost();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  // A bounded pane below a horizontal split is not part of the native window
-  // chrome. Marking its top as draggable creates an invisible Electron hit-test
-  // strip that consumes pointer input over portaled menus.
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;

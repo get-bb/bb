@@ -267,7 +267,8 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     current: {
       tone: "message",
       title: "Opening in editor",
-      description: "apps/app/src/components/settings/UpdatesSettingsSection.tsx",
+      description:
+        "apps/app/src/components/settings/UpdatesSettingsSection.tsx",
     },
   },
   {
@@ -286,7 +287,10 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     group: "Clipboard",
     label: "copy error",
     source: "copyToClipboardWithToast",
-    usage: ["Clipboard unavailable or write fails", "Default unless overridden"],
+    usage: [
+      "Clipboard unavailable or write fails",
+      "Default unless overridden",
+    ],
     current: {
       tone: "error",
       title: "Failed to copy",

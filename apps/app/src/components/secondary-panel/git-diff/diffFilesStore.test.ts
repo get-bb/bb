@@ -91,10 +91,6 @@ describe("estimateCardHeight", () => {
     const expanded = estimateCardHeight({ entry, collapsed: false });
     const collapsed = estimateCardHeight({ entry, collapsed: true });
 
-    // A collapsed card renders only its header row, so a large-diff card that
-    // opens collapsed must not seed the virtualizer with its full expanded body
-    // height (which would overshoot the total size ~50-100x and jump the
-    // scrollbar).
     expect(collapsed).toBe(DIFF_CARD_HEADER_HEIGHT_PX);
     expect(collapsed).toBeLessThan(expanded);
   });

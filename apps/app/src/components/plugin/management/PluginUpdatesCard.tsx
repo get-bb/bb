@@ -11,19 +11,11 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { DetailsDisclosure, displayPluginVersion } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
-/**
- * Whether a plugin has any update surfaces at all.
- *
- * Bundled plugins — auto builtins and store-installed officials alike — are
- * pinned to the copy shipped inside the app and update with bb releases, so
- * none of these surfaces render for them.
- */
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
   if (plugin.source.startsWith("builtin:")) return false;
   return plugin.provenance === "direct" || plugin.provenance === "catalog";
 }
 
-/** The newest release that exists but cannot run on this bb version. */
 function pluginCompatibilityBlockedVersion(
   plugin: PluginListItem,
 ): string | null {
@@ -39,14 +31,6 @@ function sentence(value: string): string {
   return /[.!?]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
 }
 
-/**
- * Release action for the plugin detail section header.
- *
- * Updates describe the installed artifact, not the plugin's current ability
- * to operate. Keeping them in the Release section prevents routine update
- * availability and historical rollbacks from competing with activation or
- * present-tense health banners.
- */
 export function PluginDetailReleaseControl({
   plugin,
 }: {
@@ -132,7 +116,6 @@ export function PluginDetailReleaseControl({
   );
 }
 
-/** Passive update context shown in the Release table. */
 export function PluginDetailReleaseStatus({
   plugin,
 }: {

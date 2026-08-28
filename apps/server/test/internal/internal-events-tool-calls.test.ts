@@ -256,9 +256,6 @@ describe("internal event and tool-call routes", () => {
               event.type === "item/started" || event.type === "item/completed",
           );
         expect(storedToolEvents).toHaveLength(2);
-        // The plugin's labels reach the row only through the presentation
-        // the bridge stamps on the item (resolved onto the tool definition
-        // it receives); the server no longer writes a `statusLabels` key.
         for (const event of storedToolEvents) {
           const item = JSON.parse(event.data).item;
           expect(item.tool).toBe(record.name);
@@ -857,8 +854,6 @@ describe("internal event and tool-call routes", () => {
         providerThreadId: "provider-side-chat-parent",
         threadId: parentThread.id,
       });
-      // A side chat keeps a parent id next to its origin; the
-      // origin, not the hidden visibility, is what excludes them.
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1017,8 +1012,6 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
-      // The replayed turn/started is the same provider turn, so it is not
-      // stored twice; a second start would break timeline projection.
       expect(
         harness.db
           .select({ type: events.type })
@@ -1093,9 +1086,6 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      // run.succeeded has no THREAD_LIFECYCLE cell for "idle": the
-      // redelivered completion is an illegal-transition no-op and the thread
-      // row is untouched.
       expect(
         harness.db
           .select()
@@ -1292,7 +1282,6 @@ describe("internal event and tool-call routes", () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const sharedPath = "/tmp/shared-with-another-project";
-      // Another project already holds an environment for the folder.
       const { project: otherProject } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         name: "Other Project",
@@ -1356,8 +1345,6 @@ describe("internal event and tool-call routes", () => {
       await expect(readJson(await responsePromise)).resolves.toMatchObject({
         success: true,
       });
-      // The switching project gets its own environment; the other project's
-      // claim on the folder is untouched.
       const switched = getThread(harness.db, thread.id)?.environmentId;
       expect(switched).not.toBe(otherEnvironment.id);
       expect(getEnvironment(harness.db, switched ?? "")).toMatchObject({
@@ -1379,8 +1366,6 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         name: "Owning Project",
       });
-      // Cleanup of this environment deletes the directory, so no other project
-      // may attach to it in place.
       seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: owner.id,

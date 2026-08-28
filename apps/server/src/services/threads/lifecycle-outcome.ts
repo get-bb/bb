@@ -43,12 +43,6 @@ function logUnappliedThreadLifecycleEvent(
   );
 }
 
-/**
- * Applies a thread lifecycle event in its own transaction, notifies
- * status-changed with the post-transition row when applied, and logs every
- * non-applied outcome so stale events are observable instead of silently
- * swallowed.
- */
 export function applyLoggedThreadLifecycleEvent(
   deps: ApplyLoggedThreadLifecycleEventDeps,
   args: ApplyThreadLifecycleEventArgs,
@@ -66,19 +60,12 @@ export function applyLoggedThreadLifecycleEvent(
   return outcome;
 }
 
-/**
- * In-transaction variant: applies the event inside the caller's transaction
- * and logs non-applied outcomes. The caller owns notification — typically a
- * status-changed notify gated on `outcome.applied`.
- */
 export function applyLoggedThreadLifecycleEventInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
-  // Plugin dispatch is deferred to the next macrotask, i.e. after the
-  // caller's synchronous transaction has committed.
   emitPluginThreadLifecycleOutcome(outcome);
   return outcome;
 }

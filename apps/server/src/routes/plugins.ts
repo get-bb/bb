@@ -28,7 +28,6 @@ import {
   pluginUpdateCheckRequestSchema,
 } from "@bb/server-contract";
 
-/** The slice of server deps the "local" auth checks need (origin allowlist). */
 interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
   db: import("@bb/db").DbConnection;
@@ -46,8 +45,6 @@ const APP_ASSET_ENCODINGS = [
     compress: (bytes: Buffer) =>
       compressBrotli(bytes, {
         params: {
-          // Compression happens in the request path, so use a moderate level
-          // rather than the slower quality 10 used for build-time sidecars.
           [zlibConstants.BROTLI_PARAM_QUALITY]: 6,
         },
       }),
@@ -116,14 +113,6 @@ function parsePluginMentionTrigger(
   }
 }
 
-/**
- * "local" auth (design §4.6): the request must come from the BB app itself.
- * The load-bearing CSRF defense is the JSON-only rule below — a cross-origin
- * JSON POST always triggers a CORS preflight, which the server's allowlist
- * denies. The shared Origin check also tolerates BB being served over
- * LAN/Tailscale addresses the server cannot enumerate, but only when the
- * origin hostname is bound to the request hostname.
- */
 function localAuthProblem(
   context: Context,
   deps: PluginRoutesDeps,
@@ -145,7 +134,6 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
   return bufferA.length === bufferB.length && timingSafeEqual(bufferA, bufferB);
 }
 
-/** "token" auth: x-bb-plugin-token header or ?token= must match the plugin's secret. */
 async function tokenAuthProblem(
   context: Context,
   plugins: PluginService,
@@ -178,13 +166,6 @@ function notRunningError(
   return `plugin "${id}" is not running (status: ${lookup.status}${detail})`;
 }
 
-/**
- * Plugin management routes plus the boot-time wire dispatchers
- * (/plugins/:id/http/* and /plugins/:id/rpc/:method). Mounted under /api/v1
- * before the catch-all; dispatch goes through the plugin service's live
- * routing tables so reload swaps handlers without re-registering Hono routes.
- * This surface is server-policy glue, not part of the typed product contract.
- */
 export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
@@ -196,9 +177,6 @@ export function registerPluginRoutes(
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
-  // Fast metadata for the bb CLI's help/proxy path and the app's
-  // host-rendered UI contributions: no plugin code runs; empty (not an
-  // error) while the experiment is off.
   app.get("/plugins/contributions", (context) =>
     context.json({
       cliCommands: plugins.listCliContributions(),
@@ -206,10 +184,6 @@ export function registerPluginRoutes(
     }),
   );
 
-  // Composer mention search across every plugin provider for one trigger
-  // (design §4.9). Executes plugin code, so it takes the same local-origin
-  // guard as the rpc dispatcher. Registered before the /plugins/:id/*
-  // routes so the static "mentions" segment cannot be captured as an id.
   app.get("/plugins/mentions/search", async (context) => {
     const problem = localAuthProblem(context, deps);
     if (problem) {
@@ -240,14 +214,7 @@ export function registerPluginRoutes(
     return context.json({ ok: true, groups });
   });
 
-  // Proxied `bb <plugin-command>` / `bb plugin run` invocation (design §4.4).
-  // Dispatch problems come back as { exitCode: 1, stderr } rather than HTTP
-  // errors so the CLI can uniformly print stderr and exit with exitCode.
   app.post("/plugins/:id/cli", async (context) => {
-    // Same local-origin/CSRF guard as the rpc dispatcher: this route executes
-    // plugin code with full server capabilities, so a cross-origin simple
-    // POST must not reach it. The bb CLI sends application/json from
-    // loopback, which passes.
     const authProblem = localAuthProblem(context, deps);
     if (authProblem) {
       return context.json(
@@ -286,18 +253,11 @@ export function registerPluginRoutes(
     return context.json(result);
   });
 
-  // Frontend bundle assets (design §5.1): the app dynamic-import()s app.js
-  // and links app.css from here. URLs carry ?h=<content hash> — a matching
-  // hash gets immutable caching (the hash changes when the content does);
-  // anything else is no-store so a stale URL can never pin a stale bundle.
   const APP_ASSET_CONTENT_TYPES = {
     "app.js": { kind: "js", contentType: "text/javascript; charset=utf-8" },
     "app.css": { kind: "css", contentType: "text/css; charset=utf-8" },
   } as const;
 
-  // Declared icons (`bb.branding.experimental_icons`): one SVG per declared
-  // name, identity-backed like the branding assets. A Hono `:file` segment
-  // never spans "/", so this route does not shadow the one below.
   app.get("/plugins/:id/assets/icons/:file", (context) => {
     const file = context.req.param("file");
     const name = file.endsWith(".svg") ? file.slice(0, -".svg".length) : null;
@@ -319,8 +279,6 @@ export function registerPluginRoutes(
 
   app.get("/plugins/:id/assets/:file", async (context) => {
     const file = context.req.param("file");
-    // Explicit plugin branding assets: same hash-busting cache policy as the
-    // bundle assets, but identity-backed so disabled plugins remain legible.
     if (file === "icon" || file === "logo" || file === "logo-dark") {
       const asset = plugins.getBrandingAsset(context.req.param("id"), file);
       if (!asset) {
@@ -473,11 +431,6 @@ export function registerPluginRoutes(
   app.post("/plugins/reload", async (context) => {
     const id = context.req.query("id") ?? undefined;
     const outcome = await plugins.reload(id);
-    // A reload that left a targeted plugin without its current sources
-    // running (degraded after a hung service, or the previous instance kept)
-    // is a failure the caller must see: `bb plugin reload` exits 1 on it and
-    // the dev loop logs it. The inventory rides along so the status detail
-    // is visible either way.
     if (!outcome.ok) return context.json(outcome, 422);
     return context.json(outcome);
   });
@@ -575,9 +528,6 @@ export function registerPluginRoutes(
     return context.json({ ok: true, token });
   });
 
-  // Boot-time dispatcher for bb.http routes (design §4.6): Hono routes
-  // cannot be added or removed after boot, so one wildcard route dispatches
-  // through the live per-plugin route table (exact method+path match).
   app.all("/plugins/:id/http/*", async (context) => {
     const id = context.req.param("id");
     const prefix = `/api/v1/plugins/${id}/http`;
@@ -614,12 +564,6 @@ export function registerPluginRoutes(
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
-    // The token check awaited; a reload may have swapped the routing table
-    // in the meantime. Re-resolve and invoke with no await in between
-    // (invokeHttpRoute registers its in-flight marker synchronously) so a
-    // stale handler can never run over a disposed plugin's handles. A route
-    // whose auth mode changed across the reload was authenticated under the
-    // old policy — refuse it rather than honoring the wrong check.
     const fresh = plugins.getHttpRoute(id, context.req.method, subPath);
     if (fresh.outcome !== "found" || fresh.value.auth !== auth) {
       return context.json(
@@ -633,8 +577,6 @@ export function registerPluginRoutes(
     return plugins.invokeHttpRoute(id, fresh.value, context);
   });
 
-  // bb.rpc dispatcher (design §4.6): always "local" auth semantics —
-  // JSON-only body plus the Origin/Host check.
   app.post("/plugins/:id/rpc/:method", async (context) => {
     const id = context.req.param("id");
     const method = context.req.param("method");
@@ -642,10 +584,6 @@ export function registerPluginRoutes(
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
-    // Body first, handler second: the handler must be resolved with no await
-    // between lookup and invocation (invokeRpcHandler registers its in-flight
-    // marker synchronously), or a reload during the body read could dispose
-    // the plugin after lookup and run a stale handler over closed handles.
     const rawBody = await context.req.text();
     let input: unknown;
     if (rawBody.length > 0) {

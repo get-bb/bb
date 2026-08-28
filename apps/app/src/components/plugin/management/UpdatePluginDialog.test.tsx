@@ -180,7 +180,6 @@ describe("UpdatePluginDialog", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        // The exact applyUpdate result shape from plugin-service.
         jsonResponse({
           applied: false,
           from: { version: "1.6.2", display: "1.6.2" },
@@ -228,8 +227,6 @@ describe("UpdatePluginDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    // The dialog neither closes as a success nor shows the rollback view —
-    // the drifted response surfaces as an error and the confirmation stays.
     await vi.waitFor(() => {
       expect(
         (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)

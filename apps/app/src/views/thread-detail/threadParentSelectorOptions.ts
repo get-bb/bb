@@ -33,7 +33,6 @@ export function isRootThread(
   );
 }
 
-// A hidden thread (a side chat, say) is not a parent a user can pick.
 function isHiddenThread(
   thread: Pick<ThreadAssignmentState, "visibility">,
 ): boolean {

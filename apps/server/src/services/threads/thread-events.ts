@@ -69,10 +69,6 @@ interface ClientTurnRequestedEventArgs {
   requestMethod: "thread/start" | "turn/start";
   senderThreadId: string | null;
   source: "spawn" | "tell";
-  // Family-B taxonomy stamping for `initiator: "system"` messages. Omitted for
-  // user/agent turns (legacy/non-system messages project as unlabeled/null).
-  // `senderThreadId` is null for system messages, so the subject is stamped
-  // here at emit time or it is unrecoverable downstream.
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
   target: TurnRequestTarget;
@@ -242,9 +238,6 @@ function buildClientTurnRequestedEventData(
       ? { continuationOfRequestId: args.continuationOfRequestId }
       : {}),
     senderThreadId: args.senderThreadId,
-    // Stamp the Family-B taxonomy fields when present. Omitted entirely for
-    // non-system turns so legacy events keep parsing via the schema's optional
-    // defaults (unlabeled / null) rather than carrying redundant payload.
     ...(args.systemMessageKind !== undefined
       ? { systemMessageKind: args.systemMessageKind }
       : {}),
@@ -335,11 +328,6 @@ function isThreadReadStateUpdate(
   return result !== null;
 }
 
-// A user-initiated turn request implies the user has eyes on the thread, so
-// `lastReadAt` advances alongside the event. Without this, the unread divider
-// would later be placed against a stale read floor: the user's own message
-// would land past the cutoff when the thread eventually
-// replies and re-arms the snapshot.
 function applyUserTurnReadForEvent(
   db: DbTransaction,
   args: AppendThreadEventArgs,
@@ -459,8 +447,6 @@ function assertStoredTurnStartedForEvents(
   db: DbQueryConnection,
   eventArgs: readonly AppendThreadEventArgs[],
 ): void {
-  // Same-batch satisfaction is ordered: turn/started only unlocks later events
-  // in this append list. Daemon batches enforce the same invariant separately.
   const existingTurnKeys = listExistingTurnStartKeys(
     db,
     collectTurnStartRequirements(eventArgs),

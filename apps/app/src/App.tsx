@@ -78,14 +78,6 @@ const ProjectSettingsView = lazy(() =>
     default: m.ProjectSettingsView,
   })),
 );
-// Start fetching the split-workspace route chunk (and, through Vite's preload
-// helper, its static closure) as soon as the boot chunk evaluates instead of
-// waiting for the first React render to reach the lazy element. Nearly every
-// page load ends up on this route, so the request is never wasted, and on a
-// phone the boot parse + first render otherwise adds a serialized round trip
-// before the largest transfer even starts. The trailing catch only keeps a
-// failed fetch from surfacing as an unhandled rejection while no route has
-// rendered yet; React.lazy still receives the rejection when it renders.
 const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
 splitWorkspaceRouteModule.catch(() => {});
 const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
@@ -143,13 +135,6 @@ export function ExtensionsLandingRedirect() {
   return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
 }
 
-/**
- * /tools/* → /extensions/* preserving the subpath, query, and hash, so every
- * pre-rename deep link lands on its renamed page. The /tools/automations
- * routes keep their own more-specific redirects (React Router ranks static
- * segments above this splat), since those left Extensions for the plugin
- * panel rather than moving with the rename.
- */
 export function LegacyToolsPathRedirect() {
   const location = useLocation();
   const suffix = location.pathname.slice(LEGACY_TOOLS_PREFIX_ROUTE_PATH.length);
@@ -186,9 +171,6 @@ export function HashNavigationScroll() {
     const scrollToTarget = (): boolean => {
       const target = document.getElementById(targetId);
       if (target === null) return false;
-      // Fragment destinations are navigation landmarks. Move keyboard focus as
-      // well as the viewport, including for semantic sections that are not
-      // normally focusable.
       if (target.tabIndex < 0 && !target.hasAttribute("tabindex")) {
         target.tabIndex = -1;
       }
@@ -199,8 +181,6 @@ export function HashNavigationScroll() {
 
     if (scrollToTarget()) return;
 
-    // Lazy routes and plugin slots may mount after the URL changes. Observe the
-    // app until the destination exists instead of dropping the navigation.
     let observer: MutationObserver | null = null;
     let timeoutId: number | null = null;
     const stopWaiting = () => {
@@ -326,10 +306,6 @@ function AppRoutes() {
           <Route
             path="*"
             element={
-              // The thread / new-thread pane draws its own header, so while
-              // its chunk loads the content area would otherwise be blank.
-              // Settings and tools routes keep the outer null fallback: the
-              // AppLayout header is already on screen for them.
               <Suspense fallback={<RouteLoadingSkeleton />}>
                 <SplitWorkspaceRoute />
               </Suspense>
@@ -342,11 +318,6 @@ function AppRoutes() {
   );
 }
 
-/**
- * Sibling of the lazy routes inside their Suspense boundary: React commits
- * it (and runs its effect) only once the first route content has resolved,
- * which is the signal deferred plugin frontend boot waits on.
- */
 function RouteContentPaintSignal() {
   useEffect(() => {
     markRouteContentPainted();
@@ -355,17 +326,10 @@ function RouteContentPaintSignal() {
 }
 
 export function App() {
-  // Connect WebSocket for real-time invalidation
   useWebSocket();
-  // Keep the Electron window chrome (traffic lights, inactive title bar)
-  // in sync with bb's theme preference.
   useDesktopThemeSync();
-  // Apply the server-stored app palette (built-in or custom CSS) app-wide.
   useAppTheme();
-  // Reconcile the favicon tint with the server-stored appearance (and migrate
-  // any legacy localStorage-only preference on first load).
   useFaviconColorSync();
-  // Load plugin frontend bundles once system config resolves.
   usePluginFrontendBoot();
   useRememberPluginNavPanelChrome();
 
@@ -384,11 +348,9 @@ export function App() {
                 />
                 <Route path="*" element={<AppRoutes />} />
               </Routes>
-              {/* Outside <Routes>: a provider CLI install outlives the page that
-                started it, so its failure toast can be clicked from any route —
-                including auth callback, which renders no app shell. */}
-               <ProviderCliInstallLogDialogHost />
-             </AppFileExternalNavigationHost>
+              {}
+              <ProviderCliInstallLogDialogHost />
+            </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>

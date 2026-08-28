@@ -79,7 +79,6 @@ import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
-/** branding.icon paths are validated as SVG, so bundled icons are only ever this. */
 const BUNDLED_ICON_CONTENT_TYPE = "image/svg+xml";
 
 interface PluginCatalogIcon {
@@ -90,61 +89,36 @@ interface PluginCatalogIcon {
 
 export interface PluginCatalogEntrySelector {
   entryId: string;
-  /** Omitted resolves the entry across every registered marketplace. */
   marketplace?: string;
 }
 
 interface PluginCatalogInstallInput extends PluginCatalogEntrySelector {
-  /** Source facts shown in a third-party marketplace confirmation. */
   confirmedSource?: PluginCatalogResolvedSource;
 }
 
 export interface PluginCatalogService {
   status(): PluginCatalogStatus;
-  /**
-   * Conditionally re-read the official manifest and its icons. Discovery
-   * metadata only: a refresh never installs, updates, or runs plugin code.
-   * Rejects when the attempt failed; the last-known-good catalog stays.
-   */
   refresh(attemptedAt?: number): Promise<void>;
-  /**
-   * Refresh one marketplace, or every one of them. Never rejects for a failed
-   * refresh: each marketplace reports its own outcome, so one broken
-   * third-party listing cannot take the rest of the store down with it.
-   */
   refreshMarketplaces(args?: {
     name?: string;
     attemptedAt?: number;
   }): Promise<PluginMarketplaceRefreshResult[]>;
   search(query: string): Promise<PluginCatalogSearchResult[]>;
-  /** What an install with the same selector would do, resolved beforehand. */
   installPlan(
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
   install(input: PluginCatalogInstallInput): Promise<InstalledPlugin>;
-  /**
-   * Bytes behind GET /plugin-catalog/icons/:marketplace/:entryId: a fetched
-   * marketplace icon from the cache, or a bundled entry's own compact icon
-   * read from its plugin directory.
-   */
   icon(
     marketplace: string,
     entryId: string,
   ): Promise<PluginCatalogIcon | undefined>;
   listMarketplaces(): PluginMarketplace[];
-  /** Validate, store, and refresh a marketplace. Installs nothing. */
   addMarketplace(source: string): Promise<PluginMarketplace>;
-  /**
-   * Forget a marketplace. Its catalog rows and cached icons are deleted; its
-   * installed plugins keep running as direct installs with their full source
-   * intent and exact resolution intact.
-   */
   removeMarketplace(name: string): Promise<{ convertedPluginIds: string[] }>;
   startPeriodicRefresh(): void;
   stopPeriodicRefresh(): void;
 }
 
-/** Resolution of an entry id (plus an optional marketplace) to what installs. */
 type ResolvedCatalogEntry =
   | { kind: "marketplace"; row: PluginMarketplaceRow; entry: MarketplaceEntry }
   | {
@@ -152,20 +126,10 @@ type ResolvedCatalogEntry =
       entry: BundledPluginRegistration & { category: string };
     };
 
-/**
- * The plugin store over the official plugins bundled with the app plus every
- * registered marketplace catalog. Bundled entries install from the local
- * bundled copy — no network, no catalog row; installed plugins update by
- * riding app releases. Marketplace entries come from a validated
- * last-known-good catalog and install from their listed source with catalog
- * provenance, so they trace back to the marketplace that listed them.
- */
 export function createPluginCatalogService(deps: {
   db: DbConnection;
   appVersion: string;
-  /** Manifest URL of the official marketplace (BB_MARKETPLACE_URL). */
   marketplaceUrl: string;
-  /** BB data directory; git marketplaces stage their checkouts under it. */
   dataDir: string;
   plugins: Pick<
     PluginService,
@@ -187,9 +151,6 @@ export function createPluginCatalogService(deps: {
   const categoryOrder = new Map<string, number>(
     PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category, index]),
   );
-  // The Browse tab groups by the curated tag vocabulary: the catalog's own
-  // categories, lowercased and kebab-cased. Other tags stay searchable but do
-  // not create sections.
   const categoryByTag = new Map<string, string>(
     PLUGIN_CATALOG_CATEGORIES.map((category) => [
       category
@@ -200,10 +161,6 @@ export function createPluginCatalogService(deps: {
     ]),
   );
   const now = deps.now ?? Date.now;
-  // Manifests and entry icons share one guarded socket: https on port 443, no
-  // credentials, no redirects, and a DNS answer that must route only through
-  // the public internet. An entry can name any icon URL, so the icon fetch
-  // needs the same protection as the manifest fetch.
   const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
   const schedule =
     deps.schedule ??
@@ -228,8 +185,6 @@ export function createPluginCatalogService(deps: {
 
   seedOfficialMarketplace();
 
-  // One in-flight operation per marketplace name, plus one for adds, so a
-  // concurrent add/refresh/remove pair cannot interleave its writes.
   const locks = new Map<string, Promise<unknown>>();
   const ADD_LOCK_KEY = "\0add";
   let cancelPeriodic: (() => void) | null = null;
@@ -248,12 +203,6 @@ export function createPluginCatalogService(deps: {
     });
   }
 
-  /**
-   * Guarantee a parseable last-known-good row before anything reads it. A
-   * stored catalog that no longer parses (a downgrade, a corrupt write) or one
-   * fetched from a different manifest URL falls back to the bundled snapshot
-   * rather than leaving the store empty.
-   */
   function seedOfficialMarketplace(): void {
     const existing = getPluginMarketplace(deps.db, CURATED_MARKETPLACE_NAME);
     if (
@@ -280,7 +229,6 @@ export function createPluginCatalogService(deps: {
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
-      // Counts are keyed by entry id, so they survive a manifest fallback.
       statsJson: existing?.statsJson ?? null,
       etag: null,
       lastModified: null,
@@ -296,11 +244,6 @@ export function createPluginCatalogService(deps: {
     return row;
   }
 
-  /**
-   * The stored catalog of a marketplace. A row that no longer parses is
-   * reported once and treated as empty: one corrupt third-party document must
-   * not take the whole store down.
-   */
   function catalogOf(row: PluginMarketplaceRow): MarketplaceManifest | null {
     try {
       return parseMarketplaceManifestJson(
@@ -313,7 +256,6 @@ export function createPluginCatalogService(deps: {
     }
   }
 
-  /** Official first, then every other marketplace by name. */
   function orderedMarketplaces(): PluginMarketplaceRow[] {
     return listPluginMarketplaces(deps.db).sort((left, right) => {
       const officialDifference =
@@ -340,12 +282,6 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  /**
-   * Compatibility of a plugin whose own manifest bb already has. Only bundled
-   * plugins qualify before an install: a marketplace listing declares no
-   * ranges, so its entry is offered as compatible and the install pipeline
-   * refuses it once the fetched package.json says otherwise.
-   */
   function compatibilityProblem(ranges: {
     bbRange: string | undefined;
     sdkRange: string | undefined;
@@ -360,9 +296,6 @@ export function createPluginCatalogService(deps: {
       : compatibility.effective.map((problem) => problem.message).join("; ");
   }
 
-  // Manifests are read per search so a dev checkout editing a bundled
-  // plugin's package.json sees fresh store metadata; this small local catalog
-  // is cheap enough not to cache.
   function entryManifest(
     entry: BundledPluginRegistration,
   ): Promise<PluginManifest | null> {
@@ -376,11 +309,6 @@ export function createPluginCatalogService(deps: {
     });
   }
 
-  /**
-   * A bundled plugin's own compact icon, hashed so the browse card's URL
-   * busts its cache with the plugin's bytes. Null when the manifest names a
-   * host glyph instead of shipping an SVG, or the file cannot be read.
-   */
   async function bundledIcon(
     manifest: PluginManifest,
   ): Promise<{ bytes: Buffer; hash: string } | null> {
@@ -422,39 +350,23 @@ export function createPluginCatalogService(deps: {
         iconHash === null
           ? null
           : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
-      // A bundled icon is the plugin's own compact SVG, authored to take the
-      // surrounding text color.
       iconTinted: iconHash !== null,
       category: entry.category,
       source: builtinPluginSource(entry.name),
-      // The build ships the code; there is no separate repository to open.
       repositoryUrl: null,
-      // Plugins bundled with the app are BB's own, so the store groups them
-      // with the official marketplace rather than inventing a fourth origin.
       marketplace: CURATED_MARKETPLACE_NAME,
       marketplaceDisplayName: BUNDLED_CURATED_MARKETPLACE.displayName,
-      // Listed under the curated marketplace, but published by the build, so
-      // it groups and badges as its own publisher.
       publisherKey: BUILTIN_PUBLISHER_KEY,
       publisherLabel: BUILTIN_PUBLISHER_LABEL,
       official: true,
-      // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
-      // Bundled plugins are counted under their canonical plugin id: telemetry
-      // sends that id too, so the curated sidecar names them alongside the
-      // entries it lists.
       installs,
       compatible: problem === null,
       incompatibleReason: problem,
     };
   }
 
-  /**
-   * Section an entry belongs to. The official marketplace uses BB's curated
-   * vocabulary so its sections stay stable; a third-party marketplace has no
-   * such vocabulary, so its first tag becomes the section label.
-   */
   function entryCategory(entry: MarketplaceEntry, official: boolean): string {
     const tags = entry.tags ?? [];
     if (official) {
@@ -468,7 +380,6 @@ export function createPluginCatalogService(deps: {
     return first === undefined ? "Other" : titleCaseTag(first);
   }
 
-  /** Same-origin URL of the bytes `icon(marketplace, entryId)` serves. */
   function entryIconAssetUrl(
     marketplace: string,
     entryId: string,
@@ -477,7 +388,6 @@ export function createPluginCatalogService(deps: {
     return `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${contentHash}`;
   }
 
-  /** The cached icon's same-origin URL and how the app paints it. */
   function entryIconAsset(
     marketplace: string,
     entryId: string,
@@ -496,15 +406,12 @@ export function createPluginCatalogService(deps: {
     row: PluginMarketplaceRow;
     catalog: MarketplaceManifest;
     installedEntryIds: ReadonlySet<string>;
-    /** Null for every third-party listing, which publishes no counts. */
     installs: number | null;
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
     return {
       entryId: entry.id,
-      // An entry id is the plugin id it installs; the install aborts when the
-      // fetched manifest declares another one.
       pluginId: entry.id,
       displayName: entry.displayName,
       description: entry.description,
@@ -526,20 +433,11 @@ export function createPluginCatalogService(deps: {
         args.installedEntryIds.has(catalogEntryKey(row.name, entry.id)) ||
         getInstalledPlugin(deps.db, entry.id) !== undefined,
       installs: args.installs,
-      // The listing declares no ranges, so bb cannot judge a marketplace
-      // entry until it has fetched the plugin's own manifest.
       compatible: true,
       incompatibleReason: null,
     };
   }
 
-  /**
-   * A bundled plugin owns its id. A remote entry that claims the same id would
-   * appear twice in search, and an install would take the catalog route rather
-   * than the local bundled one. Such an entry is dropped and the drop is
-   * recorded on the marketplace row, so the rest of the catalog still
-   * publishes.
-   */
   function rejectBundledIdCollisions(catalog: MarketplaceManifest): {
     catalog: MarketplaceManifest;
     error: string | null;
@@ -559,14 +457,6 @@ export function createPluginCatalogService(deps: {
     };
   }
 
-  /**
-   * The install-count sidecar to store for this refresh.
-   *
-   * Only the curated marketplace publishes counts: BB measures them from its
-   * own telemetry, so a number beside a third-party listing would be that
-   * publisher's claim wearing BB's label. A fetch failure keeps the counts
-   * already stored — a cosmetic number must never fail a catalog refresh.
-   */
   async function refreshedStatsJson(
     row: PluginMarketplaceRow,
   ): Promise<string | null> {
@@ -578,8 +468,6 @@ export function createPluginCatalogService(deps: {
         manifestUrl: row.manifestUrl,
         fetch: fetchMarketplace,
       });
-      // A published-then-withdrawn sidecar clears the counts; a 404 that was
-      // never there to begin with leaves the (already null) column alone.
       return stats === null ? null : JSON.stringify(stats);
     } catch (error) {
       deps.warn?.(
@@ -622,8 +510,6 @@ export function createPluginCatalogService(deps: {
         collisionError === null
           ? materialized.manifestJson
           : JSON.stringify(catalog);
-      // An unchanged manifest still retries entries whose icon never cached,
-      // so one bad icon fetch is not permanent.
       const icons = await fetchMarketplaceIcons({
         db: deps.db,
         marketplaceName: row.name,
@@ -634,8 +520,6 @@ export function createPluginCatalogService(deps: {
         ...(deps.warn === undefined ? {} : { warn: deps.warn }),
       });
       const statsJson = await refreshedStatsJson(row);
-      // The catalog and all icon rows form one snapshot. Network work happens
-      // first, then SQLite publishes the complete snapshot in one commit.
       deps.db.transaction((tx) => {
         upsertPluginMarketplace(tx, {
           name: row.name,
@@ -699,8 +583,6 @@ export function createPluginCatalogService(deps: {
       return [await refreshOne(args.name, attemptedAt)];
     }
     const results: PluginMarketplaceRefreshResult[] = [];
-    // Sequential on purpose: a refresh is a background chore, and one
-    // marketplace's clone must not compete with another for git and disk.
     for (const row of orderedMarketplaces()) {
       results.push(await refreshOne(row.name, attemptedAt));
     }
@@ -743,12 +625,6 @@ export function createPluginCatalogService(deps: {
       .finally(scheduleNextPeriodicRefresh);
   }
 
-  /**
-   * Which entry an id installs. An explicit marketplace names one catalog;
-   * without one, exactly one marketplace match installs, no match falls back
-   * to the bundled official plugin of that name, and several matches are
-   * refused so the user picks with `<id>@<marketplace>`.
-   */
   function resolveEntry(
     selector: PluginCatalogEntrySelector,
   ): ResolvedCatalogEntry {
@@ -759,8 +635,6 @@ export function createPluginCatalogService(deps: {
         (candidate) => candidate.id === entryId,
       );
       if (entry !== undefined) return { kind: "marketplace", row, entry };
-      // Plugins bundled with the app are BB's own, and the store lists them
-      // under bb-community, so "<id>@bb-community" names them too.
       const bundled =
         selector.marketplace === CURATED_MARKETPLACE_NAME
           ? officialPlugins.find((candidate) => candidate.name === entryId)
@@ -799,11 +673,6 @@ export function createPluginCatalogService(deps: {
     return { kind: "bundled", entry: bundled };
   }
 
-  /**
-   * The tag and commit a git entry resolves to right now. Network work, so it
-   * runs for the install confirmation only; a failure is reported in the plan
-   * rather than blocking it, because the install itself resolves again.
-   */
   async function resolveGitEntrySource(
     git: Extract<MarketplaceEntry["source"], { git: unknown }>["git"],
   ): Promise<PluginCatalogResolvedSource> {
@@ -853,12 +722,6 @@ export function createPluginCatalogService(deps: {
     }
   }
 
-  /**
-   * The exact version and integrity an npm entry resolves to right now, the
-   * npm counterpart of {@link resolveGitEntrySource}. A range or a dist-tag
-   * can name different code minute to minute, so a confirmation that shows
-   * only "package@^1.0.0" does not identify what the install will run.
-   */
   async function resolveNpmEntrySource(
     npm: Extract<MarketplaceEntry["source"], { npm: unknown }>["npm"],
   ): Promise<PluginCatalogResolvedSource> {
@@ -887,8 +750,6 @@ export function createPluginCatalogService(deps: {
       return {
         ...base,
         resolvedVersion: resolved.version,
-        // A registry that publishes no integrity is reported as it is; bb
-        // does not invent one, and the install then binds on version only.
         ...(resolved.integrity.length === 0
           ? {}
           : { resolvedIntegrity: resolved.integrity }),
@@ -904,8 +765,6 @@ export function createPluginCatalogService(deps: {
   ): Promise<PluginCatalogResolvedSource> {
     if ("npm" in entry.source) {
       const npm = entry.source.npm;
-      // The official catalog is reviewed and its sources are BB's own, so its
-      // confirmation does not pay for a registry round trip.
       if (official) {
         return {
           kind: "npm",
@@ -918,9 +777,6 @@ export function createPluginCatalogService(deps: {
       return resolveNpmEntrySource(npm);
     }
     const git = entry.source.git;
-    // The official catalog is reviewed and its sources are BB's own, so its
-    // confirmation does not pay for a network round trip. A third-party
-    // listing is exactly where the true resolved commit matters.
     if (official) {
       return {
         kind: "git",
@@ -939,11 +795,6 @@ export function createPluginCatalogService(deps: {
     return resolveGitEntrySource(git);
   }
 
-  /**
-   * The exact artifact a confirmed third-party install is bound to. The
-   * install pipeline refuses anything else, so a mutable range, dist-tag, or
-   * branch cannot deliver different full-trust code after the confirmation.
-   */
   type ConfirmedEntryBinding =
     | { kind: "git"; commit: string }
     | { kind: "npm"; version: string; integrity: string | undefined };
@@ -953,9 +804,6 @@ export function createPluginCatalogService(deps: {
     entry: MarketplaceEntry,
     binding?: ConfirmedEntryBinding,
   ): Promise<InstalledPlugin> {
-    // Compatibility is the install pipeline's call: it reads the ranges from
-    // the plugin's own package.json once the source is fetched, and refuses
-    // the install there.
     const resolved = resolvedEntrySource(entry);
     return deps.plugins.installCatalogPlugin({
       marketplace: row.name,
@@ -1052,8 +900,6 @@ export function createPluginCatalogService(deps: {
           hash: row.contentHash,
         };
       }
-      // Bundled entries have no fetched icon: their compact SVG ships in the
-      // plugin directory, so serve it from there under the same route.
       if (marketplace !== CURATED_MARKETPLACE_NAME) return undefined;
       const bundled = officialPlugins.find((entry) => entry.name === entryId);
       if (bundled === undefined) return undefined;
@@ -1084,8 +930,6 @@ export function createPluginCatalogService(deps: {
         });
         try {
           const name = materialized.catalog.name;
-          // The manifest's own name is the marketplace's identity, so a
-          // listing cannot impersonate the catalog BB curates.
           if (name === CURATED_MARKETPLACE_NAME) {
             throw new Error(
               `marketplace name "${CURATED_MARKETPLACE_NAME}" is reserved for the marketplace BB curates`,
@@ -1110,8 +954,6 @@ export function createPluginCatalogService(deps: {
               ...marketplaceSourceColumns(source),
               sourceGitCommit: materialized.commit,
               manifestJson: materialized.manifestJson,
-              // Only the curated marketplace publishes install counts, and it
-              // can never be added here — its name is reserved above.
               statsJson: null,
               etag: materialized.etag,
               lastModified: materialized.lastModified,
@@ -1157,8 +999,6 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
-      // Bundled plugins are listed under the curated marketplace, so they read
-      // their counts from that marketplace's sidecar too.
       const curatedRow = getPluginMarketplace(
         deps.db,
         CURATED_MARKETPLACE_NAME,
@@ -1237,8 +1077,6 @@ export function createPluginCatalogService(deps: {
               .includes(query),
         )
         .sort((left, right) => {
-          // Marketplace first (official leads), then the section vocabulary,
-          // then name: the Browse tab groups by walking this order.
           const marketplaceDifference =
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
@@ -1298,12 +1136,6 @@ export function createPluginCatalogService(deps: {
     async install(input) {
       const resolved = resolveEntry(input);
       if (resolved.kind === "marketplace") {
-        // Hold the marketplace lock for the whole install. Without it a
-        // removal could delete the row, or a refresh could retarget the
-        // entry, between resolving the plan and writing catalog provenance —
-        // and the plugin would trace back to a listing that no longer says
-        // what it said. The entry is resolved again inside the lock so the
-        // install runs against the row that is current under it.
         return withLock(resolved.row.name, async () => {
           const current = resolveEntry({
             ...input,
@@ -1362,12 +1194,10 @@ export function createPluginCatalogService(deps: {
   };
 }
 
-/** Collision-free key for an entry within one marketplace. */
 function catalogEntryKey(marketplace: string, entryId: string): string {
   return `${marketplace}\u0000${entryId}`;
 }
 
-/** Display author of an entry, linking to its own URL or GitHub profile. */
 function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
   const url =
     entry.author.url ??
@@ -1377,7 +1207,6 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
   return { name: entry.author.name, url };
 }
 
-/** `git-tools` reads as "Git Tools" in a section heading. */
 function titleCaseTag(tag: string): string {
   return tag
     .split("-")

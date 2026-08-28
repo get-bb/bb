@@ -72,7 +72,6 @@ function bodyText(init: RequestInit | undefined): string | undefined {
 
 function jsonResponse(args: QueuedJsonResponse): Response {
   const status = args.status ?? 200;
-  // 204 is a null-body status; the Response constructor throws on a body.
   if (status === 204) {
     return new Response(null, { status });
   }

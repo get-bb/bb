@@ -184,14 +184,6 @@ function getTurnCompletion(
 const CODEX_NATIVE_TURN_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * The provider checkpoint a completed root turn can be re-created through:
- * what `turn/completed` recorded, which rewinds and point-in-time forks hand
- * back to the bridge. Runtime-assembled Codex timelines have bb-minted turn
- * ids and persist the native Codex turn id as the checkpoint. Older Codex
- * timelines used the native UUID directly and have no checkpoint, so retain
- * that compatibility fallback without ever forwarding a bb-minted id to Codex.
- */
 export function resolveTurnProviderCheckpointId(args: {
   providerCheckpointId: string | null | undefined;
   providerId: string;
@@ -403,8 +395,6 @@ function rewindPrepareCommandFromStart(
     sourceProviderThreadId: string;
   },
 ): ThreadRewindPrepareCommand {
-  // The daemon parses commands strictly, so every start-only field must stay
-  // in this destructure — the rest is exactly the shared runtime context.
   const {
     type: _type,
     requestId: _requestId,
@@ -428,9 +418,6 @@ export async function editThreadMessage(
   if (!getExperiments(deps.db).editMessages) {
     conflict("Enable the Edit messages experiment before editing a message");
   }
-  // Rewinding to an earlier point in the provider session is what an edit
-  // is, so the provider's declared rewind support gates it. Fork alone is
-  // not enough — ACP clones whole sessions tip-only.
   if (!deps.providerRegistry.supportsSessionRewind(args.thread.providerId)) {
     conflict(`Editing messages is not supported for ${args.thread.providerId}`);
   }

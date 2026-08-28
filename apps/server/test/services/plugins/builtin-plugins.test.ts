@@ -61,14 +61,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   sourceModuleDir: string;
 }> {
   const sourceModuleDir = join(workDir, "source-module");
-  // copyBuiltinPlugins packages EVERY declared builtin, so the synthetic
-  // source tree must carry one packaged plugin per BUILTIN_PLUGIN_NAMES
-  // entry — a name added to the registry is covered here automatically.
   for (const name of BUILTIN_PLUGIN_NAMES) {
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     const usesPluginOwnedIcon = name === "automations";
-    // Declared icons (`bb.branding.experimental_icons`) are manifest assets
-    // too: a provider logo named through them must reach the packaged root.
     const usesDeclaredIcons = name === "provider-acp";
     await mkdir(join(sourceRoot, "dist"), { recursive: true });
     await mkdir(join(sourceRoot, "skills", name), { recursive: true });
@@ -472,6 +467,31 @@ describe("builtin plugin reconciliation", () => {
     expect(monacoEditor?.defaultEnabled).toBe(false);
   });
 
+  it("ships the Plugin Guide disabled on a fresh database", async () => {
+    const pluginGuide = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "plugin-api-docs",
+    );
+    expect(pluginGuide?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "plugin-api-docs",
+      defaultEnabled: pluginGuide?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("plugin-api-docs"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "plugin-api-docs",
+        source: "builtin:plugin-api-docs",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+  });
+
   it("ships Workflows disabled on a fresh database", async () => {
     const workflows = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "workflows",
@@ -665,8 +685,6 @@ describe("builtin plugin reconciliation", () => {
       join(mutableRoot, "server.ts"),
       'export default function plugin() { globalThis.__hotBuiltinServerVersion = "before"; }\n',
     );
-    // A source-layout builtin may retain artifacts from a production build.
-    // Dev reloads must still execute the edited source entry.
     await writeFile(
       join(mutableRoot, "dist", "server.js"),
       'export default function plugin() { globalThis.__hotBuiltinServerVersion = "stale-dist"; }\n',
@@ -1013,7 +1031,6 @@ describe("builtin plugin packaging", () => {
     await expect(stat(join(copiedRoot, "app.tsx"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "node_modules"))).rejects.toThrow();
 
-    // A declared icon ships with the manifest that names it.
     await expect(
       readFile(join(targetRoot, "provider-acp", "icons", "cursor.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");

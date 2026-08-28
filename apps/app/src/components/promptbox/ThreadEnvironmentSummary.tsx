@@ -2,11 +2,7 @@ import { memo } from "react";
 import { OptionDisplay } from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
@@ -14,35 +10,14 @@ const CHECKOUT_CHIP_BASE_CLASS_NAME =
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
 
 interface ThreadEnvironmentSummaryProps {
-  /** Display name of the thread's project, shown alongside the environment. */
   projectName?: string;
-  /** Full mode label used on larger prompt boxes and in the title. */
   environmentLabel?: string;
-  /** Short label used when the promptbox switches to its compact layout. */
   environmentCompactLabel?: string;
-  /** Icon for the environment (e.g. monitor / git branch). */
   environmentIcon?: IconName;
-  /** Live checkout label for this environment. Branch checkouts are copyable. */
   environmentCheckout?: WorkspaceCheckoutDisplay;
-  /** When set, render a "new thread in this worktree" affordance beside the
-   * environment label. Caller is responsible for only providing this when the
-   * environment is a provisioned worktree. */
   onCreateNewThreadInWorktree?: () => void;
 }
 
-/**
- * Inline strip shown in the follow-up composer that describes the thread's
- * current environment: label and (when on a worktree) a copy-branch button.
- * Read-only — environment editing happens elsewhere.
- *
- * Responsive behavior:
- * - The full environment label is replaced by the compact display string in
- *   narrow promptbox shells.
- * - The summary can shrink inside the follow-up strip so permission/context
- *   controls stay pinned and text truncates instead of wrapping.
- * - Branch chip hides only in very narrow promptbox shells and truncates
- *   within its available space above that breakpoint.
- */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   projectName,
   environmentLabel,

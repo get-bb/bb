@@ -43,10 +43,6 @@ function ResponsivePromptStage({ children }: { children: ReactNode }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Realistic bb-flavored fixtures
-// ---------------------------------------------------------------------------
-
 function makeQueuedMessage({
   id,
   text,
@@ -127,9 +123,6 @@ const longMessage: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// "Add to chat" appends `> `-prefixed blockquote lines into the draft, so a
-// queued message can carry quote→reply blocks. The queued row now collapses
-// these into one preview line so quoted messages scan like every other row.
 const quoteSingle: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_quote_single",
@@ -173,8 +166,6 @@ const quoteWithAttachment: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// Quoted and plain messages interleaved in one list — both collapse to one row
-// so the queue remains dense even when it contains quote→reply blocks.
 const mixedMessages: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "mix_plain_1",
@@ -194,7 +185,6 @@ const mixedMessages: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-// Trims the prop boilerplate for the static (non-reorderable) story rows.
 function StaticQueuedMessagesList({
   queuedMessages,
 }: {

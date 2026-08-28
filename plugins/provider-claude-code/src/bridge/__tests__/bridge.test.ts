@@ -99,7 +99,6 @@ interface CanUseToolPolicyCase {
   id: string;
   input: Record<string, unknown>;
   name: string;
-  /** The canonical policy the session is constructed with. */
   policy: RuntimePermissionPolicy;
   toolName: string;
 }
@@ -236,12 +235,6 @@ function getLatestQueryCall(): ClaudeQueryCall {
   return latestCall;
 }
 
-/**
- * Turns the bridge settled as failed. The SDK result message never reaches
- * the wire; the bridge emits semantic deltas, so the capture is run through a
- * real delta assembler (the runtime adapter's exact translation) and the
- * canonical failed-turn events are counted.
- */
 function getFailedTurns(messages: BridgeJsonRpcOutputMessage[]) {
   return assembleCapturedThreadEvents(messages, "claude-code").filter(
     (event) => event.type === "turn/completed" && event.status === "failed",
@@ -522,11 +515,6 @@ function createBridgeUserQuestionInput(): ClaudeUserQuestionInput {
   };
 }
 
-/**
- * The canonical execution options a session-construction or turn request
- * carries. The claude-flavored knobs ride `providerOptions`, exactly as the
- * registry packs them.
- */
 function canonicalOptions(args?: {
   permissionEscalation?: "ask" | "deny";
   providerOptions?: Record<string, JsonValue>;
@@ -544,7 +532,6 @@ function canonicalOptions(args?: {
   };
 }
 
-/** Canonical turn params, keyed by the bb thread id. */
 function canonicalTurnParams(args: {
   threadId: string;
   providerThreadId?: string;
@@ -565,7 +552,6 @@ function canonicalTurnParams(args: {
   };
 }
 
-/** The prompt input the composer's `/plan` action produces for `text`. */
 function planCommandInput(text: string): JsonValue[] {
   return [
     {
@@ -626,7 +612,6 @@ async function stopBridgeThread(args: StopBridgeThreadArgs): Promise<void> {
   await args.bridge.waitForResponse(2);
 }
 
-/** The canonical interaction payload the bridge forwarded, if any. */
 function interactionPayload(
   message: BridgeJsonRpcOutputMessage,
 ): Record<string, unknown> | undefined {
@@ -1398,9 +1383,6 @@ describe("bridge", () => {
     });
   });
 
-  // The readonly-Bash auto-allow only applies to Claude's ask-everything
-  // modes, which no canonical policy maps onto; the hook-level suite above
-  // covers that rewrite. These cases pin what the wire can actually ask for.
   describe("readonly Bash canUseTool policy", () => {
     const WORKSPACE_AUTO_DENY_POLICY = {
       permissionMode: "auto",
@@ -1614,9 +1596,6 @@ describe("bridge", () => {
   });
 
   it("forwards a sandbox network ask with a grantable network permission", async () => {
-    // Claude suggests a "localSettings" rule for this prompt, not a "session"
-    // one. bb used to drop that suggestion, so the prompt reached the user with
-    // nothing to grant and the server rejected every allow. See issue #1041.
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -1762,14 +1741,8 @@ describe("bridge", () => {
     }
   });
 
-  // Regression: ExitPlanMode reaches canUseTool with no blockedPath, no
-  // decisionReason and no suggestions, so the generic approval gate read it as
-  // "nothing to ask about" and allowed it. The SDK then told the model the user
-  // had approved a plan the user never saw, and plan mode ended silently.
   it.each([
     { permissionMode: "plan", label: "plan mode" },
-    // `/plan` overrides the preset, but a bypassPermissions session must not be
-    // able to auto-approve a plan through the blanket allow either.
     { permissionMode: "bypassPermissions", label: "bypassPermissions" },
   ])(
     "forwards ExitPlanMode for user approval in $label",
@@ -1855,10 +1828,6 @@ describe("bridge", () => {
     },
   );
 
-  // Regression for #1259: `/plan` overrides the session permission mode, and
-  // `turn/start` carries no mode, so nothing used to restore the user's preset.
-  // A full-access thread was then asked to approve every edit after the plan
-  // was approved.
   it("returns to the user's permission preset once a plan is approved", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -1916,7 +1885,6 @@ describe("bridge", () => {
       await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
       await bridge.flushWork();
 
-      // An edit that would otherwise prompt: full access must now allow it.
       const editResult = await canUseTool(
         "Edit",
         { file_path: "/tmp/worktree/test.md", new_string: "hi" },
@@ -1940,12 +1908,6 @@ describe("bridge", () => {
     }
   });
 
-  // Regression for #1712: `/plan` on a LATER turn of a live session. The
-  // server puts `claudeCodePermissionMode: "plan"` in providerOptions on
-  // turn/start, but the bridge only applied the permission mode at session
-  // construction. The mention was stripped from the prompt and the prompt was
-  // pushed into a session still in the user's preset mode, so Claude never
-  // entered Plan mode and never proposed a plan through ExitPlanMode.
   it("switches a live session into Plan mode when a later turn carries /plan", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -1993,18 +1955,13 @@ describe("bridge", () => {
           providerOptions: { claudeCodePermissionMode: "plan" },
         }),
       );
-      // The prompt is only consumed after the mode switch landed: a prompt
-      // pushed first would start the turn in the preset mode.
       const prompt = await readNextPromptText(call);
       await bridge.waitForResponse(2);
       expect(query.setPermissionMode).toHaveBeenCalledWith("plan");
       expect(prompt).toBe("Create hello.txt containing hello world");
-      // The same query stays live: no session rebuild.
       expect(queries).toHaveLength(1);
       expect(query.close).not.toHaveBeenCalled();
 
-      // Approving the plan restores the user's preset exactly as for a
-      // first-turn plan (#1259).
       const canUseTool = getLastCanUseTool();
       const planPromise = canUseTool(
         "ExitPlanMode",
@@ -2039,11 +1996,6 @@ describe("bridge", () => {
     }
   });
 
-  // `bb thread tell --plan` on a busy thread lands as turn/steer. The steer
-  // path shares enterPlanModeIfRequested with turn/start; this covers what the
-  // turn/start test above does not: entering Plan mode from a steer, staying
-  // in it across a plain turn and a repeated /plan, and re-entering it after
-  // an approved plan restored the preset.
   it("enters Plan mode from a /plan steer and only re-requests it after the plan is approved", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -2080,8 +2032,6 @@ describe("bridge", () => {
       expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
       expect(query.setPermissionMode).toHaveBeenCalledWith("plan");
 
-      // A follow-up turn without /plan keeps Plan mode: only an approved
-      // plan leaves it.
       bridge.sendRequest(
         3,
         "turn/start",
@@ -2094,7 +2044,6 @@ describe("bridge", () => {
       await bridge.waitForResponse(3);
       expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
 
-      // A /plan steer while already in Plan mode is a no-op.
       bridge.sendRequest(
         4,
         "turn/steer",
@@ -2137,7 +2086,6 @@ describe("bridge", () => {
       await bridge.flushWork();
       expect(query.setPermissionMode).toHaveBeenLastCalledWith("acceptEdits");
 
-      // A later /plan steer re-enters Plan mode on the same live session.
       bridge.sendRequest(
         5,
         "turn/steer",
@@ -2190,8 +2138,6 @@ describe("bridge", () => {
         throw new Error("Expected live Claude query");
       }
 
-      // Stand in for the SDK reading its prompt stream: the prompt must never
-      // arrive, so this read only settles when the session closes.
       const promptRead = readNextPromptText(call).catch(() => undefined);
       bridge.sendRequest(
         2,
@@ -2250,11 +2196,6 @@ describe("bridge", () => {
     }
   });
 
-  // Both directions number their outgoing requests with a counter from 1, so a
-  // daemon request id routinely matches one the bridge is still waiting on. The
-  // `method` field is what separates them; without that check the request was
-  // settled as a bogus response and dropped, and the daemon only found out when
-  // it timed out 30s later.
   it("dispatches an inbound request whose id collides with a pending bb request", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -2322,8 +2263,6 @@ describe("bridge", () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
 
     try {
-      // Any params mismatch used to be dropped without a reply, so the caller
-      // learned nothing until its 30s timeout. The reply now names the field.
       bridge.sendRequest(11, "turn/start", {
         threadId: "thread-invalid-params",
         providerThreadId: "thread-invalid-params",
@@ -2542,8 +2481,6 @@ describe("bridge", () => {
     const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels({
       PATH: binDir,
     });
-    // The curated catalog is always offered, so a probe reporting only Opus and
-    // Sonnet still yields every curated row; the probe's default wins.
     expect(models.map((model) => model.model)).toEqual([
       "claude-fable-5",
       "claude-opus-5[1m]",
@@ -2618,8 +2555,6 @@ describe("bridge", () => {
 
       const queryOptions = getLatestQueryOptions();
       expect(queryOptions.env?.HOME).toBe("/Users/test-bb");
-      // Sessions report as the Claude CLI entrypoint (renders `sdk-cli` on the
-      // wire), with no `client-app/...` user-agent segment.
       expect(queryOptions.env?.CLAUDE_CODE_ENTRYPOINT).toBe("cli");
       expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBeUndefined();
       expect(queryOptions.settingSources).toEqual(["user", "project", "local"]);
@@ -3573,9 +3508,6 @@ describe("bridge", () => {
     }
   });
 
-  // A resume names the session it reopens; the bridge has no way to reopen
-  // "whatever this thread had", so a null identity is a params error, not a
-  // silent fresh session.
   it("refuses a thread/resume with no provider thread id", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     queryMock.mockImplementation(() => createControlledClaudeQuery());
@@ -3856,9 +3788,6 @@ describe("bridge", () => {
       expect(getFailedTurns(bridge.messages)).toHaveLength(1);
       expect(queries).toHaveLength(1);
       expect(queries[0]?.close).not.toHaveBeenCalled();
-      // The failure is typed for the runtime: one unsolicited authRequired
-      // hint beside the turn's provider.error row, and nothing on a request
-      // (no request failed here).
       expect(
         bridge.messages
           .filter((message) => message.method === "provider/recovery")
@@ -4037,8 +3966,6 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       expect(queries).toHaveLength(1);
-      // The stale resume settles the turn as failed rather than silently
-      // starting a fresh session behind the user's back.
       expect(getFailedTurns(bridge.messages)).toHaveLength(1);
       expect(
         bridge.messages.some((message) => message.method === "error"),
@@ -4506,9 +4433,6 @@ describe("bridge", () => {
 });
 
 describe("canonical skills/configure", () => {
-  // Canonical sessions carry no skill roots in their options; the roots the
-  // runtime configures once per process must reach every session the bridge
-  // builds afterwards, or injected skills are silently dropped.
   const canonicalOptions = {
     permissionMode: "full",
     permissionScope: "full",
@@ -4524,7 +4448,6 @@ describe("canonical skills/configure", () => {
       queries.push(query);
       return query;
     });
-    // Generic roots: skills directories, one subdirectory per skill.
     const stagedRoot = mkdtempSync(join(tmpdir(), "bb-claude-skill-roots-"));
     const rootA = join(stagedRoot, "a", "skills");
     const rootB = join(stagedRoot, "b", "skills");
@@ -4558,8 +4481,6 @@ describe("canonical skills/configure", () => {
       });
       await bridge.waitForResponse(2);
 
-      // Claude gets local plugins the bridge assembled around each root: a
-      // manifest pointing at `./skills`, and `skills` linking to the root.
       const options = getLatestQueryOptions() as {
         plugins?: { type: string; path: string }[];
       };
@@ -4594,7 +4515,6 @@ describe("canonical skills/configure", () => {
       queries[0]?.finish();
       await bridge.waitForResponse(3);
     } finally {
-      // The latch is process-scoped; clear it so later tests see no plugins.
       bridge.sendRequest(99, "skills/configure", { roots: [] });
       queries[0]?.finish();
       bridge.restore();
@@ -4649,8 +4569,6 @@ describe("canonical model context-window hint", () => {
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
 
-      // The SDK reports its legacy 200k BYOK fallback through a custom endpoint,
-      // although current Fable providers support 1M.
       queries[0]?.emit({
         type: "result",
         subtype: "success",

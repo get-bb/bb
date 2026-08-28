@@ -16,22 +16,14 @@ export interface OptionDisplayProps {
   value: ReactNode;
   tone?: "default" | "warning";
   icon?: ComponentType<{ className?: string }>;
-  /** Pre-rendered leading element (e.g. an Icon). Takes precedence over `icon`. */
   leading?: ReactNode;
   compactValue?: ReactNode;
   compactValueHiddenWhenTiny?: boolean;
   className?: string;
   title?: string;
-  /** Render with the dim treatment used by options inside the prompt box. */
   muted?: boolean;
 }
 
-/**
- * Non-interactive counterpart to the composer's inline option triggers.
- *
- * Read-only surfaces use the same dimensions, responsive labels, icon spacing,
- * and muted hierarchy without implying that the value can be changed there.
- */
 export function OptionDisplay({
   label,
   value,

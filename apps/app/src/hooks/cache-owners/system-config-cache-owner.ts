@@ -48,10 +48,6 @@ export function rollbackKeyboardSettingsCacheTransaction({
   queryClient.setQueryData(systemConfigQueryKey(), transaction.previous);
 }
 
-/**
- * The streamer mode value the cache last saw from the server, or undefined
- * when `/system/config` has not resolved in this window.
- */
 export function readCachedStreamerMode(
   queryClient: QueryClient,
 ): boolean | undefined {
@@ -59,10 +55,6 @@ export function readCachedStreamerMode(
     ?.generalSettings.streamerMode;
 }
 
-/**
- * The provider order the cache last saw from the server, or undefined when
- * `/system/config` has not resolved in this window.
- */
 export function readCachedProviderOrder(
   queryClient: QueryClient,
 ): readonly string[] | undefined {

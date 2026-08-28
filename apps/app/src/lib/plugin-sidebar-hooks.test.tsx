@@ -25,8 +25,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => {
-  // Stable like the real query result; a fresh array per render would rebuild
-  // the host-name map and (correctly) invalidate every cached DTO.
   const hosts: never[] = [];
   return { useHosts: () => ({ data: hosts }) };
 });
@@ -56,9 +54,6 @@ describe("useSidebarThreads", () => {
       "thr_changing",
     ]);
 
-    // React Query structurally shares the payload: a refetch that touched
-    // one thread keeps the other entry objects. Plugin rows memoized on their
-    // thread DTO must get the same object back for the untouched thread.
     state.data = payload([
       stable,
       makeThreadListEntry({ id: "thr_changing", title: "Two" }),
@@ -76,9 +71,6 @@ describe("useSidebarThreads", () => {
     state.data = payload([stable]);
     const first = renderHook(() => useSidebarThreads());
     const second = renderHook(() => useSidebarThreads());
-    // Two plugin lists mounted at once (or one list plus the built-in
-    // sidebar's plugin surfaces): each derives the host-name map from the
-    // same hosts payload, so they must not evict each other's cached DTOs.
     expect(second.result.current.threads[0]).toBe(
       first.result.current.threads[0],
     );

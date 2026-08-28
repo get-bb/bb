@@ -3,12 +3,6 @@ import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
 import * as jsxRuntime from "react/jsx-runtime";
 import * as jsxDevRuntime from "react/jsx-dev-runtime";
-// Shared-singleton packages (plugin design §5.5): the portaling radix
-// families + sonner + vaul. Vendored plugin components import these
-// specifiers; `bb plugin build` shims them to the slots installed below, so
-// plugin overlays live in the host's dismissable-layer/focus/scroll-lock
-// world and plugin toast() reaches the host toaster. Importing them here
-// (menubar/hover-card/etc. included) is what puts them in the host bundle.
 import * as radixAlertDialog from "@radix-ui/react-alert-dialog";
 import * as radixContextMenu from "@radix-ui/react-context-menu";
 import * as radixDialog from "@radix-ui/react-dialog";
@@ -22,13 +16,6 @@ import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
 import * as vaul from "vaul";
 import * as pierreDiffs from "@pierre/diffs";
-// Host-resident libraries (RUNTIME_SLOT_BY_SPECIFIER rule 2): no singleton
-// semantics, but every plugin app used to bundle its own copy — the
-// shared-ui Icon alone carries the hugeicons map. The host already ships
-// all of them, so plugins read them from here. Anything slotted here is
-// exposed as a whole namespace, which keeps rolldown from tree-shaking it
-// out of the boot chunk: that is why zod (mostly unused by the app) is
-// deliberately not a slot.
 import * as clsx from "clsx";
 import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
@@ -63,32 +50,9 @@ import {
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
 
-/**
- * Plugin frontend bundle loading (plugin design §5.1). Once per page load,
- * after system config resolves: expose the shared
- * runtime on `globalThis.__bbPluginRuntime`, fetch the plugin inventory, and
- * for each running plugin with a compatible bundle link its CSS and
- * dynamic-import() its JS. Per-plugin containment: a bundle that fails to
- * import records status "failed" and never breaks the app or other plugins;
- * an SDK-major-mismatched bundle records "needs-update" and is skipped.
- *
- * The registry keeps each loaded module's namespace keyed by plugin id;
- * after loading, each module's default export (a `definePluginApp` product)
- * is interpreted into the slot store (plugin-app-definition.ts).
- *
- * Live reload (P3.4): the realtime `plugins-changed` broadcast schedules
- * {@link schedulePluginFrontendReconcile}, which re-fetches the inventory
- * and re-imports only plugins whose bundle hash changed (fresh-hash URL, so
- * the browser module cache never serves a stale bundle), replacing their
- * slot registrations wholesale. Old ESM module objects cannot be unloaded —
- * they just become unreferenced; that is the accepted design.
- */
-
-/** Mirror of the `app.bundle` slice of a GET /api/v1/plugins entry. */
 interface PluginFrontendBundle {
   jsUrl: string;
   cssUrl: string | null;
-  /** dist/app.js size; smaller bundles load first (see reconcile). */
   jsBytes: number;
   hash: string;
   sdkMajor: number;
@@ -105,7 +69,6 @@ type PluginFrontendRecord =
   | {
       pluginId: string;
       status: "loaded";
-      /** The bundle's ESM namespace (default export = the plugin app). */
       module: Record<string, unknown>;
     }
   | { pluginId: string; status: "failed"; error: string }
@@ -128,7 +91,6 @@ interface PluginFrontendActiveGenerationDiagnostic {
   contentScriptIds: readonly string[];
 }
 
-/** Per-window frontend lifecycle state shown in plugin diagnostics. */
 export type PluginFrontendDiagnostic =
   | {
       pluginId: string;
@@ -157,10 +119,6 @@ interface PluginFrontendLoaderDeps {
   warn: (message: string) => void;
 }
 
-/**
- * Load every candidate bundle, one record per plugin. Never throws: each
- * plugin's import/evaluation failure is contained in its own record.
- */
 export async function loadPluginFrontends(
   candidates: readonly PluginFrontendCandidate[],
   deps: PluginFrontendLoaderDeps,
@@ -209,10 +167,6 @@ async function loadOneBundle(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Shared runtime + boot wiring (real browser paths).
-// ---------------------------------------------------------------------------
-
 interface BbPluginRuntime {
   react: unknown;
   reactDom: unknown;
@@ -242,12 +196,6 @@ interface BbPluginRuntime {
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
 
-/**
- * Expose the app's own React graph (plus the SDK slot) on
- * `globalThis.__bbPluginRuntime` — set exactly once, and always before any
- * bundle import()s (their shims read it at evaluation time). One React in
- * the page, ever; a second copy is the "Invalid hook call" factory.
- */
 export function installPluginRuntime(): void {
   const host = globalThis as RuntimeHost;
   if (host.__bbPluginRuntime !== undefined) return;
@@ -257,9 +205,6 @@ export function installPluginRuntime(): void {
     reactDomClient,
     jsxRuntime,
     jsxDevRuntime,
-    // The real `@get-bb/plugin-sdk/app` surface: definePluginApp, the hooks, and
-    // the curated UI kit. Kept in type-sync with the facade package via
-    // `satisfies PluginSdkApp` in plugin-sdk-app-impl.
     pluginSdkApp: pluginSdkAppImplementation,
     radixAlertDialog,
     radixContextMenu,
@@ -274,8 +219,6 @@ export function installPluginRuntime(): void {
     sonner,
     vaul,
     pierreDiffs,
-    // Diff components wrapped in the host's worker-pool gate; see
-    // plugin-pierre-diffs-react.tsx.
     pierreDiffsReact: createGatedPierreDiffsReact(),
     clsx,
     tailwindMerge,
@@ -298,17 +241,12 @@ function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
   );
 }
 
-/** Running plugins with a servable bundle, from GET /api/v1/plugins. */
 async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   const response = await fetch("/api/v1/plugins");
-  // Nothing to load rather than an error: an older server or a disabled
-  // experiment both mean "no plugin frontends".
   if (!response.ok) return [];
   const body = (await response.json()) as { plugins?: unknown };
   if (!Array.isArray(body.plugins)) return [];
   const candidates: PluginFrontendCandidate[] = [];
-  // Same fetch feeds the logo store: every surface rendering a plugin
-  // contribution (sidebar, menus, thread actions) resolves logos from it.
   const logoUrls = new Map<string, PluginLogoUrls>();
   for (const entry of body.plugins) {
     const typed = entry as {
@@ -330,8 +268,6 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
       typeof typed.iconUrl === "string" ? typed.iconUrl : null;
     const icon = typeof typed.icon === "string" ? typed.icon : null;
     const displayName = typeof typed.name === "string" ? typed.name : null;
-    // Declared icons: an older server sends no `icons`, which reads as a
-    // plugin that declares none.
     const icons = new Map<string, string>();
     if (typeof typed.icons === "object" && typed.icons !== null) {
       for (const [name, url] of Object.entries(typed.icons)) {
@@ -359,14 +295,8 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
 
 export { applyPluginCss } from "./plugin-css";
 
-/** How many plugin bundles import at once during a reconcile pass. */
 export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
 
-/**
- * Load order for a reconcile pass: the plugin owning the current panel route
- * first (its UI is what the page shows), then ascending bundle size so many
- * light plugins register before one heavy one. Stable for equal sizes.
- */
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
   routePluginId: string | null,
@@ -378,11 +308,6 @@ export function orderPluginFrontendCandidates(
   });
 }
 
-/**
- * Run `worker` over `items` with at most `limit` in flight, preserving start
- * order. The reconcile worker contains per-plugin failures itself; an
- * unexpected throw rejects this promise like `Promise.all` did before.
- */
 async function runWithConcurrencyLimit<T>(
   items: readonly T[],
   limit: number,
@@ -402,13 +327,8 @@ async function runWithConcurrencyLimit<T>(
   await Promise.all(lanes);
 }
 
-// ---------------------------------------------------------------------------
-// Reconcile: boot + live reload share one injectable state transition.
-// ---------------------------------------------------------------------------
-
 interface PluginFrontendReconcileState {
   records: Map<string, PluginFrontendRecord>;
-  /** Bundle hash last applied per plugin; an unchanged hash is a no-op. */
   appliedHashes: Map<string, string>;
   activeGenerations: Map<string, ActivePluginFrontendGeneration>;
   generationByPluginId: Map<string, number>;
@@ -434,13 +354,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
-  /**
-   * Publish (string) or remove (null) the generation's CSS URL. Awaited before
-   * content scripts or registrations go live so injected implementations can
-   * preserve the same ordering as the synchronous production CSS manager.
-   */
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
-  /** Retain the published CSS through one non-React consumer's lifetime. */
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
   setRegistrations: (
@@ -448,19 +362,9 @@ export interface PluginFrontendReconcileDeps {
     registrations: PluginRegistrationSet,
   ) => void;
   removeRegistrations: (pluginId: string) => void;
-  /**
-   * Hold slot-store notifications while a reconcile run activates several
-   * plugins; returns the closer. Production binds `beginPluginSlotBatch`.
-   */
   beginSlotBatch: () => () => void;
   warn: (message: string) => void;
-  /**
-   * The plugin whose panel is the current route (`/plugins/:pluginId/...`),
-   * or null. Its bundle imports first so the page the user asked for is not
-   * queued behind unrelated plugins.
-   */
   routePluginId: () => string | null;
-  /** Test override; production allows 10s for async mount setup. */
   mountTimeoutMs?: number;
   diagnosticsChanged?: () => void;
 }
@@ -713,22 +617,6 @@ async function activateContentScripts(
   }
 }
 
-/**
- * Bring the frontend plugin state in line with the server inventory:
- *
- * - plugin gone/disabled/stopped → drop its slot registrations + CSS link;
- * - bundle hash changed (or plugin newly present) → reset crashed-slot
- *   latches, re-import via the fresh-hash URL, replace the CSS link, and
- *   REPLACE its slot registrations wholesale (the generation bump remounts
- *   mounted slots) — never appended, so reloading twice still yields exactly
- *   one of each registration;
- * - unchanged hash → untouched (a backend-only reload never remounts UI).
- *
- * Replacement is transactional and never overlaps generations: bundle/setup
- * validation happens first, then the prior generation is aborted/disposed
- * before candidate scripts mount. A failed candidate is rolled back fully and
- * leaves no stale frontend bound to a replaced backend.
- */
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
@@ -747,10 +635,6 @@ export async function reconcilePluginFrontends(
     state.diagnostics.delete(pluginId);
     deps.diagnosticsChanged?.();
   }
-  // One notification burst per run instead of one per plugin: every
-  // `usePluginSlots` reader (timeline static context, markdown directive
-  // registry, composer customizations, ...) would otherwise re-render once
-  // per bundle as they resolve.
   const closeSlotBatch = deps.beginSlotBatch();
   try {
     await reconcileCandidates(candidates, state, deps);
@@ -764,12 +648,6 @@ async function reconcileCandidates(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
 ): Promise<void> {
-  // Bounded, ordered loading: every bundle is a separate parse/eval on the
-  // main thread and, on a phone, they used to all land during the window in
-  // which the route chunk itself was still arriving. Three at a time keeps
-  // the network busy without stacking a dozen evaluations, and the order
-  // (route-owning plugin, then smallest first) gets the most useful and the
-  // most plugins on screen earliest.
   await runWithConcurrencyLimit(
     orderPluginFrontendCandidates(candidates, deps.routePluginId()),
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
@@ -778,18 +656,14 @@ async function reconcileCandidates(
       const previous = state.records.get(pluginId);
       if (
         previous !== undefined &&
-        previous.status !== "failed" && // failed bundles retry (e.g. transient fetch error)
+        previous.status !== "failed" &&
         state.appliedHashes.get(pluginId) === candidate.bundle.hash
       ) {
         return;
       }
-      // A fixed plugin gets a fresh chance: clear crashed-slot latches before
-      // the replaced registrations remount their boundaries.
       deps.resetCrashedSlots(pluginId);
       const loaded = await loadPluginFrontends([candidate], {
         importModule: deps.importModule,
-        // CSS belongs to the committed generation. Import/setup validation does
-        // not inject candidate styles; activation publishes them on success.
         injectCss: () => {},
         warn: deps.warn,
       });
@@ -860,9 +734,6 @@ async function reconcileCandidates(
 
       const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
       state.generationByPluginId.set(pluginId, generation);
-      // Publish the URL before either non-React scripts mount or slot-store
-      // notifications can render plugin code. Inactive plugins only preload;
-      // an already-mounted generation starts a safe side-by-side replacement.
       await deps.applyCss(pluginId, candidate.bundle.cssUrl);
       const cssRelease =
         collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
@@ -870,9 +741,6 @@ async function reconcileCandidates(
         pluginId,
         state,
         deps,
-        // Keep the old registration mounted until candidate content scripts
-        // succeed. The final setRegistrations call replaces it atomically, so
-        // an old UI consumer holds the active sheet through the CSS handoff.
         false,
       );
       const controller = new AbortController();
@@ -939,10 +807,6 @@ async function reconcileCandidates(
   );
 }
 
-/**
- * Abort and dispose every active or activating generation in this app
- * window, then remove its slots and styles. Safe to call repeatedly.
- */
 export async function disposePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
@@ -979,12 +843,6 @@ export async function disposePluginFrontends(
   deps.diagnosticsChanged?.();
 }
 
-/**
- * Debounce + serialize reconcile runs: a burst of `plugins-changed`
- * broadcasts (e.g. `bb plugin reload` with several plugins) coalesces into
- * one run, and a broadcast landing mid-run queues exactly one follow-up
- * instead of overlapping it.
- */
 export function createPluginFrontendReconcileScheduler(args: {
   run: () => Promise<void>;
   debounceMs?: number;
@@ -1027,11 +885,6 @@ function publishBrowserDiagnostics(): void {
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
-/**
- * Longest a reconcile run holds slot notifications: bundles that resolve
- * within this window flush together; a slow bundle cannot keep the others'
- * UI off screen past it.
- */
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
@@ -1049,7 +902,6 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   diagnosticsChanged: publishBrowserDiagnostics,
 };
 
-/** Current per-window lifecycle diagnostics for plugin frontend generations. */
 export function getPluginFrontendDiagnostics(): ReadonlyMap<
   string,
   PluginFrontendDiagnostic
@@ -1057,7 +909,6 @@ export function getPluginFrontendDiagnostics(): ReadonlyMap<
   return browserDiagnosticsSnapshot;
 }
 
-/** Subscribe to per-window frontend diagnostic changes. */
 export function subscribePluginFrontendDiagnostics(
   listener: () => void,
 ): () => void {
@@ -1067,28 +918,17 @@ export function subscribePluginFrontendDiagnostics(
   };
 }
 
-/** App-window teardown path. */
 function teardownPluginFrontends(): Promise<void> {
   return disposePluginFrontends(state, browserReconcileDeps);
 }
 
 interface PluginFrontendPageLifecycleDeps {
   isTornDown: () => boolean;
-  /** Fresh boot after a teardown: resets boot state and reconciles. */
   reboot: () => void;
-  /** Frontends survived the freeze; pick up plugin changes made meanwhile. */
   reconcile: () => void;
   teardown: () => void;
 }
 
-/**
- * Page lifecycle policy for plugin frontends. A `pagehide` with `persisted`
- * means the page is entering the back/forward cache: WebKit may restore it
- * without a reload, so the frontends stay mounted (tearing down would leave
- * a restored page with no plugin UI). Only a real unload tears down. On a
- * persisted `pageshow` the frontends either reconcile (still mounted) or,
- * if a teardown did happen, boot again.
- */
 export function createPluginFrontendPageLifecycle(
   deps: PluginFrontendPageLifecycleDeps,
 ): {
@@ -1132,17 +972,12 @@ function installPluginFrontendPageLifecycle(): void {
   window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
 }
 
-/**
- * Idempotent per page load. Called after system config resolves; runs entirely
- * off the first-paint path.
- */
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
   })().catch((error: unknown) => {
-    // Inventory fetch/network failure — plugin UI is absent, app unharmed.
     console.warn(
       `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -1152,7 +987,6 @@ export function bootPluginFrontends(): Promise<void> {
 
 async function runLiveReconcile(): Promise<void> {
   try {
-    // Boot's own reconcile settles first (bootPromise never rejects).
     await bootPromise;
     await reconcilePluginFrontends(state, browserReconcileDeps);
   } catch (error) {
@@ -1164,11 +998,6 @@ async function runLiveReconcile(): Promise<void> {
 
 let liveScheduler: { schedule: () => void } | null = null;
 
-/**
- * Realtime `plugins-changed` hook (wired in realtime-cache-registry): live
- * frontend reload without a page refresh. A no-op until the frontends have
- * booted (experiment off / boot pending — boot loads current state anyway).
- */
 export function schedulePluginFrontendReconcile(): void {
   if (bootPromise === null) return;
   liveScheduler ??= createPluginFrontendReconcileScheduler({

@@ -64,12 +64,6 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
-  /**
-   * Compact drawer hosting. When set, the sidebar renders its body only,
-   * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
-   * mounted (hidden) while a Settings/Tools body is showing, so returning to
-   * the app never remounts the thread list in the closed drawer.
-   */
   mobileHosted?: { hidden: boolean };
 }
 
@@ -82,9 +76,6 @@ export function AppSidebar({
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
-  // The resolved replacement owns the sidebar's scrolling thread list. It never
-  // replaces the chrome around it: the New-thread button, search action,
-  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
@@ -166,8 +157,6 @@ export function AppSidebar({
         target.element.click();
         return true;
       }
-      // The neighbor sits inside a windowed-out placeholder: there is no row
-      // to click, so navigate by id, matching what the row's link would do.
       if (!target.projectId) return false;
       closeOnMobile();
       void navigate(
@@ -181,10 +170,6 @@ export function AppSidebar({
     [activeThreadId, closeOnMobile, navigate],
   );
 
-  // While hosted-and-hidden (a Settings/Tools body is showing in the drawer)
-  // this sidebar is not the visible one: leave its shortcuts unhandled, as
-  // they are on wide viewports where Settings/Tools replace the sidebar,
-  // rather than clicking rows the user cannot see.
   const isHiddenHostedBody = mobileHosted?.hidden === true;
   const activateVisibleThreadShortcut = useCallback(
     (index: number) =>
@@ -225,19 +210,6 @@ export function AppSidebar({
   const body = (
     <>
       {showTopReserve ? (
-        /* Top reserve that keeps the sidebar's content (New Thread / New
-             Projects) anchored below the title-bar chrome, mirroring
-             the page-header height on the content side. The sidebar toggle is
-             pinned at the app's top-left for every chrome (see AppLayout's
-             SidebarTriggerOverlay), so this row hosts no trigger of its own — it
-             stays mounted in every sidebar state, including while the panel
-             collapses off-canvas, so the content holds its vertical position
-             instead of riding up under the pinned toggle during the animation.
-             On desktop it doubles as the window-drag strip. The Back/Forward
-             route-history controls live on the right of this chrome row, clear
-             of the pinned toggle/traffic lights on the left and the resize
-             handle on the right; they opt out of the desktop drag region so
-             clicks register. */
         <div
           data-testid="app-sidebar-top-reserve-row"
           className={cn(
@@ -281,15 +253,7 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {/* The footer holds a variable number of plugin action buttons, so a
-         * narrowed sidebar plus several plugins can no longer fit the action
-         * row and the update chips on one line. `flex-wrap-reverse` plus the
-         * flexible spacer below handles both layouts without measuring:
-         * while everything fits, the spacer stretches and pushes the chips to
-         * the right of a single row; once it doesn't, the chips wrap onto
-         * their own line, which wrap-reverse renders above the actions, and
-         * they sit flush left because the spacer stays behind on the action
-         * line. */}
+        {}
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton

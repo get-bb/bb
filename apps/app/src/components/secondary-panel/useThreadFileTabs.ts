@@ -98,19 +98,16 @@ export type OpenSecondaryPanelTabRequest =
   | {
       kind: "workspace-file-preview";
       tab: WorkspaceFileTabState;
-      /** Explicit identity; omission preserves the surface-context adapter. */
       environmentId?: string;
     }
   | {
       kind: "host-file-preview";
       tab: HostFileTabState;
-      /** Explicit identity; omission preserves the thread-context adapter. */
       hostId?: string;
     }
   | {
       kind: "thread-storage-file-preview";
       tab: ThreadStorageFileTabState;
-      /** Explicit identity; omission preserves the thread-context adapter. */
       threadId?: string;
     }
   | { kind: "browser"; url: string }
@@ -137,9 +134,6 @@ type SecondaryPanelTab =
   | PluginPanelFixedPanelTab;
 
 type OpenResolvedTabBehavior = "open" | "replace-new-tab";
-
-// Every side chat uses a constant tab title; the message it was triggered from
-// is shown inside the panel ("Replying to" bubble), so the tab needn't echo it.
 
 function createStorageTab(
   environmentId: string | null,
@@ -483,9 +477,6 @@ export function useThreadFileTabs({
       request: OpenSecondaryPanelTabRequest,
       options?: { viewer?: FileOpenerOverride },
     ): SecondaryPanelTab | null => {
-      // Browser navigation replaces the transient new-tab launcher. Other
-      // ordinary opens append or focus a tab. Both paths still share the
-      // same opener-or-built-in resolution above.
       return openResolvedTab(
         request,
         request.kind === "browser" ? "replace-new-tab" : "open",
@@ -513,11 +504,6 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
-  // Opens (or focuses) a plugin panel tab from a `threadPanelAction`. Params
-  // are part of the tab identity: identical params focus the existing tab
-  // (refreshing its title), different params open a sibling tab. Launched
-  // from the new-tab page, so the transient new-tab is replaced like the
-  // file/browser launchers do.
   const openPluginPanel = useCallback(
     ({ pluginId, actionId, title, paramsJson }: OpenPluginPanelArgs) => {
       const tab = createPluginPanelFixedPanelTab({
@@ -616,8 +602,6 @@ export function useThreadFileTabs({
     fileOpenerIdFromActionId(activePluginPanelTab.actionId) !== null
       ? (activePluginPanelTab.fileOpenerOwner ?? null)
       : null;
-  // Params own the routed file identity; the owner only restores native
-  // presentation state such as line range and workspace status.
   const activeFileOpenerFile =
     activeFileOpenerOwner === null || activePluginPanelTab === null
       ? null

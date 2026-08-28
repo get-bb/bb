@@ -59,10 +59,6 @@ export type ThreadWaitTimeoutErrorConstructor = typeof ThreadWaitTimeoutError;
 export type ThreadWaitUnreachableErrorConstructor =
   typeof ThreadWaitUnreachableError;
 
-/**
- * Public npm façade over the canonical BB SDK. Keep every area typed from
- * `@bb/sdk` so the packaged SDK cannot drift behind the CLI or web app.
- */
 export class BBSdk implements BbSdk {
   readonly environments: BbSdk["environments"];
   readonly files: BbSdk["files"];

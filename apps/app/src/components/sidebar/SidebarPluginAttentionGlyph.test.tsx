@@ -32,8 +32,6 @@ function plugin(overrides: Partial<PluginListItem>): PluginListItem {
 
 function renderGlyph(plugins: PluginListItem[]) {
   usePluginListMock.mockReturnValue({ data: { plugins } });
-  // A fresh jotai Provider per render: "across a remount" below means the
-  // acknowledgement survived only through localStorage, like a page reload.
   return render(
     <Provider>
       <MemoryRouter>

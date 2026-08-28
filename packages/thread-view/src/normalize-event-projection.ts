@@ -71,18 +71,6 @@ function isDelegationSourceMessage(
   return message.kind === "delegation";
 }
 
-/**
- * A persisted tool call that other rows name as their parent is a delegation
- * whatever the bridge called the tool. So is a presentation-less call under
- * the name set the deleted tables held (`isLegacyDelegationToolCall`, the
- * legacy adapter in @bb/domain): a childless legacy call — one the SDK
- * rejected at input validation, or one whose subagent events were never
- * persisted — keeps the delegation row, id and title it always had. Its
- * label metadata comes from the conventional argument keys a delegating
- * tool carries (`description` or `prompt`, `subagent_type`, `model`) —
- * argument shape, never a tool name. A grammar v3 `delegation` item carries
- * these fields explicitly and does not pass through here.
- */
 function toolCallAsDelegationMessage(
   message: EventProjectionToolCallMessage,
 ): EventProjectionDelegationMessage {
@@ -100,9 +88,6 @@ function toolCallAsDelegationMessage(
   const model = getFirstStringField(toolArgs, ["model"]);
   return {
     ...shared,
-    // Re-mint the row id under the delegation kind so a persisted thread
-    // keeps the ids it had when the bridge (or a name table) marked the call
-    // as a delegation; nested rows inherit this id as their prefix.
     id: messageId(message.threadId, "delegation", message.callId),
     kind: "delegation",
     ...(subagentType ? { subagentType } : {}),
@@ -427,11 +412,6 @@ class SemanticProjectionBuilder {
     };
   }
 
-  // Delegation children render as a flat sequence of messages under the
-  // delegation row. Their lifecycle is owned by the delegation tool call;
-  // wrapping them in a synthetic turn would require aggregating child
-  // statuses into a turn status, which has no meaningful answer while the
-  // subagent is still running.
   private buildFlatChildProjection(
     contexts: readonly SemanticMessageContext[],
   ): EventProjection {

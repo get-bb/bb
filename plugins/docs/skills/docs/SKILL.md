@@ -47,6 +47,11 @@ bb docs status ./docs-work --diff
 bb docs push ./docs-work
 ```
 
+`bb docs status` exits 0 when no changes exist. It exits 4 when it finds
+changes that the output describes. Exit 4 is a successful status result.
+Review that output, then run `bb docs push` as a separate command. Do not
+connect the status and push commands with `&&`.
+
 Pull a folder subtree with `--folder`, or the whole selected vault with
 `--all`:
 

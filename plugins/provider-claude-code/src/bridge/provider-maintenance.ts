@@ -252,9 +252,7 @@ async function readKeychainCredentials(): Promise<string | null> {
         timeout: 10_000,
       });
       if (stdout.trim()) return stdout.trim();
-    } catch {
-      // Fall through to the next keychain form, then the credentials file.
-    }
+    } catch {}
   }
   return null;
 }
@@ -455,9 +453,7 @@ function normalizeUsage(
     usageWindow(parsed.data.five_hour, "Current session"),
     usageWindow(parsed.data.seven_day, "Weekly limit"),
     ...scopedWindows(parsed.data.limits),
-  ].filter(
-    (window): window is ProviderUsageWindow => window !== null,
-  );
+  ].filter((window): window is ProviderUsageWindow => window !== null);
   return {
     status: "ok",
     accountEmail: email,

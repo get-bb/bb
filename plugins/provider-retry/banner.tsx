@@ -26,7 +26,6 @@ export function ProviderRetryBannerView({
 }: {
   cancelling: boolean;
   onCancel: () => void | Promise<void>;
-  /** The provider's display name from the host's directory; falls back to the id. */
   providerName: string;
   view: ProviderRetryView;
 }) {

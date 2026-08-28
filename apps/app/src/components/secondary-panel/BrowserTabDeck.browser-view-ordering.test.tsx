@@ -292,8 +292,6 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     });
     expect(visibility.at(-1)).toEqual({ tabId: "tab-url", visible: true });
 
-    // Focus leaving the owning pane drives readiness false. Returning focus
-    // must recompute bounds before exposing the retained native view again.
     view.rerender(
       <BrowserTabDeck
         browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}

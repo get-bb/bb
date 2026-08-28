@@ -58,9 +58,6 @@ describe("resolveWindowOpenAction", () => {
 });
 
 describe("browser IPC payload schemas", () => {
-  // The desktop shell hosts whatever SPA the probed bb server serves (no
-  // version handshake), so these request shapes are wire-frozen: they must
-  // keep accepting exactly the historical bounds-only payloads.
   it("accepts a well-formed attach request and rejects bad shapes", () => {
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
@@ -71,7 +68,6 @@ describe("browser IPC payload schemas", () => {
       }).success,
     ).toBe(true);
 
-    // Empty tabId, negative size, and unknown keys are all rejected.
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
         tabId: "",
@@ -95,8 +91,6 @@ describe("browser IPC payload schemas", () => {
         extra: true,
       }).success,
     ).toBe(false);
-    // A layout descriptor never crosses the IPC boundary; older shells'
-    // strict parsers would drop the whole request if a renderer sent one.
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
         tabId: "browser:abc",

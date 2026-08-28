@@ -122,6 +122,9 @@ a manifest-backed local workspace:
 Pull preserves vault-relative paths and writes `.bb-docs-state.json`; edit the
 ordinary files and leave that state file untouched. Push uses pulled SHA-256
 versions as compare-and-swap guards. Concurrent changes stop with exit 3.
+Status exits 0 when no changes exist and exits 4 when changes exist. Exit 4 is
+a successful result. Review its output, then run push separately. Do not
+connect status and push with `&&`.
 Local file and empty-directory deletions are warnings unless `--delete` is
 explicit; a pulled folder root is retained, so pull its parent or the whole
 vault to remove that folder. Use `--workspace-host <id>` when a standalone

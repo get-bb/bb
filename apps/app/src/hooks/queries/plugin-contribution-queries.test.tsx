@@ -63,7 +63,7 @@ describe("usePluginContributions", () => {
           label: "Empty trigger",
           triggers: [],
         },
-        { pluginId: "broken" }, // malformed: dropped at the boundary
+        { pluginId: "broken" },
       ],
     });
 
@@ -155,7 +155,6 @@ describe("usePluginMentionSearch", () => {
             {
               itemId: "issue:owner/repo#42",
               title: "#42 Fix login bug",
-              searchAliases: [],
               subtitle: "owner/repo",
               icon: null,
             },

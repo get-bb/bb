@@ -1,25 +1,3 @@
-/**
- * The codex plugin's extension kinds (docs/provider-plugin-api.md §3).
- *
- * Core keeps a small semantic vocabulary; everything codex-specific the
- * timeline carries is a `"<pluginId>/<name>"` kind whose payload schema the
- * plugin declares here and the server enforces at ingest. Two codex natives
- * live here rather than in core:
- *
- * - `provider-codex/goal` (thread state): codex's long-running Goal — the
- *   objective, its status and budget. The latest snapshot wins; `null` is
- *   the cleared state (`thread/goal/cleared`). Rows persisted before this
- *   kind existed (`thread/goal/updated`, `thread/goal/cleared`) convert to
- *   it when read.
- * - `provider-codex/macos-permission` (item): the macOS permission profile a
- *   codex approval request asks for (preferences, automation, accessibility,
- *   …). bb's provider-neutral permission layer cannot grant it, so the
- *   profile rides the timeline as its own row beside the approval instead
- *   of failing the whole approval.
- *
- * The namespace is the plugin id (`provider-codex`), which is how the server
- * finds these schemas.
- */
 import { z } from "zod";
 
 export const CODEX_PLUGIN_ID = "provider-codex";
@@ -45,7 +23,6 @@ export const codexGoalSchema = z.object({
 });
 export type CodexGoal = z.infer<typeof codexGoalSchema>;
 
-/** The `provider-codex/goal` state payload: the goal, or `null` once cleared. */
 export const codexGoalStateSchema = z.union([codexGoalSchema, z.null()]);
 export type CodexGoalState = z.infer<typeof codexGoalStateSchema>;
 
@@ -68,9 +45,7 @@ export const codexMacOsPermissionsSchema = z.object({
 });
 export type CodexMacOsPermissions = z.infer<typeof codexMacOsPermissionsSchema>;
 
-/** The `provider-codex/macos-permission` item payload. */
 export const codexMacOsPermissionItemSchema = z.object({
-  /** The codex item the approval belongs to (a command execution). */
   approvalItemId: z.string(),
   reason: z.string().nullable(),
   permissions: codexMacOsPermissionsSchema,
@@ -79,13 +54,11 @@ export type CodexMacOsPermissionItem = z.infer<
   typeof codexMacOsPermissionItemSchema
 >;
 
-/** What the codex provider declares (`extensionKinds`). */
 export const codexExtensionKinds = {
   goal: { state: codexGoalStateSchema },
   "macos-permission": { item: codexMacOsPermissionItemSchema },
 } as const;
 
-/** One line per requested macOS capability, for the row's detail. */
 export function summarizeCodexMacOsPermissions(
   permissions: CodexMacOsPermissions,
 ): string[] {

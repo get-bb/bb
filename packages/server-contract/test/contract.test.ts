@@ -1231,7 +1231,6 @@ describe("server-contract canonical schemas", () => {
     });
     expect(parsed.input[0]).toMatchObject({ mentions: [pluginMention] });
 
-    // All plugin resource fields are required — a partial resource fails.
     expect(() =>
       sendMessageRequestSchema.parse({
         input: [
@@ -1406,21 +1405,18 @@ describe("server-contract canonical schemas", () => {
         workspace: { type: "unmanaged" as const, path: null },
       },
     };
-    // Missing senderThreadId.
     expect(() =>
       createThreadRequestSchema.parse({
         ...baseRequest,
         startedOnBehalfOf: { initiator: "agent" },
       }),
     ).toThrow();
-    // Empty senderThreadId.
     expect(() =>
       createThreadRequestSchema.parse({
         ...baseRequest,
         startedOnBehalfOf: { initiator: "agent", senderThreadId: "" },
       }),
     ).toThrow();
-    // "user" is not a valid started-on-behalf-of initiator.
     expect(() =>
       createThreadRequestSchema.parse({
         ...baseRequest,
@@ -1467,18 +1463,6 @@ describe("server-contract canonical schemas", () => {
 });
 
 describe("server-contract clients", () => {
-  // The browser app and @bb/sdk import createApiClient at boot. The route
-  // table in public-api.ts drags ~85 zod schemas into the boot chunk, so the
-  // client must reach PublicApiRoutes through a type-only import and nothing
-  // else from that module graph. Typecheck cannot tell `import type` from a
-  // value import here, so pin the source form: every module api-client.ts
-  // imports or re-exports from, flagged type-only or not, so a new value
-  // edge (a sibling zod module, a value re-export of the route table) fails
-  // by construction. Walk the TypeScript AST instead of regexing the text: a
-  // `;` inside a comment in a multi-line import block, or a bare
-  // `import "./x.js"` with no `from`, adds a real edge that a statement
-  // regex never sees, and statement order or a trailing comment must not
-  // matter because neither changes the module graph.
   it("keeps the api client off the route table's value import graph", () => {
     const source = readFileSync(
       fileURLToPath(new URL("../src/api-client.ts", import.meta.url)),
@@ -1499,9 +1483,6 @@ describe("server-contract clients", () => {
         return [
           {
             specifier: statement.moduleSpecifier.text,
-            // Only `import type` is type-only: a bare `import "./x.js"` has
-            // no clause, and `import { type X }` keeps a value clause that
-            // verbatimModuleSyntax-style emit preserves as a live edge.
             typeOnly:
               statement.importClause?.phaseModifier ===
               ts.SyntaxKind.TypeKeyword,
@@ -1532,12 +1513,6 @@ describe("server-contract clients", () => {
     ).toEqual([{ specifier: "./public-api.js", typeOnly: true }]);
   });
 
-  // index.ts re-exports public-api.ts with `export *`, which stays a live
-  // module-graph edge no matter how api-client.ts imports it. Bundlers only
-  // drop the route table (and the schema modules behind it) from that edge
-  // because the package declares itself side-effect free; without the flag
-  // the whole table returns to the browser boot chunk while the test above
-  // stays green.
   it("declares the package side-effect free so the barrel's route-table edge is droppable", () => {
     const manifest = readFileSync(
       fileURLToPath(new URL("../package.json", import.meta.url)),
@@ -1640,8 +1615,6 @@ describe("server-contract clients", () => {
         query: { path: "/Users/me/notes/plan.md" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/host-files/content");
-    // Path-suffix file routes: `:filePath{.+}` spans slashes and the caller
-    // passes a pre-encoded value ($url substitutes params verbatim).
     expect(
       publicClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url(
         {

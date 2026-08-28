@@ -1,4 +1,11 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type UIEvent,
+} from "react";
 import { ThreadStorageBrowser } from "./ThreadStorageBrowser";
 import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
 import { Link } from "react-router-dom";
@@ -76,18 +83,9 @@ import {
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
-// ---------------------------------------------------------------------------
-// Each row of the Info tab is a function component that owns its own raw
-// inputs and derivation. ThreadMetadataContent is just a DetailCard wrapper
-// that composes them. This shape lets per-row stories render exactly one row
-// without bypassing the production rendering path.
-// ---------------------------------------------------------------------------
-
 interface ParentSelectorRowProps {
   thread: Thread;
   projectId: string;
-  // Project of the current parent thread. A parent may live in another project,
-  // so the link routes through it. Null until the parent record loads.
   parentThreadProjectId: string | null;
   parentThreadDisplayName: string | null;
   parentThreads: readonly ThreadListEntry[];
@@ -99,7 +97,6 @@ interface ParentSelectorRowProps {
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
   onRetryParentThreads: () => void;
-  /** Force the assignment dropdown open on first render. Used by stories. */
   defaultOpen?: boolean;
 }
 
@@ -253,12 +250,6 @@ interface ForksRowProps {
   projectId: string;
 }
 
-/**
- * Lists the thread's forks (threads created with `originKind === "fork"`),
- * each linking to the fork. The fork links back here via the source-thread link.
- * Fetched with a targeted list query filtered by `sourceThreadId` + `originKind`
- * — no load-all-and-filter. Renders nothing when the thread has no forks.
- */
 function ForksRow({ thread, projectId }: ForksRowProps) {
   const forksQuery = useThreads({
     projectId: thread.projectId,
@@ -531,7 +522,6 @@ interface MergeBaseRowProps {
   onMergeBaseBranchChange: (branch: string) => void;
   onMergeBasePickerOpenChange?: (open: boolean) => void;
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
-  /** Force the BranchPicker popover open on first render. Used by stories. */
   defaultOpen?: boolean;
 }
 
@@ -660,9 +650,6 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  // Dirty reads as the timeline error color — the one actionable state. Every
-  // other status, including a clean "Up to date" tree, stays neutral: the
-  // expected state shouldn't spend color drawing the eye.
   const labelClass =
     display.label === "Dirty" ? "text-destructive" : "text-foreground";
 
@@ -710,7 +697,6 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
 
 interface ThreadCommitsRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
-  /** When provided, each commit becomes a button that opens its diff. */
   onCommitClick?: (sha: string) => void;
 }
 
@@ -771,9 +757,7 @@ export function ThreadCommitsRow({
   if (commits.length === 0) return null;
   return (
     <>
-      {/* Divider separating the key/value metadata above from the Commits
-          section. Lives inside this row so it only renders when there are
-          commits to show. */}
+      {}
       <div className="mb-1 mt-3 border-t border-border" aria-hidden />
       <DetailRow
         label="Commits"
@@ -828,10 +812,6 @@ export function ThreadStorageRow({
   isFilesLoading,
 }: ThreadStorageRowProps) {
   const { isSearchOpen, openSearch } = controller;
-  // Render nothing when there is no content to show. With no files there is
-  // nothing to browse, so the row would otherwise sit as an empty "No files yet."
-  // box competing for panel height. Stay visible on error so load failures still
-  // surface.
   if (controller.loadedFiles.length === 0 && filesError == null) {
     return null;
   }
@@ -871,10 +851,6 @@ export function ThreadStorageRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Composition + helper
-// ---------------------------------------------------------------------------
-
 export interface ThreadMetadataContentProps {
   thread: Thread;
   projectId: string;
@@ -908,11 +884,6 @@ export interface ThreadMetadataContentProps {
   onCommitClick?: (sha: string) => void;
 }
 
-/**
- * Returns true when the rendered card would have at least one row to show.
- * The caller can use this to decide between rendering the card and rendering
- * its "no thread details available" fallback.
- */
 export function hasAnyThreadMetadata(
   {
     thread,
@@ -932,10 +903,6 @@ export function hasAnyThreadMetadata(
     | "workspaceUnavailable"
     | "pullRequest"
   >,
-  // The Forks row is fetched lazily; the caller passes its presence so the
-  // visibility gate and the rendered card agree on the same row set (otherwise
-  // a forks-only thread briefly shows the empty fallback while the environment
-  // query is still loading).
   hasForks: boolean,
 ): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
@@ -968,23 +935,39 @@ interface DetailCardWrapperProps {
   children: ReactNode;
 }
 
-/**
- * Shared DetailCard styling used by ThreadMetadataContent and the per-row
- * stories so a single row in isolation looks the same as it does inside the
- * full panel. The card is visually flat and inherits the panel canvas so Info
- * behaves like the other right-panel views rather than reading as a raised
- * sheet. It owns the info tab's vertical scroll as a last resort: when
- * everything fits there is no scrolling at all. Changed files sizes to its
- * content; thread storage fills the leftover space (its virtualized tree has no
- * intrinsic height to size to). When the two together run out of room they
- * shrink and scroll internally — storage down to a usable min-height — so the
- * card itself only scrolls once those minimums no longer fit.
- */
+const INFO_SCROLLBAR_IDLE_DELAY_MS = 600;
+
 export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
+  const scrollbarIdleTimeoutRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (scrollbarIdleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollbarIdleTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleScroll = useCallback((event: UIEvent<HTMLDListElement>) => {
+    const scrollArea = event.currentTarget;
+    if (scrollArea.dataset.scrollbarScrolling !== "true") {
+      scrollArea.dataset.scrollbarScrolling = "true";
+    }
+    if (scrollbarIdleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollbarIdleTimeoutRef.current);
+    }
+    scrollbarIdleTimeoutRef.current = window.setTimeout(() => {
+      scrollbarIdleTimeoutRef.current = null;
+      scrollArea.removeAttribute("data-scrollbar-scrolling");
+    }, INFO_SCROLLBAR_IDLE_DELAY_MS);
+  }, []);
+
   return (
     <DetailCard
       appearance="flat"
-      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      onScroll={handleScroll}
     >
       {children}
     </DetailCard>

@@ -95,7 +95,12 @@ describe("bb marketplace", () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({
         results: [
-          { name: "bb-community", ok: true, error: null, marketplace: official },
+          {
+            name: "bb-community",
+            ok: true,
+            error: null,
+            marketplace: official,
+          },
           {
             name: "acme-plugins",
             ok: false,
@@ -106,9 +111,9 @@ describe("bb marketplace", () => {
       }),
     );
 
-    await expect(runCommand(["marketplace", "refresh"], register)).rejects.toThrow(
-      "process.exit:1",
-    );
+    await expect(
+      runCommand(["marketplace", "refresh"], register),
+    ).rejects.toThrow("process.exit:1");
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("bb-community: 5 entries");

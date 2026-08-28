@@ -1,9 +1,5 @@
 import { assertNever } from "@bb/core-ui";
 import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
-// Imported from the defining leaf module, not the timeline barrel: the sidebar
-// thread list reaches this helper before first paint, and the barrel would pull
-// the whole timeline (and @pierre/diffs, Shiki, KaTeX behind it) onto the boot
-// path for one predicate.
 import { isRunningThreadRuntimeDisplayStatus } from "../timeline/thread-runtime-status.js";
 import { isThreadRead } from "./thread-read-state.js";
 
@@ -99,12 +95,6 @@ export function getThreadListIndicatorLabel(
   return kind === "none" ? null : THREAD_LIST_INDICATOR_LABELS[kind];
 }
 
-/**
- * Whether a thread-list row has active work, independent of which status wins
- * the single trailing indicator slot. Attention states such as unread errors
- * and pending input can outrank background work visually without making that
- * work stop; split membership uses this predicate to retain its shimmer.
- */
 export function hasThreadListWorkingActivity(
   state: ThreadListIndicatorState,
   hasRunningPluginStatus = false,
@@ -120,20 +110,9 @@ export function hasThreadListWorkingActivity(
   );
 }
 
-/**
- * Resolves the one trailing indicator slot from independent, unsuppressed
- * thread state. Keep all precedence here so every thread-list surface makes
- * the same choice when activities overlap.
- */
 export function resolveThreadListIndicator(
   state: ThreadListIndicatorState,
 ): ThreadListIndicatorKind {
-  // Attention states come first: the runtime stays active for the whole time a
-  // question or approval is open, so ranking "runtime" above them would hide the
-  // one state the user can act on behind a spinner that never resolves on its
-  // own. Plan and goal outrank the spinner too — they describe how the current
-  // turn is running, and their glyphs shimmer, so they already read as working.
-  // Only ambient work the row can't otherwise explain sits below the spinner.
   if (state.hasUnreadError) return "unread-error";
   if (state.hasPendingInteraction) return "waiting-for-input";
 
@@ -150,38 +129,17 @@ export function resolveThreadListIndicator(
   return "none";
 }
 
-/**
- * The signals a collapsed parent row surfaces on behalf of its hidden children.
- * A collapsed row renders these through its single trailing status glyph, using
- * the same priority as a leaf row through `resolveThreadListIndicator`.
- * Expanded rows show their own status,
- * since the children are then visible with their own glyphs. Background
- * agent, command, and workflow work are tracked separately from runtime work so
- * the sidebar can use task-specific signals instead of collapsing them into a
- * generic spinner.
- */
 export interface CollapsedChildActivity {
-  /** At least one child is blocked on the user (needs input). */
   pending: boolean;
-  /** At least one child is actively working, including workflow work. */
   working: boolean;
-  /** At least one child has an unsubmitted composer draft. */
   hasUnsubmittedDraft: boolean;
-  /** At least one child is actively running a foreground/runtime turn. */
   runtimeWorking: boolean;
-  /** At least one idle child has a provider workflow still running. */
   workflow: boolean;
-  /** At least one child has a background agent or subagent still running. */
   backgroundAgent: boolean;
-  /** At least one child has a background shell command still running. */
   backgroundCommand: boolean;
-  /** At least one child is showing the plan-mode banner above the composer. */
   planMode: boolean;
-  /** At least one child is showing the active-goal banner above the composer. */
   goal: boolean;
-  /** At least one successfully finished child is unread. */
   unread: boolean;
-  /** At least one unread child has reached the terminal error state. */
   unreadError: boolean;
 }
 
@@ -205,7 +163,6 @@ type ThreadActivityShape = ThreadStatusShape &
 
 const EMPTY_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
 
-/** Rolls a child thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
   threads: readonly ThreadActivityShape[],
   draftThreadIds: ReadonlySet<string> = EMPTY_DRAFT_THREAD_IDS,

@@ -9,15 +9,6 @@ import { settingsSectionHref } from "@/screens/shell/hrefs";
 import { SettingsSection } from "./SettingsRows";
 import { useBadgeColors } from "./settings-badges";
 
-/**
- * `/settings/device`: everything this phone owns rather than the server.
- *
- * It is also the shell's escape hatch. The page is the whole interface now, so
- * this is the only screen that can recover a wedged one, and it has to be
- * reachable when the page will not load at all. Three entry points lead here:
- * a row in the page's own Settings (over the bridge), the shell's load-failure
- * screen, and the Home Screen quick action. Only the first needs a live page.
- */
 export function DeviceSettingsScreen() {
   const colors = useBadgeColors();
   const { profiles } = useProfiles();

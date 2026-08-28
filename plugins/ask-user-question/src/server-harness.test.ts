@@ -74,8 +74,6 @@ async function resultText(
 }
 
 describe("provider gating", () => {
-  // Gated on the provider's declared capability, not on its id: a plugin
-  // provider that ships the tool natively is withheld too.
   it.each(["claude-code", "some-plugin-provider"])(
     "withholds the tool from %s, which declares it natively",
     async (providerId) => {
@@ -97,8 +95,6 @@ describe("provider gating", () => {
       expect(resolved.tools).toHaveLength(1);
       const [tool] = resolved.tools;
       expect(tool?.name).toBe(TOOL_NAME);
-      // The advertised schema is the hand-written mirror of Claude's, not the
-      // zod-derived one — that is the whole point of the override.
       expect(tool?.inputSchema).toEqual(TOOL_INPUT_JSON_SCHEMA);
     },
   );
@@ -191,9 +187,6 @@ describe("asking a question", () => {
   });
 
   it("explains the collision when a second question races the first", async () => {
-    // A thread holds one interaction at a time; the server rejects the second
-    // with this error. The fake host queues instead of rejecting, so the
-    // server's failure is injected directly.
     const host = createFakePluginHost({ pluginId: "ask-user-question" });
     host.bb.ui.requestInput = () =>
       Promise.reject(

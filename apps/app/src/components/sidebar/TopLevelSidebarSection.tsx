@@ -52,7 +52,6 @@ interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
-  /** Stable identity for a persisted thread section. Built-in groups omit it. */
   sectionId?: string;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
@@ -68,10 +67,6 @@ export interface TopLevelSidebarSectionProps {
   isDropTargetActive?: boolean;
 }
 
-/**
- * The single visual and interaction contract for every first-level sidebar
- * group: built-in sections, projects, sections, and machine groups.
- */
 export function TopLevelSidebarSection({
   label,
   children,

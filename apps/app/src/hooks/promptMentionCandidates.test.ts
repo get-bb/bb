@@ -21,10 +21,7 @@ function project(name: string): ProjectMentionSuggestion {
   };
 }
 
-function plugin(
-  title: string,
-  searchAliases: readonly string[],
-): PluginMentionSuggestion {
+function plugin(title: string): PluginMentionSuggestion {
   return {
     kind: "plugin",
     pluginId: "at-plugin",
@@ -32,7 +29,6 @@ function plugin(
     itemId: "installed:automations",
     providerLabel: "Installed",
     title,
-    searchAliases,
     subtitle: "Automation tools",
     icon: null,
     replacement: title,
@@ -40,14 +36,14 @@ function plugin(
 }
 
 describe("buildPromptMentionResults", () => {
-  it("ranks a source identity alias ahead of a weaker built-in title", () => {
+  it("ranks an exact plugin title ahead of a weaker built-in title", () => {
     const results = buildPromptMentionResults({
       query: "automations",
       paths: [],
       threads: [],
       projects: [project("Automations project")],
       sections: [],
-      plugins: [plugin("Workflow Tools", ["automations"])],
+      plugins: [plugin("Automations")],
     });
 
     expect(results.groups.map((group) => group.label)).toEqual([
@@ -56,13 +52,13 @@ describe("buildPromptMentionResults", () => {
     ]);
     expect(
       results.suggestions.map((suggestion) => suggestion.replacement),
-    ).toEqual(["Workflow Tools", "project:proj_automations"]);
+    ).toEqual(["Automations", "project:proj_automations"]);
   });
 
   it("keeps provider sections distinct when their visible labels collide", () => {
-    const first = plugin("First", ["first"]);
+    const first = plugin("First");
     const second: PluginMentionSuggestion = {
-      ...plugin("Second", ["second"]),
+      ...plugin("Second"),
       pluginId: "other-plugin",
       itemId: "installed:second",
     };

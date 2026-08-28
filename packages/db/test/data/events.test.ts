@@ -288,7 +288,6 @@ describe("events", () => {
       insertedInputIndexes: [0],
     });
 
-    // Same threadId + sequence should be ignored
     const result2 = insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
@@ -308,11 +307,10 @@ describe("events", () => {
     expect(result2).toEqual({
       insertedCount: 1,
       insertedInputIndexes: [1],
-    }); // only sequence 2 inserted
+    });
 
     const all = listEvents(db, { threadId: thread.id });
     expect(all).toHaveLength(2);
-    // Original data preserved for sequence 1
     expect(JSON.parse(all[0]!.data)).toMatchObject({ message: "first" });
   });
 
@@ -679,8 +677,6 @@ describe("events", () => {
       (tx) => appendDaemonEventsInTransaction(tx, [turnStarted, turnCompleted]),
       { behavior: "immediate" },
     );
-    // The server committed the batch but the acknowledgement was lost, so the
-    // daemon posts the identical batch again.
     const replay = db.transaction(
       (tx) => appendDaemonEventsInTransaction(tx, [turnStarted, turnCompleted]),
       { behavior: "immediate" },
@@ -788,11 +784,6 @@ describe("events", () => {
   it("drops orphan token-usage snapshots with no stored turn/started instead of failing the batch", () => {
     const { db, thread } = setup();
 
-    // A native fork resumes the parent's session, which re-emits the parent's
-    // last-turn token usage scoped to a turn the forked thread never started.
-    // The snapshot must be dropped, not throw — otherwise the whole batch (here
-    // including the fork's real turn/started) rolls back and the daemon retries
-    // forever, wedging the thread.
     const result = db.transaction(
       (tx) =>
         appendDaemonEventsInTransaction(tx, [
@@ -832,11 +823,6 @@ describe("events", () => {
   it("drops orphan provider/unhandled events instead of failing the batch", () => {
     const { db, thread } = setup();
 
-    // A provider can label its own internal traffic with a turn id bb never
-    // started (Codex tags automatic-compaction events "auto-compact-N"). An
-    // unhandled passthrough event is diagnostic only, so dropping it is always
-    // cheaper than rolling back the batch it rode in with — which the daemon
-    // would then repost forever, stalling every thread on the host.
     const result = db.transaction(
       (tx) =>
         appendDaemonEventsInTransaction(tx, [
@@ -1428,8 +1414,6 @@ describe("events", () => {
       { rowId: `${thread.id}:user-seed:1`, sequence: 1 },
     ]);
 
-    // The timeline pagination helpers select only the requested page of
-    // anchors, so latest/older page resolution never enumerates a whole thread.
     expect(
       listTimelineSegmentAnchorsDescending(db, {
         limit: 3,
@@ -1574,8 +1558,6 @@ describe("events", () => {
         parentToolCallId: null,
         data: taskData("task:wf-2", "pending"),
       },
-      // wf-1: 3 and 4 are superseded by 6; wf-2: 5 is superseded by the
-      // completed row at 7, which is not a progress row and stays.
       progress(3, "task:wf-1"),
       progress(4, "task:wf-1"),
       progress(5, "task:wf-2"),
@@ -1599,8 +1581,6 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([1, 2, 6, 7]);
-    // A window that ends before the superseding row still skips the
-    // superseded ones: the timeline only ever needs the newest snapshot.
     expect(
       listStoredTimelineWindowEventRows(db, {
         beforeSequence: 6,
@@ -1615,7 +1595,6 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([1, 2, 6, 7]);
-    // The byte floor walks the same rows the window read returns.
     expect(
       findStoredTimelineWindowByteBudgetFloor(db, {
         maxDataBytes: 1_000_000,
@@ -1644,8 +1623,6 @@ describe("events", () => {
         threadId: thread.id,
       }).reduce((bytes, row) => bytes + Buffer.byteLength(row.data), 0),
     );
-    // The event-count floor counts the same rows: a budget of 2 lands on the
-    // second-newest surviving row (6), not on a superseded snapshot (5).
     expect(
       findTimelineWindowBudgetFloorSequence(db, {
         eventBudget: 2,
@@ -1660,7 +1637,6 @@ describe("events", () => {
         threadId: thread.id,
       }),
     ).toBe(6);
-    // The conversation outline reads the structural task rows too.
     expect(
       listStoredConversationOutlineEventRows(db, {
         threadId: thread.id,
@@ -1835,8 +1811,6 @@ describe("events", () => {
           timeUsedSeconds: 2,
         }),
       },
-      // The live form: the codex plugin's goal state. A later snapshot of a
-      // different kind must not shadow it.
       {
         threadId: otherThread.id,
         sequence: 2,
@@ -3889,7 +3863,6 @@ describe("events", () => {
         parentToolCallId: null,
         data: taskData("task:wf-1", "completed"),
       },
-      // Unrelated item id: must not appear in the result.
       {
         threadId: thread.id,
         sequence: 5,
@@ -4467,7 +4440,6 @@ describe("events", () => {
         parentToolCallId: null,
         data: taskData("task:wf-open", "paused"),
       },
-      // Settled item: excluded entirely.
       {
         threadId: thread.id,
         environmentId: environment.id,
@@ -4501,7 +4473,6 @@ describe("events", () => {
       threadId: thread.id,
       environmentId: environment.id,
     });
-    // The latest snapshot wins: sequence 3 carries the paused status.
     expect(JSON.parse(rows[0]!.data)).toMatchObject({
       item: { taskStatus: "paused" },
     });
@@ -4867,8 +4838,6 @@ describe("timeline read-boundary output truncation", () => {
     const cappedItem = capped.item as Record<string, unknown>;
 
     expect(storedItem.aggregatedOutput).toBe(output);
-    // Byte-identical to what the response-level truncator would produce, so a
-    // reader cannot tell which layer shortened the value.
     expect(cappedItem.aggregatedOutput).toBe(
       `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated]`,
     );
@@ -4880,8 +4849,6 @@ describe("timeline read-boundary output truncation", () => {
 
   it("leaves a non-text tool result untouched", () => {
     const { db, thread } = setup();
-    // `item.result` is typed `unknown`. Truncating an object would rewrite it
-    // into a string and corrupt the payload, so only text values are eligible.
     const result = { rows: "y".repeat(maxInlineOutputChars + 500) };
     insertEvents(db, noopNotifier, [
       {
@@ -5017,9 +4984,6 @@ describe("findUnfinishedTurnCoveringSequence", () => {
 
   it("refuses a cut that lands outside any turn", () => {
     const { db, thread } = setup();
-    // A turn finishes, then thread-scoped background-task traffic continues past
-    // it. Asking only "did any turn finish after here" would answer "no" for a
-    // floor in this region and invent an in-turn cut where there is no turn.
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,

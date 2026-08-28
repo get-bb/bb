@@ -4,6 +4,10 @@
 
 - When renaming a domain concept, search project-wide for stale names in variables, files, query keys, constants, tests, and docs. TypeScript only catches type references.
 
+## Code Comments
+
+- Code comments are forbidden, except for semantic tool directives and Plugin SDK declaration comments.
+
 ## Types And Contracts
 
 - Validate and parse data at system boundaries, then pass typed values internally.

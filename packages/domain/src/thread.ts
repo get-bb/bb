@@ -63,11 +63,6 @@ const workspaceFileStatusKindSchema = z.enum([
   "C",
   "U",
   "??",
-  /**
-   * Fallback for git status letters we don't recognize. Kept distinct from
-   * "M" so UI and consumers can surface the ambiguity rather than silently
-   * mislabeling the change.
-   */
   "?",
 ]);
 export type WorkspaceFileStatusKind = z.infer<
@@ -77,11 +72,6 @@ export type WorkspaceFileStatusKind = z.infer<
 const workspaceFileStatusSchema = z.object({
   path: z.string(),
   status: workspaceFileStatusKindSchema,
-  /**
-   * Per-file line counts from `git diff --numstat`. Null when the count is
-   * unknown — binary files (numstat reports `-`) and untracked files (numstat
-   * does not include them).
-   */
   insertions: z.number().nullable(),
   deletions: z.number().nullable(),
 });
@@ -98,15 +88,9 @@ export type WorkspaceCommitSummary = z.infer<
   typeof workspaceCommitSummarySchema
 >;
 
-/**
- * Fields shared by any surface that reports changed files plus the line totals
- * Git computed for them. `lineStatsComplete` distinguishes exact totals from
- * tracked-only totals that intentionally omit untracked file contents.
- */
 const workspaceChangeStatsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
-  /** False when line totals omit files whose contents were intentionally not read. */
   lineStatsComplete: z.boolean(),
   files: z.array(workspaceFileStatusSchema),
 });
@@ -123,10 +107,6 @@ const workspaceBranchSchema = z.object({
   defaultBranch: z.string(),
 });
 
-/**
- * Stats and file list are relative to the merge-base-to-HEAD range
- * (committed, unmerged) via `workspaceChangeStatsSchema`.
- */
 const workspaceMergeBaseSchema = workspaceChangeStatsSchema.extend({
   mergeBaseBranch: z.string(),
   baseRef: z.string().nullable(),
@@ -216,11 +196,6 @@ export type GitHostPullRequestMergeable = z.infer<
   typeof gitHostPullRequestMergeableSchema
 >;
 
-/**
- * Pull request data normalized from the host git-host CLI (`gh pr view`).
- * The host daemon returns this verbatim; the server maps it onto the
- * product-facing `ThreadPullRequest`.
- */
 export const gitHostPullRequestSchema = z
   .object({
     number: z.number().int().positive(),
@@ -327,11 +302,6 @@ export type ThreadPullRequestAttentionState = z.infer<
   typeof threadPullRequestAttentionStateSchema
 >;
 
-/**
- * A pull request associated with a thread's branch, assembled by the server
- * from {@link gitHostPullRequestSchema} (the server folds `isDraft` into the
- * product-facing {@link pullRequestStateSchema}).
- */
 export const threadPullRequestSchema = z
   .object({
     number: z.number().int().positive(),
@@ -374,7 +344,6 @@ export const threadSchema = z.object({
   parentThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),
-  /** Id of the plugin that spawned this thread; null for non-plugin origins. */
   originPluginId: z.string().nullable(),
   visibility: threadVisibilitySchema,
   archivedAt: z.number().nullable(),

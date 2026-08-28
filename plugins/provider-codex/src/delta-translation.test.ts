@@ -22,23 +22,6 @@ import {
 } from "./translator.js";
 import { codexRateLimitReadResponseSchema } from "./schemas.js";
 
-/**
- * Per-event Codex translation equivalence for the narrow-grammar path.
- *
- * These are the codex event-translation suite's cases, ported so the SAME
- * codex app-server notifications drive the new pipeline: codex dialect events
- * → semantic deltas → the runtime delta assembler → canonical ThreadEvents.
- * Event content, ordering, scoping, and statuses are asserted exactly as
- * before; ids are asserted by shape and via the assembler's provider↔bb maps
- * because minting moved from the bridge to the assembler (thread/provider
- * thread ids are stamped downstream by the runtime, so events leave with
- * empty ids here).
- *
- * Split of responsibility with translator.test.ts is unchanged: that file
- * keeps the *stateful* correlation invariants; this file holds the per-event
- * translation surface.
- */
-
 const THREAD_ID = "t-codex-translation";
 const ENTROPY = "cx-test";
 const ITEM_ID_PATTERN = /^cx-test-i\d+$/;
@@ -95,9 +78,7 @@ interface CodexEquivalenceHarness {
   translate(
     event: Parameters<CodexEventTranslator["translateEvent"]>[0],
   ): ThreadEvent[];
-  /** bb turn id minted for a codex turn id (empty when never seen). */
   turnId(codexTurnId: string): string;
-  /** bb item id minted for a codex item id (empty when never seen). */
   itemId(codexItemId: string): string;
 }
 
@@ -108,7 +89,6 @@ function createHarness(): CodexEquivalenceHarness {
   const assembler = createDeltaAssembler({
     providerId: "codex",
     entropyPrefix: ENTROPY,
-    // Equivalence suites pin per-delta translation fidelity: no coalescing.
     textDeltaFlushMs: 0,
   });
   return {
@@ -128,10 +108,6 @@ function createHarness(): CodexEquivalenceHarness {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// Envelope handling and turn lifecycle
-// ---------------------------------------------------------------------------
 
 describe("codex turn lifecycle translation", () => {
   it("translates turn/started into a keyed turn/started", () => {
@@ -282,10 +258,6 @@ describe("codex turn lifecycle translation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Thread lifecycle
-// ---------------------------------------------------------------------------
-
 describe("codex thread lifecycle translation", () => {
   it("translates thread/started into started + identity + name", () => {
     const harness = createHarness();
@@ -434,10 +406,6 @@ describe("codex thread lifecycle translation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Items
-// ---------------------------------------------------------------------------
-
 describe("codex item translation", () => {
   it("translates item/started with agentMessage", () => {
     const harness = createHarness();
@@ -549,10 +517,6 @@ describe("codex item translation", () => {
       },
     });
 
-    // Thread scope, not turn scope: this notification failed schema parsing,
-    // so nothing here vouches for that turn id being one bb started. Codex
-    // notifications bb *does* parse still carry turn scope — see the handled
-    // item/started cases above.
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/unhandled",
@@ -933,8 +897,6 @@ describe("codex item translation", () => {
       }),
     );
 
-    // A dynamic tool the session was not constructed with is codex's own:
-    // no server, the generic presentation.
     const native = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
@@ -1255,10 +1217,6 @@ describe("codex item translation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Web search / fetch items
-// ---------------------------------------------------------------------------
-
 describe("codex web item translation", () => {
   it("maps completed search actions to webSearch", () => {
     const harness = createHarness();
@@ -1499,10 +1457,6 @@ describe("codex web item translation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Streaming deltas and token usage
-// ---------------------------------------------------------------------------
-
 describe("codex delta and usage translation", () => {
   it("synthesizes item/started for a delta-first agent message and keeps the id", () => {
     const harness = createHarness();
@@ -1530,7 +1484,6 @@ describe("codex delta and usage translation", () => {
       }),
     ]);
 
-    // A second delta streams into the already-open item.
     expect(
       harness.translate(
         codexEvent("item/agentMessage/delta", {
@@ -1619,10 +1572,6 @@ describe("codex delta and usage translation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Turn plan updates
-// ---------------------------------------------------------------------------
-
 describe("codex plan translation", () => {
   it("maps turn/plan/updated to a settled planSteps snapshot", () => {
     const harness = createHarness();
@@ -1705,7 +1654,6 @@ describe("codex plan translation", () => {
     expect(
       first[0]?.type === "item/completed" ? first[0].item : null,
     ).not.toHaveProperty("explanation");
-    // The later snapshot supersedes the earlier one as its own item.
     expect(second).toHaveLength(1);
     const firstItem =
       first[0]?.type === "item/completed" ? first[0].item : null;
@@ -1717,10 +1665,6 @@ describe("codex plan translation", () => {
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// Turn diffs
-// ---------------------------------------------------------------------------
 
 describe("codex turn diff translation", () => {
   it("maps turn/diff/updated onto the vouched turn", () => {
@@ -1741,10 +1685,6 @@ describe("codex turn diff translation", () => {
     ]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Errors and warnings
-// ---------------------------------------------------------------------------
 
 describe("codex error and warning translation", () => {
   it("includes detail and willRetry on turn-scoped errors", () => {
@@ -1958,10 +1898,6 @@ describe("codex error and warning translation", () => {
     expect(readyEvents).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Account rate limits
-// ---------------------------------------------------------------------------
 
 describe("codex account rate-limit translation", () => {
   const blockedSpendControlSnapshot = {
@@ -2188,10 +2124,6 @@ describe("codex account rate-limit translation", () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// Notifications bb deliberately ignores
-// ---------------------------------------------------------------------------
 
 describe("codex ignored notifications", () => {
   it("ignores remote control status changes", () => {

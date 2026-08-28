@@ -97,7 +97,7 @@ function pluginMentionCandidate(
   return {
     suggestion,
     visibleTitle: suggestion.title,
-    identityTerms: suggestion.searchAliases,
+    identityTerms: [],
     supportingTerms: suggestion.subtitle === null ? [] : [suggestion.subtitle],
     groupKey: `plugin:${suggestion.pluginId}:${suggestion.providerId}`,
     groupLabel: suggestion.providerLabel,

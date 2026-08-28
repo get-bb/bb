@@ -25,28 +25,18 @@ interface SendQueuedMessageByIdArgs {
 }
 
 interface UseQueuedMessageActionsArgs {
-  /** The thread owning the queue. */
   threadId: string;
   queuedMessages: readonly ThreadQueuedMessage[];
-  /**
-   * How long a steered ("send now") message keeps its "Sending..." label:
-   * `until-left-queue` holds it until the message leaves the queue (the steer
-   * surfaced in the timeline) so the row never flashes back to normal;
-   * `clear-on-settle` clears when the send request settles.
-   */
   sendProcessingPersistence: "clear-on-settle" | "until-left-queue";
-  /** Extra guard evaluated before a send-now besides thread existence. */
   canSendNow?: () => boolean;
   onSendSuccess?: () => void;
   onSaveSuccess?: () => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
   dismissInlineQueuedMessageEditor: () => void;
-  /** The inline edit draft's current prompt input (for saving the edit). */
   activeComposerDraftInput: PromptInput[];
 }
 
 interface UseQueuedMessageActionsResult {
-  /** The processing state QueuedMessagesList should display. */
   processingQueuedMessage: {
     action: QueuedMessageProcessingAction;
     id: string;
@@ -63,11 +53,6 @@ interface UseQueuedMessageActionsResult {
   ) => void;
 }
 
-/**
- * The queued-message row actions shared by every thread-chat composer: send
- * now, inline-edit save, delete, reorder, and group boundaries, with a single
- * per-message processing state driving the row spinners.
- */
 export function useQueuedMessageActions({
   threadId,
   queuedMessages,
@@ -136,8 +121,6 @@ export function useQueuedMessageActions({
             current?.id === messageId ? null : current,
           );
         }
-        // With `until-left-queue`, the displayed processing state clears via
-        // derivation once the message leaves the queue.
       } catch (error) {
         appToast.error(
           getMutationErrorMessage({

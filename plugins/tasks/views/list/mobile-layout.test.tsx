@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
 
-// jsdom lacks matchMedia/ResizeObserver; the list shell touches both.
 window.matchMedia ??= (query: string) => ({
   matches: false,
   media: query,
@@ -100,12 +99,7 @@ describe("responsive list structure", () => {
   it("pins the task count outside the filter-chip scroller so it cannot wrap or scroll away", async () => {
     const slot = renderList();
     const count = await slot.findByText("1 task");
-    // Non-wrapping, and never a descendant of the horizontal chip scroller —
-    // otherwise a crowded mobile filter bar wraps the count to two lines
-    // (BB-60) or scrolls it out of view.
     expect(count.closest(".overflow-x-auto")).toBeNull();
-    // Sort is pinned beside the count, outside the scroller, while the
-    // filter chips scroll.
     const sortChip = slot.getByRole("button", { name: /Sort/ });
     expect(sortChip.closest(".overflow-x-auto")).toBeNull();
     const statusChip = slot.getByRole("button", {
@@ -116,9 +110,6 @@ describe("responsive list structure", () => {
   });
 
   it("renders exactly one status and one priority editor per row with full metadata", async () => {
-    // The two-line mobile layout repositions the same editor elements via
-    // container queries. A regression that renders per-breakpoint duplicates
-    // would double the interactive controls (and their accessible names).
     const slot = renderList();
     await slot.findByText("TSK-1");
     const row = slot.container.querySelector('[data-task-key="TSK-1"]')!;

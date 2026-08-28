@@ -96,8 +96,6 @@ import {
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
-// Stored attachment names embed a timestamp and a random suffix, so the bytes
-// behind a name never change: cache for a year but keep it private.
 const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
@@ -341,8 +339,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.list, (context, query) => {
     const includes = parseProjectListIncludes(query);
-    // Compatibility is resolved once at the HTTP boundary: ordinary projects
-    // remain the default, and all internal list paths receive an explicit flag.
     const options: ProjectListOptions = {
       includePersonal: query.includePersonal === "true",
     };
@@ -518,8 +514,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         path: resolved.path,
       });
     } catch (error) {
-      // A clone can be orphaned only if another request wins this race after
-      // the up-front check; the database constraint remains the backstop.
       if (
         error instanceof Error &&
         isSqliteUniqueConstraintOnColumns(error, {
@@ -606,9 +600,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const limit = parseFileListLimit(query.limit);
 
-    // Environment routing narrows to that workspace. Pre-environment routing
-    // uses the explicit host's project source or the documented primary-host
-    // fallback.
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
       ...(query.environmentId !== undefined
@@ -696,8 +687,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
 
-    // An unregistered id, or a provider without a skills composer action,
-    // has no typeahead entries: skip every roundtrip.
     const registration = deps.providerRegistry.get(query.provider);
     if (registration === null || !providerHasCommandSurface(registration)) {
       return context.json({ commands: [] });
@@ -710,10 +699,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    // The daemon scans exactly the provider's native roots: the skill and
-    // command roots its plugin declared, plus what the plugin resolved for
-    // this host and workspace. Core never guesses a layout, so a provider
-    // with no roots on either side has nothing for the daemon to scan.
     const listProviderCommands = async () => {
       if (!providerHasNativeRootSurface(registration)) {
         return { commands: [] };
@@ -919,10 +904,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       query.path,
     );
     const headers = new Headers({
-      // Stored attachment names are unique per upload (timestamp + random
-      // suffix) and the bytes never change, so the browser may keep them for
-      // a year: PWA relaunches and timeline scroll-back reuse the cached
-      // image instead of refetching multi-megabyte screenshots.
       "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
       "content-type": attachment.mimeType ?? "application/octet-stream",
       etag: attachment.etag,

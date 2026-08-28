@@ -168,8 +168,6 @@ function emitIpcPayload(args: EmitIpcPayloadArgs): void {
 describe("desktop preload browser API", () => {
   let api: BbDesktopApi;
 
-  // Vitest does not cancel a timed-out test body. Keep module loading in a
-  // hook so a slow transform cannot release stale commands into the next test.
   beforeEach(async () => {
     api = await loadPreload();
   }, 30_000);
@@ -516,8 +514,6 @@ describe("desktop preload browser API", () => {
       BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
     );
 
-    // Availability follows the runtime, so main re-pushes it on every swap and
-    // the renderer must read the pushed value, not its startup snapshot.
     expect(api.serverDaemonLogsAvailable).toBeUndefined();
     emitIpcPayload({
       channel: BB_DESKTOP_INFO_CHANGED_CHANNEL,

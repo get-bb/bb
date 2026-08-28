@@ -6,11 +6,6 @@ import type { ReactNode } from "react";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
-// No transition: the tab strip is a swept, list-like row, so the affordance
-// reveal (icon→close) and the close button's own hover tile both snap instantly,
-// matching the pill's instant hover (LIST_HOVER_TRANSITION) instead of trailing
-// the pointer. The instant swap also removes the icon/close cross-fade overlap,
-// so the close button needs no background to mask the icon underneath it.
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
   "inline-flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
 const TAB_PILL_AFFORDANCE_ICON_CLASS = "size-3.5 max-md:pointer-coarse:size-5";
@@ -31,7 +26,6 @@ interface TabPillProps {
   iconOnly?: boolean;
   leadingVisual?: ReactNode;
   secondaryLabel?: string | null;
-  /** Extra classes for the label text (e.g. `line-through` for a done tab). */
   labelClassName?: string;
   title: string;
   isActive: boolean;

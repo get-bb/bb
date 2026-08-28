@@ -19,12 +19,10 @@ import {
   type MarketplaceManifest,
 } from "./marketplace-manifest.js";
 
-/** File a git or path marketplace keeps its manifest in. */
 const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
 const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
-/** Where a marketplace's manifest is read from. */
 type MarketplaceSource =
   | { kind: "https"; manifestUrl: string }
   | { kind: "git"; url: string; ref: string }
@@ -35,11 +33,6 @@ const GIT_CLONE_ARGS = ["-c", "core.hooksPath=/dev/null"] as const;
 const SOURCE_FORMS =
   'expected "https://<manifest-url>", "git:<url>[@<ref>]", or "path:<directory>"';
 
-/**
- * Parse a `bb marketplace add` source. The three forms are explicit on
- * purpose: a marketplace is a trust decision, so bb never guesses whether a
- * bare string meant a repository, a directory, or a URL.
- */
 export function parseMarketplaceSource(raw: string): MarketplaceSource {
   const source = raw.trim();
   if (source.length === 0) {
@@ -57,8 +50,6 @@ export function parseMarketplaceSource(raw: string): MarketplaceSource {
     if (parsed.kind !== "git") {
       throw new Error(`invalid marketplace git source "${source}"`);
     }
-    // A marketplace has no release tags to range over, and a spec that could
-    // read as either is refused rather than guessed.
     if (parsed.selector.kind !== "ref") {
       throw new Error(
         `invalid marketplace git source "${source}": a marketplace ref names one branch, tag, or commit`,
@@ -77,14 +68,12 @@ export function parseMarketplaceSource(raw: string): MarketplaceSource {
   throw new Error(`invalid marketplace source "${source}": ${SOURCE_FORMS}`);
 }
 
-/** The canonical spec that re-adds this marketplace. */
 export function marketplaceSourceDisplay(source: MarketplaceSource): string {
   if (source.kind === "https") return source.manifestUrl;
   if (source.kind === "path") return `path:${source.directory}`;
   return `git:${source.url}@${source.ref}`;
 }
 
-/** Rebuild a source from its stored columns. */
 export function marketplaceSourceFromRow(row: {
   sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
@@ -102,7 +91,6 @@ export function marketplaceSourceFromRow(row: {
   return { kind: "git", url: row.manifestUrl, ref: row.sourceGitRef };
 }
 
-/** Columns a source writes back to its marketplace row. */
 export function marketplaceSourceColumns(source: MarketplaceSource): {
   sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
@@ -131,38 +119,22 @@ export function marketplaceSourceColumns(source: MarketplaceSource): {
 
 interface MaterializedMarketplace {
   catalog: MarketplaceManifest;
-  /** Canonical JSON of `catalog`, ready to store. */
   manifestJson: string;
-  /** True when a conditional request said the stored document still applies. */
   unchanged: boolean;
   etag: string | null;
   lastModified: string | null;
-  /** Commit a git checkout was read at; null for the other kinds. */
   commit: string | null;
-  /** Where this marketplace's relative icons come from. */
   iconBase: MarketplaceIconBase;
-  /** Remove the temporary checkout, if any. Always call it. */
   dispose(): Promise<void>;
 }
 
-/**
- * Read a marketplace's manifest without installing or running anything.
- *
- * An https marketplace replays its stored ETag/Last-Modified so an unchanged
- * catalog costs one 304. A git marketplace is cloned into a throwaway staging
- * directory, read, and deleted: everything bb keeps — the manifest and the
- * icon bytes — is already in SQLite, so no checkout has to survive. A path
- * marketplace is read in place.
- */
 export async function materializeMarketplace(args: {
   source: MarketplaceSource;
-  /** Stored document and validators; null forces a full read. */
   cached: {
     manifestJson: string;
     etag: string | null;
     lastModified: string | null;
   } | null;
-  /** Parent directory for git staging checkouts. */
   stagingDir: string;
   fetch: MarketplaceFetch;
 }): Promise<MaterializedMarketplace> {
@@ -251,8 +223,6 @@ async function materializeLocal(
       join(root, MARKETPLACE_MANIFEST_FILENAME),
       "marketplace manifest",
     );
-    // Size first, then read: an oversize manifest is refused before it is
-    // loaded, the same bound an https manifest gets from its content-length.
     const manifestSize = (await stat(manifestPath)).size;
     if (manifestSize > MARKETPLACE_MANIFEST_MAX_BYTES) {
       throw new Error(
@@ -311,8 +281,6 @@ async function materializeGit(
       "rev-parse",
       "HEAD",
     ]);
-    // The checkout is only a manifest carrier. Dropping .git first keeps a
-    // hostile repository from smuggling hooks or config into the icon read.
     await rm(join(checkout, ".git"), { recursive: true, force: true });
     return await materializeLocal(checkout, commit, dispose);
   } catch (error) {

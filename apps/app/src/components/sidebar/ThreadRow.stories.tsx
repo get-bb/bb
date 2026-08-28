@@ -29,8 +29,6 @@ export default {
   title: "sidebar/Threads",
 };
 
-// Caps at the production sidebar max (460px) but shrinks with the parent so
-// truncation behavior is visible at any container width.
 function SidebarStage({ children }: { children: ReactNode }) {
   return (
     <ThreadActionsProvider>
@@ -248,7 +246,6 @@ const childOption: ThreadRowOptions = {
   depth: 2,
   isCompact: true,
 };
-// Projectless threads are top-level rows (depth 0), flush with project headers.
 const projectlessOption: ThreadRowOptions = {
   kind: "default",
   depth: 0,
@@ -556,6 +553,25 @@ export function Overview() {
               title:
                 "Investigate slow tests on recurring CI failures after the timeline pagination v2 merge",
               titleFallback: "Investigate slow tests on recurring CI failures",
+            })}
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="long title + rich pills"
+        hint="title truncates in reading order through mention pills; hover reveals row actions"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            crossProjectId={null}
+            thread={makeThread({
+              title:
+                "Review this branch using @docs/CODE_REVIEW.md and @apps/app/src/components/sidebar/ThreadRow.tsx before merging",
+              titleFallback:
+                "Review this branch using @docs/CODE_REVIEW.md and @apps/app/src/components/sidebar/ThreadRow.tsx before merging",
             })}
             isActive={false}
             options={defaultOption}

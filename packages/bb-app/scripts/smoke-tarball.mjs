@@ -34,7 +34,6 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "inline-vis",
   "keep-awake",
   "pdf-preview",
-  "plugin-api-docs",
   "provider-retry",
   "secrets",
 ];

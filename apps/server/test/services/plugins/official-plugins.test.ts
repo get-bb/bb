@@ -62,7 +62,7 @@ function createService(args: {
   bundled: BundledPluginRegistration[];
 }): PluginService {
   return createPluginService({
-      aiServices: createAiServiceRegistry(),
+    aiServices: createAiServiceRegistry(),
     telemetry: createNoopTelemetryService(),
     db: args.db,
     hub: {
@@ -186,7 +186,6 @@ describe("store-installed official plugins", () => {
       },
     );
 
-    // A restart reconciles the existing registration instead of dropping it.
     await service.stop();
     service = createService({
       db,
@@ -252,7 +251,6 @@ describe("store-installed official plugins", () => {
     await service.start();
     expect(service.list()).toEqual([]);
 
-    // Reinstalling from the store clears the tombstone.
     await expect(
       service.installOfficialPlugin("fixture"),
     ).resolves.toMatchObject({ id: "builtin-fixture", status: "running" });

@@ -174,9 +174,6 @@ export function flushProjectionBufferedOutputsAfterTurnCompleted(
   turnId: string,
 ): void {
   flushBufferedAssistantMessagesForTurn(state, turnId);
-  // Tool and file-edit buffers predate turn-scoped assistant buffering. Their
-  // call identity is not uniformly scope-qualified, so retain the established
-  // global flush behavior until that state is redesigned end to end.
   flushPendingToolActivityOutput(state);
   flushPendingFileEditOutput(state);
 }
@@ -212,11 +209,6 @@ function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {
 
   for (const message of args.state.messages) {
     if (message.kind !== "operation") continue;
-    // Pi can start automatic compaction after it has completed the owning
-    // turn. The thread is idle while that background lifecycle is still in
-    // flight, so idle alone is not evidence that the compaction stopped. Keep
-    // it pending until an explicit completion, provider error, or thread
-    // interruption settles it.
     if (
       args.options?.threadStatus === "idle" &&
       message.opType === "compaction" &&

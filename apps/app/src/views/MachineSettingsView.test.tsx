@@ -125,12 +125,10 @@ function renderView() {
   );
 }
 
-/** Everything except the hosts list; the view also reads projects and versions. */
 function stubSupportingFetches(): void {
   vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
     providerCliStatusResponse(),
   );
-  // The provider roster: each provider's declared logo is its mark.
   vi.mocked(sdk.providers.list).mockResolvedValue([
     makeProviderInfo({ id: "codex", displayName: "Codex" }),
     makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
@@ -138,11 +136,12 @@ function stubSupportingFetches(): void {
   ]);
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(JSON.stringify({ projects: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ projects: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     ),
   );
 }
@@ -206,10 +205,11 @@ describe("MachineSettingsView", () => {
         .closest("section")
         ?.querySelector("[data-icon]"),
     ).toBeNull();
-    // The marks arrive with the provider roster (served logos as masks).
     await waitFor(() =>
       expect(
-        document.querySelector('[data-provider-icon="codex"] [data-provider-logo]'),
+        document.querySelector(
+          '[data-provider-icon="codex"] [data-provider-logo]',
+        ),
       ).not.toBeNull(),
     );
     expect(
@@ -239,7 +239,6 @@ describe("MachineSettingsView", () => {
     expect(installedLabel.nextElementSibling?.className).toContain(
       "sm:justify-end",
     );
-    // The page exists so the modes can explain themselves.
     expect(screen.getByText(/No sandbox and no approvals/u)).toBeDefined();
   });
 

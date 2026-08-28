@@ -12,7 +12,6 @@ import type {
 } from "@bb/server-contract";
 import type { FollowUpSubmitMode } from "./follow-up-submit-mode.js";
 
-/** `POST /threads/:id/messages` body plus the thread id it targets. */
 export interface SendMessageMutationRequest extends SendMessageRequest {
   id: string;
 }
@@ -235,9 +234,6 @@ function buildSteerFollowUpRequest({
     return null;
   }
 
-  // The composer picker stays editable while a turn runs. Without the
-  // selection the server resolves the steer from the thread's last execution,
-  // i.e. the active turn's tuple, and silently ignores the new pick.
   return {
     id: threadId,
     input,
@@ -273,11 +269,6 @@ function buildSendQueuedMessageByIdRequest({
   };
 }
 
-/**
- * Cmd+Enter on an active follow-up composer sends current draft input as an
- * explicit steer. If the composer is empty, it sends only the current queue
- * head through the same auto path as the queued-card "Send now" action.
- */
 export function buildFollowUpShortcutRequest({
   execution,
   input,

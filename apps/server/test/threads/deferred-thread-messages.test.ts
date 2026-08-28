@@ -1,8 +1,3 @@
-// Messages addressed to a thread that is blocked on a pending user interaction
-// (AskUserQuestion, approvals) used to be lost (#1650): `/send` returned 409
-// and persisted nothing, and `queueParentSystemMessage` returned false with
-// nothing logged. They now wait in `deferred_thread_messages` and deliver when
-// the interaction settles.
 import { and, eq } from "drizzle-orm";
 import {
   events,
@@ -81,11 +76,6 @@ async function waitFor<T>(
   throw new Error("Timed out waiting for the expected state");
 }
 
-/**
- * A thread in the middle of a turn (runtime state + turn/started) that is now
- * parked on an AskUserQuestion, exactly like an orchestrator that asked the
- * user something.
- */
 function seedBlockedThread(
   harness: TestHarness,
   args: {
@@ -171,11 +161,6 @@ async function answerQuestion(
   expect(reported.status).toBe(200);
 }
 
-/**
- * Records every `logger.warn` the server makes from now on. The sweep runs on a
- * ten-second timer, so a held message the sweep cannot deliver must not produce
- * a warn per tick.
- */
 function recordServerWarnings(harness: TestHarness): string[] {
   const messages: string[] = [];
   const previous = harness.deps.logger;
@@ -210,10 +195,6 @@ async function holdSteerMessage(
   });
 }
 
-/**
- * Lets the flush that the interaction settle hook scheduled with setImmediate
- * start and finish, without starting a second one of our own.
- */
 async function drainSettleFlush(): Promise<void> {
   for (let turn = 0; turn < 5; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -233,7 +214,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
         parentThreadId: thread.id,
       });
 
-      // `bb thread tell <orchestrator> "..."` from inside the worker.
       const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,
         {
@@ -253,7 +233,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       });
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      // Nothing reaches the provider while the question is open.
       expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
 
       await answerQuestion(harness, { interactionId, threadId: thread.id });
@@ -392,8 +371,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       });
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(3);
 
-      // A sweep (or a settle of some other interaction) must not deliver while
-      // the question is still open.
       await runDeferredThreadMessageSweep(harness.deps);
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(3);
       expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
@@ -434,9 +411,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       );
       expect(response.status).toBe(200);
 
-      // The user gives up on the question and stops the thread. The stop
-      // interrupts the interaction while the thread is still `stopping`, so the
-      // settle flush cannot deliver yet; the row must survive for the sweep.
       applyLoggedThreadLifecycleEvent(harness.deps, {
         event: { type: "stop.requested" },
         threadId: thread.id,
@@ -493,9 +467,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       }
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(2);
 
-      // The worker is deleted while the question is still open. Its tell can
-      // no longer deliver (the sender must be a live reply target), which must
-      // not strand the user's message behind it forever.
       markThreadDeleted(harness.db, harness.deps.hub, { threadId: worker.id });
       harness.deps.pendingInteractions.interruptPendingInteraction({
         interactionId,
@@ -525,14 +496,12 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
         threadId: thread.id,
       });
 
-      // The provider process exits while the question is open. The internal
-      // event route interrupts the interaction and then fails the run, which
-      // leaves the thread in `error` until the user retries it. A steer cannot
-      // deliver into an errored thread.
-      harness.deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-        threadIds: [thread.id],
-        reason: "Provider process exited while awaiting user interaction",
-      });
+      harness.deps.pendingInteractions.interruptPendingInteractionsForThreadIds(
+        {
+          threadIds: [thread.id],
+          reason: "Provider process exited while awaiting user interaction",
+        },
+      );
       applyLoggedThreadLifecycleEvent(harness.deps, {
         event: { type: "run.failed" },
         threadId: thread.id,
@@ -541,12 +510,9 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
 
       const warnings = recordServerWarnings(harness);
       await drainSettleFlush();
-      // The settle races the failure, so it may attempt delivery once.
       const afterSettle = warnings.length;
       expect(afterSettle).toBeLessThanOrEqual(1);
 
-      // The sweep runs every ten seconds for as long as the thread exists. It
-      // must not re-run the send pipeline, and must not log, on every tick.
       for (let tick = 0; tick < 5; tick += 1) {
         await runDeferredThreadMessageSweep(harness.deps);
       }
@@ -555,7 +521,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
       expect(getThread(harness.db, thread.id)?.status).toBe("error");
 
-      // The user retries the thread. The next sweep delivers the held message.
       applyLoggedThreadLifecycleEvent(harness.deps, {
         event: { type: "run.preparing" },
         threadId: thread.id,
@@ -575,10 +540,6 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
 
   it("drops held messages once when the thread's environment is gone instead of retrying them", async () => {
     await withTestHarness(async (harness) => {
-      // A destroy only completes while every thread on the environment is
-      // archived, and unarchiving never reprovisions it (#1789), so a live
-      // thread can end up holding messages for an environment that will never
-      // run again.
       const { environment, interactionId, thread } = seedBlockedThread(
         harness,
         { hostId: "host-1650-destroyed", environmentStatus: "destroyed" },
