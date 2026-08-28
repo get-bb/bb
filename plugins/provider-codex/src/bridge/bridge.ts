@@ -76,6 +76,10 @@ import {
   type CodexEventTranslator,
 } from "../translator.js";
 import {
+  codexThreadIdentityResultSchema,
+  extractCodexSubAgentHistory,
+} from "../subagent-history.js";
+import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
   type CodexAppServerConnection,
@@ -814,10 +818,6 @@ async function initializeChild(
   }
 }
 
-const codexThreadIdentityResultSchema = z
-  .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
-  .passthrough();
-
 type CodexSessionConstructionRequest =
   | { kind: "start" }
   | { kind: "resume"; providerThreadId: string }
@@ -982,6 +982,11 @@ async function constructThreadSession(
     });
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
+    if (args.request.kind !== "start") {
+      translator.primeSubAgentHistory(
+        extractCodexSubAgentHistory(result.thread),
+      );
+    }
     translator.activateThreadGitWritableRoots({
       providerThreadId: codexThreadId,
       threadId: args.threadId,

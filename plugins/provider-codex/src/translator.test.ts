@@ -827,7 +827,9 @@ describe("codex subagent activity correlation", () => {
       ),
     ).toEqual([]);
 
-    expect(harness.translate(childTurnStarted("child-turn-2"))).toEqual([
+    expect(
+      harness.translate(childTurnStarted("child-turn-2", "agent-thread-1")),
+    ).toEqual([
       expect.objectContaining({
         type: "item/started",
         scope: turnScope(harness.turnId("parent-turn")),
@@ -845,7 +847,7 @@ describe("codex subagent activity correlation", () => {
     ]);
 
     const resumedTurnCompleted = harness.translate(
-      childTurnCompleted("child-turn-2"),
+      childTurnCompleted("child-turn-2", "agent-thread-1"),
     );
     expect(resumedTurnCompleted).toEqual([
       expect.objectContaining({
@@ -917,6 +919,42 @@ describe("codex subagent activity correlation", () => {
     );
   });
 
+  it("reuses the original delegation restored from resume history", () => {
+    const harness = createHarness();
+    harness.translator.primeSubAgentHistory([
+      {
+        agentPath: "/root/lifecycle_child",
+        agentThreadId: "agent-thread-1",
+        callId: "original-subagent-call",
+        parentProviderThreadId: rootProviderThreadId,
+        parentTurnId: "original-parent-turn",
+      },
+    ]);
+    harness.translate(
+      subAgentActivity({ id: "rawless-followup", kind: "interacted" }),
+    );
+
+    expect(
+      harness.translate(
+        childTurnStarted("resumed-child-turn", "agent-thread-1"),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("original-parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("original-subagent-call"),
+          childRef: "agent-thread-1",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/started",
+        parentToolCallId: harness.itemId("original-subagent-call"),
+      }),
+    ]);
+  });
+
   it("does not reopen a known terminal subagent for send_message", () => {
     const harness = createHarness();
     harness.translate(
@@ -956,7 +994,7 @@ describe("codex subagent activity correlation", () => {
     ).toEqual([]);
 
     const resumedEvents = harness.translate(
-      childTurnStarted("rawless-child-turn"),
+      childTurnStarted("rawless-child-turn", "agent-thread-1"),
     );
     expect(resumedEvents).toEqual([
       expect.objectContaining({
@@ -976,6 +1014,165 @@ describe("codex subagent activity correlation", () => {
     ]);
     expect(resumedEvents[0]).not.toHaveProperty("parentToolCallId");
     expect(resumedEvents[0]).not.toHaveProperty("item.parentToolCallId");
+  });
+
+  it("keeps rawless child ownership across the parent boundary", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({
+        agentThreadId: "agent-thread-a",
+        id: "interaction-a",
+        kind: "interacted",
+      }),
+    );
+    harness.translate(childTurnCompleted("parent-turn"));
+
+    const events = harness.translate(
+      childTurnStarted("child-a-turn", "agent-thread-a"),
+    );
+    const delegation = events.find((event) => event.type === "item/started");
+    expect(delegation?.item).toMatchObject({
+      type: "delegation",
+      childRef: "agent-thread-a",
+    });
+    expect(events.find((event) => event.type === "turn/started")).toMatchObject(
+      {
+        parentToolCallId: delegation?.item.id,
+      },
+    );
+  });
+
+  it("correlates unknown rawless children by exact child identity", () => {
+    const harness = createHarness();
+    for (const suffix of ["a", "b"]) {
+      harness.translate(
+        subAgentActivity({
+          agentThreadId: `agent-thread-${suffix}`,
+          id: `interaction-${suffix}`,
+          kind: "interacted",
+        }),
+      );
+    }
+
+    for (const suffix of ["a", "b"]) {
+      const events = harness.translate(
+        childTurnStarted(`child-${suffix}-turn`, `agent-thread-${suffix}`),
+      );
+      const delegation = events.find((event) => event.type === "item/started");
+      expect(delegation?.item).toMatchObject({
+        type: "delegation",
+        childRef: `agent-thread-${suffix}`,
+      });
+      expect(
+        events.find((event) => event.type === "turn/started"),
+      ).toMatchObject({ parentToolCallId: delegation?.item.id });
+    }
+  });
+
+  it("does not guess between unknown rawless children on root turns", () => {
+    const harness = createHarness();
+    for (const suffix of ["a", "b"]) {
+      harness.translate(
+        subAgentActivity({
+          agentThreadId: `agent-thread-${suffix}`,
+          id: `interaction-${suffix}`,
+          kind: "interacted",
+        }),
+      );
+    }
+
+    for (const turnId of ["unrelated-root-turn-a", "unrelated-root-turn-b"]) {
+      const events = harness.translate(childTurnStarted(turnId));
+      expect(
+        events.find((event) => event.type === "item/started"),
+      ).toBeUndefined();
+      expect(
+        events.find((event) => event.type === "turn/started"),
+      ).not.toHaveProperty("parentToolCallId");
+    }
+  });
+
+  it("does not materialize an interaction before late message intent", () => {
+    const harness = createHarness();
+    const events = [
+      ...harness.translate(
+        subAgentActivity({
+          agentThreadId: "agent-thread-a",
+          id: "message-call",
+          kind: "interacted",
+        }),
+      ),
+      ...harness.translate(childTurnStarted("unrelated-root-turn")),
+      ...harness.translate(
+        rawCollaborationCall({ callId: "message-call", name: "send_message" }),
+      ),
+    ];
+
+    expect(
+      events.find((event) => event.type === "item/started"),
+    ).toBeUndefined();
+    expect(
+      events.find((event) => event.type === "turn/started"),
+    ).not.toHaveProperty("parentToolCallId");
+  });
+
+  it("purges raw-only interaction intent at its parent boundary", () => {
+    const harness = createHarness();
+    harness.translate(
+      rawCollaborationCall({ callId: "followup-call", name: "followup_task" }),
+    );
+    harness.translate(childTurnCompleted("parent-turn"));
+
+    expect(
+      harness.translate(
+        subAgentActivity({
+          agentThreadId: "agent-thread-a",
+          id: "followup-call",
+          kind: "interacted",
+        }),
+      ),
+    ).toEqual([]);
+    const laterChildTurn = harness
+      .translate(childTurnStarted("late-child-turn", "agent-thread-a"))
+      .find((event) => event.type === "turn/started");
+    expect(laterChildTurn).not.toHaveProperty("parentToolCallId");
+  });
+
+  it("bounds unmatched activity to the next parent lifecycle", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({
+        agentThreadId: "agent-thread-a",
+        id: "unmatched-activity",
+        kind: "interacted",
+      }),
+    );
+    harness.translate(childTurnCompleted("unrelated-parent-turn-a"));
+    harness.translate(childTurnCompleted("unrelated-parent-turn-b"));
+
+    const laterChildTurn = harness
+      .translate(childTurnStarted("late-child-turn", "agent-thread-a"))
+      .find((event) => event.type === "turn/started");
+    expect(laterChildTurn).not.toHaveProperty("parentToolCallId");
+  });
+
+  it("clears unmatched activity when its provider thread closes", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({
+        agentThreadId: "agent-thread-a",
+        id: "unmatched-activity",
+        kind: "interacted",
+      }),
+    );
+    harness.translate(
+      codexEvent("thread/closed", { threadId: rootProviderThreadId }),
+    );
+
+    const laterChildTurn = harness
+      .translate(childTurnStarted("late-child-turn", "agent-thread-a"))
+      .find((event) => event.type === "turn/started");
+    expect(laterChildTurn).not.toHaveProperty("parentToolCallId");
   });
 
   it("keeps root input correlation independent from a rawless resumed child thread", () => {
@@ -1130,7 +1327,9 @@ describe("codex subagent activity correlation", () => {
 
     for (const index of [2, 3]) {
       expect(
-        harness.translate(childTurnStarted(`child-turn-${index}`)),
+        harness.translate(
+          childTurnStarted(`child-turn-${index}`, "agent-thread-1"),
+        ),
       ).toEqual([
         expect.objectContaining({
           type: "item/started",
@@ -1147,7 +1346,9 @@ describe("codex subagent activity correlation", () => {
       ]);
       expect(
         harness
-          .translate(childTurnCompleted(`child-turn-${index}`))
+          .translate(
+            childTurnCompleted(`child-turn-${index}`, "agent-thread-1"),
+          )
           .map((event) => event.type),
       ).toEqual(["turn/completed", "item/completed"]);
     }
@@ -1182,7 +1383,9 @@ describe("codex subagent activity correlation", () => {
     );
     expect(humanTurnStarted).not.toHaveProperty("parentToolCallId");
 
-    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
+    expect(
+      harness.translate(childTurnStarted("child-turn-2", "agent-thread-1")),
+    ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
         scope: turnScope(harness.turnId("child-turn-2")),
@@ -1236,7 +1439,9 @@ describe("codex subagent activity correlation", () => {
       subAgentActivity({ id: "interaction-1", kind: "interacted" }),
     );
 
-    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
+    expect(
+      harness.translate(childTurnStarted("child-turn-2", "agent-thread-1")),
+    ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
         scope: turnScope(harness.turnId("child-turn-2")),
@@ -1291,7 +1496,7 @@ describe("codex subagent activity correlation", () => {
     );
 
     expect(
-      harness.translate(childTurnStarted("resumed-turn-1")),
+      harness.translate(childTurnStarted("resumed-turn-1", "agent-thread-1")),
     ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
