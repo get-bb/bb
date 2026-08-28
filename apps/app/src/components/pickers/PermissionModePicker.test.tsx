@@ -28,7 +28,7 @@ describe("PermissionModePicker", () => {
 
     const caret = container.querySelector('[data-icon="ChevronDown"]');
     expect(caret).not.toBeNull();
-    expect(caret!.classList).toContain("text-muted-foreground");
+    expect(caret!.classList).toContain("text-subtle-foreground/75");
     expect(caret!.classList).not.toContain("text-warning-text");
   });
 

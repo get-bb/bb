@@ -4,6 +4,7 @@ import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
@@ -128,7 +129,10 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
               type="button"
               aria-label="Create thread in worktree"
               onClick={onCreateNewThreadInWorktree}
-              className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground"
+              className={cn(
+                "-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 transition-colors hover:bg-state-hover",
+                CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+              )}
             >
               <Icon name="MessageSquarePlus" className="size-4" />
             </button>

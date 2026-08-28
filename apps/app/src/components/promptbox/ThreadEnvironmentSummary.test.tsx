@@ -117,7 +117,9 @@ describe("ThreadEnvironmentSummary", () => {
     const createThreadButton = screen.getByRole("button", {
       name: "Create thread in worktree",
     });
-    expect(createThreadButton.classList).toContain("text-muted-foreground");
+    expect(createThreadButton.classList).toContain(
+      "text-subtle-foreground/75",
+    );
     expect(createThreadButton.classList).toContain(
       "hover:text-muted-foreground",
     );
