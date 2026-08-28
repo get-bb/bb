@@ -3,7 +3,7 @@
   "entries": {
     ".": {
       "types": "bundled-types/bb-plugin-sdk.d.ts",
-      "sha256": "1f2656d8eccf35f38966e0ecfc62e81db684ea2baa14ff6a3de3e997aa0c6d70"
+      "sha256": "057bfb57c4a11dcbb0b83125e1b42a0e360fcb28ce62083fa37acb28541df741"
     },
     "./ai-services": {
       "types": "bundled-types/bb-plugin-sdk-ai-services.d.ts",
