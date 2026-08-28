@@ -47,6 +47,12 @@ import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js
 
 type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
 
+export interface DestroyWorkspaceArgs {
+  /** Teardown script timeout in ms. Controlled by the server. */
+  timeoutMs: number;
+  onProgress?: ProvisionProgressCallback;
+}
+
 interface ProvisionBase {
   onProgress?: ProvisionProgressCallback;
   shellPath?: string;
@@ -137,7 +143,7 @@ export interface HostWorkspace {
   reset(): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
-  destroy(): Promise<void>;
+  destroy(args: DestroyWorkspaceArgs): Promise<void>;
 }
 
 async function detectWorktree(
@@ -163,7 +169,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   private readonly ws: Workspace;
   private readonly gitProcessOptions: GitProcessOptions;
-  private readonly destroyFn: () => Promise<void>;
+  private readonly destroyFn: (args: DestroyWorkspaceArgs) => Promise<void>;
 
   constructor(opts: {
     path: string;
@@ -171,7 +177,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     isGitRepo: boolean;
     isWorktree: boolean;
     shellPath?: string;
-    destroyFn: () => Promise<void>;
+    destroyFn: (args: DestroyWorkspaceArgs) => Promise<void>;
   }) {
     this.path = opts.path;
     this.managed = opts.managed;
@@ -267,8 +273,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.squashMergeInto(options);
   }
 
-  destroy(): Promise<void> {
-    return this.destroyFn();
+  destroy(args: DestroyWorkspaceArgs): Promise<void> {
+    return this.destroyFn(args);
   }
 }
 
@@ -678,12 +684,16 @@ async function provisionWorktree(
     isGitRepo: true,
     isWorktree: true,
     shellPath: opts.shellPath,
-    destroyFn: () =>
+    destroyFn: (args) =>
       removeWorktree({
         path: wsPath,
+        timeoutMs: args.timeoutMs,
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
+        ...(args.onProgress !== undefined
+          ? { onProgress: args.onProgress }
+          : {}),
       }),
   });
 }
@@ -732,7 +742,7 @@ async function provisionPersonalWorkspace(
 
 async function reconnectManaged(
   wsPath: string,
-  destroyFn: () => Promise<void>,
+  destroyFn: (args: DestroyWorkspaceArgs) => Promise<void>,
   shellPath: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<HostWorkspace> {
@@ -765,12 +775,16 @@ async function reconnectManagedWorktree(
 ): Promise<HostWorkspace> {
   return reconnectManaged(
     opts.path,
-    () =>
+    (args) =>
       removeWorktree({
         path: opts.path,
+        timeoutMs: args.timeoutMs,
         force: true,
         pruneEmptyParent: true,
         shellPath: opts.shellPath,
+        ...(args.onProgress !== undefined
+          ? { onProgress: args.onProgress }
+          : {}),
       }),
     opts.shellPath,
     opts.signal,

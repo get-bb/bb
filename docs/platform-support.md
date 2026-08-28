@@ -172,6 +172,7 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 ## Setup Hook Policy
 
 - The supported setup hook is POSIX `.bb-env-setup.sh`.
+- The supported teardown hook is POSIX `.bb-env-teardown.sh`.
 - The same shell-based hook contract is used across macOS, Linux, and WSL2.
 - No parallel `.bb-env-setup.ts` product-path mechanism is supported.
 - The `.worktreeinclude` copy step runs no shell. It works on every platform,

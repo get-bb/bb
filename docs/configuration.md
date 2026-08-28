@@ -24,6 +24,14 @@ npx bb-app env list
 npx bb-app env unset OPENAI_API_KEY
 ```
 
+## Repository worktree hooks
+
+Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
+Commit `.bb-env-teardown.sh` when bb must release external resources before it
+removes that worktree. See [Worktrees, setup scripts, and teardown
+scripts](worktrees.md) for the lifecycle, environment, timeout, and failure
+contracts.
+
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
 

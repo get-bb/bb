@@ -31,6 +31,7 @@ import type {
 import {
   provisionWorkspace,
   WorkspaceError,
+  type DestroyWorkspaceArgs,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -1089,7 +1090,10 @@ export class RuntimeManager {
     });
   }
 
-  async destroyEnvironment(environmentId: string): Promise<void> {
+  async destroyEnvironment(
+    environmentId: string,
+    args: DestroyWorkspaceArgs,
+  ): Promise<void> {
     const existing = this.entries.get(environmentId);
     const pending = this.pendingEntries.get(environmentId);
     const entry = existing ?? (pending ? await pending : undefined);
@@ -1102,7 +1106,7 @@ export class RuntimeManager {
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
     await this.killManagedWorkspaceProcesses(entry);
-    await entry.workspace.destroy();
+    await entry.workspace.destroy(args);
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 

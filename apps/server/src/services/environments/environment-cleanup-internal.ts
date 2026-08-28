@@ -67,6 +67,8 @@ type EnvironmentDestroyCommand =
 type EnvironmentDestroyCommandResultReport =
   CommandResultReportForType<"environment.destroy">;
 
+const TEARDOWN_TIMEOUT_MS = 15 * 60 * 1000;
+
 interface SettleEnvironmentDestroyCommandResultArgs {
   command: EnvironmentDestroyCommand;
   deps: EnvironmentCleanupSettlementDeps;
@@ -252,6 +254,7 @@ function dispatchEnvironmentDestroy(
       type: "environment.destroy",
       environmentId: environment.id,
       workspaceContext: workspaceContextFromPath(environment),
+      teardownTimeoutMs: TEARDOWN_TIMEOUT_MS,
     },
     execution,
     hostId: environment.hostId,

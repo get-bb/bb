@@ -69,6 +69,7 @@ describe("managed environment cleanup recovery sweep", () => {
           command: {
             type: "environment.destroy",
             environmentId: environment.id,
+            teardownTimeoutMs: 900000,
             workspaceContext: {
               workspacePath: "/tmp/in-flight-destroying-environment",
               workspaceProvisionType: "managed-worktree",
@@ -84,7 +85,7 @@ describe("managed environment cleanup recovery sweep", () => {
             completedAt: Date.now(),
             executionId: "rpc-in-flight-destroying",
             ok: true,
-            result: {},
+            result: { transcript: [] },
             type: "environment.destroy",
           },
         });
@@ -133,6 +134,7 @@ describe("managed environment cleanup recovery sweep", () => {
           command: {
             type: "environment.destroy",
             environmentId: environment.id,
+            teardownTimeoutMs: 900000,
             workspaceContext: {
               workspacePath,
               workspaceProvisionType: "managed-worktree",
@@ -148,7 +150,7 @@ describe("managed environment cleanup recovery sweep", () => {
             completedAt: Date.now(),
             executionId: "rpc-late-success",
             ok: true,
-            result: {},
+            result: { transcript: [] },
             type: "environment.destroy",
           },
         });
@@ -195,6 +197,7 @@ describe("managed environment cleanup recovery sweep", () => {
           command: {
             type: "environment.destroy",
             environmentId: environment.id,
+            teardownTimeoutMs: 900000,
             workspaceContext: {
               workspacePath,
               workspaceProvisionType: "managed-worktree",
@@ -271,6 +274,7 @@ describe("managed environment cleanup recovery sweep", () => {
           command: {
             type: "environment.destroy",
             environmentId: environment.id,
+            teardownTimeoutMs: 900000,
             workspaceContext: {
               workspacePath,
               workspaceProvisionType: "managed-worktree",

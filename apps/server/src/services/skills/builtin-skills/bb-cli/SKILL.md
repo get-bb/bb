@@ -31,11 +31,11 @@ message agents, or inspect projects, providers, and environments.
   the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
   must also publish the port to the host.
 
-## Environment Setup Script
+## Environment Setup And Teardown Scripts
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
-  documents the repo-level `.bb-env-setup.sh` setup hook and the
-  `.worktreeinclude` file.
+  documents the repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks,
+  and the `.worktreeinclude` file.
 - A new worktree checks out tracked files only. Commit a `.worktreeinclude`
   file at the repo root to list untracked files, such as `.env`, that bb must
   copy from the source checkout. It uses gitignore pattern syntax. bb copies

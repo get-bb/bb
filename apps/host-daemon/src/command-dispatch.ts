@@ -471,6 +471,8 @@ const commandHandlers: CommandHandlerMap = {
     }),
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {
+    const transcript: HostDaemonCommandResult<"environment.destroy">["transcript"] =
+      [];
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,
       environmentId: command.environmentId,
@@ -479,7 +481,7 @@ const commandHandlers: CommandHandlerMap = {
     });
     if (!resolution.ok) {
       if (resolution.failure.code === "path_not_found") {
-        return {};
+        return { transcript };
       }
       throw new ExpectedCommandDispatchError(
         resolution.failure.code,
@@ -490,8 +492,11 @@ const commandHandlers: CommandHandlerMap = {
       environmentId: command.environmentId,
       reason: "environment-destroyed",
     });
-    await options.runtimeManager.destroyEnvironment(command.environmentId);
-    return {};
+    await options.runtimeManager.destroyEnvironment(command.environmentId, {
+      timeoutMs: command.teardownTimeoutMs,
+      onProgress: (entry) => transcript.push(entry),
+    });
+    return { transcript };
   },
   "workspace.commit": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({

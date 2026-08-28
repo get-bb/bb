@@ -318,7 +318,7 @@ describe("provisionWorkspace", () => {
         path: repoPath,
       });
 
-      await ws.destroy();
+      await ws.destroy({ timeoutMs: 900000 });
 
       await expect(fs.stat(repoPath)).resolves.toBeDefined();
     });
@@ -517,7 +517,7 @@ describe("provisionWorkspace", () => {
         timeoutMs: 900000,
       });
 
-      await ws.destroy();
+      await ws.destroy({ timeoutMs: 900000 });
 
       await expect(fs.stat(targetPath)).rejects.toThrow();
       await expect(fs.stat(envDir)).rejects.toThrow();
@@ -625,7 +625,7 @@ describe("provisionWorkspace", () => {
       expect(ws.isWorktree).toBe(false);
       expect((await fs.stat(targetPath)).isDirectory()).toBe(true);
 
-      await ws.destroy();
+      await ws.destroy({ timeoutMs: 900000 });
       await expect(fs.stat(targetPath)).rejects.toThrow();
     });
 
@@ -733,7 +733,7 @@ describe("provisionWorkspace", () => {
       expect(ws.isGitRepo).toBe(true);
       expect(ws.isWorktree).toBe(true);
 
-      await ws.destroy();
+      await ws.destroy({ timeoutMs: 900000 });
       await expect(fs.stat(wtPath)).rejects.toThrow();
       await expect(fs.stat(envDir)).rejects.toThrow();
     });

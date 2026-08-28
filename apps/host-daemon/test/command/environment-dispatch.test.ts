@@ -666,6 +666,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-1",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-1",
           workspaceProvisionType: "managed-worktree",
@@ -677,13 +678,54 @@ describe("environment command dispatch", () => {
       }),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ transcript: [] });
     expect(closeEnvironmentTerminals).toHaveBeenCalledWith({
       environmentId: "env-1",
       reason: "environment-destroyed",
     });
     expect(harness.runtimeState.shutdownCount).toBe(1);
     expect(harness.workspaceState.destroyed).toBe(true);
+  });
+
+  it("returns the teardown transcript from environment.destroy", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-teardown",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.workspace.destroy = async (args) => {
+      expect(args.timeoutMs).toBe(1234);
+      args.onProgress?.({
+        type: "step",
+        key: "teardown-completed",
+        text: ".bb-env-teardown.sh finished",
+        status: "completed",
+        startedAt: 100,
+      });
+    };
+
+    const result = await dispatchCommand(
+      {
+        type: "environment.destroy",
+        environmentId: "env-teardown",
+        teardownTimeoutMs: 1234,
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "managed-worktree",
+        },
+      },
+      makeDispatchOptions({ runtimeManager: harness.manager }),
+    );
+
+    expect(result.transcript).toEqual([
+      {
+        type: "step",
+        key: "teardown-completed",
+        text: ".bb-env-teardown.sh finished",
+        status: "completed",
+        startedAt: 100,
+      },
+    ]);
   });
 
   it("waits for terminal closes before destroying an environment", async () => {
@@ -700,6 +742,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-1",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-1",
           workspaceProvisionType: "managed-worktree",
@@ -725,7 +768,7 @@ describe("environment command dispatch", () => {
     expect(harness.workspaceState.destroyed).toBe(false);
 
     terminalClose.resolve(undefined);
-    await expect(destroyPromise).resolves.toEqual({});
+    await expect(destroyPromise).resolves.toEqual({ transcript: [] });
     expect(destroyResolved).toBe(true);
     expect(harness.runtimeState.shutdownCount).toBe(1);
     expect(harness.workspaceState.destroyed).toBe(true);
@@ -771,6 +814,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-1",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-1",
           workspaceProvisionType: "managed-worktree",
@@ -807,6 +851,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-restart",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-1",
           workspaceProvisionType: "managed-worktree",
@@ -815,7 +860,7 @@ describe("environment command dispatch", () => {
       makeDispatchOptions({ runtimeManager: harness.manager }),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ transcript: [] });
     expect(harness.workspaceState.destroyed).toBe(true);
     expect(harness.provisions).toEqual([
       {
@@ -848,6 +893,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-retry",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-retry",
           workspaceProvisionType: "managed-worktree",
@@ -860,6 +906,7 @@ describe("environment command dispatch", () => {
       {
         type: "environment.destroy",
         environmentId: "env-retry",
+        teardownTimeoutMs: 900000,
         workspaceContext: {
           workspacePath: "/tmp/env-retry",
           workspaceProvisionType: "managed-worktree",
@@ -868,6 +915,6 @@ describe("environment command dispatch", () => {
       makeDispatchOptions({ runtimeManager: manager }),
     );
 
-    expect(retryResult).toEqual({});
+    expect(retryResult).toEqual({ transcript: [] });
   });
 });

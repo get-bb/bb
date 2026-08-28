@@ -48,6 +48,9 @@ describe("environment cleanup", () => {
           command.type === "environment.destroy" &&
           command.environmentId === environment.id,
       );
+      expect(destroyCommand.command).toMatchObject({
+        teardownTimeoutMs: 900000,
+      });
       const destroyingEnvironment = getEnvironment(harness.db, environment.id);
       expect(destroyingEnvironment).toMatchObject({
         destroyAttemptId: expect.any(String),
@@ -73,7 +76,9 @@ describe("environment cleanup", () => {
         status: "destroying",
       });
 
-      await reportQueuedCommandSuccess(harness, destroyCommand, {});
+      await reportQueuedCommandSuccess(harness, destroyCommand, {
+        transcript: [],
+      });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "destroyed",
       });

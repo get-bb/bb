@@ -187,6 +187,7 @@ function createEnvironmentDestroyCommand(): EnvironmentDestroyCommand {
   return {
     type: "environment.destroy",
     environmentId: "env-router",
+    teardownTimeoutMs: 900000,
     workspaceContext: {
       workspacePath: "/tmp/env-router",
       workspaceProvisionType: "unmanaged",

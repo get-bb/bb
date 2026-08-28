@@ -3,7 +3,11 @@ export {
   provisionWorkspace,
   validatePersonalWorkspaceTargetPath,
 } from "./provision.js";
-export type { HostWorkspace, ProvisionWorkspaceArgs } from "./provision.js";
+export type {
+  DestroyWorkspaceArgs,
+  HostWorkspace,
+  ProvisionWorkspaceArgs,
+} from "./provision.js";
 
 export type { PullRequestActionOptions } from "./workspace.js";
 export type { GitHostCliOptions } from "./git-host.js";

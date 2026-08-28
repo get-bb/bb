@@ -486,7 +486,9 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     path: "/home/me/.bb/checkouts/project",
     gitRemoteUrl: "git@example.com:me/project.git",
   },
-  "environment.destroy": {},
+  "environment.destroy": {
+    transcript: [],
+  },
   "workspace.commit": {
     commitSha: "abcdef123456",
     commitSubject: "Checkpoint work",
@@ -941,7 +943,7 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(172);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(173);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

@@ -1784,7 +1784,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    await manager.destroyEnvironment("env-1");
+    await manager.destroyEnvironment("env-1", { timeoutMs: 900000 });
 
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
     expect(workspace.destroy).toHaveBeenCalledTimes(1);
@@ -1831,7 +1831,7 @@ describe("RuntimeManager", () => {
       try {
         expect(isAlive(grandchildPid)).toBe(true);
 
-        await manager.destroyEnvironment("env-procs");
+        await manager.destroyEnvironment("env-procs", { timeoutMs: 900000 });
 
         expect(managedWorkspace.destroy).toHaveBeenCalledTimes(1);
         const deadline = Date.now() + 5000;

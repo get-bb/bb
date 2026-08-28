@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ENV_SETUP_SCRIPT_NAME } from "@bb/domain";
+import {
+  DEFAULT_ENV_SETUP_SCRIPT_NAME,
+  DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+} from "@bb/domain";
 import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
 import { Workspace } from "../src/workspace.js";
 import {
@@ -10,6 +13,7 @@ import {
   createWorktree,
   removeWorktree,
   runSetupScript,
+  runTeardownScript,
 } from "../src/provisioning.js";
 import { runGit } from "../src/git.js";
 
@@ -52,6 +56,19 @@ async function initRemoteBackedRepo(): Promise<{
   await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
   await runGit(["fetch", "origin"], { cwd: repoPath });
   return { remotePath, repoPath };
+}
+
+async function commitTeardownScript(
+  repoPath: string,
+  script: string,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(repoPath, DEFAULT_ENV_TEARDOWN_SCRIPT_NAME),
+    script,
+    "utf8",
+  );
+  await runGit(["add", DEFAULT_ENV_TEARDOWN_SCRIPT_NAME], { cwd: repoPath });
+  await runGit(["commit", "-m", "Add teardown script"], { cwd: repoPath });
 }
 
 async function pushRemoteMainCommit(remotePath: string): Promise<string> {
@@ -604,6 +621,122 @@ describe("workspace provisioning", () => {
     ).resolves.toEqual({ ran: false });
   });
 
+  it("returns a no-op when the teardown script is missing", async () => {
+    const workspacePath = await makeTempDir("bb-teardown-noop-");
+
+    await expect(
+      runTeardownScript({ workspacePath, timeoutMs: 900000 }),
+    ).resolves.toEqual({ ran: false });
+  });
+
+  it("runs teardown scripts before it removes managed worktrees", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const markerPath = path.join(
+      await makeTempDir("bb-teardown-marker-"),
+      "marker.txt",
+    );
+    await commitTeardownScript(
+      sourceRepo,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        `printf '%s\\n' "$PWD" "$(cat README.md)" > ${shellSingleQuote(markerPath)}`,
+        'echo "released external resource"',
+      ].join("\n"),
+    );
+    const parentDir = await makeTempDir("bb-remove-teardown-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "feature-teardown",
+      baseBranch: "main",
+      timeoutMs: 900000,
+    });
+    const entries: string[] = [];
+
+    await removeWorktree({
+      path: targetPath,
+      timeoutMs: 900000,
+      force: true,
+      onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+    });
+
+    expect(await fs.readFile(markerPath, "utf8")).toBe(
+      `${targetPath}\nhello\n`,
+    );
+    expect(entries).toContain("teardown-started:Running .bb-env-teardown.sh");
+    expect(entries).toContain("teardown-output-1:released external resource");
+    expect(entries).toContain(
+      "teardown-completed:.bb-env-teardown.sh finished",
+    );
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
+  it("reports teardown failures and removes the worktree", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await commitTeardownScript(
+      sourceRepo,
+      ["#!/usr/bin/env bash", 'echo "cleanup failed"', "exit 7"].join("\n"),
+    );
+    const parentDir = await makeTempDir("bb-remove-failed-teardown-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "feature-failed-teardown",
+      baseBranch: "main",
+      timeoutMs: 900000,
+    });
+    const entries: string[] = [];
+
+    await expect(
+      removeWorktree({
+        path: targetPath,
+        timeoutMs: 900000,
+        force: true,
+        onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(entries).toContain("teardown-output-1:cleanup failed");
+    expect(entries).toContain("teardown-failed:.bb-env-teardown.sh failed");
+    expect(entries.some((entry) => entry.includes("exit code 7"))).toBe(true);
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
+  it("stops timed out teardown scripts and removes the worktree", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await commitTeardownScript(
+      sourceRepo,
+      ["#!/usr/bin/env bash", 'echo "waiting"', "sleep 30"].join("\n"),
+    );
+    const parentDir = await makeTempDir("bb-remove-timeout-teardown-parent-");
+    const targetPath = path.join(parentDir, "feature");
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "feature-timeout-teardown",
+      baseBranch: "main",
+      timeoutMs: 900000,
+    });
+    const entries: string[] = [];
+
+    await expect(
+      removeWorktree({
+        path: targetPath,
+        timeoutMs: 50,
+        force: true,
+        onProgress: (entry) => entries.push(`${entry.key}:${entry.text}`),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(entries).toContain("teardown-output-1:waiting");
+    expect(entries).toContain("teardown-failed:.bb-env-teardown.sh failed");
+    expect(entries.some((entry) => entry.includes("timed out"))).toBe(true);
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
   it("removes worktrees and plain directories", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     const parentDir = await makeTempDir("bb-remove-parent-");
@@ -617,7 +750,7 @@ describe("workspace provisioning", () => {
       timeoutMs: 900000,
     });
     await fs.writeFile(path.join(targetPath, "local.txt"), "dirty\n", "utf8");
-    await removeWorktree({ path: targetPath, force: true });
+    await removeWorktree({ path: targetPath, timeoutMs: 900000, force: true });
     await expect(fs.stat(targetPath)).rejects.toThrow();
     const worktrees = await runGit(["worktree", "list", "--porcelain"], {
       cwd: sourceRepo,
@@ -639,7 +772,7 @@ describe("workspace provisioning", () => {
     });
     await fs.rm(path.join(targetPath, ".git"), { force: true });
 
-    await removeWorktree({ path: targetPath, force: true });
+    await removeWorktree({ path: targetPath, timeoutMs: 900000, force: true });
 
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
@@ -648,7 +781,7 @@ describe("workspace provisioning", () => {
     const targetPath = await makeTempDir("bb-remove-non-git-dir-");
     await fs.writeFile(path.join(targetPath, "file.txt"), "data\n", "utf8");
 
-    await removeWorktree({ path: targetPath, force: true });
+    await removeWorktree({ path: targetPath, timeoutMs: 900000, force: true });
 
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
@@ -667,7 +800,7 @@ describe("workspace provisioning", () => {
     });
     await fs.writeFile(path.join(targetPath, "local.txt"), "dirty\n", "utf8");
 
-    await removeWorktree({ path: targetPath, force: false });
+    await removeWorktree({ path: targetPath, timeoutMs: 900000, force: false });
 
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });

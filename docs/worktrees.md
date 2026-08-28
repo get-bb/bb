@@ -1,4 +1,4 @@
-# Worktrees and setup scripts
+# Worktrees, setup scripts, and teardown scripts
 
 When you start a thread in bb, you can run it in your project's existing
 checkout or in a fresh **managed worktree** — a separate working copy on disk
@@ -10,6 +10,8 @@ You can pair a worktree with a **`.worktreeinclude` file** that lists the local
 files each new worktree needs, and with a **setup script** that bb runs the
 first time the worktree is created — useful for installing dependencies,
 generating secrets, or anything else you need before the agent starts.
+You can also add a **teardown script** that releases resources outside the
+worktree before bb removes it.
 
 ## What is a managed worktree?
 
@@ -123,6 +125,33 @@ an editor terminal. Each process gets `SIGTERM`, then `SIGKILL` after a
 short grace period. Move your own shells out of the worktree before you
 delete the environment if you want to keep them.
 
+## Run teardown with `.bb-env-teardown.sh`
+
+Commit a file named `.bb-env-teardown.sh` at the project root when setup
+creates resources outside the worktree. For example, the script can remove a
+database, a proxy registration, a container, or a port reservation.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker rm -f "my-project-${USER}"
+```
+
+Contract:
+
+- bb runs the script only when it destroys a managed worktree.
+- bb runs `env bash .bb-env-teardown.sh` from the worktree before it removes
+  the worktree, so the script can read tracked and generated files.
+- stdin is closed. bb records stdout and stderr in the environment destroy
+  transcript.
+- The script gets a separate 15-minute timeout.
+- A non-zero exit, a signal, or a timeout reports a failure. It never stops bb
+  from removing the worktree.
+- The script receives the same sanitized environment as the setup script.
+- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
+  supported.
+
 ## If something isn't working
 
 A few quick checks:
@@ -138,3 +167,5 @@ A few quick checks:
    prompts for input will time out at 15 minutes.
 4. Run `bash .bb-env-setup.sh` manually in a clean clone to verify it works
    outside bb before debugging through the provisioning transcript.
+5. Run `bash .bb-env-teardown.sh` manually before you delete a test worktree.
+   Confirm that repeated runs do not fail or remove shared resources.
