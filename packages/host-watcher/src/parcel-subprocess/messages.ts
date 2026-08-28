@@ -23,4 +23,9 @@ export type ChildToParentMessage =
   | { kind: "subscribe-failed"; id: string; message: string }
   | { kind: "unsubscribed"; id: string }
   | { kind: "events"; id: string; events: SerializedParcelEvent[] }
-  | { kind: "watch-error"; id: string; message: string };
+  | {
+      kind: "watch-error";
+      id: string;
+      message: string;
+      recovery: "rescan-subscription" | "recycle-child";
+    };

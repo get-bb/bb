@@ -4,6 +4,7 @@ import type {
   ParcelWatcherBackend,
   ParcelWatcherEventBatch,
 } from "../parcel-watcher-backend.js";
+import { isRescanRequiredMessage } from "../watch-recovery.js";
 import { toWatchErrorMessage } from "../watch-error.js";
 import type {
   ChildToParentMessage,
@@ -58,10 +59,14 @@ export function createParcelChildHandler(args: {
         message.dir,
         (error, events) => {
           if (error) {
+            const errorMessage = toWatchErrorMessage(error);
             args.send({
               kind: "watch-error",
               id: message.id,
-              message: toWatchErrorMessage(error),
+              message: errorMessage,
+              recovery: isRescanRequiredMessage(errorMessage)
+                ? "rescan-subscription"
+                : "recycle-child",
             });
             return;
           }
