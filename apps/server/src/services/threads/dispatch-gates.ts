@@ -43,46 +43,8 @@ import {
   type DispatchGateProvider,
   type DispatchGateRegistration,
 } from "../plugins/dispatch-gate-registry.js";
-import { getLastProviderThreadId } from "./thread-events.js";
 
 type DispatchGateDeps = Pick<AppDeps, "db" | "hub" | "providerRegistry">;
-
-/**
- * Why this thread's provider can no longer change, or null when it still can.
- *
- * The invariant is NOT "provider is locked when the row is inserted". It is
- * **provider is immutable once a provider session exists**: the session is the
- * conversation, and no other provider can continue one it never started. A
- * `pending` thread whose first message is parked has a row but no session, so
- * it is still free to be repointed — which is the whole window a routing
- * plugin amends in.
- *
- * Two facts have to hold, and each rules out something the other does not:
- *
- * - **The thread must have no provider session.** The event log, not the
- *   thread row, is the authority: a thread reads `idle` both before its first
- *   turn and between two of them, so only `providerThreadId` on the event log
- *   can tell "never ran" from "ran and went quiet". `firstDispatch` is the
- *   cheap in-memory statement of the same thing and the caller checks it
- *   first; this is the durable confirmation.
- * - **The thread must not be a fork.** A fork provisions by CLONING the source
- *   thread's provider session, so its provider is not a free choice at all —
- *   it is a property of the session being cloned.
- */
-export function threadProviderAmendmentRefusal(
-  deps: Pick<AppDeps, "db">,
-  // Structural pick so both the API Thread and the raw db row qualify — the
-  // refusal reads only these three facts.
-  args: { thread: Pick<Thread, "id" | "providerId" | "originKind"> },
-): string | null {
-  if (getLastProviderThreadId(deps, args.thread.id) !== null) {
-    return `this thread has already started on "${args.thread.providerId}"`;
-  }
-  if (args.thread.originKind === "fork") {
-    return "this thread is a fork, and its first turn clones the source thread's provider session";
-  }
-  return null;
-}
 
 /**
  * Whether an attempt starts a turn or joins one that is already running. The
@@ -93,7 +55,6 @@ export type DispatchAttemptKind = PluginDispatchAttemptKind;
 
 /** Fields a gate may amend. Ordered as they are validated and reported. */
 const DISPATCH_AMENDMENT_FIELDS = [
-  "providerId",
   "model",
   "reasoningLevel",
   "serviceTier",
@@ -111,7 +72,6 @@ export type DispatchAmendmentField = (typeof DISPATCH_AMENDMENT_FIELDS)[number];
  */
 const dispatchGateAmendmentsSchema = z
   .object({
-    providerId: z.string().min(1).optional(),
     environment: createThreadEnvironmentArgsSchema.optional(),
     model: z.string().min(1).optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
@@ -139,7 +99,6 @@ const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
 
 /** What the pass resolved, field by field, and who resolved it. */
 export interface DispatchAmendmentResult {
-  providerId: string | null;
   model: string | null;
   reasoningLevel: ReasoningLevel | null;
   serviceTier: ServiceTier | null;
@@ -422,7 +381,6 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
 
 function emptyAmendments(): DispatchAmendmentResult {
   return {
-    providerId: null,
     model: null,
     reasoningLevel: null,
     serviceTier: null,
@@ -471,38 +429,6 @@ export function applyGateAmendment(
       );
     }
   };
-
-  if (amend.providerId !== undefined) {
-    requireStartTurn("providerId");
-    if (!request.firstDispatch) {
-      fail(
-        "amended providerId on a thread that has already dispatched; a thread's provider is immutable once a provider session exists",
-      );
-    }
-    const refusal = threadProviderAmendmentRefusal(deps, {
-      thread: request.thread,
-    });
-    if (refusal !== null) {
-      fail(`amended providerId, but ${refusal}`);
-    }
-    if (amend.model === undefined) {
-      // The tuple this pass is amending was already resolved, and it names a
-      // model of the provider being left; a resolved tuple cannot say
-      // "re-resolve this". A provider without a model would dispatch a model
-      // the new provider does not offer.
-      fail(
-        `amended providerId to "${amend.providerId}" without a model; the resolved tuple's model belongs to the provider it is leaving`,
-      );
-    }
-    const registration = deps.providerRegistry.get(amend.providerId);
-    if (registration === null || !registration.info.available) {
-      fail(`amended providerId to "${amend.providerId}", which is not available`);
-    }
-    args.execution.providerId = amend.providerId;
-    args.amendments.providerId = amend.providerId;
-    args.amendments.amendedBy.providerId = pluginId;
-    args.sources.providerId = "plugin";
-  }
 
   if (amend.environment !== undefined) {
     requireStartTurn("environment");

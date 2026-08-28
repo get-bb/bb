@@ -364,20 +364,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
-        id: "execution-picker-entry",
-        title: "Picker entries",
-        summary:
-          "Adds a choosable entry to the same picker, one that is not a provider. With this, a plugin can:",
-        bullets: [
-          "Offer a choice such as \"Auto\" beside the real agents, with its own label, description, and icon",
-          "Receive a fixed payload with every message sent while its entry is selected, so a picker choice and a `bb thread spawn --provider auto:<plugin>` choice arrive identically",
-          "Decide the actual agent and model from that payload as the message is dispatched, rather than having the entry remembered as a default",
-        ],
-        apiSymbols: ["PluginExecutionPickerEntryRegistration"],
-        firstParty: ["Model router"],
-        experimental: true,
-      },
-      {
         id: "composer-actions",
         title: "Inline actions",
         summary:

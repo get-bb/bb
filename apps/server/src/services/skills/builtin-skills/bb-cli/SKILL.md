@@ -346,12 +346,6 @@ or artifacts, validation performed, and blockers.
   payload and the queued row, so a message that waits still reaches its gate
   with the input it was sent with. The SDK equivalent is `pluginInputs` on
   `threads.spawn` / `threads.send`.
-- `bb thread spawn --provider auto:<pluginId>[:<entryId>]` hands provider
-  selection to a router plugin: bb sends no provider and passes
-  `{"entry":"<entryId>"}` to that plugin, whose `thread.create` gate picks one.
-  A bare `auto:<pluginId>` means the entry `default`, and an explicit
-  `--plugin-input` for the same plugin overrides the entry. A plain
-  `--provider <id>` still names the provider directly.
 
 ## Inspecting Results
 

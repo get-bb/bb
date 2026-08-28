@@ -3,7 +3,6 @@ import {
   getThread,
   getThreadPendingStartContext,
   setThreadPendingStartContext,
-  setThreadProvider,
   type ClaimedQueuedThreadMessageRow,
 } from "@bb/db";
 import {
@@ -516,17 +515,6 @@ async function startPendingThread(
       args.amendments.environment,
     );
   }
-  if (args.amendments?.providerId != null) {
-    // The provider is the one amended field with nowhere to live in the
-    // message: it is a column on the thread row, and provisioning reads it
-    // from there. The pass already refused the amendment unless this thread
-    // has never started, so writing it here cannot orphan a provider session.
-    setThreadProvider(deps.db, {
-      threadId: args.thread.id,
-      providerId: args.amendments.providerId,
-    });
-  }
-
   const execution = await buildExecutionOptions(deps, args.payload, {
     threadId: args.thread.id,
   });

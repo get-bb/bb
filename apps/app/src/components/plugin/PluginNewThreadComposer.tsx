@@ -1,10 +1,12 @@
 import { useContext, useState } from "react";
-import type { NewThreadComposerProps as PluginComposerProps } from "@get-bb/plugin-sdk";
+import type {
+  NewThreadComposerProps as PluginComposerProps,
+  NewThreadRequest,
+} from "@get-bb/plugin-sdk";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   NewThreadComposer,
   type NewThreadComposerSeed,
-  type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
 import { PluginContext } from "@/components/plugin/plugin-context";
 
@@ -45,17 +47,7 @@ export function PluginNewThreadComposer({
     initialPrompt,
   };
   const composerKey = draftKey ?? pluginId ?? "default";
-  // Strip bb's app-local submission fields before the plugin sees the
-  // request: `NewThreadRequest` exists to be forwarded verbatim to
-  // `threads.spawn`, so it must carry only wire fields. This composer never
-  // enables plugin picker entries (an entry submits with no provider, which
-  // only a caller that owns the create request can honor), so
-  // `providerDecidedByPluginEntry` is always false here and dropping it
-  // cannot lose a decision.
-  const handleSubmit = async ({
-    providerDecidedByPluginEntry: _providerDecidedByPluginEntry,
-    ...request
-  }: NewThreadComposerSubmission) => {
+  const handleSubmit = async (request: NewThreadRequest) => {
     await onSubmit(request);
   };
 

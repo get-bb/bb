@@ -246,18 +246,15 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
  * - `model`, `reasoningLevel`, `serviceTier` and `permissionMode` require
  *   `attempt === "start-turn"`. A `join-turn` attempt is joining a turn that
  *   is already executing, so there is no execution left to choose.
- * - `providerId` and `environment` additionally require `firstDispatch`. A
- *   thread's provider is immutable once a provider session exists and its
- *   workspace is chosen when it is provisioned; before the first cleared
- *   attempt neither has happened yet, which is exactly the window these are
- *   open in.
+ * - `environment` additionally requires `firstDispatch`. A thread's workspace
+ *   is chosen when it is provisioned; before the first cleared attempt that
+ *   has not happened yet, which is exactly the window it is open in.
  *
  * An amendment outside its window FAILS THE ATTEMPT with this plugin named,
  * the same fail-closed rule as a throw. Silently dropping it would run the
  * turn with settings nobody chose.
  */
 export interface PluginDispatchAmendments {
-  providerId?: string;
   environment?: CreateThreadEnvironmentArgs;
   model?: string;
   reasoningLevel?: ReasoningLevel;
@@ -379,7 +376,7 @@ export interface PluginDispatchAttemptContext
   /**
    * True when no message on this thread has ever cleared an attempt — the
    * thread is still `pending`, has no provider session and no workspace. It is
-   * the only window in which `providerId` and `environment` may be amended.
+   * the only window in which `environment` may be amended.
    *
    * Not the same as "the thread was created a moment ago": a first message
    * that parks for a week is still `firstDispatch` when it finally clears.
@@ -570,11 +567,10 @@ export interface PluginDispatch {
    * wait is indistinguishable from sending it.
    *
    * `amend` applies to the row before the re-attempt: `input` and the
-   * execution fields are written to the row, `providerId` to the thread, each
-   * subject to the same windows a gate amendment is (see
-   * {@link PluginDispatchAmendments}) — a `providerId` on a thread that has
-   * already started, or on a fork, is refused BEFORE the wait is cleared, so
-   * the row stays parked and clearing again unamended is always available.
+   * execution fields are written to the row, subject to the same windows a
+   * gate amendment is (see {@link PluginDispatchAmendments}). An out-of-window
+   * amendment is refused BEFORE the wait is cleared, so the row stays parked
+   * and clearing again unamended is always available.
    *
    * Resolves after the re-attempt has been driven, which is when a failure
    * surfaces.

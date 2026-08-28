@@ -154,8 +154,8 @@ a plain-text view, the resolved execution tuple with per-field provenance,
 origin/parent provenance, this plugin's `pluginInputs` entry, the target thread,
 whether the attempt would `start-turn` or `join-turn`, whether this is the
 thread's `firstDispatch`, and the parked row when the attempt is a re-attempt)
-and answers `proceed` (optionally amending provider, environment, model,
-reasoning level, service tier, permission mode or the message itself), `wait`
+and answers `proceed` (optionally amending environment, model, reasoning
+level, service tier, permission mode or the message itself), `wait`
 (park the message as a queued row with a reason and an optional `retryAt`), or
 `reject` (a synchronous 409 carrying the plugin's message).
 
@@ -199,7 +199,7 @@ two failures arriving together cannot park the same turn twice.
   handler failure; `"turn.failed"` ignores it. Both are right, and they are one
   method name. Confirm the doc comment carries that, or split the registration.
 - **Runtime-checked amendment windows.** With one stage, "may I amend the
-  provider here?" is a property of the attempt (`firstDispatch`, `attempt`),
+  environment here?" is a property of the attempt (`firstDispatch`, `attempt`),
   not of the registration, so it cannot be a type — the old
   `PluginDispatchCreateAmendments` / `PluginDispatchAmendments` /
   `PluginDispatchReleaseAmendments` split is gone with the stages that carried
@@ -2059,60 +2059,12 @@ deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
 
-## `app.slots.experimental_executionPickerEntry` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** Adds one row to bb's provider/model picker beside the real
-agent providers — the "Auto" affordance a routing plugin needs.
-`{ id, label, description?, iconName?, pluginInput }`. Choosing the entry is
-explicitly NOT choosing a provider: bb submits the create request with
-`providerId` omitted and delivers `pluginInput` verbatim as that plugin's
-`pluginInputs` entry, so the plugin's `dispatch` gate is what decides the
-provider and model. Entries sort among providers under the `providerOrder`
-token `plugin:<pluginId>:<entryId>` (provider ids are `/^[a-zA-Z0-9_-]+$/`, so
-the two namespaces cannot collide). The selection is remembered as a client
-preference only (`bb.promptbox.execution-entry` in localStorage) and is never
-promoted to a project execution default; when the plugin is disabled the entry
-disappears and the next submission resolves the project default. The
-registration's `pluginInput` is validated as JSON and deep-frozen at
-registration time.
-
-**Audit before stabilizing.**
-
-1. **Zero consumers.** The reference `model-router` plugin does not exist yet.
-   Every item below wants a real routing plugin to answer it.
-2. **No model, no reasoning, no service tier.** While an entry is selected the
-   picker replaces the model/reasoning/fast-mode rows with the entry's
-   description, because the gate has not chosen a model yet. Decide whether a
-   plugin should instead be able to declare a *preview* tuple (what it would
-   probably pick), and whether the user must be able to pin reasoning level
-   independently of the routed model.
-3. **Follow-ups are excluded.** A thread's provider is immutable after
-   creation, so entries are offered only where the provider is still open —
-   bb's root compose. Confirm that a routing plugin does not also want a
-   per-message entry, now that one `dispatch` stage decides provider and model
-   together and `firstDispatch` is what narrows the provider window.
-4. **Deliberate exclusion from `experimental_ProviderModelPicker`.** That
-   component's `ExperimentalProviderModelPickerValue` stays a single concrete
-   shape — a plugin forwards it verbatim to `threads.spawn`, and an entry
-   resolves to "no provider; a gate decides", which a plugin cannot forward.
-   Entries therefore render only in bb's own composers. Confirm no plugin
-   genuinely needs to offer another plugin's entry inside its own compose UI;
-   if one does, the value needs the `{ kind: "plugin-entry" }` arm and every
-   consumer needs updating at once.
-5. **Ordering default.** Unpinned entries sort AFTER unpinned providers, so a
-   newly installed routing plugin cannot displace the user's provider without
-   the user pinning it in `providerOrder`. Confirm that is the right default
-   rather than "Auto leads".
-6. **Cross-plugin id collisions.** Unlike `experimental_providerIcon`, entries
-   are namespaced by plugin id, so two plugins cannot claim the same row and
-   there is no first-wins warning. Confirm nothing else needs to dedupe.
-
 ## `useComposer().experimental_setPluginInput` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Addresses a JSON value to the calling plugin's own dispatch
 gates for the next submission from that composer — the `pluginInputs` side
-channel written from a composer control ("Sandbox: large", "Skip routing")
-rather than from a picker entry. One value per plugin per composer; a second
+channel written from a composer control ("Sandbox: large", "Skip routing").
+One value per plugin per composer; a second
 call replaces the first, `null` clears it. The value is transient: it is
 attached to the next send from that composer and cleared once that send is
 committed, and it is deliberately NOT persisted with the draft (the draft is
@@ -2142,10 +2094,9 @@ against the request's 8KB `pluginInputs` budget.
    identity is built after its submit callback; a control mounted there can
    set an input that is never delivered. Wire that up or refuse the write
    there before dropping the prefix.
-5. **Budget accounting.** The picker entry's input and this one are merged at
-   submit (the picker entry wins a key collision) and only then measured
-   against the 8KB cap, so an oversized combination fails the whole send at
-   the server boundary. Decide whether the client should refuse earlier and
+5. **Budget accounting.** The value is measured against the 8KB
+   `pluginInputs` cap only at the server boundary, so an oversized value fails
+   the whole send there. Decide whether the client should refuse earlier and
    how that would surface.
 
 ## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
@@ -2156,8 +2107,8 @@ In a thread composer that is a send that is held rather than sent or queued; in
 the new-thread composer the thread is created idle and its first turn becomes
 the hold. The point is that everything the user selected travels with the
 submission — attachments, @-mentions, and for a create the provider, model,
-reasoning level, service tier, permission mode, environment and any plugin
-picker entry — none of which is reachable from a plugin backend, so a
+reasoning level, service tier, permission mode and environment — none of
+which is reachable from a plugin backend, so a
 plugin-issued `threads.send`/`threads.spawn` would silently schedule a
 different message from the one being composed. Backed host-side by an optional
 `submit` on the internal `PluginComposerHost`, supplied by the thread

@@ -31,9 +31,7 @@ import {
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 import {
-  autoProviderPluginInputs,
   parsePluginInputs,
-  parseProviderSelection,
   PLUGIN_INPUT_HELP,
   PROVIDER_HELP,
 } from "./plugin-input.js";
@@ -313,16 +311,8 @@ export function registerSpawnCommand(
           opts.sendAt === undefined
             ? undefined
             : parseSendAt(opts.sendAt);
-        // `auto:<pluginId>[:<entryId>]` sends no providerId at all and speaks
-        // to the router plugin through pluginInputs instead; an explicit
-        // --plugin-input for that same plugin wins over the entry seed.
-        const providerSelection = parseProviderSelection(opts.provider);
-        const pluginInputs = parsePluginInputs(
-          opts.pluginInput,
-          providerSelection === undefined
-            ? {}
-            : autoProviderPluginInputs(providerSelection),
-        );
+        const providerId = opts.provider?.trim();
+        const pluginInputs = parsePluginInputs(opts.pluginInput);
 
         let thread: Thread;
         try {
@@ -330,9 +320,7 @@ export function registerSpawnCommand(
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
-            ...(providerSelection?.kind === "provider"
-              ? { providerId: providerSelection.providerId }
-              : {}),
+            ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,

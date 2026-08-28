@@ -955,10 +955,7 @@ bb.experimental_dispatch.gate("dispatch", (ctx) => {
   // ctx.pluginInput, ctx.queuedMessage (the parked row on a re-attempt, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
-  if (ctx.firstDispatch) {
-    return { action: "proceed", amend: { providerId: "codex", model: "gpt-5" } };
-  }
-  return { action: "proceed" };
+  return { action: "proceed", amend: { model: "gpt-5" } };
 });
 
 bb.experimental_dispatch.gate("turn.failed", (ctx) => {
@@ -1018,7 +1015,7 @@ property of the moment, not of the registration:
 |---|---|
 | `input` | always, including on a `join-turn` steer |
 | `model`, `reasoningLevel`, `serviceTier`, `permissionMode` | `attempt === "start-turn"` |
-| `providerId`, `environment` | `attempt === "start-turn"` AND `firstDispatch` |
+| `environment` | `attempt === "start-turn"` AND `firstDispatch` |
 
 `permissionMode` is clamped to the host ceiling rather than refused. Everything
 else outside its window FAILS the attempt with your plugin named, so check
@@ -1026,28 +1023,24 @@ else outside its window FAILS the attempt with your plugin named, so check
 on a steer is deliberate: it is what lets a content-policy or DLP gate cover
 steers as well as sends.
 
-`providerId` is amendable for exactly as long as a thread has never dispatched
-— the invariant is that a thread's provider is immutable once a PROVIDER
-SESSION exists, not once its row is inserted, and `firstDispatch` is that fact.
-It is refused on a thread that has taken any turn, and on a fork, whose
-provisioning clones the source provider's session. `environment` is narrower
-still: it is honoured only on the attempt that CREATES the thread, because
-re-resolving an environment intent means re-running most of creation, so a
-drain re-attempt of a still-`pending` thread refuses it.
+A thread's provider is fixed when the thread is created and is not amendable.
+`environment` is narrower than `firstDispatch`: it is honoured only on the
+attempt that CREATES the thread, because re-resolving an environment intent
+means re-running most of creation, so a drain re-attempt of a still-`pending`
+thread refuses it.
 
 The same amendment shape reaches `clearWait`:
 
 ```ts
 // Decide slowly in the background, then apply the answer as you let go.
 await bb.experimental_dispatch.clearWait(queuedMessageId, {
-  amend: { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
+  amend: { model: "gpt-5", reasoningLevel: "high" },
 });
 ```
 
-A refused `providerId` rejects BEFORE the wait is cleared, so the row is still
-parked: catch it and clear again unamended rather than stranding the user's
-message. A `providerId` amendment must carry a `model` — the row's frozen tuple
-names a model of the provider it is leaving.
+An out-of-window amendment rejects BEFORE the wait is cleared, so the row is
+still parked: catch it and clear again unamended rather than stranding the
+user's message.
 
 **Clearing a wait does not promise the message will run.** The full pass
 re-runs, including your own gate, so a limiter that clears while still at
@@ -2399,43 +2392,6 @@ providerId }`) and `Original`, the host's declarative base for the body —
   One registration per provider id per plugin; if two plugins claim one
   provider id the host keeps the first by plugin id and warns. See the
   `app.tsx` example under "The icon" above.
-- `experimental_executionPickerEntry` → a row in bb's provider/model picker
-  beside the real agent providers — the "Auto" affordance a routing plugin
-  needs. Registration: `{ id, label, description, iconName, pluginInput }`.
-  `id` is unique within your plugin; `label` is the row and trigger text;
-  `description` is an optional one-liner shown under it and in the tooltip;
-  `iconName` is an optional BB icon name (an unknown name falls back to the
-  label's first letter); `pluginInput` is a JSON value validated and frozen at
-  registration.
-
-  Choosing the entry is **not** choosing a provider. bb submits the create
-  request with `providerId` omitted and delivers `pluginInput` as your
-  plugin's `pluginInputs` entry, so your `dispatch` gate is what actually
-  picks the provider and model — read it from the gate context's
-  `pluginInput`. While the entry is selected the picker hides the model,
-  reasoning and fast-mode rows, because nothing has chosen a model yet.
-
-  Entries sort among the providers under the user's `providerOrder` setting
-  with the token `plugin:<pluginId>:<id>`; unpinned entries sort after the
-  unpinned providers, so installing your plugin never displaces the user's
-  provider. The selection is a client preference only and is never remembered
-  as a project execution default — if your plugin is disabled the entry
-  disappears and the next send resolves the project default. Entries appear
-  only in bb's own new-thread composer: a thread's provider is fixed after
-  creation, and the plugin-facing `experimental_ProviderModelPicker`
-  deliberately does not offer them (its value must name a real provider so a
-  plugin can forward it to `threads.spawn`).
-
-  ```tsx
-  app.slots.experimental_executionPickerEntry({
-    id: "auto",
-    label: "Auto",
-    description: "Route this prompt to the best model",
-    iconName: "Zap",
-    pluginInput: { route: "auto" },
-  });
-  ```
-
 Host components:
 
 - `ThreadChat` — bb's complete chat surface for an existing thread, rendered
@@ -2752,8 +2708,7 @@ openThreadPanel({ actionId, title?, params? }), openUrl(url) }`.
   `experimental_setPluginInput(value)` addresses a JSON value to YOUR own
   dispatch gates for the next submission from this composer — the
   `pluginInputs` side channel, written from a composer control ("Sandbox:
-  large", "Skip routing") rather than a picker entry. One value per plugin per
-  composer; a second call replaces the first and `null` clears it. It is
+  large", "Skip routing"). One value per plugin per composer; a second call replaces the first and `null` clears it. It is
   transient on purpose: it rides the next send and is cleared once that send
   is committed, and it is not persisted with the draft, so a per-message
   choice never silently applies to every later message. Only your gates see

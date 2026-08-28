@@ -76,6 +76,12 @@ function resolveRequestedCreateExecutionValue<TValue>({
   return sources[field] === undefined ? undefined : value;
 }
 
+/**
+ * Resolves the create's provider through the defaults ladder. This is the only
+ * place a thread's provider is chosen: it is immutable afterwards, because a
+ * provider session IS the conversation and no other provider can continue one
+ * it never started.
+ */
 export function resolveProjectExecutionDefaultsForCreate(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveProjectExecutionDefaultsForCreateArgs,

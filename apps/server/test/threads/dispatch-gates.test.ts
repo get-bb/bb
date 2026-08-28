@@ -1,7 +1,6 @@
 import {
   getAppSettings,
   getProjectExecutionDefaults,
-  getThread,
   setAppSettings,
   listEvents,
   listQueuedThreadMessages,
@@ -106,7 +105,6 @@ function createGatedThread(
     projectId: string;
     pluginInputs?: PluginInputs;
     origin?: "app" | "cli" | "sdk";
-    providerId?: string;
     model?: string;
   },
 ) {
@@ -119,7 +117,7 @@ function createGatedThread(
     input: textInput("Do the thing"),
     origin: args.origin ?? "app",
     projectId: args.projectId,
-    providerId: args.providerId ?? "codex",
+    providerId: "codex",
     ...(args.model !== undefined ? { model: args.model } : {}),
     ...(args.pluginInputs !== undefined
       ? { pluginInputs: args.pluginInputs }
@@ -505,75 +503,6 @@ describe("dispatch gate failure model", () => {
     });
   });
 
-  it("fails the dispatch closed on an amendment it cannot honour", async () => {
-    await withTestHarness(async (harness) => {
-      const registry = emptyRegistry();
-      registry.dispatch.push({
-        pluginId: "router",
-        handler: () =>
-          ({
-            action: "proceed",
-            amend: { providerId: "not-a-provider" },
-          }) as const,
-      });
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-invalid");
-
-      const error = await expectApiError(() =>
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
-      );
-
-      expect(error.status).toBe(502);
-      expect(error.body.message).toContain('"router"');
-      expect(error.body.message).toContain("not-a-provider");
-    });
-  });
-
-  it("lets a gate repoint a never-started thread as its wait clears", async () => {
-    // The re-attempt decides about a thread whose ROW exists but whose SESSION
-    // does not, and the provider is immutable only once the session is. So the
-    // amendment lands, on the row, and the thread starts where the second pass
-    // said rather than where the first one did.
-    await withTestHarness(async (harness) => {
-      const registry = emptyRegistry();
-      let pass = 0;
-      registry.dispatch.push({
-        pluginId: "router",
-        handler: (context) => {
-          pass += 1;
-          if (pass === 1) {
-            return { action: "wait", reason: "Choosing a model…" } as const;
-          }
-          // Still the thread's first dispatch even though it has been parked
-          // for a while: that is the window the repoint is legal in.
-          expect(context.firstDispatch).toBe(true);
-          return {
-            action: "proceed",
-            amend: { providerId: "claude-code", model: "opus" },
-          } as const;
-        },
-      });
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-repoint");
-
-      const thread = await createGatedThread(harness, {
-        hostId: host.id,
-        projectId: project.id,
-        providerId: "codex",
-      });
-      expect(getThread(harness.db, thread.id)?.providerId).toBe("codex");
-      const parked = onlyParkedRow(harness, thread.id);
-
-      await reattemptParkedRow(harness, {
-        queuedMessageId: parked.id,
-        threadId: thread.id,
-      });
-
-      expect(getThread(harness.db, thread.id)?.providerId).toBe("claude-code");
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
-    });
-  });
-
   it("refuses an environment amendment once the creating attempt is over", async () => {
     // Re-resolving an environment intent means re-running most of thread
     // creation, which only the attempt that created the thread has in hand —
@@ -622,37 +551,6 @@ describe("dispatch gate failure model", () => {
         "chosen on the attempt that creates it",
       );
       expect(turnRequests(harness, thread.id)).toHaveLength(0);
-    });
-  });
-
-  it("refuses a providerId amendment on a thread that has already dispatched", async () => {
-    await withTestHarness(async (harness) => {
-      const registry = emptyRegistry();
-      registry.dispatch.push({
-        pluginId: "router",
-        handler: () =>
-          ({
-            action: "proceed",
-            amend: { providerId: "claude-code" },
-          }) as const,
-      });
-      installGates(registry);
-      const { thread } = seedRunnableThread(harness, {
-        hostId: "host-gate-provider-lock",
-        status: "idle",
-      });
-
-      const error = await expectApiError(() =>
-        acceptThreadSendRequest(harness.deps, {
-          payload: { input: textInput("hello"), mode: "auto" },
-          thread,
-        }),
-      );
-
-      expect(error.status).toBe(502);
-      expect(error.body.message).toContain(
-        "immutable once a provider session exists",
-      );
     });
   });
 

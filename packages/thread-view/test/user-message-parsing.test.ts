@@ -166,7 +166,7 @@ describe("user message parsing", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
     const { event, meta } = decodeThreadEventRow(
       factory.clientTurnRequested({
-        amendedByPluginId: "model-router",
+        amendedByPluginId: "my-router",
         execution: {
           model: "opus-5",
           serviceTier: "default",
@@ -191,7 +191,7 @@ describe("user message parsing", () => {
       isGrouped: false,
       kind: "message",
       status: "pending",
-      amendment: { pluginId: "model-router", model: "opus-5" },
+      amendment: { pluginId: "my-router", model: "opus-5" },
     });
   });
 

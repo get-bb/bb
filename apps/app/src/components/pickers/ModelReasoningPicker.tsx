@@ -55,9 +55,6 @@ import {
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
-import { executionPickerOrderToken } from "./execution-picker-selection";
-import type { PluginExecutionPickerEntrySlot } from "@/lib/plugin-slots";
-import { isKnownIconName } from "@/lib/provider-icon";
 import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
@@ -96,80 +93,6 @@ interface ResolvedProviderPreview {
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
-const EMPTY_PLUGIN_ENTRIES: readonly PluginExecutionPickerEntrySlot[] = [];
-const EMPTY_EXECUTION_ORDER: readonly string[] = [];
-
-/**
- * One tab in the strip above the model list: a real provider, or a plugin's
- * entry. Both carry a `token` so one `providerOrder`-derived rank sorts them
- * together; `kind` is what the click handler branches on.
- */
-/**
- * The entry's declared glyph as an icon NAME, not a component.
- *
- * Resolving to a component here would mint one during render, which the React
- * compiler rejects (and which would break memoization for every row). The
- * caller renders `<Icon name={...} />` directly instead. An unknown name
- * resolves to null so the letter fallback renders, matching how a provider's
- * unknown glyph degrades.
- */
-function pluginEntryIconName(
-  entry: PluginExecutionPickerEntrySlot,
-): IconName | null {
-  if (entry.iconName === undefined) return null;
-  return isKnownIconName(entry.iconName) ? entry.iconName : null;
-}
-
-type ExecutionTab =
-  | { kind: "provider"; token: string; option: ProviderPickerOption }
-  | { kind: "plugin-entry"; token: string; entry: PluginExecutionPickerEntrySlot };
-
-/**
- * Providers and plugin entries in one order.
- *
- * `providerOptions` already arrives server-sorted (the server applies
- * `providerOrder` to the providers it knows about). Plugin entries are
- * app-side registrations the server has never heard of, so this is the only
- * place the two can be interleaved — hence re-applying the same pinned-rank
- * rule here over both, rather than trusting the server order alone.
- */
-function buildExecutionTabs(
-  providerOptions: readonly ProviderPickerOption[],
-  pluginEntries: readonly PluginExecutionPickerEntrySlot[],
-  executionOrder: readonly string[],
-): ExecutionTab[] {
-  const tabs: ExecutionTab[] = [
-    ...providerOptions.map<ExecutionTab>((option) => ({
-      kind: "provider",
-      token: executionPickerOrderToken({
-        kind: "provider",
-        providerId: option.value,
-      }),
-      option,
-    })),
-    ...[...pluginEntries]
-      .sort(
-        (a, b) =>
-          a.pluginId.localeCompare(b.pluginId) || a.id.localeCompare(b.id),
-      )
-      .map<ExecutionTab>((entry) => ({
-        kind: "plugin-entry",
-        token: executionPickerOrderToken({
-          kind: "plugin-entry",
-          pluginId: entry.pluginId,
-          entryId: entry.id,
-        }),
-        entry,
-      })),
-  ];
-  if (executionOrder.length === 0) return tabs;
-  const rank = new Map(executionOrder.map((token, index) => [token, index]));
-  return tabs.sort(
-    (a, b) =>
-      (rank.get(a.token) ?? Number.MAX_SAFE_INTEGER) -
-      (rank.get(b.token) ?? Number.MAX_SAFE_INTEGER),
-  );
-}
 const preserveModelLabel = (displayName: string): string => displayName;
 const MODEL_CYCLE_COMMANDS = [
   "modelPicker.cycleModel",
@@ -288,26 +211,6 @@ interface ModelReasoningPickerProps {
   fastModeLabel?: string;
   muted?: boolean;
   defaultOpen?: boolean;
-  /**
-   * Plugin-registered picker entries ("Auto"), rendered as tabs beside the
-   * providers. An entry is not a provider: selecting one resolves no catalog,
-   * so the model, reasoning and fast-mode rows are replaced by the entry's
-   * own description until a provider tab takes the selection back.
-   */
-  pluginEntries?: readonly PluginExecutionPickerEntrySlot[];
-  /**
-   * The user's `providerOrder` tokens. Providers and plugin entries share one
-   * order under it — see `executionPickerOrderToken`.
-   */
-  executionOrder?: readonly string[];
-  /** The selected entry's order token, or null when a provider is selected. */
-  selectedPluginEntryToken?: string | null;
-  /**
-   * Commit a plugin entry by token, or `null` to hand the selection back to
-   * the provider tabs. Omit to hide plugin entries entirely — which is what
-   * the plugin-facing `experimental_ProviderModelPicker` does.
-   */
-  onSelectPluginEntry?: (token: string | null) => void;
   /** Whether the popover blocks page interaction. Defaults to true. */
   modal?: boolean;
   align?: "start" | "center" | "end";
@@ -347,10 +250,6 @@ export function ModelReasoningPicker({
   showFastModeToggle,
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
-  pluginEntries = EMPTY_PLUGIN_ENTRIES,
-  executionOrder = EMPTY_EXECUTION_ORDER,
-  selectedPluginEntryToken = null,
-  onSelectPluginEntry,
   className,
   fastModeLabel,
   muted,
@@ -563,36 +462,11 @@ export function ModelReasoningPicker({
     activeModelLoadErrorMatches && activeModelLoadError !== null;
   const isShowingModelError =
     !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
-  // Plugin entries render only where the host can act on them: a picker that
-  // cannot switch providers cannot switch to an entry either.
-  const offeredPluginEntries =
-    onSelectPluginEntry !== undefined && onSelectedProviderChange !== undefined
-      ? pluginEntries
-      : EMPTY_PLUGIN_ENTRIES;
-  const executionTabs = buildExecutionTabs(
-    providerOptions,
-    offeredPluginEntries,
-    executionOrder,
-  );
-  const selectedEntry =
-    selectedPluginEntryToken === null
-      ? null
-      : (executionTabs.find(
-          (tab) =>
-            tab.kind === "plugin-entry" && tab.token === selectedPluginEntryToken,
-        ) ?? null);
-  // A selected entry whose plugin has gone away leaves no tab behind; the
-  // trigger silently falls back to the provider selection, which is the same
-  // degradation the submission path applies.
-  const selectedEntryRegistration =
-    selectedEntry?.kind === "plugin-entry" ? selectedEntry.entry : null;
   const showProviderTabs =
+    hasMultipleProviders &&
     onSelectedProviderChange !== undefined &&
-    executionTabs.length > 1 &&
-    (hasMultipleProviders || offeredPluginEntries.length > 0) &&
-    (!isShowingModelError ||
-      activeModelErrorIsProviderSpecific ||
-      selectedEntryRegistration !== null);
+    providerOptions.length > 1 &&
+    (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
   const activeBrandPrefix = activeProvider?.brandPrefix;
   const filteredModelOptions = useMemo(() => {
@@ -887,44 +761,18 @@ export function ModelReasoningPicker({
     return () => window.cancelAnimationFrame(frame);
   }, [open, isCompactViewport, isPointerCoarse]);
 
-  const selectedEntryIconName =
-    selectedEntryRegistration === null
-      ? null
-      : pluginEntryIconName(selectedEntryRegistration);
   const TriggerIcon =
-    selectedEntryRegistration !== null
-      ? undefined
-      : hasSelectedModel || modelIsLoading
-        ? ProviderIcon
-        : undefined;
+    hasSelectedModel || modelIsLoading ? ProviderIcon : undefined;
   const triggerTitleModelLabel = modelIsLoading
     ? "Loading models..."
     : selectedModelLoadFailed
       ? selectedModelLoadErrorText
       : triggerModelLabel;
-  // A selected plugin entry replaces the whole provider/model summary: there
-  // is no model to name yet, and showing a stale one would claim a decision
-  // the gate has not made.
-  const entryIsSelected = selectedEntryRegistration !== null;
-  const triggerPrimaryLabel = entryIsSelected
-    ? selectedEntryRegistration.label
-    : triggerModelBase;
-  const triggerSecondaryTag = entryIsSelected ? null : triggerModelTag;
-  const triggerTrailingLabel = entryIsSelected ? null : triggerReasoningLabel;
-  const triggerShowsLoading = modelIsLoading && !entryIsSelected;
-  const triggerShowsFastMode = showSelectedFastMode && !entryIsSelected;
-  const triggerTitle = entryIsSelected
-    ? [
-        selectedEntryRegistration.label,
-        selectedEntryRegistration.description === undefined
-          ? ""
-          : ` — ${selectedEntryRegistration.description}`,
-      ].join("")
-    : [
-        `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
-        triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
-        showSelectedFastMode ? " (Fast mode)" : "",
-      ].join("");
+  const triggerTitle = [
+    `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
+    triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
+    showSelectedFastMode ? " (Fast mode)" : "",
+  ].join("");
   // The trigger renders identically whether interactive or disabled — the only
   // difference is the `disabled` button state and a dropped chevron — so fully
   // read-only surfaces show the same model label in the same position as their
@@ -953,7 +801,7 @@ export function ModelReasoningPicker({
       )}
     >
       <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>
-        {triggerShowsLoading ? (
+        {modelIsLoading ? (
           <>
             {TriggerIcon ? (
               <TriggerIcon className="size-4 shrink-0" />
@@ -976,9 +824,7 @@ export function ModelReasoningPicker({
               className="h-3 w-8 shrink-0 rounded-sm"
             />
           </>
-        ) : selectedEntryIconName !== null ? (
-          <Icon name={selectedEntryIconName} className="size-4 shrink-0" aria-hidden />
-        ) : triggerShowsFastMode ? (
+        ) : showSelectedFastMode ? (
           <Icon
             name="Zap"
             className="size-3.5 shrink-0 fill-current text-subtle-foreground"
@@ -986,29 +832,27 @@ export function ModelReasoningPicker({
         ) : TriggerIcon ? (
           <TriggerIcon className="size-4 shrink-0" />
         ) : null}
-        {triggerShowsLoading ? null : (
+        {modelIsLoading ? null : (
           <>
             <span
               className={cn(
                 "min-w-0 truncate",
-                !entryIsSelected &&
-                  triggerModelValueIsDestructive &&
-                  "text-destructive-text",
+                triggerModelValueIsDestructive && "text-destructive-text",
               )}
             >
-              {triggerPrimaryLabel}
+              {triggerModelBase}
             </span>
-            {triggerSecondaryTag ? (
+            {triggerModelTag ? (
               <span className="shrink-0 text-subtle-foreground">
-                {triggerSecondaryTag}
+                {triggerModelTag}
               </span>
             ) : null}
-            {triggerTrailingLabel ? (
+            {triggerReasoningLabel ? (
               <span
                 className="shrink-0 text-subtle-foreground"
                 data-promptbox-hide-compact=""
               >
-                {triggerTrailingLabel}
+                {triggerReasoningLabel}
               </span>
             ) : null}
           </>
@@ -1066,45 +910,15 @@ export function ModelReasoningPicker({
                 : "shrink-0 bg-surface-recessed",
             )}
           >
-            {executionTabs.map((tab) => {
-              const provider =
-                tab.kind === "provider"
-                  ? tab.option
-                  : {
-                      value: tab.token,
-                      label: tab.entry.label,
-                      icon: undefined,
-                    };
-              const TabIcon = tab.kind === "provider" ? tab.option.icon : undefined;
-              const tabIconName =
-                tab.kind === "plugin-entry" ? pluginEntryIconName(tab.entry) : null;
-              const isActive =
-                tab.kind === "plugin-entry"
-                  ? tab.token === selectedPluginEntryToken
-                  : selectedPluginEntryToken === null &&
-                    provider.value === activeProviderId;
+            {providerOptions.map((provider) => {
+              const TabIcon = provider.icon;
+              const isActive = provider.value === activeProviderId;
               return (
                 <button
-                  key={tab.token}
+                  key={provider.value}
                   type="button"
-                  title={
-                    tab.kind === "plugin-entry" &&
-                    tab.entry.description !== undefined
-                      ? `${tab.entry.label} — ${tab.entry.description}`
-                      : provider.label
-                  }
+                  title={provider.label}
                   onClick={() => {
-                    if (isActive) return;
-                    if (tab.kind === "plugin-entry") {
-                      onSelectPluginEntry?.(tab.token);
-                      return;
-                    }
-                    // Leaving an entry is a provider commit even when the
-                    // provider id is unchanged: the entry, not the provider,
-                    // is what the selection has to move off.
-                    if (selectedPluginEntryToken !== null) {
-                      onSelectPluginEntry?.(null);
-                    }
                     if (provider.value !== activeProviderId) {
                       handleProviderSelect(provider.value);
                     }
@@ -1118,13 +932,7 @@ export function ModelReasoningPicker({
                       : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {tabIconName !== null ? (
-                    <Icon
-                      name={tabIconName}
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                      aria-hidden
-                    />
-                  ) : TabIcon ? (
+                  {TabIcon ? (
                     <TabIcon className={COARSE_POINTER_ICON_SIZE_CLASS} />
                   ) : (
                     <span
@@ -1142,23 +950,7 @@ export function ModelReasoningPicker({
           </div>
         ) : null}
 
-        {entryIsSelected ? (
-          // A plugin entry owns the whole body: there is no catalog to browse
-          // and no reasoning level to set, because the plugin's gate has not
-          // chosen a model yet. Offering the model rows here would let the
-          // user set a value the gate is free to overwrite.
-          <div className="px-3 py-2.5">
-            <p className="text-sm font-medium">
-              {selectedEntryRegistration.label}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {selectedEntryRegistration.description ??
-                "This plugin chooses the model when you send."}
-            </p>
-          </div>
-        ) : null}
-
-        {showSearchInput && !entryIsSelected ? (
+        {showSearchInput ? (
           <ModelSearchInput
             inputRef={searchInputRef}
             query={searchQuery}
@@ -1171,7 +963,6 @@ export function ModelReasoningPicker({
           />
         ) : null}
 
-        {entryIsSelected ? null : (
         <MenuHoverProvider>
           <div
             className={cn(
@@ -1341,7 +1132,6 @@ export function ModelReasoningPicker({
             ) : null}
           </div>
         </MenuHoverProvider>
-        )}
       </PopoverContent>
     </Popover>
   );

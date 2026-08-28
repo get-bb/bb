@@ -479,6 +479,17 @@ each chosen during implementation and worth knowing when reading the code:
   happens BEFORE the hold is settled, which is what lets the router ask
   optimistically and still release the message when told no.
 
+- **Auto provider routing was removed afterwards.** The `model-router` plugin,
+  the `app.slots.experimental_executionPickerEntry` slot and its
+  `{ kind: "plugin-entry" }` picker value arm, the CLI
+  `--provider auto:<pluginId>[:<entryId>]` grammar, and `providerId` as a gate
+  amendment (with `threadProviderAmendmentRefusal` and the db `setThreadProvider`
+  write) are all deleted. The picker is providers-only again and a thread's
+  provider is fixed at creation. The generic amendment surface
+  (model/reasoningLevel/serviceTier/permissionMode/environment/input) and the
+  `pluginInputs` side channel are unaffected — everything above about them
+  still holds; only the provider-routing half is gone.
+
 ## Risks
 
 - **Fail-closed blast radius** (chosen deliberately): one broken gate plugin

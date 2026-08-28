@@ -18,7 +18,7 @@ Spawning:
     --project <id>                 Project (required)
     --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
-    --provider <id>                Provider override, or auto:<pluginId>[:<entryId>] to let a router plugin choose
+    --provider <id>                Provider override
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
@@ -305,11 +305,10 @@ Queued messages:
   passed is rejected, as is a bare date, which has no time of day. Several
   parked rows on one thread are normal: two scheduled sends coexist.
 
-Plugin input and auto provider selection:
+Plugin input:
 
   bb thread spawn ... --plugin-input <pluginId>=<json>
   bb thread tell <id> "..." --plugin-input <pluginId>=<json>
-  bb thread spawn ... --provider auto:<pluginId>[:<entryId>]
 
   --plugin-input addresses one plugin's dispatch gates without a side channel.
   The value is JSON (quote a string as '"text"'), each plugin sees only its own
@@ -317,12 +316,6 @@ Plugin input and auto provider selection:
   plugin replaces the earlier value. The input rides the queued row, so a
   message that parks still reaches its gate with the input it was sent with on
   every re-attempt. The SDK equivalent is `pluginInputs` on `threads.spawn` / `threads.send`.
-
-  --provider auto:<pluginId>[:<entryId>] is the router convention: bb sends no
-  provider at all and passes `{"entry":"<entryId>"}` to that plugin instead, so
-  the plugin's thread.create gate chooses the provider. A bare auto:<pluginId>
-  uses the entry "default". An explicit --plugin-input for the same plugin
-  overrides the entry. A plain --provider <id> is unchanged.
 
 Persisted panel tabs:
 

@@ -19,13 +19,11 @@ import type {
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
-  PluginExecutionPickerEntryRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
-  requireJsonValue,
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
@@ -103,7 +101,6 @@ export interface CollectedPluginAppRegistrations {
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
-  executionPickerEntries: PluginExecutionPickerEntryRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -137,7 +134,6 @@ export function collectPluginAppRegistrations(
     commandPaletteActions: [],
     providerIcons: [],
     timelineRenderers: [],
-    executionPickerEntries: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -159,7 +155,6 @@ export function collectPluginAppRegistrations(
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
-    executionPickerEntry: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -538,38 +533,6 @@ export function collectPluginAppRegistrations(
         collected.timelineRenderers.push({
           kind: itemKind,
           component: requireComponent(kind, registration.component),
-        });
-      },
-      experimental_executionPickerEntry(registration) {
-        const kind = "slots.experimental_executionPickerEntry";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.executionPickerEntry, id);
-        collected.executionPickerEntries.push({
-          id,
-          label: requireNonEmptyString(kind, "label", registration.label),
-          ...(registration.description !== undefined
-            ? {
-                description: requireNonEmptyString(
-                  kind,
-                  "description",
-                  registration.description,
-                ),
-              }
-            : {}),
-          ...(registration.iconName !== undefined
-            ? {
-                iconName: requireNonEmptyString(
-                  kind,
-                  "iconName",
-                  registration.iconName,
-                ),
-              }
-            : {}),
-          pluginInput: requireJsonValue(
-            kind,
-            "pluginInput",
-            registration.pluginInput,
-          ),
         });
       },
     },

@@ -1416,7 +1416,7 @@ describe("@bb/sdk", () => {
         workspace: { type: "unmanaged", path: null },
       },
       prompt: "Route me",
-      pluginInputs: { "model-router": { entry: "fast" } },
+      pluginInputs: { "my-router": { entry: "fast" } },
     });
     await sdk.threads.send({
       threadId: "thr_123",
@@ -1426,7 +1426,7 @@ describe("@bb/sdk", () => {
     });
 
     expect(JSON.parse(queue.requests[0].bodyText ?? "{}")).toMatchObject({
-      pluginInputs: { "model-router": { entry: "fast" } },
+      pluginInputs: { "my-router": { entry: "fast" } },
     });
     expect(JSON.parse(queue.requests[1].bodyText ?? "{}")).toMatchObject({
       pluginInputs: { "concurrency-limit": { skip: true } },

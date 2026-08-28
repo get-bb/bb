@@ -94,7 +94,6 @@ export const COMPOSER_MARKS = [
   "composer-state",
   "composer-plus-menu",
   "provider-picker",
-  "execution-picker-entry",
   "composer-actions",
 ] as const;
 
@@ -1350,12 +1349,6 @@ export function RealComposerAnnotated() {
             at="above"
           />
           <MeasuredBadge
-            id="execution-picker-entry"
-            label="A plugin's own entry in the same picker, chosen instead of a provider"
-            anchor='[data-guide-target="execution-picker-entry"]'
-            at="above"
-          />
-          <MeasuredBadge
             id="composer-actions"
             label="Plugin composer actions, before voice and send"
             anchor='[data-guide-target="composer-actions"]'
@@ -1437,7 +1430,6 @@ function StaticEmbeddedComposer() {
   const draft = useEngagement("composer-state");
   const plus = useEngagement("composer-plus-menu");
   const picker = useEngagement("provider-picker");
-  const entry = useEngagement("execution-picker-entry");
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
@@ -1523,22 +1515,6 @@ function StaticEmbeddedComposer() {
           >
             <MiniIcon icon={SparklesIcon} className="size-3.5" />
             Fable 5<span className="text-subtle-foreground">High</span>
-          </span>
-          {/* A plugin entry is chosen in this same control, instead of a
-              provider — it is never a second button in the real product. The
-              two are drawn side by side because each is its own annotation
-              and a picker only ever shows the one that is selected; the entry
-              is drawn in its selected state, with the model and reasoning
-              chips it replaces absent from it. */}
-          <span
-            data-guide-target="execution-picker-entry"
-            className={cn(
-              "flex h-10 items-center gap-1.5 rounded-md px-2 text-foreground",
-              engagedRingClass(entry.outlined),
-            )}
-          >
-            <PluginGlyph className="size-3.5" />
-            Auto
           </span>
           <span className="flex-1" />
           <span
