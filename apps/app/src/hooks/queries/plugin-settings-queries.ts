@@ -47,13 +47,6 @@ export interface PluginListItem {
   schedules: InstalledPlugin["schedules"];
   cliCommand: InstalledPlugin["cliCommand"];
   capabilities: InstalledPlugin["capabilities"];
-  /**
-   * Dispatch stages this plugin registered a gate for. A display/ordering
-   * read model only — the settings panel lists and reorders the chains it
-   * describes; registration itself is the plugin's backend, so nothing the
-   * app does changes this. Empty while the plugin is disabled or unloaded.
-   */
-  dispatchGateStages: InstalledPlugin["dispatchGateStages"];
   app: InstalledPlugin["app"];
   provenance: PluginProvenance;
   source: string;
@@ -110,7 +103,6 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     schedules: plugin.schedules,
     cliCommand: plugin.cliCommand,
     capabilities: plugin.capabilities,
-    dispatchGateStages: plugin.dispatchGateStages,
     app: plugin.app,
     provenance: plugin.provenance,
     source: plugin.source,

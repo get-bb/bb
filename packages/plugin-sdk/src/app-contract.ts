@@ -1615,24 +1615,6 @@ export interface PluginComposerApi {
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
   /**
-   * Address a JSON value to THIS plugin's dispatch gates for the next
-   * submission from this composer — the `pluginInputs` side channel, written
-   * from a composer control ("Sandbox: large", "Skip routing") instead of a
-   * picker entry.
-   *
-   * One value per plugin per composer: a second call replaces the first.
-   * `null` clears it. The value is transient by design — it is attached to the
-   * next send from this composer and cleared once that send is accepted, so a
-   * per-message choice never silently applies to every later message. It is
-   * not persisted with the draft and does not survive a reload.
-   *
-   * Only this plugin's gates receive it, and it counts against the request's
-   * 8KB `pluginInputs` budget.
-   *
-   * Experimental: see docs/api_to_audit.md.
-   */
-  experimental_setPluginInput(input: JsonValue | null): void;
-  /**
    * Submit this composer's draft through the composer's OWN submit pipeline,
    * parked until `sendAt` instead of dispatched now.
    *

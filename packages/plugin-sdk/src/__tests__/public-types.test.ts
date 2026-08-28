@@ -49,7 +49,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginDispatch",
-  "PluginDispatchAmendments",
   "PluginDispatchAttemptContext",
   "PluginDispatchAttemptKind",
   "PluginDispatchDecision",

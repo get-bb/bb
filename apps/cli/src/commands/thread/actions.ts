@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   threadVisibilitySchema,
   type PermissionMode,
-  type PluginInputs,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadVisibility,
@@ -32,7 +31,6 @@ import {
   collectOption,
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
-import { parsePluginInputs, PLUGIN_INPUT_HELP } from "./plugin-input.js";
 
 interface ThreadUpdateCommandOptions {
   self?: boolean;
@@ -79,7 +77,6 @@ interface ThreadTellCommandOptions {
   file?: string[];
   image?: string[];
   sendAt?: string;
-  pluginInput?: string[];
 }
 
 interface ThreadActionOptions {
@@ -110,7 +107,6 @@ interface PostThreadMessageArgs {
   files?: readonly string[];
   images?: readonly string[];
   sendAt?: number;
-  pluginInputs?: PluginInputs;
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
@@ -439,12 +435,6 @@ export function registerActionsCommands(
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
     .option("--send-at <when>", SEND_AT_HELP)
-    .option(
-      "--plugin-input <pluginId=json>",
-      PLUGIN_INPUT_HELP,
-      collectOption,
-      [],
-    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -461,7 +451,6 @@ export function registerActionsCommands(
     .action(
       action(
         async (id: string, message: string, opts: ThreadTellCommandOptions) => {
-          const pluginInputs = parsePluginInputs(opts.pluginInput);
           const response = await postThreadMessage({
             getUrl,
             threadId: id,
@@ -478,7 +467,6 @@ export function registerActionsCommands(
             ...(opts.sendAt === undefined
               ? {}
               : { sendAt: parseSendAt(opts.sendAt) }),
-            ...(pluginInputs === undefined ? {} : { pluginInputs }),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(describeThreadTellOutcome(id, response));
@@ -571,9 +559,6 @@ async function postThreadMessage(
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
     ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
-    ...(args.pluginInputs === undefined
-      ? {}
-      : { pluginInputs: args.pluginInputs }),
   });
   return { ...response, mode: args.mode };
 }

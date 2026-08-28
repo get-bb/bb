@@ -149,9 +149,8 @@ export type QueuedMessageWaitHolder = z.infer<
  * What a queued row dispatches when its waits clear.
  *
  * `inline` carries its own message in the row's columns — the prompt blocks
- * the sender wrote, the execution tuple frozen at park time, and the plugin
- * inputs from the request. It is a draft that has not run, so it is editable
- * while it waits.
+ * the sender wrote and the execution tuple frozen at park time. It is a draft
+ * that has not run, so it is editable while it waits.
  *
  * `retry` only references a failed turn's original request. Nothing about it
  * is editable: the point of a retry is to re-submit the original faithfully,
@@ -206,43 +205,4 @@ export type QueuedMessageSystemNotice = z.infer<
   typeof queuedMessageSystemNoticeSchema
 >;
 
-/**
- * One transcript step reported by the plugin whose wait a row is parked on.
- * Mirrors the `step` half of `provisioningTranscriptEntry`: `key` identifies
- * the step so repeated reports update it in place rather than appending.
- */
-export const queuedMessageReportStepSchema = z.object({
-  key: z.string().min(1),
-  text: z.string().min(1),
-  status: z.enum(["started", "completed", "failed"]),
-});
-export type QueuedMessageReportStep = z.infer<
-  typeof queuedMessageReportStepSchema
->;
 
-/** A tail of log output attached to the row's transcript under `key`. */
-export const queuedMessageReportOutputSchema = z.object({
-  key: z.string().min(1),
-  text: z.string(),
-});
-export type QueuedMessageReportOutput = z.infer<
-  typeof queuedMessageReportOutputSchema
->;
-
-/**
- * A progress report from the plugin a row is waiting on.
- *
- * Every field is optional because omission means "leave this as it is" — a
- * report that only appends output must not rewrite the reason. `reason`
- * rewrites the row's `waitingOn.reason` in place, which is the only mutable
- * part of a wait: the kind and the holder are what the plugin already
- * committed to when it returned `wait`.
- */
-export const queuedMessageReportUpdateSchema = z.object({
-  reason: queuedMessageWaitReasonSchema.optional(),
-  step: queuedMessageReportStepSchema.optional(),
-  output: queuedMessageReportOutputSchema.optional(),
-});
-export type QueuedMessageReportUpdate = z.infer<
-  typeof queuedMessageReportUpdateSchema
->;

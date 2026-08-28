@@ -75,7 +75,6 @@ function dispatchContext(
     stage: "dispatch",
     thread,
     attempt: overrides.attempt ?? "start-turn",
-    firstDispatch: true,
     queuedMessage: null,
     project: PROJECT,
     environment: null,
@@ -100,7 +99,6 @@ function dispatchContext(
     originPluginId: null,
     startedOnBehalfOf: null,
     parentThreadId: null,
-    pluginInput: null,
   };
 }
 
@@ -345,6 +343,5 @@ describe("the dispatch gate", () => {
       ),
     ).toEqual([]);
     expect(harness.registrations.services).toEqual([]);
-    expect(harness.registrations.clearedQueueWaits).toEqual([]);
   });
 });

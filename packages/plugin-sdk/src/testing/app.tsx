@@ -161,13 +161,6 @@ export interface ComposerLog {
   mentions: PluginComposerMention[];
   focusCount: number;
   /**
-   * Latest value this plugin addressed to its own dispatch gates for the next
-   * submission, and every value it set. `null` is the explicit clear, so a
-   * test can assert that a control cleaned up after itself.
-   */
-  pluginInput: JsonValue | null;
-  pluginInputCalls: Array<JsonValue | null>;
-  /**
    * Every `experimental_submit` the plugin ran, in order. The harness composer
    * has no submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
@@ -1532,8 +1525,6 @@ export function renderSlot<
     quotes: [],
     mentions: [],
     focusCount: 0,
-    pluginInput: null,
-    pluginInputCalls: [],
     submits: [],
   };
   const composerOwnership = { active: true };
@@ -1591,11 +1582,6 @@ export function renderSlot<
       focus() {
         composerLog.focusCount += 1;
       },
-      experimental_setPluginInput(input) {
-        if (!composerOwnership.active) return;
-        composerLog.pluginInput = input;
-        composerLog.pluginInputCalls.push(input);
-      },
       async experimental_submit({ sendAt }) {
         if (!composerOwnership.active) {
           throw new Error("This composer is no longer active.");
@@ -1639,7 +1625,6 @@ export function renderSlot<
     composerOwnership.active = false;
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
-    composerLog.pluginInput = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>

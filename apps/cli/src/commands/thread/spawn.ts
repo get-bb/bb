@@ -30,11 +30,9 @@ import {
   parseServiceTier,
 } from "./helpers.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
-import {
-  parsePluginInputs,
-  PLUGIN_INPUT_HELP,
-  PROVIDER_HELP,
-} from "./plugin-input.js";
+
+const PROVIDER_HELP =
+  "Provider ID for the thread. Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
   prompt: string;
@@ -62,7 +60,6 @@ interface ThreadSpawnCommandOptions {
   sourceSeqEnd?: string;
   visibility?: string;
   sendAt?: string;
-  pluginInput?: string[];
 }
 
 export function looksLikePath(value: string): boolean {
@@ -228,12 +225,6 @@ export function registerSpawnCommand(
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
-    .option(
-      "--plugin-input <pluginId=json>",
-      PLUGIN_INPUT_HELP,
-      collectOption,
-      [],
-    )
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -312,7 +303,6 @@ export function registerSpawnCommand(
             ? undefined
             : parseSendAt(opts.sendAt);
         const providerId = opts.provider?.trim();
-        const pluginInputs = parsePluginInputs(opts.pluginInput);
 
         let thread: Thread;
         try {
@@ -341,7 +331,6 @@ export function registerSpawnCommand(
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(sendAt !== undefined ? { sendAt } : {}),
-            ...(pluginInputs !== undefined ? { pluginInputs } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);

@@ -8,8 +8,6 @@ import {
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
   permissionModeInputSchema,
-  pluginInputsSchema,
-  pluginInputsSizeProblem,
   promptInputSchema,
   queuedMessageWaitHolderSchema,
   queuedMessageWaitingOnSchema,
@@ -121,20 +119,8 @@ export const createThreadRequestSchema = z
      * created and creation runs exactly as it did before the queue existed.
      */
     sendAt: z.number().int().nonnegative().optional(),
-    /**
-     * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
-     * gate sees only its own entry. Omitted means no plugin input at all,
-     * which is not the same as an empty object addressed to nobody.
-     */
-    pluginInputs: pluginInputsSchema.optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.pluginInputs !== undefined) {
-      const problem = pluginInputsSizeProblem(value.pluginInputs);
-      if (problem !== null) {
-        ctx.addIssue({ code: "custom", message: problem, path: ["pluginInputs"] });
-      }
-    }
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
         code: "custom",
@@ -216,24 +202,9 @@ const sendMessageRequestBaseSchema = z.object({
    * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
    */
   sendAt: z.number().int().nonnegative().optional(),
-  /**
-   * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
-   * gate sees only its own entry. It rides the queued row, so a message that
-   * parks reaches its gate with the input it was sent with on every
-   * re-attempt.
-   */
-  pluginInputs: pluginInputsSchema.optional(),
 });
 
-export const sendMessageRequestSchema = sendMessageRequestBaseSchema.superRefine(
-  (value, ctx) => {
-    if (value.pluginInputs === undefined) return;
-    const problem = pluginInputsSizeProblem(value.pluginInputs);
-    if (problem !== null) {
-      ctx.addIssue({ code: "custom", message: problem, path: ["pluginInputs"] });
-    }
-  },
-);
+export const sendMessageRequestSchema = sendMessageRequestBaseSchema;
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 /**
@@ -271,7 +242,7 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestBaseSchema
-  .omit({ mode: true, sendAt: true, pluginInputs: true })
+  .omit({ mode: true, sendAt: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -299,8 +270,6 @@ export const createQueuedMessageRequestSchema = z.object({
   permissionMode: permissionModeInputSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   senderThreadId: z.string().min(1).optional(),
-  /** Carried to the gate that runs when this row drains (see send). */
-  pluginInputs: pluginInputsSchema.optional(),
 });
 export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema

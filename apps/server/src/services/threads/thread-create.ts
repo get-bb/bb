@@ -428,10 +428,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
-    pluginAmended: boolean;
-    resolveEnvironmentIntent: (
-      environment: CreateThreadEnvironmentArgs,
-    ) => Promise<ThreadProvisionEnvironmentIntent>;
     sendAt: number | undefined;
   },
 ) {
@@ -491,28 +487,10 @@ async function createPendingThreadAndAttemptFirstDispatch(
           ? { executionInputSources: args.request.executionInputSources }
           : {}),
         ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-        ...(args.request.pluginInputs !== undefined
-          ? { pluginInputs: args.request.pluginInputs }
-          : {}),
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
-      creation: {
-        startContext,
-        applyEnvironmentAmendment: async (amendment) => {
-          const environmentIntent =
-            await args.resolveEnvironmentIntent(amendment);
-          const amended: PendingThreadStartContext = {
-            ...startContext,
-            environmentIntent,
-          };
-          setThreadPendingStartContext(deps.db, {
-            threadId: thread.id,
-            pendingStartContext: JSON.stringify(amended),
-          });
-          return amended;
-        },
-      },
+      startContext,
       origin: args.request.origin,
       originPluginId: args.request.originPluginId ?? null,
       startedOnBehalfOf: args.request.startedOnBehalfOf,
@@ -529,7 +507,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
     execution,
-    pluginAmended: args.pluginAmended,
     request: args.request,
   });
   return getThreadSafe(deps, thread.id);
@@ -741,13 +718,9 @@ export async function createThreadFromRequest(
   );
 
   /**
-   * Resolves where a thread will run, for a given environment request.
-   *
-   * Extracted into a closure rather than left inline because a gate may amend
-   * the environment at the first dispatch attempt, and honouring that means
-   * re-running exactly this resolution — the workspace-path claim checks, the
-   * existing-unmanaged-environment reuse, the managed base branch — against
-   * the amended request. Two copies of it would be two policies.
+   * Resolves where a thread will run: the workspace-path claim checks, the
+   * existing-unmanaged-environment reuse, and the managed base branch, in one
+   * place so there is one policy.
    */
   async function resolveEnvironmentPlacement(
     requestedEnvironment: CreateThreadEnvironmentArgs,
@@ -896,11 +869,6 @@ export async function createThreadFromRequest(
   };
   const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
     ...createArgs,
-    // Nothing amended anything before the row was inserted: the checkpoint runs
-    // after it, so a project default remembered here is the caller's own.
-    pluginAmended: false,
-    resolveEnvironmentIntent: async (environment) =>
-      (await resolveEnvironmentPlacement(environment)).environmentIntent,
     sendAt: request.sendAt,
   });
   deps.telemetry.capture({

@@ -37,7 +37,6 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     schedules: [],
     cliCommand: null,
     capabilities: [],
-    dispatchGateStages: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
   };

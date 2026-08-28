@@ -130,7 +130,6 @@ const PLUGIN: PluginListItem = {
   schedules: [],
   cliCommand: null,
   capabilities: [],
-  dispatchGateStages: [],
   app: { hasApp: false, bundle: null },
   provenance: "catalog",
   isOrphanedBuiltin: false,

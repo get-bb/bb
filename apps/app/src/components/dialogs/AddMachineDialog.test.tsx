@@ -73,7 +73,6 @@ function connectPlugin(
     schedules: [],
     cliCommand: null,
     capabilities: [],
-    dispatchGateStages: [],
     hasSettings: true,
     app: { hasApp: false, bundle: null },
     logoUrl: null,

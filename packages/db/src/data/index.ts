@@ -398,7 +398,6 @@ export {
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
-  updateQueuedThreadMessageExecution,
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,

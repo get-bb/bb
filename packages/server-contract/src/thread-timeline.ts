@@ -98,31 +98,10 @@ export const timelineConversationTurnRequestStatusValues = [
   "accepted",
   "rejected",
 ] as const;
-/**
- * A dispatch gate rewrote this turn before it dispatched: who to credit, and
- * the execution the turn actually carries afterwards.
- */
-export const timelineConversationTurnRequestAmendmentSchema = z.object({
-  /** The plugin credited on the `client/turn/requested` event. */
-  pluginId: z.string().min(1),
-  /** The model recorded on the amended request. */
-  model: z.string().min(1),
-});
-export type TimelineConversationTurnRequestAmendment = z.infer<
-  typeof timelineConversationTurnRequestAmendmentSchema
->;
-
 export const timelineConversationTurnRequestSchema = z.object({
   isGrouped: z.boolean(),
   kind: z.enum(timelineConversationTurnRequestKindValues),
   status: z.enum(timelineConversationTurnRequestStatusValues),
-  /**
-   * Present only when a dispatch gate amended the turn. Optional rather than
-   * nullable for the same reason `amendedByPluginId` is optional on the
-   * `client/turn/requested` event it projects from: a null would claim "a gate
-   * ran and changed nothing", and absence is the overwhelmingly common case.
-   */
-  amendment: timelineConversationTurnRequestAmendmentSchema.optional(),
 });
 export type TimelineConversationTurnRequest = z.infer<
   typeof timelineConversationTurnRequestSchema
@@ -255,9 +234,8 @@ export type TimelinePluginNoteSystemRow = z.infer<
 /**
  * A parked queued message. It earns its own row shape because it is the one
  * system row that speaks for a message the user wrote, so "which message" is
- * quoted (`inputPreview`) rather than dumped into the monospace block that
- * carries the waiting plugin's progress report (`detail`), and "what it waits
- * for" is its own field.
+ * quoted (`inputPreview`) rather than dumped into the shared `detail` block,
+ * and "what it waits for" is its own field.
  *
  * `reason` is derived by the projection from the event's typed `waitingOn`,
  * because the event deliberately carries no reason string of its own — a core

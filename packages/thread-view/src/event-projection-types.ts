@@ -39,7 +39,6 @@ export type {
   EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
   EventProjectionTurnRequest,
-  EventProjectionTurnRequestAmendment,
   EventProjectionTurnRequestKind,
   EventProjectionUserMessage,
   EventProjectionWebFetchMessage,

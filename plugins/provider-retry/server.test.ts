@@ -121,7 +121,6 @@ function dispatchContext(
     stage: "dispatch",
     thread: base.thread,
     attempt,
-    firstDispatch: false,
     queuedMessage: null,
     project: base.project,
     environment: base.environment,
@@ -139,7 +138,6 @@ function dispatchContext(
     originPluginId: null,
     startedOnBehalfOf: null,
     parentThreadId: null,
-    pluginInput: null,
   };
 }
 

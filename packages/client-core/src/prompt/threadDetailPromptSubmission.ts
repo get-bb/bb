@@ -1,6 +1,5 @@
 import type {
   PermissionMode,
-  PluginInputs,
   PromptInput,
   ReasoningLevel,
   ServiceTier,
@@ -49,14 +48,6 @@ interface SharedThreadExecutionRequestFields {
 interface BaseFollowUpRequestArgs {
   input: PromptInput[];
   threadId: string;
-  /**
-   * Side-channel input for this send's `turn.submit` gates, keyed by plugin
-   * id — what a composer control wrote through
-   * `useComposer().experimental_setPluginInput`. Omitted means no plugin
-   * input at all, which is not the same as an empty object addressed to
-   * nobody, so it is spread conditionally rather than defaulted to `{}`.
-   */
-  pluginInputs?: PluginInputs;
 }
 
 interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
@@ -220,7 +211,6 @@ export function resolveDefaultExecutionOptionsState({
 export function buildAutoFollowUpRequest({
   execution,
   input,
-  pluginInputs,
   threadId,
 }: BuildAutoFollowUpRequestArgs): SendMessageMutationRequest | null {
   if (input.length === 0) {
@@ -232,14 +222,12 @@ export function buildAutoFollowUpRequest({
     input,
     mode: "queue-if-active",
     ...buildSharedThreadExecutionRequestFields(execution),
-    ...(pluginInputs === undefined ? {} : { pluginInputs }),
   };
 }
 
 function buildSteerFollowUpRequest({
   execution,
   input,
-  pluginInputs,
   threadId,
 }: BuildSteerFollowUpRequestArgs): SendMessageMutationRequest | null {
   if (input.length === 0) {
@@ -251,14 +239,12 @@ function buildSteerFollowUpRequest({
     input,
     mode: "steer-if-active",
     ...buildSharedThreadExecutionRequestFields(execution),
-    ...(pluginInputs === undefined ? {} : { pluginInputs }),
   };
 }
 
 export function buildCreateQueuedFollowUpRequest({
   execution,
   input,
-  pluginInputs,
   threadId,
 }: BuildCreateQueuedFollowUpRequestArgs): CreateQueuedFollowUpRequest | null {
   if (input.length === 0) {
@@ -269,7 +255,6 @@ export function buildCreateQueuedFollowUpRequest({
     id: threadId,
     input,
     ...buildSharedThreadExecutionRequestFields(execution),
-    ...(pluginInputs === undefined ? {} : { pluginInputs }),
   };
 }
 

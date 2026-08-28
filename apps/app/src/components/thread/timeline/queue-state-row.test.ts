@@ -7,14 +7,10 @@ import { buildTimelineViewRows } from "@bb/thread-view";
 import { systemRow } from "@/test/fixtures/thread-timeline-rows";
 
 /**
- * A parked queue row's reason rides its title line, so what the body has to
- * offer is the parked message and the waiting plugin's report. `detail` carries
- * only the report, which is why it cannot be the whole expandability test: a
- * scheduled send has never reported anything and still has a message worth
- * reading.
- *
- * This file exists to prove the kind is actually wired into that predicate
- * rather than silently falling through to the generic `detail`-only rule.
+ * A parked queue row's reason rides its title line, so the only thing the body
+ * has to offer is the parked message. That is not the generic `detail`-only
+ * rule every other system row uses, and this file exists to prove the kind is
+ * actually wired into the predicate rather than falling through to it.
  */
 describe("queue-state row expandability", () => {
   it("opens for a parked row that has only the parked message", () => {

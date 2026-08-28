@@ -7,7 +7,6 @@ import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
-import type { QueuedMessageReportUpdate } from "@bb/domain";
 import {
   adoptHttpRouteResponse,
   AGENT_TOOL_NAME_PATTERN,
@@ -62,7 +61,6 @@ import type {
   PluginCliExecutionResult,
   PluginCliResult,
   PluginDispatch,
-  PluginDispatchAmendments,
   PluginDispatchGateHandler,
   PluginDispatchGateStage,
   PluginEvents,
@@ -258,16 +256,6 @@ export interface FakePluginRegistrations {
   dispatchGates: {
     [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
   };
-  /** Every `bb.experimental_dispatch.clearWait` call, in order. */
-  clearedQueueWaits: Array<{
-    queuedMessageId: string;
-    amend: PluginDispatchAmendments | undefined;
-  }>;
-  /** Every `bb.experimental_dispatch.report` call, in order. */
-  reportedQueueWaits: Array<{
-    queuedMessageId: string;
-    update: QueuedMessageReportUpdate;
-  }>;
   /** Every `bb.experimental_threads.appendNote` call, in order. */
   appendedThreadNotes: Array<{ threadId: string; note: PluginThreadNote }>;
   mentionProviders: FakeMentionProviderRecord[];
@@ -1624,14 +1612,6 @@ function createFakePluginHostInternal(
     dispatch: null,
     "turn.failed": null,
   };
-  const clearedQueueWaits: Array<{
-    queuedMessageId: string;
-    amend: PluginDispatchAmendments | undefined;
-  }> = [];
-  const reportedQueueWaits: Array<{
-    queuedMessageId: string;
-    update: QueuedMessageReportUpdate;
-  }> = [];
   const appendedThreadNotes: Array<{
     threadId: string;
     note: PluginThreadNote;
@@ -1898,14 +1878,6 @@ function createFakePluginHostInternal(
       }
       storeDispatchGate(dispatchGates, stage, handler);
     },
-    clearWait(queuedMessageId, options) {
-      clearedQueueWaits.push({ queuedMessageId, amend: options?.amend });
-      return Promise.resolve();
-    },
-    report(queuedMessageId, update) {
-      reportedQueueWaits.push({ queuedMessageId, update });
-      return Promise.resolve(true);
-    },
   };
 
   const experimental_threads: PluginThreads = {
@@ -2028,12 +2000,6 @@ function createFakePluginHostInternal(
       },
       get dispatchGates() {
         return { ...dispatchGates };
-      },
-      get clearedQueueWaits() {
-        return [...clearedQueueWaits];
-      },
-      get reportedQueueWaits() {
-        return [...reportedQueueWaits];
       },
       get appendedThreadNotes() {
         return [...appendedThreadNotes];

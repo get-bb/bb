@@ -1,24 +1,18 @@
 import {
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessageInTransaction,
-  getQueuedThreadMessage,
   getThread,
   reparkClaimedQueuedThreadMessages,
-  setQueuedThreadMessageWaitingOn,
   type ClaimedQueuedThreadMessageRow,
   type QueuedThreadMessageRow,
 } from "@bb/db";
 import {
   QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH,
-  queuedMessageWaitReasonSchema,
   threadScope,
-  type PluginInputs,
   type PromptInput,
   type QueuedMessagePayload,
-  type QueuedMessageReportUpdate,
   type QueuedMessageSystemNotice,
   type QueuedMessageWaitingOn,
-  type ProvisioningTranscriptEntry,
   type ResolvedThreadExecutionOptions,
   type SystemQueueStateStatus,
   type Thread,
@@ -84,13 +78,11 @@ export function queuedMessageInputPreview(
  * The one timeline row a parked message owns. Events are append-only, so a
  * status change appends another row carrying the same `queuedMessageId`; the
  * timeline projection collapses them by that id exactly as it does
- * `system/thread-provisioning`. Only the delta entries are sent — the
- * projection concatenates transcripts.
+ * `system/thread-provisioning`.
  */
 function appendQueueStateEvent(
   deps: QueueParkingDeps,
   args: {
-    entries: ProvisioningTranscriptEntry[];
     row: QueuedThreadMessageRow;
     status: SystemQueueStateStatus;
     waitingOn: QueuedMessageWaitingOn;
@@ -108,7 +100,6 @@ function appendQueueStateEvent(
       waitingOn: args.waitingOn,
       sendAt: args.row.sendAt,
       ...(inputPreview === undefined ? {} : { inputPreview }),
-      entries: args.entries,
     },
   });
 }
@@ -127,7 +118,6 @@ export function noteQueueStateUpdated(
   args: { row: QueuedThreadMessageRow; waitingOn: QueuedMessageWaitingOn },
 ): void {
   appendQueueStateEvent(deps, {
-    entries: [],
     row: args.row,
     status: "updated",
     waitingOn: args.waitingOn,
@@ -152,7 +142,6 @@ export interface SettleQueueRowArgs {
 export interface ParkDispatchMessage {
   input: PromptInput[];
   execution: ResolvedThreadExecutionOptions;
-  pluginInputs: PluginInputs;
   senderThreadId: string | null;
   payload: QueuedMessagePayload;
   /** Non-null only when core is parking one of its own system notices. */
@@ -210,10 +199,6 @@ export function parkDispatch(
           reasoningLevel: args.message.execution.reasoningLevel,
           permissionMode: args.message.execution.permissionMode,
           serviceTier: args.message.execution.serviceTier,
-          pluginInputs:
-            Object.keys(args.message.pluginInputs).length === 0
-              ? null
-              : args.message.pluginInputs,
           waitingOn: args.waitingOn,
           sendAt: args.sendAt,
           payload: args.message.payload,
@@ -243,7 +228,6 @@ export function parkDispatch(
     return null;
   }
   appendQueueStateEvent(deps, {
-    entries: [],
     row,
     status: leadClaim === undefined ? "parked" : "updated",
     waitingOn: args.waitingOn,
@@ -264,7 +248,6 @@ export function settleQueueRowDispatched(
   args: SettleQueueRowArgs,
 ): void {
   appendQueueStateEvent(deps, {
-    entries: [],
     row: args.row,
     status: "dispatched",
     waitingOn: args.waitingOn,
@@ -278,7 +261,6 @@ export function settleQueueRowCancelled(
   args: SettleQueueRowArgs,
 ): void {
   appendQueueStateEvent(deps, {
-    entries: [],
     row: args.row,
     status: "cancelled",
     waitingOn: args.waitingOn,
@@ -298,72 +280,6 @@ export function queuedMessageWaitingOn(
   row: QueuedThreadMessageRow,
 ): QueuedMessageWaitingOn {
   return toThreadQueuedMessage(row).waitingOn ?? { kind: "thread-busy" };
-}
-
-/**
- * Applies a waiting plugin's progress report.
- *
- * `reason` rewrites the wait in place — the only mutable part of it, since the
- * kind and the holder are what the plugin committed to when it returned
- * `wait`. Returns false when the row is gone or has already dispatched; a late
- * report from a torn-down plugin must not resurrect one.
- */
-export function reportQueuedMessageProgress(
-  deps: QueueParkingDeps,
-  args: { queuedMessageId: string; update: QueuedMessageReportUpdate },
-): boolean {
-  const existing = getQueuedThreadMessage(deps.db, args.queuedMessageId);
-  if (existing === null) {
-    return false;
-  }
-  const current = queuedMessageWaitingOn(existing);
-  let row = existing;
-  let waitingOn = current;
-  if (args.update.reason !== undefined && current.kind === "plugin") {
-    waitingOn = {
-      ...current,
-      reason: queuedMessageWaitReasonSchema.parse(args.update.reason),
-    };
-    const updated = setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
-      id: existing.id,
-      threadId: existing.threadId,
-      waitingOn,
-      sendAt: existing.sendAt,
-    });
-    if (updated === null) {
-      return false;
-    }
-    row = updated;
-  }
-  const entries: ProvisioningTranscriptEntry[] = [
-    ...(args.update.step
-      ? [
-          {
-            type: "step" as const,
-            key: args.update.step.key,
-            text: args.update.step.text,
-            status: args.update.step.status,
-            startedAt: Date.now(),
-          },
-        ]
-      : []),
-    ...(args.update.output
-      ? [
-          {
-            type: "output" as const,
-            key: args.update.output.key,
-            text: args.update.output.text,
-          },
-        ]
-      : []),
-  ];
-  appendQueueStateEvent(deps, {
-    entries,
-    row,
-    status: "updated",
-    waitingOn,
-  });
-  return true;
 }
 
 /**

@@ -2,11 +2,9 @@ import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type {
   DynamicTool,
-  QueuedMessageReportUpdate,
   Thread,
   ThreadQueuedMessage,
 } from "@bb/domain";
-import type { PluginDispatchAmendments } from "@get-bb/plugin-sdk";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
@@ -85,27 +83,9 @@ export interface PluginServiceDeps {
    */
   onPluginUnregistered?: (pluginId: string) => void;
   /**
-   * Wait-holder-scoped queue operations behind
-   * `bb.experimental_dispatch.clearWait` and `.report`. Assembled in server.ts
-   * where the full thread services exist; omitted only by isolated
-   * plugin-runtime tests, where either call throws.
-   */
-  queueWaits?: {
-    clear(args: {
-      pluginId: string;
-      queuedMessageId: string;
-      amend: PluginDispatchAmendments | undefined;
-    }): Promise<void>;
-    report(args: {
-      pluginId: string;
-      queuedMessageId: string;
-      update: QueuedMessageReportUpdate;
-    }): Promise<boolean>;
-  };
-  /**
    * Display-only timeline notes behind `bb.experimental_threads.appendNote`.
-   * Assembled in server.ts alongside `queueWaits`; omitted only by isolated
-   * plugin-runtime tests, where the call throws.
+   * Assembled in server.ts where the full thread services exist; omitted only
+   * by isolated plugin-runtime tests, where the call throws.
    */
   appendThreadNote?: (args: {
     pluginId: string;

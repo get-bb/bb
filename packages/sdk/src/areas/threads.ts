@@ -617,10 +617,6 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     // Present ⇒ the message parks on the queue waiting for the clock instead
     // of attempting now; the response reports `delivery: "parked"`.
     sendAt: args.sendAt,
-    // Side-channel input for this send's dispatch gates, keyed by plugin id.
-    // It rides the queued row, so a message that parks still reaches its gate
-    // with the input it was sent with on every re-attempt.
-    pluginInputs: args.pluginInputs,
   };
 }
 

@@ -687,9 +687,9 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * Undo migration 0110, the dispatch-queue rework.
  *
  * 0110 adds the queue's parking columns (schedule, typed wait, wait holder,
- * payload kind and its retry reference), the plugin-input, system-notice, and
- * failure-reason sidecars, their two partial indexes, and the thread's pending
- * start context.
+ * payload kind and its retry reference), the system-notice and failure-reason
+ * sidecars, their two partial indexes, and the thread's pending start
+ * context.
  * A rewind that clears its journal row must remove all of them before the
  * replay's ADDs hit a table that already has them.
  *
@@ -710,7 +710,6 @@ function dropQueueReworkSchema(db: DbConnection): void {
     .all();
   for (const name of [
     "system_notice",
-    "plugin_inputs",
     "send_at",
     "waiting_on",
     "wait_holder",
@@ -1598,8 +1597,7 @@ describe("migrate", () => {
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,
-        dispatchGateOrder: {},
-      });
+          });
       expect(
         db.$client
           .prepare<[], { key: string; value: string }>(
@@ -1923,8 +1921,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-        pluginInputs: null,
-        waitingOn: null,
+          waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
@@ -1936,8 +1933,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-        pluginInputs: null,
-        waitingOn: null,
+          waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
@@ -1949,8 +1945,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
-        pluginInputs: null,
-        waitingOn: null,
+          waitingOn: null,
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,

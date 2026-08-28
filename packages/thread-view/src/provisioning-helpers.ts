@@ -67,12 +67,8 @@ export function provisioningTitleForStatus(
   }
 }
 
-/**
- * Transcript entries arrive as deltas, so merging is concatenation. Shared
- * with `system/queue-state`, which reuses the same entry shape and the same
- * delta contract.
- */
-export function mergeTranscriptEntries(
+/** Transcript entries arrive as deltas, so merging is concatenation. */
+function mergeTranscriptEntries(
   existing: EventProjectionProvisioningTranscriptEntry[] | undefined,
   incoming: EventProjectionProvisioningTranscriptEntry[] | undefined,
 ): EventProjectionProvisioningTranscriptEntry[] | undefined {

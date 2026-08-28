@@ -282,15 +282,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "pluginInputs is a side channel addressed to specific plugins; omitting it means the caller addressed no plugin at all, which is not the same as an empty map addressed to nobody.",
-    fields: [
-      "createThreadRequestSchema.pluginInputs",
-      "sendMessageRequestSchema.pluginInputs",
-      "createQueuedMessageRequestSchema.pluginInputs",
-    ],
-  },
-  {
-    reason:
       "GET /threads/count filters are all genuinely absent by default: omitting one does not filter on it, and groups is present only when groupBy was asked for.",
     fields: [
       "threadCountQuerySchema.status",

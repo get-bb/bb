@@ -537,7 +537,6 @@ export function parseOperationMessage(
 
   if (decoded.type === "system/queue-state") {
     const { queuedMessageId, inputPreview, sendAt, status, waitingOn } = decoded;
-    const transcript = readProvisioningTranscript(decoded.entries);
     return op(decoded, meta, "queue-state", {
       opType: "queue-state",
       title: queueStateTitleForStatus(status),
@@ -548,7 +547,6 @@ export function parseOperationMessage(
         waitingOn,
         sendAt,
         ...(inputPreview ? { inputPreview } : {}),
-        ...(transcript ? { transcript } : {}),
       },
     });
   }

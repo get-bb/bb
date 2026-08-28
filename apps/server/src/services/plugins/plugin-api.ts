@@ -14,7 +14,6 @@ import {
 import {
   PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
-  type QueuedMessageReportUpdate,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -33,7 +32,6 @@ import type {
   PluginDispatch,
   PluginDispatchGateHandler,
   PluginDispatchGateStage,
-  PluginDispatchAmendments,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -396,20 +394,6 @@ export function createPluginApi(options: {
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
   /**
-   * Clears the wait this plugin holds on a parked row, re-running the gate
-   * pass. Rejects when the row waits on somebody else. Undefined in isolated
-   * plugin-runtime harnesses that carry no thread services.
-   */
-  clearQueueWait?: (args: {
-    queuedMessageId: string;
-    amend: PluginDispatchAmendments | undefined;
-  }) => Promise<void>;
-  /** Applies a progress report; false when the row is already gone. */
-  reportQueueWait?: (args: {
-    queuedMessageId: string;
-    update: QueuedMessageReportUpdate;
-  }) => Promise<boolean>;
-  /**
    * Appends this plugin's display-only note to a thread. Throws on an unknown
    * thread, an invalid note, or the per-thread rate limit. Undefined in
    * isolated plugin-runtime harnesses that carry no thread services.
@@ -463,8 +447,6 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     declaredIconNames,
     requestInteraction,
-    clearQueueWait,
-    reportQueueWait,
     appendThreadNote,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
@@ -1326,30 +1308,12 @@ export function createPluginApi(options: {
     gate(stage, handler) {
       assertLive();
       if (dispatchGates[stage] !== null) {
-        // Two gates from one plugin at one stage would make the chain order
-        // within the plugin invisible and unorderable in settings. Say so at
-        // registration rather than silently keeping one.
+        // Two gates from one plugin at one stage would make the order within
+        // the plugin invisible. Say so at registration rather than silently
+        // keeping one.
         throw new Error(dispatchGateAlreadyRegisteredMessage(stage));
       }
       storeDispatchGate(dispatchGates, stage, handler);
-    },
-    clearWait(queuedMessageId, options) {
-      assertLive();
-      if (clearQueueWait === undefined) {
-        return Promise.reject(
-          new Error("the dispatch queue is unavailable in this host"),
-        );
-      }
-      return clearQueueWait({ queuedMessageId, amend: options?.amend });
-    },
-    report(queuedMessageId, update) {
-      assertLive();
-      if (reportQueueWait === undefined) {
-        return Promise.reject(
-          new Error("the dispatch queue is unavailable in this host"),
-        );
-      }
-      return reportQueueWait({ queuedMessageId, update });
     },
   };
 

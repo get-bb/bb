@@ -261,3 +261,56 @@ above:
   vocabulary changes).
 - SDK/CLI/guide/skill surfaces updated in the same wave per repo rules;
   plugin SDK bump; api_to_audit rewritten for the single-stage contract.
+
+- **The plugin checkpoint was cut back to a pure decision.** Consumer-less
+  surface built during the rework and never used by any shipped plugin is
+  gone; the designs stay recoverable from git history.
+
+  - **Amendments.** `PluginDispatchAmendments`, the `proceed { amend }` arm and
+    everything behind it — the `.strict()` amendment schema, the start-turn /
+    join-turn narrowing, the `firstDispatch` + `environmentAmendable`
+    environment window, the permission-mode clamp, `DispatchAmendmentResult`
+    with its `amendedBy`/`originalInput` audit trail, the `amendedByPluginId` /
+    `originalInput` turn-event fields, the `turnRequest.amendment` projection
+    and the "Chosen by <plugin>" chip. A gate now answers `proceed | wait |
+    reject` and cannot rewrite the dispatch it is deciding about. Because
+    nothing a gate returns changes what the next gate sees, one context is
+    built per pass instead of one per gate. `"plugin"` left
+    `callerExecutionInputSourceValues` (`applyGateAmendment` was its only
+    writer), and `shouldRememberProjectExecutionDefaults` lost the
+    `pluginAmended` guard that was already always false.
+  - **`firstDispatch` left the plugin context too.** Its only stated purpose
+    was the environment-amendment window; with that gone, nothing read it —
+    only two plugin test fixtures set it because the type demanded it. Core
+    keeps the same fact as a local in `attemptDispatch`.
+  - **`clearWait` and `report()`.** `queue-wait-owner.ts`, both contract
+    members, their runtime/server wiring, the fake-host seams, the
+    `QueuedMessageReport*` domain schemas and `reportQueuedMessageProgress`
+    are deleted. `report()` was the only writer of the queue-state event's
+    `entries` transcript, so the field, its projection, its merge and its
+    expandable rendering went with it — a parked row's body is now its
+    schedule and the parked message, and `detail` is always null. A wait
+    clears only via `retryAt`, the freed-capacity drain, Send-now and the
+    orphan sweep; the authoring skill says exactly that.
+  - **`pluginInputs`.** The side channel is gone end to end: the domain
+    schema and 8KB cap, the create/send/queued-message request fields, the
+    `plugin_inputs` column, `ctx.pluginInput`, `--plugin-input`,
+    `useComposer().experimental_setPluginInput` and its composer store, the
+    guide/skill passages and the api_to_audit entry.
+  - **The Dispatch Gates settings panel** and the `dispatchGateOrder` app
+    setting are deleted, along with `dispatchGateStages` on the plugin-list
+    response (the panel was its only consumer) and the SDK's `.default([])`
+    tolerance for it. Gate order is plugin install order, full stop; the
+    deterministic chain and the multi-waiter first-owns rule are unchanged.
+    The retired settings key is simply ignored on read — `getAppSettings`
+    selects only live keys — so no migration is needed.
+
+  Stored-data tolerance: every thread-event payload schema is a plain
+  non-strict `z.object`, so removing `amendedByPluginId`, `originalInput` and
+  `entries` strips them from stored events rather than failing the decode.
+  Nothing was kept for decode's sake, and no daemon-protocol acceptance was
+  narrowed — the daemon contract never references these event schemas, and a
+  non-strict object accepts strictly more after a field leaves it — so
+  `HOST_DAEMON_PROTOCOL_VERSION` stays where the branch had already left it. The branch's
+  migration was re-squashed onto main's 0109 as a single
+  `0110_white_hulk.sql` with no `plugin_inputs` column.

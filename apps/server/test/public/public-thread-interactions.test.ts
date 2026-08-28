@@ -845,7 +845,6 @@ describe("public thread interaction routes", () => {
         content: textInput("Queued message"),
         model: "gpt-5",
         serviceTier: "default",
-        pluginInputs: null,
         reasoningLevel: "medium",
         permissionMode: "full",
         waitingOn: null,

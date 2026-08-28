@@ -11,7 +11,6 @@ import {
   PERSONAL_PROJECT_ID,
   type Host,
   type PermissionMode,
-  type PluginInputs,
   type ProjectExecutionDefaults,
   type ReasoningLevel,
   type ServiceTier,
@@ -39,7 +38,6 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import { type PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
-import { takeComposerPluginInputs } from "@/lib/composer-plugin-inputs";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
@@ -172,8 +170,6 @@ export interface NewThreadComposerState {
  * `threads.spawn`, and these fields are bb's create request alone.
  */
 export interface NewThreadComposerSubmission extends NewThreadRequest {
-  /** Side-channel input for dispatch gates, keyed by plugin id. */
-  pluginInputs?: PluginInputs;
   /**
    * Epoch ms the first turn should dispatch at. Present only for a scheduled
    * submission (`useComposer().experimental_submit`); its absence is what
@@ -1136,7 +1132,6 @@ export function NewThreadComposer({
         ...executionInputSources,
         ...seededExecutionInputSources,
       };
-      const pluginInputs = takeComposerPluginInputs(promptDraft.storageKey);
       const request: NewThreadComposerSubmission = {
         projectId,
         providerId: selectedProviderId,
@@ -1147,7 +1142,6 @@ export function NewThreadComposer({
         executionInputSources: sources,
         environment: submissionEnvironment,
         input,
-        ...(pluginInputs === undefined ? {} : { pluginInputs }),
         ...(sendAt === null ? {} : { sendAt }),
       };
       isSubmittingRef.current = true;

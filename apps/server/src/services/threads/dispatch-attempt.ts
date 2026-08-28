@@ -7,7 +7,6 @@ import {
 } from "@bb/db";
 import {
   promptInputSchema,
-  type PluginInputs,
   type PromptInput,
   type QueuedMessagePayload,
   type QueuedMessageWaitingOn,
@@ -33,7 +32,6 @@ import {
   hasDispatchGates,
   noteDispatchReparked,
   runDispatchGatePass,
-  type DispatchAmendmentResult,
   type DispatchAttemptKind,
 } from "./dispatch-gates.js";
 import { parkDispatch, settleQueueRowDispatched } from "./queue-parking.js";
@@ -114,29 +112,15 @@ export type DispatchAttemptSource =
       sendNow: boolean;
     };
 
-/**
- * Everything creation knows that a drain re-attempt cannot reconstruct.
- *
- * `applyEnvironmentAmendment` exists because an `environment` amendment has to
- * re-run the environment intent resolution, which lives in thread creation and
- * needs the original request. So the amendment is honoured on the attempt that
- * creates the thread, where creation is still on the stack, and refused on a
- * later drain re-attempt — the same rule the previous contract had, now stated
- * in terms of what the attempt actually has in hand.
- */
-export interface DispatchAttemptCreation {
-  startContext: PendingThreadStartContext;
-  applyEnvironmentAmendment(
-    amendment: NonNullable<DispatchAmendmentResult["environment"]>,
-  ): Promise<PendingThreadStartContext>;
-}
-
 export interface DispatchAttemptArgs {
   thread: Thread;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
   source: DispatchAttemptSource;
-  /** Present only on the attempt that is creating the thread. */
-  creation?: DispatchAttemptCreation;
+  /**
+   * The start context creation just wrote, on the attempt that is creating the
+   * thread. Absent on a drain re-attempt, which reads it back off the thread.
+   */
+  startContext?: PendingThreadStartContext;
   /** What the parked row would carry; `retry` for a re-submitted failed turn. */
   queuePayload: QueuedMessagePayload;
   /** Retry provenance, when this attempt re-submits a failed turn. */
@@ -225,20 +209,17 @@ export async function attemptDispatch(
     payload,
     args.executionDefaults ?? { threadId: thread.id },
   );
+  const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
 
   const park = (
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,
-    input: PromptInput[] = payload.input,
-    parkExecution: ResolvedThreadExecutionOptions = execution,
-    pluginInputs: PluginInputs = payload.pluginInputs ?? {},
   ): DispatchAttemptOutcome => {
     const entry = parkDispatch(deps, {
       thread,
       message: {
-        input,
-        execution: parkExecution,
-        pluginInputs,
+        input: payload.input,
+        execution,
         senderThreadId,
         payload: args.queuePayload,
         // Only core parks a system notice, and it does so directly rather
@@ -298,7 +279,6 @@ export async function attemptDispatch(
    */
   const admitted: { value: PendingThreadAdmission | null } = { value: null };
 
-  let amendments: DispatchAmendmentResult | null = null;
   if (!sendNow && hasDispatchGates("dispatch")) {
     const outcome = await runDispatchGatePass(deps, {
       thread,
@@ -317,13 +297,10 @@ export async function attemptDispatch(
         payload.executionInputSources ?? {},
       ),
       attempt,
-      firstDispatch,
-      environmentAmendable: args.creation !== undefined,
       origin: args.origin,
       originPluginId: args.originPluginId,
       startedOnBehalfOf: args.startedOnBehalfOf,
       parentThreadId: thread.parentThreadId,
-      pluginInputs: payload.pluginInputs ?? {},
       queuedMessage:
         claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
       // A first dispatch is the admission a limiter is deciding about, so its
@@ -332,16 +309,11 @@ export async function attemptDispatch(
       // the send transaction, so it has nothing to commit.
       ...(firstDispatch
         ? {
-            commitAdmission: async (passAmendments) => {
+            commitAdmission: async () => {
               admitted.value = await admitPendingThread(deps, {
-                amendments: passAmendments,
                 claimed,
-                creation: args.creation ?? null,
-                payload: applyAmendmentsToPayload(
-                  payload,
-                  execution,
-                  passAmendments,
-                ),
+                payload: resolvedPayload,
+                startContext: args.startContext ?? null,
                 thread,
               });
             },
@@ -349,31 +321,31 @@ export async function attemptDispatch(
         : {}),
     });
     if (outcome.kind === "wait") {
-      return parkForGateWait(deps, {
-        args,
-        claimed,
-        execution,
-        outcome,
-        park,
-        senderThreadId,
-      });
+      if (claimed !== null) {
+        noteDispatchReparked(thread.id);
+      }
+      return park(
+        {
+          kind: "plugin",
+          pluginId: outcome.waiter.pluginId,
+          reason: dispatchWaitReasonForPass(outcome),
+        },
+        outcome.waiter.retryAt,
+      );
     }
-    amendments = outcome.amendments;
   }
 
   // --- 3. dispatch --------------------------------------------------------
 
-  const amendedPayload = applyAmendmentsToPayload(payload, execution, amendments);
   if (firstDispatch) {
     // Already admitted under the lock when a gate pass ran; admitted here when
     // no gate is installed or send-now skipped the pass entirely.
     const admission =
       admitted.value ??
       (await admitPendingThread(deps, {
-        amendments,
         claimed,
-        creation: args.creation ?? null,
-        payload: amendedPayload,
+        payload: resolvedPayload,
+        startContext: args.startContext ?? null,
         thread,
       }));
     if (admission !== null) {
@@ -385,23 +357,13 @@ export async function attemptDispatch(
   const environment = await requireThreadCommandEnvironment(deps, { thread });
   await sendThreadMessage(deps, {
     environment,
-    payload: amendedPayload,
+    payload: resolvedPayload,
     thread,
     trigger: args.trigger,
     ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     ...(claimed === null
       ? {}
       : { beforeAppendInTransaction: consumeClaimedRows(claimed) }),
-    ...(amendments !== null && amendments.amendedBy.input !== undefined
-      ? {
-          amendment: {
-            pluginId: amendments.amendedBy.input,
-            ...(amendments.originalInput !== null
-              ? { originalInput: amendments.originalInput }
-              : {}),
-          },
-        }
-      : {}),
   });
   if (claimed !== null) {
     settleQueueRowDispatched(deps, {
@@ -447,70 +409,11 @@ function consumeClaimedRows(
   };
 }
 
-interface ParkForGateWaitArgs {
-  args: DispatchAttemptArgs;
-  claimed: ClaimedQueuedThreadMessageRow[] | null;
-  execution: ResolvedThreadExecutionOptions;
-  outcome: Extract<
-    Awaited<ReturnType<typeof runDispatchGatePass>>,
-    { kind: "wait" }
-  >;
-  park: (
-    waitingOn: QueuedMessageWaitingOn,
-    sendAt: number | null,
-    input?: PromptInput[],
-    parkExecution?: ResolvedThreadExecutionOptions,
-    pluginInputs?: PluginInputs,
-  ) => DispatchAttemptOutcome;
-  senderThreadId: string | null;
-}
-
-/**
- * Parks a message a gate pass voted to wait on.
- *
- * The execution tuple frozen here is the one the WHOLE pass agreed on, which
- * is why wait verdicts are collected across a full pass rather than
- * short-circuiting: a limiter that parked the turn must not also freeze a
- * stale model that a later gate had already corrected.
- */
-function parkForGateWait(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: ParkForGateWaitArgs,
-): DispatchAttemptOutcome {
-  const { outcome } = args;
-  if (args.claimed !== null) {
-    noteDispatchReparked(args.args.thread.id);
-  }
-  const amended = args.outcome.amendments;
-  const execution: ResolvedThreadExecutionOptions = {
-    ...args.execution,
-    ...(amended.model !== null ? { model: amended.model } : {}),
-    ...(amended.reasoningLevel !== null
-      ? { reasoningLevel: amended.reasoningLevel }
-      : {}),
-    ...(amended.serviceTier !== null ? { serviceTier: amended.serviceTier } : {}),
-    ...(amended.permissionMode !== null
-      ? { permissionMode: amended.permissionMode }
-      : {}),
-  };
-  return args.park(
-    {
-      kind: "plugin",
-      pluginId: outcome.waiter.pluginId,
-      reason: dispatchWaitReasonForPass(outcome),
-    },
-    outcome.waiter.retryAt,
-    amended.input ?? args.args.payload.input,
-    execution,
-    args.args.payload.pluginInputs ?? {},
-  );
-}
-
 interface AdmitPendingThreadArgs {
-  amendments: DispatchAmendmentResult | null;
   claimed: ClaimedQueuedThreadMessageRow[] | null;
-  creation: DispatchAttemptCreation | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
+  /** Creation's own record; null on a re-attempt, which reads it back. */
+  startContext: PendingThreadStartContext | null;
   thread: Thread;
 }
 
@@ -536,37 +439,23 @@ interface PendingThreadAdmission {
  * from `listRunning()` instead of tracking its own in-flight `proceed`s.
  *
  * Everything that can legitimately refuse the admission therefore happens
- * before the flip, in this order and deliberately: a missing start context, a
- * gate's environment amendment (which re-runs creation's intent resolution and
- * can throw), the execution tuple, then the row consumption whose claim CAS
- * can be lost. A failure at any of those leaves the thread in `pending`,
- * exactly as it did when this ran unlocked. Returns null when the thread moved
- * on underneath the attempt.
+ * before the flip, in this order and deliberately: a missing start context,
+ * the execution tuple, then the row consumption whose claim CAS can be lost. A
+ * failure at any of those leaves the thread in `pending`, exactly as it did
+ * when this ran unlocked. Returns null when the thread moved on underneath the
+ * attempt.
  */
 async function admitPendingThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AdmitPendingThreadArgs,
 ): Promise<PendingThreadAdmission | null> {
-  let startContext =
-    args.creation?.startContext ??
-    readPendingThreadStartContext(deps, args.thread.id);
+  const startContext =
+    args.startContext ?? readPendingThreadStartContext(deps, args.thread.id);
   if (startContext === null) {
     throw new ApiError(
       500,
       "internal_error",
       `Thread ${args.thread.id} is pending but has no start context to dispatch`,
-    );
-  }
-  if (args.amendments?.environment != null) {
-    if (args.creation === null) {
-      throw new ApiError(
-        502,
-        "dispatch_gate_failed",
-        "A gate amended the environment on a re-attempt; a thread's workspace can only be chosen on the attempt that creates it",
-      );
-    }
-    startContext = await args.creation.applyEnvironmentAmendment(
-      args.amendments.environment,
     );
   }
   const execution = await buildExecutionOptions(deps, args.payload, {
@@ -658,30 +547,20 @@ async function launchAdmittedThread(
 }
 
 /**
- * Folds a pass's amendments back into the request the executor will run.
- *
- * The resolved tuple is written back as EXPLICIT request fields rather than
- * left to be re-derived, so the executor's own `buildExecutionOptions` is
- * idempotent — the same trick the queue drain has always used to replay a
- * frozen tuple.
+ * Writes the resolved execution tuple back onto the request the executor will
+ * run, as EXPLICIT fields rather than leaving it to be re-derived, so the
+ * executor's own `buildExecutionOptions` is idempotent — the same trick the
+ * queue drain has always used to replay a frozen tuple.
  */
-function applyAmendmentsToPayload(
+function resolveExecutionIntoPayload(
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] },
   execution: ResolvedThreadExecutionOptions,
-  amendments: DispatchAmendmentResult | null,
 ): SendMessageRequest & { inputGroups?: PromptInput[][] } {
-  const next: SendMessageRequest & { inputGroups?: PromptInput[][] } = {
+  return {
     ...payload,
-    model: amendments?.model ?? execution.model,
-    reasoningLevel: amendments?.reasoningLevel ?? execution.reasoningLevel,
-    serviceTier: amendments?.serviceTier ?? execution.serviceTier,
-    permissionMode: amendments?.permissionMode ?? execution.permissionMode,
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    serviceTier: execution.serviceTier,
+    permissionMode: execution.permissionMode,
   };
-  if (amendments?.input != null) {
-    next.input = amendments.input;
-    // The grouped view is a presentation of the same blocks; a wholesale
-    // replacement has no groups to preserve.
-    delete next.inputGroups;
-  }
-  return next;
 }

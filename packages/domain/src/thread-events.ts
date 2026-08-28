@@ -97,14 +97,6 @@ export const turnRequestEventDataSchema = z.object({
   systemMessageSubject: systemMessageSubjectSchema.nullable().optional(),
   input: z.array(promptInputSchema),
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
-  // Dispatch-gate provenance. Omitted means no gate amended this turn, which
-  // is the overwhelmingly common case and the reason these are optional rather
-  // than nullable: a null would claim "a gate ran and changed nothing".
-  /** The plugin whose gate amended this turn's execution or input. */
-  amendedByPluginId: z.string().min(1).optional(),
-  /** The prompt blocks as the caller wrote them, kept only when a gate
-   * replaced them — the audit trail for a silently rewriting plugin. */
-  originalInput: z.array(promptInputSchema).optional(),
   target: turnRequestTargetSchema,
   request: z.object({
     method: z.enum(["thread/start", "turn/start"]),
@@ -345,9 +337,7 @@ export const QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH = 240;
 /**
  * The one timeline row a parked queued message owns, rewritten in place as the
  * row progresses (`parked` → `updated`… → `dispatched` | `cancelled`). It sits
- * where the parked turn will land and renders exactly like
- * `system/thread-provisioning` — hence the shared transcript entry shape,
- * which is what a waiting plugin's progress reports append to.
+ * where the parked turn will land.
  *
  * There is no separate `reason` field: an authored reason exists only for a
  * `plugin` wait and lives in `waitingOn.reason`, and every core wait's display
@@ -382,7 +372,6 @@ export const systemQueueStateEventDataSchema = z.object({
     .min(1)
     .max(QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH)
     .optional(),
-  entries: z.array(provisioningTranscriptEntrySchema),
 });
 export type SystemQueueStateEventData = z.infer<
   typeof systemQueueStateEventDataSchema
@@ -391,8 +380,8 @@ export type SystemQueueStateEventData = z.infer<
 /**
  * Longest note a plugin may append. Deliberately short: a note is a one-line
  * annotation on the timeline ("Rate limited — retrying at 6:30"), and anything
- * that needs a paragraph is either a hold's transcript (`dispatch.report`) or
- * content for the agent, which goes through an attributed agent-only message.
+ * that needs a paragraph is content for the agent, which goes through an
+ * attributed agent-only message.
  */
 export const PLUGIN_NOTE_TEXT_MAX_LENGTH = 500;
 

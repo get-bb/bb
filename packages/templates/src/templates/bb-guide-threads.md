@@ -31,7 +31,6 @@ Spawning:
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
-    --plugin-input <pluginId>=<json>  Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -204,7 +203,6 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
-    --plugin-input <pluginId>=<json>       Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
@@ -304,18 +302,6 @@ Queued messages:
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several
   parked rows on one thread are normal: two scheduled sends coexist.
-
-Plugin input:
-
-  bb thread spawn ... --plugin-input <pluginId>=<json>
-  bb thread tell <id> "..." --plugin-input <pluginId>=<json>
-
-  --plugin-input addresses one plugin's dispatch gates without a side channel.
-  The value is JSON (quote a string as '"text"'), each plugin sees only its own
-  entry, the flag repeats for several plugins, and a later flag for the same
-  plugin replaces the earlier value. The input rides the queued row, so a
-  message that parks still reaches its gate with the input it was sent with on
-  every re-attempt. The SDK equivalent is `pluginInputs` on `threads.spawn` / `threads.send`.
 
 Persisted panel tabs:
 

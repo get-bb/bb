@@ -89,7 +89,7 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
 
 describe("the freed-capacity drain", () => {
   it("re-attempts a plugin-parked row once the gate lets it through", async () => {
-    // The release path that replaced the limiter's own `clearWait`: core
+    // The release path that replaced a plugin releasing its own wait: core
     // re-attempts, the gate re-decides, and a row that is still blocked simply
     // re-parks. No plugin has to work out which row deserves the freed slot.
     await withTestHarness(async (harness) => {

@@ -15,8 +15,6 @@ import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js
 
 interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
-  /** True when a dispatch gate amended any execution field on this create. */
-  pluginAmended: boolean;
   request: ThreadCreateServiceRequest;
 }
 
@@ -47,13 +45,7 @@ function shouldRememberProjectExecutionDefaults(args: {
   environment: ThreadCreateServiceRequest["environment"];
   origin: ThreadCreateServiceRequest["origin"];
   originKind?: ThreadCreateServiceRequest["originKind"];
-  pluginAmended: boolean;
 }): boolean {
-  // A plugin amendment is never promoted to a project default. The stored row
-  // is one tuple, so there is no way to remember "the user's model with the
-  // plugin's provider": a create a gate touched leaves the project's defaults
-  // exactly as they were, and the user's next unamended create shapes them.
-  if (args.pluginAmended) return false;
   // Reusing an existing worktree is a one-off in a specific environment, not
   // a fresh default-shaping event. Don't overwrite the project's stored
   // execution defaults with the picker selections made for that single thread.
@@ -119,12 +111,7 @@ export function rememberProjectExecutionDefaultsForCreate(
   deps: Pick<AppDeps, "db">,
   args: RememberProjectExecutionDefaultsForCreateArgs,
 ): void {
-  if (
-    !shouldRememberProjectExecutionDefaults({
-      ...args.request,
-      pluginAmended: args.pluginAmended,
-    })
-  ) {
+  if (!shouldRememberProjectExecutionDefaults(args.request)) {
     return;
   }
 

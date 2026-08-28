@@ -1415,44 +1415,6 @@ describe("@bb/sdk", () => {
     expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
   });
 
-  it("carries pluginInputs onto the create and send bodies", async () => {
-    const queue = createFetchQueue([
-      { body: { id: "thr_123" } },
-      { body: { ok: true, delivery: "sent" } },
-    ]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    await sdk.threads.spawn({
-      projectId: "proj_123",
-      environment: {
-        type: "host",
-        hostId: "host_123",
-        workspace: { type: "unmanaged", path: null },
-      },
-      prompt: "Route me",
-      pluginInputs: { "my-router": { entry: "fast" } },
-    });
-    await sdk.threads.send({
-      threadId: "thr_123",
-      input: [{ type: "text", text: "and again", mentions: [] }],
-      mode: "auto",
-      pluginInputs: { "concurrency-limit": { skip: true } },
-    });
-
-    expect(JSON.parse(queue.requests[0].bodyText ?? "{}")).toMatchObject({
-      pluginInputs: { "my-router": { entry: "fast" } },
-    });
-    expect(JSON.parse(queue.requests[1].bodyText ?? "{}")).toMatchObject({
-      pluginInputs: { "concurrency-limit": { skip: true } },
-    });
-  });
-
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {
@@ -1544,7 +1506,6 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
       providerIds: [],
-      dispatchGateStages: [],
       icons: {},
     };
     const catalog = {

@@ -1584,9 +1584,6 @@ describe("buildThreadTimelineFromEvents", () => {
             pluginId: "concurrency-limit",
             reason: "4 of 4 running",
           },
-          entries: [
-            { type: "step", key: "queue", text: "Queued behind 3 threads" },
-          ],
         }),
       ]),
       // Idle is exactly the state a never-started thread reports: the row must
@@ -1599,11 +1596,11 @@ describe("buildThreadTimelineFromEvents", () => {
     );
     expect(queueRows).toHaveLength(1);
     expect(queueRows[0]?.status).toBe("pending");
-    // The reason is derived from the newest event's typed wait; `detail` is the
-    // waiting plugin's report alone; the preview survives an event that omits it.
+    // The reason is derived from the newest event's typed wait, and the preview
+    // survives an event that omits it.
     expect(queueRows[0]).toMatchObject({
       reason: "4 of 4 running",
-      detail: "Queued behind 3 threads",
+      detail: null,
       inputPreview: "ship the release notes",
     });
   });

@@ -166,7 +166,6 @@ export function useSendThreadMessage() {
       sendAt,
       senderThreadId,
       executionInputSources,
-      pluginInputs,
     }: SendThreadMessageMutationRequest) => {
       return await sdk.threads.send({
         threadId: id,
@@ -175,7 +174,6 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
-        ...(pluginInputs === undefined ? {} : { pluginInputs }),
         // Present ⇒ the server parks the send as a user-releasable queued row
         // and answers `delivery: "parked"`, whatever `mode` says.
         ...(sendAt === undefined ? {} : { sendAt }),
@@ -248,7 +246,6 @@ export function useCreateThreadQueuedMessage() {
       permissionMode,
       senderThreadId,
       executionInputSources,
-      pluginInputs,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       sdk.threads.queuedMessages.create({
         threadId: id,
@@ -258,7 +255,6 @@ export function useCreateThreadQueuedMessage() {
         reasoningLevel,
         permissionMode,
         executionInputSources,
-        ...(pluginInputs === undefined ? {} : { pluginInputs }),
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       }),
     onMutate: async (variables): Promise<CreateQueuedMessageTransaction> =>

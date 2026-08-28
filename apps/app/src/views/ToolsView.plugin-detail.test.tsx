@@ -52,7 +52,6 @@ const GITHUB_PLUGIN = {
   schedules: [],
   cliCommand: null,
   capabilities: [],
-  dispatchGateStages: [],
   app: { hasApp: true, bundle: null },
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,
@@ -573,7 +572,6 @@ describe("plugin removal confirmation", () => {
       schedules: [],
       cliCommand: null,
       capabilities: [],
-      dispatchGateStages: [],
       hasSettings: false,
       app: { hasApp: false, bundle: null },
       logoUrl: null,
@@ -1193,7 +1191,6 @@ describe("PluginDetail capability inventory", () => {
               id: "simple-notes",
               name: "Docs",
               capabilities: [],
-              dispatchGateStages: [],
             }}
             pending={false}
             openSourceDisabled

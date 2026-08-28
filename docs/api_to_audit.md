@@ -140,7 +140,7 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
-## `bb.experimental_dispatch` (`gate`, `clearWait`, `report`)
+## `bb.experimental_dispatch` (`gate`)
 
 **What it does.** The one plugin surface that *decides* about a dispatch rather
 than observing it. `bb.experimental_dispatch.gate(stage, handler)` registers a
@@ -151,40 +151,34 @@ a provider — a thread's first message, a follow-up, a steer, a drained queue
 row, a retry of a failed turn — and it runs identically for all of them. The
 handler receives a typed context (project, environment/host, prompt blocks plus
 a plain-text view, the resolved execution tuple with per-field provenance,
-origin/parent provenance, this plugin's `pluginInputs` entry, the target thread,
-whether the attempt would `start-turn` or `join-turn`, whether this is the
-thread's `firstDispatch`, and the parked row when the attempt is a re-attempt)
-and answers `proceed` (optionally amending environment, model, reasoning
-level, service tier, permission mode or the message itself), `wait`
-(park the message as a queued row with a reason and an optional `retryAt`), or
-`reject` (a synchronous 409 carrying the plugin's message).
+origin/parent provenance, the target thread, whether the attempt would
+`start-turn` or `join-turn`, and the parked row when the attempt is a
+re-attempt) and answers `proceed`, `wait` (park the message as a queued row
+with a reason and an optional `retryAt`), or `reject` (a synchronous 409
+carrying the plugin's message). A gate cannot rewrite the dispatch it is
+deciding about: there is no amendment arm.
 
 The POST-HOC stage `"turn.failed"` runs after a turn's failure has already been
 applied and the thread has landed in `error`. Its context drops the fields that
-only describe a dispatch that has not happened (`pluginInput`,
-`executionSources`, `attempt`, `firstDispatch`, `queuedMessage`) and adds
-`failure`: the failed request id, the original request id of the retry chain,
-the provider turn id, the failure message, the provider's `ProviderErrorInfo`,
-the latest `ProviderRateLimitState`, and `attemptNumber`. It answers `none` or
-`retry(reason, resumeAt)`, and a `retry` parks a by-reference queued row that
-re-submits the ORIGINAL turn when it dispatches.
+only describe a dispatch that has not happened (`executionSources`, `attempt`,
+`queuedMessage`) and adds `failure`: the failed request id, the original
+request id of the retry chain, the provider turn id, the failure message, the
+provider's `ProviderErrorInfo`, the latest `ProviderRateLimitState`, and
+`attemptNumber`. It answers `none` or `retry(reason, resumeAt)`, and a `retry`
+parks a by-reference queued row that re-submits the ORIGINAL turn when it
+dispatches.
 
-`clearWait(queuedMessageId, { amend? })` and `report(queuedMessageId, update)`
-act on rows this plugin is holding the wait on; both refuse a row waiting on
-anyone else. Clearing a wait does not promise the message will run: the full
-gate pass re-runs, so a limiter that clears while still at capacity re-parks,
-and a core wait the row picked up in the meantime parks it again.
+Gates run as a deterministic chain in plugin install order, `reject`
+short-circuits, `wait` verdicts collect across a full pass, and the FIRST
+waiter owns the row while the rest have their reasons appended to it. The whole
+pass runs under a single server-wide async lock. At `"dispatch"` a gate that
+throws or exceeds a 10s decision box fails the attempt with the plugin named
+(fail-closed, the `deriveProviderOptions` precedent).
 
-Gates run as a deterministic chain in plugin install order with a per-stage
-override in app settings (`dispatchGateOrder`), amendments accumulate left to
-right, `reject` short-circuits, `wait` verdicts collect across a full pass so
-provider and model are final before anything is parked, and the FIRST waiter
-owns the row while the rest have their reasons appended to it. The whole pass
-runs under a single server-wide async lock. At `"dispatch"` a gate that throws
-or exceeds a 10s decision box fails the attempt with the plugin named
-(fail-closed, the `deriveProviderOptions` precedent). Amendment values are
-validated against the provider registry, the host permission ceiling and the
-environment schema; an invalid amendment fails the attempt the same way.
+A plugin's wait clears without the plugin doing anything: the row's `retryAt`
+comes due, a thread leaves the running set and core re-attempts every
+plugin-parked row, the user sends it now, or the orphan sweep clears a wait
+whose plugin is no longer running.
 
 At `turn.failed` fail-closed resolves the other way, deliberately. The turn has
 already failed, so the safe state is the failure standing exactly as core
@@ -198,24 +192,14 @@ two failures arriving together cannot park the same turn twice.
 - **One method, two opposite fail-closed stories.** `"dispatch"` blocks on
   handler failure; `"turn.failed"` ignores it. Both are right, and they are one
   method name. Confirm the doc comment carries that, or split the registration.
-- **Runtime-checked amendment windows.** With one stage, "may I amend the
-  environment here?" is a property of the attempt (`firstDispatch`, `attempt`),
-  not of the registration, so it cannot be a type — the old
-  `PluginDispatchCreateAmendments` / `PluginDispatchAmendments` /
-  `PluginDispatchReleaseAmendments` split is gone with the stages that carried
-  it. A plugin now learns it amended out of window by having its dispatch FAIL.
-  Decide whether an out-of-window field should instead be dropped with a
-  warning, and whether the context should carry an explicit amendable set so a
-  plugin can ask before it tries.
-- **`environment` is narrower than `firstDispatch`.** It is honoured only on
-  the attempt that CREATES the thread, because re-resolving an environment
-  intent means re-running most of creation. A drain re-attempt of a still-
-  `pending` thread reports `firstDispatch: true` and yet refuses it. Confirm
-  that asymmetry is explicable, or surface it in the context.
 - **`wait` returns no row id.** A gate returns a reason; the id arrives later on
   `queue.parked`. Every plugin that must act on its own wait therefore
   correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
   Decide whether the verdict should be able to name a correlation key.
+- **A wait has no plugin-driven release.** The only ways out are `retryAt`,
+  the freed-capacity drain, the user, and the orphan sweep. A plugin whose
+  condition resolves early can only shorten the wait by having set a `retryAt`
+  it can live with. Confirm that is enough before stabilizing.
 - **`retryAt` and a user's `sendAt` are the same column.** A plugin wait with a
   `retryAt` sets the row's `sendAt`, which is also what `--send-at` sets.
   Confirm nothing renders a plugin's retry instant as a user's schedule.
@@ -227,19 +211,14 @@ two failures arriving together cannot park the same turn twice.
   question a retry policy asks without replaying the event log.
 - **Attempt caps are entirely the plugin's.** Core enforces no ceiling on retry
   chains beyond one parked row per original request.
-- **"Never started" is now a thread status, not an event-log fact.** A provider
-  amendment is admitted while the thread is `pending`. That replaced a
-  `getLastProviderThreadId(...) === null` probe on a hot-ish path. Confirm
-  `pending` is maintained everywhere that probe used to be consulted.
+- **"Never started" is now a thread status, not an event-log fact.** That
+  replaced a `getLastProviderThreadId(...) === null` probe on a hot-ish path.
+  Confirm `pending` is maintained everywhere that probe used to be consulted.
 - **The context DTOs.** `thread`, `project`, `environment`, `host` and
   `queuedMessage` are public DTOs; confirm they are what a plugin should couple
   to.
 - **The single server-wide lock.** One slow gate delays every dispatch in the
   server, up to its box.
-- **Ownership as the authorization model.** `clearWait`/`report` allow exactly
-  the rows a plugin parked. Confirm there is no case for a delegated clear that
-  a `403` would block.
-- **`pluginInputs` sizing.** Unchanged.
 
 ## `bb.experimental_threads` (`appendNote`)
 
@@ -2058,46 +2037,6 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
-
-## `useComposer().experimental_setPluginInput` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** Addresses a JSON value to the calling plugin's own dispatch
-gates for the next submission from that composer — the `pluginInputs` side
-channel written from a composer control ("Sandbox: large", "Skip routing").
-One value per plugin per composer; a second
-call replaces the first, `null` clears it. The value is transient: it is
-attached to the next send from that composer and cleared once that send is
-committed, and it is deliberately NOT persisted with the draft (the draft is
-localStorage-backed; this is not). Writes are scoped by composer storage key
-and released with the slot's ownership, like `setTextEffect` and
-`setInputLock`. Only the calling plugin's gates receive it, and it counts
-against the request's 8KB `pluginInputs` budget.
-
-**Audit before stabilizing.**
-
-1. **Zero consumers.** No shipped plugin sets one yet.
-2. **Clear-on-submit timing.** The input is consumed when the user commits the
-   message, not when the request settles — so a send that FAILS keeps the
-   restored draft text but loses the plugin input. That assumes the control
-   that set it re-renders and can set it again. Confirm against a real control
-   whether a failed send should instead restore the input with the draft.
-3. **No read-back.** There is no `getPluginInput`, so a control cannot render
-   its own current state from the composer; it must hold that state itself.
-   Decide whether the reactive read belongs on `useComposerView()`.
-4. **Queued and steer paths, and the embedded chat.** The value rides bb's
-   new-thread composer and the thread-detail follow-up composer (send and
-   queue). A steer now passes the same `dispatch` checkpoint as a send, so the
-   old "not attached to a steer, which is ungated anyway" carve-out no longer
-   has a reason — confirm the value should ride a steer too, or say why not. It
-   is also not
-   yet consumed by the SDK `ThreadChat` embedded composer, whose composer-host
-   identity is built after its submit callback; a control mounted there can
-   set an input that is never delivered. Wire that up or refuse the write
-   there before dropping the prefix.
-5. **Budget accounting.** The value is measured against the 8KB
-   `pluginInputs` cap only at the server boundary, so an oversized value fails
-   the whole send there. Decide whether the client should refuse earlier and
-   how that would surface.
 
 ## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
 

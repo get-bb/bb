@@ -320,7 +320,9 @@ function buildQueueStateSystemRow(args: {
     systemKind: "operation",
     operationKind: "queue-state",
     title: args.message.title,
-    detail: buildQueueStateDetail(args.message),
+    // A parked row says what it waits for (`reason`) and quotes the message
+    // (`inputPreview`); it has no free-form detail block of its own.
+    detail: null,
     status: args.message.status ?? null,
     completedAt: args.message.completedAt,
     reason: describeQueueStateWait(args.queueState.waitingOn),
@@ -543,22 +545,6 @@ function provisioningTerminalDetailLine(
         ? "Provisioning thread failed"
         : "Provisioning thread interrupted";
   return `${label} (${durationToCompactString(elapsedMs)})`;
-}
-
-/**
- * A parked row's `detail` is the waiting plugin's report and nothing else. The
- * reason and the parked message are their own row fields, because one is a
- * label and the other is the user's prose — neither belongs in the monospace
- * output block the transcript renders as.
- */
-function buildQueueStateDetail(
-  message: TimelineOperationMessage,
-): string | null {
-  const lines =
-    message.queueState?.transcript?.flatMap(
-      formatProvisioningTranscriptEntryLines,
-    ) ?? [];
-  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function buildTimelineOperationDetail(

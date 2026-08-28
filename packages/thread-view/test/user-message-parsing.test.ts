@@ -162,53 +162,6 @@ describe("user message parsing", () => {
     });
   });
 
-  it("carries dispatch-gate provenance and the amended model onto the turn request", () => {
-    const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const { event, meta } = decodeThreadEventRow(
-      factory.clientTurnRequested({
-        amendedByPluginId: "my-router",
-        execution: {
-          model: "opus-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          permissionMode: "full",
-          source: "client/turn/requested",
-        },
-        initiator: "user",
-        target: { kind: "new-turn" },
-        text: "Ship it",
-      }),
-    );
-
-    const message =
-      parseUsersFromClientRequest({
-        decoded: event,
-        meta,
-        options: standardProjectionOptions,
-      })[0] ?? null;
-
-    expect(message?.turnRequest).toEqual({
-      isGrouped: false,
-      kind: "message",
-      status: "pending",
-      amendment: { pluginId: "my-router", model: "opus-5" },
-    });
-  });
-
-  it("leaves the turn request without provenance when no gate amended it", () => {
-    const { event, meta } = decodeThreadEventRow(userMessageRequest());
-
-    const message =
-      parseUsersFromClientRequest({
-        decoded: event,
-        meta,
-        options: standardProjectionOptions,
-      })[0] ?? null;
-
-    expect(message?.turnRequest.amendment).toBeUndefined();
-    expect(Object.hasOwn(message?.turnRequest ?? {}, "amendment")).toBe(false);
-  });
-
   it("renders grouped queued turn requests as separate user messages", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
     const row = factory.clientTurnRequested({

@@ -80,12 +80,6 @@ type SendThreadMessagePayload = SendMessageRequest & {
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   /**
-   * Gate provenance for a turn the dispatch checkpoint amended. Assembled by
-   * {@link attemptDispatch}, which is where the pass runs — this function only
-   * records it on the turn event.
-   */
-  amendment?: { pluginId: string; originalInput?: PromptInput[] };
-  /**
    * Present only when this send re-submits a failed turn. Marks the turn event
    * as attempt N of an earlier request, which is what makes the next failure's
    * attempt number correct without a separate tally.
@@ -140,8 +134,6 @@ interface SendThreadMessageQueueRequest {
 }
 
 interface AppendAndQueueSendThreadMessageArgs {
-  /** Gate provenance; absent when no gate amended this turn. */
-  amendment?: { pluginId: string; originalInput?: PromptInput[] };
   /** Retry provenance; absent for an original dispatch. */
   retryOf?: TurnRequestRetryMarker;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
@@ -343,7 +335,6 @@ function captureUserMessageSentTelemetry(
 }
 
 function appendAndQueueSendThreadMessageInTransaction({
-  amendment,
   retryOf,
   beforeAppendInTransaction,
   db,
@@ -369,7 +360,6 @@ function appendAndQueueSendThreadMessageInTransaction({
             threadId: thread.id,
             environmentId,
             type: "client/turn/requested",
-            ...(amendment !== undefined ? { amendment } : {}),
             ...(retryOf !== undefined ? { retryOf } : {}),
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -509,7 +499,6 @@ export async function sendThreadMessage(
   // in `attemptDispatch`, which is this function's only caller — so a steer, a
   // drained queue row and a fresh send are all decided by the same pass rather
   // than by whichever branch happened to reach this file.
-  const amendment = args.amendment;
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });
@@ -589,7 +578,6 @@ export async function sendThreadMessage(
         }
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-      ...(amendment !== undefined ? { amendment } : {}),
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
         beforeAppendInTransaction({ tx });
@@ -683,7 +671,6 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-    ...(amendment !== undefined ? { amendment } : {}),
     ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     beforeAppendInTransaction,
     db: deps.db,

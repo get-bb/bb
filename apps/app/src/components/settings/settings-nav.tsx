@@ -12,7 +12,6 @@ import {
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
   { icon: "Bot", id: "providers", label: "Providers" },
-  { icon: "SecurityCheck", id: "dispatch-gates", label: "Dispatch gates" },
   { icon: "Palette", id: "appearance", label: "Appearance" },
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
@@ -80,13 +79,6 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "files") {
       return (
         hasDaemon || accessState !== "unavailable" || fileOpeners.length > 0
-      );
-    }
-    // Ordering gate chains is meaningless with no chain to order, so the
-    // bucket appears only once a loaded plugin registers a gate.
-    if (section.id === "dispatch-gates") {
-      return installedPlugins.some(
-        (plugin) => plugin.enabled && plugin.dispatchGateStages.length > 0,
       );
     }
     return true;

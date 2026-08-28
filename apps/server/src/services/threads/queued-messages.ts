@@ -10,14 +10,11 @@ import {
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
-  type QueuedThreadMessageRow,
 } from "@bb/db";
 import {
-  pluginInputsSchema,
   queuedMessageSystemNoticeSchema,
 } from "@bb/domain";
 import type {
-  PluginInputs,
   PromptInput,
   QueuedMessageWaitingOn,
   Thread,
@@ -146,21 +143,6 @@ export interface CreateQueuedMessageForThreadArgs {
   thread: Thread;
 }
 
-/**
- * The plugin input a queued row carries, or null when its sender addressed
- * none. A row whose stored JSON does not parse is a hand-edited database; the
- * message itself is still deliverable, so the input is dropped with a loud
- * schema failure rather than the message.
- */
-export function parseQueuedMessagePluginInputs(
-  row: Pick<QueuedThreadMessageRow, "pluginInputs">,
-): PluginInputs | null {
-  if (row.pluginInputs === null) {
-    return null;
-  }
-  return pluginInputsSchema.parse(JSON.parse(row.pluginInputs));
-}
-
 export function queuedMessagePayloadFromSendRequest(
   payload: SendMessageRequest,
 ): CreateQueuedMessageRequest {
@@ -181,9 +163,6 @@ export function queuedMessagePayloadFromSendRequest(
       : {}),
     ...(payload.senderThreadId !== undefined
       ? { senderThreadId: payload.senderThreadId }
-      : {}),
-    ...(payload.pluginInputs !== undefined
-      ? { pluginInputs: payload.pluginInputs }
       : {}),
   };
 }
@@ -246,7 +225,6 @@ export async function createQueuedMessageForThread(
           reasoningLevel: execution.reasoningLevel,
           permissionMode: execution.permissionMode,
           serviceTier: execution.serviceTier,
-          pluginInputs: payload.pluginInputs ?? null,
           // An explicit "queue this" is a message waiting for the running turn
           // to end, which is exactly `thread-busy`. Naming it rather than
           // leaving the wait null keeps every row on one vocabulary, and the
@@ -309,7 +287,6 @@ function sendQueuedMessagePayload(
   queuedMessage: ThreadQueuedMessage,
   mode: SendQueuedMessageMode,
   senderThreadId: string | null,
-  pluginInputs: PluginInputs | null,
 ): SendMessageRequest {
   return {
     input: queuedMessage.content,
@@ -319,9 +296,6 @@ function sendQueuedMessagePayload(
     reasoningLevel: queuedMessage.reasoningLevel,
     serviceTier: queuedMessage.serviceTier,
     ...(senderThreadId !== null ? { senderThreadId } : {}),
-    // The row carries the plugin input its send was made with, so the gate
-    // that runs when it drains sees exactly what the composer addressed to it.
-    ...(pluginInputs !== null ? { pluginInputs } : {}),
   };
 }
 
@@ -494,7 +468,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     { ...queuedMessage, content: input },
     args.mode,
     senderThreadId,
-    parseQueuedMessagePluginInputs(args.queuedMessages[0]!),
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
@@ -689,7 +662,6 @@ async function sendClaimedQueuedMessageForThread(
         { ...queuedMessage, content: input },
         args.mode,
         lead.senderThreadId,
-        parseQueuedMessagePluginInputs(lead),
       ),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
     },

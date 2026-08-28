@@ -41,7 +41,6 @@ import { sdk } from "@/lib/sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
-import { setComposerPluginInput } from "@/lib/composer-plugin-inputs";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
@@ -816,16 +815,6 @@ export function useComposer(): PluginComposerApi {
   const focus = focusActiveComposer;
   const composerText = composerHostDraft?.text ?? routeDraft.text;
 
-  const experimental_setPluginInput = useCallback(
-    (input: JsonValue | null) => {
-      // Scoped like the visual-state writes: a slot that has been replaced
-      // must not keep steering the composer it no longer belongs to.
-      if (!scopeOwnership.isActive()) return;
-      setComposerPluginInput(textEffectKey, pluginId, input);
-    },
-    [pluginId, scopeOwnership, textEffectKey],
-  );
-
   const hostSubmit = composerHost?.submit;
   const experimental_submit = useCallback(
     async (options: ExperimentalComposerSubmitOptions) => {
@@ -864,7 +853,6 @@ export function useComposer(): PluginComposerApi {
       addQuote,
       insertMention,
       focus,
-      experimental_setPluginInput,
       experimental_submit,
     }),
     [
@@ -872,7 +860,6 @@ export function useComposer(): PluginComposerApi {
       clear,
       composerScope,
       composerText,
-      experimental_setPluginInput,
       experimental_submit,
       focus,
       insertMention,

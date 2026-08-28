@@ -4,7 +4,6 @@ import type {
   EventProjectionOperationMessage,
   EventProjectionQueueStateMetadata,
 } from "./event-projection-types.js";
-import { mergeTranscriptEntries } from "./provisioning-helpers.js";
 
 /**
  * The row's lifecycle status, derived from the queued row's own status. A
@@ -98,9 +97,9 @@ export function queueStateKey(message: EventProjectionOperationMessage): string 
 }
 
 /**
- * A parked row's events are deltas: the latest one carries the current wait and
- * status, and only the transcript entries it added. Once the row has settled
- * its status is final — a late report cannot re-park a dispatched message.
+ * A parked row's events are deltas: the latest one carries the current wait
+ * and status. Once the row has settled its status is final — a later event
+ * cannot re-park a dispatched message.
  */
 export function mergeQueueStateMetadata(
   existing: EventProjectionQueueStateMetadata | undefined,
@@ -115,10 +114,6 @@ export function mergeQueueStateMetadata(
 
   const settled =
     existing.queueStatus === "dispatched" || existing.queueStatus === "cancelled";
-  const transcript = mergeTranscriptEntries(
-    existing.transcript,
-    incoming.transcript,
-  );
   // The preview follows the wait: while the row is parked it tracks the message
   // (which the sender can still edit), and once it settles the row keeps what it
   // dispatched. Falling back to `existing` also means a settling event that
@@ -132,6 +127,5 @@ export function mergeQueueStateMetadata(
     waitingOn: settled ? existing.waitingOn : incoming.waitingOn,
     sendAt: settled ? existing.sendAt : incoming.sendAt,
     ...(inputPreview ? { inputPreview } : {}),
-    ...(transcript ? { transcript } : {}),
   };
 }

@@ -1,8 +1,4 @@
-import {
-  dispatchGateStageSchema,
-  jsonValueSchema,
-  type JsonValue,
-} from "@bb/domain";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   installedPluginSchema,
   pluginCatalogInstallPlanResponseSchema,
@@ -48,16 +44,14 @@ import { z } from "zod";
 import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
- * A server older than `providerIds` (bb-app < 0.39), `icons`, or
- * `dispatchGateStages` answers with the installed-plugin shape minus those
- * fields. The contract keeps them required — the server fills them once at its
- * boundary — so the tolerance lives here, on the response side only: the SDK
- * never sends this shape, and a default on the contract would leak into
- * request bodies.
+ * A server older than `providerIds` (bb-app < 0.39) or `icons` answers with
+ * the installed-plugin shape minus those fields. The contract keeps them
+ * required — the server fills them once at its boundary — so the tolerance
+ * lives here, on the response side only: the SDK never sends this shape, and a
+ * default on the contract would leak into request bodies.
  */
 const installedPluginResponseSchema = installedPluginSchema.extend({
   providerIds: z.array(z.string()).default([]),
-  dispatchGateStages: z.array(dispatchGateStageSchema).default([]),
   icons: z.record(z.string(), z.string()).default({}),
 });
 const pluginListResponseSchema = z.object({

@@ -25,7 +25,6 @@ import {
 import type {
   EnvironmentStatus,
   PermissionMode,
-  PluginInputs,
   PromptInput,
   QueuedMessageWaitingOn,
   RecordedPermissionMode,
@@ -246,8 +245,7 @@ export function seedQueuedMessage(
     model?: string;
     reasoningLevel?: string;
     permissionMode?: PermissionMode;
-    pluginInputs?: PluginInputs | null;
-    senderThreadId?: string | null;
+      senderThreadId?: string | null;
     serviceTier?: string;
     /** Defaults to an unparked row: an ordinary queued message. */
     waitingOn?: QueuedMessageWaitingOn | null;
@@ -260,7 +258,6 @@ export function seedQueuedMessage(
     model: args.model ?? "gpt-5",
     reasoningLevel: args.reasoningLevel ?? "medium",
     permissionMode: args.permissionMode ?? "full",
-    pluginInputs: args.pluginInputs ?? null,
     senderThreadId: args.senderThreadId ?? null,
     serviceTier: args.serviceTier ?? "default",
     waitingOn: args.waitingOn ?? null,

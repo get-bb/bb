@@ -411,7 +411,6 @@ export async function queueParentSystemMessage(
       reasoningLevel: execution.reasoningLevel,
       permissionMode: execution.permissionMode,
       serviceTier: execution.serviceTier,
-      pluginInputs: null,
       waitingOn: { kind: "interaction" },
       sendAt: null,
       payload: { kind: "inline" },

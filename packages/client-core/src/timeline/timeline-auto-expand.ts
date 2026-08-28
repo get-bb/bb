@@ -64,15 +64,10 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
       return false;
     case "system":
       if (row.systemKind === "operation" && row.operationKind === "queue-state") {
-        // A parked row's reason rides its title line, so the body holds only
-        // the two things that need room: the parked message and the waiting
-        // plugin's report. `detail` carries the report alone, which is why it
-        // cannot be the whole test — a scheduled send has never reported
-        // anything and still has a message worth showing.
-        return (
-          row.inputPreview !== null ||
-          (row.detail !== null && row.detail.trim().length > 0)
-        );
+        // A parked row's reason rides its title line, so the only thing the
+        // body has to show is the parked message itself. A `retry` row has
+        // none — its turn is already rendered above — and stays closed.
+        return row.inputPreview !== null;
       }
       return row.detail !== null && row.detail.trim().length > 0;
     case "bundle-summary":

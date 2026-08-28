@@ -1148,18 +1148,16 @@ function TimelineSystemDetailBlock({
  * above) omits it, as do rows recorded before holds carried a preview.
  */
 /**
- * The body of a parked queue row: the message that is waiting, then whatever
- * the plugin holding it has reported.
+ * The body of a parked queue row: when it is due, and the message that is
+ * waiting.
  *
  * The reason is not repeated here — it rides the row's own title line, so a
  * collapsed row already answers "waiting for what?" and opening it adds the
  * thing that actually needed the space. The scheduled instant is the one part
  * the title cannot carry (it is locale-formatted), so it leads the body when
  * the row has one. The message keeps the left-rule quote treatment quoted
- * message text gets everywhere else in the app, which is also what keeps it
- * from reading as a second copy of the boxed monospace report directly beneath
- * it — they are different kinds of text. A row with no message of its own (a
- * retry re-submitting a turn already rendered above) omits it.
+ * message text gets everywhere else in the app. A row with no message of its
+ * own (a retry re-submitting a turn already rendered above) omits it.
  */
 function TimelineQueueStateBody({
   row,
@@ -1169,7 +1167,7 @@ function TimelineQueueStateBody({
     { kind: "system"; systemKind: "operation"; operationKind: "queue-state" }
   >;
 }) {
-  if (row.sendAt === null && row.inputPreview === null && !row.detail) {
+  if (row.sendAt === null && row.inputPreview === null) {
     return null;
   }
   return (
@@ -1182,12 +1180,6 @@ function TimelineQueueStateBody({
           {row.inputPreview}
         </blockquote>
       )}
-      {row.detail ? (
-        <TimelineSystemDetailBlock
-          detail={row.detail}
-          streaming={row.status === "pending"}
-        />
-      ) : null}
     </div>
   );
 }

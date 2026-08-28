@@ -35,10 +35,6 @@ import {
   setTurnFailedGateNotifier,
 } from "./services/threads/turn-failed.js";
 import {
-  clearQueueWaitForPlugin,
-  reportQueueWaitForPlugin,
-} from "./services/threads/queue-wait-owner.js";
-import {
   clearQueueWaitsForUnregisteredPlugin,
   requestFreedCapacityQueueDrain,
   requestThreadQueueDrainForSettledInteraction,
@@ -588,21 +584,6 @@ export function createApp(
           );
         },
       );
-    },
-    // `bb.experimental_dispatch.clearWait` / `.report`, scoped to the calling
-    // plugin. Ownership is checked there rather than in the plugin API so one
-    // rule covers the SDK, the routes and the CLI.
-    queueWaits: {
-      clear: ({ pluginId, queuedMessageId, amend }) =>
-        clearQueueWaitForPlugin(deps, { pluginId, queuedMessageId, amend }),
-      report: ({ pluginId, queuedMessageId, update }) =>
-        Promise.resolve(
-          reportQueueWaitForPlugin(deps, {
-            pluginId,
-            queuedMessageId,
-            update,
-          }),
-        ),
     },
     // `bb.experimental_threads.appendNote`. The plugin id comes from the
     // runtime's bound identity, so attribution on the timeline row cannot be

@@ -1296,30 +1296,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
-      clearQueueWait: ({ queuedMessageId, amend }) => {
-        if (!deps.queueWaits) {
-          return Promise.reject(
-            new Error("the dispatch queue is unavailable in this host"),
-          );
-        }
-        return deps.queueWaits.clear({
-          pluginId: row.id,
-          queuedMessageId,
-          amend,
-        });
-      },
-      reportQueueWait: ({ queuedMessageId, update }) => {
-        if (!deps.queueWaits) {
-          return Promise.reject(
-            new Error("the dispatch queue is unavailable in this host"),
-          );
-        }
-        return deps.queueWaits.report({
-          pluginId: row.id,
-          queuedMessageId,
-          update,
-        });
-      },
       appendThreadNote: ({ threadId, note }) => {
         if (!deps.appendThreadNote) {
           throw new Error("thread notes are unavailable in this host");

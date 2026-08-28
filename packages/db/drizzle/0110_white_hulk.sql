@@ -1,6 +1,5 @@
 DROP TABLE `deferred_thread_messages`;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `system_notice` text;--> statement-breakpoint
-ALTER TABLE `queued_thread_messages` ADD `plugin_inputs` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `send_at` integer;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `waiting_on` text;--> statement-breakpoint
 ALTER TABLE `queued_thread_messages` ADD `wait_holder` text;--> statement-breakpoint

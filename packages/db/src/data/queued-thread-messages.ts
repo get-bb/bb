@@ -18,7 +18,6 @@ import {
 import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
 import type {
   PermissionMode,
-  PluginInputs,
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
@@ -47,12 +46,6 @@ export interface CreateQueuedThreadMessageInput {
   reasoningLevel: string;
   permissionMode: PermissionMode;
   serviceTier: string;
-  /**
-   * The send's `pluginInputs`. Null when the sender addressed no plugin —
-   * which is not the same as an empty map, so the column is nullable rather
-   * than defaulting to `{}`.
-   */
-  pluginInputs: PluginInputs | null;
   /**
    * Why the row is parked, written in the SAME insert rather than by a
    * follow-up update: a row that existed unparked for even one statement
@@ -519,8 +512,6 @@ export function createQueuedThreadMessageInTransaction(
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
       serviceTier: input.serviceTier,
-      pluginInputs:
-        input.pluginInputs === null ? null : JSON.stringify(input.pluginInputs),
       waitingOn:
         input.waitingOn === null ? null : JSON.stringify(input.waitingOn),
       waitHolder:
@@ -595,63 +586,6 @@ export function updateQueuedThreadMessage(
     notifier.notifyThread(input.threadId, ["queue-changed"]);
   }
   return result;
-}
-
-export interface UpdateQueuedThreadMessageExecutionArgs {
-  id: string;
-  threadId: string;
-  content?: PromptInput[];
-  model?: string;
-  reasoningLevel?: string;
-  permissionMode?: PermissionMode;
-  serviceTier?: string;
-}
-
-/**
- * Rewrites a live row's frozen message and execution tuple.
- *
- * Every field is a genuine partial update: this backs a plugin amending the
- * dispatch it parked, and such an amendment is a correction to specific
- * fields, never a full tuple. Live-only, so an amendment can never overwrite a
- * row the drain has already claimed and is about to send.
- */
-export function updateQueuedThreadMessageExecution(
-  db: DbConnection,
-  notifier: DbNotifier,
-  args: UpdateQueuedThreadMessageExecutionArgs,
-): QueuedThreadMessageRow | null {
-  const updated =
-    db
-      .update(queuedThreadMessages)
-      .set({
-        ...(args.content !== undefined
-          ? { content: JSON.stringify(args.content) }
-          : {}),
-        ...(args.model !== undefined ? { model: args.model } : {}),
-        ...(args.reasoningLevel !== undefined
-          ? { reasoningLevel: args.reasoningLevel }
-          : {}),
-        ...(args.permissionMode !== undefined
-          ? { permissionMode: args.permissionMode }
-          : {}),
-        ...(args.serviceTier !== undefined
-          ? { serviceTier: args.serviceTier }
-          : {}),
-        updatedAt: Date.now(),
-      })
-      .where(
-        and(
-          eq(queuedThreadMessages.id, args.id),
-          eq(queuedThreadMessages.threadId, args.threadId),
-          liveQueuedThreadMessage(),
-        ),
-      )
-      .returning()
-      .get() ?? null;
-  if (updated) {
-    notifier.notifyThread(args.threadId, ["queue-changed"]);
-  }
-  return updated;
 }
 
 export function getQueuedThreadMessage(db: DbConnection, id: string) {

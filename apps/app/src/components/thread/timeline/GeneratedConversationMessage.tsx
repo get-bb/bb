@@ -32,7 +32,6 @@ import type {
   ThreadTimelineLocalFileLinkHandler,
 } from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
-import { TurnRequestAmendmentLabel } from "./TurnRequestAmendmentLabel.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
@@ -621,12 +620,9 @@ export const GeneratedConversationMessage = memo(
               onOpenLocalFileLink={onOpenLocalFileLink}
               projectId={projectId}
             />
-            {requestLabel || turnRequest.amendment !== undefined ? (
+            {requestLabel ? (
               <div className="mt-1 flex items-center justify-start gap-2">
                 <TurnRequestLabel turnRequest={turnRequest} />
-                {turnRequest.amendment === undefined ? null : (
-                  <TurnRequestAmendmentLabel amendment={turnRequest.amendment} />
-                )}
               </div>
             ) : null}
           </div>

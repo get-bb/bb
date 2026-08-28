@@ -267,7 +267,6 @@ async function runTurnFailedGatesForThread(
         visibility: "agent-only" as const,
       })),
       execution: await buildExecutionOptions(deps, {}, { threadId }),
-      pluginInputs: {},
       senderThreadId: null,
       payload: {
         kind: "retry",

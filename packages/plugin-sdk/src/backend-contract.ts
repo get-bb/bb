@@ -11,7 +11,6 @@ import type {
   ProviderNativeRootInput,
   ProviderNativeRootsInputLike,
   ProviderRateLimitState,
-  QueuedMessageReportUpdate,
   ReasoningLevel,
   ServiceTier,
   ThreadQueuedMessage,
@@ -19,7 +18,6 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type {
-  CreateThreadEnvironmentArgs,
   ExecutionInputFieldSource,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
@@ -226,69 +224,29 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
 // ---------------------------------------------------------------------------
 
 /**
- * What a gate may amend, as one shape.
- *
- * Amendments are applied on top of what core already resolved, so omitting a
- * field leaves core's answer alone — an amendment is a correction, not a full
- * tuple. `permissionMode` is still clamped to the host's ceiling: a gate can
- * lower permission but never raise it past what the machine allows. `input`
- * REPLACES the prompt blocks, and the pre-amendment blocks are recorded on the
- * turn event, so a plugin that silently rewrites a user's message stays
- * debuggable.
- *
- * **Which fields are legal depends on the attempt, and is checked at runtime
- * rather than in the type.** There is one gate stage now, so there is no
- * per-stage type to split them across, and an attempt's kind is a property of
- * the moment rather than of the registration:
- *
- * - `input` is always legal, including on a `join-turn` steer. That is what
- *   lets a content-policy or DLP plugin cover steers as well as sends.
- * - `model`, `reasoningLevel`, `serviceTier` and `permissionMode` require
- *   `attempt === "start-turn"`. A `join-turn` attempt is joining a turn that
- *   is already executing, so there is no execution left to choose.
- * - `environment` additionally requires `firstDispatch`. A thread's workspace
- *   is chosen when it is provisioned; before the first cleared attempt that
- *   has not happened yet, which is exactly the window it is open in.
- *
- * An amendment outside its window FAILS THE ATTEMPT with this plugin named,
- * the same fail-closed rule as a throw. Silently dropping it would run the
- * turn with settings nobody chose.
- */
-export interface PluginDispatchAmendments {
-  environment?: CreateThreadEnvironmentArgs;
-  model?: string;
-  reasoningLevel?: ReasoningLevel;
-  serviceTier?: ServiceTier;
-  permissionMode?: PermissionMode;
-  input?: PromptInput[];
-}
-
-/**
  * A gate's answer.
  *
- * `proceed` lets the attempt continue, optionally amended. `wait` PARKS the
- * message as a queued row whose `waitingOn` names this plugin and carries
- * `reason` verbatim; the row stays parked until this plugin calls
- * `clearWait`, the user sends it now, or the orphan sweep clears it because
- * this plugin is no longer running. `retryAt` (epoch ms) additionally sets the
- * row's `sendAt`, so core's due sweep re-attempts at that instant without the
- * plugin holding a timer of its own — which is what a rate-limit window wants.
- * `reject` refuses the attempt outright: `message` is shown to the user
- * verbatim.
+ * `proceed` lets the attempt continue. `wait` PARKS the message as a queued
+ * row whose `waitingOn` names this plugin and carries `reason` verbatim; the
+ * row stays parked until `retryAt` comes due, capacity frees, the user sends
+ * it now, or the orphan sweep clears it because this plugin is no longer
+ * running. `retryAt` (epoch ms) sets the row's `sendAt`, so core's due sweep
+ * re-attempts at that instant without the plugin holding a timer of its own —
+ * which is what a rate-limit window wants. `reject` refuses the attempt
+ * outright: `message` is shown to the user verbatim.
  *
- * There is deliberately no "handled it myself" verdict — a gate is a decision,
- * never an owner of the work.
+ * There is deliberately no "handled it myself" verdict and no amendment arm —
+ * a gate is a decision, never an owner or an author of the work.
  */
 export type PluginDispatchDecision =
-  | { action: "proceed"; amend?: PluginDispatchAmendments }
+  | { action: "proceed" }
   | { action: "wait"; reason: string; retryAt?: number | null }
   | { action: "reject"; message: string };
 
 /**
- * The execution tuple as core resolved it before this gate ran, including any
- * amendment an earlier gate in the same pass already made. `model` and the
- * three option fields are null at `thread.create` only when no default has
- * been resolved for them yet; `providerId` is always resolved.
+ * The execution tuple as core resolved it before this gate ran. `model` and
+ * the three option fields are null only when no default has been resolved for
+ * them yet; `providerId` is always resolved.
  */
 export interface PluginDispatchExecution {
   providerId: string;
@@ -300,10 +258,9 @@ export interface PluginDispatchExecution {
 
 /**
  * Where each execution value came from. `explicit` is a user choice,
- * `client-preference` a remembered client default, `plugin` an amendment an
- * earlier gate in this pass made, and null means core resolved it from
- * project/provider defaults. A router that must not override a deliberate
- * choice checks for `explicit` here.
+ * `client-preference` a remembered client default, and null means core
+ * resolved it from project/provider defaults. A gate that must not act against
+ * a deliberate choice checks for `explicit` here.
  */
 export interface PluginDispatchExecutionSources {
   providerId: ExecutionInputFieldSource | null;
@@ -314,9 +271,9 @@ export interface PluginDispatchExecutionSources {
 }
 
 /**
- * The prompt this dispatch carries. `blocks` is the real thing an amendment
- * replaces; `text` is the concatenated text of its text blocks, which is what
- * a rules-based router actually wants to match on.
+ * The prompt this dispatch carries. `blocks` is the message itself; `text` is
+ * the concatenated text of its text blocks, which is what a rules-based gate
+ * actually wants to match on.
  */
 export interface PluginDispatchInput {
   blocks: readonly PromptInput[];
@@ -348,8 +305,8 @@ export interface PluginDispatchGateContextCommon {
  * is already executing.
  *
  * Verdict powers are identical for both — a steer is gated exactly like a
- * send, uniformly — and only the amendment surface narrows. See
- * {@link PluginDispatchAmendments}.
+ * send, uniformly. A gate that limits concurrency proceeds on `join-turn`: the
+ * thread already holds its slot, so joining it asks for nothing new.
  */
 export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
 
@@ -374,25 +331,11 @@ export interface PluginDispatchAttemptContext
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
   /**
-   * True when no message on this thread has ever cleared an attempt — the
-   * thread is still `pending`, has no provider session and no workspace. It is
-   * the only window in which `environment` may be amended.
-   *
-   * Not the same as "the thread was created a moment ago": a first message
-   * that parks for a week is still `firstDispatch` when it finally clears.
-   */
-  firstDispatch: boolean;
-  /**
    * Where each execution value came from. Attempt-only: at `turn.failed` the
    * tuple is a historical fact about a turn that already ran, and "who asked
    * for this model" is no longer a question the gate can act on.
    */
   executionSources: PluginDispatchExecutionSources;
-  /**
-   * This plugin's entry from the request's `pluginInputs`, or null when the
-   * caller addressed no input to it. Never another plugin's entry.
-   */
-  pluginInput: JsonValue | null;
   /**
    * The parked row this attempt is re-trying, or null when the attempt is
    * inline and no row has ever existed for it.
@@ -401,8 +344,7 @@ export interface PluginDispatchAttemptContext
    * already decided about — the replacement for the old
    * `isReleaseReevaluation`/`hold` pair. A gate that counts in-flight work
    * should treat the two identically; a gate that logs should not
-   * double-count; a gate that is answering its own `clearWait` reads the id
-   * here to find the answer it stored.
+   * double-count.
    */
   queuedMessage: ThreadQueuedMessage | null;
 }
@@ -513,21 +455,18 @@ export interface PluginDispatch {
    * a bare `gate(handler)` for the other would read as if it were the only
    * gate there is.
    *
-   * Gates for a stage run as a deterministic chain in plugin install order
-   * (reorderable per stage in Settings → Plugins), amendments accumulate left
-   * to right so each gate sees its predecessors' effects, a `reject`
-   * short-circuits the pass, and `wait` verdicts are COLLECTED across the
-   * whole pass so provider and model are final before anything is parked. The
-   * attempt proceeds only when a pass yields no waits. When several gates
-   * wait, the FIRST owns the row's `waitingOn` and the rest have their reasons
-   * appended to it, so one decision produces one card rather than one per
-   * gate; each of them votes again on the next attempt, so nothing is lost by
-   * not owning the row.
+   * Gates for a stage run as a deterministic chain in plugin install order, a
+   * `reject` short-circuits the pass, and `wait` verdicts are COLLECTED across
+   * the whole pass rather than short-circuiting. The attempt proceeds only
+   * when a pass yields no waits. When several gates wait, the FIRST owns the
+   * row's `waitingOn` and the rest have their reasons appended to it, so one
+   * decision produces one card rather than one per gate; each of them votes
+   * again on the next attempt, so nothing is lost by not owning the row.
    *
    * Fail-closed at `"dispatch"`: a handler that throws or exceeds the 10
    * second decision box FAILS THE ATTEMPT with this plugin named. Decide in
-   * milliseconds — if the answer needs real work, return `wait` and finish it
-   * in a background service, then `clearWait`.
+   * milliseconds — if the answer needs real work, return `wait` with a
+   * `retryAt` and answer again on the re-attempt.
    *
    * At `turn.failed` fail-closed means the opposite of blocking: the turn has
    * already failed, so the safe state is the failure standing as core applied
@@ -550,48 +489,6 @@ export interface PluginDispatch {
     stage: S,
     handler: PluginDispatchGateHandler<S>,
   ): void;
-  /**
-   * Clear the wait this plugin is holding on a parked queued row, so the drain
-   * re-attempts its dispatch.
-   *
-   * This is the replacement for releasing a hold, and the difference matters:
-   * clearing a wait does not promise the message will run. The full gate pass
-   * re-runs — including this plugin's own gate — so a limiter that clears
-   * while still at capacity simply re-parks, and a core wait the row also has
-   * (the thread went busy in the meantime) parks it again on that instead.
-   * That is what makes a stale `clearWait` safe rather than a way to jump the
-   * queue.
-   *
-   * A row waiting on a different plugin, or on a core wait, is refused: a
-   * parked row is somebody's pending message, and clearing another plugin's
-   * wait is indistinguishable from sending it.
-   *
-   * `amend` applies to the row before the re-attempt: `input` and the
-   * execution fields are written to the row, subject to the same windows a
-   * gate amendment is (see {@link PluginDispatchAmendments}). An out-of-window
-   * amendment is refused BEFORE the wait is cleared, so the row stays parked
-   * and clearing again unamended is always available.
-   *
-   * Resolves after the re-attempt has been driven, which is when a failure
-   * surfaces.
-   */
-  clearWait(
-    queuedMessageId: string,
-    options?: { amend?: PluginDispatchAmendments },
-  ): Promise<void>;
-  /**
-   * Report progress on a row this plugin is holding the wait on: a rewritten
-   * reason, a transcript step, a tail of output. Every field is "leave as is"
-   * when omitted. Steps and output land on the row's `system/queue-state`
-   * timeline entry, which collapses them into one row rather than a stream.
-   *
-   * Returns false when the row is gone or has already dispatched — a late
-   * report from a torn-down owner never resurrects one.
-   */
-  report(
-    queuedMessageId: string,
-    update: QueuedMessageReportUpdate,
-  ): Promise<boolean>;
 }
 
 /**
@@ -620,9 +517,8 @@ export interface PluginThreads {
    *
    * This is the plugin timeline-contribution surface for things that are not
    * a parked row: "retry scheduled for 6:30", "routed to opus", "rate-limit
-   * window exhausted". Progress ON a parked row belongs on that row
-   * (`experimental_dispatch.report`), which keeps it in one collapsing row
-   * instead of a stream of notes.
+   * window exhausted". Why a parked row is waiting belongs on that row
+   * instead, as the gate's own `wait` reason.
    *
    * Rate limited to 6 notes per thread per minute per plugin; exceeding it
    * rejects with an error naming the limit. Appending to a thread that does not

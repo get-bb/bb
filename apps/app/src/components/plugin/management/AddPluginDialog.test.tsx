@@ -80,7 +80,6 @@ const INSTALLED_PLUGIN_RESPONSE = {
     logoUrl: null,
     logoDarkUrl: null,
     providerIds: [],
-    dispatchGateStages: [],
     icons: {},
   },
 };

@@ -1,30 +1,19 @@
-import { getAppSettings, getEnvironment } from "@bb/db";
+import { getEnvironment } from "@bb/db";
 import {
-  permissionModeSchema,
-  promptInputSchema,
   QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
-  reasoningLevelSchema,
-  serviceTierSchema,
   type DispatchGateStage,
   type Environment,
   type Host,
-  type JsonValue,
-  type PermissionMode,
-  type PluginInputs,
   type Project,
   type PromptInput,
-  type ReasoningLevel,
-  type ServiceTier,
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import {
-  createThreadEnvironmentArgsSchema,
-  type CreateThreadEnvironmentArgs,
-  type ExecutionInputFieldSource,
-  type StartedOnBehalfOf,
-  type ThreadCreateOrigin,
-  type ThreadResponse,
+import type {
+  ExecutionInputFieldSource,
+  StartedOnBehalfOf,
+  ThreadCreateOrigin,
+  ThreadResponse,
 } from "@bb/server-contract";
 import type {
   PluginDispatchAttemptContext,
@@ -37,32 +26,20 @@ import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { getNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
-import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import {
   dispatchGateProvider,
   type DispatchGateProvider,
   type DispatchGateRegistration,
 } from "../plugins/dispatch-gate-registry.js";
 
-type DispatchGateDeps = Pick<AppDeps, "db" | "hub" | "providerRegistry">;
+type DispatchGateDeps = Pick<AppDeps, "db" | "hub">;
 
 /**
  * Whether an attempt starts a turn or joins one that is already running. The
  * verdict powers are identical either way — a steer is gated exactly like a
- * send — and only the amendment surface narrows.
+ * send.
  */
 export type DispatchAttemptKind = PluginDispatchAttemptKind;
-
-/** Fields a gate may amend. Ordered as they are validated and reported. */
-const DISPATCH_AMENDMENT_FIELDS = [
-  "model",
-  "reasoningLevel",
-  "serviceTier",
-  "permissionMode",
-  "environment",
-  "input",
-] as const;
-export type DispatchAmendmentField = (typeof DISPATCH_AMENDMENT_FIELDS)[number];
 
 /**
  * A gate's answer, re-parsed at the boundary. Plugin sources are untyped at
@@ -70,25 +47,8 @@ export type DispatchAmendmentField = (typeof DISPATCH_AMENDMENT_FIELDS)[number];
  * everything a gate returns is validated here and a malformed verdict fails
  * the attempt with the plugin named, exactly like a throw.
  */
-const dispatchGateAmendmentsSchema = z
-  .object({
-    environment: createThreadEnvironmentArgsSchema.optional(),
-    model: z.string().min(1).optional(),
-    reasoningLevel: reasoningLevelSchema.optional(),
-    serviceTier: serviceTierSchema.optional(),
-    permissionMode: permissionModeSchema.optional(),
-    input: z.array(promptInputSchema).min(1).optional(),
-  })
-  .strict();
-export type DispatchGateAmendments = z.infer<
-  typeof dispatchGateAmendmentsSchema
->;
-
 const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("proceed"),
-    amend: dispatchGateAmendmentsSchema.optional(),
-  }),
+  z.object({ action: z.literal("proceed") }),
   z.object({
     action: z.literal("wait"),
     reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
@@ -96,37 +56,6 @@ const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("reject"), message: z.string().min(1) }),
 ]);
-
-/** What the pass resolved, field by field, and who resolved it. */
-export interface DispatchAmendmentResult {
-  model: string | null;
-  reasoningLevel: ReasoningLevel | null;
-  serviceTier: ServiceTier | null;
-  permissionMode: PermissionMode | null;
-  environment: CreateThreadEnvironmentArgs | null;
-  input: PromptInput[] | null;
-  /**
-   * The input as the caller wrote it, kept only when a gate replaced it. This
-   * is the audit trail the plan requires for a silently rewriting plugin.
-   */
-  originalInput: PromptInput[] | null;
-  /** Last plugin to amend each changed field; empty when nothing was amended. */
-  amendedBy: Partial<Record<DispatchAmendmentField, string>>;
-}
-
-export function hasDispatchAmendments(
-  amendments: DispatchAmendmentResult,
-): boolean {
-  return Object.keys(amendments.amendedBy).length > 0;
-}
-
-/** The single plugin credited on a turn event; the last one to amend anything. */
-export function amendingPluginId(
-  amendments: DispatchAmendmentResult,
-): string | null {
-  const ids = Object.values(amendments.amendedBy);
-  return ids.length === 0 ? null : (ids[ids.length - 1] ?? null);
-}
 
 export interface DispatchGateWaitVerdict {
   pluginId: string;
@@ -136,7 +65,7 @@ export interface DispatchGateWaitVerdict {
 }
 
 export type DispatchGatePassOutcome =
-  | { kind: "proceed"; amendments: DispatchAmendmentResult }
+  | { kind: "proceed" }
   | {
       kind: "wait";
       /**
@@ -149,7 +78,6 @@ export type DispatchGatePassOutcome =
        */
       waiter: DispatchGateWaitVerdict;
       additionalWaiters: readonly DispatchGateWaitVerdict[];
-      amendments: DispatchAmendmentResult;
     };
 
 export interface DispatchGatePassRequest {
@@ -163,23 +91,10 @@ export interface DispatchGatePassRequest {
   requestedExecution: PluginDispatchExecution;
   executionSources: PluginDispatchExecutionSources;
   attempt: DispatchAttemptKind;
-  /** True while no message on this thread has ever cleared an attempt. */
-  firstDispatch: boolean;
-  /**
-   * Whether an `environment` amendment can still be honoured on THIS attempt.
-   *
-   * Narrower than `firstDispatch`, and deliberately not exposed to plugins:
-   * re-resolving an environment intent means re-running most of thread
-   * creation, which only the attempt that is creating the thread has on its
-   * stack. A drain re-attempt of a still-`pending` thread is `firstDispatch`
-   * and yet cannot honour one, so the two flags are genuinely different facts.
-   */
-  environmentAmendable: boolean;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
-  pluginInputs: PluginInputs;
   /** The parked row being re-attempted; null for an inline first attempt. */
   queuedMessage: ThreadQueuedMessage | null;
   /**
@@ -198,7 +113,7 @@ export interface DispatchGatePassRequest {
    * the send transaction, which needs a prepared host command and therefore
    * cannot run under this lock. See the exactness note on `listRunning`.
    */
-  commitAdmission?: (amendments: DispatchAmendmentResult) => Promise<void>;
+  commitAdmission?: () => Promise<void>;
 }
 
 /**
@@ -351,28 +266,16 @@ async function decideWithinBox<T>(
 }
 
 /**
- * The gate chain for a stage: the plugin ids the user pinned in
- * `dispatchGateOrder` first, in that order, then everything else in plugin
- * install order. Mirrors `providerOrder`, including ignoring an id that names
- * no registered gate.
+ * The gate chain for a stage: plugin install order, which is deterministic and
+ * is the only order there is. Nothing reorders it — a chain of pure decisions
+ * composes the same way whichever order it runs in, because a `reject` from
+ * any gate refuses and a `wait` from any gate parks.
  */
 function orderedGates(
-  deps: Pick<AppDeps, "db">,
   provider: DispatchGateProvider,
   stage: DispatchGateStage,
 ): DispatchGateRegistration<DispatchGateStage>[] {
-  const gates = provider.listGates(stage);
-  if (gates.length === 0) return [];
-  const preferred = getAppSettings(deps.db).dispatchGateOrder[stage] ?? [];
-  if (preferred.length === 0) return gates;
-  const rank = new Map(preferred.map((id, index) => [id, index]));
-  // A stable sort keyed on pinned rank: unpinned ids all share the sentinel
-  // rank, so they keep their relative install order behind the pinned ones.
-  return [...gates].sort((a, b) => {
-    const rankA = rank.get(a.pluginId) ?? Number.MAX_SAFE_INTEGER;
-    const rankB = rank.get(b.pluginId) ?? Number.MAX_SAFE_INTEGER;
-    return rankA - rankB;
-  });
+  return provider.listGates(stage);
 }
 
 /**
@@ -403,175 +306,50 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
     .join("\n");
 }
 
-function emptyAmendments(): DispatchAmendmentResult {
-  return {
-    model: null,
-    reasoningLevel: null,
-    serviceTier: null,
-    permissionMode: null,
-    environment: null,
-    input: null,
-    originalInput: null,
-    amendedBy: {},
-  };
-}
-
-interface ApplyAmendmentArgs {
-  amend: DispatchGateAmendments;
-  amendments: DispatchAmendmentResult;
-  execution: PluginDispatchExecution;
-  input: PromptInput[];
-  pluginId: string;
-  request: DispatchGatePassRequest;
-  sources: PluginDispatchExecutionSources;
-}
-
 /**
- * Applies one gate's amendments to the running state so the next gate in the
- * chain sees them, validating each one against the same rules a request would
- * face. An invalid amendment fails the attempt (fail-closed) with the plugin
- * named — an amendment that cannot be honored is a bug in the plugin, and
- * silently ignoring it would run the turn with settings nobody chose.
+ * The context every gate in a pass sees.
  *
- * The windows come from the attempt itself rather than from a per-stage type,
- * because that is where they actually live: the same plugin, with the same
- * registration, may legitimately amend a provider on one attempt and not on
- * the next one for the same thread.
+ * Built once and shared: with no amendments, nothing a gate returns can change
+ * what the next one is deciding about, so the pass is a chain of independent
+ * verdicts on one unchanging fact.
  */
-export function applyGateAmendment(
-  deps: DispatchGateDeps,
-  args: ApplyAmendmentArgs,
-) {
-  const { amend, pluginId, request } = args;
-  const fail = (detail: string): never => {
-    throw dispatchGateFailure(pluginId, "dispatch", detail);
-  };
-  const requireStartTurn = (field: string): void => {
-    if (request.attempt === "join-turn") {
-      fail(
-        `amended ${field} on a join-turn attempt; the turn is already running, so its execution is settled — only \`input\` may be amended when joining`,
-      );
-    }
-  };
-
-  if (amend.environment !== undefined) {
-    requireStartTurn("environment");
-    if (!request.firstDispatch) {
-      fail(
-        "amended environment on a thread that has already dispatched; a thread's workspace is chosen when it is provisioned",
-      );
-    }
-    if (!request.environmentAmendable) {
-      fail(
-        "amended environment on a re-attempt; a thread's workspace can only be chosen on the attempt that creates it, so amend it on the first pass or not at all",
-      );
-    }
-    args.amendments.environment = amend.environment;
-    args.amendments.amendedBy.environment = pluginId;
-  }
-
-  if (amend.model !== undefined) {
-    requireStartTurn("model");
-    args.execution.model = amend.model;
-    args.amendments.model = amend.model;
-    args.amendments.amendedBy.model = pluginId;
-    args.sources.model = "plugin";
-  }
-
-  if (amend.reasoningLevel !== undefined) {
-    requireStartTurn("reasoningLevel");
-    args.execution.reasoningLevel = amend.reasoningLevel;
-    args.amendments.reasoningLevel = amend.reasoningLevel;
-    args.amendments.amendedBy.reasoningLevel = pluginId;
-    args.sources.reasoningLevel = "plugin";
-  }
-
-  if (amend.serviceTier !== undefined) {
-    requireStartTurn("serviceTier");
-    args.execution.serviceTier = amend.serviceTier;
-    args.amendments.serviceTier = amend.serviceTier;
-    args.amendments.amendedBy.serviceTier = pluginId;
-    args.sources.serviceTier = "plugin";
-  }
-
-  if (amend.permissionMode !== undefined) {
-    requireStartTurn("permissionMode");
-    const hostId =
-      dispatchGateEnvironmentAndHost(deps, request.environmentId).host?.id ??
-      null;
-    // Never fails the attempt for asking too much: the machine's ceiling wins
-    // and the gate gets the highest mode the host and provider both allow.
-    const clamped = clampPermissionModeToHost(deps, {
-      hostId,
-      permissionMode: amend.permissionMode,
-      providerId: args.execution.providerId,
-    });
-    args.execution.permissionMode = clamped;
-    args.amendments.permissionMode = clamped;
-    args.amendments.amendedBy.permissionMode = pluginId;
-    args.sources.permissionMode = "plugin";
-  }
-
-  if (amend.input !== undefined) {
-    // Deliberately legal on a `join-turn` attempt: a steer's CONTENT is still
-    // being decided at this moment, which is what lets a content-policy or DLP
-    // gate cover steers instead of only covering sends.
-    args.amendments.originalInput ??= [...args.input];
-    args.input.length = 0;
-    args.input.push(...amend.input);
-    args.amendments.input = [...amend.input];
-    args.amendments.amendedBy.input = pluginId;
-  }
-}
-
 function buildGateContext(
   deps: DispatchGateDeps,
-  args: {
-    execution: PluginDispatchExecution;
-    input: PromptInput[];
-    pluginId: string;
-    request: DispatchGatePassRequest;
-    sources: PluginDispatchExecutionSources;
-  },
+  request: DispatchGatePassRequest,
 ): PluginDispatchAttemptContext {
   const { environment, host } = dispatchGateEnvironmentAndHost(
     deps,
-    args.request.environmentId,
+    request.environmentId,
   );
-  const pluginInput: JsonValue | null =
-    args.request.pluginInputs[args.pluginId] ?? null;
   return {
     stage: "dispatch",
-    thread: args.request.threadResponse,
-    attempt: args.request.attempt,
-    firstDispatch: args.request.firstDispatch,
-    project: args.request.project,
+    thread: request.threadResponse,
+    attempt: request.attempt,
+    project: request.project,
     environment,
     host,
     input: {
-      blocks: [...args.input],
-      text: dispatchInputText(args.input),
+      blocks: [...request.input],
+      text: dispatchInputText(request.input),
     },
-    requestedExecution: { ...args.execution },
-    executionSources: { ...args.sources },
-    origin: args.request.origin,
-    originPluginId: args.request.originPluginId,
-    startedOnBehalfOf: args.request.startedOnBehalfOf,
-    parentThreadId: args.request.parentThreadId,
-    pluginInput,
-    queuedMessage: args.request.queuedMessage,
+    requestedExecution: { ...request.requestedExecution },
+    executionSources: { ...request.executionSources },
+    origin: request.origin,
+    originPluginId: request.originPluginId,
+    startedOnBehalfOf: request.startedOnBehalfOf,
+    parentThreadId: request.parentThreadId,
+    queuedMessage: request.queuedMessage,
   };
 }
 
 /**
  * Runs one full gate pass at the single dispatch checkpoint.
  *
- * Order is install order with the user's override on top; amendments
- * accumulate left to right so every gate sees its predecessors' effects; a
- * `reject` short-circuits the pass and throws a 409; `wait` verdicts are
- * COLLECTED across the whole pass rather than short-circuiting, so the
- * provider and model a parked row freezes are the ones the whole chain agreed
- * on. The attempt proceeds only when a pass yields no waits.
+ * Order is plugin install order; a `reject` short-circuits the pass and throws
+ * a 409; `wait` verdicts are COLLECTED across the whole pass rather than
+ * short-circuiting, so every gate that would have parked the message gets its
+ * reason onto the one row. The attempt proceeds only when a pass yields no
+ * waits.
  *
  * The caller must check {@link hasDispatchGates} first; with no gates this
  * returns an empty `proceed` without touching the lock.
@@ -582,30 +360,18 @@ export async function runDispatchGatePass(
 ): Promise<DispatchGatePassOutcome> {
   const provider = dispatchGateProvider();
   if (provider === undefined) {
-    return { kind: "proceed", amendments: emptyAmendments() };
+    return { kind: "proceed" };
   }
-  const gates = orderedGates(deps, provider, "dispatch");
+  const gates = orderedGates(provider, "dispatch");
   if (gates.length === 0) {
-    return { kind: "proceed", amendments: emptyAmendments() };
+    return { kind: "proceed" };
   }
 
   return withEvaluationLock(async () => {
-    const amendments = emptyAmendments();
-    const execution: PluginDispatchExecution = { ...request.requestedExecution };
-    const sources: PluginDispatchExecutionSources = {
-      ...request.executionSources,
-    };
-    const input = [...request.input];
+    const context = buildGateContext(deps, request);
     const waits: DispatchGateWaitVerdict[] = [];
 
     for (const gate of gates) {
-      const context = buildGateContext(deps, {
-        execution,
-        input,
-        pluginId: gate.pluginId,
-        request,
-        sources,
-      });
       const invocation = await provider.invokeGate(
         gate.pluginId,
         "dispatch gate",
@@ -649,31 +415,15 @@ export async function runDispatchGatePass(
         });
         continue;
       }
-      if (decision.amend !== undefined) {
-        applyGateAmendment(deps, {
-          amend: decision.amend,
-          amendments,
-          execution,
-          input,
-          pluginId: gate.pluginId,
-          request,
-          sources,
-        });
-      }
     }
 
     const waiter = waits[0];
     if (waiter === undefined) {
       // Still inside the lock, deliberately: see `commitAdmission`.
-      await request.commitAdmission?.(amendments);
-      return { kind: "proceed", amendments };
+      await request.commitAdmission?.();
+      return { kind: "proceed" };
     }
-    return {
-      kind: "wait",
-      waiter,
-      additionalWaiters: waits.slice(1),
-      amendments,
-    };
+    return { kind: "wait", waiter, additionalWaiters: waits.slice(1) };
   });
 }
 
@@ -737,10 +487,9 @@ type TurnFailedGatePassDeps = Pick<AppDeps, "db" | "logger">;
  *   plugin named and SKIPPED. Propagating would let one broken retry plugin
  *   turn every failure into a second failure, and there is no caller left to
  *   receive the error anyway.
- * - **The first `retry` wins and stops the chain.** Nothing accumulates across
- *   a pass here — there are no amendments to collect and one failure earns at
- *   most one retry row — so continuing past a decided retry would only ask
- *   later gates to answer a question that is already settled.
+ * - **The first `retry` wins and stops the chain.** One failure earns at most
+ *   one retry row, so continuing past a decided retry would only ask later
+ *   gates to answer a question that is already settled.
  *
  * It still runs under the same server-wide evaluation lock as attempt passes:
  * a retry policy that counts what it has in flight must not interleave with
@@ -754,7 +503,7 @@ export async function runTurnFailedGatePass(
   if (provider === undefined) {
     return { kind: "none" };
   }
-  const gates = orderedGates(deps, provider, "turn.failed");
+  const gates = orderedGates(provider, "turn.failed");
   if (gates.length === 0) {
     return { kind: "none" };
   }

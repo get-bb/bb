@@ -34,7 +34,6 @@ const GIT_PLUGIN = {
   schedules: [],
   cliCommand: null,
   capabilities: [],
-  dispatchGateStages: [],
   app: { hasApp: true, bundle: null },
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,

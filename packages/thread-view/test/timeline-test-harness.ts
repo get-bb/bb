@@ -83,7 +83,6 @@ interface DefaultTurnEventOptions extends EventFactoryRowOptions {
 
 type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   /** Dispatch-gate provenance; omitted means no gate amended the turn. */
-  amendedByPluginId?: string;
   execution?: ResolvedThreadExecutionOptions;
   initiator?: ThreadTurnInitiator;
   input?: PromptInput[];
@@ -260,7 +259,6 @@ interface ThreadProvisioningArgs extends EventFactoryRowOptions {
 }
 
 interface QueueStateArgs extends EventFactoryRowOptions {
-  entries?: ProvisioningTranscriptEntry[];
   /** Omitted entirely when absent, matching a row with no message of its own. */
   inputPreview?: string;
   queuedMessageId?: string;
@@ -655,9 +653,6 @@ export function createTimelineEventFactory(
           ...(args.inputGroups !== undefined
             ? { inputGroups: args.inputGroups }
             : {}),
-          ...(args.amendedByPluginId !== undefined
-            ? { amendedByPluginId: args.amendedByPluginId }
-            : {}),
           target: args.target ?? { kind: "new-turn" },
           request: {
             method: args.requestMethod ?? "turn/start",
@@ -975,7 +970,6 @@ export function createTimelineEventFactory(
           ...(args.inputPreview === undefined
             ? {}
             : { inputPreview: args.inputPreview }),
-          entries: args.entries ?? [],
         },
       };
     },
