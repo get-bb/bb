@@ -3,7 +3,7 @@
   "entries": {
     ".": {
       "types": "bundled-types/bb-plugin-sdk.d.ts",
-      "sha256": "01791c14d91f358e51eac72a2b1524420e68a6d0ca2e73440f5aa14e8b41df4a"
+      "sha256": "f029dd1e8adbe1ec2d859defed7eca9b229f21c0fd0382ccb8b2b12695fafebc"
     },
     "./ai-services": {
       "types": "bundled-types/bb-plugin-sdk-ai-services.d.ts",
@@ -27,7 +27,7 @@
     },
     "./provider-bridge/testing": {
       "types": "bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
-      "sha256": "f441364946637f600ee9b72628eeab717193de34096e4aecc7e6665816a9e6f1"
+      "sha256": "9fd4844a5d83bb45e2762fce70e3bf23e9096e8244c35965c1279a750cf1cdd7"
     },
     "./testing": {
       "types": "bundled-types/bb-plugin-sdk-testing.d.ts",

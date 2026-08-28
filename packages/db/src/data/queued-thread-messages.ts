@@ -1132,6 +1132,11 @@ export function reparkClaimedQueuedThreadMessages(
             waitingOn: JSON.stringify(args.waitingOn),
             waitHolder: waitHolderFor(args.waitingOn),
             sendAt: args.sendAt,
+            // A re-park is a fresh, successful statement of why this row is
+            // waiting, which supersedes whatever the previous attempt failed
+            // with. Leaving a stale failure next to a current wait would show
+            // the user two contradictory explanations of the same row.
+            failureReason: null,
             updatedAt: now,
           })
           .where(
@@ -1465,6 +1470,55 @@ export function setQueuedThreadMessageWaitingOn(
         waitingOn: JSON.stringify(args.waitingOn),
         waitHolder: waitHolderFor(args.waitingOn),
         sendAt: args.sendAt,
+        // Same rule as `reparkClaimedQueuedThreadMessages`: any fresh,
+        // successful statement of why this row is waiting supersedes whatever
+        // a previous attempt failed with. Leaving a stale failure beside a
+        // current wait would show the reader two contradictory explanations of
+        // one row.
+        failureReason: null,
+        updatedAt: Date.now(),
+      })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, args.id),
+          eq(queuedThreadMessages.threadId, args.threadId),
+          liveQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+
+  if (updated) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return updated;
+}
+
+export interface SetQueuedThreadMessageFailureReasonArgs {
+  id: string;
+  threadId: string;
+  failureReason: string;
+}
+
+/**
+ * Records why a drain attempt on this row failed outright.
+ *
+ * Only the drain writes this: an inline attempt has a caller still listening
+ * and reports to them instead. The row's wait is deliberately untouched — it
+ * is still parked on whatever it was parked on, and the failure is a separate
+ * fact about the last attempt rather than a new reason to wait. A later
+ * successful park clears it (see `reparkClaimedQueuedThreadMessages`).
+ */
+export function setQueuedThreadMessageFailureReason(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: SetQueuedThreadMessageFailureReasonArgs,
+): QueuedThreadMessageRow | null {
+  const updated =
+    db
+      .update(queuedThreadMessages)
+      .set({
+        failureReason: args.failureReason,
         updatedAt: Date.now(),
       })
       .where(

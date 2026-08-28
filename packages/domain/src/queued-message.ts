@@ -30,6 +30,15 @@ import {
  * - `provisioning` — the thread's workspace is being (re)provisioned. Only
  *   follow-ups and steers wait on this: a thread's first message rides the
  *   cold-start command instead.
+ * - `host-offline` — the thread's workspace exists, but the machine it runs on
+ *   has no live daemon session, so nothing can be delivered to it. Distinct
+ *   from `provisioning` because the two are cleared by different events and
+ *   read differently to a user: a provisioning workspace is being built and
+ *   will finish on its own, while an offline host is waiting on a machine that
+ *   may be shut, asleep, or off the network. It carries the host's display
+ *   name for the same reason the `plugin` arm carries its reason — the
+ *   renderers that word this wait (the timeline projection in `thread-view`,
+ *   `bb thread queue`) have no database to resolve an id against.
  * - `interaction` — the thread has a pending interaction the user has not
  *   settled.
  * - `plugin` — a plugin's dispatch gate returned `wait(reason)`. This is the
@@ -40,6 +49,7 @@ export const queuedMessageWaitingOnKindValues = [
   "time",
   "thread-busy",
   "provisioning",
+  "host-offline",
   "interaction",
   "plugin",
 ] as const;
@@ -49,6 +59,13 @@ export const queuedMessageWaitingOnKindSchema = z.enum(
 export type QueuedMessageWaitingOnKind = z.infer<
   typeof queuedMessageWaitingOnKindSchema
 >;
+
+/**
+ * The host display name a `host-offline` wait carries. Denormalized onto the
+ * wait at park time: the row outlives the attempt that parked it, and a rename
+ * between then and the read is a cosmetic staleness, not a correctness one.
+ */
+export const queuedMessageWaitHostNameSchema = z.string().min(1).max(200);
 
 /**
  * A plugin's wait reason renders on the queued card and in `bb thread queue`,
@@ -64,6 +81,10 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("time") }),
   z.object({ kind: z.literal("thread-busy") }),
   z.object({ kind: z.literal("provisioning") }),
+  z.object({
+    kind: z.literal("host-offline"),
+    hostName: queuedMessageWaitHostNameSchema,
+  }),
   z.object({ kind: z.literal("interaction") }),
   z.object({
     kind: z.literal("plugin"),
@@ -79,6 +100,31 @@ export type QueuedMessagePluginWaitingOn = Extract<
   QueuedMessageWaitingOn,
   { kind: "plugin" }
 >;
+
+export type QueuedMessageHostOfflineWaitingOn = Extract<
+  QueuedMessageWaitingOn,
+  { kind: "host-offline" }
+>;
+
+/**
+ * Why the last dispatch attempt on a parked row failed outright, as opposed to
+ * parking again.
+ *
+ * A row acquires one only on a drain attempt: an inline attempt has a caller
+ * listening and surfaces the error to them instead. Until the drain has failed
+ * on a row, it has none — which is the overwhelming majority of rows — so this
+ * is null rather than a string that has to be read as "no failure yet".
+ *
+ * It is deliberately NOT part of `waitingOn`: a park rewrites the wait
+ * wholesale, so a failure recorded there would be erased by the very next
+ * attempt, and the two answer different questions ("what is this row waiting
+ * for" vs "what went wrong last time it tried").
+ */
+export const QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH = 200;
+export const queuedMessageFailureReasonSchema = z
+  .string()
+  .min(1)
+  .max(QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH);
 
 export const QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX = "plugin:";
 

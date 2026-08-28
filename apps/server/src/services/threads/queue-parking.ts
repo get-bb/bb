@@ -114,6 +114,28 @@ function appendQueueStateEvent(
 }
 
 /**
+ * Appends the "this row changed while it waited" timeline write for a caller
+ * that has already persisted the change itself.
+ *
+ * {@link parkDispatch} owns the write for a re-park because it owns the park.
+ * A drain failure is the other way round: the row's own columns are what
+ * changed (its wait, or its failure reason), the writer that changed them
+ * returned the fresh row, and only the timeline still needs telling.
+ */
+export function noteQueueStateUpdated(
+  deps: QueueParkingDeps,
+  args: { row: QueuedThreadMessageRow; waitingOn: QueuedMessageWaitingOn },
+): void {
+  appendQueueStateEvent(deps, {
+    entries: [],
+    row: args.row,
+    status: "updated",
+    waitingOn: args.waitingOn,
+  });
+  deps.hub.notifyThread(args.row.threadId, ["queue-changed"]);
+}
+
+/**
  * The wait a settled row reports on its final timeline write.
  *
  * A row that dispatched has just had its wait cleared, so reading the column

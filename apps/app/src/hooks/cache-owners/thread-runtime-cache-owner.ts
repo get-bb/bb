@@ -408,10 +408,12 @@ function buildOptimisticQueuedMessage({
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
     // An optimistic row is a plain queued send: it has no schedule, is not
-    // parked on anything, carries its own input, and the user may still edit
-    // it. The server's row replaces this the moment it lands.
+    // parked on anything, has not been attempted yet so nothing can have gone
+    // wrong with it, carries its own input, and the user may still edit it.
+    // The server's row replaces this the moment it lands.
     sendAt: null,
     waitingOn: null,
+    failureReason: null,
     payload: { kind: "inline" },
     editable: true,
     createdAt,

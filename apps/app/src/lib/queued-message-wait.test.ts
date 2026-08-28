@@ -5,6 +5,9 @@ import {
   formatQueuedMessageCountdown,
   isQueuedMessageSendNowAllowed,
   queuedMessageCountdownInstant,
+  queuedMessageFallbackTitle,
+  queuedMessageHasWaitLine,
+  queuedMessageWaitIcon,
 } from "./queued-message-wait";
 
 // Built from local parts so the expected clock strings do not depend on the
@@ -25,12 +28,14 @@ const HOUR = 60 * MINUTE;
 function describeWait(
   waitingOn: QueuedMessageWaitingOn | null,
   overrides: {
+    failureReason?: string | null;
     now?: number;
     pluginDisplayName?: string | null;
     sendAt?: number | null;
   } = {},
 ): string | null {
   return describeQueuedMessageWait({
+    failureReason: overrides.failureReason ?? null,
     now: overrides.now ?? NOW,
     payload: { kind: "inline" },
     pluginDisplayName: overrides.pluginDisplayName ?? null,
@@ -51,7 +56,36 @@ describe("describeQueuedMessageWait", () => {
 
   it("names each core wait a reader cannot otherwise explain", () => {
     expect(describeWait({ kind: "provisioning" })).toBe("Waiting for workspace");
-    expect(describeWait({ kind: "interaction" })).toBe("Waiting for reply");
+    expect(describeWait({ kind: "interaction" })).toBe(
+      "Waiting for your reply",
+    );
+  });
+
+  it("names the absent machine a host-offline row is waiting on", () => {
+    // The whole point of carrying the name on the wait: a user with two
+    // enrolled machines cannot act on "waiting for the host".
+    expect(describeWait({ kind: "host-offline", hostName: "M4" })).toBe(
+      "Waiting for M4 to reconnect",
+    );
+  });
+
+  it("lets a failure outrank the wait the row is still parked on", () => {
+    // The row keeps its wait — a failed drain does not un-park it — but what a
+    // reader needs first is that the last attempt did not go through.
+    expect(
+      describeWait(
+        { kind: "thread-busy" },
+        { failureReason: "Host is not connected" },
+      ),
+    ).toBe("Host is not connected");
+    // ...including on a row whose wait would otherwise say nothing at all.
+    expect(
+      queuedMessageHasWaitLine({
+        failureReason: "Host is not connected",
+        payload: { kind: "inline" },
+        waitingOn: { kind: "thread-busy" },
+      }),
+    ).toBe(true);
   });
 
   it("attributes a plugin wait by display name, falling back to its id", () => {
@@ -73,14 +107,18 @@ describe("describeQueuedMessageWait", () => {
     // The countdown is rendered by a separate ticking component, so a label
     // that baked it in would be stale the second after it was built.
     const label = describeWait({ kind: "time" }, { sendAt: NOW + 3 * HOUR });
-    expect(label).toBe(`Scheduled · ${clockAt(NOW + 3 * HOUR)}`);
+    expect(label).toBe(`Scheduled for ${clockAt(NOW + 3 * HOUR)}`);
     expect(label).not.toMatch(/\bin \d/);
     expect(describeWait({ kind: "time" })).toBe("Scheduled");
   });
 
-  it("describes a retry by its attempt rather than its wait", () => {
+  it("leads a retry with why the turn failed, then when and which attempt", () => {
+    // A retry row is parked on the retry policy's own plugin wait, so its
+    // reason IS the failure that caused the retry — the most useful thing the
+    // row can say about itself, since it has no message of its own to show.
     expect(
       describeQueuedMessageWait({
+        failureReason: null,
         now: NOW,
         payload: {
           kind: "retry",
@@ -89,9 +127,66 @@ describe("describeQueuedMessageWait", () => {
         },
         pluginDisplayName: null,
         sendAt: NOW + HOUR,
-        waitingOn: { kind: "time" },
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "provider-retry",
+          reason: "Rate limited",
+        },
       }),
-    ).toBe(`Retry · attempt 2 · ${clockAt(NOW + HOUR)}`);
+    ).toBe(`Rate limited · retrying at ${clockAt(NOW + HOUR)} · attempt 2`);
+  });
+});
+
+describe("queuedMessageWaitIcon", () => {
+  it("gives every explained wait a glyph and the ordinary row none", () => {
+    const icon = (
+      waitingOn: QueuedMessageWaitingOn | null,
+      failureReason: string | null = null,
+    ) =>
+      queuedMessageWaitIcon({
+        failureReason,
+        payload: { kind: "inline" },
+        waitingOn,
+      });
+
+    expect(icon({ kind: "time" })).toBe("TimeSchedule");
+    expect(icon({ kind: "provisioning" })).toBe("Folder");
+    expect(icon({ kind: "host-offline", hostName: "M4" })).toBe("CloudOff");
+    expect(icon({ kind: "interaction" })).toBe("CircleQuestion");
+    expect(icon({ kind: "plugin", pluginId: "p", reason: "r" })).toBe(
+      "Limitation",
+    );
+    // The ordinary queued row has no line, so it has no glyph either.
+    expect(icon({ kind: "thread-busy" })).toBeNull();
+    expect(icon(null)).toBeNull();
+    // A failure is not a kind of waiting, so it overrides whatever the row is
+    // still parked on.
+    expect(icon({ kind: "time" }, "Host is not connected")).toBe("AlertCircle");
+  });
+
+  it("marks a retry with the reload glyph regardless of its wait", () => {
+    expect(
+      queuedMessageWaitIcon({
+        failureReason: null,
+        payload: { kind: "retry", retryOfTurnRequestId: "req-1", attempt: 2 },
+        waitingOn: { kind: "plugin", pluginId: "provider-retry", reason: "r" },
+      }),
+    ).toBe("RotateCcw");
+  });
+});
+
+describe("queuedMessageFallbackTitle", () => {
+  it("names the failed turn a retry row re-submits", () => {
+    // A retry stores the original blocks as agent-only so the timeline does
+    // not print the user's message twice, which leaves the row with nothing to
+    // quote and only its origin to state.
+    expect(
+      queuedMessageFallbackTitle({
+        createdAt: NOW,
+        now: NOW,
+        payload: { kind: "retry", retryOfTurnRequestId: "req-1", attempt: 2 },
+      }),
+    ).toBe(`Retry failed turn from ${clockAt(NOW)}`);
   });
 });
 
@@ -117,6 +212,10 @@ describe("isQueuedMessageSendNowAllowed", () => {
     // offering send-now could only produce a 409.
     expect(isQueuedMessageSendNowAllowed({ kind: "provisioning" })).toBe(false);
     expect(isQueuedMessageSendNowAllowed({ kind: "interaction" })).toBe(false);
+    // Send-now cannot conjure a machine that is not connected either.
+    expect(
+      isQueuedMessageSendNowAllowed({ kind: "host-offline", hostName: "M4" }),
+    ).toBe(false);
   });
 });
 

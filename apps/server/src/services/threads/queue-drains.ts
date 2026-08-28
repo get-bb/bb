@@ -15,6 +15,7 @@ import { deferAfterResponse } from "../lib/response-deferral.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { isDispatchReparkedRecently } from "./dispatch-gates.js";
 import { clearQueuedMessageWait } from "./queue-parking.js";
+import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   runQueuedMessageAutoSendForThread,
   sendQueuedMessage,
@@ -176,9 +177,12 @@ async function dispatchDueQueuedMessage(
     // limiter at 9am rather than jumping it.
     await clearDueWaitAndAttempt(deps, row);
   } catch (error) {
-    // A background attempt has no caller left to report to, so a failure is
-    // logged. Re-parking here would let a broken dispatch loop forever; the
-    // row was already returned to the queue by the claim release.
+    // A background attempt has no caller left to report to, so the row carries
+    // the outcome itself — as a `host-offline` wait when the machine is simply
+    // away, or as a failure reason otherwise. Re-parking the ORIGINAL wait here
+    // would let a broken dispatch loop forever; the row was already returned to
+    // the queue by the claim release.
+    recordQueuedMessageDrainFailure(deps, { error, row, thread });
     deps.logger.warn(
       {
         queuedMessageId: row.id,

@@ -64,6 +64,7 @@ export function makeQueueEntry(overrides: Partial<QueueEntry> = {}): QueueEntry 
       pluginId: "test-plugin",
       reason: "Waiting",
     },
+    failureReason: null,
     payload: { kind: "inline" },
     editable: true,
     createdAt: 0,

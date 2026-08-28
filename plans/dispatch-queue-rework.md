@@ -153,8 +153,12 @@ above:
   (the relocated cold-start record); Wave 2 also added
   `queued_thread_messages.system_notice` so parked parent-system notices
   keep their taxonomy.
-- **Host-offline folded into the `provisioning` wait kind**; the periodic
-  drain replaces reconnect-triggered release. The reprovision-parked turn
+- **Host-offline is its own wait kind** carrying the host name ("Waiting
+  for <host> to reconnect", send-now hidden): the visual port revealed Wave 2
+  never actually parked offline-host attempts — the drain threw and left rows
+  on stale waits. Drain failures now record a `failureReason` on the row
+  (outside `waitingOn`, so a re-park cannot erase it), rendered as the failed
+  state. The reprovision-parked turn
   keeps its deferred-event replay (sequencing invariant); only its tracking
   row moved to the queue.
 - **`SendMessageResponse` is now `sent | parked`** — the old four-way enum
@@ -162,6 +166,11 @@ above:
 - **Environment amendments are refused on drain re-attempts** even though
   they report firstDispatch (re-resolving an intent needs creation on the
   stack) — same boundary the hold contract had.
+- **Plugin progress/staleness variants are design-ahead-of-contract**: the
+  prototype's "Creating sandbox · about 2m" and "no update for 12m" rows need
+  a report marker + staleness timestamp the queued-message DTO does not carry
+  (deriving from updatedAt would false-alarm non-reporting limiters); all
+  plugin waits render "Held by … · reason" until those fields exist.
 - **Delivery-mode signal is not renderable yet**: the queued-message
   response carries no deliveryMode field; the visual-prototyping brief's
   row for it is design-ahead-of-contract.

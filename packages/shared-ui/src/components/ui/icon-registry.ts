@@ -62,6 +62,7 @@ export const EXTENDED_ICON_NAMES = [
   "GridView",
   "Laptop",
   "Layers",
+  "Limitation",
   "ListView",
   "Lock",
   "Mail",

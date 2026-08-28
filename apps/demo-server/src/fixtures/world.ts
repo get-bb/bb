@@ -192,6 +192,7 @@ export function queuedMessage(args: {
     groupWithNext: false,
     sendAt: null,
     waitingOn: null,
+    failureReason: null,
     payload: { kind: "inline" },
     editable: true,
     createdAt: args.now,

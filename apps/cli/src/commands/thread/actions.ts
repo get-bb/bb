@@ -608,6 +608,8 @@ export function describeQueueWait(row: {
       return "waiting for the current turn to finish";
     case "provisioning":
       return "waiting for the workspace";
+    case "host-offline":
+      return `waiting for ${waitingOn.hostName} to reconnect`;
     case "interaction":
       return "waiting for a pending interaction";
     case "plugin":

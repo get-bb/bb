@@ -843,6 +843,13 @@ export const queuedThreadMessages = sqliteTable(
     // same statement that writes `waiting_on`, derived from it, so the two
     // cannot drift.
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
+    // Why this row's last DRAIN attempt failed outright, NULL when it has not
+    // failed one. Its own column rather than a shape inside `waiting_on`
+    // because a park rewrites that column wholesale on every attempt, which
+    // would erase a failure recorded there before anybody could read it. The
+    // row stays parked on whatever it was parked on; this only says what went
+    // wrong the last time the drain tried to send it.
+    failureReason: text("failure_reason"),
     payloadKind: text("payload_kind")
       .$type<QueuedMessagePayloadKind>()
       .notNull()

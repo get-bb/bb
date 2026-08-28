@@ -2,6 +2,7 @@ import { z } from "zod";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
+  queuedMessageFailureReasonSchema,
   queuedMessagePayloadSchema,
   queuedMessageWaitingOnSchema,
 } from "./queued-message.js";
@@ -360,6 +361,18 @@ export const threadQueuedMessageSchema = z.object({
    * typed carry no reason at all, and inventing one for them would be a lie.
    */
   waitingOn: queuedMessageWaitingOnSchema.nullable(),
+  /**
+   * Why this row's last DRAIN attempt failed outright, or null when it has not
+   * failed one — which is every row that has never been re-attempted, and
+   * every row whose latest attempt merely parked again. An inline attempt
+   * reports its failure to the sender that is still listening and never lands
+   * here.
+   *
+   * Independent of `waitingOn`, not folded into it: the row is still parked on
+   * whatever it was parked on, and a park rewrites the wait wholesale, so a
+   * failure stored there would not survive the next attempt.
+   */
+  failureReason: queuedMessageFailureReasonSchema.nullable(),
   payload: queuedMessagePayloadSchema,
   /**
    * Whether the sender may still rewrite this row's input. Not derivable from

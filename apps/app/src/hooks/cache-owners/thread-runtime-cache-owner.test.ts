@@ -154,6 +154,7 @@ function makeQueuedMessage(
     groupWithNext: false,
     sendAt: null,
     waitingOn: null,
+    failureReason: null,
     payload: { kind: "inline" },
     editable: true,
     createdAt: 1,

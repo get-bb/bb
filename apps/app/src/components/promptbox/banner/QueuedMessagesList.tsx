@@ -21,7 +21,9 @@ import {
   formatQueuedMessageCountdown,
   isQueuedMessageSendNowAllowed,
   queuedMessageCountdownInstant,
+  queuedMessageFallbackTitle,
   queuedMessageHasWaitLine,
+  queuedMessageWaitIcon,
 } from "@/lib/queued-message-wait";
 import {
   DndContext,
@@ -558,6 +560,32 @@ function buildQueuedMessagePreviewText(
   return { text, mentions };
 }
 
+/**
+ * The title of a row that has no message to show.
+ *
+ * Its own component so that only such rows — retries, in practice — subscribe
+ * to the shared ticker for the `now` the title's time formatting needs.
+ */
+function QueuedMessageFallbackTitle({
+  compact,
+  queuedMessage,
+}: {
+  compact: boolean;
+  queuedMessage: ThreadQueuedMessage;
+}) {
+  const now = useSecondTick();
+  const title = queuedMessageFallbackTitle({
+    createdAt: queuedMessage.createdAt,
+    now,
+    payload: queuedMessage.payload,
+  });
+  return (
+    <span className={queuedMarkdownPreviewClass(compact)} title={title}>
+      {title}
+    </span>
+  );
+}
+
 function QueuedMessagePreview({
   compact,
   queuedMessage,
@@ -578,6 +606,22 @@ function QueuedMessagePreview({
     () => buildQueuedMessagePreviewText(queuedMessage.content),
     [queuedMessage.content],
   );
+
+  // A retry has no message of its own to show: it carries the original blocks
+  // marked agent-only so the timeline does not print the user's message twice.
+  // The generic preview would call that "(empty message)", which is true of
+  // the blocks and useless to a reader, so such a row states its origin
+  // instead of quoting nothing.
+  if (queuedMessage.payload.kind === "retry") {
+    return (
+      <div className="min-w-0 flex-1 overflow-hidden text-foreground">
+        <QueuedMessageFallbackTitle
+          compact={compact}
+          queuedMessage={queuedMessage}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -610,6 +654,10 @@ function QueuedMessagePreview({
  *
  * The countdown disappears once the instant is due: the row is then waiting on
  * the drain, not on the clock.
+ *
+ * A failed row reuses this line rather than adding a second one. The failure
+ * and the wait answer the same reader question — "why is this still here?" —
+ * and stacking both would let a row contradict itself in two typefaces.
  */
 function QueuedMessageWaitLine({
   pluginDisplayName,
@@ -620,6 +668,7 @@ function QueuedMessageWaitLine({
 }) {
   const now = useSecondTick();
   const label = describeQueuedMessageWait({
+    failureReason: queuedMessage.failureReason,
     now,
     payload: queuedMessage.payload,
     pluginDisplayName,
@@ -627,6 +676,8 @@ function QueuedMessageWaitLine({
     waitingOn: queuedMessage.waitingOn,
   });
   if (label === null) return null;
+  const failed = queuedMessage.failureReason !== null;
+  const icon = queuedMessageWaitIcon(queuedMessage);
   const countdownInstant = queuedMessageCountdownInstant(queuedMessage);
   const countdown =
     countdownInstant === null
@@ -635,13 +686,38 @@ function QueuedMessageWaitLine({
   return (
     <div
       data-queued-message-wait=""
-      className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground"
+      data-queued-message-failed={failed ? "" : undefined}
+      className={cn(
+        "mt-0.5 flex min-w-0 items-center gap-1 text-2xs",
+        failed ? "text-destructive-text" : "text-subtle-foreground",
+      )}
     >
-      <Icon name="Clock" className="size-3 shrink-0" aria-hidden />
+      {icon === null ? null : (
+        <Icon name={icon} className="size-3 shrink-0" aria-hidden />
+      )}
       <span className="min-w-0 truncate">{label}</span>
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
+    </div>
+  );
+}
+
+/**
+ * The transient line a row shows while its own send/edit/delete is in flight.
+ *
+ * It replaces the wait line rather than joining it: the row is no longer
+ * waiting for anything, it is being acted on, and the spinner is what says the
+ * app has the request.
+ */
+function QueuedMessageProcessingLine({ label }: { label: string }) {
+  return (
+    <div
+      data-queued-message-processing=""
+      className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-muted-foreground"
+    >
+      <Icon name="Spinner" className="size-3 shrink-0 animate-spin" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
     </div>
   );
 }
@@ -697,7 +773,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       data-queued-message-id={queuedMessage.id}
       data-queued-message-group-boundary-row={isGroupBoundary ? "" : undefined}
       className={cn(
-        "group/row relative border-b border-border/35 px-2.5 py-0.5",
+        "group/dispatch-row relative border-b border-border/35 px-2.5 py-0.5",
         !isGroupBoundary && "last:border-b-0",
         isDragging &&
           "z-20 rounded-lg border border-border bg-background opacity-90 shadow-lift",
@@ -722,13 +798,20 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             className={cn(
               "size-3.5 shrink-0 opacity-0 transition-opacity",
               !dragDisabled &&
-                "group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-100",
+                "group-hover/dispatch-row:opacity-100 group-focus-within/dispatch-row:opacity-100 [@media(hover:none)]:opacity-100",
               isDragging && "opacity-100",
             )}
             aria-hidden="true"
           />
         </Button>
-        <div className="min-w-0 flex-1 py-1">
+        {/* Today's one-line row stays exactly as tall as it is until a real
+            wait or in-flight action needs a second line to explain it. */}
+        <div
+          className={cn(
+            "min-w-0 flex-1 py-1",
+            (hasWaitLine || isProcessing) && "py-1.5",
+          )}
+        >
           <div className="flex min-w-0 items-center gap-1">
             <QueuedMessagePreview
               compact={compact}
@@ -741,7 +824,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 className={cn(
                   "ml-auto inline-flex shrink-0 items-center gap-0.5 text-2xs text-subtle-foreground opacity-70 transition-opacity duration-[120ms] ease-out",
                   !isProcessing &&
-                    "group-hover/row:opacity-0 group-focus-within/row:opacity-0 [@media(hover:none)]:opacity-0",
+                    "group-hover/dispatch-row:opacity-0 group-focus-within/dispatch-row:opacity-0 [@media(hover:none)]:opacity-0",
                 )}
                 role="img"
                 aria-label={
@@ -755,18 +838,16 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               </span>
             ) : null}
           </div>
-          {hasWaitLine ? (
+          {isProcessing ? (
+            <QueuedMessageProcessingLine label={processingLabel} />
+          ) : hasWaitLine ? (
             <QueuedMessageWaitLine
               pluginDisplayName={pluginDisplayName}
               queuedMessage={queuedMessage}
             />
           ) : null}
         </div>
-        {isProcessing ? (
-          <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
-            {processingLabel}
-          </span>
-        ) : (
+        {isProcessing ? null : (
           <>
             <TooltipProvider delayDuration={300}>
               <div
@@ -774,8 +855,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 className={cn(
                   QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
                   "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
-                  "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-                  "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                  "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
+                  "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
               >
                 {sendNowAllowed ? (
@@ -855,8 +936,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   className={cn(
                     QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
                     "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
-                    "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-                    "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                    "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
+                    "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                     "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
                     "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
                     compact ? "size-7" : "size-8",
@@ -1024,10 +1105,10 @@ export function QueuedMessagesList({
 }: QueuedMessagesListProps) {
   const processingLabel =
     processingAction === "edit"
-      ? "Editing..."
+      ? "Editing…"
       : processingAction === "delete"
-        ? "Deleting..."
-        : "Sending...";
+        ? "Deleting…"
+        : "Sending…";
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -1575,10 +1656,8 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-normal text-subtle-foreground">
-            Follow-ups
-          </span>
-          <span className="text-2xs text-subtle-foreground">
+          <span className="text-xs font-medium text-foreground">Queue</span>
+          <span className="text-2xs tabular-nums text-subtle-foreground">
             {queuedMessages.length}
           </span>
         </div>

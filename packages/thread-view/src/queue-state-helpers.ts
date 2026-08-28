@@ -65,6 +65,11 @@ export function queueStateTitleForStatus(
  * reason it wrote. Attribution belongs on the queued card, which can resolve
  * the name.
  *
+ * `host-offline` is the exception that proves the rule: its host name is a
+ * datum, not a reason, so it rides the wait itself. This package cannot look
+ * one up, and "Waiting for the host to reconnect" would leave a reader with
+ * two machines guessing which one is away.
+ *
  * The scheduled instant is deliberately absent: it rides the row's own `sendAt`
  * so the renderer can format it in the reader's locale.
  */
@@ -76,6 +81,8 @@ export function describeQueueStateWait(waitingOn: QueuedMessageWaitingOn): strin
       return "Waiting for the current turn";
     case "provisioning":
       return "Waiting for workspace";
+    case "host-offline":
+      return `Waiting for ${waitingOn.hostName} to reconnect`;
     case "interaction":
       return "Waiting for reply";
     case "plugin":

@@ -1,4 +1,5 @@
 import type { QueuedMessagePayload, QueuedMessageWaitingOn } from "@bb/domain";
+import type { IconName } from "@bb/shared-ui/icon";
 import { formatScheduledTime } from "@/lib/relative-time";
 
 const MINUTE_MS = 60 * 1000;
@@ -44,6 +45,10 @@ export function formatQueuedMessageCountdown(remainingMs: number): string | null
  *   clears — the message steers into the live turn. This is also the ordinary
  *   queued row, which has always offered Send now and must keep offering it.
  *
+ * `host-offline` joins the first group. Send-now cannot conjure a machine that
+ * is not connected, so offering it would promise something the button cannot
+ * do; the row clears itself when the host comes back.
+ *
  * A null wait is a row written before waits were typed; it behaves as
  * `thread-busy`, which is what the server assumes for it everywhere else.
  */
@@ -53,6 +58,7 @@ export function isQueuedMessageSendNowAllowed(
   if (waitingOn === null) return true;
   switch (waitingOn.kind) {
     case "provisioning":
+    case "host-offline":
     case "interaction":
       return false;
     case "time":
@@ -71,21 +77,82 @@ export function isQueuedMessageSendNowAllowed(
  * this returns false, so the two cannot disagree.
  */
 export function queuedMessageHasWaitLine(args: {
+  failureReason: string | null;
   payload: QueuedMessagePayload;
   waitingOn: QueuedMessageWaitingOn | null;
 }): boolean {
+  // A failed attempt is the one thing that outranks the wait: the row is still
+  // parked on whatever it was parked on, but what a reader needs to know is
+  // that the last try did not go through.
+  if (args.failureReason !== null) return true;
   if (args.payload.kind === "retry") return true;
   if (args.waitingOn === null) return false;
   return args.waitingOn.kind !== "thread-busy";
 }
 
+/**
+ * The glyph that opens a parked row's status line, or null when the row has no
+ * line to open.
+ *
+ * One icon per wait kind, chosen so the queue can be read at a glance without
+ * the words: a clock for the clock, a folder for the workspace, a severed
+ * cloud for the absent machine, a question for the question it is waiting on,
+ * a limiter for a policy holding it back, and a reload for a retry. The
+ * failure state overrides all of them, because a failure is not a kind of
+ * waiting.
+ */
+export function queuedMessageWaitIcon(args: {
+  failureReason: string | null;
+  payload: QueuedMessagePayload;
+  waitingOn: QueuedMessageWaitingOn | null;
+}): IconName | null {
+  if (args.failureReason !== null) return "AlertCircle";
+  if (args.payload.kind === "retry") return "RotateCcw";
+  if (args.waitingOn === null) return null;
+  switch (args.waitingOn.kind) {
+    case "thread-busy":
+      return null;
+    case "time":
+      return "TimeSchedule";
+    case "provisioning":
+      return "Folder";
+    case "host-offline":
+      return "CloudOff";
+    case "interaction":
+      return "CircleQuestion";
+    case "plugin":
+      return "Limitation";
+  }
+}
+
 export interface DescribeQueuedMessageWaitArgs {
+  failureReason: string | null;
   now: number;
   payload: QueuedMessagePayload;
   /** Resolved manifest name for a `plugin` wait; the id is an acceptable fallback. */
   pluginDisplayName: string | null;
   sendAt: number | null;
   waitingOn: QueuedMessageWaitingOn | null;
+}
+
+/**
+ * The title a row shows when it has no message of its own to show.
+ *
+ * Only a `retry` row does: it re-submits a failed turn by reference, and its
+ * stored blocks are marked agent-only precisely so the timeline does not print
+ * the user's message twice. Naming the turn it retries — by the time it failed
+ * — is the only thing that tells two parked retries apart.
+ */
+export function queuedMessageFallbackTitle(args: {
+  createdAt: number;
+  now: number;
+  payload: QueuedMessagePayload;
+}): string {
+  if (args.payload.kind !== "retry") return "Queued message";
+  return `Retry failed turn from ${formatScheduledTime({
+    now: args.now,
+    timestamp: args.createdAt,
+  })}`;
 }
 
 /**
@@ -106,14 +173,27 @@ export interface DescribeQueuedMessageWaitArgs {
 export function describeQueuedMessageWait(
   args: DescribeQueuedMessageWaitArgs,
 ): string | null {
+  // A failure outranks the wait. The row is still parked on whatever parked
+  // it, but "this did not go through" is what the reader needs first, and the
+  // renderer marks this line as an error rather than a status.
+  if (args.failureReason !== null) return args.failureReason;
+
   // A retry speaks for itself before it speaks for its wait: it has no message
-  // of its own, so "attempt 2" is the only thing that distinguishes it from
-  // the failed turn already rendered above it in the timeline.
+  // of its own, so the attempt number is the only thing that distinguishes it
+  // from the failed turn already rendered above it in the timeline. Its wait is
+  // always the retry policy's, so that policy's reason ("Rate limited") leads —
+  // it is why the turn failed, which is the whole story of the row.
   if (args.payload.kind === "retry") {
-    const parts = ["Retry", `attempt ${args.payload.attempt}`];
-    if (args.sendAt !== null) {
-      parts.push(formatScheduledTime({ now: args.now, timestamp: args.sendAt }));
+    const parts: string[] = [];
+    if (args.waitingOn?.kind === "plugin") {
+      parts.push(args.waitingOn.reason);
     }
+    if (args.sendAt !== null) {
+      parts.push(
+        `retrying at ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`,
+      );
+    }
+    parts.push(`attempt ${args.payload.attempt}`);
     return parts.join(" · ");
   }
 
@@ -125,11 +205,13 @@ export function describeQueuedMessageWait(
     case "time":
       return args.sendAt === null
         ? "Scheduled"
-        : `Scheduled · ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`;
+        : `Scheduled for ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`;
     case "provisioning":
       return "Waiting for workspace";
+    case "host-offline":
+      return `Waiting for ${args.waitingOn.hostName} to reconnect`;
     case "interaction":
-      return "Waiting for reply";
+      return "Waiting for your reply";
     case "plugin":
       return `Held by ${args.pluginDisplayName ?? args.waitingOn.pluginId} · ${args.waitingOn.reason}`;
   }

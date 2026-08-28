@@ -716,6 +716,7 @@ function dropQueueReworkSchema(db: DbConnection): void {
     "payload_kind",
     "retry_of_turn_request_id",
     "retry_attempt",
+    "failure_reason",
   ]) {
     if (!queuedColumns.some((column) => column.name === name)) continue;
     db.$client

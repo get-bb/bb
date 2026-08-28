@@ -18,6 +18,7 @@ interface StoredQueuedThreadMessageRow {
   claimedAt: number | null;
   content: string;
   createdAt: number;
+  failureReason: string | null;
   id: string;
   groupWithNext: boolean;
   model: string;
@@ -125,6 +126,7 @@ export function toThreadQueuedMessage(
     groupWithNext: row.groupWithNext,
     sendAt: row.sendAt,
     waitingOn: parseStoredQueuedThreadMessageWaitingOn(row),
+    failureReason: row.failureReason,
     payload: toQueuedMessagePayload(row),
     // An `inline` draft stops being editable the moment the drain claims it:
     // the row is on its way to a provider and a rewrite would be lost.

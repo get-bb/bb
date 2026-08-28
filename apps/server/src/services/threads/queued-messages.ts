@@ -71,6 +71,7 @@ import {
   queuedMessageWaitingOn,
   settleQueueRowDispatched,
 } from "./queue-parking.js";
+import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   ensureThreadIsWritable,
   formatAgentThreadInput,
@@ -730,6 +731,8 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
   switch (waitingOn?.kind) {
     case "provisioning":
       return "the thread's workspace is still being prepared";
+    case "host-offline":
+      return `the "${waitingOn.hostName}" host is not connected`;
     case "interaction":
       return "the thread is waiting for you to answer a pending interaction";
     case "plugin":
@@ -805,6 +808,17 @@ export async function sendNextQueuedMessageIfPresent(
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (isQueuedMessageClaimLostError(error)) {
       return false;
+    }
+    // Nobody is listening to this attempt, so the row itself has to carry what
+    // happened — either as a `host-offline` wait it can recover from, or as a
+    // failure reason the queued row renders. A host timeout is excluded: the
+    // command is still in flight, so the attempt has not failed yet.
+    if (!isCommandTimeoutError(error)) {
+      recordQueuedMessageDrainFailure(deps, {
+        error,
+        row: nextQueuedMessages[0]!,
+        thread,
+      });
     }
     if (isCommandTimeoutError(error)) {
       deps.logger.debug(

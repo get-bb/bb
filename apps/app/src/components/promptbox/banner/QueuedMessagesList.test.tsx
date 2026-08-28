@@ -64,6 +64,7 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     groupWithNext: false,
     sendAt: null,
     waitingOn: null,
+    failureReason: null,
     payload: { kind: "inline" },
     editable: true,
     createdAt: 0,
@@ -1024,7 +1025,7 @@ describe("QueuedMessagesList", () => {
 
     const attachment = getByRole("img", { name: "2 attachments" });
     expect(attachment.textContent).toBe("2");
-    expect(getByText("Sending...")).not.toBeNull();
+    expect(getByText("Sending…")).not.toBeNull();
   });
 
   it("renders prompt mentions as pills in queued previews", () => {
@@ -1580,6 +1581,69 @@ describe("parked row affordances", () => {
       },
     ]);
     expect(parked.queryByLabelText("Send queued message 1 now")).toBeNull();
+  });
+
+  it("names the absent machine on a host-offline row and hides Send now", () => {
+    // The host name rides the wait precisely so this row can name it: a user
+    // with two enrolled machines cannot act on "waiting for the host".
+    const { getByText, queryByLabelText } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_offline", "Capture the Safari trace"),
+        waitingOn: { kind: "host-offline", hostName: "M4" },
+      },
+    ]);
+    expect(getByText("Waiting for M4 to reconnect")).toBeDefined();
+    // Send-now cannot conjure a machine that is not connected.
+    expect(queryByLabelText("Send queued message 1 now")).toBeNull();
+  });
+
+  it("lets a drain failure take over the line the wait would have used", () => {
+    // A failed drain leaves the row parked on its original wait, so both facts
+    // are true at once — but only one of them belongs on a one-line row, and
+    // it is the one that says the message did not go.
+    const { getByText, queryByText, container } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_failed", "Post the summary"),
+        waitingOn: { kind: "provisioning" },
+        failureReason: "Thread stopped before the message could dispatch",
+      },
+    ]);
+    expect(
+      getByText("Thread stopped before the message could dispatch"),
+    ).toBeDefined();
+    expect(queryByText("Waiting for workspace")).toBeNull();
+    expect(
+      container.querySelector("[data-queued-message-failed]"),
+    ).not.toBeNull();
+  });
+
+  it("gives a retry row a title of its own when it has no message to show", () => {
+    // A retry stores the original blocks as agent-only so the timeline does
+    // not print the user's message twice, which leaves this row with nothing
+    // to quote — an untitled blank row would be unreadable.
+    const { getByText } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_retry_title", ""),
+        content: [
+          {
+            type: "text",
+            text: "The original question",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ],
+        payload: { kind: "retry", retryOfTurnRequestId: "req_1", attempt: 2 },
+        editable: false,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "provider-retry",
+          reason: "Rate limited",
+        },
+        sendAt: 0,
+      },
+    ]);
+    expect(getByText(/^Retry failed turn from /u)).toBeDefined();
+    expect(getByText(/^Rate limited · retrying at .* · attempt 2$/u)).toBeDefined();
   });
 
   it("offers no edit on a row the server says is not editable", () => {
