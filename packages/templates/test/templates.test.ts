@@ -7,6 +7,29 @@ import {
 import { templateDefinitions } from "../src/generated/templates.generated.js";
 
 describe("@bb/templates", () => {
+  it("documents where threads should put files they create", () => {
+    const guide = renderTemplate("bbGuideThreads", {});
+
+    expect(guide).toContain(
+      [
+        "**Where to put files you create**",
+        "",
+        "If the user gives you an exact path, use it.",
+        "",
+        "Otherwise, use this thread’s workspace—the directory bb started you in—for files the user asked you to create or change.",
+        "",
+        "Put any other files or directories you create while doing the work under `$BB_THREAD_STORAGE`. Common examples are additional repository clones or Git worktrees, temporary test projects or fixtures, downloads, screenshots or recordings, logs, and generated reports.",
+        "",
+        "Do not create those other files beside the thread’s workspace or elsewhere in the user’s home directory for convenience. Do not move a tool’s own temporary files or caches solely to satisfy this rule.",
+        "",
+        "`$BB_THREAD_STORAGE` belongs to this thread. bb permanently deletes it 24 hours after the thread is archived unless the thread is unarchived. Put anything that needs to be kept in the thread’s workspace or in the exact path the user requested.",
+      ].join("\n"),
+    );
+    expect(renderTemplate("standardAgentAppendInstructions", {})).not.toContain(
+      "Where to put files you create",
+    );
+  });
+
   it("documents project creation machine routing", () => {
     const guide = renderTemplate("bbGuideProjects", {});
 

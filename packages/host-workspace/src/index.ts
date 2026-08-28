@@ -30,3 +30,6 @@ export {
   runGit,
 } from "./git.js";
 export type { GitProcessOptions } from "./git.js";
+
+export { deleteThreadStorage } from "./thread-storage.js";
+export type { DeleteThreadStorageArgs } from "./thread-storage.js";

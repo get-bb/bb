@@ -65,7 +65,7 @@ import {
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
-import { WorkspaceError } from "@bb/host-workspace";
+import { deleteThreadStorage, WorkspaceError } from "@bb/host-workspace";
 import { squashMerge } from "./command-handlers/workspace.js";
 import {
   cloneProject,
@@ -455,6 +455,14 @@ const commandHandlers: CommandHandlerMap = {
           bridgeLaunch,
         }),
     );
+    return {};
+  },
+  "thread.storage.delete": async (command, options) => {
+    await deleteThreadStorage({
+      threadStorageRootPath: options.threadStorageRootPath,
+      threadId: command.threadId,
+      ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
+    });
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,

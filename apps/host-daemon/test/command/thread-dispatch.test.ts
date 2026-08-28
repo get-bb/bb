@@ -62,6 +62,55 @@ function nextClientRequestId(): ClientTurnRequestId {
 }
 
 describe("thread command dispatch", () => {
+  it("deletes the daemon-owned thread storage directory idempotently", async () => {
+    const threadStorageRootPath = await makeTempDir(
+      "bb-delete-thread-storage-",
+    );
+    const threadStoragePath = path.join(
+      threadStorageRootPath,
+      "thread-storage-delete",
+    );
+    const otherThreadStoragePath = path.join(
+      threadStorageRootPath,
+      "thread-storage-keep",
+    );
+    await fs.mkdir(threadStoragePath);
+    await fs.mkdir(otherThreadStoragePath);
+    await fs.writeFile(
+      path.join(threadStoragePath, "artifact.txt"),
+      "delete\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(otherThreadStoragePath, "artifact.txt"),
+      "keep\n",
+      "utf8",
+    );
+    const harness = createHarness();
+    const command = {
+      type: "thread.storage.delete" as const,
+      threadId: "thread-storage-delete",
+    };
+
+    await expect(
+      dispatchCommand(
+        command,
+        harness.dispatchOptions({ threadStorageRootPath }),
+      ),
+    ).resolves.toEqual({});
+    await expect(fs.stat(threadStoragePath)).rejects.toThrow();
+    await expect(
+      fs.readFile(path.join(otherThreadStoragePath, "artifact.txt"), "utf8"),
+    ).resolves.toBe("keep\n");
+
+    await expect(
+      dispatchCommand(
+        command,
+        harness.dispatchOptions({ threadStorageRootPath }),
+      ),
+    ).resolves.toEqual({});
+  });
+
   it("evicts stale runtime and rejects thread.start when the loaded runtime path differs from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-loaded" });
     await harness.manager.ensureEnvironment({

@@ -15,7 +15,10 @@ import type {
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { ARCHIVED_CONVERSATION_RETENTION_MS } from "../../constants.js";
+import {
+  ARCHIVED_CONVERSATION_RETENTION_MS,
+  THREAD_RESOURCE_RETENTION_MS,
+} from "../../constants.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -58,6 +61,7 @@ interface ReleaseUnarchivedChildrenFromArchivedThreadArgs {
 
 interface ArchiveThreadAndReleaseChildrenArgs {
   archivedConversationRetention: ArchivedConversationRetention;
+  hostId: string | null;
   threadId: string;
 }
 
@@ -206,6 +210,9 @@ export function archiveThreadAndReleaseChildren(
           args.archivedConversationRetention === "30-days"
             ? archivedThread.archivedAt + ARCHIVED_CONVERSATION_RETENTION_MS
             : null,
+        hostId: args.hostId,
+        resourceCleanupDueAt:
+          archivedThread.archivedAt + THREAD_RESOURCE_RETENTION_MS,
         threadId: archivedThread.id,
       });
 

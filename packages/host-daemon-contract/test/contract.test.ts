@@ -33,6 +33,7 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  threadStorageDeleteCommandSchema,
   threadStopCommandSchema,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
@@ -463,6 +464,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.rename": {},
   "thread.archive": {},
   "thread.unarchive": {},
+  "thread.storage.delete": {},
   "interactive.resolve": {},
   "environment.provision": {
     path: "/tmp/env",
@@ -943,7 +945,7 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(173);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(174);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -995,6 +997,31 @@ describe("host-daemon command schemas", () => {
     expect(
       threadStopCommandSchema.safeParse({ ...base, intent: "pause" }).success,
     ).toBe(false);
+  });
+
+  it("deletes thread storage by thread id without accepting a host path", () => {
+    expect(
+      threadStorageDeleteCommandSchema.parse({
+        type: "thread.storage.delete",
+        threadId: "thr_123",
+      }),
+    ).toEqual({ type: "thread.storage.delete", threadId: "thr_123" });
+    expect(
+      threadStorageDeleteCommandSchema.safeParse({
+        type: "thread.storage.delete",
+        threadId: "thr_123",
+        path: "/tmp/arbitrary",
+      }).success,
+    ).toBe(false);
+    expect(
+      threadStorageDeleteCommandSchema.safeParse({
+        type: "thread.storage.delete",
+        threadId: "../other-thread",
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonCommandResultSchemaByType["thread.storage.delete"].parse({}),
+    ).toEqual({});
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

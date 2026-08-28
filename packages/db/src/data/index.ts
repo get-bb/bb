@@ -113,9 +113,12 @@ export {
 export {
   cancelThreadRetention,
   clearArchivedConversationDeletion,
+  completeThreadResourceCleanup,
   getThreadRetentionSchedule,
   listDueArchivedConversationDeletions,
+  listDueThreadResourceCleanups,
   scheduleArchivedThreadRetention,
+  scheduleImmediateThreadResourceCleanup,
   type ThreadRetentionSchedule,
 } from "./thread-retention.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";

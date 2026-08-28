@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lte } from "drizzle-orm";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -14,6 +14,14 @@ export type ThreadRetentionSchedule =
 export interface ScheduleArchivedThreadRetentionArgs {
   archivedAt: number;
   conversationDeleteDueAt: number | null;
+  hostId: string | null;
+  resourceCleanupDueAt: number | null;
+  threadId: string;
+}
+
+export interface ScheduleImmediateThreadResourceCleanupArgs {
+  hostId: string | null;
+  now: number;
   threadId: string;
 }
 
@@ -22,8 +30,14 @@ export interface ListDueThreadRetentionArgs {
   now: number;
 }
 
+export interface CompleteThreadResourceCleanupArgs {
+  archivedAt: number | null;
+  resourceCleanupDueAt: number;
+  threadId: string;
+}
+
 export interface ClearArchivedConversationDeletionArgs {
-  archivedAt: number;
+  archivedAt: number | null;
   conversationDeleteDueAt: number;
   threadId: string;
 }
@@ -45,7 +59,8 @@ export function scheduleArchivedThreadRetention(
   db: ThreadRetentionWriteConnection,
   args: ScheduleArchivedThreadRetentionArgs,
 ): ThreadRetentionSchedule | null {
-  if (args.conversationDeleteDueAt === null) {
+  const resourceCleanupDueAt = args.hostId ? args.resourceCleanupDueAt : null;
+  if (resourceCleanupDueAt === null && args.conversationDeleteDueAt === null) {
     return null;
   }
 
@@ -55,6 +70,8 @@ export function scheduleArchivedThreadRetention(
       archivedAt: args.archivedAt,
       conversationDeleteDueAt: args.conversationDeleteDueAt,
       createdAt: now,
+      hostId: args.hostId,
+      resourceCleanupDueAt,
       threadId: args.threadId,
       updatedAt: now,
     })
@@ -63,6 +80,8 @@ export function scheduleArchivedThreadRetention(
       set: {
         archivedAt: args.archivedAt,
         conversationDeleteDueAt: args.conversationDeleteDueAt,
+        hostId: args.hostId,
+        resourceCleanupDueAt,
         updatedAt: now,
       },
     })
@@ -82,6 +101,66 @@ export function cancelThreadRetention(
   );
 }
 
+export function scheduleImmediateThreadResourceCleanup(
+  db: ThreadRetentionWriteConnection,
+  args: ScheduleImmediateThreadResourceCleanupArgs,
+): ThreadRetentionSchedule | null {
+  const existing = getThreadRetentionSchedule(db, args.threadId);
+  const hostId = existing?.hostId ?? args.hostId;
+  if (hostId === null) {
+    if (existing) {
+      cancelThreadRetention(db, args.threadId);
+    }
+    return null;
+  }
+
+  if (existing) {
+    db.update(threadRetentionSchedules)
+      .set({
+        conversationDeleteDueAt: null,
+        hostId,
+        resourceCleanupDueAt: args.now,
+        updatedAt: args.now,
+      })
+      .where(eq(threadRetentionSchedules.threadId, args.threadId))
+      .run();
+  } else {
+    db.insert(threadRetentionSchedules)
+      .values({
+        archivedAt: null,
+        conversationDeleteDueAt: null,
+        createdAt: args.now,
+        hostId,
+        resourceCleanupDueAt: args.now,
+        threadId: args.threadId,
+        updatedAt: args.now,
+      })
+      .run();
+  }
+  return getThreadRetentionSchedule(db, args.threadId);
+}
+
+export function listDueThreadResourceCleanups(
+  db: DbQueryConnection,
+  args: ListDueThreadRetentionArgs,
+): ThreadRetentionSchedule[] {
+  return db
+    .select()
+    .from(threadRetentionSchedules)
+    .where(
+      and(
+        isNotNull(threadRetentionSchedules.resourceCleanupDueAt),
+        lte(threadRetentionSchedules.resourceCleanupDueAt, args.now),
+      ),
+    )
+    .orderBy(
+      asc(threadRetentionSchedules.resourceCleanupDueAt),
+      asc(threadRetentionSchedules.threadId),
+    )
+    .limit(args.limit)
+    .all();
+}
+
 export function listDueArchivedConversationDeletions(
   db: DbQueryConnection,
   args: ListDueThreadRetentionArgs,
@@ -89,7 +168,12 @@ export function listDueArchivedConversationDeletions(
   return db
     .select()
     .from(threadRetentionSchedules)
-    .where(lte(threadRetentionSchedules.conversationDeleteDueAt, args.now))
+    .where(
+      and(
+        isNotNull(threadRetentionSchedules.conversationDeleteDueAt),
+        lte(threadRetentionSchedules.conversationDeleteDueAt, args.now),
+      ),
+    )
     .orderBy(
       asc(threadRetentionSchedules.conversationDeleteDueAt),
       asc(threadRetentionSchedules.threadId),
@@ -98,23 +182,60 @@ export function listDueArchivedConversationDeletions(
     .all();
 }
 
+export function completeThreadResourceCleanup(
+  db: ThreadRetentionWriteConnection,
+  args: CompleteThreadResourceCleanupArgs,
+): boolean {
+  const schedule = getThreadRetentionSchedule(db, args.threadId);
+  if (
+    !schedule ||
+    schedule.archivedAt !== args.archivedAt ||
+    schedule.resourceCleanupDueAt !== args.resourceCleanupDueAt
+  ) {
+    return false;
+  }
+
+  const updated: ThreadRetentionSchedule = {
+    ...schedule,
+    resourceCleanupDueAt: null,
+    updatedAt: Date.now(),
+  };
+  if (updated.conversationDeleteDueAt === null) {
+    cancelThreadRetention(db, args.threadId);
+  } else {
+    db.update(threadRetentionSchedules)
+      .set({ resourceCleanupDueAt: null, updatedAt: updated.updatedAt })
+      .where(eq(threadRetentionSchedules.threadId, args.threadId))
+      .run();
+  }
+  return true;
+}
+
 export function clearArchivedConversationDeletion(
   db: ThreadRetentionWriteConnection,
   args: ClearArchivedConversationDeletionArgs,
 ): boolean {
-  return (
-    db
-      .delete(threadRetentionSchedules)
-      .where(
-        and(
-          eq(threadRetentionSchedules.threadId, args.threadId),
-          eq(threadRetentionSchedules.archivedAt, args.archivedAt),
-          eq(
-            threadRetentionSchedules.conversationDeleteDueAt,
-            args.conversationDeleteDueAt,
-          ),
-        ),
-      )
-      .run().changes > 0
-  );
+  const schedule = getThreadRetentionSchedule(db, args.threadId);
+  if (
+    !schedule ||
+    schedule.archivedAt !== args.archivedAt ||
+    schedule.conversationDeleteDueAt !== args.conversationDeleteDueAt
+  ) {
+    return false;
+  }
+
+  const updated: ThreadRetentionSchedule = {
+    ...schedule,
+    conversationDeleteDueAt: null,
+    updatedAt: Date.now(),
+  };
+  if (updated.resourceCleanupDueAt === null) {
+    cancelThreadRetention(db, args.threadId);
+  } else {
+    db.update(threadRetentionSchedules)
+      .set({ conversationDeleteDueAt: null, updatedAt: updated.updatedAt })
+      .where(eq(threadRetentionSchedules.threadId, args.threadId))
+      .run();
+  }
+  return true;
 }

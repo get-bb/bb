@@ -80,6 +80,7 @@ function archiveThreadWithLifecycleEffects(
   const archivedThread = archiveThreadAndReleaseChildren(deps, {
     archivedConversationRetention: getThreadSettings(deps.db)
       .archivedConversationRetention,
+    hostId: args.environment?.hostId ?? null,
     threadId: args.thread.id,
   });
   if (!archivedThread) {

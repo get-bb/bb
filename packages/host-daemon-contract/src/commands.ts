@@ -370,6 +370,23 @@ const threadArchiveCommandSchema = hostDaemonThreadWorkspaceTargetSchema
   })
   .strict();
 
+export const threadStorageDeleteCommandSchema = z
+  .object({
+    type: z.literal("thread.storage.delete"),
+    threadId: z
+      .string()
+      .min(1)
+      .refine(
+        (threadId) =>
+          threadId !== "." &&
+          threadId !== ".." &&
+          !threadId.includes("/") &&
+          !threadId.includes("\\"),
+        "threadId must be a single path segment",
+      ),
+  })
+  .strict();
+
 const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.unarchive"),
@@ -1392,6 +1409,15 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: false,
     envLane: "write",
+  }),
+  "thread.storage.delete": defineHostDaemonCommandDescriptor({
+    type: "thread.storage.delete",
+    schema: threadStorageDeleteCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
   }),
   "interactive.resolve": defineHostDaemonCommandDescriptor({
     type: "interactive.resolve",

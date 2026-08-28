@@ -100,6 +100,7 @@ import {
 import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
+import { scheduleImmediateThreadStorageCleanup } from "./thread-retention.js";
 
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
@@ -1722,6 +1723,9 @@ export function finalizeStoppedThreadInTransaction(
     );
 
     const environmentId = finalizedThread.environmentId;
+    scheduleImmediateThreadStorageCleanup(deps.db, {
+      thread: finalizedThread,
+    });
     deleteThread(deps.db, deps.hub, finalizedThread.id);
     requestEnvironmentCleanup(deps, {
       environmentId,

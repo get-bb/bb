@@ -47,6 +47,8 @@ describe("runPeriodicSweeps", () => {
       scheduleArchivedThreadRetention(harness.db, {
         archivedAt: archived.archivedAt,
         conversationDeleteDueAt: now,
+        hostId: null,
+        resourceCleanupDueAt: null,
         threadId: thread.id,
       });
       const deps = {
