@@ -291,6 +291,13 @@ export async function attemptDispatch(
 
   // --- 2. the single plugin pass ------------------------------------------
 
+  /**
+   * Filled by `commitAdmission` while the pass still holds the evaluation
+   * lock. A holder rather than a bare `let` because the write happens in a
+   * callback, which narrowing cannot see.
+   */
+  const admitted: { value: PendingThreadAdmission | null } = { value: null };
+
   let amendments: DispatchAmendmentResult | null = null;
   if (!sendNow && hasDispatchGates("dispatch")) {
     const outcome = await runDispatchGatePass(deps, {
@@ -319,6 +326,27 @@ export async function attemptDispatch(
       pluginInputs: payload.pluginInputs ?? {},
       queuedMessage:
         claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
+      // A first dispatch is the admission a limiter is deciding about, so its
+      // `pending → starting` flip is committed here, inside the lock, and the
+      // next gate in line sees it. A follow-up has no transition this side of
+      // the send transaction, so it has nothing to commit.
+      ...(firstDispatch
+        ? {
+            commitAdmission: async (passAmendments) => {
+              admitted.value = await admitPendingThread(deps, {
+                amendments: passAmendments,
+                claimed,
+                creation: args.creation ?? null,
+                payload: applyAmendmentsToPayload(
+                  payload,
+                  execution,
+                  passAmendments,
+                ),
+                thread,
+              });
+            },
+          }
+        : {}),
     });
     if (outcome.kind === "wait") {
       return parkForGateWait(deps, {
@@ -337,13 +365,20 @@ export async function attemptDispatch(
 
   const amendedPayload = applyAmendmentsToPayload(payload, execution, amendments);
   if (firstDispatch) {
-    await startPendingThread(deps, {
-      amendments,
-      claimed,
-      creation: args.creation ?? null,
-      payload: amendedPayload,
-      thread,
-    });
+    // Already admitted under the lock when a gate pass ran; admitted here when
+    // no gate is installed or send-now skipped the pass entirely.
+    const admission =
+      admitted.value ??
+      (await admitPendingThread(deps, {
+        amendments,
+        claimed,
+        creation: args.creation ?? null,
+        payload: amendedPayload,
+        thread,
+      }));
+    if (admission !== null) {
+      await launchAdmittedThread(deps, admission);
+    }
     return { kind: "dispatched" };
   }
 
@@ -471,7 +506,7 @@ function parkForGateWait(
   );
 }
 
-interface StartPendingThreadArgs {
+interface AdmitPendingThreadArgs {
   amendments: DispatchAmendmentResult | null;
   claimed: ClaimedQueuedThreadMessageRow[] | null;
   creation: DispatchAttemptCreation | null;
@@ -480,19 +515,38 @@ interface StartPendingThreadArgs {
 }
 
 /**
- * A cleared FIRST attempt: the thread leaves `pending` and the existing
- * provisioning machinery takes over with the message riding the cold-start
- * command, exactly as creation has always done it.
- *
- * Nothing about provisioning changes here. The only new thing is where the
- * start context comes from — the creation call that is still on the stack, or
- * the thread column a park wrote — which is what makes "the schedule survives
- * a restart" true rather than aspirational.
+ * What a committed admission hands to the launch half: everything already
+ * resolved, so launching cannot fail its way back into `pending`.
  */
-async function startPendingThread(
+interface PendingThreadAdmission {
+  claimedRow: ClaimedQueuedThreadMessageRow | null;
+  execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
+  input: PromptInput[];
+  startContext: PendingThreadStartContext;
+  startingThread: Thread;
+}
+
+/**
+ * The committing half of a cleared FIRST attempt: the thread leaves `pending`
+ * for `starting`, and the parked row that carried the message is consumed.
+ *
+ * This runs INSIDE the gate evaluation lock whenever a gate pass ran, which is
+ * the whole flip-before-unlock invariant — the next attempt in the queue reads
+ * a database that already contains this admission, so a limiter can answer
+ * from `listRunning()` instead of tracking its own in-flight `proceed`s.
+ *
+ * Everything that can legitimately refuse the admission therefore happens
+ * before the flip, in this order and deliberately: a missing start context, a
+ * gate's environment amendment (which re-runs creation's intent resolution and
+ * can throw), the execution tuple, then the row consumption whose claim CAS
+ * can be lost. A failure at any of those leaves the thread in `pending`,
+ * exactly as it did when this ran unlocked. Returns null when the thread moved
+ * on underneath the attempt.
+ */
+async function admitPendingThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  args: StartPendingThreadArgs,
-): Promise<void> {
+  args: AdmitPendingThreadArgs,
+): Promise<PendingThreadAdmission | null> {
   let startContext =
     args.creation?.startContext ??
     readPendingThreadStartContext(deps, args.thread.id);
@@ -540,22 +594,43 @@ async function startPendingThread(
       { threadId: args.thread.id, status: args.thread.status },
       "A cleared first dispatch could not move its thread out of pending",
     );
-    return;
+    return null;
   }
   const startingThread = getThread(deps.db, args.thread.id);
   if (!startingThread) {
-    return;
+    return null;
   }
   setThreadPendingStartContext(deps.db, {
     threadId: args.thread.id,
     pendingStartContext: null,
   });
+  return {
+    claimedRow,
+    execution,
+    input: args.payload.input,
+    startContext,
+    startingThread,
+  };
+}
+
+/**
+ * The launching half: the existing provisioning machinery takes over with the
+ * message riding the cold-start command, exactly as creation has always done
+ * it. Deliberately outside the evaluation lock — provisioning can take as long
+ * as a clone, and holding the lock across it would stall every other dispatch
+ * in the server.
+ */
+async function launchAdmittedThread(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  admission: PendingThreadAdmission,
+): Promise<void> {
+  const { claimedRow, startContext, startingThread } = admission;
   const context = requestThreadProvision(deps, {
     thread: startingThread,
     environmentIntent: startContext.environmentIntent,
-    execution,
+    execution: admission.execution,
     fork: startContext.fork,
-    input: args.payload.input,
+    input: admission.input,
     ...(startContext.providerInput !== undefined
       ? { providerInput: startContext.providerInput }
       : {}),

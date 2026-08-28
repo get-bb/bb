@@ -366,6 +366,7 @@ type ExpectedThreadsKey =
   | "get"
   | "interactions"
   | "list"
+  | "listRunning"
   | "markRead"
   | "markUnread"
   | "open"

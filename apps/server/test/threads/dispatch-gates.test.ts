@@ -1,10 +1,12 @@
 import {
   getAppSettings,
   getProjectExecutionDefaults,
+  getThread,
   setAppSettings,
   listEvents,
   listQueuedThreadMessages,
   listQueuedThreadMessagesForApi,
+  listRunningThreads,
 } from "@bb/db";
 import type { PluginInputs, ThreadQueuedMessage } from "@bb/domain";
 import type {
@@ -427,6 +429,100 @@ describe("dispatch gate composition", () => {
       ]);
 
       expect(maxInFlight).toBe(1);
+    });
+  });
+});
+
+describe("dispatch gate admission visibility", () => {
+  it("commits a cleared first dispatch before the lock releases, so the next pass sees it", async () => {
+    // The invariant `sdk.threads.listRunning()` rests on. The evaluation lock
+    // already serializes the QUESTIONS; this pins that the ANSWERS land inside
+    // it too. Without the flip-before-unlock ordering both passes below read an
+    // empty running set and a limit of one admits two threads — the exact race
+    // that made the limiter keep its own tally of in-flight `proceed`s.
+    await withTestHarness(async (harness) => {
+      const seen: string[][] = [];
+      const registry = emptyRegistry();
+      registry.dispatch.push({
+        pluginId: "limiter",
+        handler: async () => {
+          // Precisely what the concurrency limiter does: ask the server what
+          // is running, at the moment the gate runs.
+          const running = listRunningThreads(harness.db);
+          seen.push(running.map((row) => row.id));
+          return running.length >= 1
+            ? ({ action: "wait", reason: "1 of 1 running on all hosts" } as const)
+            : ({ action: "proceed" } as const);
+        },
+      });
+      installGates(registry);
+      const { host, project } = seedGateFixture(harness, "host-admission");
+
+      const created = await Promise.all([
+        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
+        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
+      ]);
+
+      expect(seen).toHaveLength(2);
+      expect(seen[0]).toEqual([]);
+      expect(seen[1]).toHaveLength(1);
+
+      const admittedId = seen[1]![0]!;
+      const parked = created.find((thread) => thread.id !== admittedId)!;
+      expect(created.map((thread) => thread.id)).toContain(admittedId);
+      // One admitted and started, one still pending with its message parked.
+      expect(getThread(harness.db, admittedId)?.status).not.toBe("pending");
+      expect(getThread(harness.db, parked.id)?.status).toBe("pending");
+      expect(onlyParkedRow(harness, parked.id).waitingOn).toEqual({
+        kind: "plugin",
+        pluginId: "limiter",
+        reason: "1 of 1 running on all hosts",
+      });
+    });
+  });
+
+  it("shows a warm follow-up's admission only after its send lands, not inside the pass", async () => {
+    // The honest boundary on the exactness contract. A first dispatch commits
+    // `pending -> starting` inside the lock; a follow-up on an already-live
+    // thread commits `idle -> active` inside the send transaction, which needs
+    // a prepared host command and therefore cannot run under the lock. So a
+    // gate deciding about an idle thread does not yet see it, and sees it on
+    // the next attempt. Pinned here so a future change that closes the gap
+    // fails loudly and takes the doc comment with it.
+    await withTestHarness(async (harness) => {
+      const seen: string[][] = [];
+      const registry = emptyRegistry();
+      registry.dispatch.push({
+        pluginId: "limiter",
+        handler: () => {
+          seen.push(listRunningThreads(harness.db).map((row) => row.id));
+          return { action: "proceed" } as const;
+        },
+      });
+      installGates(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-warm-admission",
+        status: "idle",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("first follow-up"), mode: "auto" },
+        thread,
+      });
+      // Not visible to its own pass: an idle thread occupies nothing, and the
+      // activation is still ahead of it.
+      expect(seen).toEqual([[]]);
+      // It IS committed by the time the send returns, so the next attempt —
+      // and every other reader — sees it.
+      expect(listRunningThreads(harness.db).map((row) => row.id)).toEqual([
+        thread.id,
+      ]);
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("a steer"), mode: "steer" },
+        thread: getThread(harness.db, thread.id)!,
+      });
+      expect(seen[1]).toEqual([thread.id]);
     });
   });
 });

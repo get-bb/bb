@@ -3,6 +3,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   countThreads,
+  listRunningThreads,
   getEnvironment,
   getThreadSectionById,
   listThreadMentionRowsByIds,
@@ -23,6 +24,7 @@ import {
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
   type ThreadCountResponse,
+  type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
@@ -245,6 +247,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(result.groups !== undefined ? { groups: result.groups } : {}),
     };
     return context.json(response);
+  });
+
+  get(routes.running, (context) => {
+    return context.json(
+      listRunningThreads(deps.db) satisfies ThreadRunningResponse,
+    );
   });
 
   get(routes.list, (context, query) => {

@@ -1,84 +1,83 @@
 // bb-plugin-concurrency-limit — admission control for thread dispatches.
 //
-// One gate (the dispatch checkpoint) makes a dispatch WAIT when the pool it
-// would join is full, and a background reconciler clears the oldest wait
-// whenever a slot frees. Everything the gate needs is in memory before it
-// runs: gates are boxed at 10s, fail closed on throw, and run under one
-// server-wide lock, so a gate that awaited a query would stall every dispatch
-// in the server and a gate that threw would block admission entirely.
+// One gate at the dispatch checkpoint makes an attempt WAIT when the pool it
+// would join is full. That is the entire plugin: parse the settings, ask the
+// server what is running, drop the exempt threads, compare, answer.
 //
-// The bookkeeping this implies — a tally seeded from `threads.count`,
-// maintained by lifecycle events, with the plugin's own in-flight `proceed`s
-// counted until their rows land — lives in ./tally.ts. Wait attribution lives
-// in ./parked-rows.ts, settings parsing in ./limits.ts. This file is wiring.
+// It used to be four times this size, because it kept its own occupancy
+// tally — a baseline seeded from `threads.count`, maintained by lifecycle
+// events, plus its own in-flight `proceed`s — and its own registry of the rows
+// it had parked, so it could clear the oldest one when a slot freed. None of
+// that is needed now:
+//
+//   * `sdk.threads.listRunning()` answers "which threads are occupying
+//     capacity" directly, with the provenance fields the exemption needs. Gate
+//     passes are serialized under one server-wide lock AND a cleared first
+//     attempt commits its `pending -> starting` flip before that lock
+//     releases, so inside a gate the answer already includes every admission
+//     granted ahead of this one. No in-flight bookkeeping, no reseeding, no
+//     drift to reconcile.
+//   * Core re-attempts every plugin-parked row whenever a thread leaves the
+//     occupying set. A parked row is re-decided by this very gate, so a
+//     release that is not warranted simply re-parks — which is why the plugin
+//     never needed to choose *which* row to release.
+//
+// What remains, deliberately: unparseable settings report through
+// `needsConfiguration` and leave that limit unenforced (a gate that threw on a
+// typo would fail every dispatch in the server), and a `join-turn` attempt or
+// an already-running thread proceeds unconditionally — it holds its slot
+// already.
 
-import type {
-  BbPluginApi,
-  PluginThreadEventPayloads,
-} from "@get-bb/plugin-sdk";
-import { ParkedRowRegistry, type ParkedRecord } from "./parked-rows.js";
+import type { BbPluginApi, PluginDispatchDecision } from "@get-bb/plugin-sdk";
 import {
   isFullyUnlimited,
   resolveLimits,
   SETTING_LABELS,
   type ResolvedLimits,
 } from "./limits.js";
-import { evaluateDispatch, isExemptDispatch, scopeKeysFor } from "./scope.js";
-import { OccupancyTally, type SeedCounts } from "./tally.js";
 
-// The SDK exports neither DTO by name — the event payload map is where a
-// plugin meets them, so that is where these are taken from. Deriving keeps
-// them pinned to exactly what a handler is handed.
-type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
+/** Reason strings are capped by the queued-row contract; host names are user-set. */
+export const MAX_REASON_LENGTH = 200;
 
 /**
- * The `parentThreadId` sentinel that counts root threads only. It is a
- * server-contract constant a plugin cannot import (plugins may only depend on
- * `@get-bb/plugin-sdk`), so it is repeated here with its meaning stated.
- */
-const ROOT_PARENT_SENTINEL = "none";
-
-/**
- * How often the tally is rebuilt from the database and parked rows are
- * reconciled.
+ * Whether this thread is exempt from counting and from limiting.
  *
- * The event stream keeps the tally accurate between passes; this pass is what
- * makes a *missed* event self-correcting instead of permanent. A minute is
- * short enough that drift never lasts long and long enough that two grouped
- * `count(*)` queries are free.
+ * Child and plugin-spawned threads always are, and this is not a setting. It
+ * is the deadlock guard: a `workflows`-style parent sits in `active` for the
+ * entire time it waits on hidden children. If children counted against the
+ * same pool, a limit of N would be consumed by N parents that can only finish
+ * once their children run — and the children would be held forever behind the
+ * parents. Exempting children breaks the cycle: the parent occupies a slot,
+ * its children do not.
+ *
+ * `parentThreadId` catches forks and side chats; `originPluginId` catches
+ * plugin-spawned roots that have no parent thread but are still someone else's
+ * internal machinery rather than a user asking for work.
+ *
+ * Applied to the running set as well as to the dispatch, because the tally
+ * must not see exempt threads in one direction only.
  */
-export const RECONCILE_INTERVAL_MS = 60_000;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(finish, ms);
-    signal.addEventListener("abort", finish, { once: true });
-    function finish(): void {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    }
-  });
+function isExempt(thread: {
+  parentThreadId: string | null;
+  originPluginId: string | null;
+}): boolean {
+  return thread.parentThreadId !== null || thread.originPluginId !== null;
 }
 
 /**
- * A parked row as the registry reads it. `holder` is derived from the wait
- * rather than read off a column: the row itself says who it is waiting on, so
- * there is nothing to keep in step.
+ * "N of N running on <scope>". The count shown is the limit itself, so a
+ * binding limit reads as a full pool ("4 of 4 running on all hosts") rather
+ * than an off-by-one. A limit of 0 shows as "0 of 0", which is honest: the
+ * pool has no slots.
  */
-function toParkedRecord(entry: QueueEntry): ParkedRecord | null {
-  if (entry.waitingOn?.kind !== "plugin") return null;
+function waitVerdict(limit: number, scopeLabel: string): PluginDispatchDecision {
+  const reason = `${limit} of ${limit} running on ${scopeLabel}`;
   return {
-    id: entry.id,
-    threadId: entry.threadId,
-    reason: entry.waitingOn.reason,
-    createdAt: entry.createdAt,
-    holder: `plugin:${entry.waitingOn.pluginId}`,
+    action: "wait",
+    reason:
+      reason.length <= MAX_REASON_LENGTH
+        ? reason
+        : `${reason.slice(0, MAX_REASON_LENGTH - 1)}…`,
   };
 }
 
@@ -102,21 +101,7 @@ export default async function concurrencyLimitPlugin(
     },
   });
 
-  const holder: `plugin:${string}` = `plugin:${bb.pluginId}`;
-  const tally = new OccupancyTally();
-  const registry = new ParkedRowRegistry(holder);
-
-  /**
-   * environmentId → hostId. Thread lifecycle events carry `environmentId` but
-   * not `hostId`, and the per-host tally needs the host. The mapping never
-   * changes for a given environment, so one lookup per environment is enough.
-   */
-  const environmentHosts = new Map<string, string | null>();
-  /** Host display names, for wait reasons. Refreshed on each reconcile. */
-  const hostNames = new Map<string, string>();
-
   let limits: ResolvedLimits = { global: null, perHost: null };
-  let wakeReconciler: (() => void) | null = null;
 
   async function applySettings(): Promise<void> {
     const raw = await settings.get();
@@ -133,78 +118,14 @@ export default async function concurrencyLimitPlugin(
 
   await applySettings();
   settings.onChange(() => {
-    void applySettings().then(() => wakeReconciler?.());
+    void applySettings();
   });
 
-  // --- scope resolution -----------------------------------------------------
-
-  async function hostIdForEnvironment(
-    environmentId: string | null,
-  ): Promise<string | null> {
-    if (environmentId === null) return null;
-    const cached = environmentHosts.get(environmentId);
-    if (cached !== undefined) return cached;
-    try {
-      const environment = await bb.sdk.environments.get({ environmentId });
-      environmentHosts.set(environmentId, environment.hostId);
-      return environment.hostId;
-    } catch (error) {
-      bb.log.debug(
-        `could not resolve the host for environment ${environmentId}: ${errorMessage(error)}`,
-      );
-      return null;
-    }
-  }
-
-  function isExemptThread(thread: ThreadResponse): boolean {
-    return isExemptDispatch({
-      parentThreadId: thread.parentThreadId,
-      originPluginId: thread.originPluginId,
-    });
-  }
-
-  // --- gates ----------------------------------------------------------------
-
-  /**
-   * The whole decision, for either stage. Synchronous by construction: every
-   * input is already resolved in memory, which is the only way to honour the
-   * "decide in milliseconds" contract.
-   */
-  function decide(args: {
-    hostId: string | null;
-    exempt: boolean;
-    threadId: string;
-  }): { action: "proceed" } | { action: "wait"; reason: string } {
-    if (args.exempt || isFullyUnlimited(limits)) return { action: "proceed" };
-
-    const now = Date.now();
-    const verdict = evaluateDispatch({
-      limits,
-      hostId: args.hostId,
-      hostName:
-        args.hostId === null ? null : (hostNames.get(args.hostId) ?? null),
-      countInScope: (key) => tally.count(key, now),
-    });
-
-    if (verdict.action === "wait") {
-      registry.expectWait(verdict.reason, verdict.scopeKey);
-      return { action: "wait", reason: verdict.reason };
-    }
-
-    // A `proceed` is a commitment to a slot no lifecycle event has reported
-    // yet. Count it now or a limit of 1 admits every dispatch that arrives
-    // before the first thread starts. The thread row always exists by the time
-    // a gate runs, so this is always keyed by its id — there is no longer a
-    // "no thread yet" case to reserve a slot for anonymously.
-    tally.notePendingSubmit(args.threadId, args.hostId, now);
-    return { action: "proceed" };
-  }
-
-  bb.experimental_dispatch.gate("dispatch", (context) => {
+  bb.experimental_dispatch.gate("dispatch", async (context) => {
     // A thread that is already occupying its slot is not asking for a new one.
     // Re-evaluating it would park a running thread's own follow-up behind the
     // pool it is itself filling — and a `join-turn` attempt is by definition
-    // joining a turn whose slot is already ours, so it proceeds unconditionally.
+    // joining a turn whose slot is already ours.
     if (
       context.attempt === "join-turn" ||
       context.thread.status === "active" ||
@@ -212,159 +133,37 @@ export default async function concurrencyLimitPlugin(
     ) {
       return { action: "proceed" };
     }
-    return decide({
-      // Null whenever the environment is not chosen yet, which is the normal
-      // case for a first message: such a dispatch counts globally but against
-      // no host's pool.
-      hostId: context.host?.id ?? null,
-      exempt: isExemptThread(context.thread),
-      // A thread's FIRST dispatch is the one that claims a slot, and the
-      // thread row already exists by then, so both cases tally by thread id.
-      threadId: context.thread.id,
-    });
-  });
-
-  // --- lifecycle events -----------------------------------------------------
-
-  // There is deliberately no `thread.created` handler. Creation is ungated
-  // now, so that event fires for a `pending` thread — one whose first message
-  // has not reached the gate yet, and which may never start at all if we park
-  // it. Counting it as occupancy did two wrong things: it double-counted every
-  // starting thread against the gate's own in-flight entry for the same id,
-  // and it made a message we parked wait behind the thread it was waiting to
-  // start. A thread takes a slot when it runs, which `thread.active` reports.
-
-  bb.events.on("thread.active", async ({ thread }) => {
-    if (isExemptThread(thread)) return;
-    tally.noteActive(thread.id, await hostIdForEnvironment(thread.environmentId));
-  });
-
-  /**
-   * A slot freed. Update the tally, then clear the wait on the oldest row
-   * waiting on a scope this thread was occupying.
-   *
-   * Exempt threads are skipped entirely, exactly as they are on the way in.
-   * The tally must not see them in one direction only: a child thread never
-   * took a slot, so treating its completion as a freed one would hand out
-   * capacity that does not exist — and under `workflows`, where children
-   * finish constantly, it would do so continuously.
-   *
-   * Clearing is unconditional rather than "clear only if now below capacity".
-   * Core re-runs the whole gate pass when a wait clears — including this
-   * plugin's own gate — so a clear that turns out to be unwarranted simply
-   * re-parks, and core paces the retry. Checking first would duplicate the
-   * gate's logic in a second place that could disagree with it.
-   */
-  async function noteThreadFreed(thread: ThreadResponse): Promise<void> {
-    if (isExemptThread(thread)) return;
-    const hostId = await hostIdForEnvironment(thread.environmentId);
-    tally.noteFreed(thread.id, hostId);
-
-    const candidate = registry.oldestForScopes(scopeKeysFor(hostId));
-    if (candidate === null) return;
-    // Forget it before awaiting: `queue.dispatched` may not arrive before the
-    // next freed thread looks for a row, and clearing the same wait twice is a
-    // wasted round trip at best. The reconcile pass re-adopts it if the clear
-    // failed.
-    registry.noteResolved(candidate.queuedMessageId);
-    try {
-      await bb.experimental_dispatch.clearWait(candidate.queuedMessageId);
-    } catch (error) {
-      bb.log.warn(
-        `could not clear the wait on ${candidate.queuedMessageId}: ${errorMessage(error)}`,
-      );
-      wakeReconciler?.();
-    }
-  }
-
-  bb.events.on("thread.idle", ({ thread }) => noteThreadFreed(thread));
-  bb.events.on("thread.failed", ({ thread }) => noteThreadFreed(thread));
-  bb.events.on("thread.archived", ({ thread }) => noteThreadFreed(thread));
-  bb.events.on("thread.deleted", ({ thread }) => noteThreadFreed(thread));
-
-  bb.events.on("queue.parked", ({ entry }) => {
-    const record = toParkedRecord(entry);
-    if (record !== null) registry.noteParked(record);
-  });
-  bb.events.on("queue.dispatched", ({ entry }) => {
-    registry.noteResolved(entry.id);
-  });
-  bb.events.on("queue.cancelled", ({ entry }) => {
-    registry.noteResolved(entry.id);
-  });
-
-  // --- reconciliation -------------------------------------------------------
-
-  async function readSeed(): Promise<SeedCounts> {
-    // `parentThreadId: "none"` keeps children out of the seed, so the baseline
-    // agrees with what the events maintain.
-    //
-    // It is not a perfect filter: the count route has no `originPluginId`, so
-    // a plugin-spawned *root* thread is exempt from the gate but still lands
-    // in the seed. That over-counts, which is the safe direction (it holds
-    // rather than over-admits) and it is bounded — the thread's own completion
-    // is invisible to the tally, but the next reconcile pass drops it.
-    const [active, starting] = await Promise.all([
-      bb.sdk.threads.count({
-        parentThreadId: ROOT_PARENT_SENTINEL,
-        status: "active",
-        groupBy: "host",
-      }),
-      bb.sdk.threads.count({
-        parentThreadId: ROOT_PARENT_SENTINEL,
-        status: "starting",
-        groupBy: "host",
-      }),
-    ]);
-
-    const byHost: Record<string, number> = {};
-    for (const response of [active, starting]) {
-      for (const group of response.groups ?? []) {
-        if (group.key === null) continue;
-        byHost[group.key] = (byHost[group.key] ?? 0) + group.count;
-      }
+    if (isExempt(context.thread) || isFullyUnlimited(limits)) {
+      return { action: "proceed" };
     }
 
-    return { global: active.total + starting.total, byHost };
-  }
-
-  async function reconcile(): Promise<void> {
-    const hosts = await bb.sdk.hosts.list();
-    hostNames.clear();
-    for (const host of hosts) hostNames.set(host.id, host.name);
-
-    tally.seed(await readSeed());
-
-    // Scoped to this plugin's own waits by the indexed holder filter, rather
-    // than listing everything and filtering client-side.
-    const parkedRows = await bb.sdk.threads.queue.list({ waitHolder: holder });
-    registry.adopt(
-      parkedRows
-        .map(toParkedRecord)
-        .filter((record): record is ParkedRecord => record !== null),
+    // Exact here, and only here: the evaluation lock plus the flip-before-
+    // unlock invariant mean this already contains every admission granted
+    // ahead of us in this burst.
+    const running = (await bb.sdk.threads.listRunning()).filter(
+      (thread) => !isExempt(thread),
     );
-  }
 
-  bb.background.service("reconciler", {
-    async start(signal) {
-      while (!signal.aborted) {
-        try {
-          await reconcile();
-        } catch (error) {
-          if (signal.aborted) break;
-          // Deliberately leave the previous tally in place. Stale counts
-          // over-count at worst — they still hold the threads they were seeded
-          // with, and the event stream keeps adjusting them — whereas clearing
-          // the tally would make a transient query failure admit everything.
-          bb.log.warn(`could not reconcile counts: ${errorMessage(error)}`);
-        }
-        if (signal.aborted) break;
-        await new Promise<void>((resolve) => {
-          wakeReconciler = resolve;
-          void sleep(RECONCILE_INTERVAL_MS, signal).then(resolve);
-        });
-        wakeReconciler = null;
+    if (limits.global !== null && running.length >= limits.global) {
+      // Broadest limit first, and deterministically so: both limits can be at
+      // capacity at once, and a gate that reported whichever it noticed first
+      // would give the same thread a different reason on each re-evaluation.
+      // "the server is full" also explains more than "this host is full".
+      return waitVerdict(limits.global, "all hosts");
+    }
+
+    // Null whenever the environment is not chosen yet, which is the normal
+    // case for a first message: such a dispatch counts globally but against no
+    // host's pool.
+    const host = context.host;
+    if (limits.perHost !== null && host !== null) {
+      const onHost = running.filter((thread) => thread.hostId === host.id);
+      if (onHost.length >= limits.perHost) {
+        const label = host.name.trim() === "" ? host.id : host.name;
+        return waitVerdict(limits.perHost, `host ${label}`);
       }
-    },
+    }
+
+    return { action: "proceed" };
   });
 }

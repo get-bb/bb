@@ -1054,8 +1054,9 @@ predecessors' effects, a `reject` short-circuits, and `wait` verdicts are
 collected across the whole pass so provider and model are final before anything
 is parked. One row is parked per pass, owned by the FIRST waiter; the rest have
 their reasons appended to that row's reason, and each of them votes again on
-the next attempt. The whole pass runs under one server-wide lock, so a counting
-gate never races another dispatch.
+the next attempt. The whole pass runs under one server-wide lock, and a cleared
+first dispatch commits its thread-status flip before that lock releases — which
+is what makes `bb.sdk.threads.listRunning()` exact inside a gate.
 
 **Fail-closed.** At `"dispatch"`, a gate that throws or exceeds the 10s
 decision box fails the attempt with your plugin named — it does not fall
@@ -1091,10 +1092,46 @@ A caller addresses input to a specific plugin's gates with `pluginInputs` on
 your gate sees only your own entry as `ctx.pluginInput`, and it rides the
 queued row so a message that parks reaches you unchanged on every re-attempt.
 
-To count in-flight work, use `bb.sdk.threads.count({ status, hostId,
-providerId, projectId, parentThreadId, groupBy })` — a real grouped
-`SELECT count(*)`, not a list you filter. Serial evaluation means you count
-your own `proceed`s as in-flight until the matching `thread.created` arrives.
+**Limiting concurrency: ask, do not tally.** `bb.sdk.threads.listRunning()`
+returns the threads occupying capacity right now — canonical status `starting`
+or `active`, archived and deleted excluded, hidden included — as rows carrying
+`{ id, hostId, projectId, parentThreadId, originPluginId }`. Filter and group
+them however your limit is expressed; do not keep a count of your own.
+
+```ts
+const running = (await bb.sdk.threads.listRunning()).filter(
+  (thread) => thread.parentThreadId === null && thread.originPluginId === null,
+);
+if (running.length >= limit) {
+  return { action: "wait", reason: `${limit} of ${limit} running on all hosts` };
+}
+return { action: "proceed" };
+```
+
+**Exact inside a dispatch gate, a snapshot everywhere else.** Passes are
+serialized under one server-wide lock, AND a cleared first dispatch commits its
+`pending → starting` flip before that lock releases — so inside your gate the
+answer already contains every admission granted ahead of you in the same burst.
+Five creates arriving together against a limit of two admit two and park three.
+Read the same method from a background service, a timer or a `turn.failed`
+gate and it is an ordinary query racing every concurrent dispatch, exactly like
+`threads.count`. One boundary: a follow-up admitted on an already-live `idle`
+thread flips `idle → active` inside the send transaction, just after the lock,
+so a burst of follow-ups to distinct idle threads can momentarily under-report.
+
+You do NOT need to release your own waits. When a thread leaves the occupying
+set — idle, failed, archived, deleted — core re-attempts every plugin-parked
+row in queue order, which re-runs your gate; rows still over the limit re-park,
+and core paces the retries. Subscribing to lifecycle events to call `clearWait`
+duplicates that and races it. Reach for `clearWait` when YOUR condition
+resolved (a rate-limit window elapsed, an approval came back), not when
+capacity freed.
+
+`bb.sdk.threads.count({ status, hostId, providerId, projectId,
+parentThreadId, groupBy })` is still there for headline numbers — a real
+grouped `SELECT count(*)`, not a list you filter — but it cannot express the
+exemptions a limiter needs, and it carries no exactness guarantee.
+
 A well-behaved limiter proceeds unconditionally on a `join-turn` attempt: the
 thread already holds its slot. **Deadlock caution:** parent threads sit active
 while waiting on hidden children, so a limiter must exempt child threads

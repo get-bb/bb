@@ -1395,6 +1395,38 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("lists the running threads over the running route with no query", async () => {
+    const rows = [
+      {
+        id: "thr_a",
+        hostId: "host_a",
+        projectId: "proj_1",
+        parentThreadId: null,
+        originPluginId: null,
+      },
+      {
+        id: "thr_b",
+        hostId: null,
+        projectId: "proj_1",
+        parentThreadId: "thr_a",
+        originPluginId: null,
+      },
+    ];
+    const queue = createFetchQueue([{ body: rows }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.listRunning()).resolves.toEqual(rows);
+    // No filters at all: the occupying set is small, and every policy question
+    // a caller could ask is answerable from the rows themselves.
+    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
+  });
+
   it("carries pluginInputs onto the create and send bodies", async () => {
     const queue = createFetchQueue([
       { body: { id: "thr_123" } },

@@ -184,6 +184,7 @@ import type {
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
+  ThreadRunningResponse,
   QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -925,6 +926,18 @@ export const publicApiRoutes = {
         threadCountQuerySchema,
       ),
       response: jsonResponse<ThreadCountResponse>(),
+    }),
+    /**
+     * The threads occupying capacity right now, as rows rather than a count.
+     * A limiter needs to know *which* threads are running to apply its
+     * exemptions — `threads.count` can only filter on what the query string
+     * exposes, which forced counting a superset and over-holding.
+     */
+    running: defineRoute({
+      path: "/threads/running",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ThreadRunningResponse>(),
     }),
     search: defineRoute({
       path: "/threads/search",

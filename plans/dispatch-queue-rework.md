@@ -193,6 +193,44 @@ above:
   `pluginInputs` side channel are unaffected — everything above about them
   still holds; only the provider-routing half is gone.
 
+- **Concurrency limiting became a fact lookup, not plugin bookkeeping.** The
+  settled-decisions row above ("Same tally, release = the plugin marking its
+  wait cleared") is retired. Three changes replaced it:
+
+  - **`sdk.threads.listRunning()`** (`GET /threads/running`, no query) returns
+    the threads occupying capacity — canonical status `starting` or `active`,
+    archived/deleted excluded, hidden *included* because a hidden thread burns
+    a real slot — as rows of
+    `{ id, hostId, projectId, parentThreadId, originPluginId }`. `threads.count`
+    could only filter on what its query string exposed, so a limiter counting
+    through it had to count a superset (no `originPluginId` filter) and
+    over-hold; the provenance fields are exactly the exemption inputs.
+  - **Flip-before-unlock.** A cleared first dispatch now commits its
+    `pending → starting` transition INSIDE the gate evaluation lock
+    (`DispatchGatePassRequest.commitAdmission`), so attempt N+1 reads a
+    database that already contains attempt N's admission. That is what makes
+    `listRunning` **exact inside a dispatch gate and a snapshot everywhere
+    else**, and it is what killed the in-flight-`proceed` tally. Honest
+    boundary: a warm follow-up's `idle → active` flip lives in the send
+    transaction (it needs a prepared host command) and lands just after the
+    lock, so bursts of follow-ups to distinct idle threads can momentarily
+    under-report. First-dispatch exactness is the one the five-quick-creates
+    race needs; both orderings are pinned by tests.
+  - **Idle-drain extension.** When a thread leaves the occupying set (idle,
+    error, archived, deleted) core re-attempts EVERY plugin-parked row in queue
+    order, globally — a limit can be expressed over any grouping and core does
+    not know which one. Rows still blocked re-park, and the existing
+    `DISPATCH_REPARK_MIN_INTERVAL_MS` pacing bounds the churn. Plugins no
+    longer release their own waits when capacity frees; `clearWait` is now for
+    "my own condition resolved" only. The orphan sweep is unchanged.
+
+  The limiter plugin collapsed to settings-parse + `listRunning` + exemption
+  filter + compare: `tally.ts`, `scope.ts`, `parked-rows.ts`, their tests, the
+  `thread.*`/`queue.*` subscriptions, the `clearWait` call and the reconciler
+  background service are all deleted. Reason strings, the `needsConfiguration`
+  posture, the join-turn proceed rule and both settings descriptors are
+  unchanged.
+
 ## Build notes
 
 - One integrated wave on this branch; every existing suite green at the end;

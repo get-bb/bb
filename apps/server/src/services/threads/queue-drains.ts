@@ -212,6 +212,74 @@ async function clearDueWaitAndAttempt(
   });
 }
 
+let freedCapacityDrainPending = false;
+
+/**
+ * Schedules the freed-capacity drain. This is what createApp registers as the
+ * {@link noteThreadCapacityFreed} listener.
+ *
+ * Bursts coalesce into one pass: five turns completing together free five
+ * slots, and one walk of the parked rows fills as many of them as the gates
+ * allow. The flag clears when the walk starts, so a thread that frees while a
+ * walk is in progress still gets its own pass.
+ */
+export function requestFreedCapacityQueueDrain(deps: QueueDrainDeps): void {
+  if (freedCapacityDrainPending) return;
+  freedCapacityDrainPending = true;
+  deferAfterResponse({
+    config: deps.config,
+    context: {},
+    logger: deps.logger,
+    name: "Freed-capacity queue drain",
+    work: async () => {
+      freedCapacityDrainPending = false;
+      await runFreedCapacityQueueDrain(deps);
+    },
+  });
+}
+
+/**
+ * Re-attempts every plugin-parked row, oldest first, because a thread left the
+ * occupying set.
+ *
+ * Deliberately global rather than scoped to the freed thread's host or
+ * project: a limit can be expressed over any grouping and core does not know
+ * which one a plugin used. A row that is still blocked simply re-parks, which
+ * costs one gate pass and is exactly what makes the release safe — no plugin
+ * has to decide whether its own release was warranted.
+ *
+ * Only plugin waits: core waits (`time`, `thread-busy`, `provisioning`,
+ * `interaction`, `host-offline`) each have their own release signal and are
+ * unaffected by somebody else's slot freeing. Rows are walked in queue order
+ * so a full pool drains in the order it filled, and the existing re-park
+ * pacing (`isDispatchReparkedRecently`, one second per thread) is what keeps a
+ * plugin that re-parks everything from being re-asked on every completion.
+ */
+export async function runFreedCapacityQueueDrain(
+  deps: QueueDrainDeps,
+): Promise<void> {
+  for (const row of listQueuedThreadMessagesWithPluginWait(deps.db)) {
+    if (isDispatchReparkedRecently(row.threadId)) continue;
+    const thread = getThread(deps.db, row.threadId);
+    if (!thread || thread.deletedAt !== null) continue;
+    try {
+      await clearDueWaitAndAttempt(deps, row);
+    } catch (error) {
+      // Same posture as the due sweep: nobody is listening, so the outcome
+      // lands on the row rather than propagating and stopping the walk.
+      recordQueuedMessageDrainFailure(deps, { error, row, thread });
+      deps.logger.warn(
+        {
+          queuedMessageId: row.id,
+          threadId: row.threadId,
+          ...runtimeErrorLogFields(deps.config, error),
+        },
+        "Failed to re-attempt a plugin-parked message after capacity freed",
+      );
+    }
+  }
+}
+
 /**
  * Clears waits whose holding plugin is no longer running, so uninstalling or
  * disabling a plugin can never strand a user's message. Core waits are exempt:

@@ -29,6 +29,7 @@ import type {
   ThreadCountQuery,
   ThreadCountResponse,
   ThreadListResponse,
+  ThreadRunningResponse,
   ThreadOpenResponse,
   ThreadPaneAction,
   ThreadPaneActionResponse,
@@ -125,6 +126,28 @@ export interface ThreadGetArgs {
 
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
 export type ThreadCountResult = ThreadCountResponse;
+/**
+ * The threads occupying capacity right now — canonical status `starting` or
+ * `active`, archived and deleted excluded, hidden included (a hidden thread
+ * burns a real slot). Each row carries only what an admission policy acts on:
+ * `hostId` (null until an environment is chosen), `projectId`,
+ * `parentThreadId` and `originPluginId`.
+ *
+ * **Exact inside a dispatch gate, a snapshot everywhere else.** Gate passes are
+ * serialized under one server-wide lock and a cleared first attempt commits its
+ * `pending -> starting` flip before that lock releases, so a gate reading this
+ * sees every admission granted ahead of it in the same burst — which is what
+ * makes "five quick creates against a limit of two" hold three of them instead
+ * of admitting all five. Read from a background service, a timer or a
+ * `turn.failed` gate it is an ordinary query racing with every concurrent
+ * dispatch, exactly like {@link ThreadsArea.count}.
+ *
+ * One boundary: a warm follow-up admitted on an already-live `idle` thread
+ * flips `idle -> active` inside the send transaction, just AFTER the lock
+ * releases. First-dispatch admissions are exact; a burst of follow-ups to
+ * distinct idle threads can momentarily under-report.
+ */
+export type ThreadRunningResult = ThreadRunningResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
@@ -499,6 +522,7 @@ export interface ThreadsArea {
   queue: ThreadQueueArea;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
@@ -1009,6 +1033,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads.count.$get(
           { query: countQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async listRunning(input) {
+      return transport.readJson(
+        transport.api.v1.threads.running.$get(
+          {},
           ...signalRequestArgs(input?.signal),
         ),
       );

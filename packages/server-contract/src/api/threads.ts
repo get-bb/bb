@@ -729,6 +729,41 @@ export const threadCountResponseSchema = z.object({
 });
 export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
 
+/**
+ * One thread currently occupying capacity — canonical status `starting` or
+ * `active`. Archived and deleted threads are excluded (neither runs); hidden
+ * ones are not, because a hidden thread burns a real slot on a real machine.
+ *
+ * The fields are exactly what an admission policy acts on and nothing else:
+ * `hostId` for per-machine pools, `projectId` for per-project ones, and
+ * `parentThreadId`/`originPluginId` for the exemption every limiter needs (a
+ * child or plugin-spawned thread is somebody's internal machinery, and
+ * counting it against the pool its parent is waiting inside deadlocks).
+ *
+ * **Exact inside a dispatch gate, a snapshot everywhere else.** Gate passes run
+ * one at a time under a server-wide lock, and a cleared first attempt commits
+ * its `pending → starting` flip before that lock releases — so the next gate in
+ * line sees the admission the previous one granted. Read anywhere else (a
+ * background service, an HTTP client, a `turn.failed` gate) it is an ordinary
+ * query that races with every concurrent dispatch, exactly like `threads.count`.
+ * See {@link threadRunningResponseSchema}'s consumers in the plugin authoring
+ * guide for the one boundary case: a warm follow-up's `idle → active` flip
+ * commits just after the lock, so admissions of already-live threads can be
+ * momentarily invisible.
+ */
+export const threadRunningEntrySchema = z.object({
+  id: z.string(),
+  /** The machine it runs on; null while no environment has been chosen. */
+  hostId: z.string().nullable(),
+  projectId: z.string(),
+  parentThreadId: z.string().nullable(),
+  originPluginId: z.string().nullable(),
+});
+export type ThreadRunningEntry = z.infer<typeof threadRunningEntrySchema>;
+
+export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);
+export type ThreadRunningResponse = z.infer<typeof threadRunningResponseSchema>;
+
 export const threadSearchQuerySchema = z.object({
   query: z.string().trim().min(2),
   limitPerGroup: z.string().regex(/^\d+$/).optional(),

@@ -1252,6 +1252,76 @@ export function countThreads(
   };
 }
 
+/**
+ * The statuses that occupy capacity. A `starting` thread is provisioning or
+ * cold-starting and a `active` one is executing a turn; both hold a real slot
+ * on a real machine. `idle` deliberately does not — an idle thread has a
+ * session but is consuming nothing — and `pending`, `stopping` and `error` are
+ * not running work either.
+ */
+const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
+  "starting",
+  "active",
+];
+
+/**
+ * One thread currently occupying capacity, with only the fields an admission
+ * policy can act on.
+ */
+export interface RunningThreadRow {
+  id: string;
+  /** The machine it runs on, or null while no environment has been chosen. */
+  hostId: string | null;
+  projectId: string;
+  parentThreadId: string | null;
+  originPluginId: string | null;
+}
+
+/**
+ * Every thread currently occupying capacity.
+ *
+ * `countThreads` answers "how many", which is enough to hold a pool but not to
+ * decide *which* pool: a limiter that exempts children and plugin-spawned
+ * threads cannot express that as a count filter, so it was reduced to counting
+ * a superset and over-holding. These rows carry the three provenance fields an
+ * exemption rule needs, and the set is bounded by what is actually running —
+ * a handful of rows, not a page of threads.
+ *
+ * Archived and deleted rows are excluded because neither runs: archival stops
+ * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
+ * visibility is a UI fact and a hidden thread burns a slot like any other, so
+ * hiding it here would under-report real occupancy. Callers that want to
+ * ignore a class of thread filter on `parentThreadId`/`originPluginId`, which
+ * is what "hidden" actually stands in for.
+ *
+ * `threads_archived_status_idx` (archived_at, status) serves this directly:
+ * `archived_at IS NULL` is the leading equality and the status set is the
+ * range that follows.
+ */
+export function listRunningThreads(
+  db: DbQueryConnection,
+): RunningThreadRow[] {
+  return db
+    .select({
+      id: threads.id,
+      hostId: environments.hostId,
+      projectId: threads.projectId,
+      parentThreadId: threads.parentThreadId,
+      originPluginId: threads.originPluginId,
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        liveThreads(),
+        inArray(threads.status, [...OCCUPYING_THREAD_STATUSES]),
+      ),
+    )
+    .orderBy(asc(threads.id))
+    .all()
+    .map((row) => ({ ...row, hostId: row.hostId ?? null }));
+}
+
 export function listThreads(db: DbConnection, options: ListThreadsOptions) {
   let query = db
     .select()

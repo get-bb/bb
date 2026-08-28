@@ -41,6 +41,7 @@ import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
 import {
   createThread,
+  listRunningThreads,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 
@@ -263,6 +264,26 @@ describe("slow query index plans", () => {
       /USING INDEX queued_thread_messages_wait_holder_idx/u,
     );
     expect(details).not.toMatch(/SCAN queued_thread_messages/u);
+
+    db.$client.close();
+  });
+
+  it("finds the occupying threads through the archived/status index", () => {
+    // A dispatch gate calls this on every admission decision, so a plan that
+    // degraded to a table scan would put one on every send in the server.
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      listRunningThreads(db);
+    });
+    expect(captured).toHaveLength(1);
+    const details = queryPlanDetails({
+      db,
+      params: captured[0]!.params,
+      sql: captured[0]!.sql,
+    });
+    expect(details).toMatch(/USING INDEX threads_archived_status_idx/u);
+    expect(details).not.toMatch(/SCAN threads/u);
 
     db.$client.close();
   });

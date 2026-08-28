@@ -72,7 +72,7 @@ export function registerCountCommand(
 
 /**
  * An ungrouped count is one number, so it prints as one number: the common
- * `bb thread count --status running` call stays pipeable without --json.
+ * `bb thread count --status active` call stays pipeable without --json.
  */
 function printThreadCount(
   result: ThreadCountResult,

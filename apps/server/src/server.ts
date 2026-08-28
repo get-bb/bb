@@ -40,8 +40,10 @@ import {
 } from "./services/threads/queue-wait-owner.js";
 import {
   clearQueueWaitsForUnregisteredPlugin,
+  requestFreedCapacityQueueDrain,
   requestThreadQueueDrainForSettledInteraction,
 } from "./services/threads/queue-drains.js";
+import { setFreedThreadCapacityListener } from "./services/threads/freed-capacity-signal.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -616,6 +618,12 @@ export function createApp(
     requestThreadQueueDrainForSettledInteraction(deps, threadId);
   });
   setPluginThreadEventEmitter(pluginService.events);
+  // Bridge "a thread stopped running" to the queue: a freed slot re-attempts
+  // every plugin-parked row, which is how a limiter's waits clear without the
+  // plugin tracking capacity itself.
+  setFreedThreadCapacityListener(() => {
+    requestFreedCapacityQueueDrain(deps);
+  });
   // Bridge the dispatch pipeline to this service's gates. Until this runs
   // there are no gates, which is exactly the zero-overhead path.
   setDispatchGateProvider(pluginService.dispatchGates);
