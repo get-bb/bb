@@ -131,11 +131,6 @@ export function orderPromptMentionSuggestions(
   );
 }
 
-/**
- * Normalize every mention source before applying the shared cross-resource
- * relevance policy. The returned groups are the only section model rendered
- * by the menu, and `suggestions` is the identical keyboard-navigation order.
- */
 export function buildPromptMentionResults(
   args: BuildPromptMentionResultsArgs,
 ): OrderedMentionSuggestions {
