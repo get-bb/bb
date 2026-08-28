@@ -56,6 +56,17 @@ Plugins learn one verdict (`wait`) and one release (`clearWait`); every
 feature is a different author of the same parked row. The happy path runs
 1→2→3 with nothing blocking and never creates a row.
 
+**Steers: the checkpoint intercepts new-turn dispatch, not injection into a
+live turn.** An attempt that would *join* a running turn skips the gate pass
+(nothing to limit — no new resource; nothing to amend — the turn's model is
+fixed; parking a steer only makes it stale). An attempt that would *start* a
+turn is gated — including a steer-mode message that finds the thread idle
+and downgrades to a send. Core waits still apply to steers where they are
+physical (provisioning, pending interaction): those are can't-deliver, not
+policy. Known cost, carried over from the original design: content-policy
+plugins cannot veto steer content in v1; gating injections later is purely
+additive.
+
 ## Workstream split
 
 Backend (this thread): everything in this document — domain/db/server/
