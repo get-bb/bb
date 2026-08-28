@@ -36,6 +36,7 @@ import { createInterface } from "node:readline";
 let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
+const pendingStartTurnIdsByThreadId = new Map();
 const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
@@ -57,15 +58,16 @@ function respondError(id, code, message) {
 /** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
-/**
- * A prompt answered BEFORE any turn notification, whose real turn then arrives
- * late. Codex normally emits `turn/started` ahead of its `turn/start`
- * response; this inverts that order so the bridge's zero-work settlement has
- * to lose the race to the real turn (fabricating a turn from a late signal is
- * the ACP bug 0c2f4cc9a).
- */
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
-const LATE_TURN_START_DELAY_MS = 60;
+const LATE_TURN_START_DELAY_MS = 350;
+
+const RESPOND_THEN_EXIT_PROMPT_TEXT = "/respond-then-exit";
+
+const RESPOND_COMPLETED_PROMPT_TEXT = "/respond-completed";
+
+const STEER_INTO_ACTIVE_PROMPT_TEXT = "/steer-into-active";
+
+const INTERRUPT_BEFORE_START_PROMPT_TEXT = "/interrupt-before-start";
 
 /** A prompt that stays open until the client sends turn/interrupt. */
 const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
@@ -101,9 +103,9 @@ const FIXED_TOKEN_USAGE = {
   modelContextWindow: 258400,
 };
 
-function runScriptedTurn(threadId) {
+function runScriptedTurn(threadId, presetTurnId) {
   turnCounter += 1;
-  const turnId = `turn-fx-${turnCounter}`;
+  const turnId = presetTurnId ?? `turn-fx-${turnCounter}`;
   const itemId = `item-fx-${turnCounter}`;
   const text = `hello from codex turn ${turnCounter}`;
   openTurnIdsByThreadId.set(threadId, turnId);
@@ -435,11 +437,38 @@ async function handleRequest(message) {
         return;
       }
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
-        respond(id, {});
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
         setTimeout(
-          () => runScriptedTurn(params.threadId),
+          () => runScriptedTurn(params.threadId, turnId),
           LATE_TURN_START_DELAY_MS,
         );
+        return;
+      }
+      if (firstInputText(params.input) === RESPOND_THEN_EXIT_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
+        setTimeout(() => process.exit(1), 20);
+        return;
+      }
+      if (firstInputText(params.input) === RESPOND_COMPLETED_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "completed" } });
+        return;
+      }
+      if (firstInputText(params.input) === STEER_INTO_ACTIVE_PROMPT_TEXT) {
+        const activeTurnId = openTurnIdsByThreadId.get(params.threadId);
+        respond(id, { turn: { id: activeTurnId, status: "inProgress" } });
+        return;
+      }
+      if (firstInputText(params.input) === INTERRUPT_BEFORE_START_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        pendingStartTurnIdsByThreadId.set(params.threadId, turnId);
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
         return;
       }
       if (firstInputText(params.input) === INTERRUPTIBLE_PROMPT_TEXT) {
@@ -465,6 +494,20 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "turn/interrupt": {
+      const pendingTurnId = pendingStartTurnIdsByThreadId.get(params.threadId);
+      if (pendingTurnId !== undefined) {
+        pendingStartTurnIdsByThreadId.delete(params.threadId);
+        notify("turn/completed", {
+          threadId: params.threadId,
+          turn: { id: pendingTurnId, status: "interrupted" },
+        });
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: pendingTurnId, status: "inProgress" },
+        });
+        respond(id, {});
+        return;
+      }
       const openTurnId = openTurnIdsByThreadId.get(params.threadId);
       if (openTurnId !== undefined) {
         openTurnIdsByThreadId.delete(params.threadId);

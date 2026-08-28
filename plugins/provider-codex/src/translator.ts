@@ -24,6 +24,7 @@ import {
   codexSubAgentActivityItemSchema,
   codexThreadClosedParamsSchema,
   type CodexSubAgentActivityItem,
+  type CodexTurn,
 } from "./schemas.js";
 import {
   buildCodexConfig,
@@ -35,6 +36,10 @@ import {
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import { subAgentPresentation } from "./presentation.js";
+
+const codexTurnLifecyclePeekSchema = z
+  .object({ turn: z.object({ id: z.string() }).passthrough() })
+  .passthrough();
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
@@ -377,6 +382,8 @@ export function createCodexEventTranslator(
     string,
     ClientTurnRequestId[]
   >();
+  const responseOpenedTurnIds = new Set<string>();
+  const responseSettledTurnIds = new Set<string>();
   const pendingWorkspaceWriteGitWritableRootsByThreadId = new Map<
     string,
     string[]
@@ -661,6 +668,62 @@ export function createCodexEventTranslator(
       args.providerThreadId,
       nextSequences,
     );
+  }
+
+  function openTurnFromStartResponse(args: {
+    providerThreadId: string;
+    turn: CodexTurn;
+    clientRequestId: ClientTurnRequestId;
+    turnAlreadyOpen: boolean;
+  }): ThreadDelta[] {
+    const { providerThreadId, turn, clientRequestId, turnAlreadyOpen } = args;
+    const queued =
+      nativeTurnStartClientRequestIdsByProviderThreadId.get(providerThreadId);
+    if (queued?.[0] !== clientRequestId) {
+      return [];
+    }
+    if (turnAlreadyOpen) {
+      removeNativeTurnStartClientRequestId({
+        clientRequestId,
+        providerThreadId,
+      });
+      responseOpenedTurnIds.add(turn.id);
+      return [
+        { kind: "input.accepted", clientRequestId, providerTurnId: turn.id },
+      ];
+    }
+    const startedDeltas = translateEvent({
+      jsonrpc: "2.0",
+      method: "turn/started",
+      params: { threadId: providerThreadId, turn },
+    });
+    responseOpenedTurnIds.add(turn.id);
+    if (turn.status === "inProgress") {
+      return startedDeltas;
+    }
+    const settledDeltas = translateEvent({
+      jsonrpc: "2.0",
+      method: "turn/completed",
+      params: { threadId: providerThreadId, turn },
+    });
+    responseSettledTurnIds.add(turn.id);
+    return [...startedDeltas, ...settledDeltas];
+  }
+
+  function consumeResponseHandledTurnLifecycle(
+    event: ProviderRuntimeEvent,
+  ): boolean {
+    const consumedBy =
+      event.method === "turn/started"
+        ? responseOpenedTurnIds
+        : event.method === "turn/completed"
+          ? responseSettledTurnIds
+          : null;
+    if (consumedBy === null) {
+      return false;
+    }
+    const parsed = codexTurnLifecyclePeekSchema.safeParse(event.params);
+    return parsed.success && consumedBy.delete(parsed.data.turn.id);
   }
 
   function shiftNativeTurnStartClientRequestId(
@@ -1521,6 +1584,9 @@ export function createCodexEventTranslator(
   }
 
   function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
+    if (consumeResponseHandledTurnLifecycle(event)) {
+      return [];
+    }
     const closedThreadDeltas = clearClosedThreadState(event);
     if (closedThreadDeltas.length > 0) {
       return closedThreadDeltas;
@@ -1564,6 +1630,7 @@ export function createCodexEventTranslator(
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
+    openTurnFromStartResponse,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,
