@@ -16,6 +16,15 @@ const mocks = vi.hoisted(() => ({
   openPathEntry: vi.fn(),
   openPicker: vi.fn(),
   setRootComposeProjectId: vi.fn(),
+  sidebarNavigation: undefined as
+    | {
+        projects: Array<{
+          id: string;
+          name: string;
+          sources: Array<{ hostId: string; path: string }>;
+        }>;
+      }
+    | undefined,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -29,6 +38,10 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
+}));
+
+vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
+  useSidebarNavigation: () => ({ data: mocks.sidebarNavigation }),
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
@@ -75,6 +88,7 @@ function host(
 beforeEach(() => {
   mocks.hosts = [host("host_atum", "atum")];
   mocks.isLoadingHosts = false;
+  mocks.sidebarNavigation = undefined;
 });
 
 afterEach(() => {
@@ -98,6 +112,27 @@ describe("useQuickCreateProject", () => {
     expect(result.current.hosts.map((item) => item.id)).toEqual([
       "host_atum",
       "host_thoth",
+    ]);
+  });
+
+  it("exposes project local-path sources for duplicate-folder detection", () => {
+    mocks.sidebarNavigation = {
+      projects: [
+        {
+          id: "proj_givecare",
+          name: "givecare",
+          sources: [{ hostId: "host_atum", path: "/home/deploy/repos/givecare" }],
+        },
+      ],
+    };
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    expect(result.current.projects).toEqual([
+      {
+        id: "proj_givecare",
+        name: "givecare",
+        sources: [{ hostId: "host_atum", path: "/home/deploy/repos/givecare" }],
+      },
     ]);
   });
 });
