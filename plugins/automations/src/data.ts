@@ -333,14 +333,31 @@ function invalidAutomationRow(
   };
 }
 
+function assertAutomationStoredFields(
+  row: AutomationRow,
+  trigger: AutomationTrigger,
+  execution: AutomationExecution,
+): void {
+  if (row.triggerType !== trigger.triggerType) {
+    throw new Error(`Automation ${row.id} has inconsistent trigger data`);
+  }
+  if (row.runMode !== execution.mode) {
+    throw new Error(`Automation ${row.id} has inconsistent execution mode`);
+  }
+  const targetThreadId =
+    execution.mode === "agent" ? (execution.targetThreadId ?? null) : null;
+  if (row.targetThreadId !== targetThreadId) {
+    throw new Error(`Automation ${row.id} has inconsistent target thread`);
+  }
+}
+
 export function decodeAutomationRow(row: AutomationRow): DecodedAutomationRow {
   let value: ReturnType<typeof automationResponseValue>;
   try {
-    value = automationResponseValue(
-      row,
-      parseAutomationTrigger(row.triggerConfig),
-      parseRepairableAutomationExecution(row.execution),
-    );
+    const trigger = parseAutomationTrigger(row.triggerConfig);
+    const execution = parseRepairableAutomationExecution(row.execution);
+    assertAutomationStoredFields(row, trigger, execution);
+    value = automationResponseValue(row, trigger, execution);
   } catch (error) {
     return invalidAutomationRow(
       row,
@@ -587,34 +604,34 @@ export function listDueAutomations(
   db: Db,
   args: { now: number; limit: number },
 ): AutomationRow[] {
-  return db
-    .prepare(
-      `SELECT
-         ${AUTOMATION_COLUMNS}
-       FROM automations
-       WHERE enabled = 1
-         AND trigger_type IN ('schedule', 'once')
-         AND next_run_at IS NOT NULL
-         AND next_run_at <= ?
-         -- Forgiving reads keep degraded rows visible, but the scheduler must
-         -- not reconsider an unchanged agent execution that cannot possibly
-         -- pass the canonical parser on every sweep tick. CASE keeps JSON
-         -- access safe for malformed legacy values without mutating them.
-         AND CASE
-           WHEN run_mode = 'agent' THEN
-             CASE
-               WHEN json_valid(execution) = 1 THEN
-                 json_type(execution, '$.prompt') = 'text'
-                   AND json_extract(execution, '$.prompt') <> ''
-               ELSE 0
-             END
-           ELSE 1
-         END
-       ORDER BY next_run_at ASC, created_at ASC, id ASC
-       LIMIT ?`,
-    )
-    .all(args.now, args.limit)
-    .map(requiredAutomationRow);
+  if (args.limit <= 0) return [];
+  const pageSize = Math.max(args.limit, 100);
+  const query = db.prepare(
+    `SELECT
+       ${AUTOMATION_COLUMNS}
+     FROM automations
+     WHERE enabled = 1
+       AND trigger_type IN ('schedule', 'once')
+       AND next_run_at IS NOT NULL
+       AND next_run_at <= ?
+     ORDER BY next_run_at ASC, created_at ASC, id ASC
+     LIMIT ? OFFSET ?`,
+  );
+  const due: AutomationRow[] = [];
+  let offset = 0;
+  while (due.length < args.limit) {
+    const page = query
+      .all(args.now, pageSize, offset)
+      .map(requiredAutomationRow);
+    if (page.length === 0) break;
+    offset += page.length;
+    for (const row of page) {
+      if (!("error" in decodeAutomationRow(row))) due.push(row);
+      if (due.length === args.limit) return due;
+    }
+    if (page.length < pageSize) break;
+  }
+  return due;
 }
 
 type ClaimScheduledRunResult =

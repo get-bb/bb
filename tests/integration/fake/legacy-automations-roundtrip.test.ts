@@ -231,6 +231,7 @@ describe("legacy automation export/import round trip", () => {
       expect(parseAutomationExecution(agent?.execution ?? "")).toMatchObject({
         mode: "agent",
         environment: { type: "project-default" },
+        targetThreadId: "thr_target",
       });
       const script = getAutomation(pluginDb.$client, "auto_script");
       expect(parseAutomationExecution(script?.execution ?? "")).toMatchObject({
