@@ -201,9 +201,11 @@ agent or terminal with
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
-to the agent during the current run. The picker defaults to "Queue": Enter
-queues and Command+Enter steers. "Steer" swaps them: Enter steers and
-Command+Enter queues. Set it with
+to the agent during the current run. The picker defaults to "Steer" for a new
+install: Enter steers and Command+Enter queues. "Queue" swaps them: Enter
+queues and Command+Enter steers. An earlier install with saved settings or work
+keeps "Queue" because a one-time migration stamps the old default onto it. Set
+it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 

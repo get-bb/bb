@@ -40,7 +40,8 @@ every window and client sees the same value.
 
 ## Active-thread Enter behavior
 
-- `steerActiveThreadOnEnter` defaults to false. Set it with
+- `steerActiveThreadOnEnter` defaults to true for a new install. An earlier
+  install with saved settings or work keeps false. Set it with
   `bb settings general steerActiveThreadOnEnter <true|false|on|off>`.
 - Outside an open composer typeahead menu, disabling it makes Enter queue a
   follow-up and Command+Enter steer the active turn. When enabled, those
