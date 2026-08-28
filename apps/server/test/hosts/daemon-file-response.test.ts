@@ -10,9 +10,9 @@ import {
 describe("buildAttachmentContentDisposition", () => {
   it("provides safe ASCII and UTF-8 filenames", () => {
     expect(
-      buildAttachmentContentDisposition('/tmp/quarterly "résumé".pdf'),
+      buildAttachmentContentDisposition('/tmp/quarterly "(résumé\'s)".pdf'),
     ).toBe(
-      "attachment; filename=\"quarterly _r_sum__.pdf\"; filename*=UTF-8''quarterly%20%22r%C3%A9sum%C3%A9%22.pdf",
+      "attachment; filename=\"quarterly _(r_sum_'s)_.pdf\"; filename*=UTF-8''quarterly%20%22%28r%C3%A9sum%C3%A9%27s%29%22.pdf",
     );
   });
 });

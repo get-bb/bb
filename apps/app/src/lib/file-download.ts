@@ -4,6 +4,7 @@ import {
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
+import { appToast } from "@/components/ui/app-toast";
 
 interface DownloadFileForOpenRequestArgs {
   projectHostId: string | null;
@@ -40,6 +41,7 @@ function buildFileDownloadUrl({
     }
     const environmentId =
       request.environmentId ?? resolvedEnvironmentId ?? null;
+    if (environmentId === null && projectHostId === null) return null;
     return buildProjectFileContentUrl(
       projectId,
       request.tab.path,
@@ -82,11 +84,26 @@ export function downloadFileForOpenRequest(
   const path = getFileOpenRequestPath(args.request);
   if (url === null || path === null) return false;
 
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = path.split(/[\\/]/u).at(-1) ?? "download";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
+  const filename = path.split(/[\\/]/u).at(-1) ?? "download";
+  void fetch(url)
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    })
+    .catch((error: unknown) => {
+      appToast.error("Failed to download file", {
+        description:
+          error instanceof Error ? error.message : "Unknown download error",
+      });
+    });
   return true;
 }

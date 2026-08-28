@@ -49,7 +49,7 @@ export function FileOpenersSettingsSection() {
   return (
     <SettingsSection
       title="File openers"
-      description="Automatically use matching plugins, or choose a viewer for each file type. Right-click a file link for a one-off choice."
+      description="Automatically use matching plugins, or choose a viewer for each file type. Thread file links offer one-off choices."
     >
       <div className="space-y-5">
         {extensions.map((extension) => (
