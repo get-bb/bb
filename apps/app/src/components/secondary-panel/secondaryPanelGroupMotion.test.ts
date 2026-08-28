@@ -112,6 +112,24 @@ describe("createSecondaryPanelGroupMotion", () => {
     expect(panels[1]?.style.flexGrow).toBe("30");
   });
 
+  it("starts closing from the width applied by a resize drag", () => {
+    const { group, panels } = createHarness();
+    const motion = createSecondaryPanelGroupMotion();
+
+    motion.setLayout(group, [60, 40], false);
+    const openingAnimation = motionAnimationState.calls[0];
+    openingAnimation?.value.set(40);
+    openingAnimation?.options.onComplete?.();
+
+    group.setLayout([65, 35]);
+    motion.setLayout(group, [100, 0], false);
+
+    const closingAnimation = motionAnimationState.calls[1];
+    expect(closingAnimation?.value.get()).toBe(35);
+    expect(panels[0]?.style.flexGrow).toBe("65");
+    expect(panels[1]?.style.flexGrow).toBe("35");
+  });
+
   it("defers the panel library's target layout until Motion completes", () => {
     const { group } = createHarness();
     const motion = createSecondaryPanelGroupMotion();

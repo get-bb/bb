@@ -92,14 +92,8 @@ export function createSecondaryPanelGroupMotion(): SecondaryPanelGroupMotion {
         return;
       }
 
-      const panelsChanged =
-        elements === null ||
-        elements.panels[0] !== nextElements.panels[0] ||
-        elements.panels[1] !== nextElements.panels[1];
       elements = nextElements;
-      if (panelsChanged) {
-        secondarySize.jump(readFlexGrow(elements.panels[1]));
-      }
+      secondarySize.jump(readFlexGrow(elements.panels[1]));
 
       const currentSize = secondarySize.get();
       renderPanelGroup(elements, currentSize);
