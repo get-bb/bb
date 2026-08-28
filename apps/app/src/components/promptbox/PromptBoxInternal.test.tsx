@@ -2184,6 +2184,38 @@ describe("PromptBoxInternal compact layout", () => {
     }
   });
 
+  it("keeps an unfocused compact submit stable on coarse pointers", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Transcript ready to send",
+            onSubmit,
+            compact: {
+              isCompact: true,
+              placeholder: "Ask a follow-up",
+            },
+          })}
+        />,
+      );
+
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+      expect(
+        fireEvent.pointerDown(submit, {
+          button: 0,
+          pointerType: "touch",
+        }),
+      ).toBe(false);
+      fireEvent.click(submit, { detail: 1 });
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("keeps the editor focused through a pointer submit", async () => {
     const onSubmit = vi.fn();
     render(

@@ -2572,6 +2572,10 @@ export function PromptBoxInternal({
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) return;
+      if (isPointerCoarse) {
+        event.preventDefault();
+        return;
+      }
       const currentEditor = editorRef.current;
       const editorElement = currentEditor?.view.dom;
       const activeElement = editorElement?.ownerDocument.activeElement;
@@ -2585,7 +2589,7 @@ export function PromptBoxInternal({
 
       event.preventDefault();
     },
-    [],
+    [isPointerCoarse],
   );
 
   const [pendingCommandSubmit, setPendingCommandSubmit] = useState(false);
