@@ -178,7 +178,7 @@ describe("project-default thread environment", () => {
             expect(request.command).toEqual({
               type: "host.inspect_git_source",
               path: sourcePath,
-              remoteRefresh: "blocking",
+              remoteRefresh: "background",
             });
             return { ok: true, result: checkout };
           },

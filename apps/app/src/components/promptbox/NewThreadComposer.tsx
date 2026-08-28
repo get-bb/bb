@@ -778,11 +778,20 @@ export function NewThreadComposer({
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
+        defaultBranch: branchesQuery.data?.defaultBranch,
+        defaultWorktreeBaseBranch:
+          branchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
         projectId,
         selectedBranch,
       }),
-    [effectiveEnvironmentValue, projectId, selectedBranch],
+    [
+      branchesQuery.data?.defaultBranch,
+      branchesQuery.data?.defaultWorktreeBaseBranch,
+      effectiveEnvironmentValue,
+      projectId,
+      selectedBranch,
+    ],
   );
 
   const seedInitialPrompt = promptDraft.restoreIfEmpty;

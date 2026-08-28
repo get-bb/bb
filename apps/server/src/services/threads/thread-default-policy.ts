@@ -217,7 +217,7 @@ export async function resolveProjectDefaultThreadEnvironment(
     command: {
       type: "host.inspect_git_source",
       path: source.path,
-      remoteRefresh: "blocking",
+      remoteRefresh: "background",
     },
   });
   const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);

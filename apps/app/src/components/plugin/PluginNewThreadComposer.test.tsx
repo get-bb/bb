@@ -645,7 +645,7 @@ describe("PluginNewThreadComposer seeding", () => {
       hostId: "host_1",
       workspace: {
         type: "managed-worktree",
-        baseBranch: { kind: "default" },
+        baseBranch: { kind: "named", name: "main" },
       },
     });
   });

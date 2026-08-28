@@ -92,7 +92,7 @@ async function createNamedBaseBranchThread(
 }
 
 describe("named managed-worktree base branch", () => {
-  it("bases on origin when the named default branch is behind origin", async () => {
+  it("preserves a named default branch without inspecting or reinterpreting it", async () => {
     await withTestHarness(async (harness) => {
       const onInspectGitSource = vi.fn();
       await expect(
@@ -101,12 +101,8 @@ describe("named managed-worktree base branch", () => {
           defaultBranchRelation: "local-behind",
           onInspectGitSource,
         }),
-      ).resolves.toBe("origin/main");
-      expect(onInspectGitSource).toHaveBeenCalledExactlyOnceWith({
-        type: "host.inspect_git_source",
-        path: SOURCE_PATH,
-        remoteRefresh: "blocking",
-      });
+      ).resolves.toBe("main");
+      expect(onInspectGitSource).not.toHaveBeenCalled();
     });
   });
 

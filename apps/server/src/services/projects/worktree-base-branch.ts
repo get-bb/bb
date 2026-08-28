@@ -38,16 +38,3 @@ export function resolveManagedDefaultBaseBranchSpec(
 
   return { kind: "default" };
 }
-
-export function resolveManagedNamedBaseBranchSpec(
-  spec: Extract<BaseBranchSpec, { kind: "named" }>,
-  checkout: ResolveDefaultWorktreeBaseBranchArgs,
-): BaseBranchSpec {
-  if (spec.name !== checkout.defaultBranch) {
-    return spec;
-  }
-  const resolved = resolveDefaultWorktreeBaseBranch(checkout);
-  return resolved && resolved !== spec.name
-    ? { kind: "named", name: resolved }
-    : spec;
-}
