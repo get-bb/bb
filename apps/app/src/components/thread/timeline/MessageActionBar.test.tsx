@@ -79,6 +79,19 @@ function mockMobileCoarsePointer() {
   }));
 }
 
+function mockWideCoarsePointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 describe("MessageActionBar", () => {
   it("uses the nearest thread window as the tooltip collision boundary", () => {
     const threadWindow = document.createElement("div");
@@ -442,6 +455,23 @@ describe("MessageActionBar", () => {
     expect(
       screen.queryByRole("button", { name: "Message actions" }),
     ).toBeNull();
+  });
+
+  it("uses the always-visible touch surface on wide coarse-pointer viewports", () => {
+    mockWideCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onFork={vi.fn()}
+      />,
+    );
+
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.hasAttribute("data-state")).toBe(false);
+    expect(fork.classList).toContain("pointer-coarse:opacity-100");
+    expect(fork.classList).not.toContain("max-md:pointer-coarse:opacity-100");
   });
 
   it("collapses desktop actions that do not fit into a trailing overflow menu", () => {
