@@ -10,13 +10,10 @@ export default {
   title: "thread/Pending Interaction/Approval",
 };
 
-// Match production: ThreadDetailPromptArea renders inside PageShell's footer
-// (max-w-[760px]). Without it the banner stretches the full row width.
 function PromptStage({ children }: { children: React.ReactNode }) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-// The common fields; each story pairs its own payload with its resolution.
 function basePendingInteraction(): Omit<
   ProviderPendingInteraction,
   "payload" | "resolution"

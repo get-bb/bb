@@ -238,8 +238,6 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(content?.getAttribute("aria-hidden")).toBe("true");
     expect(appTree.getAttribute("aria-hidden")).toBeNull();
     expect(appTree.hasAttribute("inert")).toBe(false);
-    // The retained backdrop stays mounted at opacity 0 for the app's lifetime;
-    // a backdrop-filter on it would keep a full-viewport blur pass alive.
     const backdrop = document.querySelector<HTMLElement>(
       "[data-persistent-drawer-backdrop]",
     );

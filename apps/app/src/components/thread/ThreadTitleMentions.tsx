@@ -25,7 +25,6 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
-/** The slice of a thread a title mention needs: its label and route. */
 type ThreadTitleMentionThread = Pick<
   ThreadListEntry,
   "id" | "projectId" | "title" | "titleFallback"
@@ -46,7 +45,6 @@ export const EMPTY_TITLE_MENTION_RESOURCES: ThreadTitleMentionResources = {
 const ThreadTitleMentionResourcesContext =
   createContext<ThreadTitleMentionResources>(EMPTY_TITLE_MENTION_RESOURCES);
 
-/** The resources of the nearest {@link ThreadTitleMentionResourcesProvider}. */
 export function useThreadTitleMentionResources(): ThreadTitleMentionResources {
   return useContext(ThreadTitleMentionResourcesContext);
 }
@@ -81,7 +79,6 @@ function areThreadTitleMentionThreadsEqual(
   );
 }
 
-/** The part of the sidebar bootstrap payload title mentions read. */
 export interface ThreadTitleMentionNavigationSource {
   sections: readonly { id: string; name: string }[];
   projects: readonly {
@@ -96,14 +93,6 @@ export interface ThreadTitleMentionNavigationSource {
   };
 }
 
-/**
- * Build the sidebar-derived mention resources, reusing the previous maps and
- * per-thread entries whenever their values are unchanged. Sidebar refetches
- * land every turn boundary with a new payload identity, but titles, project
- * names and section names rarely change; without retention every refetch
- * gave the context a new value and re-rendered every ThreadRow, mention pill
- * and markdown link that reads it.
- */
 export function buildThreadTitleMentionResources(
   navigation: ThreadTitleMentionNavigationSource | undefined,
   previous: ThreadTitleMentionResources,
@@ -170,19 +159,9 @@ export function buildThreadTitleMentionResources(
     : next;
 }
 
-/**
- * Sidebar-derived mention resources with value retention (see
- * {@link buildThreadTitleMentionResources}); the returned object only changes
- * identity when a section name, project name or thread title/route changed.
- */
 export function useSidebarThreadTitleMentionResources(
   navigation: ThreadTitleMentionNavigationSource | undefined,
 ): ThreadTitleMentionResources {
-  // Render-time cache keyed on the payload identity. The previous resources
-  // are the input to the next build, and a state-based "adjust during render"
-  // would loop if a caller ever handed in a fresh payload object per render,
-  // so this deliberately reads and writes a ref during render (the hook is
-  // small; the compiler bailout is confined to it).
   const cacheRef = useRef<{
     navigation: ThreadTitleMentionNavigationSource | undefined;
     resources: ThreadTitleMentionResources;
@@ -383,7 +362,6 @@ function RawThreadMentionBatchScope({ children }: { children: ReactNode }) {
   );
 }
 
-/** Caps one title/message at 32 unique lookups and reuses the nearest resolver. */
 export function RawThreadMentionBatchProvider({
   children,
 }: {
@@ -657,7 +635,6 @@ function threadTitleTextSegments(
   return segments;
 }
 
-/** Resolves serialized mentions in a thread title without requiring React context. */
 export function resolveThreadTitleDisplayText(
   title: string,
   resources: ThreadTitleMentionResources,
@@ -675,7 +652,6 @@ function useUnavailableRawThreadMentionIds(): ReadonlySet<string> {
     : batch.unavailableIds;
 }
 
-/** Resolves serialized mentions in a thread title to one plain display label. */
 export function useThreadTitleDisplayText(title: string): string {
   const resources = useContext(ThreadTitleMentionResourcesContext);
   const unavailableThreadIds = useUnavailableRawThreadMentionIds();
@@ -710,10 +686,6 @@ export function useThreadTitleDisplayText(title: string): string {
   );
 }
 
-/**
- * Looks up a project name from the sidebar's already-loaded metadata. Returns
- * undefined outside the provider or for an unknown project.
- */
 export function useSidebarProjectName(
   projectId: string | null,
 ): string | undefined {
@@ -723,7 +695,6 @@ export function useSidebarProjectName(
     : resources.projectNamesById.get(projectId);
 }
 
-/** Resolves a thread mention from the sidebar's already-loaded metadata. */
 export function useSidebarThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
@@ -734,7 +705,6 @@ export function useSidebarThreadMentionResource(
   );
 }
 
-/** Resolves a thread mention from sidebar metadata, then the thread query. */
 export function useThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
@@ -759,7 +729,6 @@ export function useThreadMentionResource(
   }, [sidebarResource, threadId, threadQuery.data]);
 }
 
-/** Resolves a raw thread id from sidebar metadata or the enclosing batch. */
 export function useRawThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
@@ -788,7 +757,6 @@ export function useRawThreadMentionResource(
   return batch.resourceById.get(threadId) ?? null;
 }
 
-/** Resolves several raw ids without creating one hook/subscription per label. */
 export function useRawThreadMentionResources(
   threadIds: readonly string[],
 ): ReadonlyMap<string, PromptMentionResource> {
@@ -907,7 +875,6 @@ function ThreadTitleMentionsContent({ title }: { title: string }) {
   );
 }
 
-/** Renders serialized prompt mentions persisted in thread title fallbacks. */
 export function ThreadTitleMentions({ title }: { title: string }) {
   return (
     <RawThreadMentionBatchProvider>

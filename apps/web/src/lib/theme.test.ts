@@ -2,10 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { THEME_INIT } from "./theme";
 
-/* THEME_INIT ships as text and runs before anything else on the page, so it
-   gets no type checking and no framework around it. These run the exact string
-   the document embeds against stub globals. */
-
 type Stub = ReturnType<typeof runThemeInit>;
 
 function runThemeInit(options: {
@@ -117,9 +113,6 @@ describe("THEME_INIT", () => {
     expect(stub.dark).toBe(false);
     expect(stub.preference).toBe("light");
     expect(stub.media).toEqual(["light=all", "dark=not all"]);
-    // React hydrates a hoistable <meta> by matching its content attribute, so
-    // editing content here would orphan the server's meta and leave a
-    // duplicate behind.
     expect(stub.content).toEqual(["#ffffff", "#151515"]);
   });
 
@@ -131,9 +124,6 @@ describe("THEME_INIT", () => {
   });
 
   it("still honours the OS scheme when storage access throws", () => {
-    // Safari's "block all cookies" and sandboxed frames throw here. Reading
-    // storage must not be able to abort the rest of the script, or the page
-    // renders light while the nav's control reports "System".
     const stub = settled(runThemeInit({ storageThrows: true, osDark: true }));
     expect(stub.dark).toBe(true);
     expect(stub.preference).toBe("system");

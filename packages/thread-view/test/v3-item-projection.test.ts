@@ -99,12 +99,6 @@ const SUBAGENT_PRESENTATION: ThreadEventItemPresentation = {
   detail: "reviewer agent · model opus",
 };
 
-/**
- * Grammar v3 items project to rows of their own kind that carry the
- * bridge's presentation; the exploration kinds derive the same activity
- * intents the legacy structured tool calls produced, so bundles, dedupe and
- * compact rendering treat a v3 read and a legacy `Read` identically.
- */
 describe("v3 item projection", () => {
   it("projects fileRead and search items to file-read and search rows; bare tool calls derive no intent", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
@@ -231,12 +225,6 @@ describe("v3 item projection", () => {
     const glob = workRow(v3.rows, "search", "glob-1");
     expect(glob).not.toHaveProperty("presentation");
 
-    // The v3 rows derive the read/search/list intents the exploration
-    // bundles read. The same calls persisted as bare `Read`/`Grep`/`Glob`
-    // tool calls (no presentation: rows minted before grammar v3) reach the
-    // projection already upgraded by the read-time legacy adapter in
-    // @bb/domain, so they derive the same intents and the same row kinds —
-    // core's projection keeps no tool-name table of its own.
     const intents = (rows: TimelineWorkRow[]) =>
       rows.flatMap((row) =>
         row.workKind === "file-read" || row.workKind === "search"
@@ -257,19 +245,14 @@ describe("v3 item projection", () => {
         row.workKind === "tool" ? row.toolName : row.workKind,
       ),
     ).toEqual(["file-read", "search", "search"]);
-    // The upgraded rows carry no presentation: they title through the same
-    // intent phrasing they had before the tables were deleted.
     expect(plainTitle(workRow(legacy.rows, "file-read", "read-1"))).toBe(
       "Read src/index.ts",
     );
 
-    // Row titles: the bridge label leads; the structured content follows.
     expect(plainTitle(read)).toBe("Read file src/index.ts");
     expect(plainTitle(grep)).toBe("Searched files for TODO in src");
-    // No presentation → the legacy intent phrasing.
     expect(plainTitle(glob)).toBe("Listed files in src");
 
-    // Compact bundle rendering reads the same intents for both shapes.
     expect(
       buildTimelineActivityIntentTitles(read).map((title) => title.title.plain),
     ).toEqual(["Read src/index.ts"]);
@@ -363,7 +346,6 @@ describe("v3 item projection", () => {
     const ok = workRow(rendered.rows, "tool", "js-1");
     expect(ok.presentation).toEqual(JS_PRESENTATION);
     expect(plainTitle(ok)).toBe("Ran JavaScript Compute primes (2s)");
-    // A failed call keeps the settled label and says how it ended.
     const failed = workRow(rendered.rows, "tool", "js-2");
     expect(plainTitle(failed)).toBe(
       "Ran JavaScript Compute primes (2s, error)",
@@ -581,7 +563,6 @@ describe("v3 item projection", () => {
       "callId" in row ? row.callId : null,
     );
     expect(callIds).toEqual(["echo-failed", "keep-1"]);
-    // A suppressed plan snapshot still drives the banner.
     expect(rendered.pendingTodos?.items.map((item) => item.text)).toEqual([
       "Do it",
     ]);

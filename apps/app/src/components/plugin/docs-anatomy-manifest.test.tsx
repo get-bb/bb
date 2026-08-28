@@ -1,13 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Guards the Plugin Guide UI-anatomy manifest against the real app.
- *
- * The Plugin Guide surface fixtures (packages/plugin-api-map) render the
- * sidebar sections, the sidebar footer, and the message action bar in the
- * order declared by anatomy-manifest.json. This test renders the real
- * components and asserts the same DOM order, so reordering the app fails here
- * until the manifest — and therefore the guide — is updated.
- */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -55,7 +46,6 @@ const manifest = JSON.parse(
 const TEST_PLUGIN_ID = "docs-anatomy-test";
 
 beforeAll(() => {
-  // jsdom gaps the sidebar/tooltip stack expects.
   window.matchMedia ??= ((query: string) => ({
     matches: false,
     media: query,
@@ -79,7 +69,6 @@ afterEach(() => {
   cleanup();
 });
 
-/** Asserts the elements appear in the given document order. */
 function expectDocumentOrder(labeled: Array<[string, Element]>): void {
   for (let index = 0; index < labeled.length - 1; index += 1) {
     const [beforeName, before] = labeled[index];

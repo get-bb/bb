@@ -146,16 +146,10 @@ interface ThreadDetailPromptAreaProps {
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
-  /**
-   * Set when the thread's environment is gone (`destroying` or `destroyed`).
-   * Collapses the composer and shows a read-only context-banner row — the
-   * thread can no longer run work (Decision B*).
-   */
   environmentGoneStatus: Extract<
     EnvironmentStatus,
     "destroying" | "destroyed"
   > | null;
-  /** Machine of the thread's environment; routes host-scoped model catalogs by host. */
   environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
@@ -169,59 +163,23 @@ interface ThreadDetailPromptAreaProps {
   pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   projectId: string;
-  /** Click handler for inserted mention pills (navigate to threads, open file previews). */
   resolveMentionLink: PromptMentionLinkResolver;
-  /**
-   * Resolved changed-files section for the thread's workspace. Null hides the
-   * banner. Production passes null when git UI is unavailable
-   * (canUseGitUi === false) or the workspace has no changes; otherwise the
-   * value is selectWorkspaceChangedFilesSection(workspaceStatus).
-   */
   workspaceChangedFilesSection: WorkspaceChangedFilesSection | null;
-  /**
-   * True while the workspace status query is in flight on initial load.
-   * Suppresses the prompt context banner until the result settles so the
-   * banner's first paint is its final form.
-   */
   workspaceStatusPending: boolean;
-  /**
-   * Merge-base picker config for the prompt context banner. Null hides the
-   * picker (e.g. thread is on default branch — no merge base to compare).
-   */
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
-  /** Latest task/todo snapshot from the timeline projection. Null on older pages or when no candidate observed. */
   pendingTodos: ThreadTimelinePendingTodos | null;
-  /** Active provider prompt mode from the latest timeline projection. Null when no prompt mode is active. */
   activePromptMode: ThreadTimelineActivePromptMode | null;
-  /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
-  /** Active provider fallback; controls the next model selection until another turn is requested. */
   modelFallback: ThreadTimelineModelFallback | null;
-  /**
-   * Running workflow rows from the timeline, most recently started first. A
-   * thread can run several workflows at once, so each gets its own card. Empty
-   * when none are running.
-   */
   activeWorkflows: TimelineWorkflowWorkRow[];
-  /** Running backgrounded shell command rows, most recent first. Empty when none. */
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
-  /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
-  /** Pending permission or question prompts from delegated child threads. */
   childPendingInteractions: readonly ChildThreadPendingAttention[];
-  /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  /** Pull request summary for the active thread branch. Null when there is no PR. */
   pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
-  /** Present only while a sent-message editor is mounted in the timeline. */
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
-  /**
-   * Bumped by the timeline host each time a quote is appended to the shared
-   * draft via "Add to chat", so the composer can focus its caret at the end —
-   * ready for the reply beneath the freshly inserted blockquote.
-   */
   composerFocusRequestNonce: number;
   thread: ThreadWithRuntime;
 }
@@ -231,16 +189,13 @@ interface InlineDraftComposerOptions {
   canModifierSubmit: boolean;
   compactPromptPlaceholder: string;
   composerId: string;
-  /** Live draft under edit; supplies the message text, mentions, and history draft. */
   draft: PromptDraftState;
   editFocusNonce: number;
   execution: FollowUpPromptBoxProps["execution"];
-  /** Combined with editFocusNonce to focus the caret at the end per edit session. */
   focusSessionKey: string | number;
   historyResetKey: string;
   isSubmitting: boolean;
   onChangeMessage: FollowUpComposerProps["onChangeMessage"];
-  /** Escape pressed in the editor; passes the editor's cancel action. */
   onEscape?: FollowUpComposerProps["onEscape"];
   onSelectHistoryEntry: (draft: PromptDraftState) => void;
   permission: FollowUpPromptBoxProps["permission"];
@@ -257,13 +212,6 @@ interface InlineDraftComposerOptions {
   collapseResetKey: string;
 }
 
-/**
- * The queued-message and sent-message inline editors render the same
- * FollowUpPromptBox shape: read-only execution/permission controls, no stack,
- * no environment summary, and a plugin-composer host bound to the draft under
- * edit. Only the draft accessors, submit wiring, and session keys differ, so
- * both call sites pass those in here and share the rest.
- */
 function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
   return (
     <FollowUpPromptBox
@@ -329,13 +277,8 @@ function isInlineQueuedMessageEditSession(
   );
 }
 
-/**
- * Fallback for host draft reads that outlive their editor session: the ref no
- * longer holds the session, so there is no live draft to return.
- */
 const ENDED_EDIT_SESSION_DRAFT = emptyPromptDraftState();
 
-/** Plugin composer-host accessors for the queued-message inline editor (see below). */
 function readInlineQueuedMessageDraft(
   editStateRef: RefObject<InlineQueuedMessageEditState | null>,
   session: InlineQueuedMessageEditSession,
@@ -359,12 +302,6 @@ function writeInlineQueuedMessageDraft(
   }
 }
 
-/**
- * Plugin composer-host accessors for the sent-message inline editor. Module
- * level on purpose: inlined closures that return `ref.current.draft` in one
- * branch and the render-time `draft` in another make React Compiler type the
- * whole edit object as a ref value and bail out of the component.
- */
 function readSentMessageEditDraft(
   sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
   operationId: string,
@@ -385,12 +322,6 @@ function writeSentMessageEditDraft(
   }
 }
 
-/**
- * Flip the "sending" flag around a task. Kept outside the component: React
- * Compiler bails out of any function containing `try`/`finally`, and one such
- * block inside `ThreadDetailPromptArea` left the whole ~1600-line body
- * unmemoized.
- */
 async function runWhileFollowUpShortcutSending(
   setSending: (sending: boolean) => void,
   task: () => Promise<void>,
@@ -451,9 +382,6 @@ export function ThreadDetailPromptArea({
     },
   );
   const defaultExecutionOptions = defaultExecutionOptionsQuery.data;
-  // A replayed (placeholder) resolution seeds the pickers so the first frame
-  // shows the thread's last-known settings, but it is not proof of anything:
-  // submission and the permission controls wait for the live resolution.
   const verifiedDefaultExecutionOptions =
     defaultExecutionOptionsQuery.isPlaceholderData
       ? undefined
@@ -496,8 +424,6 @@ export function ThreadDetailPromptArea({
     queuedMessages,
     onBeginEdit: () => {
       clearInlineAttachmentErrorRef.current();
-      // Focus the composer caret at the end so the restored draft is ready to
-      // keep typing (FollowUpPromptBox `focusEndKey`).
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
@@ -513,7 +439,6 @@ export function ThreadDetailPromptArea({
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
-  // The personal project isn't a meaningful label in the footer, so skip it.
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
   );
@@ -536,8 +461,6 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
-  // subscribeDraft sources for the two state-backed editor hosts. The bottom
-  // composer's host subscribes through the prompt-draft store directly.
   const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
   );
@@ -589,8 +512,6 @@ export function ThreadDetailPromptArea({
         }
       : null,
   });
-  // Read only from the queued-message edit handler (never during render), so
-  // a layout-effect write is current by the time it can run.
   useLayoutEffect(() => {
     clearInlineAttachmentErrorRef.current = () =>
       setInlineAttachmentError(null);
@@ -644,8 +565,6 @@ export function ThreadDetailPromptArea({
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
-  // Expansion is tracked per workflow id so concurrent workflows expand and
-  // collapse independently.
   const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -757,9 +676,6 @@ export function ThreadDetailPromptArea({
   } = useQueuedMessageActions({
     threadId: thread.id,
     queuedMessages,
-    // A steered ("send now") queued message keeps its "Sending..." label until
-    // it leaves the queue — i.e. the steer has been accepted and surfaces in
-    // the timeline — rather than clearing the moment the send request resolves.
     sendProcessingPersistence: "until-left-queue",
     onSendSuccess: () => setInlineAttachmentError(null),
     onSaveSuccess: () => setInlineAttachmentError(null),
@@ -807,10 +723,6 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  // Identity-stable across keystrokes: the published host is held by large
-  // non-draft subscribers (the secondary-content body, the hosted-panel
-  // registry), so a per-keystroke host identity re-rendered the whole thread
-  // shell per character. The live draft flows through getCurrent/subscribeDraft.
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: thread.id },
@@ -1118,8 +1030,6 @@ export function ThreadDetailPromptArea({
     activeBackgroundAgentCount === 0 &&
     activeWorkflows.length === 0 &&
     activeBackgroundCommands.length === 0;
-  // Empty input renders as "ready" with a no-op submit, matching the queued
-  // inline editor; handleSentMessageEditSubmit guards on canSubmitSentMessageEdit.
   const sentMessageEditSubmitMode = useMemo<FollowUpSubmitMode>(
     () =>
       canSubmitSentMessageEdit || sentMessageEditInput.length === 0
@@ -1306,9 +1216,6 @@ export function ThreadDetailPromptArea({
     ),
     [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
   );
-  // Stable for the whole edit session (keyed on the session scalars, not the
-  // per-keystroke edit state), so publishing it does not churn the pane scope
-  // while the user types in the inline editor.
   const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const inlineEditQueuedMessageId =
     inlineEditingQueuedMessage?.queuedMessageId ?? null;
@@ -1427,19 +1334,11 @@ export function ThreadDetailPromptArea({
     thread.id,
     typeaheadConfig,
   ]);
-  // The published value only ever flips between two stable host identities
-  // (per thread / per edit session): keystrokes do not notify the pane scope.
-  // While the inline editor cannot render (execution/permission configs still
-  // loading), the bottom composer is what is on screen, so its host stays
-  // published.
   usePublishPluginComposerHost(
     queuedMessageEditor
       ? queuedMessagePluginComposerHost
       : normalPluginComposerHost,
   );
-  // Stable per edit operation like every other host: the composer config
-  // around it legitimately rebuilds per keystroke, but context consumers of
-  // the host must not re-render on identity churn.
   const sentMessageEditOperationId = sentMessageEdit?.operationId ?? null;
   const sentMessagePluginComposerHost =
     useMemo<PluginComposerHost | null>(() => {
@@ -1698,12 +1597,6 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  // A pending permission/question takes the composer's place, but the
-  // composer itself stays mounted (hidden) inside FollowUpPromptBox so the
-  // TipTap editor, draft and pickers survive every approval instead of being
-  // rebuilt per interaction (submitMode is already "blocked" here). The
-  // interaction shows as the last stack item above a reduced stack: child
-  // banners, plan mode and goal cards, plus plugin banners.
   const pendingInteractionNode = useMemo(() => {
     if (!activePendingInteraction || shouldHideComposer) {
       return null;

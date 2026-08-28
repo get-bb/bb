@@ -77,22 +77,6 @@ function applyBackgroundTaskItem(
   }
 }
 
-/**
- * Folds a background-task lifecycle event into the single per-item workflow
- * message. Deliberately does not require matching event scopes: the
- * turn-scoped item/started anchors the message's placement, and the
- * thread-scoped progress/completed events that arrive (possibly turns) later
- * replace its payload in place — each event carries the full current item
- * state, so replace-not-merge is correct.
- *
- * The message's source range stays pinned to its anchor event. Late events
- * must not stretch `sourceSeqEnd`: turn and segment bounds are derived from
- * member-message ranges, and the server validates turn-summary expansion
- * requests against those ranges — a range stretched past later turns' rows is
- * rejected, permanently breaking expansion of the spawning turn.
- *
- * Returns true when the event was a background-task lifecycle event.
- */
 export function upsertBackgroundTaskMessage(
   state: BackgroundTaskProjectionState,
   meta: EventMeta,
@@ -110,9 +94,6 @@ export function upsertBackgroundTaskMessage(
     return true;
   }
 
-  // Progress/completed without an in-range item/started (e.g. a timeline
-  // window that backfills only the latest task state) still materializes a
-  // message, placed by its own event's scope.
   const message: EventProjectionWorkflowMessage = {
     kind: "workflow",
     id: lifecycle.item.id,

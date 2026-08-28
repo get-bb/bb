@@ -117,9 +117,7 @@ function MobileRecentThreadRow({
   );
   return (
     <li>
-      {/* RouteAnchor, not react-router's Link: it navigates through the
-          stable transition-priority navigate, so the tap paints before the
-          thread view's commit instead of stalling on it. */}
+      {}
       <RouteAnchor
         href={getThreadRoutePath({
           projectId: thread.projectId,

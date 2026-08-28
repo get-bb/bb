@@ -2,11 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { WebSocketConnectionState } from "@/lib/ws";
 import { useServerConnectionState } from "../useServerConnectionState";
 
-/**
- * How long an errored query is treated as "still loading" while the WebSocket
- * is not connected. Past this point we assume the server isn't coming up and
- * surface the failure so the user can act on it.
- */
 const CONNECTION_GRACE_PERIOD_MS = 10_000;
 
 export type ConnectionAwareQueryStatus = "loading" | "ready" | "unavailable";
@@ -66,10 +61,6 @@ export function getConnectionAwareQueryState({
   return { status: "ready" };
 }
 
-/**
- * True once the WebSocket has been disconnected for longer than the grace
- * period without re-establishing. Resets on every transition into "connected".
- */
 function useServerConnectionGracePeriodElapsed(): boolean {
   const connectionState = useServerConnectionState();
   const [elapsed, setElapsed] = useState(false);

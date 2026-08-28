@@ -32,9 +32,7 @@ import {
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
 interface UsePromptMentionsOptions {
-  /** Existing thread that owns the composer and must not mention itself. */
   currentThreadId?: string;
-  /** Thread whose storage files are available to the composer. */
   threadStorageThreadId?: string;
   environmentId: string | null;
   hostId?: string | null;
@@ -64,10 +62,6 @@ interface BuildPromptMentionSuggestionsArgs {
 function buildPromptMentionSuggestions(
   args: BuildPromptMentionSuggestionsArgs,
 ): PromptMentionSuggestion[] {
-  // A query containing "/" reads as a file path, so paths lead; otherwise the
-  // named entities (threads then projects) lead and paths trail. Plugin
-  // provider rows always trail the built-in sources (they render in their
-  // own labeled sections at the bottom of the menu).
   return args.trimmedQuery.includes("/")
     ? [
         ...args.pathSuggestions,
@@ -99,8 +93,6 @@ function buildProjectNamesById(
   return projectNamesById;
 }
 
-// The sidebar bootstrap keeps the personal project separate from the named
-// project list; project mentions offer both so every project is reachable.
 function buildProjectMentionCandidates(
   sidebarNavigation: SidebarBootstrapResponse | undefined,
 ): ProjectMentionCandidate[] {
@@ -182,9 +174,6 @@ export function usePromptMentions(
   const threadsQuery = useThreadMentionCandidates({
     enabled: includeBuiltInSources && hasQuery,
   });
-  // Plugin mention providers (plugin design §4.9): searched server-side on
-  // the debounced query, only when at least one provider is registered for the
-  // active trigger.
   const pluginContributions = usePluginContributions();
   const hasMentionProviders =
     pluginContributions.data?.mentionProviders.some((provider) =>
@@ -303,10 +292,6 @@ export function usePromptMentions(
     ],
   );
 
-  // Loading flips on only when there are zero suggestions to show. Once the
-  // first fetch returns (or placeholderData carries prior results across a
-  // refetch), suggestions stay populated and the menu never collapses back
-  // to the loading state mid-typing.
   const isLoading =
     hasQuery &&
     suggestions.length === 0 &&
@@ -315,9 +300,6 @@ export function usePromptMentions(
         pathSearch.isLoading ||
         threadsQuery.isLoading ||
         threadsQuery.isFetching)) ||
-      // Plugin mention search failures fall back to "no plugin results"
-      // (the built-in sources still render), so only its loading state
-      // participates here.
       (hasMentionProviders &&
         (!pluginSearchMatchesInput ||
           pluginSearch.isLoading ||

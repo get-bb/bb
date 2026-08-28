@@ -6,11 +6,6 @@ import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
-/**
- * `path:` sources are resolved on the invoking machine so a relative directory
- * means what the user typed, not what the server's working directory happens
- * to be. The other two forms are already absolute.
- */
 function normalizeSource(source: string): string {
   const trimmed = source.trim();
   return trimmed.startsWith("path:")
@@ -74,9 +69,8 @@ export function registerMarketplaceCommands(
     .option("--json", "Output JSON")
     .action(
       action(async (opts: JsonOutputOptions) => {
-        const marketplaces = await createCliBbSdk(
-          getUrl(),
-        ).plugins.marketplaces.list();
+        const marketplaces =
+          await createCliBbSdk(getUrl()).plugins.marketplaces.list();
         if (opts.json) {
           outputJson(opts, marketplaces);
           return;
@@ -123,8 +117,6 @@ export function registerMarketplaceCommands(
               : `${result.name}: refresh failed (${result.error ?? "unknown error"}); keeping the last catalog`,
           );
         }
-        // A failed refresh keeps serving; a non-zero exit is how a script
-        // notices without parsing the lines above.
         if (results.some((result) => !result.ok)) process.exit(1);
       }),
     );

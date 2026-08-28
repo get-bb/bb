@@ -542,12 +542,10 @@ describe("FollowUpPromptBox", () => {
       />,
     );
 
-    // Same component instance and DOM: no TipTap teardown per approval.
     expect(screen.getByTestId("prompt-box")).toBe(promptBox);
     expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
     expect(input.value).toBe("Draft typed before the approval");
     expect(composerShell?.hidden).toBe(true);
-    // The interaction renders below the (reduced) stack, above the composer.
     const interaction = screen.getByTestId("pending-interaction");
     const stackItem = screen.getByTestId("pending-stack");
     expect(

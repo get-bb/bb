@@ -19,8 +19,6 @@ import type {
   TimelineRow,
 } from "@bb/server-contract";
 
-/** Test fixtures for the data layer (never imported by app code). */
-
 export function threadListEntry(
   overrides: Partial<ThreadListEntry> & { id: string },
 ): ThreadListEntry {

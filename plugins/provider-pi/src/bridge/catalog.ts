@@ -7,17 +7,6 @@ import {
 import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
 import { PiRpcChild, buildPiChildEnv } from "./rpc-child.js";
 
-/**
- * Process-scoped pi work — `model/list`, `provider/health`, and the context
- * windows the delta translator resolves — served by one long-lived
- * `pi --mode rpc --no-session` child per cwd, memoized like the in-process
- * bridge's model runtime was. `get_available_models` lists the models of
- * every authenticated provider; an empty list is "unauthenticated".
- *
- * No catalog network-refresh control exists over RPC: pi refreshes at its
- * own startup and honors `PI_OFFLINE`.
- */
-
 const EXTENDED_THINKING_LEVELS = [
   "off",
   "minimal",
@@ -38,7 +27,6 @@ interface PiRpcModel {
   thinkingLevelMap?: Record<string, string | null | undefined>;
 }
 
-/** Port of pi-ai's `getSupportedThinkingLevels` (models.js). */
 export function getSupportedThinkingLevels(
   model: Pick<PiRpcModel, "reasoning" | "thinkingLevelMap">,
 ): string[] {
@@ -69,7 +57,9 @@ function toCatalogModel(model: PiRpcModel): PiCatalogModel | undefined {
   return {
     id: model.id,
     input: Array.isArray(model.input)
-      ? model.input.filter((entry): entry is string => typeof entry === "string")
+      ? model.input.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
       : [],
     name: typeof model.name === "string" ? model.name : model.id,
     provider: model.provider,
@@ -83,9 +73,7 @@ export interface PiCatalog {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
-  /** Raw models, for the context-window resolver. */
   rawModels(): Promise<PiRpcModel[]>;
-  /** The `get_state` smoke probe: pi booted, loaded the extension, answers. */
   probe(): Promise<Record<string, unknown>>;
   close(): Promise<void>;
 }
@@ -105,13 +93,7 @@ async function spawnCatalog(
     child = new PiRpcChild({
       cwd,
       env: buildPiChildEnv({}),
-      args: [
-        "--mode",
-        "rpc",
-        "--no-session",
-        "--extension",
-        extensionPath,
-      ],
+      args: ["--mode", "rpc", "--no-session", "--extension", extensionPath],
       onEvent: () => {},
       onChannelMessage: () => {},
       onExit: () => {},
@@ -123,7 +105,6 @@ async function spawnCatalog(
     const data = (await spawnChild().requestOk({
       type: "get_available_models",
     })) as { models?: unknown[] } | undefined;
-    // Idle counts from the answer: a slow boot must not evict the child.
     touch();
     return (data?.models ?? []).filter(
       (entry): entry is PiRpcModel =>
@@ -136,7 +117,6 @@ async function spawnCatalog(
       ? (data as Record<string, unknown>)
       : {};
   };
-  // Readiness: every pi child the bridge spawns opens with `get_state`.
   await probe();
   return {
     async listModels() {
@@ -167,10 +147,11 @@ async function spawnCatalog(
   };
 }
 
-/** A catalog child nobody has asked for this long is closed (`BB_PI_CATALOG_IDLE_MS` for tests). */
 function catalogIdleMs(): number {
   const configured = Number(process.env.BB_PI_CATALOG_IDLE_MS);
-  return Number.isFinite(configured) && configured > 0 ? configured : 5 * 60_000;
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : 5 * 60_000;
 }
 const catalogIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -189,15 +170,10 @@ function touchCatalog(key: string): void {
   catalogIdleTimers.set(key, timer);
 }
 
-/** The catalog already spawned for this cwd, if any; never spawns one. */
 export function peekPiCatalog(cwd: string): Promise<PiCatalog> | null {
   return catalogsByCwd.get(resolve(cwd)) ?? null;
 }
 
-/**
- * The memoized catalog child for a cwd (spawned on first use, keyed on the
- * resolved path, evicted after the idle period without a request).
- */
 export function getPiCatalog(
   cwd: string,
   extensionPath: string,
@@ -207,15 +183,12 @@ export function getPiCatalog(
   if (existing) {
     return existing;
   }
-  // The idle clock starts with the first request and restarts on every
-  // request (the spawn itself does not count: a slow boot must not evict
-  // the child it is booting).
-  const created = spawnCatalog(key, extensionPath, () => touchCatalog(key)).catch(
-    (error: unknown) => {
-      catalogsByCwd.delete(key);
-      throw error;
-    },
-  );
+  const created = spawnCatalog(key, extensionPath, () =>
+    touchCatalog(key),
+  ).catch((error: unknown) => {
+    catalogsByCwd.delete(key);
+    throw error;
+  });
   catalogsByCwd.set(key, created);
   return created;
 }
@@ -234,12 +207,6 @@ export async function closeAllPiCatalogs(): Promise<void> {
   );
 }
 
-/**
- * A context-window resolver for the translator that learns from the catalog
- * child and from the live model each session reports. Models seen later
- * extend it; a `usage` delta before any model is known resolves nothing,
- * which the translator already tolerates.
- */
 export function createLiveContextWindowResolver(): {
   resolve: PiModelContextWindowResolver;
   learn(models: readonly PiRpcModel[]): void;

@@ -41,12 +41,6 @@ type ParseOperationMessageOptions = Pick<
   "includeProviderUnhandledOperations" | "providerDisplayName" | "threadName"
 >;
 
-/**
- * Prefix a thread name onto a bare action verb, e.g. ("Fix auth bug",
- * "assigned to parent") → "Fix auth bug assigned to parent". Falls back to
- * capitalizing the verb when the thread has no name so the title is never an
- * orphaned fragment.
- */
 function withThreadName(threadName: string, verb: string): string {
   const name = threadName.trim();
   return name.length > 0 ? `${name} ${verb}` : capitalize(verb);
@@ -57,12 +51,6 @@ type InteractionLifecycleEvent = Extract<
   { type: "system/interaction/lifecycle" }
 >;
 
-/**
- * The server resolves the display name from the provider registry (or the
- * dynamic ACP tier) and passes it in. A hardcoded four-provider table used to
- * shadow it, which produced the same strings for those four and the raw id for
- * everyone else.
- */
 function providerDisplayName(
   providerId: string,
   projectedDisplayName: string | undefined,
@@ -127,7 +115,6 @@ function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
       return "Stopped manually";
     case "host-daemon-restarted":
       return "Stopped — host daemon restarted";
-    // Legacy persisted watchdog interruption; no current producer.
     case "provider-turn-idle":
       return "Stopped — provider turn stopped responding";
     default:
@@ -135,10 +122,6 @@ function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
   }
 }
 
-/**
- * Compose "{thread} {verb} {parent}", falling back to "{thread} {verb} parent"
- * when the parent thread name is null (deleted/renamed/untitled parent).
- */
 function ownershipTitleWithParent(
   threadName: string,
   verb: string,
@@ -379,13 +362,6 @@ function buildUserQuestionLifecycleMessage(
   };
 }
 
-/**
- * The row an interaction's lifecycle event contributes. A permission grant
- * and a user question get a row of their own. Every other interaction shows
- * elsewhere — a command or file-change approval on the provider's item, a
- * plan review on its plan tool call, a tool use on its tool call, a plugin
- * request on the plugin's form — so its event contributes no row.
- */
 function buildInteractionLifecycleMessage(
   decoded: InteractionLifecycleEvent,
   meta: EventMeta,
@@ -406,7 +382,6 @@ function buildInteractionLifecycleMessage(
     : null;
 }
 
-/** Build the common scaffolding shared by all operation messages. */
 function op(
   decoded: ThreadEvent,
   meta: EventMeta,
@@ -521,7 +496,6 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "system/provider-turn-watchdog") {
-    // Legacy persisted watchdog diagnostic; no current producer.
     return op(decoded, meta, "provider-turn-watchdog", {
       opType: "operation",
       title: "Provider turn stopped responding",
@@ -556,10 +530,6 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "system/operation") {
-    // `plugin_interaction` is the legacy persisted form of a plugin
-    // interaction's lifecycle (now `system/interaction/lifecycle`, which
-    // contributes no row either): its generic operation row would duplicate
-    // the plugin form and linger as "Plugin interaction pending".
     if (
       decoded.operation === "plugin_interaction" ||
       decoded.operation === "edit_message"

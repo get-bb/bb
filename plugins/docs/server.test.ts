@@ -436,7 +436,6 @@ describe("Docs mention provider", () => {
         id: "personal:california-report.md",
         title:
           "6th Annual Report: Evaluation of California's Caregiver Services",
-        // The H2 is body content, not the title, so the preview keeps it.
         subtitle:
           "Personal · Key findings used in wiki CareNav assessments identify unmet caregiver needs.",
         icon: "FileText",
@@ -481,8 +480,6 @@ describe("Docs mention provider", () => {
     });
     const provider = harness.registrations.mentionProviders[0]!;
 
-    // The opening `---` is a thematic break, not frontmatter, so the section it
-    // introduces stays searchable instead of being swallowed as metadata.
     await expect(
       provider.search({
         trigger: "@",

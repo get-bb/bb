@@ -388,8 +388,6 @@ ipcRenderer.on(BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL, () => {
   for (const listener of closeWindowRequestListeners) {
     handled = listener() || handled;
   }
-  // Always answer: main closes the window on `false` and falls back to
-  // closing it itself if no answer arrives in time.
   ipcRenderer.send(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, handled);
 });
 

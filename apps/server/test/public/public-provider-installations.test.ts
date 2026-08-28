@@ -3,9 +3,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
-import {
-  validatePluginProviderDeclaration,
-} from "@get-bb/plugin-sdk/internal/host-policy";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
@@ -13,10 +11,7 @@ import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
-import {
-  type TestAppHarness,
-  withTestHarness,
-} from "../helpers/test-app.js";
+import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
 
@@ -154,7 +149,12 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
         "Claude Code",
@@ -280,8 +280,7 @@ describe("public provider installation routes", () => {
           statusTimeouts.push(args.timeoutMs);
           return new Promise((_, reject) => {
             setTimeout(
-              () =>
-                reject(new HostOnlineRpcTimeoutError()),
+              () => reject(new HostOnlineRpcTimeoutError()),
               args.timeoutMs,
             );
           });
@@ -293,9 +292,7 @@ describe("public provider installation routes", () => {
         const startedAt = Date.now();
         let resolvedAt: number | null = null;
         const responsePromise = Promise.resolve(
-          harness.app.request(
-            `${API}/hosts/${host.id}/provider-clis/status`,
-          ),
+          harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`),
         ).then((response) => {
           resolvedAt = Date.now();
           return response;
@@ -311,8 +308,9 @@ describe("public provider installation routes", () => {
           DEFAULT_BB_REQUEST_TIMEOUT_MS,
         );
         expect(statusTimeouts).toHaveLength(18);
-        expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS))
-          .toBe(true);
+        expect(
+          statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS),
+        ).toBe(true);
       } finally {
         vi.useRealTimers();
       }
@@ -357,8 +355,10 @@ describe("public provider installation routes", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          // A provider id nothing registered.
-          body: JSON.stringify({ provider: "no-such-provider", actionKind: "install" }),
+          body: JSON.stringify({
+            provider: "no-such-provider",
+            actionKind: "install",
+          }),
         },
       );
       expect(unsupported.status).toBe(404);

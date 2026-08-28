@@ -133,20 +133,14 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
     expect(result.current?.projectedSectionId).toBe("b");
 
-    // The projection re-rendered the row into section B and dnd-kit resolved
-    // `over` against the source section again with the pointer unmoved. That
-    // is our own render feeding back, so the projection must hold; reverting
-    // here is what looped until React error #185.
     act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
     expect(result.current?.projectedSectionId).toBe("b");
 
-    // A target the pointer has not visited yet is still allowed.
     act(() => props().onDragOver?.(dragOver("dragged", "loose")));
     expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
     expect(result.current?.projectedSectionId).toBeNull();
 
-    // Real input re-opens every target, including the source section.
     act(() => notePointerMove());
     act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
     expect(result.current?.dragOverParentKey).toBeNull();

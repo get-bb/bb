@@ -327,11 +327,6 @@ const threadEnvironmentHostSchema = z
   })
   .passthrough();
 
-/**
- * Picks the host whose filesystem `--script-file` is read from. `--host
- * <name-or-id>` wins; inside a thread the thread's environment host is used;
- * otherwise the server's primary host (`undefined` for `bb.sdk.files.read`).
- */
 async function resolveScriptFileHostId(
   bb: Pick<BbPluginApi, "sdk">,
   ctx: Pick<PluginCliContext, "threadId">,
@@ -374,18 +369,11 @@ async function resolveScriptFileHostId(
 }
 
 type ScriptFileSource = {
-  /** Absolute path on the source host. */
   path: string;
-  /** Host that owns `path`; `undefined` is the server's primary host. */
   hostId: string | undefined;
   content: string;
 };
 
-/**
- * The plugin CLI runs inside the server, so a local `readFile` would read the
- * server's filesystem. Read `--script-file` through the host file API on the
- * invoking host instead, resolving relative paths against the CLI's cwd.
- */
 async function loadScriptFileSource(
   bb: Pick<BbPluginApi, "sdk">,
   args: ParsedArgs,
@@ -423,7 +411,6 @@ async function loadScriptFileSource(
 
 type BuiltExecution = {
   execution: ResolvedCreateAutomationInput["execution"];
-  /** Set when `--script-file` supplied the script. */
   scriptSource?: ScriptFileSource;
 };
 
@@ -691,18 +678,12 @@ function printAutomation(automation: AutomationResponse): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** Quotes one argument for POSIX shells; plain tokens stay bare. */
 function shellQuote(value: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/u.test(value)
     ? value
     : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-/**
- * The exact command that refreshes the stored copy from the source file.
- * `--script-file` replaces the whole execution, so the command repeats the
- * effective interpreter, timeout, env, and source host.
- */
 function refreshScriptFileCommand(
   automation: AutomationResponse,
   source: ScriptFileSource,
@@ -729,10 +710,6 @@ function refreshScriptFileCommand(
   return argv.map(shellQuote).join(" ");
 }
 
-/**
- * Explains that `--script-file` stored a snapshot copy, so edits to the source
- * path do not reach the automation until it is updated again.
- */
 function printScriptFileSnapshotNote(
   automation: AutomationResponse,
   source: ScriptFileSource | undefined,

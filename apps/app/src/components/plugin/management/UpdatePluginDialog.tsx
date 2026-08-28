@@ -34,13 +34,6 @@ interface UpdatePluginDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/**
- * Layer 3 update confirmation (sketch v2, dialogs C): verdict first, checks
- * collapsed, rollback promise always visible. The incompatible variant
- * arrives with details pre-expanded and Update disabled — the details are
- * the story. Persisted and in-session rolled-back outcomes render in place
- * with their recovery action instead of being reduced to tooltip history.
- */
 export function UpdatePluginDialog({
   plugin,
   open,
@@ -195,7 +188,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            {/* Hashes shorten here; the details grid keeps the full value. */}
+            {}
             Update {name} to {displayPluginVersion(candidate)}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
@@ -270,7 +263,7 @@ function UpdatePluginDialogContent({
               bb
             </span>
           </div>
-          {/* Failure case: the details ARE the story, so they arrive open. */}
+          {}
           <DetailsDisclosure summary="Details" defaultExpanded>
             <div className="space-y-1.5">
               {state.blockedReasons.length > 0 ? (

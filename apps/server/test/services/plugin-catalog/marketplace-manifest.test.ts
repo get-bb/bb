@@ -173,7 +173,6 @@ describe("marketplace manifest schema", () => {
         path: "/checkout/icons/widgets.svg",
         relativePath: "icons/widgets.svg",
       });
-      // An absolute icon URL stays remote even for a local marketplace.
       expect(
         resolveEntryIcon(
           firstEntry([
@@ -299,8 +298,6 @@ describe("marketplace manifest schema", () => {
         "git:https://github.com/acme/plugins.git@^1.0.0#plugins/widgets (tags widgets/vX.Y.Z)",
       );
 
-      // ref and range are mutually exclusive, and a range entry still needs
-      // one of them.
       for (const git of [
         {
           url: "https://github.com/acme/plugins.git",
@@ -412,8 +409,6 @@ describe("marketplace manifest schema", () => {
       expect(entryRepositoryUrl(gitlab)).toBe(
         "https://gitlab.com/acme/plugins",
       );
-      // `#` and `?` pass the subdirectory check; raw they would change the
-      // URL's meaning.
       const reserved = firstEntry([
         entry({
           source: {
@@ -455,10 +450,6 @@ describe("marketplace manifest schema", () => {
   });
 
   describe("engines policy", () => {
-    // A listing no longer declares compatibility: the ranges live in the
-    // plugin's own package.json and the install pipeline enforces them there.
-    // The entry schema is strict, so a stale listing fails loudly rather than
-    // carrying a range bb would silently ignore.
     it("refuses an entry that declares engine ranges", () => {
       for (const engines of [
         { bb: ">=1.0.0" },

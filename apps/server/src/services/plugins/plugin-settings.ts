@@ -15,7 +15,6 @@ import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
 export { validateSettingsUpdate as validatePluginSettingsUpdate };
 
-/** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -85,12 +84,6 @@ function parseStoredSettingValue(
   return (parsed as PluginSettingValue | undefined) ?? descriptor.default;
 }
 
-/**
- * Effective typed values of the NON-secret settings, read synchronously from
- * bb.db. Secret keys are omitted entirely (their values live in files and
- * must never ride a derived provider-options bag). This is the read the
- * per-command provider-options hook uses on the turn-submit path.
- */
 export function readPluginSettingsValuesSync(
   args: Omit<PluginSettingsStoreArgs, "dataDir">,
 ): Record<string, PluginSettingValue | undefined> {
@@ -103,7 +96,6 @@ export function readPluginSettingsValuesSync(
   return values;
 }
 
-/** Effective typed values: stored value when valid, else the default, else undefined. */
 export async function readPluginSettingsValues(
   args: PluginSettingsStoreArgs,
 ): Promise<Record<string, PluginSettingValue | undefined>> {
@@ -117,7 +109,6 @@ export async function readPluginSettingsValues(
   return values;
 }
 
-/** Persist a pre-validated update: secrets to files, the rest to plugin_settings. */
 export async function writePluginSettingsUpdate(
   args: PluginSettingsStoreArgs & { values: Record<string, unknown> },
 ): Promise<void> {
@@ -140,7 +131,6 @@ export async function writePluginSettingsUpdate(
 
 export interface PluginSettingsView {
   schema: PluginSettingDescriptors;
-  /** Effective non-secret values; secret keys map to `{ set: boolean }`. */
   values: Record<string, unknown>;
 }
 

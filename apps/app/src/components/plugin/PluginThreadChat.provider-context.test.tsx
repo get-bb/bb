@@ -1,15 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The SDK `ThreadChat` renders a thread inside whatever page embeds it — a
- * plugin's thread-panel tab under thread A's detail view can show thread B of
- * another provider. The timeline's `"tool"` renderer resolves through the
- * nearest thread provider context, so the chat must provide B's own: without
- * it, A's provider plugin claimed B's tool rows and was told A's provider.
- *
- * Only the network (thread, timeline, provider roster), the realtime hooks
- * and the provider-bundle request are mocked; the rows render through the
- * real timeline stack down to the plugin renderer slot.
- */
 import {
   cleanup,
   fireEvent,
@@ -94,7 +83,6 @@ const TIMELINE_B = {
   },
   maxSeq: 10,
 };
-// The roster the provider-info query reads: agent-b is owned by plugin-b.
 const PROVIDERS = [
   { id: "agent-b", pluginId: "plugin-b", displayName: "Agent B" },
 ];
@@ -114,7 +102,6 @@ function registrationSet(
   };
 }
 
-/** A plugin's thread-panel tab that embeds another thread's chat. */
 function PluginPanelPage({ threadId }: { threadId: string }) {
   const ThreadChat = pluginSdkAppImplementation.ThreadChat;
   return <ThreadChat threadId={threadId} variant="timeline" />;
@@ -125,7 +112,7 @@ function renderUnderThreadA(ui: React.ReactElement) {
   return render(
     <Wrapper>
       <MemoryRouter>
-        {/* The route thread A (provider agent-a, owned by plugin-a). */}
+        {}
         <ThreadProviderContext.Provider
           value={{ providerId: "agent-a", pluginId: "plugin-a" }}
         >
@@ -198,8 +185,6 @@ describe("PluginThreadChat provider context", () => {
     await waitFor(() => expect(sdk.threads.timeline).toHaveBeenCalled());
     await expandAllRows();
 
-    // plugin-b (the owner of agent-b) renders the row and is told B's
-    // provider; plugin-a never sees a row of another provider's thread.
     await waitFor(() =>
       expect(screen.getByTestId("tool-renderer-b")).toBeTruthy(),
     );

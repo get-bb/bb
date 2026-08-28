@@ -72,8 +72,6 @@ export default {
 const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
-// FollowUp commits the provider — omit `onChange` so the picker renders the
-// provider segment as locked.
 const baseExecution = makeExecutionControlsProps({
   provider: {
     options: STORY_PROVIDER_OPTIONS,
@@ -141,10 +139,6 @@ const promptActions: readonly PromptBoxAction[] = [
   CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
-// Fully read-only footer example: renders the SAME model/reasoning and
-// permission pickers the main thread does, just disabled via the
-// FollowUpPromptBox `readOnly` flag so labels and positions match exactly.
-// The configs carry real onChange handlers (they never fire while disabled).
 const readOnlyExecution = makeExecutionControlsProps({
   provider: {
     options: STORY_PROVIDER_OPTIONS,
@@ -169,18 +163,6 @@ const readOnlyPermission: ExecutionPermissionConfig = {
   onChange: noop,
   supported: true,
 };
-
-// ---------------------------------------------------------------------------
-// Environment summary slot.
-//
-// Derived the SAME way production does it (ThreadDetailView): start from a real
-// `Environment` and run it through `formatEnvironmentDisplay` +
-// `getEnvironmentWorkspaceLabelIconName`. The story must never hand-write label
-// strings like "Working locally" — that decouples it from the real derivation
-// and lets the story render states the code cannot produce (e.g. "Working
-// locally" while provisioning). Feeding the formatter keeps the story honest:
-// changing the label logic changes these rows automatically.
-// ---------------------------------------------------------------------------
 
 interface EnvironmentSummaryArgs {
   environment: Environment;
@@ -265,9 +247,6 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   branchName: STORY_BRANCH_NAME,
-  // Worktree threads expose a "new thread in this worktree" affordance —
-  // production wires it to the new-thread route. The story just needs a
-  // non-null handler so the MessageSquarePlus icon renders.
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -287,11 +266,6 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   onCreateNewThreadInWorktree: noop,
 });
 
-// A freshly-created worktree can briefly sit in the prepared metadata-inference
-// stage: the environment row is attached and marked ready for lifecycle
-// bookkeeping, but no workspace path or discovered worktree properties exist
-// yet. The formatter should still report the setup lifecycle ("Provisioning")
-// instead of guessing a direct workspace mode, and there is no branch chip.
 const provisioningEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
     path: null,
@@ -307,10 +281,6 @@ const usage: ThreadContextWindowUsage = {
   modelContextWindow: 128_000,
   estimated: false,
 };
-
-// ---------------------------------------------------------------------------
-// Mentions + attachments + history (mostly empty fixtures)
-// ---------------------------------------------------------------------------
 
 const typeaheadBase: TypeaheadConfig = {
   mention: {
@@ -410,11 +380,6 @@ const stackedCardsWithPillsMentions = buildStoryMentions(
     },
   ],
 );
-
-// ---------------------------------------------------------------------------
-// Stack slot fixtures — ThreadPromptContextBanner + QueuedMessagesList stack
-// above the prompt input. The caller composes them as a single ReactNode.
-// ---------------------------------------------------------------------------
 
 const dirtyWorkspaceStatus: WorkspaceStatus = {
   workingTree: {
@@ -540,10 +505,6 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
-// ---------------------------------------------------------------------------
-// Per-row component
-// ---------------------------------------------------------------------------
-
 type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
@@ -559,15 +520,11 @@ interface RowConfig {
   queuedMessages?: readonly ThreadQueuedMessage[];
   collapseResetKey?: string;
   hideComposer?: boolean;
-  /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
   execution?: ExecutionControlsProps;
-  /** Defaults to the editable permission picker; override to show the read-only permission config. */
   permission?: RowPermission;
-  /** Active provider prompt mode banner state; used to lock plan-mode controls. */
   activePromptMode?: Parameters<
     typeof FollowUpPromptBox
   >[0]["activePromptMode"];
-  /** Render the footer pickers disabled (side chat). The same controls, non-interactive. */
   readOnly?: boolean;
 }
 
@@ -575,9 +532,6 @@ type FollowUpComposerRuntimeStatus = NonNullable<
   Parameters<typeof FollowUpPromptBox>[0]["composer"]
 >["threadRuntimeDisplayStatus"];
 
-// Match production: ThreadTimelinePane renders FollowUpPromptBox through
-// PageShell's actual footer path. The story hides the timeline scroll area so
-// the row stays compact, but the prompt/below-prompt shell itself is real.
 function PromptStage({ children }: { children: ReactNode }) {
   return (
     <div className="w-full min-w-0 bg-background">
@@ -599,10 +553,6 @@ function Row({
   submitMode,
   isFollowUpSubmitting = false,
   threadRuntimeDisplayStatus = "idle",
-  // Default placeholder derives from threadRuntimeDisplayStatus the same way
-  // production's `getFollowUpPromptPlaceholder` does, so the story tracks
-  // copy changes without per-row updates. Rows that need explicit copy
-  // (e.g. "blocked: pending interaction") still pass it through.
   promptPlaceholder,
   environmentSummary = localEnvironmentSummary,
   contextWindowUsage = null,

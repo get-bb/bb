@@ -18,8 +18,6 @@ const mocks = vi.hoisted(() => ({
   setRootComposeProjectId: vi.fn(),
   queryClient: {
     fetchQuery: (...args: unknown[]) => mocks.fetchQuery(...args),
-    // findCachedProviderInfo scans cached execution-options responses for
-    // the source provider's fork capability.
     getQueriesData: () => [
       [
         ["systemExecutionOptions"],
@@ -48,7 +46,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    // One stable client per test run, like the real provider hands out.
     useQueryClient: () => mocks.queryClient,
   };
 });
@@ -154,8 +151,6 @@ describe("useForkThreadFromMessage", () => {
     );
     const first = result.current;
 
-    // A refetch hands the hook a new thread object (same id, new title): the
-    // handler feeds the timeline static context, so its identity must hold.
     rerender({ sourceThread: makeThread({ title: "Renamed source" }) });
     expect(result.current).toBe(first);
 

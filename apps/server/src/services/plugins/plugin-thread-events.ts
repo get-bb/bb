@@ -2,15 +2,6 @@ import type { ApplyThreadLifecycleEventOutcome } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
 
-/**
- * Module-level bridge from the thread lifecycle seams to the plugin service
- * (design §4.5). The lifecycle choke points (`lifecycle-outcome.ts`,
- * `createThreadRecord`) receive narrow `{ db, hub, logger }` deps assembled
- * long before the plugin service exists, so instead of threading a
- * pluginService reference through every deps object, createApp registers the
- * one emitter here. Unset (tests that never build an app) every call is a
- * no-op; with no handlers registered the emitter itself is a cheap no-op.
- */
 let emitter: PluginThreadEventEmitter | undefined;
 
 export function setPluginThreadEventEmitter(
@@ -19,27 +10,18 @@ export function setPluginThreadEventEmitter(
   emitter = next;
 }
 
-/** Called after a thread row is inserted (createThreadRecord). */
 export function emitPluginThreadCreated(thread: Thread): void {
   emitter?.emitThreadCreated(thread);
 }
 
-/** Called after a thread is archived (archiveThreadWithLifecycleEffects). */
 export function emitPluginThreadArchived(thread: Thread): void {
   emitter?.emitThreadArchived(thread);
 }
 
-/** Called after a thread is soft-deleted. */
 export function emitPluginThreadDeleted(thread: Thread): void {
   emitter?.emitThreadDeleted(thread);
 }
 
-/**
- * Called with every lifecycle-event outcome; forwards applied transitions
- * into `active`/`idle`/`error` as their curated plugin lifecycle events.
- * Those statuses have no self-transitions in THREAD_LIFECYCLE, so an applied
- * outcome landing there always means the thread just entered the state.
- */
 export function emitPluginThreadLifecycleOutcome(
   outcome: ApplyThreadLifecycleEventOutcome,
 ): void {

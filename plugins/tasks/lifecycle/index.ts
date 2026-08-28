@@ -173,9 +173,6 @@ export async function registerLifecycle(
     transitionTrackedThread(bb, store, thread.id, "completed");
   });
 
-  // Lifecycle events cover live transitions without a full-SDK subscription.
-  // Reconciliation remains a low-frequency recovery path for transitions that
-  // happen while the plugin is unloaded or while a replacement is loading.
   bb.background.service("thread-status-reconcile", {
     async start(signal) {
       while (!signal.aborted) {

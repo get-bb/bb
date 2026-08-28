@@ -28,9 +28,7 @@ import {
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 
-/** Larger than any thread these tests build, so the budget never binds. */
 const LARGE_BUDGET = 1_000_000;
-/** Three or more byte windows without making loaded-suite timing dominate. */
 const BYTE_WINDOW_ITEM_COUNT = 250;
 
 const providerThreadId = "provider-root";
@@ -85,41 +83,16 @@ function backgroundTaskData(status: "pending" | "completed"): string {
 }
 
 interface SeedOptions {
-  /**
-   * Start a workflow background task at the top of the last turn, and complete
-   * it there too when `"completed"`. Its rows sit far below any in-turn cut.
-   */
   backgroundTask?: "open" | "completed";
-  /**
-   * Put the last turn's command items under one delegation tool call. Its
-   * projected row aggregates every child, so it cannot be split losslessly.
-   */
   delegateLastTurn?: boolean;
-  /** Emit `turn/completed` for the last turn. */
   completeLastTurn: boolean;
-  /** Character count for each seeded command, when testing byte limits. */
   commandChars?: number;
-  /**
-   * Item indexes in the last turn whose `item/completed` is deferred to the very
-   * end of the turn, so the item spans a large sequence range.
-   */
   longRunningItemIndexes?: readonly number[];
-  /** Character count for each completed command output. */
   outputChars?: number;
-  /**
-   * Emit an output delta for each long-running item after every other item, so
-   * the item's presence in a mid-turn window is deltas rather than lifecycle
-   * rows.
-   */
   streamLongRunningOutput?: boolean;
   itemsPerTurn: readonly number[];
 }
 
-/**
- * One or more turns, each a user message plus `itemsPerTurn` completed command
- * items. The final turn is left running unless `completeLastTurn` is set — the
- * shape that forces an in-turn window.
- */
 function seedTurns(
   db: DbConnection,
   thread: Thread,
@@ -261,9 +234,6 @@ function seedTurns(
           scope: turnScope(turnId),
           providerThreadId,
           itemId: `${turnId}-item-${streaming}`,
-          // Delta rows are persisted with a null itemKind (see
-          // deriveStoredEventItemFieldsFromSource); seeding a kind here would
-          // exercise a row shape production can never write.
           itemKind: null,
           parentToolCallId: null,
           data: JSON.stringify({
@@ -483,7 +453,6 @@ interface WalkResult {
   rows: string[];
 }
 
-/** Every page oldest-ward, with each row serialized so content is compared. */
 function walkAllPages(
   db: DbConnection,
   thread: Thread,
@@ -731,13 +700,10 @@ describe("in-turn timeline windows", () => {
 
   it("bounds a running turn that is larger than the whole budget", () => {
     const { db, thread } = setup();
-    // One 300-item turn still running: no user message inside it to cut on.
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
 
     const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
     expect(unbudgeted.profile.eventRowCount).toBeGreaterThan(600);
-    // Without an in-turn cut there is nothing to page to, so the whole turn is
-    // the only window that exists.
     expect(unbudgeted.response.timelinePage.hasOlderRows).toBe(false);
 
     const budgeted = buildPage(db, thread, 100, null);
@@ -753,10 +719,6 @@ describe("in-turn timeline windows", () => {
 
   it("pages a compact byte slice with hundreds of item identities", () => {
     const { db, thread } = setup();
-    // One early large command pushes the 1,000 compact commands after it into a
-    // separate byte-budget page. Querying every scoped identity in that page
-    // as its own OR branch exceeds SQLite's expression-depth limit even though
-    // the page itself is correctly bounded.
     seedTurns(db, thread, {
       commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT - 500_000,
       completeLastTurn: false,
@@ -799,7 +761,6 @@ describe("in-turn timeline windows", () => {
 
     expect(budgeted.rows).toEqual(unbudgeted.rows);
     expect(budgeted.pages).toBeGreaterThan(1);
-    // The point of the exercise: no page reads the whole turn.
     expect(budgeted.maxEventRowCount).toBeLessThan(
       unbudgeted.maxEventRowCount / 2,
     );
@@ -811,8 +772,6 @@ describe("in-turn timeline windows", () => {
 
     const budgeted = buildPage(db, thread, 100, null);
 
-    // The event-count budget keeps the completed summary whole. The separate
-    // byte budget can still cut it when its stored source data is too large.
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
     expect(budgeted.response.timelinePage.olderCursor).toBeNull();
     expect(budgeted.response.rows).toEqual(
@@ -987,9 +946,6 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         if (pages === 1) {
-          // The delegate parent starts near the turn start and completes after
-          // every child. Its closure row must not widen the newest details
-          // range below the byte floor.
           expect(row.sourceSeqStart).toBeGreaterThan(4);
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
@@ -1064,11 +1020,6 @@ describe("in-turn timeline windows", () => {
     const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
     const budgeted = buildPage(db, thread, 100, null);
 
-    // Delegation child rows live inside one parent row. Splitting that row
-    // would either lose one page's children or make parent closure reread the
-    // whole descendant tail after the cut, defeating the claimed bound. Until
-    // nested rows have their own cursor, this aggregate takes the same explicit
-    // whole-turn fallback as a finished turn.
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
     expect(budgeted.response.rows).toEqual(unbudgeted.response.rows);
@@ -1076,8 +1027,6 @@ describe("in-turn timeline windows", () => {
 
   it("gives an item straddling the cut to exactly one page, completed", () => {
     const { db, thread } = setup();
-    // Item 0 starts at the top of the turn and only completes at the very end,
-    // so any in-turn cut falls between its two lifecycle rows.
     seedTurns(db, thread, {
       completeLastTurn: false,
       itemsPerTurn: [300],
@@ -1097,8 +1046,6 @@ describe("in-turn timeline windows", () => {
 
   it("gives a straddling item to exactly one byte page's details, completed", () => {
     const { db, thread } = setup();
-    // Item 0 starts at the top of the finished turn and completes at its very
-    // end, so it straddles every byte cut inside the turn.
     seedTurns(db, thread, {
       commandChars: 25_000,
       completeLastTurn: true,
@@ -1169,8 +1116,6 @@ describe("in-turn timeline windows", () => {
 
   it("does not read past its cursor on an older page", () => {
     const { db, thread } = setup();
-    // Two small turns behind one huge finished turn. The huge turn is the page
-    // the cursor points at, and paging past it must not read it again.
     seedTurns(db, thread, {
       completeLastTurn: true,
       itemsPerTurn: [5, 5, 400],
@@ -1182,8 +1127,6 @@ describe("in-turn timeline windows", () => {
     expect(cursor).not.toBeNull();
 
     const older = buildPage(db, thread, 100, cursor);
-    // Only the two small turns. Ending the read at the *next anchor past* the
-    // cursor instead would pull the 400-item turn back in to discard it.
     expect(older.profile.eventRowCount).toBeLessThan(100);
     expect(
       older.response.rows.some((row) => row.sourceSeqStart > cursor!.anchorSeq),
@@ -1195,10 +1138,6 @@ describe("timeline segment anchors", () => {
   it("treats a steer sent with nothing running as a pageable anchor", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [40] });
-    // A message the client sent as a `steer` while no turn was running starts a
-    // turn like any other, and the projection renders it as a user message. If
-    // anchor selection disagrees, the page hands back a cursor it will then
-    // reject, and everything older becomes unreachable.
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
@@ -1245,8 +1184,6 @@ describe("timeline window event exclusions", () => {
     seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [5] });
     const withoutDiffs = buildPage(db, thread, LARGE_BUDGET, null);
 
-    // `turn/diff/updated` carries a full workspace diff and projects into
-    // nothing. Reading it is pure cost.
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
@@ -1272,8 +1209,6 @@ describe("timeline window event exclusions", () => {
 describe("timeline inline output reads", () => {
   it("shortens an oversized command output during the read", () => {
     const { db, thread } = setup();
-    // The turn stays running so the command renders as its own row rather than
-    // being folded into a finished turn's summary.
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [1] });
     const output = "x".repeat(50_000);
     insertEvents(db, noopNotifier, [
@@ -1345,9 +1280,6 @@ describe("timeline inline output reads", () => {
 describe("background tasks across an in-turn window", () => {
   it("keeps the running-workflow banner when the window starts after the task began", () => {
     const { db, thread } = setup();
-    // The workflow starts at the top of a turn that then runs long enough to
-    // push the window past it. The banner is thread-scoped state, so it has to
-    // survive a window that no longer contains the task's own rows.
     seedTurns(db, thread, {
       backgroundTask: "open",
       completeLastTurn: false,
@@ -1358,9 +1290,7 @@ describe("background tasks across an in-turn window", () => {
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
       /:in-turn:/,
     );
-    // The task's own rows are far below the cut...
     expect(budgeted.profile.eventRowCount).toBeLessThanOrEqual(120);
-    // ...and the banner is still there, unchanged.
     expect(budgeted.response.activeWorkflows).toHaveLength(1);
     expect(budgeted.response.activeWorkflows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.activeWorkflows,
@@ -1384,11 +1314,6 @@ describe("background tasks across an in-turn window", () => {
 describe("in-turn windows and items that only stream", () => {
   it("gives an item to one page when its in-window presence is output deltas", () => {
     const { db, thread } = setup();
-    // Item 0 starts at the top of the turn, streams output all the way through,
-    // and only completes at the very end. Every mid-turn window therefore holds
-    // its deltas and neither of its lifecycle rows — so ownership decided from
-    // `item/started`/`item/completed` alone never sees it, and both pages
-    // project a row under its id.
     seedTurns(db, thread, {
       completeLastTurn: false,
       itemsPerTurn: [300],
@@ -1420,9 +1345,6 @@ describe("in-turn windows and items that only stream", () => {
         completeLastTurn: false,
         itemsPerTurn: [100],
       });
-      // Pi, Claude, and ACP may begin an assistant item with its first delta,
-      // while other provider paths emit item/started first. Both shapes must
-      // preserve the buffered prefix when the event budget cuts through it.
       const events: EventInput[] = includeStartedEvent
         ? [
             {
@@ -1508,14 +1430,6 @@ describe("in-turn windows and items that only stream", () => {
   );
 });
 
-/**
- * Two finished turns. Turn 1 starts a command and answers; turn 2 carries a
- * late `item/completed` for that command, scoped to turn 2 with the degraded
- * `toolCall` shape the claude-code translator emits once the turn boundary has
- * cleared its call map. When `reuseCallIdInLaterTurn` is set, turn 2 instead
- * starts and completes its own item under turn 1's call id after turn 1's
- * item already finished, the way a resumed ACP session restarts its id counter.
- */
 function seedCrossTurnCompletion(
   db: DbConnection,
   thread: Thread,
@@ -1614,7 +1528,6 @@ function seedCrossTurnCompletion(
   insertEvents(db, noopNotifier, events);
 }
 
-/** Each turn row's details next to the same row's inline children. */
 function collectTurnDetailsAndChildren(
   db: DbConnection,
   thread: Thread,

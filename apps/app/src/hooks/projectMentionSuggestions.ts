@@ -7,7 +7,6 @@ type ProjectMentionSuggestion = Extract<
   { kind: "project" }
 >;
 
-/** A project the mention menu can offer, reduced to what the picker needs. */
 export interface ProjectMentionCandidate {
   id: string;
   name: string;

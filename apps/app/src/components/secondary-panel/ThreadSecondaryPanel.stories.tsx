@@ -52,7 +52,6 @@ const noop = () => {};
 function createStoryFixedPanelTab(
   panel: ThreadSecondaryPanelTab,
 ): SecondaryFixedPanelTab {
-  // Stories exercise only the built-in fixed views, not plugin panel keys.
   return panel === "git-diff"
     ? createGitDiffFixedPanelTab()
     : createThreadInfoFixedPanelTab();
@@ -98,8 +97,6 @@ function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
   };
 }
 
-// The shell is inline, matching the desktop surface without introducing the
-// drawer-only close button or the conversation-collapse affordance.
 function PanelStage({
   children,
   height = "compact",

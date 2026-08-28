@@ -412,8 +412,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.clearGoal, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    // No provider gate: a Goal is provider extension state, so a thread whose
-    // provider never declares one simply has no active Goal to clear.
     const activity = getThreadPromptBannerActivity(deps, thread);
     if (activity.activeGoalCount === 0) {
       throw new ApiError(409, "invalid_request", "No active Goal to clear");
@@ -564,13 +562,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
-  // Un-archive clears archivedAt. When the thread's managed environment is still
-  // inside its archive grace window (`retiring`), un-archiving revives it via the
-  // existing `retire.cancelled` event so the intact worktree is restored — the
-  // lossless undo of an accidental archive. If the grace window already elapsed
-  // and the environment was destroyed, `retire.cancelled` is a no-op (illegal
-  // from destroying/destroyed) and the thread remains read-only. The user can
-  // hand its context and surviving branch off to a new thread instead.
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);

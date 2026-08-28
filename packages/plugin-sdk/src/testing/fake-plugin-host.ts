@@ -871,7 +871,9 @@ function createFakePluginHostInternal(
       ),
     } satisfies FakePluginPersistentState);
   const pluginId = options.pluginId ?? "test-plugin";
-  const declaredIconNames = new Set(options.experimental_declaredIconNames ?? []);
+  const declaredIconNames = new Set(
+    options.experimental_declaredIconNames ?? [],
+  );
   const agentSkillIds = [...(options.agentSkillIds ?? [])];
   if (new Set(agentSkillIds).size !== agentSkillIds.length) {
     throw new Error("agentSkillIds must not contain duplicates");
@@ -1286,10 +1288,13 @@ function createFakePluginHostInternal(
       // host builds no artifact; the declared entry stands in for it.
       assertAiServiceRegistrable({
         id: normalized.id,
-        hostArtifact: options.experimental_hostEntry === false ? null : "declared",
+        hostArtifact:
+          options.experimental_hostEntry === false ? null : "declared",
         hostArtifactProblem: null,
       });
-      if (aiServiceRegistrations.some((existing) => existing.id === normalized.id)) {
+      if (
+        aiServiceRegistrations.some((existing) => existing.id === normalized.id)
+      ) {
         throw new Error(aiServiceAlreadyRegisteredMessage(normalized.id));
       }
       aiServiceRegistrations.push(normalized);

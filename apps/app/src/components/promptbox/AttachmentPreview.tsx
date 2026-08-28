@@ -1,5 +1,8 @@
 import { useEffect } from "react";
-import { getWrappedImageIndex, ImageLightbox } from "@/components/ui/image-lightbox.js";
+import {
+  getWrappedImageIndex,
+  ImageLightbox,
+} from "@/components/ui/image-lightbox.js";
 import { Icon } from "@bb/shared-ui/icon";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
@@ -8,11 +11,6 @@ import {
   releaseLocalAttachmentPreview,
 } from "@/lib/attachment-local-previews";
 
-/**
- * A just-picked image renders from its local object URL; anything restored
- * from a persisted draft (or picked in another window) falls back to the
- * stored attachment URL.
- */
 function resolveAttachmentPreviewSrc(
   path: string,
   attachmentProjectId: string | undefined,

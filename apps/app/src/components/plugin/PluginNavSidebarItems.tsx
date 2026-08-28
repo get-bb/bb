@@ -69,34 +69,19 @@ import {
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 
-/**
- * Reserved plugin id for rows the host owns rather than a plugin. Real plugin
- * ids come from a plugin manifest name, so they never take this shape.
- */
 const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
 
-/**
- * Order/hidden preference key of the built-in Extensions row. The id stays
- * "tools" so an order or hidden list saved under the row's old name keeps
- * naming the same row.
- */
 const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
   pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
   id: "tools",
 });
 
-/**
- * One sidebar nav row. Plugin rows come from `navPanel` slots; the Extensions
- * row is host chrome that shares the list so both obey the same order and hide
- * preferences.
- */
 type SidebarNavRow =
   | {
       kind: "tools";
       pluginId: string;
       id: string;
       title: string;
-      /** Last visited Extensions route, so the row returns where the user was. */
       routePath: string;
     }
   | {
@@ -105,33 +90,15 @@ type SidebarNavRow =
       id: string;
       title: string;
       chrome: PluginNavPanelChrome;
-      /**
-       * The live registration; null while the row is drawn from remembered
-       * chrome before plugin frontends have booted (no sidebar accessory).
-       */
       panel: PluginNavPanelSlot | null;
     };
 
-/**
- * Sidebar entries for plugin `navPanel` slots (plugin design §5.2) plus the
- * built-in Extensions row: one row per entry, styled like primary sidebar
- * actions.
- * Plugin rows navigate to the panel's own route under
- * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. The host
- * owns the row chrome; only an optional bounded sidebar accessory mounts here.
- * The panel component itself mounts on the route (PluginPanelView).
- *
- * Rows are drag-reorderable and can be hidden; hidden rows move into a
- * collapsed "More" disclosure below the list rather than disappearing. Both
- * preferences live in `pluginNavSidebarAtoms`.
- */
 export function PluginNavSidebarItems({
   toolsRoutePath,
   ...props
 }: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
-  /** Omit when a host surface should render plugin rows without Extensions. */
   toolsRoutePath?: string;
 }) {
   const navPanels = usePluginNavPanelChrome();
@@ -156,8 +123,6 @@ export function PluginNavSidebarItems({
       ...pluginRows,
     ];
   }, [navPanels, toolsRoutePath]);
-  // Router hooks live in the inner component so hosts without a Router
-  // (isolated sidebar tests/stories) can render the empty state.
   if (rows.length === 0) return null;
   return <PluginNavSidebarItemList {...props} rows={rows} />;
 }
@@ -177,9 +142,6 @@ function PluginNavSidebarItemList({
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
   const { visible, hidden, normalizedOrder } = useMemo(() => {
-    // Users who customized their plugin order before the Extensions row joined
-    // the list keep it on top instead of finding it at the bottom. Seed only
-    // while the row exists, so a build without it saves no key for it.
     const leadingKeys = rows.some((row) => row.kind === "tools")
       ? [TOOLS_NAV_ROW_KEY]
       : [];
@@ -190,9 +152,6 @@ function PluginNavSidebarItemList({
     });
   }, [hiddenKeys, rows, storedOrder]);
 
-  // Give newly installed panels a slot in the persisted order. This only ever
-  // adds keys: a plugin frontend that has not registered yet keeps its slot, so
-  // an early mount cannot save a shortened order over the user's arrangement.
   useEffect(() => {
     if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
@@ -248,8 +207,6 @@ function PluginNavSidebarItemList({
 
   return (
     <div
-      // Pull back most of the primary-actions bottom padding so plugin panel
-      // rows keep the same compact 2px rhythm as sidebar thread rows.
       className="-mt-1.5 shrink-0 space-y-0.5 px-2 pb-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
@@ -311,9 +268,6 @@ function PluginNavSidebarOverflowToggle({
       aria-expanded={isOpen}
       className={cn(
         PROJECT_LIST_ACTION_BUTTON_CLASS,
-        // Quieter than the hidden rows it heads, matching the sidebar's
-        // section labels ("Pinned"). Hover still brightens it via the shared
-        // interactive-state class.
         "w-full text-subtle-foreground/75",
       )}
       onClick={onToggle}
@@ -357,7 +311,6 @@ interface SidebarNavRowItemProps {
   pathname: string;
   onNavigate?: () => void;
   splitEnabled: boolean;
-  /** Present for rows parked in the "More" disclosure. */
   isHidden?: boolean;
   onHide?: (key: string) => void;
   onShow?: (key: string) => void;
@@ -402,16 +355,6 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
-/**
- * The Extensions row's glyph. Resting is the toolbox; hovering (or focusing)
- * the row swaps in the tool case.
- *
- * Both glyphs are always rendered into one grid cell and only their opacity
- * changes, so the icon box is the same size in both states and the swap cannot
- * shift the row's text. The trigger is the shared row-hover CSS the sidebar's
- * other affordances already use rather than React hover state, so it stays a
- * paint-only change and matches keyboard focus for free.
- */
 function ToolsNavSidebarItemIcon() {
   return (
     <span className="bb-sidebar-row-icon-swap shrink-0" aria-hidden="true">
@@ -421,10 +364,6 @@ function ToolsNavSidebarItemIcon() {
   );
 }
 
-/**
- * The Extensions row. It has no split-pane content kind, so it navigates in
- * place and draws no mini-map; everything else matches a plugin row.
- */
 function ToolsNavSidebarItem({
   row,
   pathname: _pathname,
@@ -440,9 +379,6 @@ function ToolsNavSidebarItem({
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
       icon={<ToolsNavSidebarItemIcon />}
-      // Never active: AppLayout swaps AppSidebar out for ToolsSidebar on every
-      // Extensions route, so this row is only on screen while Extensions is
-      // closed.
       isActive={false}
       onSelect={() => {
         onNavigate?.();
@@ -503,8 +439,6 @@ function PluginNavSidebarItem({
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
       accessory={sidebarAccessory}
-      // Split-drag initiator; engages only when the pointer leaves the
-      // sidebar, so it coexists with the dnd-kit reorder listeners.
       onPointerDown={onPointerDown}
       onSelect={(event) => {
         onNavigate?.();
@@ -535,7 +469,6 @@ interface SidebarNavRowChromeProps {
   rowStyle?: CSSProperties;
 }
 
-/** Shared chrome for every sidebar nav row: button, hide menus, drag handle. */
 function SidebarNavRowChrome({
   rowKey,
   title,
@@ -553,9 +486,6 @@ function SidebarNavRowChrome({
   rowStyle,
 }: SidebarNavRowChromeProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  // dnd-kit's KeyboardSensor activates on Space/Enter and preventDefaults them.
-  // On a real <button> row that would swallow Enter-to-open, so the row keeps
-  // only the pointer/touch drag activators. Reordering stays a pointer gesture.
   const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
     dragBindings?.listeners ?? {};
   const visibilityItem = (surface: PluginNavRowMenuSurface): ReactNode => (
@@ -580,9 +510,6 @@ function SidebarNavRowChrome({
             variant="ghost"
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
-              // Accessory-less rows keep their existing title width. A row
-              // with one reserves its 4rem trailing value; the options trigger
-              // replaces that value on hover rather than taking more space.
               "w-full pr-7",
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
@@ -612,10 +539,6 @@ function SidebarNavRowChrome({
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
               }
-              // Share the action column with the options trigger. A short
-              // value centers on the trigger glyph; a longer value grows left
-              // up to 4rem. The shared fade class hides it on hover/focus or
-              // while the menu is open without unmounting plugin state.
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
                 "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-center leading-5",
@@ -631,9 +554,6 @@ function SidebarNavRowChrome({
             }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
-              // right-0 (not right-1): the trigger's own m-1 supplies the inset,
-              // so the glyph centers on the same column as the sidebar search
-              // icon above and the thread-row more menus below.
               "absolute inset-y-0 right-0 flex items-center",
             )}
           >

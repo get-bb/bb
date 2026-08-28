@@ -83,8 +83,6 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
     if (reconnected) void load().catch(() => undefined);
   }, [connection, load]);
 
-  // The host's provider directory names the provider; this plugin vendors
-  // no provider names of its own.
   const { providers } = experimental_useProviders();
   const providerName =
     view === null

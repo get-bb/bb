@@ -1,18 +1,3 @@
-/**
- * Codex dialect parsing → narrow-grammar deltas.
- *
- * Codex's app-server natively emits turn/item/delta notifications with
- * provider ids, so this module is a near-1:1 mapping onto `thread/delta`
- * semantic deltas: every delta carries codex's own turn id as the vouched
- * `providerTurnId` join key and item ids as `key.providerItemId`; the runtime
- * delta assembler mints the bb ids and constructs the canonical events.
- *
- * The one dialect state here is the rate-limit snapshot merge (sparse rolling
- * updates inherit the previous snapshot's windows and keep the reached-reason
- * sticky while it is still provably active). It stays bridge-side because it
- * is seeded from a per-child `account/rateLimits/read` post-initialize call
- * the assembler never sees.
- */
 import {
   type ProviderErrorCategory,
   type ProviderErrorInfo,
@@ -68,23 +53,11 @@ function assertNever(value: never): never {
   throw new Error(`Unexpected value: ${String(value)}`);
 }
 
-/**
- * A bb-injected tool the session was constructed with (Q31). The definition
- * carries its presentation once the server resolved one; a definition from
- * before the field existed presents generically.
- */
 export interface CodexInjectedTool {
   name: string;
   presentation?: DeltaPresentation;
 }
 
-/**
- * The structured classification Codex attached to a retried failure, keyed by
- * `threadId\0turnId`. Codex labels every reconnect attempt with the specific
- * error info (for example `responseStreamDisconnected`) but downgrades the
- * terminal error for the same failure to `other` once its retry budget is
- * exhausted, so the bridge carries the retry-time classification forward.
- */
 interface CodexRetryErrorContext {
   errorInfo: CodexErrorInfo;
   failureText: string;
@@ -92,11 +65,6 @@ interface CodexRetryErrorContext {
 
 interface CodexEventTranslationState {
   rateLimits: CodexRateLimitSnapshot | null;
-  /**
-   * The bb-injected tools of the session, by name. A `dynamicToolCall` to one
-   * of them is a bb tool (`server: "bb"`) and reads the way its definition
-   * says; every other dynamic tool call is codex's own.
-   */
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
@@ -270,7 +238,6 @@ type CodexItemTranslationResult =
   | {
       kind: "translated";
       shape: DeltaItemShape;
-      /** How the row reads (grammar v3); restated on every open and close. */
       presentation: DeltaPresentation;
       status: ThreadEventItemStatus;
       approvalDenied: boolean;
@@ -409,13 +376,6 @@ export function clearCodexEventTranslationThreadState(
   }
 }
 
-/**
- * Codex reports the underlying failure in `additionalDetails` while it is
- * retrying ("Reconnecting... n/m"), then moves the same text to `message` and
- * downgrades `codexErrorInfo` to `other` on the terminal event. Correlate the
- * two by failure text, scoped to the turn, so the terminal error keeps the
- * structured classification without interpreting provider prose.
- */
 function resolveCodexErrorInfo(
   state: CodexEventTranslationState,
   params: CodexErrorParams,
@@ -476,8 +436,6 @@ function buildUnhandledCodexDeltas(
       kind: "unhandled",
       raw: toRawEvent(args.rawEvent),
       rawType: args.rawType ?? description.kind,
-      // Codex's own notifications name their turn; only a vouched turn id
-      // may turn-scope the event (the only-caller-vouched-turn-ids rule).
       vouchedTurn: args.providerTurnId !== undefined,
       ...(args.providerTurnId !== undefined
         ? { providerTurnId: args.providerTurnId }
@@ -661,17 +619,12 @@ function toolStatusFields(status: CodexItemStatus): {
 } {
   return {
     status: toItemStatus(status),
-    // Only completed declined items represent a denied approval/policy; the
-    // caller applies this on item.close only (a started event is not
-    // terminal even if Codex includes a terminal-looking status).
     approvalDenied: status === "declined",
   };
 }
 
-/** Provider-anonymous key for the plan-steps snapshots of a thread. */
 const PLAN_STEPS_CHANNEL = "planSteps";
 
-/** The `server` a bb-injected tool call carries (Q31). */
 const BB_TOOL_SERVER = "bb";
 
 function isTerminalCodexItemStatus(status: CodexItemStatus): boolean {
@@ -691,7 +644,6 @@ const COLLAB_DELEGATION_VERBS: Readonly<Record<string, string>> = {
   closeAgent: "Close agent",
 };
 
-/** The delegation's human label: the prompt when the call carries one. */
 function collabDelegationLabel(item: CodexCollabAgentToolCall): string {
   if (item.prompt !== null && item.prompt.trim().length > 0) {
     return item.prompt.trim();
@@ -699,11 +651,6 @@ function collabDelegationLabel(item: CodexCollabAgentToolCall): string {
   return COLLAB_DELEGATION_VERBS[item.tool] ?? item.tool;
 }
 
-/**
- * The child's terminal summary as codex reports it: `agentsStates` maps each
- * agent thread id to its final state (a status string or a structured
- * record). Rendered as one line per agent; absent when codex reported none.
- */
 function summarizeCollabAgentsStates(
   agentsStates: Record<string, unknown>,
 ): string | undefined {
@@ -734,8 +681,6 @@ function translateCodexItemShape(
         approvalDenied: false,
       };
     case "userMessage":
-      // bb already owns the user message it sent; the provider's echo of it
-      // would render a duplicate.
       return { kind: "ignored" };
     case "commandExecution":
       return {
@@ -804,9 +749,6 @@ function translateCodexItemShape(
     case "dynamicToolCall": {
       const result = extractDynamicToolCallResult(parsedItem.contentItems);
       const error = buildDynamicToolCallError(parsedItem.success, result);
-      // A dynamic tool bb injected at session construction is a bb tool:
-      // `server: "bb"` names its origin and its definition says how the row
-      // reads, so no tool-name table is needed anywhere downstream.
       const injected = state.injectedToolsByName.get(parsedItem.tool);
       return {
         kind: "translated",
@@ -836,10 +778,6 @@ function translateCodexItemShape(
       });
       const childRef = parsedItem.receiverThreadIds[0];
       if (childRef !== undefined && childRef.length > 0) {
-        // A collab call that names its child agent IS a delegation to it
-        // (grammar v3): spawnAgent/resumeAgent/sendInput with a receiver,
-        // and a wait/closeAgent scoped to one agent. The child's own turns
-        // link back through the call id as their parentRef.
         return {
           kind: "translated",
           shape: {
@@ -857,9 +795,6 @@ function translateCodexItemShape(
           ...toolStatusFields(parsedItem.status),
         };
       }
-      // Without a receiver there is no child to delegate to: codex's bare
-      // `wait` (wait for every agent) and `closeAgent` stay generic tool
-      // calls, presented as the collab verb they are.
       return {
         kind: "translated",
         shape: {
@@ -881,8 +816,6 @@ function translateCodexItemShape(
       };
     }
     case "subAgentActivity":
-      // The translator handles this statefully so it can correlate the
-      // activity with the child turn and close the synthetic delegation row.
       return { kind: "ignored" };
     case "webSearch": {
       if (shouldIgnoreCodexWebItem(parsedItem)) {
@@ -994,11 +927,6 @@ export function translateCodexEventToDeltas(
           ...(handledEvent.params.turn.error?.message
             ? { error: { message: handledEvent.params.turn.error.message } }
             : {}),
-          // The Codex turn id is the value codex thread/fork accepts as
-          // lastTurnId, and unlike any in-memory map it survives bridge and
-          // runtime restarts. Completed and interrupted turns are persisted
-          // fork points. Failed turns can be absent from older Codex rollouts,
-          // so do not claim a checkpoint for those without equivalent proof.
           ...(status === "completed" || status === "interrupted"
             ? { providerCheckpointId: handledEvent.params.turn.id }
             : {}),
@@ -1036,8 +964,6 @@ export function translateCodexEventToDeltas(
         },
       ];
     case "thread/goal/updated": {
-      // Codex's Goal is codex vocabulary: a `provider-codex/goal` thread
-      // state snapshot (latest wins), not a core event.
       const goal: CodexGoalState = {
         objective: handledEvent.params.goal.objective,
         status: handledEvent.params.goal.status,
@@ -1173,10 +1099,6 @@ export function translateCodexEventToDeltas(
         },
       ];
     case "thread/tokenUsage/updated": {
-      // Codex reports exact cumulative totals, so the `usage` delta forwards
-      // them verbatim; its `last.totalTokens` is also the context-window
-      // reading, which rides the `contextWindow` delta beside it (both scoped
-      // to the same vouched turn).
       const { tokenUsage, turnId } = handledEvent.params;
       return [
         {
@@ -1209,10 +1131,6 @@ export function translateCodexEventToDeltas(
       ];
     }
     case "turn/plan/updated": {
-      // Codex's `update_plan` surfaces only as this turn-level notification,
-      // so each update is one settled `planSteps` snapshot (grammar v3): a
-      // channel-keyed close mints a fresh item per snapshot, and the latest
-      // one supersedes the rest — the same shape as a Claude TodoWrite call.
       const steps = handledEvent.params.plan.map((step) => ({
         step: step.step,
         status:
@@ -1260,8 +1178,6 @@ export function translateCodexEventToDeltas(
             ? { willRetry: handledEvent.params.willRetry }
             : {}),
           ...(errorInfo ? { errorInfo } : {}),
-          // Codex names its turn when the error belongs to one; an error
-          // without a native turn id must stay thread-scoped even mid-turn.
           ...(handledEvent.params.turnId !== undefined
             ? { providerTurnId: handledEvent.params.turnId }
             : { threadScoped: true }),

@@ -1,19 +1,3 @@
-/**
- * BB's curated, version-pinned Claude Code models — the data only, with no
- * imports, because two very different loaders read it:
- *
- * - the plugin's `server.ts` (loaded by the bb server, where only the SDK
- *   root specifier resolves) declares it as the provider's cold-cache
- *   fallback (`models.fallback`);
- * - the bridge (`model-catalog.ts`, run on the host) filters it against the
- *   account-scoped probe so only models the account can run reach the picker.
- *
- * Secondary "More models" choices, moving aliases, and retired model strings
- * are deliberately absent: they live in the bridge's selected-only catalog,
- * which exists to label an already-stored selection rather than to offer new
- * ones.
- */
-
 export type ClaudeCodeReasoningLevel =
   | "low"
   | "medium"
@@ -34,11 +18,6 @@ export interface ClaudeCodeCatalogEntryData {
   defaultReasoningEffort: ClaudeCodeReasoningLevel;
 }
 
-/**
- * Ultracode requires an xhigh-capable model (it decomposes to xhigh effort
- * plus standing workflow orchestration), so only the xhigh ladder offers it.
- * Descriptions match `@bb/domain`'s shared reasoning-effort constants.
- */
 export const CLAUDE_XHIGH_CAPABLE_REASONING_EFFORT_DATA: readonly ClaudeCodeReasoningEffortData[] =
   [
     { reasoningEffort: "low", description: "Low reasoning effort" },

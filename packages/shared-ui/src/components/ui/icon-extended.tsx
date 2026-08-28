@@ -97,15 +97,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { type ExtendedIconMap, registerExtendedIcons } from "./icon-registry";
 
-// Extended glyph registry: every named icon the shell does not need before
-// first paint. `./icon` keeps only the core map on the boot path; this module
-// publishes the rest into the registry when it evaluates. Route chunks that
-// render extended icons import it statically (so their icons never flash), and
-// `Icon` loads it on demand for anything else.
-
-// The free hugeicons set ships no artist-palette glyph (its `Palette` export
-// is a pen nib), so this inlines the stroke-rounded palette artwork in the
-// same element format the set uses.
 const PaletteStrokeRoundedIcon: IconSvgElement = [
   [
     "path",

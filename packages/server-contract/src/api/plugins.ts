@@ -70,13 +70,9 @@ export const pluginSourceHistoryEntrySchema = z.object({
 export const pluginSourceDetailSchema = z.object({
   requested: z.string(),
   resolved: z.string(),
-  /** Repository-relative plugin directory; absent for a root install. */
   subdirectory: z.string().optional(),
-  /** Semver range over git tags; absent when the source names one ref. */
   range: z.string().optional(),
-  /** Tag prefix the range matches; absent for repository-wide `vX.Y.Z` tags. */
   tagPrefix: z.string().optional(),
-  /** Git tag the range resolved to; absent when the source names one ref. */
   resolvedTag: z.string().optional(),
   integrity: z.string().optional(),
   registry: z.string().optional(),
@@ -91,7 +87,6 @@ export type PluginSourceDetail = z.infer<typeof pluginSourceDetailSchema>;
 
 export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
-  /** Actionable reason when bb could not verify the update source. */
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
   blockedVersion: z.string().optional(),
@@ -139,17 +134,6 @@ export const pluginAppStateSchema = z.object({
     .nullable(),
 });
 
-/**
- * A user-recognizable thing a plugin contributes to bb, as shown in the plugin
- * detail "Includes" section. These are product facts, not server internals:
- * RPC methods, HTTP routes, event handlers, and databases are deliberately
- * absent.
- *
- * `skill` and `theme` are manifest-declared, so they stay accurate while the
- * plugin is disabled. `agent-tool` and `thread-integration` are only observable
- * on a loaded plugin, so a disabled plugin reports none of them and the detail
- * page says so rather than implying it has none.
- */
 export const pluginCapabilitySchema = z.object({
   kind: z.enum(["skill", "theme", "agent-tool", "thread-integration"]),
   id: z.string(),
@@ -158,7 +142,6 @@ export const pluginCapabilitySchema = z.object({
 });
 export type PluginCapability = z.infer<typeof pluginCapabilitySchema>;
 
-/** Every capability a plugin contributes, used to render plugin Includes. */
 export const pluginCapabilitySummarySchema = z.array(pluginCapabilitySchema);
 export type PluginCapabilitySummary = z.infer<
   typeof pluginCapabilitySummarySchema
@@ -172,16 +155,7 @@ export const installedPluginSchema = z.object({
   provenance: z.enum(["builtin", "direct", "catalog"]),
   isOrphanedBuiltin: z.boolean(),
   catalogEntryId: z.string().optional(),
-  /** Marketplace that listed the entry; present only on catalog installs. */
   catalogMarketplaceName: z.string().optional(),
-  /**
-   * Publisher badge: `BB Official` for a bundled plugin, the listing
-   * marketplace's display name for a catalog install, and null for a plugin
-   * the user added from a source, which has no publisher bb can vouch for.
-   * Servers before bb-app 0.38.0 do not send it; a client that reads such a
-   * response treats the plugin as unlabeled instead of failing after the
-   * server already applied the change.
-   */
   publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
@@ -189,7 +163,6 @@ export const installedPluginSchema = z.object({
   description: z.string().nullable(),
   name: z.string().nullable(),
   icon: z.string().nullable(),
-  /** Hashed URL when branding.icon declares a plugin-owned compact SVG. */
   iconUrl: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
@@ -202,26 +175,7 @@ export const installedPluginSchema = z.object({
   app: pluginAppStateSchema,
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
-  /**
-   * The agent providers this plugin registered (`bb.providers.register`),
-   * empty for every other plugin. An inventory field: which providers a
-   * plugin owns, for clients that group or label plugins by provider.
-   * The server fills it for every plugin; a client that reads a response
-   * from a server older than this field tolerates its absence on its own
-   * response schema (see @bb/sdk), never by defaulting it here, where the
-   * same shape would otherwise leak into request bodies.
-   */
   providerIds: z.array(z.string()),
-  /**
-   * The plugin's declared icons (`bb.branding.experimental_icons`): declared
-   * name → hashed asset URL (`/api/v1/plugins/<id>/assets/icons/<name>.svg?h=…`).
-   * A timeline row or provider whose glyph is `"<pluginId>/<name>"` resolves
-   * here; a name that is absent (the plugin changed its map, or is gone)
-   * renders the per-kind fallback glyph. Identity-backed like `iconUrl`, so a
-   * disabled plugin's icons still resolve. Empty for a plugin that declares
-   * none; the server fills it for every plugin, with the same response-side
-   * tolerance as `providerIds` in @bb/sdk for servers older than the field.
-   */
   icons: z.record(z.string(), z.string()),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
@@ -231,12 +185,6 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
-/**
- * Which plugin of a source an install selects. A repository can hold several
- * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"
- * is the primitive, "entry" resolves a manifest entry name, and "root" installs
- * the source directory itself.
- */
 export const pluginSourceSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("root") }).strict(),
   z
@@ -259,13 +207,8 @@ export const pluginInstallSourceRequestSchema = z
   })
   .strict();
 
-/** Marketplace names and entry ids share one shape: lowercase kebab-case. */
 export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 
-/**
- * Reserved name of the marketplace BB curates. It cannot be added, cannot be
- * removed, and is the only marketplace whose listings BB reviews.
- */
 export const CURATED_PLUGIN_MARKETPLACE_NAME = "bb-community";
 
 export const pluginMarketplaceNameSchema = z
@@ -277,13 +220,7 @@ export const pluginMarketplaceNameSchema = z
 export const pluginCatalogInstallRequestSchema = z
   .object({
     entryId: z.string().min(1),
-    /**
-     * Which marketplace lists the entry. Omitted resolves across every
-     * marketplace: exactly one match installs, none falls back to the bundled
-     * official plugin of that name, and several are refused as ambiguous.
-     */
     marketplace: pluginMarketplaceNameSchema.optional(),
-    /** Source facts the user confirmed for a third-party marketplace entry. */
     confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),
   })
   .strict();
@@ -382,10 +319,8 @@ export const pluginCatalogStatusResponseSchema = z.object({
   catalog: pluginCatalogStatusSchema,
 });
 
-/** Display metadata of the person or organization behind a catalog entry. */
 export const pluginCatalogAuthorSchema = z.object({
   name: z.string(),
-  /** The author's own URL, or their GitHub profile; null when neither is listed. */
   url: z.string().nullable(),
 });
 export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;
@@ -396,58 +331,18 @@ export const pluginCatalogSearchResultSchema = z.object({
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),
-  /**
-   * BB-hosted URL of a cached marketplace icon image, or null when the entry
-   * names a host icon. The app never requests the marketplace's own URL.
-   */
   iconUrl: z.string().nullable(),
-  /**
-   * Whether the app masks `iconUrl` with the surrounding text color, as it
-   * does a plugin's own compact `branding.icon`, instead of showing the
-   * image's own colors. True for bundled compact icons and for catalog SVGs;
-   * false for PNG and WebP. Servers before bb-app 0.40.0 do not send it;
-   * those icons render untinted.
-   */
   iconTinted: z.boolean().default(false),
   category: z.string(),
   source: z.string(),
-  /**
-   * Where a person can read the plugin's code before an install: the git
-   * repository of a git-sourced entry, or the public npm package page of an
-   * npm-sourced entry on the default registry. Null for plugins bundled with
-   * the app and for packages on a private registry. Older servers do not
-   * send it; those entries show no link.
-   */
   repositoryUrl: z.string().nullable().default(null),
-  /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
-  /**
-   * Stable identity of the publisher, for grouping. A marketplace names itself,
-   * so grouping on the label alone let a third-party marketplace merge its
-   * entries into another publisher's group by copying its display name.
-   * `builtin` for plugins bundled with the app; otherwise the marketplace name.
-   */
   publisherKey: z.string(),
-  /**
-   * Publisher badge for the entry: the listing marketplace's display name, or
-   * `BB Official` for plugins bundled with the app. It is separate from
-   * `marketplaceDisplayName` because bundled plugins are grouped under the
-   * curated marketplace but are not published through it.
-   */
   publisherLabel: z.string(),
-  /** Whether the listing marketplace is the reserved `bb-community` one. */
   official: z.boolean(),
-  /** Null for plugins bundled with the app, which list no separate author. */
   author: pluginCatalogAuthorSchema.nullable(),
   installed: z.boolean(),
-  /**
-   * How many distinct BB installations reported installing this plugin, from
-   * the curated marketplace's published `stats.json`. Null when the count is
-   * unknown: every third-party listing, any entry the sidecar does not name,
-   * and every server that has not fetched a sidecar yet. Older servers do not
-   * send it, so those entries show no count.
-   */
   installs: z.number().int().nonnegative().nullable().default(null),
   compatible: z.boolean(),
   incompatibleReason: z.string().nullable(),
@@ -460,31 +355,16 @@ export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
 });
 
-/**
- * The true source an install will run against, resolved before anything runs.
- * Both kinds report the exact artifact they resolve to right now — a commit
- * for git, a version and its integrity for npm — so a range or tag install is
- * confirmed against the exact code it will fetch.
- */
 export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("npm"),
       package: z.string(),
-      /** Version range the listing tracks; absent when it names a dist-tag. */
       range: z.string().optional(),
-      /** npm dist-tag the listing tracks; absent when it names a range. */
       tag: z.string().optional(),
-      /** Registry override the listing pins; absent uses bb's default. */
       registry: z.string().optional(),
-      /** Exact version the range or tag resolves to now; absent when unresolved. */
       resolvedVersion: z.string().optional(),
-      /**
-       * Subresource integrity the registry publishes for that version; absent
-       * when the registry omits it, which bb reports rather than invents.
-       */
       resolvedIntegrity: z.string().optional(),
-      /** Why bb could not resolve the version; absent once it resolved. */
       unresolvedReason: z.string().optional(),
     })
     .strict(),
@@ -492,19 +372,12 @@ export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("git"),
       url: z.string(),
-      /** Repository directory the entry lists; absent installs the root. */
       subdir: z.string().optional(),
-      /** The single ref the listing pins; absent when it lists a range. */
       ref: z.string().optional(),
-      /** Semver range over release tags; absent when the listing pins a ref. */
       range: z.string().optional(),
-      /** Tag prefix the range matches; absent for repository-wide `vX.Y.Z` tags. */
       tagPrefix: z.string().optional(),
-      /** Release tag the range resolves to now; absent when unresolved. */
       resolvedTag: z.string().optional(),
-      /** Commit the ref or resolved tag points at now; absent when unresolved. */
       resolvedCommit: z.string().optional(),
-      /** Why bb could not resolve the source; absent once it resolved. */
       unresolvedReason: z.string().optional(),
     })
     .strict(),
@@ -513,11 +386,6 @@ export type PluginCatalogResolvedSource = z.infer<
   typeof pluginCatalogResolvedSourceSchema
 >;
 
-/**
- * What `POST /plugin-catalog/install` would do with the same arguments, shown
- * to the user before anything runs. `bundled` entries install from the copy
- * inside the app; `marketplace` entries install from their listed source.
- */
 export const pluginCatalogInstallPlanSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("bundled"),
@@ -537,7 +405,6 @@ export const pluginCatalogInstallPlanSchema = z.discriminatedUnion("kind", [
     marketplaceDisplayName: z.string(),
     official: z.boolean(),
     author: pluginCatalogAuthorSchema,
-    /** Install-pipeline spec bb runs for this entry. */
     source: z.string(),
     resolvedSource: pluginCatalogResolvedSourceSchema,
     compatible: z.boolean(),
@@ -565,12 +432,9 @@ export const pluginMarketplaceSchema = z.object({
   name: z.string(),
   displayName: z.string(),
   description: z.string().nullable(),
-  /** The reserved `bb-community` marketplace, which cannot be removed. */
   official: z.boolean(),
   sourceKind: pluginMarketplaceSourceKindSchema,
-  /** Canonical spec that re-adds this marketplace. */
   source: z.string(),
-  /** Commit the last successful git refresh read; null for other kinds. */
   resolvedCommit: z.string().nullable(),
   entryCount: z.number(),
   lastRefreshAt: z.number().nullable(),
@@ -585,10 +449,6 @@ export const pluginMarketplaceListResponseSchema = z.object({
 
 export const pluginMarketplaceAddRequestSchema = z
   .object({
-    /**
-     * `https://<manifest-url>`, `git:<url>[@<ref>]`, or `path:<directory>`.
-     * The manifest's own `name` becomes the marketplace's identity.
-     */
     source: z.string().min(1),
   })
   .strict();
@@ -600,13 +460,11 @@ export const pluginMarketplaceMutationResponseSchema = z.object({
 
 export const pluginMarketplaceRemoveResponseSchema = z.object({
   ok: z.literal(true),
-  /** Installs whose provenance became `direct`; they keep running as before. */
   convertedPluginIds: z.array(z.string()),
 });
 
 export const pluginMarketplaceRefreshRequestSchema = z
   .object({
-    /** One marketplace to refresh; omitted refreshes every one of them. */
     name: pluginMarketplaceNameSchema.optional(),
   })
   .strict();
@@ -615,7 +473,6 @@ export const pluginMarketplaceRefreshResultSchema = z.object({
   name: z.string(),
   ok: z.boolean(),
   error: z.string().nullable(),
-  /** State after the attempt; a failure keeps the last-known-good catalog. */
   marketplace: pluginMarketplaceSchema,
 });
 export type PluginMarketplaceRefreshResult = z.infer<

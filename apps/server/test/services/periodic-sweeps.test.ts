@@ -115,10 +115,6 @@ describe("runPeriodicSweeps", () => {
           .where(eq(environments.status, "destroyed"))
           .all().length;
 
-      // Sample the table from the check phase until the sweep settles. A sweep
-      // that deletes the whole batch inside one macrotask can only ever be
-      // observed at 3 (before) or 0 (after); yielding between environments is
-      // what exposes the intermediate counts to other event-loop work.
       const observedCounts: number[] = [];
       let sweepSettled = false;
       const probe = () => {
@@ -170,9 +166,6 @@ describe("runPeriodicSweeps", () => {
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
-      // The stall monitor reports `slowestWork` only from blocking frames; the
-      // async sweep frame does not count, so a prune that runs bare inside it
-      // leaves the window with no attributable unit at all.
       resetEventLoopWorkForTests();
       try {
         await runPeriodicSweeps(deps);

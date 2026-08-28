@@ -210,11 +210,6 @@ export function ProjectActionsMenu({
   );
 }
 
-/**
- * Row-level actions menu: a right-click context menu on wide viewports, and on
- * compact viewports a touch long-press (or right-click) that opens the same
- * items in the persistent responsive drawer instead of a modal Radix menu.
- */
 export function ProjectActionsContextMenu(
   props: ProjectActionsContextMenuProps,
 ) {

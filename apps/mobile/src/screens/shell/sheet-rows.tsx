@@ -3,7 +3,6 @@ import { cn, ListRow, Separator, Text, type IconName } from "@/ui";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
 
-/** Centered sheet title (headline) with an optional caption, like a UIKit sheet. */
 export function SheetHeader({
   title,
   message,
@@ -28,7 +27,6 @@ export function SheetHeader({
   );
 }
 
-/** Single-choice row: the checked one shows the tinted check mark. */
 export function CheckRow({
   label,
   icon,
@@ -53,7 +51,6 @@ export function CheckRow({
   );
 }
 
-/** Full-width row with centered tinted copy (Cancel / Done). */
 export function CenteredRow({
   label,
   onPress,

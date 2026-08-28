@@ -43,11 +43,6 @@ function fingerprint(shares: HostDaemonConnectShares): string {
   return JSON.stringify(shares.ports);
 }
 
-/**
- * Server-owned desired shared-port policy. Plugins can replace only their port
- * declarations. Tunnel identity is reported by the enrolled daemon after it
- * assigns its own label at its trusted gate; it never flows toward the daemon.
- */
 export class HostSharedPortCoordinator {
   private readonly declarationsByHost = new Map<
     string,
@@ -101,10 +96,7 @@ export class HostSharedPortCoordinator {
     if (normalized.length > 0) {
       const host = this.requireDurablyEnrolledHost(hostId);
       const state = this.connectCapabilityState(hostId);
-      if (
-        state !== null &&
-        !state.capability.hasMachineCredential
-      ) {
+      if (state !== null && !state.capability.hasMachineCredential) {
         this.throwMissingMachineCredential(host);
       }
     }
@@ -120,10 +112,6 @@ export class HostSharedPortCoordinator {
       throw new Error("shared-port declaration ownerId must be non-empty");
     }
     const ports = this.validateSharedPortDeclaration(args.hostId, args.ports);
-    // Clearing server-owned desired state is always safe. In particular, it
-    // must remain possible after a host goes offline, loses enrollment, or is
-    // removed. Non-empty declarations require durable enrollment, but remain
-    // dormant until a daemon with its machine credential reconnects.
     const current = this.declarationsByHost.get(args.hostId);
     const candidate = new Map(current ?? []);
     candidate.set(args.ownerId, { ports });
@@ -165,8 +153,6 @@ export class HostSharedPortCoordinator {
       replacements.set(hostId, replacement);
     }
 
-    // Validate and assemble every host first, then publish the owner-scoped
-    // replacement as one complete registration set.
     for (const [hostId, replacement] of replacements) {
       if (replacement.size === 0) this.declarationsByHost.delete(hostId);
       else this.declarationsByHost.set(hostId, replacement);
@@ -236,7 +222,6 @@ export class HostSharedPortCoordinator {
     );
   }
 
-  /** Reconcile after daemon socket registration to close the HTTP-open race. */
   pushCurrentSharedPortsForHost(hostId: string): HostDaemonConnectShares {
     const shares = this.reconcileSharedPortsForHost(hostId);
     this.deps.hub.sendDaemonMessage(hostId, {

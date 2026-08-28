@@ -19,7 +19,6 @@ describe("highlightMarkdownCode", () => {
     (language) => {
       const html = highlightMarkdownCode({ code: shell, language });
       expect(tokens(html)).toContainEqual(["comment", "# install the plugin"]);
-      // The JS lexer reads `/plugins/monokai` as a regex literal (string).
       expect(tokenTypes(html)).not.toContain("string");
     },
   );
@@ -41,12 +40,12 @@ describe("highlightMarkdownCode", () => {
       tokens(highlightMarkdownCode({ code: "# c\nx = 1", language: "py" })),
     ).toContainEqual(["comment", "# c"]);
     expect(
-      tokens(
-        highlightMarkdownCode({ code: "int main() {}", language: "hpp" }),
-      ),
+      tokens(highlightMarkdownCode({ code: "int main() {}", language: "hpp" })),
     ).toContainEqual(["class", "int"]);
     expect(
-      tokens(highlightMarkdownCode({ code: "a { color: red }", language: "less" })),
+      tokens(
+        highlightMarkdownCode({ code: "a { color: red }", language: "less" }),
+      ),
     ).toContainEqual(["property", "color"]);
     expect(
       tokens(highlightMarkdownCode({ code: "fun f() {}", language: "kt" })),
@@ -55,10 +54,14 @@ describe("highlightMarkdownCode", () => {
 
   it("highlights languages agents emit that v1 never mapped", () => {
     expect(
-      tokens(highlightMarkdownCode({ code: "# top\nkey: v", language: "yaml" })),
+      tokens(
+        highlightMarkdownCode({ code: "# top\nkey: v", language: "yaml" }),
+      ),
     ).toContainEqual(["comment", "# top"]);
     expect(
-      tokens(highlightMarkdownCode({ code: "-- c\nSELECT 1", language: "sql" })),
+      tokens(
+        highlightMarkdownCode({ code: "-- c\nSELECT 1", language: "sql" }),
+      ),
     ).toContainEqual(["comment", "-- c"]);
   });
 });

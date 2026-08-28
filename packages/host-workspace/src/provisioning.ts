@@ -43,20 +43,11 @@ type EmitStepArgs = {
 };
 
 interface CreateWorkspaceArgs {
-  /** Local repo path for worktrees */
   sourcePath: string;
   targetPath: string;
-  /** Name of the new branch to create on the workspace. */
   branchName: string;
-  /**
-   * Branch to base the new branch on (start point for git worktree add / git
-   * checkout). Pass `null` to use the source's default branch (resolved by
-   * the daemon).
-   */
   baseBranch: string | null;
-  /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
-  /** Resolved user-shell PATH for the setup script. */
   shellPath?: string;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
@@ -66,7 +57,6 @@ interface CreateWorkspaceArgs {
 interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
-  /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
   shellPath?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
@@ -459,10 +449,6 @@ export async function createWorktree(
   }
 }
 
-/**
- * Cap on paths named in one transcript entry. A broad pattern can match
- * thousands of files, and the daemon keeps and forwards the whole transcript.
- */
 const WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT = 20;
 
 function summarizePaths(paths: readonly string[]): string {
@@ -472,14 +458,6 @@ function summarizePaths(paths: readonly string[]): string {
   return `${shown.join(", ")}${suffix}`;
 }
 
-/**
- * Copy the untracked files listed in `.worktreeinclude` into the new worktree
- * and report the result in the provisioning transcript. This runs before the
- * setup script so the script can read a copied `.env`.
- *
- * A failure here never fails provisioning: the transcript reports what bb
- * skipped and the thread still starts. Only cancellation propagates.
- */
 async function copyIncludedFiles(args: {
   sourcePath: string;
   targetPath: string;
@@ -744,9 +722,6 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
       workspacePath,
       commonDirResult.stdout.trim(),
     );
-    // Lock order is checkout mutation first, worktree metadata second. Keep
-    // every path that needs both locks in this order so two callers cannot each
-    // hold one git lock domain while waiting for the other.
     await tryWithCheckoutMutationLock(
       workspacePath,
       () =>
@@ -774,9 +749,6 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
     );
   }
 
-  // Git metadata cleanup is best-effort because broken teardown states often
-  // leave a directory that no longer resolves as a worktree. The managed
-  // workspace directory itself is the authoritative cleanup target.
   await fs.rm(workspacePath, { recursive: true, force: true });
   if (args.pruneEmptyParent) {
     await removeDirectoryIfEmpty(parentPath);

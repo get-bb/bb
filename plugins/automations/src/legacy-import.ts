@@ -16,26 +16,6 @@ import { automationScriptDir } from "./script-files.js";
 
 const LEGACY_IMPORT_DONE_KEY = "legacy-import-done";
 
-/**
- * Legacy import file consumed once from:
- *   <plugin data dir>/import/legacy-automations.json
- *
- * Schema:
- * - automations: full kernel automation rows to preserve schedule state. Each row
- *   includes identity, project/thread references, trigger/execution/environment
- *   JSON, enabled/next-run state, denormalized last-run summary, audit origin,
- *   and timestamps.
- * - runs: recent kernel automation_runs rows to preserve visible history,
- *   including trigger, status, output/error/exit code, idempotencyKey, and
- *   timestamps.
- * - scripts: map keyed by automation id. Each value carries the stored fileName
- *   and file content for script automations. The importer writes content under
- *   <plugin data dir>/scripts/<automationId>/<fileName>.
- *
- * Deliberate contract change during ingest: kernel rows store `environment` as a
- * separate JSON string. The plugin stores environment inside agent execution and
- * drops it for script automations.
- */
 const legacyAutomationRowSchema = z
   .object({
     id: z.string().min(1),
@@ -48,7 +28,6 @@ const legacyAutomationRowSchema = z
     runMode: automationRunModeSchema,
     execution: z.string().min(1),
     environment: z.string().min(1),
-    // Accepted for legacy export compatibility; intentionally ignored.
     autoArchive: z.boolean(),
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).nullable(),

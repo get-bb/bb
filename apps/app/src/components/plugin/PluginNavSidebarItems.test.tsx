@@ -74,8 +74,6 @@ function renderSidebarItems(
   } = {},
 ) {
   const store = createStore();
-  // Seed the store rather than localStorage: the storage atom captured its
-  // initial value when this module was imported, before the test could write.
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
@@ -106,8 +104,6 @@ function panelRowNames(): string[] {
 beforeEach(() => {
   window.localStorage.clear();
   resetAllCrashedPluginSlotsForTest();
-  // React reports errors caught by the slot boundary; keep expected crashes
-  // from obscuring the regression assertions below.
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -280,8 +276,6 @@ describe("PluginNavSidebarItems", () => {
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
 
-    // The row moves under a collapsed "More (1)" — hiding never expands the
-    // disclosure, so the sidebar doesn't grow back to its old height.
     await waitFor(() => {
       expect(
         screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
@@ -310,7 +304,6 @@ describe("PluginNavSidebarItems", () => {
         screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
       ).toBeNull();
     });
-    // Unhiding restores the panel's original slot rather than appending it.
     expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
   });
 
@@ -339,7 +332,6 @@ describe("PluginNavSidebarItems", () => {
 
     renderSidebarItems({ toolsRoutePath: "/extensions/skills" });
 
-    // Extensions leads the list, above the plugin rows.
     expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
 
     fireEvent.pointerDown(
@@ -374,8 +366,6 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it("keeps a saved order when plugin frontends register after the first render", async () => {
-    // The Extensions row makes this list mount before any plugin has registered.
-    // The order effect must not save that empty snapshot over the user's rows.
     renderSidebarItems({
       toolsRoutePath: "/extensions/skills",
       storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
@@ -394,8 +384,6 @@ describe("PluginNavSidebarItems", () => {
   it("saves no Extensions key while the row is absent", async () => {
     registerPanel("docs", "Docs");
 
-    // This isolated host renders plugin rows without the Extensions route, so
-    // nothing should reserve a slot for a row that never renders here.
     renderSidebarItems({ storedOrder: ["docs/main"] });
 
     await waitFor(() => {
@@ -414,11 +402,6 @@ describe("PluginNavSidebarItems", () => {
       .find((button) => button.textContent?.trim() === "Extensions");
     expect(extensionsRow).toBeTruthy();
 
-    // The swap is CSS on the row's :hover, which jsdom cannot evaluate. What is
-    // testable — and what the CSS depends on — is that BOTH glyphs are rendered
-    // into the one swap container: a regression to a single icon, or to React
-    // hover state, breaks this and would also reintroduce the layout shift the
-    // shared grid cell exists to prevent.
     const swap = extensionsRow?.querySelector(".bb-sidebar-row-icon-swap");
     expect(swap).toBeTruthy();
     expect(

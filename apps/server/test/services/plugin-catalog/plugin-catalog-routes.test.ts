@@ -78,8 +78,6 @@ describe("plugin catalog routes", () => {
       results: [{ entryId: "memory", installed: false }],
     });
 
-    // Refreshes are server-owned (startup plus a six-hour interval); no route
-    // lets a caller drive them.
     const refresh = await app.request("/plugin-catalog/refresh", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -316,8 +314,6 @@ describe("plugin catalog routes", () => {
           unresolvedReason: "no registry in this test",
         },
       });
-      // The route reached the marketplace entry; the install then refused
-      // because a range with no resolved version identifies no exact code.
       expect(install.status).toBe(422);
       await expect(install.json()).resolves.toMatchObject({
         error: expect.stringContaining("the npm source could not be resolved"),

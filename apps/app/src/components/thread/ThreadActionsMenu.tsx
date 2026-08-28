@@ -26,11 +26,6 @@ import { useThreadActions } from "./ThreadActionsProvider";
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
-  /**
-   * When provided, adds a leading "Open in split" entry (the split feature's
-   * second entry point, alongside cmd-click). Omitted where splits don't apply
-   * (e.g. compact viewports), so the item only appears when meaningful.
-   */
   onOpenInSplit?: () => void;
 }
 
@@ -43,10 +38,6 @@ export interface ThreadActionsMenuResponsiveAction {
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
   onOpenChange?: (open: boolean) => void;
   triggerClassName?: string;
-  /**
-   * Contextual toolbar actions that move into this menu when a split header is
-   * too narrow to show them inline.
-   */
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
 }
 
@@ -182,7 +173,7 @@ function ThreadActionsMenuItems({
           ) : null}
         </>
       ) : null}
-      {/* Quick status toggles. */}
+      {}
       <ThreadActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}
@@ -242,11 +233,6 @@ function ThreadActionsMenuItems({
   );
 }
 
-/**
- * One-click archive (or unarchive) button for hover-revealed row actions. It
- * runs the same lifecycle as the menu's Archive entry, so undo, navigation,
- * and child cascade behave identically.
- */
 export function ThreadArchiveQuickAction({
   thread,
   className,
@@ -329,13 +315,6 @@ export function ThreadActionsMenu({
   );
 }
 
-/**
- * Row-level actions menu: a right-click context menu on wide viewports, and on
- * compact viewports a touch long-press (or right-click) that opens the same
- * items in the persistent responsive drawer. The compact path deliberately
- * avoids the modal Radix `ContextMenu` (aria-hidden on the app root, scroll
- * lock, document-wide pointer-events flip) on phones.
- */
 export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
   const isCompactViewport = useIsCompactViewport();
   if (isCompactViewport) {

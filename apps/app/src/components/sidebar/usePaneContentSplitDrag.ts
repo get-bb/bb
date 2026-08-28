@@ -44,7 +44,6 @@ function routeForContent(content: PaneContent): string {
   });
 }
 
-/** Prototype drag/cmd-click source for non-thread pages. */
 export function usePaneContentSplitDrag({
   content,
   enabled,

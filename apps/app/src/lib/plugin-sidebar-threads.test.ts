@@ -64,8 +64,6 @@ describe("toPluginSidebarThread", () => {
     });
   });
 
-  // The contract's whole promise: plugins inherit bb's precedence instead of
-  // reimplementing it. Attention outranks the spinner even while running.
   it("resolves the indicator with the host's precedence", () => {
     expect(
       toPluginSidebarThread(
@@ -123,8 +121,6 @@ describe("toPluginSidebarThread", () => {
     expect(mapped.isUnread).toBe(true);
   });
 
-  // `isUnreadDoneThread` deliberately excludes child threads, but a plugin
-  // list may show them, so plain read state drives `isUnread`.
   it("reports unread child threads as unread", () => {
     const mapped = toPluginSidebarThread(
       makeThread({
@@ -172,8 +168,6 @@ describe("toPluginSidebarThread", () => {
     expect(toPluginSidebarThread(makeThread()).providerId).toBe("codex");
   });
 
-  // A personal-project thread has a machine but no worktree, so the machine
-  // is the only place-of-work a row can show.
   it("resolves the machine name for the thread's host", () => {
     const mapped = toPluginSidebarThread(
       makeThread({ environmentHostId: "host_1" }),

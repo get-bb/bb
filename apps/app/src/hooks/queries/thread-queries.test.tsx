@@ -515,7 +515,6 @@ describe("useChildThreads", () => {
     expect(result.current.isLoading).toBe(false);
     expect(sdk.threads.list).not.toHaveBeenCalled();
 
-    // Realtime updates land in the sidebar cache and flow through.
     const newChild = makeThreadListEntry({
       id: "child-3",
       parentThreadId: "parent-1",
@@ -559,15 +558,12 @@ describe("useChildThreads", () => {
     const initialRenders = renders;
     expect(initialData?.map((thread) => thread.id)).toEqual(["child-1"]);
 
-    // Sidebar patches land on every status/title change of any thread; a
-    // consumer as heavy as ThreadDetailView must not re-render for them.
     act(() => {
       queryClient.setQueryData(
         sidebarNavigationQueryKey(),
         makeSidebarNavigation([child, { ...unrelated, title: "After" }]),
       );
     });
-    // Query notifications flush on a macrotask; let them land first.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

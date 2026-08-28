@@ -15,9 +15,6 @@ import { z } from "zod";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
-// The bb plugin host restricts rpc method names to /^[a-zA-Z0-9_-]+$/ (they
-// ride the URL POST /api/v1/plugins/<id>/rpc/<method>), so the namespaced
-// names use "_" rather than "." — the plugin id already namespaces the route.
 export const automationRpcContract = defineRpcContract({
   automations_overview: {
     input: z.null(),

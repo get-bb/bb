@@ -67,7 +67,6 @@ describe("PluginSettingsForm", () => {
     )) as HTMLInputElement;
     expect(greeting.value).toBe("hello");
 
-    // Secrets are write-only: no value, only a set/not-set placeholder.
     const apiKey = screen.getByLabelText("API key") as HTMLInputElement;
     expect(apiKey.value).toBe("");
     expect(apiKey.placeholder).toBe("[not set]");
@@ -89,7 +88,6 @@ describe("PluginSettingsForm", () => {
       values: { greeting: "hi" },
     });
 
-    // The refreshed view replaces the drafts; the input shows the saved value.
     await vi.waitFor(() => {
       expect(
         (screen.getByLabelText("Greeting") as HTMLInputElement).value,
@@ -127,10 +125,7 @@ describe("PluginSettingsForm", () => {
     expect(agents.tagName).toBe("TEXTAREA");
     expect((agents as HTMLTextAreaElement).value).toBe("[]");
     expect(agents.getAttribute("spellcheck")).toBe("false");
-    // Six rows minimum even for a one-line value (the no-field-sizing fallback).
     expect((agents as HTMLTextAreaElement).rows).toBe(6);
-    // The editor takes the row's full width under the label; the plain string
-    // keeps the one-line input beside its label.
     expect(agents.closest('[data-control-placement="below"]')).not.toBeNull();
     const greeting = screen.getByLabelText("Greeting");
     expect(greeting.tagName).toBe("INPUT");
@@ -155,7 +150,6 @@ describe("PluginSettingsForm", () => {
     ].join("\n");
     fireEvent.change(agents, { target: { value: edited } });
     expect(save.disabled).toBe(false);
-    // Eight lines plus one to type into.
     expect((agents as HTMLTextAreaElement).rows).toBe(9);
 
     fireEvent.click(save);

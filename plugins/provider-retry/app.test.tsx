@@ -55,8 +55,6 @@ describe("provider retry app", () => {
       {},
       {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
-        // The provider's name comes from the host's directory, never from a
-        // table in this plugin.
         providers: { providers: [claudeCodeProvider] },
         rpc: {
           providerRetryCancel: () => ({ cancelled: true }),

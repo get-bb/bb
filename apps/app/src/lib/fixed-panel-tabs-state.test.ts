@@ -497,11 +497,6 @@ describe("plugin file opener owner state", () => {
 });
 
 describe("terminal tab target", () => {
-  /**
-   * Nav-panel right panels persist the target a terminal was opened against.
-   * The thread-tabs contract parses every branch strictly, so a target it does
-   * not model fails the whole sync, not just that tab.
-   */
   it("keeps the target through a storage round trip and the thread-tabs contract", () => {
     const target = {
       kind: "host_path" as const,
@@ -564,8 +559,6 @@ describe("legacy side-chat tabs", () => {
     }
   });
 
-  // The native side chat is gone, but its tabs can still sit in stored panel
-  // state. They must not fail the parse — they simply disappear.
   it("drops tabs persisted before the native side chat was removed", () => {
     const browserTab = createBrowserFixedPanelTab({
       environmentId: null,

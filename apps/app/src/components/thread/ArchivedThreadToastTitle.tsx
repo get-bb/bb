@@ -13,10 +13,6 @@ function formatArchivedChildThreadSuffix(childThreadCount: number): string {
     : ` and ${childThreadCount} child threads`;
 }
 
-/**
- * Rendered inside the Sonner toaster, which mounts outside the router —
- * navigation must come from the caller via onOpenThread rather than a <Link>.
- */
 export function ArchivedThreadToastTitle({
   archivedThreadCount,
   onOpenThread,

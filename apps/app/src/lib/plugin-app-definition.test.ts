@@ -58,8 +58,6 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
     );
   });
 
-  // Ids from different slot kinds must not collide: a plugin can reasonably
-  // name its list and its header control the same thing.
   it("keeps ids independent from the thread-list slot", () => {
     const definition = definePluginApp((app) => {
       app.slots.experimental_threadList({

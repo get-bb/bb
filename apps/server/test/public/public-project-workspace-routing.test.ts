@@ -73,7 +73,10 @@ describe("public project workspace routing", () => {
             return { ok: true, result: { commands: [primaryCommand] } };
           }
           if (request.command.type === "plugin.host.call") {
-            return { ok: true, result: { output: { skills: [], commands: [] } } };
+            return {
+              ok: true,
+              result: { output: { skills: [], commands: [] } },
+            };
           }
           if (request.command.type === "host.read_file") {
             return {
@@ -119,7 +122,10 @@ describe("public project workspace routing", () => {
             return { ok: true, result: { commands: [remoteCommand] } };
           }
           if (request.command.type === "plugin.host.call") {
-            return { ok: true, result: { output: { skills: [], commands: [] } } };
+            return {
+              ok: true,
+              result: { output: { skills: [], commands: [] } },
+            };
           }
           if (request.command.type === "host.read_file") {
             return {
@@ -193,7 +199,10 @@ describe("public project workspace routing", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/remote/project",
-        nativeRoots: declaredNativeRootSet(harness.deps.providerRegistry, "codex"),
+        nativeRoots: declaredNativeRootSet(
+          harness.deps.providerRegistry,
+          "codex",
+        ),
       });
 
       const content = await harness.app.request(

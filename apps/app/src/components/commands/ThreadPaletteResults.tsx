@@ -43,7 +43,6 @@ export interface ThreadPaletteNavigationItem {
   optionId: string;
   projectId: string;
   threadId: string;
-  /** The matched message sequence, or null for a title or recent result. */
   messageSeq: number | null;
 }
 

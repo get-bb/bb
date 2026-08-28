@@ -7,7 +7,6 @@ import {
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 
-// jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,
@@ -21,13 +20,10 @@ if (!window.matchMedia) {
   });
 }
 
-// The rail binds SDK hooks at import time, after the fake runtime is installed.
 installTestPluginRuntime();
 const { PropertiesRail } = await import("./rail");
 const { TasksRefreshProvider } = await import("../../shell/refresh");
 
-// Mount the smallest real lifecycle: the full panel gates this rail on an
-// unrelated project query and renders an editor this behavior never touches.
 function RailHarness(props: ComponentProps<typeof PropertiesRail>) {
   return (
     <TasksRefreshProvider>

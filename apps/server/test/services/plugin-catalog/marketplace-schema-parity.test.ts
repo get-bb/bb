@@ -5,12 +5,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { parseMarketplaceManifest } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 
-/**
- * The published contract and the runtime parser are two hand-written
- * documents. A manifest the registry's CI accepts and BB then rejects breaks
- * the whole catalog, so both must answer the same way for every fixture here.
- * Add a fixture with each rule either side gains.
- */
 const SCHEMA_PATH = fileURLToPath(
   new URL(
     "../../../../web/public/schemas/marketplace.schema.json",
@@ -18,7 +12,6 @@ const SCHEMA_PATH = fileURLToPath(
   ),
 );
 
-/** The published document is a file on disk: parse it before Ajv sees it. */
 const publishedSchemaSchema = z.record(z.string(), z.unknown());
 
 async function compilePublishedSchema(): Promise<(value: unknown) => boolean> {
@@ -67,11 +60,6 @@ function rangeFixture(label: string, range: string, valid: boolean): Fixture {
   };
 }
 
-/**
- * A listing declares no compatibility ranges. Both documents must reject the
- * old `engines` key alike, so a stale manifest fails in the registry's CI
- * rather than only inside bb.
- */
 function enginesFixture(label: string, engines: unknown): Fixture {
   return { label, valid: false, manifest: manifestWith({ engines }) };
 }

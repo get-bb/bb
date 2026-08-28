@@ -214,8 +214,6 @@ describe("split resize snapping", () => {
       session.resolve({ end: 900, pointer: 560, start: 100 }).snapped,
     ).toBe(true);
 
-    // Browsers may coalesce fast hardware motion into samples that leap over
-    // both snap bands. One such sample arms release; a second confirms intent.
     expect(
       session.resolve({ end: 900, pointer: 640, start: 100 }).snapped,
     ).toBe(true);

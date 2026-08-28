@@ -32,8 +32,6 @@ describe("parseChangelogEntries", () => {
   it("keeps a release's sections out of its version list", () => {
     const entries = parseChangelogEntries(SAMPLE);
 
-    // `###` starts with `##`, so a lazy version pattern turns every section
-    // heading into its own empty release and the preview shows nothing.
     expect(entries.map((entry) => entry.version)).toEqual(["0.37.0", "0.36.0"]);
     expect(entries[0].sections.map((section) => section.title)).toEqual([
       "Mobile is much faster",
@@ -86,8 +84,6 @@ describe("parseChangelogEntries", () => {
 
 describe("LATEST_CHANGELOG_ENTRY", () => {
   it("is the newest release, not the running build's", () => {
-    // The card says "what's new". Keyed off the running version, a build one
-    // release behind previewed its own old notes as news.
     expect(LATEST_CHANGELOG_ENTRY).toBe(CHANGELOG_ENTRIES[0]);
   });
 

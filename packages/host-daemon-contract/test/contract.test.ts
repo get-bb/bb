@@ -918,10 +918,6 @@ describe("host-daemon local schemas", () => {
   });
 });
 
-/**
- * Every bridge-bound command carries a `bridgeLaunch` naming the plugin's
- * artifact; the artifact variant's edge cases have their own round-trip test.
- */
 const BRIDGE_LAUNCH = {
   pluginId: "provider-pi",
   source: { kind: "artifact", digest: "a".repeat(64), byteLength: 4096 },
@@ -937,10 +933,6 @@ const BRIDGE_LAUNCH = {
   },
 } as const;
 
-/**
- * An ACP provider's launch: the agent's spec is declared bridge options, so
- * it rides the same opaque `providerOptions` bag every provider's statics do.
- */
 const ACP_BRIDGE_LAUNCH = {
   ...BRIDGE_LAUNCH,
   pluginId: "provider-acp",
@@ -948,103 +940,6 @@ const ACP_BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
-  // Version 169 advertises Cursor's parameterized model picker through the
-  // provider bridge options, keeps a curated bare-id primary list ahead of
-  // "More models", and sends effort plus explicit Fast/default values.
-  // Version 168 carries deferred agent-only start context in the first
-  // provider-bound turn for an idle seeded fork.
-  // Version 167 retries explicitly retryable online RPCs after response
-  // timeouts; an enrolled daemon must share those at-least-once semantics.
-  // Version 154 removes the codex AI-service commands: helper inference and
-  // voice transcription are plugin host RPC methods now.
-  // Version 153 removes the `daemon-bundled` bridge source: every bridge,
-  // pi's included, is its plugin's `bb.host` artifact, so `bridgeLaunch.source`
-  // is the artifact variant only and a daemon refuses the removed variant.
-  // Version 151 makes auto/steer turn targeting use the daemon's live turn
-  // state, so the same command can report steer where an older daemon reported
-  // new-turn.
-  // Version 142 moves built-in ACP discovery into provider bridges and carries
-  // provider-owned static bridge options plus installation capability facts.
-  // Version 138 adds the provider-targeted provider.health command, changes
-  // provider.usage from one fixed aggregate into a provider bridge query, and
-  // moves maintenance capability authority from bridge initialization to
-  // provider registration. Older daemons cannot parse the new command shapes
-  // and would still apply the removed initialization gates.
-  // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
-  // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
-  // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,
-  // provider.list_models) naming the delivery path (then `artifact` or
-  // `daemon-bundled`) plus the owning `pluginId`, the plugin host artifact's
-  // `digest` vocabulary for the artifact variant, and the server-validated
-  // capabilities, plus the collapse
-  // of `host.delete_skill`'s per-provider scopes to `provider-user` /
-  // `provider-project`. The command schemas are strict, so an older daemon
-  // cannot parse the new field and rejects the new scope values.
-  // Version 129 raises the single executable host-artifact ceiling to 256 MiB.
-  // Older daemons reject artifact declarations above the previous 16 MiB cap.
-  // Version 128 replaces cross-machine host-plugin deadline timestamps with a
-  // relative duration and caps declared host-plugin artifact sizes. Older
-  // daemons cannot interpret the new call envelope.
-  // Version 127 carries typed host-plugin signals from daemon workers to the
-  // server. Older daemons cannot publish plugin-owned host invalidations.
-  // Version 125 adds the authoritative active-plugin generation snapshot on
-  // session open and artifact retrieval. Without it a reconnect cannot retire
-  // workers disabled or replaced while offline.
-  // Version 124 adds generic host-plugin call, cancellation, and disposal
-  // envelopes. Older daemons cannot load or supervise plugin host artifacts.
-  // Version 123 adds required status-enrichment budgets and a required
-  // diff-files truncation marker. Older daemons cannot safely enforce or
-  // interpret the new bounded workspace response contract.
-  // Version 122 adds the daemon runtime-policy read for provider session
-  // release. Older daemons do not read the experiment before maintenance.
-  // Version 122 also covers two other changes that ship with it: the host PTY
-  // now answers terminal device-attribute queries and strips them from replay,
-  // and the server can route an ACP thread fork to the daemon. An older daemon
-  // has neither behavior.
-  // Version 121 adds the required thread.stop intent. Older daemons reject the
-  // field, and they wait for an active turn that a release never has.
-  // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
-  // daemons reject a stop when no environment runtime is loaded.
-  // Version 126 reports unexpected host-plugin worker exits so server plugins
-  // can restore long-lived host state without polling. Older daemons silently
-  // lose that state until another reconciliation trigger.
-  // Version 119 carries required workspace diff limits and line-stat
-  // completeness over the host wire. Older daemons cannot safely enforce or
-  // interpret those fields, so enrolled machines must update before serving
-  // workspace status and diff requests.
-  // Version 118 rejects successful provider update results when the daemon
-  // cannot verify a version change. Older daemons can report a no-op Claude
-  // update as successful, so enrolled machines must update for honest results.
-  // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
-  // bb never stored a turn/started for (token usage dropped, context usage
-  // thread-scoped).
-  // Version 140 reports the daemon's browser-local helper port during session
-  // open so remote pages can discover helpers on non-primary machines.
-  // Version 139 keeps resumed Claude task notifications from claiming newly
-  // accepted human input before the SDK prompt iterator consumes it.
-  // Version 137 removes the `claudeCodeMockCliTraffic` runtime option with
-  // the Claude Code mock CLI traffic experiment.
-  // Version 136 ships the narrow-grammar provider bridges: served bridge
-  // artifacts speak bridge-protocol v2 (`thread/delta` only), which an older
-  // daemon's runtime would ignore as unknown notifications and render empty
-  // timelines, so enrolled machines must update before receiving the new
-  // artifacts.
-  // Version 133 suppresses Claude's terminal-failure drain before it can open
-  // a provider-only turn. Version 132 deduplicates exact Codex terminal-item
-  // retries before they cross the daemon boundary. Version 131 preserves Pi
-  // provider identity on bridge resume. Version 117 adds
-  // thread/context/cleared to the provider event wire model.
-  // Version 116 reports provider exits that happen while a turn start is
-  // pending. Older daemons can leave the server thread active until the live
-  // command timeout, so enrolled machines must update before handling turns.
-  // Version 115 settles zero-work provider prompts with a complete synthetic
-  // turn lifecycle. Older daemons can leave locally handled prompts active
-  // indefinitely, so enrolled machines must update for reliable completion.
-  // Version 114 lets the daemon report `none` in Pi model reasoning efforts.
-  // A version 113 server accepts that value on the wire but rejects it later
-  // against its Pi provider ladder, so enrolled machines must not run that
-  // mixed version. Version 113 carried the Devin Desktop open target rename
-  // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
     expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(172);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
@@ -1360,10 +1255,6 @@ describe("host-daemon command schemas", () => {
       includeDirectories: true,
     });
 
-    // Version 162: the daemon scans exactly the provider's declared skill and
-    // command roots (per-root options explicit) and what its plugin resolved.
-    // Version 163: a declared side is `user` or `project` only; host-absolute
-    // roots arrive as resolved roots.
     const root = (
       path: string,
       options: Partial<{
@@ -1434,7 +1325,6 @@ describe("host-daemon command schemas", () => {
       nativeRoots: { skills: { user: [{ path: ".agents/skills" }] } },
     });
 
-    // The old optional string lists are gone: the field is required and strict.
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
@@ -1610,8 +1500,6 @@ describe("host-daemon command schemas", () => {
     });
   });
 
-  // Version 154: AI services ride `plugin.host.call`; the codex-specific
-  // daemon commands are gone with the daemon-bundled ChatGPT client.
   it("rejects the removed codex AI-service command names", () => {
     for (const type of ["codex.inference.complete", "codex.voice.transcribe"]) {
       expect(() =>
@@ -2133,9 +2021,6 @@ describe("host-daemon command schemas", () => {
     );
   });
 
-  // An ACP agent's launch spec is declared bridge options now, so it rides
-  // `bridgeLaunch.providerOptions` — the same opaque bag every provider's
-  // static options use. The commands carry no provider-named field at all.
   it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
@@ -2235,10 +2120,6 @@ describe("host-daemon command schemas", () => {
       turnSubmitCommand,
     );
 
-    // A version-123 payload (no bridgeLaunch) is DELIBERATELY no longer
-    // accepted: version 124 is unshipped, so nothing in the field ever sent
-    // one, and the field is required precisely so the daemon is never left to
-    // infer a bridge from an absent field. The reject is asserted below.
     const withoutBridgeLaunch: Record<string, unknown> = {
       ...threadStartRoundTrip,
     };
@@ -2314,7 +2195,6 @@ describe("host-daemon command schemas", () => {
       ),
     ).toEqual(threadStartCommand);
 
-    // resumeContext carries the field too (turn.submit / thread.goal.clear).
     const goalClearCommand = {
       type: "thread.goal.clear",
       environmentId: "env_123",
@@ -2339,11 +2219,6 @@ describe("host-daemon command schemas", () => {
       ),
     ).toEqual(goalClearCommand);
 
-    // Never execute unverifiable bytes: a malformed digest, a non-positive
-    // byte length, an unknown source kind, and the removed `daemon-bundled`
-    // source (version 153) all fail the parse. So does a launch with no
-    // owning plugin — it names neither an artifact to fetch nor a directory
-    // to scope the bridge process to.
     for (const source of [
       { kind: "artifact", digest: "not-a-hash", byteLength: 4096 },
       { kind: "artifact", digest: "A".repeat(64), byteLength: 4096 },
@@ -3329,9 +3204,6 @@ describe("host-daemon session schemas", () => {
       }),
     ).toThrow();
 
-    // A `statusLabels` key on an item is not part of the wire any more (the
-    // bridge's presentation is the only label source); a daemon that sends
-    // one has it dropped rather than persisted.
     const parsed = hostDaemonEventBatchRequestSchema.parse({
       sessionId: "session_123",
       eventGroups: [
@@ -3791,8 +3663,6 @@ describe("host-daemon session schemas", () => {
   });
 
   it("round-trips every online RPC response success variant through daemon websocket schemas", () => {
-    // Keep this table-driven instead of inspecting Zod internals: the exported
-    // schema behavior is stable API, while union internals are not.
     expect(Object.keys(ONLINE_RPC_RESPONSE_RESULT_FIXTURES).sort()).toEqual(
       [...HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES].sort(),
     );
@@ -3815,8 +3685,6 @@ describe("host-daemon session schemas", () => {
   });
 
   it("round-trips every settled command response success variant through daemon websocket schemas", () => {
-    // Keep this table-driven instead of inspecting Zod internals: the exported
-    // schema behavior is stable API, while union internals are not.
     expect(Object.keys(SETTLED_RESPONSE_RESULT_FIXTURES).sort()).toEqual(
       [...HOST_DAEMON_SETTLED_COMMAND_TYPES].sort(),
     );

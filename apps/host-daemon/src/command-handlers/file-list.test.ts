@@ -240,7 +240,10 @@ describe("listPathsRecursively", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
     try {
       await fs.writeFile(path.join(root, "state.json"), "{}");
-      await fs.symlink(path.join(root, "state.json"), path.join(root, "logo.svg"));
+      await fs.symlink(
+        path.join(root, "state.json"),
+        path.join(root, "logo.svg"),
+      );
 
       const result = await listPathsRecursively({
         dir: root,

@@ -243,7 +243,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
       isSecondaryPanelOpen: true,
     });
 
-    // The panel chunk loads lazily; the panel appears one tick after mount.
     expect(
       (await screen.findByTestId("inline-secondary-panel")).getAttribute(
         "data-show-new-tab-button",
@@ -281,13 +280,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     ).toBeNull();
   });
 
-  // Electron resolves app-regions in DOM order (later wins), and the drag strip
-  // renders after root compose's fixed right-panel toggle, so the strip itself
-  // must carve the toggle's footprint back out — a no-drag on the toggle would
-  // be re-added by the strip's own drag rect and the closed panel could never
-  // be opened. jsdom can't run the native region resolution, so these lock the
-  // class/DOM contract that drives it: the cutout is a child of the strip
-  // (resolved after it) at the pinned toggle's shared position.
   it("carves the pinned toggle footprint out of the drag strip while the panel is closed", () => {
     setMacosDesktopChrome();
 

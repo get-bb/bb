@@ -139,7 +139,6 @@ describe("formatEnvironmentDisplay", () => {
       });
       expect(result.modeLabel).toBe("Provisioning");
       expect(result.compactModeLabel).toBe("Provisioning");
-      // Discovered structural properties are not yet known mid-provision.
       expect(result.mode).toBe("direct");
     });
 

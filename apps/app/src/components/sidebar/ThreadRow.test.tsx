@@ -247,7 +247,6 @@ afterEach(() => {
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
-  // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -770,7 +769,6 @@ describe("ThreadRow", () => {
     );
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
-    // The marker hugs the title; it never sits in the trailing status slot.
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
     ).toBeNull();
@@ -940,8 +938,6 @@ describe("ThreadRow", () => {
   });
 
   it("shows the pending-input glyph while the runtime is still active", () => {
-    // A thread blocked on AskUserQuestion keeps an active runtime for as long as
-    // the question is open, so the spinner must not win this row.
     renderThreadRow({
       thread: createThread({
         hasPendingInteraction: true,
@@ -1040,8 +1036,6 @@ describe("ThreadRow", () => {
   ] as const)(
     "shows concurrent %s activity before runtime work",
     (activityKey, modeLabel) => {
-      // Plan and goal describe how the running turn behaves, and their glyphs
-      // shimmer, so they stay legible instead of collapsing into the spinner.
       renderThreadRow({
         thread: createThread({
           status: "active",

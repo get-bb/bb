@@ -6,9 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-// Route views render icons outside the shell's core set. Importing the
-// extended registry here ships it as a static dependency of this route chunk,
-// so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
@@ -88,10 +85,6 @@ function ToolsScrollPage({
     belowOverflow,
   } = useScrollOverflowState<HTMLDivElement>({ measureOverflow: true });
   if (fillViewport) {
-    // The child owns the only scrollable region (a ResourceCollectionViewport),
-    // so this page must NOT constrain its width: the scroller has to span the
-    // whole pane for the wheel to work from the gutters, and each band inside
-    // it centers itself with TOOLS_PAGE_BAND_CLASSES instead.
     return (
       <div className="box-border h-full w-full pb-4 pt-3 md:pt-4">
         {children}
@@ -337,9 +330,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   }
 
   return (
-    // The priority notice sits outside the scroll page so runtime conditions
-    // and acquisition blockers share the pane-wide alignment and stay with the
-    // controls that resolve them.
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
         <PluginDetailBanners plugin={selectedPlugin} />
@@ -397,13 +387,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
 }
 
-/**
- * The Extensions detail page, rendered from an explicit plugin id.
- *
- * A split pane cannot read the id from `useParams`: only the focused pane
- * owns the URL, so an unfocused plugin-detail pane would otherwise show
- * whatever plugin the focused pane happens to name.
- */
 export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -416,11 +399,6 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   );
 }
 
-/**
- * `pluginId` must come from the caller: every mount of this view sits under
- * a `path="*"` route (or a paramless one), so `useParams` never carries the
- * plugin-detail id — `SplitWorkspaceRoute` derives it from the URL itself.
- */
 export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
   const location = useLocation();
   const activeSection = resolveToolsSection(location.pathname);

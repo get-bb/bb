@@ -57,7 +57,6 @@ function candidate(
   };
 }
 
-/** A module namespace whose default export registers one homepage section. */
 function pluginModule(sectionTitle: string): Record<string, unknown> {
   return {
     default: definePluginApp((app) => {
@@ -112,8 +111,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -139,16 +138,12 @@ describe("reconcilePluginFrontends", () => {
     expect(deps.importModule).toHaveBeenCalledTimes(2);
     expect(deps.setRegistrations).toHaveBeenCalledTimes(2);
 
-    // Backend-only broadcast: both hashes unchanged → nothing re-imports,
-    // nothing re-registers (no generation bump, no remount).
     deps.importModule.mockClear();
     deps.setRegistrations.mockClear();
     await reconcilePluginFrontends(state, deps);
     expect(deps.importModule).not.toHaveBeenCalled();
     expect(deps.setRegistrations).not.toHaveBeenCalled();
 
-    // hello's bundle hash changes → exactly one re-import, via the fresh
-    // hash URL, and exactly one wholesale registration replacement.
     deps.fetchCandidates.mockResolvedValue([
       candidate("hello", "bbb"),
       candidate("other", "s1", { cssUrl: null }),
@@ -165,9 +160,7 @@ describe("reconcilePluginFrontends", () => {
         homepageSections: [expect.objectContaining({ id: "section" })],
       }),
     );
-    // Crashed-slot latches reset before the new registrations remount.
     expect(deps.resetCrashedSlots).toHaveBeenCalledWith("hello");
-    // The CSS link is swapped to the fresh-hash URL.
     expect(deps.applyCss).toHaveBeenCalledWith(
       "hello",
       "/api/v1/plugins/hello/assets/app.css?h=bbb",
@@ -175,10 +168,6 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("waits for the stylesheet before publishing registrations", async () => {
-    // Registrations are what mount a plugin's components. Publishing them
-    // while the stylesheet is still in flight paints one unstyled frame —
-    // the plugin's UI renders at its natural, oversized layout and then
-    // snaps down when the sheet lands.
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([candidate("hello", "aaa")]);
     const cssGate: { release: (() => void) | null } = { release: null };
@@ -190,7 +179,6 @@ describe("reconcilePluginFrontends", () => {
     );
 
     const done = reconcilePluginFrontends(state, deps);
-    // Let every await before the CSS gate settle.
     for (let tick = 0; tick < 20; tick++) await Promise.resolve();
     expect(deps.applyCss).toHaveBeenCalledWith(
       "hello",
@@ -227,18 +215,17 @@ describe("reconcilePluginFrontends", () => {
       routePluginId: () => null,
     };
 
-    await reconcilePluginFrontends(state, deps); // boot
+    await reconcilePluginFrontends(state, deps);
     fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
-    await reconcilePluginFrontends(state, deps); // reload 1
+    await reconcilePluginFrontends(state, deps);
     fetchCandidates.mockResolvedValue([candidate("hello", "v3")]);
-    await reconcilePluginFrontends(state, deps); // reload 2
+    await reconcilePluginFrontends(state, deps);
 
     const snapshot = getPluginSlotSnapshot();
     expect(snapshot.homepageSections).toHaveLength(1);
     expect(snapshot.homepageSections[0]).toMatchObject({
       pluginId: "hello",
       id: "section",
-      // Three wholesale replacements → three generation bumps (remounts).
       generation: 3,
     });
     resetPluginSlotStoreForTest();
@@ -415,7 +402,7 @@ describe("reconcilePluginFrontends", () => {
     await reconcilePluginFrontends(state, deps);
     expect(state.records.get("hello")?.status).toBe("loaded");
 
-    deps.fetchCandidates.mockResolvedValue([]); // disabled/removed/stopped
+    deps.fetchCandidates.mockResolvedValue([]);
     await reconcilePluginFrontends(state, deps);
     expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
@@ -1068,7 +1055,6 @@ describe("applyPluginCss", () => {
     links("hello")[0]?.dispatchEvent(new Event("load"));
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
-    // Both links coexist while the fresh sheet is still loading.
     const during = links("hello");
     expect(during.map((l) => l.getAttribute("href"))).toEqual([
       "/assets/app.css?h=aaa",
@@ -1125,7 +1111,6 @@ describe("applyPluginCss", () => {
     await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(1);
     releaseSecond();
-    // The final release waits out a grace window before it detaches the sheet.
     await vi.advanceTimersByTimeAsync(0);
     expect(links("hello")).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1_500);
@@ -1142,8 +1127,6 @@ describe("applyPluginCss", () => {
     expect(first).toBeDefined();
     first?.dispatchEvent(new Event("load"));
 
-    // Thread-to-thread navigation: the old composer releases and the new one
-    // retains a moment later. The sheet must never leave the document.
     releaseFirst();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(links("hello")[0]).toBe(first);
@@ -1167,10 +1150,6 @@ describe("applyPluginCss", () => {
     const first = links("hello")[0];
     expect(first).toBeDefined();
 
-    // The composer releases while its sheet is still in flight, the response
-    // lands inside the grace, and the next composer retains. The loaded sheet
-    // must be adopted rather than discarded, or the stale pending reference
-    // blocks every later activation while a consumer is mounted.
     releaseFirst();
     await vi.advanceTimersByTimeAsync(200);
     first?.dispatchEvent(new Event("load"));
@@ -1196,8 +1175,6 @@ describe("applyPluginCss", () => {
     const releaseFirst = retainPluginCss("hello");
     links("hello")[0]?.dispatchEvent(new Event("load"));
 
-    // Live reload publishes a new URL while mounted; the consumer releases
-    // before it lands, it lands inside the grace, then a new consumer retains.
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const fresh = links("hello")[1];
     expect(fresh?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
@@ -1227,9 +1204,6 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     links("hello")[0]?.dispatchEvent(new Event("load"));
 
-    // Live reload publishes bbb, then republishes aaa before bbb lands. The
-    // loaded aaa sheet is reused, so the in-flight bbb link stays pending and
-    // its load event must discard it without leaving a stale reference.
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const inflight = links("hello")[1];
     expect(inflight?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
@@ -1239,8 +1213,6 @@ describe("applyPluginCss", () => {
       "/assets/app.css?h=aaa",
     ]);
 
-    // Redo: bbb must be fetched again beside the live aaa sheet, not skipped
-    // because the detached pending link still carries the bbb href.
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
       "/assets/app.css?h=aaa",
@@ -1368,16 +1340,15 @@ describe("createPluginFrontendReconcileScheduler", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(run).toHaveBeenCalledTimes(1);
 
-    // Two more broadcasts while the first run is still in flight.
     scheduler.schedule();
     await vi.advanceTimersByTimeAsync(250);
     scheduler.schedule();
     await vi.advanceTimersByTimeAsync(250);
-    expect(run).toHaveBeenCalledTimes(1); // queued, not overlapped
+    expect(run).toHaveBeenCalledTimes(1);
 
     release();
     await vi.advanceTimersByTimeAsync(0);
-    expect(run).toHaveBeenCalledTimes(2); // exactly one follow-up
+    expect(run).toHaveBeenCalledTimes(2);
     expect(maxActive).toBe(1);
 
     release();

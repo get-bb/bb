@@ -630,10 +630,7 @@ describe("SidebarSplitContainer", () => {
       isFullScreen: true,
       onToggleFullScreen,
       renderPane: ({ onMoveActiveTabToSide, paneId }) => (
-        <button
-          type="button"
-          onClick={() => onMoveActiveTabToSide?.("bottom")}
-        >
+        <button type="button" onClick={() => onMoveActiveTabToSide?.("bottom")}>
           Split {paneId}
         </button>
       ),
@@ -645,9 +642,9 @@ describe("SidebarSplitContainer", () => {
       document.querySelectorAll<HTMLElement>("[data-split-pane-id]"),
     );
     expect(panes).toHaveLength(2);
-    expect(panes.filter((pane) => pane.dataset.maximized === "true")).toHaveLength(
-      1,
-    );
+    expect(
+      panes.filter((pane) => pane.dataset.maximized === "true"),
+    ).toHaveLength(1);
     expect(
       panes.filter((pane) => pane.getAttribute("aria-hidden") === "true"),
     ).toHaveLength(1);

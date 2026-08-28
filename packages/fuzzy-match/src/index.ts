@@ -93,12 +93,6 @@ enum PathIntentRank {
   ExactDirectoryPrefix = 3,
 }
 
-/**
- * `fzf` is the only fuzzy alignment engine here. Path-specific behavior is a
- * small intent layer around it: directory scopes and segment searches outrank a
- * plain full-path fuzzy match, while the fzf score still orders candidates
- * inside each intent.
- */
 const PATH_INTENT_SCORE = {
   rankUnit: 1_000_000,
   directorySegmentExact: 30_000,

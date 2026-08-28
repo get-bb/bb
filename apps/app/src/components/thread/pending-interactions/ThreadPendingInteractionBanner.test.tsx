@@ -97,7 +97,6 @@ const toolUseApproval: PendingInteraction = {
   },
 };
 
-/** A plugin-defined request the agent raised through a provider. */
 const providerPluginRequest: PendingInteraction = {
   ...planReview,
   id: "pint_provider_request",
@@ -168,10 +167,7 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
     const ask = screen.getByTestId("tool-use-ask");
     expect(ask.textContent).toContain("get-bb/bb#42");
     expect(ask.textContent).toContain("Tool: mcp__github__create_issue");
-    // The bridge's Markdown detail renders as Markdown, not as its source.
     expect(ask.querySelector("strong")?.textContent).toBe("bug");
-    // jsdom serialises the hex tints to rgb(); the `light-dark()` wrapper is
-    // what proves the glyph took the bridge's tint.
     expect(ask.querySelector("svg")?.getAttribute("style")).toMatch(
       /light-dark\(rgb\(18, 52, 86\), rgb\(171, 205, 239\)\)/,
     );
@@ -185,8 +181,6 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
   });
 
   it("draws a plugin-declared icon as a tinted mask when the inventory has it, else the per-kind glyph with no mask", () => {
-    // The same resolution the timeline row makes: the echo canary's receipt
-    // tool asks for approval with its plugin's declared icon.
     const namespacedAsk: PendingInteraction = {
       ...toolUseApproval,
       payload: {
@@ -223,8 +217,6 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
     const withIcon = renderBanner(namespacedAsk);
     const ask = screen.getByTestId("tool-use-ask");
     const mask = ask.querySelector(`[data-plugin-icon-asset="${iconUrl}"]`);
-    // Resolved against the inventory before any mask is emitted, and the
-    // mask takes the bridge's tint like the host glyph would.
     expect(mask).not.toBeNull();
     expect(mask?.getAttribute("style")).toMatch(
       /light-dark\(rgb\(18, 52, 86\), rgb\(171, 205, 239\)\)/,
@@ -232,8 +224,6 @@ describe("ThreadPendingInteractionBanner tool-use approval", () => {
     expect(ask.querySelector("[data-icon]")).toBeNull();
     withIcon.unmount();
 
-    // The plugin is gone (or renamed the icon): not found, so the per-kind
-    // glyph draws and no mask URL that would 404 is emitted.
     resetPluginLogoStoreForTest();
     renderBanner(namespacedAsk);
     const fallback = screen.getByTestId("tool-use-ask");
@@ -252,7 +242,6 @@ describe("ThreadPendingInteractionBanner request family", () => {
       "Read labels from the declaration",
     );
     expect(screen.getByText("/tmp/plans/picker.md")).toBeTruthy();
-    // Plan verdict vocabulary, not permission vocabulary.
     expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
     expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
@@ -315,7 +304,6 @@ describe("ThreadPendingInteractionBanner request family", () => {
   });
 
   it("backs out of a provider's request by stopping the turn, never by cancelling", () => {
-    // No renderer installed: the host fallback offers the only way out.
     renderBanner(providerPluginRequest);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
@@ -325,8 +313,6 @@ describe("ThreadPendingInteractionBanner request family", () => {
 
 describe("ThreadPendingInteractionBanner presentation detail images", () => {
   it("renders an image in the bridge's detail as alt text, like the timeline row body", () => {
-    // The detail is agent-authored Markdown shown before the user decides;
-    // a remote image in it must not be fetched by the banner.
     const { container } = renderBanner({
       ...toolUseApproval,
       payload: {

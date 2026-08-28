@@ -27,11 +27,6 @@ interface RecordedThreadPayload {
 
 const globals = globalThis as Record<string, unknown>;
 
-/**
- * Full-app harness (createApp registers the lifecycle→plugin bridge) with one
- * path plugin installed and running. Events land through the REAL seams:
- * applyLoggedThreadLifecycleEvent and createThreadRecord.
- */
 async function setUpPluginHarness(serverSource: string): Promise<{
   harness: TestAppHarness;
   cleanup(): Promise<void>;
@@ -308,7 +303,6 @@ describe("plugin thread lifecycle events", () => {
           title: "Rollback event test",
           input: [{ type: "text", text: "hello", mentions: [] }],
           model: "gpt-5",
-          // Force validation failure after insert so the create rolls back.
           reasoningLevel: "ultracode",
           environment: { type: "reuse", environmentId: environment.id },
         }),
@@ -449,7 +443,6 @@ describe("plugin thread lifecycle events", () => {
         threadId: thread.id,
         event: { type: "run.succeeded" },
       });
-      // The plugin handler exploding must not disturb the transition.
       expect(outcome.applied).toBe(true);
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
@@ -466,7 +459,6 @@ describe("plugin thread lifecycle events", () => {
         expect(entry?.statusDetail).toContain("thread.idle handler failed");
       });
 
-      // The stats travel through GET /api/v1/plugins for bb plugin list.
       const response = await harness.app.request("/api/v1/plugins");
       expect(response.status).toBe(200);
       const body = (await response.json()) as {

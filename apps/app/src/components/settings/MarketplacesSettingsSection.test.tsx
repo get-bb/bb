@@ -52,7 +52,10 @@ function stubFetch(marketplaces: unknown[]): RecordedRequest[] {
       if (url === "/api/v1/marketplaces") {
         return jsonResponse({ ok: true, marketplace: ACME });
       }
-      if (url.startsWith("/api/v1/marketplaces/") && init?.method === "DELETE") {
+      if (
+        url.startsWith("/api/v1/marketplaces/") &&
+        init?.method === "DELETE"
+      ) {
         return jsonResponse({ ok: true, convertedPluginIds: ["notes"] });
       }
       return jsonResponse({ error: "not found" }, 404);
@@ -112,9 +115,7 @@ describe("MarketplacesSettingsSection", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Remove Acme Plugins" }),
     );
-    expect(
-      screen.getByText(/keep running as direct installs/),
-    ).toBeTruthy();
+    expect(screen.getByText(/keep running as direct installs/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await vi.waitFor(() => {

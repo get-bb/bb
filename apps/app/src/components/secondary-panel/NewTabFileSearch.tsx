@@ -70,13 +70,10 @@ export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 
 interface NewTabActionsProps {
-  /** Open a session-based side chat of the current thread in its own tab. */
-  /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   startTerminalDisabled?: boolean;
   startTerminalTrailing?: ReactNode;
-  /** Plugin `threadPanelAction` rows, rendered after the built-in entries. */
   pluginActions?: readonly PluginPanelActionEntry[];
 }
 
@@ -103,12 +100,6 @@ interface FileSearchMessageProps {
   message: string;
 }
 
-/**
- * A navigable entry in a section. Search results carry a {@link FileSearchSuggestion};
- * a recent entry carries the previously-opened {@link ThreadRecentItem}. The
- * file-search screen keeps both in one union so the keyboard handler can walk a
- * single index space across Files and Recent sections.
- */
 type FileSearchSectionEntry =
   | { kind: "suggestion"; suggestion: FileSearchSuggestion }
   | { kind: "recent"; item: ThreadRecentItem };
@@ -231,8 +222,6 @@ function groupFileSearchSections({
     });
   }
 
-  // Recent rows trail search matches so the unified index space reads top-down:
-  // open a matching result first, then jump back to a recently-opened file.
   for (const entry of recentEntries) {
     ensureSection("recent").items.push({ entry, index: 0 });
   }
@@ -278,11 +267,6 @@ function FileSearchMessage({
   );
 }
 
-/**
- * Shared button shell for launcher rows. File-search result rows use listbox
- * option semantics; secondary new-tab actions keep native button semantics
- * because they are separate commands rather than part of the file combobox.
- */
 function LauncherTile({
   ariaKeyshortcuts,
   id,
@@ -441,12 +425,6 @@ function FileResultRow({
   );
 }
 
-/**
- * A recently-opened file row. It uses the compact launcher shell so recents sit
- * at roughly the same density as file-search results, with the file-kind glyph
- * carried inline. Reopening routes through the same `onSelect` path as a
- * file-search result.
- */
 function RecentResultRow({
   id,
   item,
@@ -544,8 +522,6 @@ export function NewTabFileSearch({
   const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isRecentExpanded, setIsRecentExpanded] = useState(false);
-  // Captured once on mount: the launcher is transient, so a static "now" keeps
-  // every relative timestamp consistent within a single open without ticking.
   const [nowMs] = useState(() => Date.now());
   const defaultRecentItemsThreadId =
     currentThreadId.length > 0 ? currentThreadId : null;
@@ -574,9 +550,6 @@ export function NewTabFileSearch({
     () => (hasQuery ? suggestions : []),
     [hasQuery, suggestions],
   );
-  // Collapsed to the visible cap by default. Recents are file/artifact entries,
-  // so this section is owned by the Open file/search surface rather than the
-  // secondary action rows on the new-tab page.
   const visibleRecentItems = useMemo(
     () =>
       isRecentExpanded
@@ -634,20 +607,11 @@ export function NewTabFileSearch({
       return;
     }
 
-    // Focus synchronously, then again on the next frame to win the focus race
-    // against the panel/tab content mounting in the same commit, which can
-    // otherwise pull focus away from the input. `preventScroll` so focusing never
-    // scrolls an ancestor to reveal the input — during the panel's open swipe the
-    // content is briefly wider than the panel, and a scroll there would shift the
-    // whole panel content sideways.
     inputRef.current?.focus({ preventScroll: true });
     focusFrameRef.current = requestAnimationFrame(() => {
       focusFrameRef.current = null;
       inputRef.current?.focus({ preventScroll: true });
     });
-    // Consume the request immediately so a later passive remount does not
-    // interpret the previous explicit open as another focus request. The frame
-    // has separate unmount cleanup so this state update does not cancel it.
     onAutoFocusHandled();
   }, [autoFocus, isPointerCoarse, onAutoFocusHandled]);
 
@@ -727,9 +691,6 @@ export function NewTabFileSearch({
     ? getFileSearchEntryId(activeEntry)
     : undefined;
   const isSearchDisabled = isUnavailable;
-  // The results listbox renders only when there is a searchable source and at
-  // least one option. Gate the combobox relationship on that so
-  // `aria-controls`/`aria-activedescendant` never point at an absent element.
   const hasListbox = !isSearchDisabled && navigableEntries.length > 0;
 
   if (!showFileSearch) {
@@ -752,9 +713,6 @@ export function NewTabFileSearch({
           onChange={(event) => handleQueryChange(event.target.value)}
           onKeyDown={handleLauncherKeyDown}
           disabled={isSearchDisabled}
-          // Combobox with a list autocomplete popup: one listbox holds the
-          // navigable Files/Recent options, and the highlighted row is the
-          // combobox's active descendant within that controlled listbox.
           role="combobox"
           aria-label={
             quickOpenShortcut
@@ -922,7 +880,6 @@ interface NewTabResultsProps {
   hasQuery: boolean;
   searchError: boolean;
   isLoading: boolean;
-  /** Id of the single combobox listbox that wraps the Files/Recent option groups. */
   listboxId: string;
   nowMs: number;
   onActivateIndex: (index: number) => void;
@@ -959,11 +916,6 @@ function NewTabResults({
   const hasRecentSectionPredecessor = hasSearchResults || showSearchMessage;
   const showEmptyMessage =
     !hasSearchResults && !showRecentSection && !showLoading && !showError;
-  // The combobox popup is a single listbox spanning both groups, so the active
-  // descendant the input points at always resolves inside one controlled
-  // element. It renders only when a group has option rows; the loading/error
-  // message, the empty-recent card, and the show-more toggle are not options
-  // and stay outside the listbox.
   const showListbox = showFilesSection || recentSection !== undefined;
 
   if (showEmptyMessage) {
@@ -979,8 +931,7 @@ function NewTabResults({
 
   return (
     <div className="pb-1">
-      {/* The loading/error message stands in for search results while no result
-          rows exist, so it leads the results just as a result group would. */}
+      {}
       {showSearchMessage ? (
         <FileSearchMessage
           iconName={
@@ -1065,10 +1016,6 @@ function NewTabResults({
       ) : null}
 
       {recent.emptyHintVisible && recentSection === undefined ? (
-        // Empty Recent zero-state. It is a framed dashed placeholder card, not a
-        // selectable option, so it sits outside the listbox. This belongs to the
-        // Open file / search surface only; the browser new-tab and secondary
-        // action rows stay card-less.
         <section className={cn(hasRecentSectionPredecessor && "mt-3")}>
           <LauncherSectionHeader
             label={FILE_SEARCH_SECTION_LABELS.recent}

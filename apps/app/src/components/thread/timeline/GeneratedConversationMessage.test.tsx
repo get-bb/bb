@@ -85,9 +85,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// An agent-generated body that carries an offset-based `path` mention and a
-// leading markdown heading. Both Markdown and the structured mention must
-// survive the combined renderer.
 const AGENT_BODY = "# notes\nedited path:src/app.ts here";
 const AGENT_PATH_TOKEN = "path:src/app.ts";
 const AGENT_PATH_START = AGENT_BODY.indexOf(AGENT_PATH_TOKEN);
@@ -624,8 +621,6 @@ describe("GeneratedConversationMessage markdown body", () => {
     ).not.toBeNull();
   });
 
-  // A side chat opens in the plugin's panel, so its name carries the panel
-  // title action rather than a route link to the thread.
   it("opens a side-chat sender in the plugin panel instead of linking it", () => {
     const openPanel = vi.fn();
     const { container } = renderAgentMessage("Handed back.", {

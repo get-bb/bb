@@ -33,18 +33,10 @@ import {
   resolveWindowOpenAction,
 } from "./desktop-browser-policy.js";
 
-// At most this many popup → in-panel tabs may be spawned per view in a sliding
-// window, so a hostile page cannot flood the panel with tabs.
 const POPUP_RATE_WINDOW_MS = 10_000;
 const POPUP_RATE_MAX_IN_WINDOW = 3;
 
-/**
- * At the start of a resize burst the view stays visible until its snapshot
- * capture resolves (capturing a hidden view is unreliable). This cap bounds
- * how long a stalled capture may leave the stale view on screen.
- */
 const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
-/** Placeholder quality: transient, stretched during the drag — favor size. */
 const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
 const RENDERER_RECOVERY_DELAY_MS = 250;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 2;
@@ -53,29 +45,13 @@ function truncate(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-/**
- * Isolated, persistent partition for the in-app browser. Cookies/storage never
- * touch the bb app session (`defaultSession`) or the user's real browser.
- */
 const BB_BROWSER_PARTITION = "persist:bb-browser";
 
-/**
- * `did-fail-load` reports aborted main-frame loads (a user navigating away, a
- * redirect) with this code; it is not a real error and must not surface one.
- */
 const ERR_ABORTED = -3;
 
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
-  /**
-   * The last renderer-measured panel rect. The renderer is the placement
-   * authority — it re-measures and pushes whenever its layout actually moves
-   * the panel. This cache exists only so native window resizes can re-clamp
-   * the view to the live window (see
-   * {@link DesktopBrowserViewManager.clampVisibleBoundsForWindow}) without
-   * losing the renderer's intent.
-   */
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
   rendererRecoveryAttempts: number;
@@ -83,12 +59,6 @@ interface BrowserViewEntry {
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   suppressNextFocusNotification: boolean;
   visible: boolean;
-  /**
-   * Request id of the latest `findInPage` call, or null when no find session
-   * is active. `found-in-page` results for any other id are stale (an older
-   * query, or a session the renderer already stopped) and are dropped so they
-   * can never overwrite the count of a newer query or revive a cleared one.
-   */
   activeFindRequestId: number | null;
 }
 
@@ -179,47 +149,14 @@ export interface DesktopBrowserViewManager {
   setVisibleWithoutFocus(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
-  /**
-   * Find text in a tab's page. Results arrive asynchronously as
-   * `found-in-page` events, relayed to the renderer over
-   * `BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL`.
-   */
   findInPage(
     args: HostScopedRequestArgs<BbDesktopBrowserFindInPageRequest>,
   ): void;
-  /** End a tab's find session and clear (or keep/activate) its highlights. */
   stopFindInPage(
     args: HostScopedRequestArgs<BbDesktopBrowserStopFindInPageRequest>,
   ): void;
-  /**
-   * Hide every visible view owned by the window for the duration of a native
-   * resize burst. During an interactive window resize the host chrome
-   * repaints at its own (much slower) cadence while the native views
-   * composite independently — no bounds protocol keeps the two visually
-   * glued, so a tracked view bleeds over neighboring UI in one direction or
-   * the other. Each visible view is first captured and the bitmap pushed to
-   * the renderer, which paints it inside the panel as a stand-in that scales
-   * with the chrome; the view hides once its capture resolves (or after
-   * {@link RESIZE_SNAPSHOT_HIDE_CAP_MS}, whichever is first). Idempotent per
-   * window; renderer visibility changes made while hidden are recorded and
-   * take effect on {@link endWindowResize}.
-   */
   beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
-  /**
-   * End a resize burst: re-apply each view's renderer-desired bounds clamped
-   * to the live content bounds (bounds land before the view is shown),
-   * restore renderer-declared visibility, then push a null snapshot so the
-   * renderer drops its placeholder (after the reveal, so the swap never
-   * flashes an empty panel). The renderer's own post-resize re-measure
-   * typically lands within the caller's settle delay; if it arrives later the
-   * view nudges once, which is the acceptable residue.
-   */
   endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
-  /**
-   * Drop every view owned by a closed host window. Keyed by the host
-   * `webContents.id` because the host `BrowserWindow` (and its child views) are
-   * already torn down by the time `closed` fires.
-   */
   releaseWindow(hostWebContentsId: number): void;
   destroyAll(): void;
 }
@@ -252,13 +189,6 @@ function hostWindowViewportBounds(
   };
 }
 
-/**
- * Apply the entry's renderer-desired rect, intersected with the live window
- * content bounds. The clamp happens HERE, against the same
- * `getContentBounds()` space native resize events re-clamp in — the renderer
- * already clamped the rect to its own layout viewport, which diverges from
- * the window content area when DevTools is docked.
- */
 function applyEntryDesiredBounds(
   entry: BrowserViewEntry,
   hostWindow: DesktopBrowserHostWindow,
@@ -284,8 +214,6 @@ function buildBrowserState(
   const url = webContents.getURL();
   const rawTitle = webContents.getTitle();
   const title = rawTitle.length > 0 && rawTitle !== url ? rawTitle : null;
-  // Truncate attacker-influenced strings to the contract caps so the push
-  // always validates and oversized values never reach the renderer/localStorage.
   return {
     tabId,
     url: truncate(url, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
@@ -303,13 +231,6 @@ function buildBrowserState(
   };
 }
 
-/**
- * The single browser-session permission we allow. `clipboard-sanitized-write`
- * is write-only: an in-page copy button calling `navigator.clipboard.writeText()`
- * can put sanitized text on the system clipboard, but the page can NOT read the
- * clipboard (`clipboard-read` stays denied). Every other device/capability
- * permission (camera, mic, geolocation, notifications, MIDI, …) stays denied.
- */
 export function isAllowedBrowserPermission(permission: string): boolean {
   return permission === "clipboard-sanitized-write";
 }
@@ -320,8 +241,6 @@ export function createDesktopBrowserViewManager(
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
   const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
-  // Host webContents ids with a native resize burst in flight: views of these
-  // windows stay hidden regardless of renderer-declared visibility.
   const resizingHostIds = new Set<number>();
   let hardenedSession: Session | null = null;
 
@@ -392,12 +311,6 @@ export function createDesktopBrowserViewManager(
     }, RENDERER_RECOVERY_DELAY_MS);
   }
 
-  /**
-   * Capture the (still visible) view, push the bitmap to the renderer as its
-   * resize placeholder, and only then hide the view. The capture result is
-   * dropped if the burst already ended — the live view is back by then and a
-   * late placeholder would linger under it into the next burst.
-   */
   function startResizeSnapshot(
     hostWindow: DesktopBrowserHostWindow,
     tabId: string,
@@ -420,9 +333,7 @@ export function createDesktopBrowserViewManager(
           dataUrl,
         });
       })
-      .catch(() => {
-        // No placeholder; the renderer's bare panel background shows instead.
-      })
+      .catch(() => {})
       .finally(() => {
         clearTimeout(hideCap);
         applyEntryVisibility(entry, hostWindow);
@@ -434,19 +345,12 @@ export function createDesktopBrowserViewManager(
       return hardenedSession;
     }
     const browserSession = session.fromPartition(partition);
-    // Deny every device/capability permission by default in v1 (camera, mic,
-    // geolocation, notifications, MIDI, …). The single exception is
-    // `clipboard-sanitized-write`, allowed so in-page copy buttons (e.g.
-    // GitHub) that call `navigator.clipboard.writeText()` work; this is
-    // write-only, so `clipboard-read` stays denied. A prompt UI is a later
-    // phase.
     browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(isAllowedBrowserPermission(permission));
     });
     browserSession.setPermissionCheckHandler((_wc, permission) =>
       isAllowedBrowserPermission(permission),
     );
-    // Downloads are denied in v1 (lowest file-surface risk).
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
@@ -497,11 +401,7 @@ export function createDesktopBrowserViewManager(
         shiftKey: input.shift,
       });
       if (command === null) return;
-      // Prevent both the untrusted page and Electron's application menu from
-      // also handling a chord that bb resolved as a browser command.
       event.preventDefault();
-      // These commands move typing into a renderer input (address bar, find
-      // bar), so the host window must take keyboard focus away from the view.
       if (command === "browser.focusLocation" || command === "browser.find") {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
@@ -556,11 +456,6 @@ export function createDesktopBrowserViewManager(
       return { action: "deny" };
     });
 
-    // Right-click menu for the untrusted browser view. Built from this view's
-    // own webContents so the standard editing roles act on it (not the host
-    // React surface), giving Copy parity even when focus is elsewhere. Only
-    // plain editing roles are exposed — no dev tools, reload, or bb-bridge
-    // surface — keeping the untrusted-content posture.
     webContents.on("context-menu", (_event, params) => {
       if (webContents.isDestroyed()) {
         return;
@@ -619,9 +514,6 @@ export function createDesktopBrowserViewManager(
       entry.rendererRecoveryState = "pending";
       entry.lastErrorText = null;
       applyEntryVisibility(entry, hostWindow);
-      // Hidden views wait until the panel opens. This keeps memory eviction
-      // effective. Visible views retry after a short delay and stop after the
-      // bounded attempt count, so a crash loop cannot restart indefinitely.
       scheduleEntryRendererRecovery(entry, hostWindow, tabId);
     });
 
@@ -645,9 +537,6 @@ export function createDesktopBrowserViewManager(
       refresh();
     });
     webContents.on("page-title-updated", refresh);
-    // Favicons are intentionally NOT forwarded: a remote, attacker-controlled
-    // favicon URL must never be rendered (or fetched) by the trusted bb app
-    // surface. The renderer shows a generic globe icon instead.
     webContents.on(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -673,8 +562,6 @@ export function createDesktopBrowserViewManager(
         nodeIntegration: false,
         webSecurity: true,
         allowRunningInsecureContent: false,
-        // Intentionally NO preload: browsed pages are untrusted and must never
-        // receive a bb bridge.
       },
     });
     const entry: BrowserViewEntry = {
@@ -707,9 +594,7 @@ export function createDesktopBrowserViewManager(
       return;
     }
     entry.lastErrorText = null;
-    entry.view.webContents.loadURL(url).catch(() => {
-      // Usually surfaced through `did-fail-load`; swallow the rejection.
-    });
+    entry.view.webContents.loadURL(url).catch(() => {});
   }
 
   function destroyEntry(
@@ -792,7 +677,6 @@ export function createDesktopBrowserViewManager(
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
       const existing = entries.get(key) ?? null;
-      // A freshly-created entry starts hidden, so its prior visibility is false.
       const wasVisible = existing?.visible ?? false;
       const entry =
         existing ??
@@ -804,9 +688,6 @@ export function createDesktopBrowserViewManager(
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
       applyEntryVisibility(entry, hostWindow);
-      // Focus on a real not-visible → visible transition so a freshly-mounted
-      // active tab (shown via attach, not setVisible) wires the Edit-menu
-      // copy/cut/paste roles and Cmd+C to this view's webContents.
       if (
         request.visible &&
         !wasVisible &&
@@ -868,8 +749,6 @@ export function createDesktopBrowserViewManager(
     },
     findInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        // Electron's `findNext` means "start a new find session" (true for the
-        // first request of a query, false to step through its matches).
         entry.activeFindRequestId = entry.view.webContents.findInPage(
           request.text,
           {

@@ -130,9 +130,6 @@ describe("ProjectPathDialog machine selection", () => {
     );
   });
 
-  // With machines listed but none selectable there is no host to resolve a
-  // path against, so the manual-path fallback must not invite a submit that
-  // the picker hook would drop without feedback.
   it("blocks submission when every listed machine is offline", () => {
     const onSubmit = vi.fn();
     render(

@@ -159,10 +159,6 @@ interface CapturedStatement {
   sql: string;
 }
 
-// Captures the exact prepared SQL and bindings. The slow-query log is not
-// usable here: it redacts string literals and truncates long SQL, and both
-// would change the plan under EXPLAIN (a redacted literal no longer implies a
-// partial-index predicate, so an INDEXED BY pin stops preparing).
 function captureStatements(
   db: DbConnection,
   run: () => void,
@@ -411,8 +407,6 @@ describe("slow query index plans", () => {
   it("uses selective indexes for conversation-outline events", () => {
     const { db, thread } = setup();
 
-    // The slow-query log truncates this union past 1,000 chars; capture the
-    // statement itself.
     const captured = captureStatements(db, () => {
       listStoredConversationOutlineEventRows(db, { threadId: thread.id });
     });
@@ -450,9 +444,6 @@ describe("slow query index plans", () => {
       params: query?.params ?? [],
       sql: query?.sql ?? "",
     });
-    // Each union branch stays on a thread/type index (the lifecycle branch has
-    // no item kind); the superseded-snapshot check on the structural branch
-    // probes the background-task partial index instead of scanning.
     expect(
       details.match(/USING INDEX events_thread_type_sequence_idx/gu),
     ).toHaveLength(1);
@@ -479,11 +470,9 @@ describe("slow query index plans", () => {
     if (!query) {
       throw new Error("Expected the plan snapshot SQL");
     }
-    // Keyed by item kind (and the legacy notification type), never by a
-    // tool name or a payload parse.
     expect(query.sql).not.toContain("json_extract");
     expect(query.sql).not.toContain("tool_name");
-    expect(query.params).toEqual([thread.id, 1]); // LIMIT 1
+    expect(query.params).toEqual([thread.id, 1]);
     expect(
       queryPlanDetails({ db, params: query.params, sql: query.sql }),
     ).toContain("events_plan_steps_thread_sequence_idx");
@@ -520,11 +509,6 @@ describe("slow query index plans", () => {
       params,
     });
 
-    // This query runs on every latest-page timeline build. Written with
-    // correlated subqueries it re-scanned the thread once per candidate task
-    // row — 154 ms on a real 9,012-event thread with 2,640 task rows — so the
-    // plan must resolve both "newest lifecycle row" and "already completed" as
-    // set membership, evaluated once.
     expect(
       queryPlanDetails({ db, params, sql: debugLog.fields.sql }),
     ).not.toMatch(/CORRELATED/);
@@ -946,11 +930,6 @@ describe("slow query index plans", () => {
       throw new Error("Expected the latest-thread-state lookup SQL");
     }
 
-    // The #1131 cold stall: with an ORDER BY present, the stats-less planner
-    // served this filter from events_thread_sequence_idx and fetched every
-    // event row of every listed thread. The contract is one probe of the tiny
-    // partial index for the candidate list and one for the per-thread MAX —
-    // never a full-size events index, never a temporary sort.
     const details = queryPlanDetails({
       db,
       params: statement.params,
@@ -988,9 +967,6 @@ describe("slow query index plans", () => {
     expect(details).toContain(
       "USING COVERING INDEX pending_interactions_thread_status_created_idx",
     );
-    // The correlated EXISTS replaced a pending_interactions join with
-    // GROUP BY threads.id; a reintroduced GROUP BY brings back the temp
-    // B-tree materialization of the whole joined result.
     expect(details).not.toContain("USE TEMP B-TREE FOR GROUP BY");
 
     db.$client.close();
@@ -999,10 +975,9 @@ describe("slow query index plans", () => {
   it("drops redundant events indexes after creating their consolidated replacement", () => {
     const { db } = setup();
     const indexRows = db.$client
-      .prepare<
-        [],
-        IndexNameRow
-      >("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'")
+      .prepare<[], IndexNameRow>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'",
+      )
       .all();
     const indexNames = indexRows.map((row) => row.name);
 

@@ -32,7 +32,6 @@ describe("plugin catalog contracts", () => {
       optionalPluginCount: 5,
     };
     expect(pluginCatalogStatusSchema.parse(status)).toEqual(status);
-    // Refresh-era freshness fields no longer survive parsing.
     expect(
       pluginCatalogStatusSchema.parse({ ...status, lastError: null }),
     ).toEqual(status);

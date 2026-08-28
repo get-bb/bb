@@ -29,8 +29,6 @@ export default {
   title: "sidebar/Threads",
 };
 
-// Caps at the production sidebar max (460px) but shrinks with the parent so
-// truncation behavior is visible at any container width.
 function SidebarStage({ children }: { children: ReactNode }) {
   return (
     <ThreadActionsProvider>
@@ -248,7 +246,6 @@ const childOption: ThreadRowOptions = {
   depth: 2,
   isCompact: true,
 };
-// Projectless threads are top-level rows (depth 0), flush with project headers.
 const projectlessOption: ThreadRowOptions = {
   kind: "default",
   depth: 0,

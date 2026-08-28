@@ -47,8 +47,6 @@ describe("buildClaudeCodeModels", () => {
   it("always offers the curated catalog and appends discovered extras", () => {
     const result = buildClaudeCodeModels(DISCOVERED_MODELS);
 
-    // Discovery is additive: every curated row survives, and only the reported
-    // model BB has no curated entry for (Haiku's dated id) is appended.
     expect(result.models.map((model) => model.model)).toEqual([
       ...CURATED_MODELS,
       "claude-haiku-4-5-20251001",
@@ -56,8 +54,6 @@ describe("buildClaudeCodeModels", () => {
     expect(result.models.find((model) => model.isDefault)?.model).toBe(
       "claude-opus-5[1m]",
     );
-    // Selected-only rows stay discovery-gated — they only label a selection the
-    // user already has.
     expect(result.selectedOnlyModels.map((model) => model.model)).toEqual([
       "opus[1m]",
       "sonnet",
@@ -70,8 +66,6 @@ describe("buildClaudeCodeModels", () => {
     ).toBe(false);
   });
 
-  // A probe that returns nothing must not strand the picker. This is the whole
-  // point of the always-offered base set.
   it("still offers the curated catalog when the provider reports no models", () => {
     const result = buildClaudeCodeModels([]);
 
@@ -108,8 +102,6 @@ describe("buildClaudeCodeModels", () => {
     );
   });
 
-  // The account's own default wins over BB's product default when the probe
-  // reports one, so a curated row can never override the provider's choice.
   it("prefers the discovered default model", () => {
     const result = buildClaudeCodeModels([
       {

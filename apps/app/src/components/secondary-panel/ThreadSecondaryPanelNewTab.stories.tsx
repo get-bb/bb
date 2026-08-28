@@ -223,7 +223,6 @@ interface NewTabPanelStoryProps {
   initialQuery: string;
   projectId: string | undefined;
   recentItems: readonly ThreadRecentItem[];
-  /** Wire the desktop-only "Open browser" launcher entry (requires the bridge). */
   showOpenBrowser: boolean;
   threadStoragePaths: readonly WorkspacePathEntry[];
   workspacePaths: readonly WorkspacePathEntry[];
@@ -413,7 +412,6 @@ function SeededNewTabPage({
   startTerminalDisabled,
   startTerminalTrailing,
 }: SeededNewTabPageProps) {
-  // Story-only: seed before NewTabPage mounts so atomWithStorage reads fixtures.
   seedThreadRecentItems({ currentThreadId, recentItems });
 
   return (

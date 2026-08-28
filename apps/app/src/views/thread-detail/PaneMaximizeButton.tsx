@@ -94,8 +94,6 @@ export function PaneArrangementButton({
   onToggleFullScreen: () => void;
   shortcut?: AppShortcutPresentation;
 }) {
-  // The pointer crosses this button on the way to the close control, so the
-  // menu waits before it appears.
   const {
     open: hoverOpen,
     triggerHoverProps,
@@ -123,9 +121,6 @@ export function PaneArrangementButton({
     handleOpenChange(true);
     focusFirstMenuItem();
   };
-  // Electron's native browser WebContentsView paints above every DOM z-index.
-  // Hide it while this renderer-owned menu (and its move tooltips) is open so
-  // the full arrangement surface remains visible over a Browser tab.
   useBrowserDimmingOverlay(menuOpen);
   const button = (
     <Button

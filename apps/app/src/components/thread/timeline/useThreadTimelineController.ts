@@ -49,8 +49,6 @@ export function useThreadTimelineController({
   surfaceKey: explicitSurfaceKey,
   threadId,
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
-  // Inherit the query's normal staleTime so remount/refocus can refresh a
-  // timeline that changed while this surface was unmounted.
   const latestTimelineQuery = useThreadTimeline(threadId, {
     enabled,
     refetchOnMount: true,

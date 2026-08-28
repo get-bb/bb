@@ -34,10 +34,6 @@ describe("parseStoredThreadEvent", () => {
   });
 
   it("defaults missing senderThreadId on pre-existing client/turn/requested rows", () => {
-    // senderThreadId was added after threads were already being persisted, so
-    // the stored variant defaults it to null at read time. initiator was
-    // always written explicitly, so it does not need a default — passing it
-    // here matches what every pre-change writer was already doing.
     const event = parseStoredThreadEvent({
       type: "client/turn/requested",
       threadId: "thread-1",

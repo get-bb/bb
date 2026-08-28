@@ -1,9 +1,3 @@
-/* Parses the repo-root CHANGELOG.md (the single source of truth for release
- * notes) into structured releases for the /changelog page. The changelog's
- * shape is deliberately simple — `## <version>` per release, optional intro
- * paragraphs, `### <section>` groups of paragraphs and `- ` bullets — and the
- * parser supports exactly that shape. */
-
 export type ReleaseBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: string[] };
@@ -15,16 +9,12 @@ type ReleaseSection = {
 
 export type Release = {
   version: string;
-  /** Intro blocks between the `##` heading and the first `###` section. */
   lede: ReleaseBlock[];
   sections: ReleaseSection[];
 };
 
-/** Presentation extras that don't belong in CHANGELOG.md itself. */
 type ReleaseMeta = {
-  /** Human-readable ship date, e.g. "July 14, 2026". */
   date: string;
-  /** Marketing headline shown instead of the bare version number. */
   headline: string;
 };
 
@@ -111,7 +101,6 @@ export function parseChangelog(markdown: string): Release[] {
       continue;
     }
     if (!release) {
-      // Preamble (the `# Changelog` title) — nothing to collect.
       continue;
     }
     if (line.startsWith("### ")) {
@@ -136,7 +125,6 @@ export function parseChangelog(markdown: string): Release[] {
       continue;
     }
     if (line.startsWith("  ") && line.trim()) {
-      // Indented continuation of the previous bullet.
       const last = blocksInScope()?.at(-1);
       if (last?.kind === "list" && last.items.length > 0) {
         last.items[last.items.length - 1] += ` ${line.trim()}`;

@@ -70,8 +70,6 @@ function createFakeProcessOps(args: CreateFakeProcessOpsArgs): FakeProcessOps {
       return args.command;
     },
     async readElapsedSeconds() {
-      // The pid file is written at spawn time, so the process start time and
-      // the recorded time always agree in these tests.
       return 0;
     },
     async waitForExit(_args: WaitForProcessExitArgs) {

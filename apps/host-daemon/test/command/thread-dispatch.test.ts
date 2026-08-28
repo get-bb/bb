@@ -1275,8 +1275,6 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.unarchivedProviderThreadId).toBe(
       "provider-thread-1",
     );
-    // The archive removed the thread from the runtime, so the later stop is
-    // an idempotent no-op that never reaches the provider.
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([]);
   });
@@ -1331,7 +1329,6 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.stoppedThreadId).toBe("thread-stop");
     expect(harness.runtime.hasThread("thread-stop")).toBe(false);
 
-    // A second stop is an idempotent no-op that never reaches the provider.
     harness.runtimeState.stoppedThreadId = undefined;
     await expect(
       dispatchCommand(
@@ -1657,7 +1654,6 @@ describe("thread command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
-    // The provider finishes the turn; the runtime clears its active turn.
     harness.threadControls.endActiveTurn("thread-1");
     expect(harness.manager.listActiveThreads()).toEqual([]);
 
@@ -1700,7 +1696,6 @@ describe("thread command dispatch", () => {
 
     expect(result).toEqual({ appliedAs: "new-turn" });
     expect(harness.runtimeState.ranTurnText).toBe("resume work");
-    // The runtime still hosts the thread, so no resume round-trip happens.
     expect(harness.runtimeState.resumedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([
       {
@@ -2018,9 +2013,6 @@ describe("thread command dispatch", () => {
 
   it("lazily resumes a missing thread runtime before turn.submit", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-lazy" });
-    // The resume context carries its own bridge launch, which the daemon
-    // prefers over the command's: a resumed thread runs the agent its own
-    // session was built from.
     const resumeLaunch = {
       ...DISPATCH_TEST_BRIDGE_LAUNCH,
       providerOptions: { acpLaunchSpec: customAcpLaunchSpec() },
@@ -2072,8 +2064,6 @@ describe("thread command dispatch", () => {
       }),
     ]);
     expect(harness.runtimeState.resumedEnvironmentId).toBe("env-lazy");
-    // The daemon resolves the launch before it spawns, so this is the
-    // resume context's launch and not the command's.
     expect(harness.runtimeState.resumedBridgeLaunch).toMatchObject({
       providerOptions: { acpLaunchSpec: { command: "custom-agent" } },
     });
@@ -2165,8 +2155,6 @@ describe("thread command dispatch", () => {
     );
 
     expect(result).toEqual({ appliedAs: "new-turn" });
-    // The exit dropped the environment entry, so the dispatch creates a fresh
-    // runtime and resumes the thread there instead of reusing the dead one.
     expect(createRuntimeCalls).toBe(2);
     expect(replacementFake.state.resumedThreadId).toBe("thread-1");
     expect(replacementFake.state.ranTurnText).toBe("after exit");

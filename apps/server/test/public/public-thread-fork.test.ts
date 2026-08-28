@@ -283,8 +283,6 @@ describe("public thread fork route", () => {
   it("runs optional input from the requested fork point", async () => {
     await withTestHarness(async (harness) => {
       const { environment, sourceThread } = seedForkSource(harness);
-      // The source session was replaced after turn 1: the earlier turn's
-      // completion names the session (and checkpoint) the fork must clone.
       seedEvent(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-fork-source",
@@ -751,10 +749,6 @@ describe("public thread fork route", () => {
     });
   });
 
-  // A shipped ACP agent that declares `fork: "tip"`. A user-CONFIGURED agent
-  // cannot stand in for it: the plugin declares every configured agent
-  // `fork: "none"`, because bb has not verified its session/fork support and
-  // the bridge refuses a fork only after bb created the fork thread (#1833).
   it("forks an ACP provider that declares it and uses the returned child session", async () => {
     await withTestHarness({}, async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -799,8 +793,6 @@ describe("public thread fork route", () => {
       if (start.command.type !== "thread.start") {
         throw new Error("Expected thread.start");
       }
-      // The launch spec reaches the bridge through the opaque provider
-      // options every provider uses, from the plugin's own registration.
       expect(start.command).toMatchObject({
         providerId: "acp-opencode",
         bridgeLaunch: {
@@ -885,12 +877,6 @@ function seedHistoryUserRequest(
   });
 }
 
-/**
- * A source with two completed turns and, by default, a third still running.
- * Turn 1 spans sequences 3–7 with a message queued at 6 that turn 2 accepts;
- * turn 2 spans 8–11; turn 3 is requested at 12, started at 13, and has not
- * completed.
- */
 function seedConversationForkSource(
   harness: TestAppHarness,
   args: { providerId?: string; runningThirdTurn?: boolean } = {},
@@ -910,7 +896,6 @@ function seedConversationForkSource(
     projectId: project.id,
     ...(args.providerId === undefined ? {} : { providerId: args.providerId }),
   });
-  // seq 1: thread/identity, seq 2: client/turn/requested (request id 1)
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
     inputText: "Reply only with ok.",
@@ -1051,8 +1036,6 @@ describe("fork branch point and inherited history", () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);
 
-      // Sequence 5 is turn 1's assistant message: the anchor the app's
-      // per-message Fork button sends for it.
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 5,
@@ -1073,9 +1056,6 @@ describe("fork branch point and inherited history", () => {
 
       const forkEvents = listEvents(harness.db, { threadId: fork.id });
       const inherited = forkEvents.filter((event) => event.sequence <= 5);
-      // Inherited rows come first, keep their own timestamps, and never name
-      // a provider session the fork does not own. The message the source
-      // queued during turn 1 (accepted only by turn 2) stays out.
       expect(inherited.map((event) => event.type)).toEqual([
         "client/turn/requested",
         "turn/started",
@@ -1090,7 +1070,6 @@ describe("fork branch point and inherited history", () => {
       expect(
         forkEvents.filter((event) => event.type === "thread/identity"),
       ).toHaveLength(0);
-      // The fork's own thread-start request follows the inherited history.
       expect(forkEvents.at(5)?.type).toBe("client/turn/requested");
     });
   });
@@ -1099,8 +1078,6 @@ describe("fork branch point and inherited history", () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);
 
-      // Sequence 6 is the request that became turn 2, so forking at it
-      // branches before that message.
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 6,
@@ -1150,8 +1127,6 @@ describe("fork branch point and inherited history", () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);
 
-      // Turn 3 is still running: the session tip already holds its prompt,
-      // so a tip clone would know a message the inherited timeline lacks.
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         workspace: "reuse",
@@ -1182,9 +1157,6 @@ describe("fork branch point and inherited history", () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);
 
-      // A side chat is a hidden fork rendered next to the source, so it still
-      // clones the session through the anchor but starts its own timeline
-      // empty.
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 5,
@@ -1238,10 +1210,6 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
-  // A shipped ACP agent that declares `fork: "tip"`: it can clone a whole
-  // session but not recreate one at an earlier checkpoint, so
-  // `supportsSessionRewind` is false. A user-configured agent cannot stand in
-  // for it (the plugin declares every configured agent `fork: "none"`).
   const TIP_ONLY_PROVIDER_ID = "acp-opencode";
 
   it("clones the tip of a mid-turn source when the provider cannot branch at a checkpoint", async () => {
@@ -1288,8 +1256,6 @@ describe("fork branch point and inherited history", () => {
         message: `Provider ${TIP_ONLY_PROVIDER_ID} can only fork at the end of a session, not from an earlier point in it`,
       });
 
-      // Sequence 10 sits in turn 2, the source's latest turn: the whole
-      // session is exactly the requested history.
       const tip = await postFork(harness, {
         sourceThreadId: sourceThread.id,
         sourceSeqEnd: 10,

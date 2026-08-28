@@ -265,10 +265,6 @@ function inspectFailedTurn(events: ThreadEventRows): FailedTurnInspection {
   };
 }
 
-/*
- * Keep failure classification plugin-local. The server event API supplies
- * facts; this plugin decides which provider failures are recoverable.
- */
 export function classifyProviderRetry(args: {
   events: ThreadEventRows;
   hostId: string;

@@ -175,8 +175,6 @@ export function useSendThreadMessage() {
         permissionMode,
         executionInputSources,
         mode,
-        // Non-null only for cross-thread sends (e.g. a side chat handing a
-        // result back); the target renders it as "Message from {sender}".
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       });
     },
@@ -194,8 +192,6 @@ export function useSendThreadMessage() {
     },
     onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
-        // An older server answers a send with a bare `{ ok: true }`; treat that
-        // as the send it used to be.
         delivery: data.delivery ?? "sent",
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",

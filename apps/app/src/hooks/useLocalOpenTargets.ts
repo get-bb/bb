@@ -177,9 +177,6 @@ function useOpenTargetResolution(
       ),
     [args.contextKind, args.workspaceOpenTargets],
   );
-  // Resolve locally from the already-gated `workspaceOpenTargets` so that
-  // callers passing `enabled: false` don't trigger a daemon fetch via the
-  // global atom.
   const preferredDirectoryTarget = useMemo(
     () =>
       resolvePreferredWorkspaceOpenTarget({

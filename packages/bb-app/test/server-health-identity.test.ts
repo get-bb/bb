@@ -58,9 +58,6 @@ function answerHealth(response: ServerResponse, body: object): void {
   response.end(JSON.stringify(body));
 }
 
-// Stands in for apps/server: binds BB_SERVER_PORT and echoes the launch id the
-// launcher put in its env. When another process owns the port it dies the way
-// the real server does (EADDRINUSE, non-zero exit) instead of serving.
 const FAKE_SERVER_ENTRY_SOURCE = `
 import { createServer } from "node:http";
 const server = createServer((request, response) => {
@@ -110,7 +107,6 @@ describe("waitForServerHealth", () => {
       healthRequests += 1;
       answerHealth(response, { ok: true });
     });
-    // The launcher's own child: boots for a moment, then dies on EADDRINUSE.
     const child = spawn(
       process.execPath,
       ["-e", "setTimeout(() => process.exit(1), 400)"],

@@ -5,16 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 
-// Lives in its own file rather than beside the rest of the QueuedMessagesList
-// tests. It is the only test that drives a complete pointer gesture through
-// @dnd-kit, and doing so leaves state behind that outlives the component:
-// with it in the shared file, `toggles a few messages between the fitted
-// drawer and collapsed modes` and `keeps an explicitly collapsed inline editor
-// collapsed after dismissal` fail whenever vitest happens to order them after
-// it. Skipping just this test made the other 36 pass. dnd-kit exposes no way to
-// reset that state, so the file boundary — which vitest already isolates per
-// worker — is the seam that contains it.
-
 const noop = () => {};
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {

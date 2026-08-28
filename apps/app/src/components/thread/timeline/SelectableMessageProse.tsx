@@ -23,11 +23,6 @@ export interface MessageProseSelection {
 interface SelectableMessageProseProps {
   children: ReactNode;
   className?: string;
-  /**
-   * Reports the current in-bounds selection (or `null` when the selection is
-   * empty/collapsed/outside this node). Optional so the timeline can mount
-   * this wrapper before the controller that consumes selections is wired in.
-   */
   onSelect?: (selection: MessageProseSelection | null) => void;
 }
 
@@ -36,13 +31,6 @@ const SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 const CLIPBOARD_REPLACED_CONTENT_SELECTOR =
   "audio, canvas, embed, iframe, img, object, video";
 
-/**
- * Pure predicate: does `selection` fall entirely within `node`?
- *
- * Extracted so it is unit-testable without a DOM/selection harness. `node`
- * and the selection nodes only need a `contains(other)` method, so this also
- * accepts lightweight fakes in tests.
- */
 export function isSelectionWithinNode(
   node: Pick<Node, "contains"> | null,
   selection: {
@@ -101,8 +89,6 @@ function isSelectionBoundarySpillWithinNode(
     return false;
   }
 
-  // Triple-clicking a final paragraph can place the focus/common nodes just
-  // outside this wrapper while selecting only this node's text plus newlines.
   return normalizeSelectionText(node.textContent ?? "").includes(
     normalizedSelectionText,
   );
@@ -147,9 +133,6 @@ export function selectionAnchorFromPointerRelease(
     pointerType?: string;
   },
 ): SelectionAnchor | null {
-  // Touch and pen selection handles can keep moving after the initial pointer
-  // release. Anchor those selections from the live Range rect instead of a
-  // release coordinate that becomes stale as the user adjusts the handles.
   if (usesLiveSelectionRange(releaseEvent.pointerType)) {
     return null;
   }
@@ -262,8 +245,6 @@ function clipWhitespaceOnlyBoundarySpillForCopy(node: HTMLElement): boolean {
   const clippedEndContainer = range.endContainer;
   const clippedEndOffset = range.endOffset;
 
-  // Chromium serializes the live range after the copy event returns. Restore
-  // the user's selection in the next task, after both clipboard formats exist.
   window.setTimeout(() => {
     if (
       anchorNode?.isConnected &&
@@ -290,12 +271,6 @@ function clipWhitespaceOnlyBoundarySpillForCopy(node: HTMLElement): boolean {
   return true;
 }
 
-// Every assistant message mounts one SelectableMessageProse, so per-instance
-// document listeners made each tap and selectionchange dispatch O(N messages)
-// handlers. The registry below keeps the per-message selection state machine
-// but shares one set of document listeners and one report frame across all
-// mounted instances. Node-scoped click/dblclick listeners stay per instance —
-// they only fire for their own message.
 interface SelectableProseInstance {
   node: HTMLElement;
   onSelectRef: {
@@ -303,8 +278,6 @@ interface SelectableProseInstance {
       | ((selection: MessageProseSelection | null) => void)
       | undefined;
   };
-  // Only emit `null` once, after this node had reported a real selection, so
-  // N messages don't thrash a shared controller.
   hadSelection: boolean;
   pendingReportAnchor: SelectionAnchor | null;
   lastPointerReleaseAnchor: SelectionAnchor | null;
@@ -316,9 +289,6 @@ const instanceByNode = new Map<HTMLElement, SelectableProseInstance>();
 let sharedFrame: number | null = null;
 let pointerIsDown = false;
 let pointerUsesLiveSelectionRange = false;
-// The instance whose node contained the current pointer-down target. At most
-// one instance can contain it (prose wrappers don't nest), so the registry
-// tracks it once instead of a per-instance flag.
 let pointerActiveInstance: SelectableProseInstance | null = null;
 let pointerStartPoint: SelectionAnchorPoint | null = null;
 
@@ -327,8 +297,6 @@ function findInstanceContaining(
 ): SelectableProseInstance | null {
   if (!(target instanceof Node)) return null;
   let element = target instanceof Element ? target : target.parentElement;
-  // One walk up the ancestor chain replaces a `node.contains(target)` probe
-  // per mounted message on every pointerdown.
   while (element !== null) {
     const instance = instanceByNode.get(element as HTMLElement);
     if (instance !== undefined) return instance;
@@ -355,10 +323,6 @@ function reportInstanceNull(instance: SelectableProseInstance): void {
 
 function reportAllInstances(): void {
   sharedFrame = null;
-  // Read the live range once. An instance can only own or spill into the
-  // selection when the range intersects its node (both acceptance paths in
-  // readSelectionWithinNode require containment or intersection), so every
-  // other instance takes the cheap null path without its own selection read.
   const selection = window.getSelection();
   const range =
     selection !== null && selection.rangeCount > 0
@@ -367,8 +331,6 @@ function reportAllInstances(): void {
   const canPreFilter =
     range !== null && typeof range.intersectsNode === "function";
   for (const instance of proseInstances) {
-    // An instance inside its multi-click delay reports when its own timer
-    // fires; interleaved global triggers must not read its selection early.
     if (instance.multiClickTimer !== null) continue;
     if (
       range === null ||
@@ -433,8 +395,6 @@ function handleInstanceMultiClick(
     scheduleInstanceAfterMultiClickDelay(instance, clickAnchor);
     return;
   }
-  // Multi-click selection can be finalized after pointerup. Replace any
-  // stale pointerup anchor with one explicitly tied to the completed click.
   cancelMultiClickTimer(instance);
   scheduleInstanceWithAnchor(instance, clickAnchor);
 }
@@ -447,10 +407,6 @@ function handleInstanceDoubleClick(instance: SelectableProseInstance): void {
 }
 
 function handleSharedSelectionChange(): void {
-  // Mouse drag selections wait for release so the menu does not chase the
-  // cursor. Mobile long-press selection is finalized while the touch is
-  // still down, and iOS may cancel rather than release that pointer, so
-  // read touch/pen ranges as soon as Selection reports them.
   if (pointerIsDown && !pointerUsesLiveSelectionRange) {
     return;
   }
@@ -514,8 +470,6 @@ function handleSharedCopy(): void {
 }
 
 function attachSharedDocumentListeners(): void {
-  // Passive: none of the pointer handlers call preventDefault, so declare it
-  // and keep every tap off the compositor's blocking-handler list.
   document.addEventListener("pointerdown", handleSharedPointerDown, {
     passive: true,
   });
@@ -569,11 +523,6 @@ function unregisterSelectableProseInstance(
   }
 }
 
-/**
- * Wraps agent prose and reports text selections whose endpoints both fall
- * inside the wrapped node. Selections that escape the node (or are collapsed)
- * report `null` so a consumer can dismiss any floating affordance.
- */
 export function SelectableMessageProse({
   children,
   className,
@@ -611,13 +560,7 @@ export function SelectableMessageProse({
   }, []);
 
   return (
-    <div
-      ref={nodeRef}
-      className={className}
-      // Let compact-sidebar swipes begin over message prose, but give an
-      // expanded native text selection priority over the same touch sequence.
-      data-sidebar-swipe-selectable
-    >
+    <div ref={nodeRef} className={className} data-sidebar-swipe-selectable>
       {children}
     </div>
   );

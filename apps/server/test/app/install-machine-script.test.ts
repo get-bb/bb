@@ -159,13 +159,6 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 `;
 }
 
-// Mocks curl to serve the redeem endpoint and answer the bb-app tarball
-// download with the given status; npm records invocations and fabricates a
-// bb-app that enrolls into whatever BB_DATA_DIR the script hands it. Like a
-// real install, the fake npm lays out bb-app's native add-ons as loadable
-// modules under lib/node_modules/bb-app/node_modules; when
-// FAKE_NPM_SKIP_NATIVE_MODULES is set it leaves them empty, which mimics npm
-// >= 12 blocking their install scripts (or ignore-scripts=true).
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
@@ -368,7 +361,6 @@ describe("machine install script", () => {
   it("installs the server tarball even when a same-version bb-app is on PATH", () => {
     const fixture = createFixture();
     writeServerInstallTools(fixture, 200);
-    // A stale build with the same version string must not be reused.
     writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
     const result = runScript(JOIN_ARGS, fixture, {
       BB_INSTALL_SKIP_SERVICE: "1",
@@ -466,7 +458,6 @@ describe("machine install script", () => {
     expect(result.stderr).toContain(
       "npm_config_allow_scripts=better-sqlite3,node-pty,@parcel/watcher",
     );
-    // The installer must stop before it starts the temporary host daemon.
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 

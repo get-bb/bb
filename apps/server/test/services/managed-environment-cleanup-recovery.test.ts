@@ -562,7 +562,6 @@ describe("managed environment cleanup recovery sweep", () => {
         hostId: host.id,
       });
 
-      // First sweep arms the (15-minute) orphaned-destroy recovery throttle.
       await runManagedEnvironmentArchiveCleanupRecoverySweep(
         harness.deps,
         SWEEP_START_MS,
@@ -577,8 +576,6 @@ describe("managed environment cleanup recovery sweep", () => {
         status: "retiring",
         workspaceProvisionType: "managed-worktree",
       });
-      // An archived (not deleted) thread keeps the environment revivable via
-      // unarchive, so the grace window applies.
       const thread = createThread(harness.db, harness.hub, {
         projectId: project.id,
         environmentId: environment.id,
@@ -587,7 +584,6 @@ describe("managed environment cleanup recovery sweep", () => {
       });
       archiveThread(harness.db, harness.hub, thread.id);
 
-      // Freshly retired → still inside the grace window → not destroyed yet.
       await runManagedEnvironmentArchiveCleanupRecoverySweep(
         harness.deps,
         SWEEP_START_MS + 1,
@@ -603,9 +599,6 @@ describe("managed environment cleanup recovery sweep", () => {
         ),
       ).toHaveLength(0);
 
-      // Past the grace window → destroyed on the very next sweep, even though the
-      // recovery throttle window has not elapsed: the grace-gated retiring sweep
-      // is not throttled, only the orphaned-destroy recovery is.
       harness.db
         .update(environments)
         .set({
@@ -655,9 +648,6 @@ describe("managed environment cleanup recovery sweep", () => {
       });
       markThreadDeleted(harness.db, harness.hub, { threadId: thread.id });
 
-      // Freshly retired, but the only thread is deleted (not archived): there is
-      // nothing to unarchive, so the grace window does not apply and cleanup
-      // destroys the orphaned workspace right away.
       await runEnvironmentCleanupAdvance(harness.deps, {
         environmentId: environment.id,
       });

@@ -1,10 +1,3 @@
-/**
- * Grammar v3 presentation on every item the claude-code bridge opens or
- * closes, and the kinds its built-ins map to: the plan-steps snapshots
- * (TodoWrite, the folded task-list tools), the collapsed low-value rows, the
- * MCP `{ server, tool }` split, the file-change verbs, and the invariant that
- * no lifecycle delta leaves the translator without a presentation.
- */
 import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -58,7 +51,6 @@ function completedItems(events: ThreadEvent[]) {
 
 type StartedItem = ReturnType<typeof startedItems>[number];
 
-/** The presentation of an item kind that carries one (user messages do not). */
 function presentationOf(item: StartedItem | undefined): unknown {
   return item !== undefined && "presentation" in item
     ? item.presentation
@@ -162,7 +154,6 @@ describe("claude item presentation", () => {
       }),
     ]);
 
-    // An update to a task the fold never saw produces no one-task plan.
     harness.translate(
       toolUse("update-2", "TaskUpdate", { taskId: "9", status: "completed" }),
     );
@@ -175,7 +166,6 @@ describe("claude item presentation", () => {
       "toolCall",
     ]);
 
-    // A listing replaces the whole list; deleted entries are tombstones.
     harness.translate(toolUse("list-1", "TaskList", {}));
     const listed = harness.translate(
       toolResult("list-1", "2 tasks", {
@@ -354,8 +344,6 @@ describe("claude item presentation", () => {
           suppress: true,
         },
       }),
-      // A definition without a presentation (a server from before the field
-      // existed) presents generically under bb's glyph.
       expect.objectContaining({
         item: { type: "tool", tool: "bb_thread_list", server: "bb", args: {} },
         presentation: {
@@ -366,8 +354,6 @@ describe("claude item presentation", () => {
           icon: { glyph: "Toolbox" },
         },
       }),
-      // bb's server prefix names the origin even for a tool the session was
-      // not constructed with.
       expect.objectContaining({
         item: { type: "tool", tool: "not_in_session", server: "bb", args: {} },
       }),

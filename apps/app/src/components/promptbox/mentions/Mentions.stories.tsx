@@ -15,16 +15,9 @@ export default {
 
 const noop = () => {};
 
-// Match the production prompt box width (PageShell footer caps content at
-// 760px). The MentionMenu floats inside PromptBoxInternal in production;
-// PromptStage gives it the same horizontal envelope here.
 function PromptStage({ children }: { children: React.ReactNode }) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
-
-// ---------------------------------------------------------------------------
-// Realistic suggestion fixtures — bb-flavored paths + thread refs.
-// ---------------------------------------------------------------------------
 
 function getPathName(path: string): string {
   return path.split("/").at(-1) ?? path;
@@ -180,9 +173,6 @@ const longCommandSuggestions: ProviderCommandSuggestion[] = [
   },
 ];
 
-// Plugin mention-provider rows (plugin design §4.9) trail the built-in
-// sources, each provider under its own label — mirroring
-// usePromptMentions' append order.
 const pluginMentionSuggestions: PromptMentionSuggestion[] = [
   {
     kind: "plugin",
@@ -217,9 +207,6 @@ const pluginMentionSuggestions: PromptMentionSuggestion[] = [
     icon: null,
     replacement: "Onboarding guide",
   },
-  // A DIFFERENT plugin whose provider label collides with linear's "Linear
-  // issues": sections key on pluginId + providerId, so this stays its own
-  // section instead of merging into linear's.
   {
     kind: "plugin",
     pluginId: "linear-mirror",
@@ -238,10 +225,6 @@ const mixedWithPluginSuggestions: PromptMentionSuggestion[] = [
   ...pathSuggestions.slice(0, 2),
   ...pluginMentionSuggestions,
 ];
-
-// ---------------------------------------------------------------------------
-// Per-row helper.
-// ---------------------------------------------------------------------------
 
 interface RowConfig {
   state: TypeaheadMenuState;

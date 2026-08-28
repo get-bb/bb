@@ -1,9 +1,3 @@
-/**
- * Derive the stable plugin id used for routes, storage, settings, and CLI
- * commands from an npm package name.
- *
- * `bb-plugin-linear` becomes `linear`; scoped names first drop the scope.
- */
 export function derivePluginId(packageName: string): string {
   const base = packageName.includes("/")
     ? (packageName.split("/").at(-1) ?? packageName)

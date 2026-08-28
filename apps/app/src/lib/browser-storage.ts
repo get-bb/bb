@@ -114,24 +114,11 @@ export function createBooleanPreferenceAtom(
   );
 }
 
-/**
- * Storage for state that belongs to one tab rather than to the user, such as
- * the split workspace layout.
- *
- * Reads prefer `sessionStorage` (per tab, survives that tab's reload) and fall
- * back to `localStorage` so a newly opened tab still starts from the most
- * recent arrangement. Writes go to both. There is deliberately no `storage`
- * subscription: that event fires in *other* tabs, so subscribing would make one
- * tab adopt another tab's value mid-session — the cross-tab thread bleed in
- * issue #873.
- */
 export function createTabScopedStorage<T>(
   codec: StoredValueCodec<T>,
 ): SyncStorage<T> {
   return {
     getItem: (key: string, initialValue: T) => {
-      // An empty-but-present tab value is a real value (a cleared layout
-      // serializes to ""), so only a missing key falls back to the seed.
       const tabValue = getSessionStorage()?.getItem(key) ?? null;
       const storedValue = tabValue ?? getLocalStorage()?.getItem(key) ?? null;
       return codec.parse(storedValue, initialValue);

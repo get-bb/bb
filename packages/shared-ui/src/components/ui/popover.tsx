@@ -1,4 +1,3 @@
-/* shadcn/ui-derived */
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
@@ -17,10 +16,6 @@ import {
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
 
-// ---------------------------------------------------------------------------
-// Context — separate instance from DropdownMenu
-// ---------------------------------------------------------------------------
-
 const ResponsivePopoverContext =
   React.createContext<ResponsiveOverlayContextValue>({
     isCompactViewport: false,
@@ -31,10 +26,6 @@ const ResponsivePopoverContext =
 function useResponsivePopover() {
   return React.useContext(ResponsivePopoverContext);
 }
-
-// ---------------------------------------------------------------------------
-// Root
-// ---------------------------------------------------------------------------
 
 function Popover({
   children,
@@ -69,10 +60,6 @@ function Popover({
     </PopoverPrimitive.Root>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Trigger
-// ---------------------------------------------------------------------------
 
 const PopoverTrigger = React.forwardRef<
   HTMLButtonElement,
@@ -115,18 +102,11 @@ const PopoverTrigger = React.forwardRef<
 });
 PopoverTrigger.displayName = "PopoverTrigger";
 
-// ---------------------------------------------------------------------------
-// Content
-// ---------------------------------------------------------------------------
-
 const PopoverContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
-    /** Title announced by screen readers when the mobile drawer opens. */
     mobileTitle?: string;
-    /** Class name applied to the drawer panel on mobile. */
     mobileClassName?: string;
-    /** Called when the mobile drawer transform completes. */
     onMobileContentAnimationEnd?: (open: boolean) => void;
   }
 >(
@@ -144,13 +124,9 @@ const PopoverContent = React.forwardRef<
     ref,
   ) => {
     const { isCompactViewport, open, onOpenChange } = useResponsivePopover();
-    // Unconditional (rules of hooks — the compact branch returns early); the
-    // compact drawer path is covered by the persistent drawer shell.
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
-      // Forward DOM-level props (event handlers, data-*, aria-*) but strip
-      // Radix positioning/behavior props that are meaningless for a Drawer.
       const domProps = stripRadixContentProps(props);
 
       return (
@@ -196,10 +172,6 @@ const PopoverContent = React.forwardRef<
 );
 PopoverContent.displayName = "PopoverContent";
 
-// ---------------------------------------------------------------------------
-// Anchor (desktop-only positioning concept — passthrough on mobile)
-// ---------------------------------------------------------------------------
-
 const PopoverAnchor = React.forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Anchor>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Anchor>
@@ -217,9 +189,5 @@ const PopoverAnchor = React.forwardRef<
   );
 });
 PopoverAnchor.displayName = "PopoverAnchor";
-
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
 
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };

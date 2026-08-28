@@ -31,23 +31,8 @@ interface StaleProvider {
   displayName: string;
 }
 
-/**
- * The quiet update affordance (BB-48): small outlined chips in the sidebar
- * footer's lower-right corner, rendered only while an update needs attention.
- * Updates split into the two buckets a user acts on separately — bb itself
- * (app release, downloaded desktop update, or a daemon stuck on an old
- * protocol) and the agent CLIs, which carry their own brand marks so it is
- * clear which agent is stale without hovering. Both chips open the
- * consolidated Settings → Updates view.
- *
- * A CLI that is not installed at all is not an update and gets no chip here:
- * there is no installed version to stale against, and the Settings → Updates
- * page already surfaces the install prompt for it.
- */
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
-  // The marks live with the provider registrations, so the roster is what
-  // turns a stale CLI's provider id into its brand mark.
   const providers = useSystemProviders().data;
 
   const stuckDaemonCount = inventory.machines.filter(
@@ -58,9 +43,6 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     (inventory.desktopUpdateReady ? 1 : 0) +
     stuckDaemonCount;
 
-  // One mark per provider, even when the same CLI is stale on several machines.
-  // Missing CLIs are install prompts, not updates: skip them so the chip never
-  // claims an update is available for a CLI that isn't installed.
   const staleProvidersByKey = new Map<ProviderCliKey, StaleProvider>();
   for (const machine of inventory.machines) {
     for (const issue of machine.issues) {
@@ -89,9 +71,6 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
 
   return (
-    // Right-alignment on a single row comes from the flexible spacer the
-    // sidebar footer renders before this item, not from a margin here — a
-    // margin would also push the chips right on their own wrapped line.
     <SidebarMenuItem className="flex min-w-0 items-center gap-1">
       {bbUpdateCount > 0 ? (
         <Tooltip>

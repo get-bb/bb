@@ -19,11 +19,6 @@ import { useSidebarSortable } from "./sortableMotion";
 import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 
-/**
- * Per-project data the list renders, with the lifecycle/query lookups already
- * resolved by the caller. The presentational component never touches hooks, so
- * both the live sidebar and stories drive it from the same prop shape.
- */
 export interface ProjectListRowModel {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
@@ -31,11 +26,6 @@ export interface ProjectListRowModel {
   isLocalPathInvalid: boolean;
 }
 
-/**
- * Container-owned drag-to-reorder plumbing for isolated project collections
- * such as stories. The live sidebar places the same sortable rows in its one
- * heterogeneous top-level context instead.
- */
 interface ProjectListReorderBindings {
   dndContextProps: SidebarReorderDndContextProps;
   itemIds: string[];
@@ -86,13 +76,6 @@ export const SortableProjectRow = memo(function SortableProjectRow({
   );
 });
 
-/**
- * Renders a collection of project sections: loading skeletons, project rows
- * (reorderable when {@link ProjectListProjectsProps.reorder} is supplied and
- * there is more than one), or the empty/unavailable state. Pure and
- * prop-driven — it owns no collapse state or queries, so the live sidebar
- * (`ProjectList`) and the `sidebar/Projects` stories share this exact path.
- */
 export function ProjectListProjects({
   status,
   rows,

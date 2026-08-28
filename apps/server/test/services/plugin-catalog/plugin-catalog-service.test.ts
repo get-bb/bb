@@ -24,7 +24,6 @@ import {
 
 const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
 const ICON_URL = "https://marketplace.test/marketplace/v1/icons/widgets.svg";
-/** Install-count sidecar beside the manifest; most tests do not publish one. */
 const STATS_URL = "https://marketplace.test/marketplace/v1/stats.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 
@@ -209,7 +208,6 @@ describe("plugin catalog service", () => {
     expect(
       (await catalog.search("docs")).map((entry) => entry.entryId),
     ).toContain("docs");
-    // The docs directory installs under the plugin id "simple-notes".
     expect(
       (await catalog.search("simple-notes")).map((entry) => entry.entryId),
     ).toEqual(["docs"]);
@@ -289,8 +287,6 @@ describe("plugin catalog service", () => {
     const glyphEntry = results.find(
       (entry) => entry.entryId === withGlyph.name,
     );
-    // A path-shaped branding.icon is not a host glyph name, so without a
-    // served URL the browse card falls back to the generic icon.
     expect(svgEntry?.icon?.startsWith("./")).toBe(true);
     const icon = await catalog.icon("bb-community", withSvg.name);
     expect(icon?.contentType).toBe("image/svg+xml");
@@ -298,7 +294,6 @@ describe("plugin catalog service", () => {
       `/api/v1/plugin-catalog/icons/bb-community/${withSvg.name}?h=${icon?.hash}`,
     );
     expect(new TextDecoder().decode(icon?.bytes)).toContain("<svg");
-    // The compact icon is single-color artwork; the app masks it.
     expect(svgEntry?.iconTinted).toBe(true);
 
     expect(glyphEntry?.iconUrl).toBeNull();
@@ -383,10 +378,7 @@ describe("plugin catalog service", () => {
       expect(await catalog.icon("bb-community", "widgets")).toMatchObject({
         contentType: "image/svg+xml",
       });
-      // A catalog SVG is tinted by default, like a plugin's own compact icon,
-      // so a black-on-transparent glyph stays visible on a dark theme (#1941).
       expect(results[0]?.iconTinted).toBe(true);
-      // The seeded entries are gone: the published manifest is authoritative.
       expect((await catalog.search("thread-hover-cards")).length).toBe(0);
       expect(requests[1]?.url).toBe(ICON_URL);
 
@@ -395,7 +387,6 @@ describe("plugin catalog service", () => {
         (request) => request.url === MANIFEST_URL,
       )[1];
       expect(conditional?.headers.get("if-none-match")).toBe('"v1"');
-      // A 304 keeps the stored catalog and does not re-read the icon.
       expect((await catalog.search("widgets"))[0]?.displayName).toBe(
         "Acme Widgets",
       );
@@ -537,7 +528,6 @@ describe("plugin catalog service", () => {
       expect(await catalog.icon("bb-community", "gadgets")).toBeUndefined();
 
       await catalog.refresh(2_000);
-      // The cached icon survives the unchanged manifest; the failed one retries.
       expect(await catalog.icon("bb-community", "widgets")).toBeDefined();
       expect(await catalog.icon("bb-community", "gadgets")).toBeDefined();
     });
@@ -618,7 +608,6 @@ describe("plugin catalog service", () => {
       return jsonResponse({ schemaVersion: 1, generatedAt, plugins });
     }
 
-    /** Serve a manifest, a sidecar, and an icon for anything else. */
     function fetchWith(
       stats: () => Response,
       entries: unknown[] = [remoteEntry()],
@@ -635,7 +624,8 @@ describe("plugin catalog service", () => {
 
     it("reports counts for curated entries and bundled plugins", async () => {
       const bundled = listBundledPluginRegistrations().find(
-        (plugin) => plugin.name === "docs" && plugin.pluginId === "simple-notes",
+        (plugin) =>
+          plugin.name === "docs" && plugin.pluginId === "simple-notes",
       );
       if (bundled === undefined) throw new Error("docs registration missing");
       const catalog = service({
@@ -665,7 +655,6 @@ describe("plugin catalog service", () => {
     });
 
     it("re-reads the sidecar when the manifest is unchanged", async () => {
-      // The whole point of a separate document: counts move behind a 304.
       let manifestReads = 0;
       let installs = 5;
       const catalog = service({
@@ -757,8 +746,6 @@ describe("plugin catalog service", () => {
       await catalog.addMarketplace(thirdPartyManifest);
       await catalog.refreshMarketplaces({ attemptedAt: 2_000 });
       expect((await catalog.search("widgets"))[0]?.installs).toBeNull();
-      // A publisher's own count wearing BB's label is never fetched at all:
-      // the only sidecar request in the whole run is the curated one.
       expect(statsRequests).toEqual([STATS_URL]);
     });
   });
@@ -820,9 +807,6 @@ describe("plugin catalog service", () => {
       ]);
     });
 
-    // A listing carries no ranges, so the store cannot pre-judge an entry.
-    // It offers every entry and lets the install pipeline read the plugin's
-    // own package.json and refuse there.
     it("offers a marketplace entry without judging compatibility", async () => {
       const catalog = await refreshedCatalog(remoteEntry({ icon: "Zap" }));
       const [entry] = await catalog.search("widgets");
@@ -902,7 +886,6 @@ describe("plugin catalog service", () => {
     });
 
     it("refuses a catalog whose icons pass the total byte budget", async () => {
-      // Each icon stays under the per-icon cap; together they pass 8 MiB.
       const bigSvg = Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>${"a".repeat(200 * 1024)}</title><path d="M0 0h16v16H0z"/></svg>`,
       );
@@ -1004,7 +987,6 @@ describe("plugin catalog service", () => {
 
       await catalog.refresh(1_000);
       const results = await catalog.search("");
-      // Exactly one row keeps that id: the bundled one.
       expect(
         results.filter((entry) => entry.pluginId === occupied.pluginId),
       ).toHaveLength(1);

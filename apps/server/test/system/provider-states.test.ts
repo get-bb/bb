@@ -212,8 +212,6 @@ describe("getProviderStates", () => {
 
       expect(result.providers[0]?.providerId).toBe("codex");
       expect(primaryCalls).toBe(0);
-      // Installed-only discovery is host-scoped; provider readiness is
-      // workspace-scoped and receives the environment path.
       expect(healthCwds.filter((cwd) => cwd === undefined)).toHaveLength(4);
       expect(healthCwds.filter((cwd) => cwd !== undefined)).toEqual(
         Array(4).fill(environment.path),

@@ -72,7 +72,8 @@ describe("pluginRowSignal (the one-signal rule)", () => {
       pluginRowSignal(
         plugin({
           outcome: "unavailable",
-          detail: "The cached checkout does not prove that this ref was a branch.",
+          detail:
+            "The cached checkout does not prove that this ref was a branch.",
         }),
       ),
     ).toEqual({

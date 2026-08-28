@@ -28,9 +28,7 @@ describe("default workspace open-target runtime", () => {
       ["-e", "process.stdout.write(process.env.PATH ?? '')"],
       { env: runtime.env },
     );
-    expect(userExecutableResult.stdout).toBe(
-      "/Users/test/.local/bin:/usr/bin",
-    );
+    expect(userExecutableResult.stdout).toBe("/Users/test/.local/bin:/usr/bin");
   });
 });
 
@@ -445,9 +443,8 @@ describe("workspace open targets", () => {
         env: { PATH: "/Users/test/.local/bin:/usr/bin" },
       });
       expect(
-        calls.find(
-          (call) => call.file === "which" && call.args[0] === "code",
-        )?.env,
+        calls.find((call) => call.file === "which" && call.args[0] === "code")
+          ?.env,
       ).toEqual({ PATH: "/Users/test/.local/bin:/usr/bin" });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -733,8 +730,7 @@ describe("workspace open targets", () => {
         expect(calls.some((call) => call.file === target.cli)).toBe(false);
         expect(
           calls.find(
-            (call) =>
-              call.file === "open" && call.args[1] === target.appName,
+            (call) => call.file === "open" && call.args[1] === target.appName,
           ),
         ).toEqual({
           file: "open",
@@ -798,7 +794,10 @@ describe("workspace open targets", () => {
   it("advertises and uses column support for IntelliJ IDEA", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "bb-intellij-idea-"));
     const applicationsDirectory = path.join(root, "Applications");
-    const intellijAppPath = path.join(applicationsDirectory, "IntelliJ IDEA.app");
+    const intellijAppPath = path.join(
+      applicationsDirectory,
+      "IntelliJ IDEA.app",
+    );
     const intellijExecutable = path.join(
       intellijAppPath,
       "Contents",
@@ -823,16 +822,17 @@ describe("workspace open targets", () => {
         }),
       );
 
-      expect(targets.find((target) => target.id === "intellij-idea"))
-        .toMatchObject({
-          capabilities: {
-            openDirectory: true,
-            openFile: true,
-            openFileAtColumn: true,
-            openFileAtLine: true,
-          },
-          label: "IntelliJ IDEA",
-        });
+      expect(
+        targets.find((target) => target.id === "intellij-idea"),
+      ).toMatchObject({
+        capabilities: {
+          openDirectory: true,
+          openFile: true,
+          openFileAtColumn: true,
+          openFileAtLine: true,
+        },
+        label: "IntelliJ IDEA",
+      });
 
       await openPathInTargetWithRuntime(
         {

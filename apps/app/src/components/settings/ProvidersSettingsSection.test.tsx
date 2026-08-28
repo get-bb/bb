@@ -57,7 +57,6 @@ describe("ProvidersSettingsSection", () => {
       />,
     );
 
-    // No explicit default: the first row reads as the default.
     const rows = screen.getAllByText(/Alpha|Beta|Gamma/);
     expect(rows.map((row) => row.textContent)).toEqual([
       "Alpha",
@@ -70,8 +69,6 @@ describe("ProvidersSettingsSection", () => {
       name: /Reorder (Alpha|Beta|Gamma)/,
     });
     expect(reorderHandles).toHaveLength(3);
-    // Keep each sortable row directly under the divided list. An extra wrapper
-    // makes every SettingsRow both `first` and `last` and removes its padding.
     expect(reorderHandles[0]?.parentElement?.className).toContain(
       "group/provider-row",
     );
@@ -98,7 +95,6 @@ describe("ProvidersSettingsSection", () => {
       />,
     );
     expect(screen.getByText("Unavailable")).toBeTruthy();
-    // An unavailable provider cannot become the default.
     expect(
       (
         screen.getByRole("button", {

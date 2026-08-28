@@ -432,8 +432,6 @@ describe("SDK public type entrypoints", () => {
   });
 
   it("keeps the local guide area off the browser SDK instance", () => {
-    // The guide bundles the generated templates; the browser factory must not
-    // attach it so those bytes stay out of the web app's boot chunk.
     expectTypeOf<keyof BrowserRuntimeBbSdk>().toEqualTypeOf<
       Exclude<ExpectedBbSdkKey, "guide">
     >();

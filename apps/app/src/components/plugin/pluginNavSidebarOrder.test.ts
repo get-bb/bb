@@ -49,8 +49,6 @@ describe("arrangePluginNavPanels", () => {
   });
 
   it("renders no row for an unregistered key but keeps its slot in the order", () => {
-    // A plugin frontend can register after the sidebar mounts. Dropping the key
-    // here would persist a shortened order and lose the user's arrangement.
     const { visible, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
@@ -71,7 +69,6 @@ describe("arrangePluginNavPanels", () => {
   it("returns a late-registering panel to its stored slot", () => {
     const { visible } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
-      // The order saved while only github had registered still names all three.
       storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
       hiddenKeys: [],
     });
@@ -124,8 +121,6 @@ describe("reorderPluginNavPanels", () => {
   });
 
   it("keeps hidden panels pinned to their index in the stored order", () => {
-    // docs is hidden and sits between the two visible rows; swapping those two
-    // must not shuffle docs, so unhiding it later restores its old slot.
     expect(
       reorderPluginNavPanels({
         activeKey: "tasks/board",

@@ -209,5 +209,4 @@ describe("usePanelResizeSnap", () => {
     expect(onResize).toHaveBeenLastCalledWith(0.5);
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
-
 });

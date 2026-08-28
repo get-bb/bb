@@ -55,7 +55,6 @@ function canSuggestThread(
   thread: Thread,
   args: BuildThreadMentionSuggestionsArgs,
 ): boolean {
-  // A hidden thread (a side chat, say) is not a mentionable navigation target.
   return thread.id !== args.currentThreadId && thread.visibility !== "hidden";
 }
 

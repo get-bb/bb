@@ -205,9 +205,6 @@ async function loadPlugin(extraRepos = "acme/widgets") {
 }
 
 describe("github plugin RPC behavior", () => {
-  // A stored-but-unusable extraRepos entry used to look exactly like one that
-  // matched nothing: no log line, and `bb github repos` listed the usable names
-  // without mentioning what it had dropped.
   it("reports extraRepos entries it cannot honor instead of dropping them", async () => {
     const { harness } = await loadPlugin("acme/widgets, ACME-ORG/*, nonsense");
 
@@ -221,18 +218,17 @@ describe("github plugin RPC behavior", () => {
       expect.arrayContaining([
         expect.objectContaining({
           level: "warn",
-          message: 'ignoring 2 extraRepos entries that are not "owner/repo": ACME-ORG/*, nonsense',
+          message:
+            'ignoring 2 extraRepos entries that are not "owner/repo": ACME-ORG/*, nonsense',
         }),
       ]),
     );
 
-    // The warning is emitted per distinct set, not per discovery: `repos`
-    // forces a fresh read every time and a background sync lapses the cache on
-    // its own, so warning per pass would repeat this line forever.
     await harness.runCli(["repos"]);
     expect(
       harness.logEntries.filter(
-        (entry) => entry.level === "warn" && entry.message.includes("extraRepos"),
+        (entry) =>
+          entry.level === "warn" && entry.message.includes("extraRepos"),
       ),
     ).toHaveLength(1);
   });
@@ -246,7 +242,9 @@ describe("github plugin RPC behavior", () => {
       stderr: "",
     });
     expect(
-      harness.logEntries.filter((entry) => entry.message.includes("extraRepos")),
+      harness.logEntries.filter((entry) =>
+        entry.message.includes("extraRepos"),
+      ),
     ).toEqual([]);
   });
 

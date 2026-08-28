@@ -55,7 +55,6 @@ const THREAD_SEARCH_BINDING: AppKeybinding = {
   when: { all: ["mainSurface"], none: ["modalOpen"] },
 };
 
-// A chord that declines while any modal is open, like most app bindings.
 const THREAD_NEW_BINDING: AppKeybinding = {
   command: "thread.new",
   desktopOnly: false,
@@ -227,12 +226,10 @@ describe("CommandPalette", () => {
     renderPalette();
     const event = openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
-    // Chrome maps Mod+Shift+P to print; only preventDefault stops it.
     expect(event.defaultPrevented).toBe(true);
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    // Every mounted handler is listed, including the palette's thread mode.
     expect(titles).toHaveLength(5);
   });
 
@@ -317,8 +314,6 @@ describe("CommandPalette", () => {
   });
 
   it("suppresses app chords while open and releases them on close", async () => {
-    // The palette is an open modal, so `none: ["modalOpen"]` bindings must
-    // decline rather than fire under the search field.
     renderPalette();
     const pressThreadNew = () =>
       fireEvent.keyDown(document.activeElement ?? window, {
@@ -341,7 +336,6 @@ describe("CommandPalette", () => {
   });
 
   it("scrolls the highlighted row into view when arrowing, but not on hover", async () => {
-    // Focus stays in the search field, so nothing scrolls the list on its own.
     const scrollIntoView = vi.spyOn(
       Element.prototype,
       "scrollIntoView",
@@ -359,7 +353,6 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(searchField(), { key: "End" });
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
 
-    // Hovering must not yank the list out from under the pointer.
     scrollIntoView.mockClear();
     fireEvent.pointerMove(screen.getAllByRole("option")[0] as HTMLElement);
     expect(scrollIntoView).not.toHaveBeenCalled();

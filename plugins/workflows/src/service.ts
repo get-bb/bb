@@ -307,8 +307,6 @@ function resolveStructuredValue(
   if (validation.valid || typeof value !== "string") {
     return { value, validation };
   }
-  // Models sometimes double-encode structured output as a JSON string.
-  // Accept the unwrapped value only when it satisfies the schema.
   let unwrapped: JsonValue;
   try {
     unwrapped = JSON.parse(value) as JsonValue;
@@ -374,8 +372,6 @@ export interface WorkflowService {
     value: JsonValue,
   ): Promise<{ ok: true } | { ok: false; terminal: boolean; error: string }>;
   agentConfiguration(threadId: string): {
-    /** Parameter schema for bb_workflow_result; null when the call is not a
-     * running structured call. */
     resultParameters: Record<string, unknown> | null;
     terminal: boolean;
     instructions: string | null;
@@ -424,13 +420,6 @@ export function createWorkflowService(
     if (signal.aborted) throw new Error("Workflow cancelled");
   }
 
-  /**
-   * Tell open pages that the run set for an origin thread changed. The
-   * composer banner polls only while it shows an active run, so this is how
-   * a freshly started run appears without a standing 1 s poll on idle
-   * threads. Ephemeral: a page that missed it catches up on its next
-   * refresh (visibility regain, reconnect, or its own active poll).
-   */
   function publishRunsChanged(originThreadId: string): void {
     bb.realtime.publish(WORKFLOW_RUNS_REALTIME_CHANNEL, {
       threadId: originThreadId,
@@ -665,9 +654,7 @@ export function createWorkflowService(
     const permissionMode = executionValuesSchema.shape.permissionMode.parse(
       run.originPermissionMode,
     );
-    if (
-      !provider.capabilities.permissionModes.includes(permissionMode)
-    ) {
+    if (!provider.capabilities.permissionModes.includes(permissionMode)) {
       throw new Error(
         `Permission mode ${JSON.stringify(run.originPermissionMode)} is not supported by provider ${requested.provider}`,
       );
@@ -1000,8 +987,6 @@ export function createWorkflowService(
             },
           ],
         });
-        // The corrective turn is still part of this call. A later idle event
-        // or result-tool submission settles it and wakes the existing waiter.
         return;
       } catch (error) {
         const correctionError = `Could not request structured-output correction: ${message(error)}`;
@@ -1449,8 +1434,6 @@ export function createWorkflowService(
         );
       }
     };
-    // Thread state is authoritative. Reconcile calls before enforcing the
-    // total run deadline.
     await isolated("reconcile-workers", reconcileRunningCalls);
     await isolated("enforce-timeouts", () => enforceTimeouts(now));
     await isolated("retention", () => {

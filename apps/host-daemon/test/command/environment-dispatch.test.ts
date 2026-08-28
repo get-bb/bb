@@ -626,7 +626,6 @@ describe("environment command dispatch", () => {
     const harness = createHarness({ workspacePath: "/tmp/idempotent" });
     const sourcePath = await makeTempDir("bb-dispatch-idempotent-");
 
-    // First provision
     await dispatchCommand(
       {
         type: "environment.provision",
@@ -638,7 +637,6 @@ describe("environment command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    // Second provision — same environment
     const result = await dispatchCommand(
       {
         type: "environment.provision",
@@ -805,8 +803,6 @@ describe("environment command dispatch", () => {
 
   it("destroys a managed environment after daemon restart (not in memory)", async () => {
     const harness = createHarness();
-    // Environment is NOT in memory — simulates daemon restart.
-    // The destroy command must reconnect using workspaceContext before destroying.
     const result = await dispatchCommand(
       {
         type: "environment.destroy",
@@ -820,7 +816,6 @@ describe("environment command dispatch", () => {
     );
 
     expect(result).toEqual({});
-    // The workspace was reconnected (lazy provision) then destroyed
     expect(harness.workspaceState.destroyed).toBe(true);
     expect(harness.provisions).toEqual([
       {
@@ -832,8 +827,6 @@ describe("environment command dispatch", () => {
   });
 
   it("treats a retry as success when the workspace was already removed", async () => {
-    // Simulate: first destroy succeeds and removes the workspace,
-    // then daemon crashes before reporting. On retry, the path is gone.
     let callCount = 0;
     const { workspace } = createFakeWorkspace("/tmp/env-retry");
     const { runtime } = createFakeRuntime();
@@ -851,7 +844,6 @@ describe("environment command dispatch", () => {
       createRuntime: () => runtime,
     });
 
-    // First destroy: succeeds (workspace exists in memory after reconnect)
     await dispatchCommand(
       {
         type: "environment.destroy",
@@ -864,7 +856,6 @@ describe("environment command dispatch", () => {
       makeDispatchOptions({ runtimeManager: manager }),
     );
 
-    // Second destroy (retry): workspace path is gone, should succeed (idempotent)
     const retryResult = await dispatchCommand(
       {
         type: "environment.destroy",

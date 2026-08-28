@@ -12,10 +12,6 @@ interface ChangelogSection {
   blocks: ChangelogBlock[];
 }
 
-/**
- * The same release shape used by getbb.app/changelog: introductory blocks,
- * then titled sections containing paragraphs and lists.
- */
 interface ChangelogEntry {
   version: string;
   lede: ChangelogBlock[];
@@ -27,7 +23,6 @@ interface ChangelogReleaseMeta {
   headline: string;
 }
 
-/** Presentation metadata from the canonical changelog page. */
 export const CHANGELOG_RELEASE_META: Record<string, ChangelogReleaseMeta> = {
   "0.39.0": {
     date: "August 19, 2026",
@@ -65,7 +60,6 @@ export const CHANGELOG_RELEASE_META: Record<string, ChangelogReleaseMeta> = {
   },
 };
 
-/** Parse the repo changelog with the same block boundaries as the website. */
 export function parseChangelogEntries(source: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
   let entry: ChangelogEntry | null = null;
@@ -145,11 +139,9 @@ export function parseChangelogEntries(source: string): ChangelogEntry[] {
 
 export const CHANGELOG_ENTRIES = parseChangelogEntries(changelogSource);
 
-/** The newest bundled release, used when the live changelog is unavailable. */
 export const LATEST_CHANGELOG_ENTRY: ChangelogEntry | null =
   CHANGELOG_ENTRIES[0] ?? null;
 
-/** Read the same current changelog source that getbb.app builds from. */
 export async function fetchLatestChangelogEntry(
   fetchFn: typeof fetch,
   signal?: AbortSignal,

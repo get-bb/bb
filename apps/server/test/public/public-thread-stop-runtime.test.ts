@@ -34,8 +34,6 @@ describe("thread runtime stop", () => {
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      // A release tells the daemon the thread is already idle, so it unloads
-      // the runtime without waiting for an active turn that cannot arrive.
       expect(stop.command).toMatchObject({ intent: "release" });
 
       await reportQueuedCommandSuccess(harness, stop, {
@@ -46,9 +44,6 @@ describe("thread runtime stop", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({ ok: true });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      // Nobody interrupted this thread. A release that appended an
-      // interruption would put a false event in the user's timeline and would
-      // interrupt the thread's pending interactions.
       expect(
         listEvents(harness.db, { threadId: thread.id }).filter(
           (event) => event.type === "system/thread/interrupted",
@@ -150,9 +145,6 @@ describe("thread runtime stop", () => {
       const { environment, thread } = seedThreadFixture(harness, {
         thread: { status: "idle", visibility: "hidden" },
       });
-      // The caller read the thread while it was active; the turn completed
-      // before the stop transaction ran, so `stop.requested` is a no-op on the
-      // settled row. The runtime is still loaded and must still be released.
       const stalePromise = stopThreadForCurrentState(
         harness.deps,
         { ...thread, status: "active" },
@@ -199,14 +191,11 @@ describe("thread runtime stop", () => {
         }),
       );
 
-      // The second caller must not report a finished release while the first
-      // release is still in flight, and it must not send a duplicate RPC.
       const settledEarly = await Promise.race([
         second.then(() => "settled"),
         new Promise((resolve) => setTimeout(() => resolve("pending"), 50)),
       ]);
       expect(settledEarly).toBe("pending");
-      // Only the first release is in flight. A duplicate would queue a second.
       expect(listQueuedCommands(harness, "thread.stop")).toHaveLength(1);
 
       await reportQueuedCommandSuccess(harness, stop, {
@@ -238,8 +227,6 @@ describe("thread runtime stop", () => {
         errorMessage: "Test release failure",
       });
 
-      // A release keeps no durable record, so a silent success would leave the
-      // caller believing a still-loaded runtime is gone.
       expect((await responsePromise).status).toBeGreaterThanOrEqual(500);
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
@@ -267,8 +254,6 @@ describe("thread runtime stop", () => {
         { method: "POST" },
       );
 
-      // A disconnected host holds no runtime to release, so the release
-      // already reached its goal.
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({ ok: true });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");

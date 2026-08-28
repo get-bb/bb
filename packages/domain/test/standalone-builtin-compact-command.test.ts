@@ -1,12 +1,3 @@
-// Classification invariants for `isStandaloneBuiltinCompactCommand`.
-//
-// These cases moved here from the legacy Codex adapter suite
-// (`plugins/provider-codex/src/adapter.test.ts`) when that adapter was
-// deleted. The function is shared with the canonical Codex bridge, which uses
-// it to route a standalone builtin `/compact` prompt to `thread/compact/start`
-// instead of `turn/start`; that routing decision is covered by the codex bridge
-// tests, while these cases pin classification only.
-
 import { describe, expect, it } from "vitest";
 
 import { isStandaloneBuiltinCompactCommand } from "../src/shared-types.js";

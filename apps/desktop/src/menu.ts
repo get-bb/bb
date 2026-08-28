@@ -20,10 +20,6 @@ const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 const SERVER_MENU_LABEL = "Server";
 const SERVER_MENU_ITEM_ID = "bb-server-menu";
 export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
-/**
- * Disabled row shown in place of the Connect server list when the last sync
- * produced none, so an empty list is not mistaken for an empty account.
- */
 export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
   ConnectServerSyncSkipReason,
   string
@@ -57,14 +53,9 @@ export interface InstallApplicationMenuArgs {
   openServerDaemonLogs(): void;
   selectServer(serverId: string): void;
   setServerUrl(): void;
-  /** Fired when the Window ▸ Server submenu opens (freshness trigger). */
   onServerMenuWillShow?: () => void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
-  /**
-   * Why `servers` lists no Connect servers, or null when it does (or when
-   * the account really has none).
-   */
   connectServersSkipReason: ConnectServerSyncSkipReason | null;
 }
 
@@ -180,10 +171,6 @@ export function buildApplicationMenuTemplate(
         {
           accelerator: args.accelerators.closeWindowOrSideTab,
           click(_menuItem, browserWindow) {
-            // Electron sends null here for native panels such as the About
-            // window. Its type defines only BaseWindow | undefined.
-            // These panels have no Electron BaseWindow, so use the native
-            // close action.
             if (browserWindow === null) {
               if (args.isMac) {
                 Menu.sendActionToFirstResponder("performClose:");

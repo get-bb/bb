@@ -9,11 +9,6 @@ import {
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
 
-/**
- * The settings buckets: shared between the settings sidebar (which replaces
- * the app sidebar on /settings routes) and SettingsView (which renders the
- * selected bucket's content).
- */
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
   { icon: "Bot", id: "providers", label: "Providers" },
@@ -42,23 +37,13 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export interface SettingsNavState {
-  /** Selected bucket; null while a plugin page is active. */
   activeSection: SettingsSectionId | null;
-  /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
-  /** The plugin whose settings page is open, when on /settings/plugins/:id. */
   activePluginId: string | null;
-  /** Enabled plugins with configuration, for the sidebar's Plugins group. */
   pluginEntries: readonly { id: string; label: string; icon: string | null }[];
-  /** Buckets visible on this host. */
   sections: readonly SettingsNavSection[];
 }
 
-/**
- * URL → settings navigation state. Uses matchPath on the location (not
- * useParams) so it works both inside the settings route element and in the
- * sidebar, which mounts outside the route tree.
- */
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
@@ -72,7 +57,6 @@ export function useSettingsNavState(): SettingsNavState {
   );
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
   const activePluginId = pluginMatch?.params.pluginId ?? null;
-  // A machine page keeps the Machines bucket selected in the sidebar.
   const machineMatch = matchPath(
     SETTINGS_MACHINE_ROUTE_PATH,
     location.pathname,
@@ -98,8 +82,6 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
-  // A plugin earns a Settings row by actually having configuration: a
-  // declarative settings form or a mounted settingsSection slot.
   const pluginEntries = (pluginListQuery.data?.plugins ?? [])
     .filter(
       (plugin) =>

@@ -71,7 +71,6 @@ describe("fetchPluginList envelope", () => {
       at: 1752300000000,
       detail: "boom",
     });
-    // Absent quiet fields normalize to the explicit quiet value.
     expect(plugin?.updateState.blockedVersion).toBeNull();
     expect(plugin?.updateState.blockedReasons).toEqual([]);
   });
@@ -143,8 +142,6 @@ describe("fetchPluginList envelope", () => {
   });
 
   it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
-    // A rollback whose record lost `at` or `detail` is contract drift; the
-    // quiet state would suppress the Needs-attention pill and banner.
     const partialFailure = {
       ...ROW,
       updateState: { lastFailure: { version: "1.7.0" } },

@@ -1,24 +1,3 @@
-/**
- * THREAD LIFECYCLE — the designed two-axis model.
- *
- * This is no longer the behavior-neutral inventory of the original migration:
- * stop intent is now the `stopping` *status*, not a `stopRequestedAt`
- * side-field. The two axes are:
- *
- * - Execution status (one column): idle → starting → active → stopping →
- *   idle | error. Both the "working" intent (`active`) and the "stopping"
- *   intent (`stopping`) are real states here.
- * - Record fields (orthogonal): deletedAt, archivedAt — surfaced as the only
- *   supersession predicates (`notDeleted`, `notArchived`).
- *
- * `stop.requested` replaces the old `markThreadStopRequested` field write. A
- * `stopping` row has NO run.started cell: dispatching new work into it is
- * structurally impossible, which is the table form of the old
- * `notStopRequested` guard. A settled stop lands on `idle` (`stop.settled` or
- * `run.succeeded`) or `error` (`run.failed`). THREAD_LIFECYCLE and
- * THREAD_LIFECYCLE_EVENT_PREDICATES in src/thread-lifecycle.ts are the source
- * of truth; these assertions pin them.
- */
 import { describe, expect, it } from "vitest";
 import {
   evaluateThreadLifecycleEvent,
@@ -27,10 +6,7 @@ import {
   type ThreadLifecycleEventType,
   type ThreadLifecycleRowState,
 } from "../src/thread-lifecycle.js";
-import {
-  threadStatusValues,
-  type ThreadStatus,
-} from "../src/thread-status.js";
+import { threadStatusValues, type ThreadStatus } from "../src/thread-status.js";
 
 const allEventTypes: readonly ThreadLifecycleEventType[] = [
   "run.preparing",
@@ -190,7 +166,6 @@ describe("evaluateThreadLifecycleEvent", () => {
             detail: signal.detail,
           });
         } else {
-          // Behavior parity: undeclared signals must not block the event.
           expect(evaluation).toEqual({
             to: THREAD_LIFECYCLE[status][eventType],
           });
@@ -221,7 +196,6 @@ describe("evaluateThreadLifecycleEvent", () => {
   });
 
   it("reports superseded before illegal-transition", () => {
-    // run.started has no cell for "active", but the deleted row must win.
     expect(
       evaluateThreadLifecycleEvent({
         event: { type: "run.started" },

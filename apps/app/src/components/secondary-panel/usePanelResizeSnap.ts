@@ -21,11 +21,6 @@ export interface PanelResizeSnapController {
   onPointerDownCapture: (event: PointerEvent) => void;
 }
 
-/**
- * Gives react-resizable-panels' outer divider the same single-writer drag path
- * as bb's other split dividers. Pointer samples update only the adjacent flex
- * items; the panel library receives one canonical resize when the drag ends.
- */
 export function usePanelResizeSnap({
   axis,
   onResize,

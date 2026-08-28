@@ -561,9 +561,6 @@ describe("ThreadSecondaryPanel remove-split control", () => {
       expect(document.activeElement).toBe(removeControl);
       expect(removeControl.tabIndex).toBe(0);
 
-      // jsdom does not synthesize a button's browser-default click from key
-      // events. Dispatch the key pair, then the detail=0 click a browser emits
-      // for keyboard activation so this still exercises the native button path.
       fireEvent.keyDown(removeControl, { key });
       fireEvent.keyUp(removeControl, { key });
       fireEvent.click(removeControl, { detail: 0 });
@@ -652,10 +649,6 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
   });
 });
 
-// Every right-panel show/hide control has to disclose the edge the panel
-// actually opens from, and on a compact viewport that edge is the bottom.
-// Each trigger builds its own button, so the glyph is only correct as long as
-// every one of them routes through getRightPanelToggleIconName.
 describe("ThreadSecondaryPanel hide control glyph", () => {
   it("shows the drawer glyph while the panel renders as a bottom drawer", () => {
     const view = renderPanel({
@@ -679,9 +672,6 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
   });
 });
 
-// The full-screen control is the ONLY way back once the conversation is hidden
-// — there is no standalone rail to click. Pin both halves of the same-slot
-// expansion pair so a full-screen tab can always restore its prior layout.
 describe("ThreadSecondaryPanel full-screen control", () => {
   it("keeps Full Screen before Hide right panel in the trailing toolbar", () => {
     const view = renderPanel({
@@ -848,9 +838,9 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     const focusedPaneNewTabControl = screen.getByRole("button", {
       name: "Open new tab in this pane",
     });
-    expect(
-      focusedPaneNewTabControl.closest("[data-split-pane-id]"),
-    ).toBe(initiallyInactivePane);
+    expect(focusedPaneNewTabControl.closest("[data-split-pane-id]")).toBe(
+      initiallyInactivePane,
+    );
     expect(
       initiallyFocusedPane?.querySelector("[data-new-tab-control-reserved]"),
     ).not.toBeNull();

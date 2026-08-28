@@ -16,41 +16,28 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { resolvePiLaunch } from "./rpc-child.js";
 
-/**
- * Pi is a user-installed CLI, like codex and claude: the plugin ships no
- * agent tree. The install surface is npm's global package; the version gate
- * is the first release whose RPC mode carries everything the bridge uses
- * (extension loading, `get_session_stats.contextUsage`, `get_state.model`).
- */
-
 const execFileAsync = promisify(execFile);
 export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
 export const PI_NPM_PACKAGE = "@earendil-works/pi-coding-agent";
 const VERSION_PROBE_TIMEOUT_MS = 15_000;
-/**
- * The gate's memo lifetime. The server polls `provider/health` every 15 s
- * and `model/list` follows most polls; one `which pi` + `pi --version` per
- * 30 s per launch path is enough, and a fresh install shows within that.
- */
 const INSTALL_GATE_TTL_MS = 30_000;
 
 type PiVersionProbe =
   | { version: string; failure: null }
   | { version: null; failure: string };
 
-/**
- * `pi --version` through the same launch the bridge spawns sessions with.
- * Only stdout counts: a crashing pi prints its own version in a stack trace
- * on stderr, which must not pass the gate.
- */
 export async function probePiVersion(): Promise<PiVersionProbe> {
   const launch = resolvePiLaunch(process.env);
   const display = formatCommand(launch.command, [...launch.args, "--version"]);
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync(launch.command, [...launch.args, "--version"], {
-      timeout: VERSION_PROBE_TIMEOUT_MS,
-    }));
+    ({ stdout } = await execFileAsync(
+      launch.command,
+      [...launch.args, "--version"],
+      {
+        timeout: VERSION_PROBE_TIMEOUT_MS,
+      },
+    ));
   } catch (error) {
     return {
       version: null,
@@ -63,12 +50,6 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
     : { version, failure: null };
 }
 
-/**
- * Why `pi --version` gave no answer. `execFile` sets `killed` when ITS
- * timeout fired (it sends SIGTERM itself), so a SIGTERM without `killed` came
- * from outside — an operator or a supervisor stopping the probe — and must
- * not read as a slow pi.
- */
 export function describePiVersionProbeFailure(error: unknown): string {
   const failed =
     error !== null && typeof error === "object"
@@ -88,12 +69,13 @@ export function describePiVersionProbeFailure(error: unknown): string {
 
 export async function getPiProviderInstallationStatus(): Promise<ProviderInstallationStatus> {
   const launch = resolvePiLaunch(process.env);
-  const [resolvedExecutable, probe, latestVersion, npmGlobal] = await Promise.all([
-    resolveExecutablePath(launch.command),
-    probePiVersion(),
-    npmLatestVersion(PI_NPM_PACKAGE),
-    probeNpmGlobalPackage(PI_NPM_PACKAGE),
-  ]);
+  const [resolvedExecutable, probe, latestVersion, npmGlobal] =
+    await Promise.all([
+      resolveExecutablePath(launch.command),
+      probePiVersion(),
+      npmLatestVersion(PI_NPM_PACKAGE),
+      probeNpmGlobalPackage(PI_NPM_PACKAGE),
+    ]);
   const currentVersion = probe.version;
   const installed = resolvedExecutable !== null || currentVersion !== null;
   const needsUpdate =
@@ -105,7 +87,11 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
     installed &&
     currentVersion !== null &&
     compareVersions(currentVersion, PI_MINIMUM_SUPPORTED_VERSION) < 0;
-  const actionKind = !installed ? "install" : needsUpdate || versionUnsupported ? "update" : null;
+  const actionKind = !installed
+    ? "install"
+    : needsUpdate || versionUnsupported
+      ? "update"
+      : null;
 
   return {
     executableName: "pi",
@@ -144,7 +130,6 @@ export async function getPiProviderInstallationRun(
       message: `Pi ${action} is no longer available on this host.`,
     };
   }
-  // Pi has no self-updater; both actions are the npm global install.
   return {
     available: true,
     command: npmGlobalInstallCommand(PI_NPM_PACKAGE),
@@ -153,8 +138,16 @@ export async function getPiProviderInstallationRun(
 }
 
 export function piHealthResult(
-  status: "ready" | "not_installed" | "unauthenticated" | "unsupported_version" | "unknown",
-  args: { installedVersion?: string | null; statusMessage?: string | null } = {},
+  status:
+    | "ready"
+    | "not_installed"
+    | "unauthenticated"
+    | "unsupported_version"
+    | "unknown",
+  args: {
+    installedVersion?: string | null;
+    statusMessage?: string | null;
+  } = {},
 ): ProviderHealthResult {
   return {
     supported: true,
@@ -195,9 +188,6 @@ async function probePiInstallGate(): Promise<PiInstallGate> {
   }
   const probe = await probePiVersion();
   if (probe.version === null) {
-    // Fail closed: a pi that cannot say its version is not one the bridge
-    // can drive, whatever the reason (crash at startup, timeout, wrong
-    // binary on the launch path).
     const statusMessage = `Could not determine the pi version: ${probe.failure}. ${INSTALL_GUIDANCE}`;
     return {
       ok: false,
@@ -213,21 +203,20 @@ async function probePiInstallGate(): Promise<PiInstallGate> {
       ok: false,
       status: "unsupported_version",
       statusMessage,
-      result: piHealthResult("unsupported_version", { installedVersion, statusMessage }),
+      result: piHealthResult("unsupported_version", {
+        installedVersion,
+        statusMessage,
+      }),
     };
   }
   return { ok: true, installedVersion };
 }
 
-const installGateMemo = new Map<string, { expiresAt: number; gate: Promise<PiInstallGate> }>();
+const installGateMemo = new Map<
+  string,
+  { expiresAt: number; gate: Promise<PiInstallGate> }
+>();
 
-/**
- * The install gate the health check runs before it talks to pi: an
- * executable on the launch path, and a version the bridge supports. The
- * `get_state` smoke probe and the authenticated-model check follow in the
- * bridge, which owns the catalog child. Memoized per launch path for
- * INSTALL_GATE_TTL_MS so the health poll does not spawn pi every 15 s.
- */
 export function getPiInstallGate(): Promise<PiInstallGate> {
   const launch = resolvePiLaunch(process.env);
   const key = JSON.stringify([launch.command, launch.args]);
@@ -238,7 +227,6 @@ export function getPiInstallGate(): Promise<PiInstallGate> {
   }
   const gate = probePiInstallGate();
   installGateMemo.set(key, { expiresAt: now + INSTALL_GATE_TTL_MS, gate });
-  // A probe that throws is not a gate answer; the next call re-probes.
   gate.catch(() => {
     if (installGateMemo.get(key)?.gate === gate) installGateMemo.delete(key);
   });

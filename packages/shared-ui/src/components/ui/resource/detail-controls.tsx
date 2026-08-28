@@ -21,15 +21,6 @@ function withTooltip(control: ReactNode, tooltip: ReactNode | undefined) {
   );
 }
 
-/**
- * Short scalar facts about a resource — version, install date, and the like.
- *
- * These read as a quiet metadata run rather than a table. The facts a detail
- * page actually carries are one to three short values, and a bordered grid with
- * filled label cells outweighs that content; the section heading already
- * supplies the hierarchy. A fact that needs its own tone or action is not a
- * peer of these — render it beside the list, not inside it.
- */
 export function ResourceDetailFacts({
   children,
   className,
@@ -55,8 +46,7 @@ export function ResourceDetailFact({
 }) {
   return (
     <div className="min-w-0">
-      {/* Leading stays snug rather than none: a value long enough to wrap on a
-          narrow page would otherwise collide with its own second line. */}
+      {}
       <dt className="text-xs leading-snug text-muted-foreground">{label}</dt>
       <dd
         className={cn(
@@ -70,7 +60,6 @@ export function ResourceDetailFact({
   );
 }
 
-/** Passive lifecycle status for states that are observed, not changed here. */
 export function ResourceLifecycleStatus({
   label,
   tooltip,
@@ -102,7 +91,6 @@ export function ResourceLifecycleStatus({
   return withTooltip(status, tooltip);
 }
 
-/** Canonical action for a resource that can be added from a browse surface. */
 export function ResourceInstallControl({
   accessibleLabel,
   label = "Install",
@@ -157,12 +145,6 @@ export function ResourceInstallControl({
   return withTooltip(control, presentation === "icon" ? tooltip : undefined);
 }
 
-/**
- * Canonical installed state for browse and detail surfaces.
- *
- * With an action it shows the installed or provenance treatment at rest, then
- * reveals the destructive uninstall affordance only while hovered or focused.
- */
 export function ResourceInstalledControl({
   accessibleLabel,
   label = "Installed",

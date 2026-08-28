@@ -60,12 +60,6 @@ interface UseProjectCommandsArgs {
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
-/**
- * The branch list is a daemon git RPC (throttled fetch + several git
- * commands). Realtime `project-sources-changed` refreshes it and the branch
- * picker refetches on open, so a foreground/focus refetch only re-runs that
- * RPC without new information.
- */
 const PROJECT_SOURCE_BRANCHES_STALE_MS = 30_000;
 
 function requireProviderId(
@@ -255,14 +249,6 @@ export function useProjectFilePreview(
   });
 }
 
-/**
- * Fetches the discoverable provider skills/commands for a project, scoped by
- * provider + environment. Backs `useCommandSuggestions`, which owns trigger
- * resolution, debounce, and mapping to menu rows, and serves both the
- * existing-thread follow-up composer and the new-thread composer. Unlike
- * mentions, the command list is enabled even with an empty query (commands show
- * the full list on `/`); the caller gates fetching via `options.enabled`.
- */
 export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
   return {
     queryKey: projectCommandsQueryKey(
@@ -299,8 +285,6 @@ export function useProjectCommands(
     ...projectCommandsQueryOptions(args),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
-    // Reopening the slash menu refreshes provider-native files that may have
-    // changed on disk; typing keeps the same key and still filters locally.
     staleTime: 0,
   });
 }

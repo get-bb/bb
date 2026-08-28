@@ -1,8 +1,3 @@
-/* The bb.theme preference model, shared by the pre-paint inline script in
-   routes/__root.tsx and the marketing nav's theme control in
-   landing/site-chrome.tsx. Same key and value set as the bb app's useTheme, so
-   the two agree wherever they share an origin. */
-
 import themeInitSource from "./theme-init.js?raw";
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -22,15 +17,10 @@ export function readThemePreference(): ThemePreference {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
-  } catch {
-    // Storage can be unavailable (private mode); fall through to system.
-  }
+  } catch {}
   return "system";
 }
 
-/* Point browser chrome at the right one of the two theme-color metas. This
-   rewrites `media` rather than `content` for the reason themeInit explains,
-   which also keeps both colour literals in one place (__root.tsx). */
 export function syncThemeColorMeta(preference: ThemePreference) {
   for (const meta of document.querySelectorAll<HTMLMetaElement>(
     THEME_COLOR_SELECTOR,
@@ -59,8 +49,6 @@ export function applyThemePreference(preference: ThemePreference) {
 export function setThemePreference(preference: ThemePreference) {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, preference);
-  } catch {
-    // The in-page change still applies for this visit.
-  }
+  } catch {}
   applyThemePreference(preference);
 }

@@ -75,12 +75,6 @@ import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
-/**
- * A thread that awaits a user interaction cannot take a prompt, so the server
- * holds the message and delivers it when the interaction settles (#1650). The
- * message is accepted, not lost, and resending it would double-send — say so,
- * because nothing in the timeline runs yet.
- */
 function reportHeldSendDelivery(delivery: SendMessageDelivery): void {
   if (delivery !== "deferred") {
     return;
@@ -98,7 +92,6 @@ function createPluginComposerHostIdentity(scopeIdentity: string): string {
 }
 
 interface EmbeddedThreadChatLabels {
-  /** Composer placeholder while the thread is idle/active. */
   placeholder: string;
   stopping: string;
   provisioning: string;
@@ -114,23 +107,14 @@ const DEFAULT_LABELS: EmbeddedThreadChatLabels = {
 
 interface EmbeddedThreadChatComposerProps {
   draftScope: PromptDraftScope;
-  /** Thread whose resolved defaults seed the execution controls (the parent thread while drafting). */
   executionDefaultsThreadId: string;
   executionResetKey: string;
   executionEnvironmentId?: string;
-  /** Machine of `executionEnvironmentId`; lets host-scoped catalogs share one query across environments. */
   executionEnvironmentHostId?: string;
   permissionPolicy: "editable" | "snapshot";
   environmentSummary: ReactNode;
-  /** Plugin composer host scope for the bottom draft. Null disables the host. */
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
-  /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /**
-   * External focus nonce: every change focuses the composer caret at the end
-   * of the draft (the initial value does not). Combined with the component's
-   * own internal focus nonce.
-   */
   focusRequestKey?: number;
 }
 
@@ -138,48 +122,25 @@ interface EmbeddedThreadChatSharedProps {
   threadId: string;
   projectId: string;
   providerId: string;
-  /** Environment context for mentions and command suggestions. */
   promptContextEnvironmentId: string | null;
   resolveMentionLink: PromptMentionLinkResolver;
   leadingContent?: ReactNode;
-  /** Surface-scoped consumer actions for the per-message action bar. */
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
-  /**
-   * Whether slot-registered plugin message actions render in this surface's
-   * timeline. Embedded consumers (plugin ThreadChat, the side-chat panel)
-   * pass false; the main thread keeps the default.
-   */
   includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
-  /** Workspace root used to resolve relative links in timeline Markdown. */
   workspaceRootPath?: string;
-  /**
-   * "contained" (default) fills and scrolls inside a bounded parent;
-   * "document" grows with its content and defers scrolling to the page (no
-   * bottom-anchored scroll body, so no follow-the-stream behavior).
-   */
   layout?: "contained" | "document";
-  /**
-   * Content measure: "panel" (default) is the edge-to-edge side-panel
-   * presentation; "page" centers the conversation at reading width.
-   */
   measure?: "panel" | "page";
 }
 
 interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
   variant: "compact";
-  /** Background shared by the timeline, footer, and its overflow fade. */
   surfaceTone?: "background" | "sidebar";
   composer: EmbeddedThreadChatComposerProps;
   footer?: never;
 }
 
-/**
- * The full-page presentation with an externally-owned composer footer. The main
- * thread view keeps its chrome-heavy composer (context banners, git, goal cards)
- * outside for now; it shares the same engine hooks this component uses.
- */
 interface EmbeddedThreadChatHostedFooterProps {
   variant: "hosted-footer";
   footer: ReactNode;
@@ -192,14 +153,6 @@ type EmbeddedThreadChatProps =
   | EmbeddedThreadChatComposerModeProps
   | EmbeddedThreadChatHostedFooterProps;
 
-/**
- * One thread's chat — timeline plus composer — embeddable in a side panel
- * ("compact") or as the main conversation surface ("hosted-footer"). Owns
- * timeline
- * loading (when no controller is injected), realtime cache updates, drafts,
- * send/queue/steer/stop, queued-message editing, attachments, mentions,
- * execution controls, and read tracking.
- */
 export function EmbeddedThreadChat(props: EmbeddedThreadChatProps) {
   if (props.variant === "hosted-footer") {
     return <EmbeddedThreadChatHostedFooter {...props} />;
@@ -319,9 +272,6 @@ function EmbeddedThreadChatWithComposer({
   const selectedExecutionServiceTier = supportsServiceTier
     ? serviceTier
     : undefined;
-  // Snapshot policy sources the mode straight from the thread's resolved
-  // defaults — not the provider-filtered picker state — so a slow capabilities
-  // load can never widen the value actually used.
   const snapshotPermissionMode = defaultExecutionOptions?.permissionMode;
   const effectivePermissionMode =
     composer.permissionPolicy === "snapshot"
@@ -340,8 +290,6 @@ function EmbeddedThreadChatWithComposer({
               : {}),
           }
         : {}),
-      // Omitted while defaults are still loading — the server then falls back
-      // to the thread's own stored default, which is the same value.
       ...(effectivePermissionMode !== undefined
         ? { permissionMode: effectivePermissionMode }
         : {}),
@@ -429,8 +377,6 @@ function EmbeddedThreadChatWithComposer({
   }, [stopThread, threadId]);
   const isProvisioning =
     displayStatus === "provisioning" || displayStatus === "starting";
-  // A replayed (placeholder) resolution seeds the pickers but does not open
-  // submission; wait for the live query like an empty cache would.
   const isDefaultExecutionOptionsLoading =
     executionOptionsQuery.isPlaceholderData ||
     (defaultExecutionOptions === undefined && executionOptionsQuery.isLoading);
@@ -624,7 +570,6 @@ function EmbeddedThreadChatWithComposer({
     [addQuoteToPromptDraft],
   );
 
-  // ---- Plugin composer host --------------------------------------------------
   const queuedEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const queuedEditOwnerThreadId =
     inlineEditingQueuedMessage?.ownerThreadId ?? null;
@@ -663,8 +608,6 @@ function EmbeddedThreadChatWithComposer({
   const activeBottomComposerIdentityRef = useRef<string | null>(null);
   const activeQueuedComposerIdentityRef = useRef<string | null>(null);
   const currentPromptDraftRef = useRef(currentPromptDraft);
-  // The host reads only committed (painted) state: a render that suspends must
-  // not leak its in-flight queued-edit draft into `getCurrent`.
   const committedInlineEditRef = useRef(inlineEditingQueuedMessage);
   useLayoutEffect(() => {
     currentPromptDraftRef.current = currentPromptDraft;
@@ -691,12 +634,6 @@ function EmbeddedThreadChatWithComposer({
       }
     };
   }, [queuedComposerHostIdentity]);
-  // subscribeDraft sources for the two hosts below. The notifiers MUST be
-  // declared after every ref-sync layout effect above (hook order = effect
-  // order): a thread switch changes the host identity and the draft in one
-  // commit, and `getCurrent` gates on the active-identity refs. Notifying
-  // before the identity sync would hand subscribers the stale pre-switch
-  // draft with no later notification to correct it.
   const subscribeBottomDraft = useComposerHostDraftNotifier(currentPromptDraft);
   const subscribeQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
@@ -799,7 +736,6 @@ function EmbeddedThreadChatWithComposer({
     activeQueuedPluginComposerHost?.textEffectKey ?? null,
   );
 
-  // ---- Composer configs ------------------------------------------------------
   const composerPlaceholder = isStopRequested
     ? labels.stopping
     : isProvisioning
@@ -808,9 +744,6 @@ function EmbeddedThreadChatWithComposer({
 
   const bottomComposerConfig = useMemo<FollowUpComposerProps>(
     () => ({
-      // No prompt-history surface here. A draft-only history config (current
-      // draft, no entries) satisfies the required shape without inventing a
-      // feature the composer never exercises.
       history: {
         currentDraft: currentPromptDraft,
         entries: [],
@@ -1009,10 +942,6 @@ function EmbeddedThreadChatWithComposer({
     () =>
       composer.permissionPolicy === "snapshot"
         ? {
-            // Sourced from the same resolved-defaults value snapshot sends use,
-            // so the displayed label can't drift from the permission the thread
-            // actually runs with. Undefined until defaults load, which keeps
-            // the picker hidden rather than guessing.
             value: snapshotPermissionMode,
             options: permissionModeOptions,
             onChange: () => {},
@@ -1131,10 +1060,6 @@ function EmbeddedThreadChatWithComposer({
 
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
-  // An approval or question blocks the turn until it is answered, so this
-  // surface swaps the composer for it exactly like the main thread view. A
-  // plugin-owned interaction renders in its own composer instead, so the
-  // banner ignores it and the draft stays.
   const pendingInteractionBanner =
     activePendingInteraction === null ||
     activePendingInteraction.payload.kind === "plugin" ? null : (
@@ -1164,14 +1089,10 @@ function EmbeddedThreadChatWithComposer({
             promptActions={promptActions}
             collapseResetKey={surfaceKey}
             focusEndKey={
-              // Composite only when an external nonce is supplied, so existing
-              // consumers keep the plain internal-nonce key.
               composer.focusRequestKey === undefined
                 ? composerFocusNonce
                 : `${composerFocusNonce}:${composer.focusRequestKey}`
             }
-            // Embedded surfaces never own the global composer shortcuts; the
-            // thread-detail composer does.
             isPrimaryComposer={false}
           />
         )}
@@ -1198,9 +1119,6 @@ function EmbeddedThreadChatWithComposer({
   );
 
   if (layout === "document") {
-    // Normal document flow: the page (or panel) scrolls, not this component.
-    // The sticky footer keeps the composer visible while the transcript is in
-    // view without capturing scroll ownership.
     return (
       <div
         key={surfaceKey}

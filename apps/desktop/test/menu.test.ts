@@ -137,8 +137,6 @@ describe("application menu", () => {
   });
 
   it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
-    // A saved custom target with no local runtime and no cached credential:
-    // the sync has nothing to ask, and the menu must say so (#1753).
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, {
         connectServersSkipReason: "no-credential",

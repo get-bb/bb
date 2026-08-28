@@ -134,8 +134,6 @@ describe("isThreadForkable", () => {
     expect(isThreadForkable(makeThread({ environmentId: null }), true)).toBe(
       false,
     );
-    // The capability now arrives from server-provided ProviderInfo; absence
-    // (unknown provider, data not loaded) reads as false.
     expect(
       isThreadForkable(makeThread({ providerId: "not-a-provider" }), false),
     ).toBe(false);

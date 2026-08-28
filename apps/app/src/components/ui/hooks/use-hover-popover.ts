@@ -42,7 +42,6 @@ const NON_HOVERABLE_CONTENT_PROPS: HoverPopoverHandlers = {
   onFocus: noop,
   onPointerEnter: noop,
   onPointerLeave: noop,
-  // Hover-driven popovers should not steal or restore focus.
   onOpenAutoFocus: preventAutoFocus,
   onCloseAutoFocus: preventAutoFocus,
 };
@@ -69,7 +68,6 @@ export function useHoverPopover({
   }, []);
 
   useEffect(() => {
-    // Touch pointers open via tap. Pointer-based hover state has no role.
     if (isPointerCoarse) return;
 
     clearToggleTimeout();
@@ -161,7 +159,6 @@ export function useHoverPopover({
             onPointerLeave: () => {
               setIsPointerOverContent(false);
             },
-            // Hover-driven popovers should not steal or restore focus.
             onOpenAutoFocus: preventAutoFocus,
             onCloseAutoFocus: preventAutoFocus,
           }

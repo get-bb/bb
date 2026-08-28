@@ -46,8 +46,6 @@ export function resolveRootComposeThreadEnvironment(
   if (!parsed) return null;
 
   if (parsed.type === "reuse") {
-    // Bare reuse value (mode picked but no worktree chosen yet) is an
-    // incomplete state — submit is disabled by returning null.
     if (parsed.environmentId === null) return null;
     return { type: "reuse", environmentId: parsed.environmentId };
   }

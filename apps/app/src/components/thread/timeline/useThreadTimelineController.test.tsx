@@ -82,9 +82,6 @@ function makeUserRow(
 
 describe("mergeLatestTimelineRows", () => {
   it("replaces a retained optimistic row with the server row it stands in for", () => {
-    // The state right after the first send in an empty thread (a fresh side
-    // chat): the only retained row is the optimistic one, so nothing overlaps
-    // the server's response. Appending would render the message twice.
     const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
     const serverRow = makeUserRow("thread-1:user-seed:5", 5);
 
@@ -98,8 +95,6 @@ describe("mergeLatestTimelineRows", () => {
   });
 
   it("still appends genuinely disjoint server rows to retained ones", () => {
-    // Same no-overlap shape, but the retained row is a real server row from an
-    // older page — dropping it would lose history.
     const older = makeUserRow("thread-1:user-seed:1", 1);
     const newer = makeUserRow("thread-1:user-seed:5", 5);
 
@@ -113,8 +108,6 @@ describe("mergeLatestTimelineRows", () => {
   });
 
   it("keeps a pending optimistic row that the latest snapshot still carries", () => {
-    // Before the server row lands, the optimistic row arrives via `latestRows`
-    // (it is written into the timeline cache), so it must survive the merge.
     const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
 
     const merged = mergeLatestTimelineRows({

@@ -86,8 +86,6 @@ describe("SelectableMessageProse", () => {
     );
     const addsAfterFirstMount = countSharedListenerCalls(addSpy);
 
-    // Per-tap handler work is O(document listeners): additional messages must
-    // reuse the shared registry instead of registering their own handlers.
     rerender(
       <>
         <SelectableMessageProse>First answer</SelectableMessageProse>
@@ -97,7 +95,6 @@ describe("SelectableMessageProse", () => {
     );
     expect(countSharedListenerCalls(addSpy)).toBe(addsAfterFirstMount);
 
-    // Unmounting the last message must detach the shared listeners.
     unmount();
     expect(countSharedListenerCalls(removeSpy)).toBeGreaterThanOrEqual(
       SHARED_DOCUMENT_EVENT_TYPES.length,
@@ -140,7 +137,6 @@ describe("SelectableMessageProse", () => {
         expect.objectContaining({ text: "Second selectable" }),
       ),
     );
-    // The first message must clear its stale selection exactly once.
     await waitFor(() => expect(onSelectFirst).toHaveBeenLastCalledWith(null));
   });
 
@@ -604,8 +600,6 @@ describe("SelectableMessageProse", () => {
       <SelectableMessageProse>Answer prose</SelectableMessageProse>,
     );
 
-    // None of the pointer handlers call preventDefault; the passive flag is a
-    // perf contract (it keeps taps off the blocking-handler list), so pin it.
     const optionsByType = new Map(
       addSpy.mock.calls.map(([type, , options]) => [type, options]),
     );
@@ -613,8 +607,6 @@ describe("SelectableMessageProse", () => {
       expect(optionsByType.get(type), type).toEqual({ passive: true });
     }
 
-    // Detach still matches (removeEventListener ignores `passive`): the
-    // shared-listener teardown test above covers the counts.
     view.unmount();
   });
 });

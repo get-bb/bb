@@ -91,8 +91,6 @@ describe("ThreadTerminalContent", () => {
     );
     const mountedView = rendered.getByTestId("terminal-view");
 
-    // Compact drawer swiped closed: the panel is hidden but still persisted
-    // open, so the controller asks to keep the view mounted.
     rendered.rerender(
       <ThreadTerminalContent
         autoFocus={false}
@@ -104,7 +102,6 @@ describe("ThreadTerminalContent", () => {
     expect(hiddenView).toBe(mountedView);
     expect(hiddenView.dataset.panelOpen).toBe("false");
 
-    // Reopening reuses the same xterm instance instead of remounting.
     rendered.rerender(
       <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
     );

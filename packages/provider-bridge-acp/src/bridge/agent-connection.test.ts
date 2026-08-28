@@ -200,8 +200,6 @@ describe("ACP agent stdio lifecycle", () => {
           (error: Error) => error,
         );
       connection.kill();
-      // Reproduce the write that used to win the race with child exit and
-      // replace the pending request's release result with an EPIPE message.
       connection.notify("construction/continues", {
         payload: "x".repeat(EPIPE_PAYLOAD_SIZE),
       });

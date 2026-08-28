@@ -26,7 +26,6 @@ function getFileExtension(path: string): string | null {
     : null;
 }
 
-/** Lazily mounted destination discovery for `experimental_FileLink`. */
 export function ExperimentalFileLinkMenu({
   intent,
 }: {

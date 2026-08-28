@@ -20,11 +20,6 @@ import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
 type SiteNavPage = "blog" | "changelog";
 
-/* ── Theme ─────────────────────────────────────────────────────────
-   The preference model itself lives in lib/theme.ts, shared with the
-   pre-paint script in __root.tsx so there is one implementation of the rule.
-   This file only owns the control. */
-
 const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference;
   label: string;
@@ -35,22 +30,12 @@ const THEME_OPTIONS: ReadonlyArray<{
   { value: "system", label: "System", icon: ComputerIcon },
 ];
 
-// Preference button (sun / moon / monitor for Light / Dark / System — all
-// three glyphs render and CSS keyed off html[data-theme-preference] picks
-// one, so SSR output is preference-independent and hydration can't
-// mismatch) that opens a Light / Dark / System menu. The menu only exists
-// while open, and its checked state comes from the effect below rather than
-// the server render, so it never has to agree with SSR.
 function ThemeMenu() {
   const [open, setOpen] = useState(false);
   const [preference, setPreference] = useState<ThemePreference>("system");
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Follow the OS while the preference is "system" (live, not just at load),
-  // and pick up a choice made in another tab. Both the document and this
-  // component's copy of the preference are refreshed together, so an open menu
-  // can't keep showing a checkmark the page no longer agrees with.
   useEffect(() => {
     const media = matchMedia(DARK_SCHEME_QUERY);
     const sync = () => {
@@ -58,9 +43,6 @@ function ThemeMenu() {
       setPreference(next);
       applyThemePreference(next);
     };
-    // THEME_INIT normally did this pre-paint, but it gives up when storage
-    // access throws, which would otherwise leave the page light while this
-    // control reported "System".
     sync();
     const onScheme = () => {
       if (readThemePreference() === "system") applyThemePreference("system");
@@ -76,7 +58,6 @@ function ThemeMenu() {
     };
   }, []);
 
-  // Dismiss on outside click or Escape; Escape returns focus to the button.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -96,7 +77,6 @@ function ThemeMenu() {
     };
   }, [open]);
 
-  // A same-tab write fires no storage event, so this tab's copy is set here.
   const choose = (next: ThemePreference) => {
     setThemePreference(next);
     setPreference(next);
@@ -146,8 +126,7 @@ function ThemeMenu() {
 export function SiteNav({ current }: { current?: SiteNavPage }) {
   return (
     <nav className="nav">
-      {/* One element; landing.css picks the asset off html.dark, so only the
-          variant in use is ever downloaded (see .bb-mark). */}
+      {}
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />
       </a>
@@ -166,8 +145,7 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         </a>
         <GitHubLink placement="nav">GitHub</GitHubLink>
         <a href={DASHBOARD_PATH}>Sign in</a>
-        {/* Theme control sits before the CTA so the nav ends on the primary
-            action. */}
+        {}
         <ThemeMenu />
         <DownloadLink placement="nav" className="btn btn-primary btn-sm">
           Download for macOS

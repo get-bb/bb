@@ -1,17 +1,7 @@
-import {
-  type CSSProperties,
-  type ReactNode,
-  type UIEventHandler,
-} from "react";
+import { type CSSProperties, type ReactNode, type UIEventHandler } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-/**
- * A detail-row label with a leading icon, styled like the timeline's tool-call
- * leading icons (`size-3.5 text-muted-foreground`). Shared so detail surfaces
- * (the thread info panel, the git-action dialog) render the same row labels
- * consistently.
- */
 export function DetailRowIconLabel({
   icon,
   children,
@@ -27,11 +17,6 @@ export function DetailRowIconLabel({
   );
 }
 
-/**
- * The label/value column grid shared by every detail row. Exported so loading
- * skeletons can align their placeholder bars to real rows without re-typing
- * (and silently drifting from) the column template.
- */
 export const DETAIL_GRID_CLASS =
   "grid grid-cols-[var(--detail-label-width,96px)_minmax(0,1fr)] gap-x-3";
 const DETAIL_LABEL_CLASS = "m-0 text-xs leading-5 text-muted-foreground";
@@ -54,16 +39,7 @@ interface DetailCardProps {
   children: ReactNode;
   className?: string;
   onScroll?: UIEventHandler<HTMLDListElement>;
-  /**
-   * Width of the label column. Applied as a CSS custom property so descendant
-   * rows inherit it without prop drilling. Defaults to 96px.
-   */
   labelWidth?: string;
-  /**
-   * `card` (default) wraps the rows in a bordered, padded panel.
-   * `flat` drops the chrome so the rows sit inline with surrounding content
-   * — useful inside modals or other containers that already provide framing.
-   */
   appearance?: DetailCardAppearance;
 }
 
@@ -100,10 +76,6 @@ interface DetailRowProps {
   labelClassName?: string;
   valueClassName?: string;
   align?: "start" | "center";
-  /**
-   * `horizontal` (default): label sits left of the value in the shared label column.
-   * `vertical`: label sits above the value. Use for wide/tall content like lists.
-   */
   orientation?: DetailRowOrientation;
 }
 

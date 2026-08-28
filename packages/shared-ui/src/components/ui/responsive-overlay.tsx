@@ -13,10 +13,6 @@ import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
 import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import { cn } from "../../lib/utils.js";
 
-// ---------------------------------------------------------------------------
-// Shared context value for responsive overlays (dropdown menus, popovers)
-// ---------------------------------------------------------------------------
-
 export interface ResponsiveOverlayContextValue {
   isCompactViewport: boolean;
   open: boolean;
@@ -31,11 +27,6 @@ function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   drawerElement.style.height = "";
   drawerElement.style.bottom = "";
 }
-
-// ---------------------------------------------------------------------------
-// Hook: manages open state, mobile detection, and breakpoint-cross close.
-// One useMediaQuery subscription per Root (not two).
-// ---------------------------------------------------------------------------
 
 export function useResponsiveRoot(
   controlledOpen: boolean | undefined,
@@ -65,12 +56,6 @@ export function useResponsiveRoot(
     [isCompactViewport, open, onOpenChange],
   );
 }
-
-// ---------------------------------------------------------------------------
-// MobileTrigger: shared trigger for mobile overlays.
-// Adds aria-expanded, aria-haspopup, and data-state that Radix normally
-// provides on desktop but which are missing from a bare <button>.
-// ---------------------------------------------------------------------------
 
 interface MobileTriggerProps {
   asChild?: boolean;
@@ -151,12 +136,6 @@ export const MobileTrigger = React.forwardRef<
 );
 MobileTrigger.displayName = "MobileTrigger";
 
-// ---------------------------------------------------------------------------
-// stripRadixContentProps: removes Radix positioning/behavior props from a
-// props object so that only DOM-compatible props remain for mobile rendering.
-// Derived from a single const to prevent interface/set drift.
-// ---------------------------------------------------------------------------
-
 const RADIX_CONTENT_PROP_NAMES = [
   "side",
   "sideOffset",
@@ -194,29 +173,14 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
   return result as Omit<T, RadixContentPropName>;
 }
 
-// ---------------------------------------------------------------------------
-// ResponsiveDrawerShell: shared scaffold for compact menus, popovers, and
-// dialogs. It uses the persistent shell so opening an overlay never applies
-// modal attributes to the app tree. It also lets the transform start before
-// it mounts the overlay body, then retains that body for later opens.
-// ---------------------------------------------------------------------------
-
 interface ResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAfterCloseAutoFocus?: () => void;
-  /**
-   * Sr-only label announced when the drawer opens. Omit if the caller
-   * renders its own labeled heading inside children (e.g. DialogTitle).
-   */
   srLabel?: string;
-  /** Existing visible title used to label a dialog body. */
   labelledBy?: string;
-  /** Existing visible description for a dialog body. */
   describedBy?: string;
-  /** Class name on the drawer panel. */
   contentClassName?: string;
-  /** Called when the drawer transform completes. */
   onContentAnimationEnd?: (open: boolean) => void;
   children: React.ReactNode;
 }
@@ -310,14 +274,6 @@ export function ResponsiveDrawerShell({
     </PersistentResponsiveDrawerShell>
   );
 }
-
-// ---------------------------------------------------------------------------
-// PersistentResponsiveDrawerShell: a bottom drawer for a large, persistent
-// panel. Unlike Radix/Vaul, this shell does not apply modal attributes to the
-// app root. Those attributes make WebKit resolve styles for the full chat tree
-// on each open. The backdrop blocks pointer input, while the key handler keeps
-// keyboard focus inside the drawer.
-// ---------------------------------------------------------------------------
 
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;

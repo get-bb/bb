@@ -3,7 +3,6 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-// jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,
@@ -99,8 +98,6 @@ describe("Task directive card", () => {
       method: "getTaskByKey",
       input: { taskKey: "TSK-4" },
     });
-    // Visible key/title/glyphs are duplicated by the accessible name and
-    // must stay hidden from the accessibility tree.
     expect(slot.getByText("TSK-4").closest("[aria-hidden]")).toBeTruthy();
   });
 

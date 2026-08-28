@@ -49,7 +49,6 @@ async function postCreateThread(
   });
 }
 
-/** The provision fields that define which workspace policy was applied. */
 interface ProvisionPolicyFields {
   baseBranch: string | null;
   sourcePath: string;
@@ -117,7 +116,6 @@ describe("project-default thread environment", () => {
         environment: { type: "project-default" },
       });
       expect(provision).toEqual(explicit);
-      // Non-plugin origins surface a null plugin attribution.
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
     });
   });
@@ -219,7 +217,6 @@ describe("project-default thread environment", () => {
 
   it("fails with a clear ApiError when the primary host is not connected", async () => {
     await withTestHarness(async (harness) => {
-      // Enrolled host, but no live daemon session.
       const host = seedHost(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {

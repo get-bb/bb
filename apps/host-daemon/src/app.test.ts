@@ -174,11 +174,14 @@ function createFetchRecorder(
       });
     }
 
-    if (/^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)) {
-      // The bridge artifact every bridge launch in these tests names.
+    if (
+      /^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)
+    ) {
       return new Response(new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES), {
         status: 200,
-        headers: { "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength) },
+        headers: {
+          "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength),
+        },
       });
     }
 
@@ -487,7 +490,6 @@ describe("createHostDaemonApp", () => {
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
         bridgeLaunch: {
-          // Resolved against this test's own daemon data dir.
           ...dispatchTestRuntimeBridgeLaunch(dataDir),
         },
       });

@@ -335,17 +335,14 @@ export function SidebarSplitContainer({
   const moveTab = useCallback(
     (sourcePaneId: string, tabId: string, target: SplitDropTarget) => {
       const groupId = nextSidebarSplitGroupId(stateRef.current);
-      commitState(
-        (current) => {
-          const moved = moveSidebarTab(current, sourcePaneId, tabId, target, {
-            groupId,
-          });
-          return isFullScreen
-            ? setSidebarPaneMaximized(moved, moved.layout.focusedPaneId)
-            : moved;
-        },
-        true,
-      );
+      commitState((current) => {
+        const moved = moveSidebarTab(current, sourcePaneId, tabId, target, {
+          groupId,
+        });
+        return isFullScreen
+          ? setSidebarPaneMaximized(moved, moved.layout.focusedPaneId)
+          : moved;
+      }, true);
     },
     [commitState, isFullScreen],
   );
@@ -360,8 +357,6 @@ export function SidebarSplitContainer({
       const sourceGroup = getSidebarGroupForPane(state, sourcePaneId);
       const sourceElement = event.currentTarget;
       const targetBoundary = sourceElement.closest<HTMLElement>("aside");
-      // Sidebar tab splits only target their owning right panel. Fail closed if
-      // the shared container is ever rendered outside that product boundary.
       if (targetBoundary === null) return;
       const chrome = sourceElement.closest<HTMLElement>(
         '[data-testid="thread-secondary-panel-top-chrome"]',
@@ -383,8 +378,6 @@ export function SidebarSplitContainer({
           const dx = x - startX;
           const dy = y - startY;
           if (Math.hypot(dx, dy) <= PANE_DRAG_ENGAGE_DISTANCE_PX) return false;
-          // Horizontal motion inside the tab row remains the existing reorder
-          // gesture. Pulling the tab into pane content hands off to split drag.
           return (
             Math.abs(dy) > Math.abs(dx) ||
             chromeRect === null ||
@@ -464,7 +457,6 @@ export function SidebarSplitContainer({
   if (!hasMultiplePanes && firstPane !== undefined) {
     const group = getSidebarGroupForPane(state, firstPane.paneId);
     if (group === null) return null;
-    // renderPane is a synchronous React render callback; its handlers read refs only after pointer events.
     // oxlint-disable-next-line react/refs
     return renderPane({
       group,

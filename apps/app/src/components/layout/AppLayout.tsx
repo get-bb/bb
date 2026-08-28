@@ -130,19 +130,8 @@ const sidebarWidthAtom = atomWithStorage<number>(
   sidebarWidthStorage,
   { getOnInit: true },
 );
-// The in-flight width while the resize handle is dragged, or null at rest.
-// Written from the drag's animation-frame callback and read only by the
-// bridge below, so a frame of dragging re-renders the bridge and the
-// `Sidebar` element (which writes `--sidebar-width` on the two elements that
-// use it) and nothing else: not AppLayout, not the route subtree, and no
-// ancestor of the thread timeline changes style.
 const sidebarLiveWidthAtom = atom<number | null>(null);
 
-// Held in jotai (rather than as `useState` inside AppLayout) so that toggling
-// the sidebar does not re-render AppLayout — only the small bridge below
-// subscribes. AppLayout's `children` reference stays stable across toggles,
-// so React's element-reference bailout skips re-rendering the entire route
-// subtree (ThreadDetailView, the timeline, etc.).
 const sidebarOpenStorage = createLocalStorageSyncStorage<boolean>({
   parse: (storedValue, initialValue) => {
     if (storedValue === "true") return true;
@@ -206,21 +195,6 @@ interface SidebarTriggerOverlayProps {
   usesDesktopChrome: boolean;
 }
 
-/**
- * Sidebar toggle pinned at the app's top-left, rendered once at the layout root
- * — outside the sliding sidebar panel and the content inset — so it holds a
- * constant position while the sidebar animates in/out behind it, instead of
- * riding whichever container would otherwise host it. The collapsed page header
- * reserves its footprint as animated padding (see AppPageHeader), so toggling
- * slides the header content smoothly past it rather than snapping around a
- * toggle that mounts/unmounts in the header.
- *
- * Desktop chrome keeps the strip a window-drag region; only the button itself
- * is no-drag, so the title strip above and below the (shorter) button stays
- * draggable rather than becoming an oversized dead zone. When macOS traffic
- * lights are visible it offsets past them; in fullscreen, where the lights are
- * hidden, it uses the same small top-left inset as browser chrome.
- */
 function SidebarTriggerOverlay({
   reserveMacosTrafficLights,
   usesDesktopChrome,
@@ -246,9 +220,7 @@ function SidebarTriggerOverlay({
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        {/* The overlay's CHROME_ROW_CLASS box-centers the trigger on the shared
-            traffic-light axis, matching the sidebar arrows and page-title
-            header in desktop chrome. */}
+        {}
         <SidebarTrigger
           className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
           {...triggerProps}
@@ -289,8 +261,6 @@ const routeTitles: Record<string, { title: string }> = {
 };
 
 function resolveRouteTitle(pathname: string): { title: string } | undefined {
-  // The global settings page owns /settings/:section. Legacy plugin settings
-  // links still match briefly before AppRoutes redirects them to Tools.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
@@ -298,22 +268,13 @@ function resolveRouteTitle(pathname: string): { title: string } | undefined {
 }
 
 interface AppHeaderProps {
-  /**
-   * True for routes that should use quiet chrome. This suppresses the center
-   * title; project-scoped quiet routes also get project actions on the right.
-   */
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
   isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
-  /** Registered navPanel when this is a plugin panel route (design §5.2):
-   * the registration's `headerContent` becomes the actions. */
   pluginPanel?: PluginNavPanelSlot;
-  /** The panel's icon + title for the header center — from the live
-   * registration, or remembered chrome until plugin frontends have booted. */
   pluginPanelChrome?: PluginNavPanelChrome;
-  /** The panel route's splat remainder ("" at the panel root). */
   pluginPanelSubPath?: string;
   meta: {
     title: string;
@@ -493,7 +454,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     void navigate(settingsRoutePath);
     return true;
   });
-  // Native server rail "+" tile.
   useAppCommandHandler("settings.openServers", () => {
     void navigate(`${SETTINGS_ROUTE_PATH}/servers`);
     return true;
@@ -502,10 +462,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
-  // Plugin panel routes ride the shared header (design §5.2): icon + panel
-  // title in the center, the registration's headerContent as the actions.
   const navPanelChrome = usePluginNavPanelChrome();
-  // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const isGlobalToolsView = isToolsRoutePath(location.pathname);
@@ -547,15 +504,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
-  // The committed width is read and written through the store, not
-  // subscribed to: AppLayout must not re-render when a resize commits.
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
-  // Plugin pages own the same page header + secondary-panel frame whether they
-  // render alone or in a split. Avoid drawing the global header above it.
   const showHeader = !isThreadView && !isRootView && pluginPanelMatch === null;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
@@ -597,9 +550,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     location.pathname,
     resourceRouteLabel,
   );
-  // Tools breadcrumbs feed only the document title now; the header's choice
-  // between the Extensions title and automation breadcrumbs lives in the pure
-  // (and tested) resolveToolsAreaHeaderMeta.
   const documentTitleBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
   const toolsAreaHeaderMeta = resolveToolsAreaHeaderMeta(
     location.pathname,
@@ -684,11 +634,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = resolveRouteTitle(location.pathname)?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
-  // The sidebar list omits archived threads and side chats, so it can't answer
-  // whether the currently-viewed thread is blocked on input. Read the current
-  // thread's pending interactions directly (the thread view already warms this
-  // cache) so an in-view thread waiting on the user always lights the favicon,
-  // mirroring how the in-view unread signal covers every thread kind.
   const currentThreadPendingInteractionsQuery = useThreadPendingInteractions(
     threadId ?? "",
     { enabled: isThreadView && Boolean(threadId) },
@@ -707,14 +652,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : "none";
   useFaviconBadge(faviconBadge);
 
-  // Drag-time document state is deliberately minimal: only the
-  // `sidebar-resizing` body class (matched by selector, so its invalidation is
-  // scoped to `[data-sidebar]` elements). `preventDefault` on the mousedown
-  // stops a text selection from starting, and the drag-guard overlay (the
-  // pointer target for the whole drag) carries the resize cursor. Setting
-  // `user-select` or `cursor` on `body` instead would change an inherited
-  // property on the document root and restyle every element on mousedown and
-  // again on mouseup.
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
       event.preventDefault();
@@ -732,8 +669,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       window.cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    // flushSync so the sidebar is at its final width in the DOM before the
-    // bounds sync below measures it.
     flushSync(() => {
       store.set(sidebarWidthAtom, liveWidthRef.current);
       store.set(sidebarLiveWidthAtom, null);
@@ -748,8 +683,6 @@ export function AppLayout({ children }: AppLayoutProps) {
 
     const applyLiveWidth = () => {
       animationFrameRef.current = null;
-      // flushSync commits the new width to the DOM inside this frame, so the
-      // bounds sync measures the moved content rect rather than last frame's.
       flushSync(() => {
         store.set(sidebarLiveWidthAtom, liveWidthRef.current);
       });
@@ -784,8 +717,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         window.cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      // Unmount mid-drag: drop the in-flight width so a remount shows the
-      // committed one.
       store.set(sidebarLiveWidthAtom, null);
       resetSidebarResizeDocumentState();
     };

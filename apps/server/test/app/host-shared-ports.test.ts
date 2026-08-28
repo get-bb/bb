@@ -86,8 +86,6 @@ describe("HostSharedPortCoordinator", () => {
       ),
     ).toEqual({ type: "connect-shares.replace", ...first });
 
-    // Current-state replacement for one owner removes 3000 while another
-    // owner contributes 4173.
     sharedPorts.declareSharedPorts({
       ownerId: "other-plugin",
       hostId: host.id,
@@ -101,7 +99,6 @@ describe("HostSharedPortCoordinator", () => {
     const replacement = sharedPorts.reconcileSharedPortsForHost(host.id);
     expect(replacement).toEqual({ generation: 3, ports: [4173, 8080] });
 
-    // Identical replacement is a no-op and retains generation.
     sharedPorts.declareSharedPorts({
       ownerId: "connect",
       hostId: host.id,
@@ -501,8 +498,6 @@ describe("daemon session connect shares", () => {
       );
       expect(session.connectShares).toEqual({ generation: 0, ports: [] });
 
-      // No daemon socket exists yet, so this immediate publication cannot be
-      // delivered. Socket-open reconciliation must recover it.
       harness.deps.sharedPorts.declareSharedPorts({
         ownerId: "connect",
         hostId: "host-1",

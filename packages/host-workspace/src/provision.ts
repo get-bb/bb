@@ -1,9 +1,6 @@
 import { mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
-import type {
-  ProvisioningTranscriptEntry,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
 import type {
   CommitOptions,
   CommitResult,
@@ -48,33 +45,20 @@ import {
 } from "./git.js";
 import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js";
 
-// ---------------------------------------------------------------------------
-// Options (discriminated union on workspaceProvisionType from @bb/domain)
-// ---------------------------------------------------------------------------
-
 type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
 
 interface ProvisionBase {
-  /** Progress callback for provisioning steps/output */
   onProgress?: ProvisionProgressCallback;
-  /** Resolved user login-shell PATH for workspace Git and setup commands. */
   shellPath?: string;
   signal?: AbortSignal;
 }
 
 type UnmanagedCheckoutOpts =
   | {
-      /**
-       * Runs `git switch <name>` (no-op if HEAD is already there).
-       */
       kind: "existing";
       name: string;
     }
   | {
-      /**
-       * Runs `git switch -C <name> <baseBranch>` so the branch is created or
-       * reset from the requested base.
-       */
       kind: "new";
       name: string;
       baseBranch: string;
@@ -82,25 +66,15 @@ type UnmanagedCheckoutOpts =
 
 interface UnmanagedWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "unmanaged";
-  /** Path to validate. Must exist. */
   path: string;
-  /** Pre-provision checkout. When set, the daemon switches branches before opening the workspace. */
   checkout?: UnmanagedCheckoutOpts;
 }
 
 interface ManagedWorkspaceBaseOpts extends ProvisionBase {
-  /** Source repo path */
   sourcePath: string;
-  /** Target path for worktree/clone creation */
   targetPath: string;
-  /** Name of the new branch to create on the workspace. */
   branchName: string;
-  /**
-   * Branch on the source repo that the new branch should be based on. Pass
-   * `null` to use the source's default branch.
-   */
   baseBranch: string | null;
-  /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
 }
 
@@ -110,17 +84,13 @@ interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
 
 interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   workspaceProvisionType: "reconnect-managed-worktree";
-  /** Existing worktree path to reconnect */
   path: string;
 }
 
 interface PersonalWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "personal";
-  /** Environment ID that owns the personal scratch workspace. */
   environmentId: string;
-  /** Root directory containing bb-managed personal scratch workspaces. */
   personalWorkspaceRoot: string;
-  /** Target directory for the scratch workspace. Created if missing. */
   targetPath: string;
 }
 
@@ -136,23 +106,14 @@ interface ValidatePersonalWorkspaceTargetPathArgs {
   targetPath: string;
 }
 
-// ---------------------------------------------------------------------------
-// HostWorkspace interface
-// ---------------------------------------------------------------------------
-
 const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
 
 export interface HostWorkspace {
-  /** Absolute path to the workspace directory */
   readonly path: string;
-  /** Whether the system manages this workspace's lifecycle */
   readonly managed: boolean;
-  /** Whether this is a git repository */
   readonly isGitRepo: boolean;
-  /** Whether this is a git worktree (vs. a standalone repo) */
   readonly isWorktree: boolean;
 
-  // Git queries
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
   getHeadSha(): Promise<string | null>;
@@ -172,18 +133,12 @@ export interface HostWorkspace {
   ): Promise<void>;
   listFiles(): Promise<string[]>;
 
-  // Git mutations
   commit(options: CommitOptions): Promise<CommitResult>;
   reset(): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
-  // Lifecycle
   destroy(): Promise<void>;
 }
-
-// ---------------------------------------------------------------------------
-// Detect whether a path is a git worktree
-// ---------------------------------------------------------------------------
 
 async function detectWorktree(
   cwd: string,
@@ -197,14 +152,8 @@ async function detectWorktree(
   if (gitDirResult.exitCode !== 0) return false;
 
   const gitDir = gitDirResult.stdout.trim();
-  // Worktrees have a .git file (not directory) pointing to
-  // <common-dir>/worktrees/<name>. The git-dir will contain "/worktrees/".
   return gitDir.includes("/worktrees/");
 }
-
-// ---------------------------------------------------------------------------
-// ProvisionedHostWorkspace - wraps Workspace + lifecycle cleanup
-// ---------------------------------------------------------------------------
 
 class ProvisionedHostWorkspace implements HostWorkspace {
   readonly path: string;
@@ -322,10 +271,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.destroyFn();
   }
 }
-
-// ---------------------------------------------------------------------------
-// provisionWorkspace
-// ---------------------------------------------------------------------------
 
 export async function provisionWorkspace(
   opts: ProvisionWorkspaceArgs,
@@ -548,7 +493,6 @@ async function applyUnmanagedCheckout(
   const gitProcessOptions =
     args.shellPath === undefined ? {} : { shellPath: args.shellPath };
   throwIfProvisionAborted(signal);
-  // `switch -C` for new (create-or-reset from base) and `switch` for existing.
   const switchArgs =
     checkout.kind === "new"
       ? ["switch", "-C", checkout.name, checkout.baseBranch]
@@ -708,9 +652,7 @@ async function provisionUnmanaged(
     isGitRepo,
     isWorktree,
     shellPath: opts.shellPath,
-    destroyFn: async () => {
-      // no-op for unmanaged workspaces
-    },
+    destroyFn: async () => {},
   });
 }
 

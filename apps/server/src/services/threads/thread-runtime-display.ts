@@ -46,12 +46,6 @@ interface ThreadRuntimeDisplayDeps {
   hub: ThreadRuntimeDisplayHub;
 }
 
-/**
- * The prompt-banner path additionally needs the registry, because plan-mode
- * eligibility is the provider's declared plan composer command. Kept separate
- * so the plain runtime-state callers (plugin DTOs, thread-send) are not forced
- * to carry a registry they never read.
- */
 interface ThreadPromptBannerDeps extends ThreadRuntimeDisplayDeps {
   providerRegistry: ProviderRegistryService;
 }
@@ -93,7 +87,6 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
 }
 
 interface BuildThreadStatusChangeMetadataByThreadIdArgs {
-  /** The host every listed thread's environment belongs to. */
   environmentHostId: string;
   threads: readonly Thread[];
 }
@@ -133,12 +126,6 @@ function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   }
 }
 
-/**
- * Only computed for `active` threads: an active turn survives a daemon
- * disconnect until the active-work grace elapses, so that is the reconnect
- * window the DTO advertises. The shorter DAEMON_DISCONNECT_GRACE_MS window
- * only settles pending interactions and background tasks.
- */
 function getDaemonDisconnectGraceExpiresAt(
   session: HostDaemonSessionRow,
 ): number | null {
@@ -256,16 +243,6 @@ function resolveThreadEnvironmentHostId(
   return getEnvironment(deps.db, thread.environmentId)?.hostId ?? null;
 }
 
-/**
- * Metadata for a `status-changed` notification: the post-transition row
- * fields plus the runtime and activity the thread's list row would render
- * with right now, built by the same helpers as the list endpoints. Clients
- * patch their cached list rows from it instead of refetching every thread
- * list. Activity rides along because the plan-mode and goal counts are gated
- * on the status and were previously only synced by that refetch. Producers
- * without a hub (writes inside a transaction that buffer notifications) send
- * the bare change kind and clients refetch as before.
- */
 export function buildThreadStatusChangeMetadata(
   deps: ThreadPromptBannerDeps,
   thread: Thread,
@@ -282,14 +259,6 @@ export function buildThreadStatusChangeMetadata(
   });
 }
 
-/**
- * `buildThreadStatusChangeMetadata` for many threads on one host in a fixed
- * number of queries: host connectivity and the latest session are resolved
- * once for the host and the activity helpers run over the whole array, as the
- * list endpoints do. The host fan-outs (daemon close, disconnect grace, host
- * removal) run synchronously on the event loop, so they must not pay one
- * snapshot's worth of queries per thread on a host with hundreds of threads.
- */
 export function buildThreadStatusChangeMetadataByThreadId(
   deps: ThreadPromptBannerDeps,
   args: BuildThreadStatusChangeMetadataByThreadIdArgs,
@@ -396,8 +365,6 @@ function getThreadPromptBannerActivityState(
   };
 }
 
-// Pre-filter for the banner query: only threads whose provider declares a
-// plan command can have an active plan turn, so the rest are not event-loaded.
 function canThreadShowActivePlanMode(
   deps: ThreadPromptBannerDeps,
   thread: Thread,
@@ -485,11 +452,6 @@ export function getThreadPromptBannerActivity(
   );
 }
 
-/**
- * The list-row activity for each thread: background task counts from the
- * task rows plus the plan-mode and goal counts the prompt banner derives from
- * the event log. Threads with no activity at all are absent.
- */
 function buildThreadActivityStateByThreadId(
   deps: ThreadPromptBannerDeps,
   threads: readonly Thread[],

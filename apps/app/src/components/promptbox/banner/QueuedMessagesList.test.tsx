@@ -349,8 +349,6 @@ describe("QueuedMessagesList", () => {
         queuedMessages={queuedMessages}
         inlineEditor={{
           queuedMessageId: "q_two",
-          // Position is resolved from the stable message id, even if a stale
-          // caller index arrives while the queue is changing.
           queuedMessageIndex: 0,
           content: <div data-testid="inline-queue-editor">Inline editor</div>,
           onDismiss,

@@ -8,7 +8,6 @@ interface StoredObject {
   contentType?: string;
 }
 
-/** Minimal stand-in for the R2 binding: get() plus conditional handling. */
 function bucketOf(objects: Record<string, StoredObject>) {
   const get = async (key: string, options?: { onlyIf?: Headers }) => {
     const stored = objects[key];

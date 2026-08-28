@@ -215,9 +215,6 @@ export async function listHostBranchOptions(
   }
 
   if (command.remoteRefresh === "background") {
-    // Return cached refs immediately. A successful fetch updates shared Git
-    // refs, whose workspace watcher event invalidates the observed picker
-    // query so the refreshed options arrive without blocking this response.
     void refreshRemoteBranches(command.path, gitProcessOptions).catch(
       () => undefined,
     );
@@ -234,9 +231,6 @@ export async function listHostBranches(
     throw new CommandDispatchError("invalid_path", "Path must be absolute");
   }
 
-  // A project source can be a bare repository whose checkouts are sibling
-  // worktrees (`<root>/.bare` + `<root>/.git` gitdir file). It has refs and
-  // can seed new worktrees, but has no work tree to be dirty or mid-operation.
   const gitProcessOptions = userExecutableProcessOptions(
     options?.runtimeManager.getShellEnv() ?? {},
   );
@@ -278,8 +272,6 @@ export async function listHostBranches(
     ]);
   const defaultBranch = defaultRefs.defaultBranch;
   const originDefaultBranch = defaultRefs.originDefaultBranch;
-  // Pin default refs to the first page so common picks like main and
-  // origin/main are available before the user searches.
   const sorted = pinBranch({ branches, branch: defaultBranch });
   const sortedRemoteBranches = pinBranch({
     branches: remoteBranches,

@@ -83,9 +83,6 @@ afterEach(() => {
 });
 
 describe("useQuickCreateProject", () => {
-  // Choosing between the native picker and the in-app dialog now lives in
-  // `useLocalPathPicker.openPathEntry`, so it is covered there. This hook only
-  // has to hand the create target to it.
   it("delegates opening to the shared path-entry surface", () => {
     const { result } = renderHook(() => useQuickCreateProject());
 

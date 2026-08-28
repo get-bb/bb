@@ -86,12 +86,6 @@ function equalGridCoordinate(
   );
 }
 
-/**
- * Starts one divider drag's snap lifecycle. Every split node owns an equal
- * sibling grid: two children snap to halves, three to thirds, and so on.
- * Capture and release use different thresholds to create magnetic resistance,
- * and geometry is read only once.
- */
 export function createSplitResizeSnapSession(
   divider: HTMLElement,
   axis: SplitResizeAxis,
@@ -172,9 +166,6 @@ export function createSplitResizeSnapSession(
           releasePending = false;
           shouldSnap = true;
         } else if (crossedGrid) {
-          // Pointer events can jump over the entire release zone during a
-          // fast drag. Anchor hysteresis at that sample so the crossing still
-          // produces a deliberate stop instead of being discarded.
           fastCrossingAnchor =
             distance > SPLIT_RESIZE_SNAP_RELEASE_PX ? pointer : null;
           releasePending = false;
@@ -192,10 +183,6 @@ export function createSplitResizeSnapSession(
             releasePending = false;
             shouldSnap = true;
           } else if (!releasePending) {
-            // A fast pointer can cross the entire exit band between rendered
-            // frames. Require a second consecutive out-of-band sample so the
-            // captured state produces real resistance instead of a one-frame
-            // guide flash; returning to either band cancels the pending exit.
             releasePending = true;
             shouldSnap = true;
           }

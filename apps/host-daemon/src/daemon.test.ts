@@ -203,8 +203,6 @@ describe("daemon lifecycle", () => {
     await daemon.start();
     signalSource.emit("SIGTERM");
     await expect(daemon.waitUntilStopped()).rejects.toThrow("release failed");
-    // The signal listener logs through stop(...).catch(...), which can run
-    // after waitUntilStopped observes the shutdown failure.
     await vi.waitFor(() => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({

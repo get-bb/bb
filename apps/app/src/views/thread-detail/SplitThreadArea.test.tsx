@@ -47,8 +47,6 @@ import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 
-// Per-thread archived/deleted state consulted by the mocked useThread, driving
-// PaneStaleWatcher. Unknown threads read as "still loading" (never pruned).
 const threadStore = vi.hoisted(
   () =>
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
@@ -166,8 +164,6 @@ vi.mock("react-resizable-panels", async () => {
     );
   });
   PanelGroup.displayName = "MockPanelGroup";
-  // Record each panel's lifecycle callbacks so a test can fire the ones the
-  // real library fires on its own, such as the initial-layout collapse.
   const Panel = ({
     children,
     id,
@@ -270,9 +266,6 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
   },
 }));
 
-// Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
-// thread id, focus, close affordance, and a real threadId-keyed draft so the
-// test exercises SplitThreadArea's wiring without its dependency tree.
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: ({
     projectId = "proj_personal",
@@ -383,9 +376,6 @@ function threadContent(threadId: string) {
   };
 }
 
-// Tailwind utilities are not compiled in jsdom, so read the layer from the
-// class token rather than from computed styles. `z-auto` and an absent z-index
-// class both mean "paints in DOM order", which is layer 0 here.
 function stackingLayer(element: HTMLElement): number {
   for (const token of element.classList) {
     const match = /^z-(?:\[(\d+)\]|(\d+))$/.exec(token);
@@ -725,8 +715,6 @@ describe("SplitThreadArea", () => {
     ).toBe("preserve this hidden draft");
     expect(store.get(splitLayoutAtom)?.root).toEqual(initialLayout.root);
     expect(store.get(maximizedPaneIdAtom)).toBeNull();
-    // Clear the deferred draft through the public hook before unmounting so
-    // its debounce cannot repopulate storage during a later test.
     fireEvent.change(screen.getByTestId("draft-thr-b"), {
       target: { value: "" },
     });
@@ -771,7 +759,6 @@ describe("SplitThreadArea", () => {
       expect(hiddenPane?.getAttribute("aria-hidden")).toBe("true"),
     );
 
-    // Emulate the browser/timeline normalization observed in real-product QA.
     hiddenScroller.scrollTop = 0;
     fireEvent.scroll(hiddenScroller);
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
@@ -782,8 +769,6 @@ describe("SplitThreadArea", () => {
     hiddenScroller.scrollTop = 0;
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    // The restore transition no longer owns this element after the intentional
-    // visible scroll to zero, so it does not replay the older saved offset.
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
@@ -807,17 +792,10 @@ describe("SplitThreadArea", () => {
       },
     });
 
-    // Maximize: the tracked element already sits at its saved offset, so the
-    // pre-paint restore and the first frame find nothing to correct and the
-    // loop must end without a single scroll write (each write would force
-    // layout every frame for half a second).
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(writes).toHaveLength(0);
 
-    // Restore, with the scroller reporting 0 on every read — an adversary
-    // that keeps normalizing the position. The loop corrects before paint and
-    // on each frame, but gives up at the frame cap instead of running all 30.
     Object.defineProperty(hiddenScroller, "scrollTop", {
       configurable: true,
       get: () => 0,
@@ -828,7 +806,6 @@ describe("SplitThreadArea", () => {
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(writes.length).toBeGreaterThan(0);
-    // Pre-paint restore + at most 5 frames.
     expect(writes.length).toBeLessThanOrEqual(6);
   });
 
@@ -945,9 +922,6 @@ describe("SplitThreadArea", () => {
 
       fireEvent.pointerMove(window, { clientX: 750, clientY: 400 });
       fireEvent.pointerUp(window, { clientX: 750, clientY: 400 });
-      // A browser synthesizes this click after pointerup; the drag session
-      // intentionally swallows it. Emit it so the listener cannot leak into
-      // the next test in jsdom.
       fireEvent.click(window);
 
       await waitFor(() =>
@@ -1057,8 +1031,6 @@ describe("SplitThreadArea", () => {
       routeContent: newThreadContent,
     });
 
-    // The lower pane's header touches the seam, so a header that paints above
-    // the divider swallows its grab target and blocks vertical resizing.
     const separator = screen.getByRole("separator");
     const dividerLayer = stackingLayer(separator);
     const lowerHeader = document
@@ -1362,8 +1334,7 @@ describe("SplitThreadArea", () => {
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
     expect(
-      screen.getByTestId("workspace-panel-group").dataset
-        .splitResizeGridRoot,
+      screen.getByTestId("workspace-panel-group").dataset.splitResizeGridRoot,
     ).toBe("");
     expect(
       screen.queryAllByTestId("split-workspace-panel-toggle"),
@@ -1381,8 +1352,6 @@ describe("SplitThreadArea", () => {
       false,
     );
 
-    // thr-b's own persisted panel state is closed, but refocusing must swap
-    // the panel's content without closing the window-level panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-b"));
     await screen.findByTestId("hosted-panel-thr-b");
     expect(screen.getByTestId("hosted-composer-scope-thr-b").textContent).toBe(
@@ -1396,8 +1365,6 @@ describe("SplitThreadArea", () => {
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
 
-    // An explicit toggle closes it, and the closed state also survives
-    // refocusing the pane whose panel was originally open.
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
     expect(
       screen
@@ -1470,8 +1437,6 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Plugin pages publish the same panel model as first-party pages, so focus
-    // swaps the window panel content without an empty-state interlude.
     fireEvent.pointerDown(pluginPane);
     expect(await screen.findByTestId("hosted-plugin-app-panel")).toBeTruthy();
     expect(
@@ -1491,7 +1456,6 @@ describe("SplitThreadArea", () => {
       pluginPane.querySelector('button[aria-label*="Maximize pane"]'),
     ).not.toBeNull();
 
-    // The plugin page's hosted panel owns the open/close transition.
     fireEvent.click(pluginToggle!);
     await waitFor(() =>
       expect(
@@ -1502,7 +1466,6 @@ describe("SplitThreadArea", () => {
       ).toBe("false"),
     );
 
-    // Refocusing the thread pane restores the remembered open panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     expect(screen.getByTestId("hosted-panel-thr-a")).toBeTruthy();
     expect(
@@ -1524,8 +1487,6 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // The hosted plugin panel's handle must own the whole 12px grab strip at
-    // this row instead of losing its left overhang to the bounded pane header.
     fireEvent.pointerDown(pluginPane);
     await screen.findByTestId("hosted-plugin-app-panel");
 
@@ -1576,13 +1537,10 @@ describe("SplitThreadArea", () => {
       routeAwareContent: true,
     });
 
-    // pane-2 is the plugin pane at the right edge. Closed, the toggle sits on
-    // its header row, so the header keeps that corner free.
     await screen.findByTestId("hosted-plugin-app-panel");
     const close = screen.getByRole("button", { name: "Close pane" });
     expect(close.nextElementSibling?.tagName).toBe("SPAN");
 
-    // Open, the toggle moves over the panel and the header reclaims the slot.
     fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
     await waitFor(() =>
       expect(
@@ -1661,11 +1619,7 @@ describe("SplitThreadArea", () => {
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
-    // Plugin pages publish the shared App panel model, so the window keeps the
-    // same panel control while focus moves between plugin panes.
     expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
-    // The app panel belongs to a publishing pane, but full screen is pane
-    // chrome: every pane in a split owns it, plugin panes included.
     expect(
       screen.getAllByRole("button", { name: /Maximize pane/ }),
     ).toHaveLength(2);
@@ -1700,7 +1654,6 @@ describe("SplitThreadArea", () => {
       target: { value: "note for A" },
     });
 
-    // The typed draft stays in pane A's storage key; pane B is untouched.
     expect(
       (screen.getByTestId("draft-thr-a") as HTMLTextAreaElement).value,
     ).toBe("note for A");
@@ -1727,7 +1680,6 @@ describe("SplitThreadArea", () => {
 
     fireEvent.click(screen.getByTestId("external-nav"));
 
-    // Focused pane (thr-b) now shows thr-c; the unfocused pane (thr-a) survives.
     expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
@@ -1754,7 +1706,6 @@ describe("SplitThreadArea", () => {
       expect(screen.getByTestId("pane-thr-a").dataset.focused).toBe("true");
     });
     expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("false");
-    // No duplication — still exactly two panes.
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(2);
   });
 
@@ -1807,10 +1758,6 @@ describe("SplitThreadArea", () => {
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
-  // The pane header is itself a macOS drag region, so the plugin pane's own
-  // drag handle has to opt back out or the OS swallows its pointer events as
-  // window drags and panes can no longer be reordered. jsdom can't resolve
-  // native regions, so this locks the class contract that drives them.
   it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
@@ -2034,8 +1981,6 @@ describe("SplitThreadArea", () => {
     ).not.toBe(0);
   });
 
-  // The host pins its panel toggle over the workspace corner. A plugin pane in
-  // that corner used to skip the reserve, so the toggle covered Close pane.
   it("reserves the window toggle corner for a plugin pane at the top right", async () => {
     setPluginSlotRegistrations("docs", {
       homepageSections: [],
@@ -2080,7 +2025,6 @@ describe("SplitThreadArea", () => {
     expect(reserve?.tagName).toBe("SPAN");
     expect(reserve?.getAttribute("aria-hidden")).toBe("true");
 
-    // Full screen hides the host toggle, so the reserved slot must go with it.
     fireEvent.click(
       screen.getAllByRole("button", { name: /Maximize pane/ })[0]!,
     );
@@ -2101,8 +2045,6 @@ describe("SplitThreadArea", () => {
       routeAwareContent: true,
     });
 
-    // pane-2 is the plugin pane at the right edge; the thread pane's panel
-    // starts open, so its own chrome carries the toggle.
     const pluginClose = await screen.findByRole("button", {
       name: "Close pane",
     });
@@ -2173,8 +2115,6 @@ describe("SplitThreadArea", () => {
     renderSplitArea({ path: threadPath("thr-a") });
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
 
-    // Another tab selects thr-b: same-origin localStorage write plus the
-    // `storage` event the browser delivers to every other tab.
     const otherTabLayout = serializeSplitLayout({
       root: { type: "pane", paneId: "pane-1", content: threadContent("thr-b") },
       focusedPaneId: "pane-1",
@@ -2189,7 +2129,6 @@ describe("SplitThreadArea", () => {
       }),
     );
 
-    // This tab keeps its own thread and URL; nothing bleeds across tabs.
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(
         threadPath("thr-a"),
@@ -2205,7 +2144,6 @@ describe("SplitThreadArea", () => {
     renderSplitArea({ path: threadPath("thr-a") });
 
     expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
-    // Only the route thread renders — no stale panes leak in.
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
     expect(screen.queryByTestId("close-thr-a")).toBeNull();
   });
@@ -2235,7 +2173,6 @@ describe("SplitThreadArea", () => {
       layout: twoPaneLayout("pane-1"),
     });
 
-    // thr-b is archived, so its pane is pruned; the valid focused pane remains.
     await waitFor(() => {
       expect(screen.queryByTestId("pane-thr-b")).toBeNull();
     });

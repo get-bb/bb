@@ -1,4 +1,3 @@
-// Docs — filesystem-first, multi-host Markdown and HTML vaults.
 import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -561,8 +560,6 @@ function summarizeMarkdown(
   const firstHeadingIndex = lines.findIndex(
     (line) => markdownHeadingLevel(line) !== null,
   );
-  // A frontmatter title only supersedes a heading that repeats it. Any other
-  // opening heading is body content and belongs in the preview.
   const previewHeadingIndex =
     titleLineIndex >= 0
       ? titleLineIndex
@@ -854,9 +851,7 @@ export default async function plugin(
           preview: summary.preview,
           modifiedAtMs: file.modifiedAtMs ?? 0,
         });
-      } catch {
-        // Files may disappear during a recursive refresh.
-      }
+      } catch {}
     }
     return notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
   }
@@ -1015,10 +1010,7 @@ export default async function plugin(
       }
       const rootPath = normalizeHostRoot(storage.storageRootPath);
       return {
-        path: hostPathApi(rootPath).join(
-          rootPath,
-          ...relativePath.split("/"),
-        ),
+        path: hostPathApi(rootPath).join(rootPath, ...relativePath.split("/")),
         rootPath,
         hostId: storage.hostId,
       };
@@ -1611,9 +1603,6 @@ export default async function plugin(
       const vaultId = input.vaultId;
       const currentPath = requireVaultPath(input.path, { extension: ".md" });
       const file = await readFile(vaultId, currentPath);
-      // Frontmatter that names the document owns the display title, so the
-      // filename is managed by hand. Frontmatter without a title still lets the
-      // H1 drive the filename.
       if (parseMarkdownDocument(file.content).title) {
         return { path: currentPath };
       }

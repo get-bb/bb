@@ -42,12 +42,6 @@ function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   return "browse";
 }
 
-/**
- * The canonical Plugins collection: installed resources, discoverable
- * resources from BB's official catalog.
- * Modes are URL-backed projections of one collection, not separate settings
- * pages; plugin configuration and lifecycle depth remain on the detail route.
- */
 export function PluginsOverview() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -63,13 +57,7 @@ export function PluginsOverview() {
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
-  // Empty means unfiltered: the menu has no explicit "All" row.
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
-  // Facets follow the installed plugins, so adding a marketplace adds its
-  // facet. Uninstalling the last plugin of one removes its facet too, and the
-  // selection is intersected with what is on offer rather than kept: a
-  // vanished facet would otherwise filter the list to nothing with no row left
-  // in the menu to switch it back off.
   const typeFilterOptions = useMemo(
     () => pluginPublisherFilterOptions(plugins),
     [plugins],
@@ -79,8 +67,6 @@ export function PluginsOverview() {
     return typeFilters.filter((value) => offered.has(value));
   }, [typeFilterOptions, typeFilters]);
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
-  // One projection identity resets both the accumulated rows and their
-  // viewport measurement when search, filters, or sorting changes.
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSortDirection,
@@ -120,9 +106,6 @@ export function PluginsOverview() {
           const enabledResult = Number(!left.enabled) - Number(!right.enabled);
           if (enabledResult !== 0) return enabledResult;
           if (left.enabled) {
-            // Published plugins first, then the user's own; publishers
-            // themselves stay in one alphabetical run so the sort direction
-            // still controls the whole list.
             const leftPublisher = left.publisherLabel;
             const rightPublisher = right.publisherLabel;
             const publisherResult =
@@ -144,16 +127,11 @@ export function PluginsOverview() {
       plugins,
     ],
   );
-  // Pages load as the sentinel scrolls into view; the page machinery stays
-  // (viewport-fit chunk size, projection reset keys) but rows accumulate.
   const installedList = useResourceInfiniteItems(visiblePlugins, {
     pageSize: installedPageSize,
     resetKey: installedResetKey,
   });
 
-  // Installed's New plugin goes to the real new-thread page: the inline hero
-  // composer is Browse's own affordance, and bouncing Installed users through
-  // Browse read as a mis-navigation rather than a shortcut.
   const startCreatePlugin = (prompt?: string) => {
     navigate(getRootComposeRoutePath(), {
       state: {
@@ -164,9 +142,6 @@ export function PluginsOverview() {
     });
   };
 
-  // Browse renders no page shell at all — its actions live in the hero's CTA
-  // row. Installed keeps the New plugin button, which starts a thread, plus
-  // an on-demand update check beside it (the server also sweeps every 6h).
   const installedActions = (
     <>
       {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
@@ -268,10 +243,6 @@ export function PluginsOverview() {
     );
   }
 
-  // Browse and Installed are separate top-nav destinations now, not tabs:
-  // Browse is the full-bleed discovery page (its description lives in the
-  // hero), while Installed keeps the collection shell for its description and
-  // actions row.
   return (
     <>
       {activeMode === "browse" ? (

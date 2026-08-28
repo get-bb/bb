@@ -181,7 +181,6 @@ function isArchivedThreadsListFilters(
     return false;
   }
 
-  // An empty filter object is the global archived list.
   return true;
 }
 
@@ -207,11 +206,6 @@ export function isArchivedThreadListQueryKey(queryKey: QueryKey): boolean {
   return getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined;
 }
 
-/**
- * Every cached thread-list key (active and archived, all projects). Used by
- * handlers that must treat archived lists differently from active ones and so
- * cannot rely on a bare `threadsQueryKey()` prefix invalidation.
- */
 export function getCachedThreadListQueryKeys(
   queryClient: QueryClient,
 ): QueryKey[] {
@@ -350,11 +344,6 @@ export function applyToCachedThreadListsAndSidebarNavigation(
   });
 }
 
-/**
- * Every thread row the sidebar bootstrap carries, across every project plus
- * the personal project. The bootstrap lists all visible, unarchived threads
- * (children included), so this is the complete live thread set.
- */
 export function listSidebarNavigationThreads(
   navigation: SidebarBootstrapResponse,
 ): ThreadListEntry[] {
@@ -397,16 +386,6 @@ export function getEnvironmentRecordInvalidationQueryKeys({
   return [environmentQueryKey(environmentId)];
 }
 
-/**
- * Invalidation targets for an environment's workspace-derived views. The
- * per-file diff PATCH cache is deliberately absent: it is an observer-less
- * imperative cache (written with `setQueryData`, read with `getQueryData`, no
- * `useQuery`/`queryFn`), so `invalidateQueries` only marks it stale and never
- * evicts or refetches — `getQueryData` would keep returning the stale patch.
- * Callers must evict patches via {@link removeEnvironmentDiffPatchQueries}
- * instead; the diff TOC ({@link environmentDiffFilesQueryKeyPrefix}) has a real
- * observer and refetches on invalidation.
- */
 export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
@@ -418,19 +397,6 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   ];
 }
 
-/**
- * Evict every cached per-file diff PATCH for an environment. The patch cache is
- * observer-less (see {@link getEnvironmentWorkspaceStateInvalidationQueryKeys}),
- * so it must be removed — not invalidated — for a content-only file edit to
- * surface fresh patches: eviction makes `readDiffPatchEntry` return undefined,
- * which the panel re-requests once the TOC refetch fires.
- *
- * The eviction generation is bumped synchronously here, before the async TOC
- * refetch fires. A patch fetch that started before this eviction observes the
- * stale generation when it resolves and drops its (pre-edit) write rather than
- * re-seeding the just-cleared cache — otherwise a fetch in flight at edit time
- * could leave a stale patch that nothing re-requests.
- */
 export function removeEnvironmentDiffPatchQueries({
   environmentId,
   queryClient,
@@ -482,11 +448,6 @@ export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     }
   }
 
-  // A moved merge base affects the ref-derived (`all`/`branch_committed`) diff
-  // targets, so invalidate the diff TOC cache by prefix. Mirrors the bulk
-  // workspace-state path; the per-target keys are not enumerated here. The
-  // observer-less patch cache is evicted separately via
-  // removeEnvironmentDiffPatchQueries — invalidation is a no-op for it.
   queryKeys.push(environmentDiffFilesQueryKeyPrefix(environmentId));
 
   return queryKeys;
@@ -580,9 +541,6 @@ function threadMatchesListFilters(
   ) {
     return false;
   }
-  // Mirror the server default: hidden threads stay out of list caches —
-  // otherwise realtime inserts leak them into surfaces (sidebar, recents)
-  // whose fetches exclude them.
   if (thread.visibility === "hidden") {
     return false;
   }
@@ -594,9 +552,6 @@ export function optimisticallyInsertThread(
   queryClient: QueryClient,
   thread: ThreadWithRuntime,
 ): void {
-  // Only inserts into flat-array list caches (`useThreads`). The paginated
-  // archived view uses `InfiniteData` and only displays threads with an
-  // archivedAt — newly created threads can't belong to it.
   for (const { queryKey, data } of getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   })) {
@@ -711,13 +666,6 @@ export function updateCachedThreadListPendingInteractionState(
   });
 }
 
-/**
- * Writes the row fields a lifecycle transition rewrites (status, runtime,
- * activity, attention and update times) into every cached thread list and
- * the sidebar bootstrap. Status never changes list membership (lists filter
- * on project, parent, archive state), so a row that is not cached needs
- * nothing: the query that will load it reads the current status.
- */
 export function updateCachedThreadListStatusState(
   queryClient: QueryClient,
   threadId: string,
@@ -733,11 +681,6 @@ export function updateCachedThreadListStatusState(
   });
 }
 
-/**
- * Thread list and sidebar queries with a fetch in flight. Such a fetch read
- * the database before the change that is being patched in, so its response
- * would overwrite the patch when it lands.
- */
 export function getFetchingThreadListQueryKeys(
   queryClient: QueryClient,
 ): QueryKey[] {

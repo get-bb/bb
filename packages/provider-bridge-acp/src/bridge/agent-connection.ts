@@ -1,11 +1,3 @@
-/**
- * Minimal JSON-RPC 2.0 endpoint over a spawned ACP agent's stdio.
- *
- * ACP frames messages as newline-delimited JSON. BB only consumes a small,
- * stable subset of the protocol, so the bridge validates traffic with the
- * schemas in `../wire.ts` instead of depending on an external ACP SDK.
- */
-
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -30,10 +22,6 @@ interface CreateAcpAgentConnectionOptions {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
-  /**
-   * The bb thread this agent serves, for record mode; null for process-level
-   * agents (model discovery).
-   */
   recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
@@ -64,11 +52,6 @@ export class AcpAgentExitedError extends Error {
   }
 }
 
-/**
- * The agent answered a request with a JSON-RPC error. The code rides along
- * so the bridge can act on what the protocol says (ACP reserves `-32000` for
- * "Authentication required") instead of matching the message.
- */
 export class AcpAgentResponseError extends Error {
   readonly code: number | undefined;
 
@@ -106,12 +89,6 @@ function isClosedAgentStdinError(error: Error): boolean {
   );
 }
 
-/**
- * ACP agents answer a failed request with a generic JSON-RPC message such as
- * "Internal error" and put the real cause in `error.data` (for example
- * `{ details: "bb-bridge: Transport closed" }`). Carry that cause into the
- * rejection so agent-side failures are diagnosable from bb logs.
- */
 export function formatAgentError(error: AgentErrorObject): string {
   const message =
     error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
@@ -174,8 +151,6 @@ export function createAcpAgentConnection(
   const stderrChunks: string[] = [];
   let nextRequestId = 1;
   let exited = false;
-  // `kill()` is a synchronous API boundary even though process exit is not:
-  // once called, no more protocol traffic may reach this connection.
   let stopping = false;
 
   function rejectAllPending(error: Error): void {
@@ -198,17 +173,12 @@ export function createAcpAgentConnection(
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
     );
-    // The protocol cannot recover once the agent stops reading requests.
-    // Kill immediately so a child that keeps other handles open cannot leak.
     child.kill("SIGKILL");
     const stderrTail = [...stderrChunks, detail].join("\n");
     options.onExit({ code: null, signal: null, stderrTail });
   }
 
   function writeLine(message: object): void {
-    // An agent request can be answered asynchronously after the session that
-    // owned it has been released. Do not write that stale response to a child
-    // whose termination has already begun.
     if (stopping) {
       return;
     }
@@ -220,17 +190,11 @@ export function createAcpAgentConnection(
     stdin.write(JSON.stringify(message) + "\n");
   }
 
-  // The agent can close its read end between the writable check in writeLine
-  // and the kernel accepting the write. Node reports that race asynchronously
-  // on the stream. A closed input is an irrecoverable transport failure: all
-  // requests must settle even when the child keeps other handles open.
   child.stdin?.on("error", (error) => {
     if (!isClosedAgentStdinError(error)) {
       throw error;
     }
     if (stopping) {
-      // Preserve the existing leak backstop for a child that closes stdin in
-      // response to SIGTERM but keeps another handle alive.
       child.kill("SIGKILL");
       return;
     }

@@ -73,9 +73,6 @@ async function getProviderState(
       ...result.health,
     };
   } catch {
-    // One broken bridge must not hide every other provider or strand the root
-    // composer. Unknown is an explicit state; callers can still fall back to
-    // the registry's normal default-selection policy.
     return unknownProviderState(
       args.provider,
       "Provider readiness could not be checked.",
@@ -83,11 +80,6 @@ async function getProviderState(
   }
 }
 
-/**
- * Resolve every provider's host-local readiness through its own bridge.
- * Provider registry order is preserved because it is also the picker/default
- * order used by the rest of the product.
- */
 export async function getProviderStates(
   deps: AppDeps,
   query: SystemProvidersQuery,

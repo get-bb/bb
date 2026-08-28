@@ -55,15 +55,9 @@ function ChangelogRoute() {
 
 const RELEASES = parseChangelog(changelogMd);
 
-/** "0.0.30" → "0-0-30", a fragment id that survives URL parsing. */
 function anchorId(version: string): string {
   return version.replaceAll(".", "-");
 }
-
-/* ── Release media ────────────────────────────────────────────────────
-   A hand-built visual per marquee release, in place of a screenshot: a
-   floating slice of the app sidebar, reusing the hero mock's classes from
-   landing.css so it matches the real app (and the homepage) exactly. */
 
 function ByMachineSidebar() {
   return (
@@ -86,7 +80,9 @@ function ByMachineSidebar() {
             </li>
             <li>
               <div className="trow">
-                <span className="trow-title">Desloppify High-Priority Worker</span>
+                <span className="trow-title">
+                  Desloppify High-Priority Worker
+                </span>
               </div>
               <ul className="threads thread-kids">
                 <li>
@@ -116,8 +112,6 @@ function ByMachineSidebar() {
 const RELEASE_MEDIA: Record<string, ReactNode> = {
   "0.0.30": <ByMachineSidebar />,
 };
-
-/* ── Page ─────────────────────────────────────────────────────────── */
 
 function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
   return (

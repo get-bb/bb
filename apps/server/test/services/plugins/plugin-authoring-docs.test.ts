@@ -38,12 +38,6 @@ import {
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
 
-/**
- * Durability test for the bb-plugin-authoring builtin skill: the skill must
- * document the ENTIRE plugin API. Growing BbPluginApi or the frontend SDK
- * surface without documenting the new member fails here.
- */
-
 const SKILL_PATH = fileURLToPath(
   new URL(
     "../../../src/services/skills/builtin-skills/bb-plugin-authoring/SKILL.md",
@@ -51,11 +45,6 @@ const SKILL_PATH = fileURLToPath(
   ),
 );
 
-/**
- * Every property of BbPluginApi, compile-time checked in both directions:
- * `satisfies` rejects entries that are not keys, and the Missing assertion
- * below rejects keys that are not entries.
- */
 const BB_PLUGIN_API_KEYS = [
   "pluginId",
   "log",
@@ -86,12 +75,6 @@ const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
 void _assertAllApiKeysListed;
 
-/**
- * Mirrors PluginSettingDescriptor["type"]
- * (packages/plugin-sdk/src/backend-contract.ts) — types only, so the union is
- * mirrored here and compile-time checked in both directions like
- * BB_PLUGIN_API_KEYS above.
- */
 const SETTING_DESCRIPTOR_TYPES = [
   "string",
   "boolean",
@@ -108,7 +91,6 @@ const _assertAllSettingTypesListed: MissingSettingType extends never
   : never = true;
 void _assertAllSettingTypesListed;
 
-/** Mirrors PluginHttpAuthMode (packages/plugin-sdk/src/backend-contract.ts). */
 const HTTP_AUTH_MODES = [
   "local",
   "token",
@@ -123,12 +105,6 @@ const _assertAllAuthModesListed: MissingAuthMode extends never ? true : never =
   true;
 void _assertAllAuthModesListed;
 
-/**
- * Mirrors PluginThreadEventPayloads
- * (packages/plugin-sdk/src/backend-contract.ts): every event name mapped to
- * every field of its payload. The `satisfies` requires every event key and
- * rejects non-payload fields; the Missing assertions reject omitted fields.
- */
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.created": ["thread"],
   "thread.active": ["thread"],
@@ -137,7 +113,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -151,13 +129,6 @@ const _assertAllThreadEventFieldsListed: MissingThreadEventField extends never
   : never = true;
 void _assertAllThreadEventFieldsListed;
 
-/**
- * Mirrors the frontend slot registry (PluginAppSlots and the per-slot props
- * contracts in packages/plugin-sdk/src/app-contract.ts): every slot name
- * mapped to every field of its props. Checked in both directions like the
- * thread events above; MissingSlot rejects a PluginAppSlots method without an
- * entry here.
- */
 type SlotPropsByName = {
   homepageSection: PluginHomepageSectionProps;
   settingsSection: PluginSettingsSectionProps;
@@ -174,8 +145,6 @@ type SlotPropsByName = {
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
   commandPaletteAction: PluginCommandPaletteActionContext;
-  // Registration-object slot: the component receives only className, so the
-  // registration type is the documented surface.
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
 };
@@ -296,11 +265,6 @@ const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
   : never = true;
 void _assertAllSlotPropFieldsListed;
 
-/**
- * Mirrors PluginNavPanelRegistration (app-contract.ts), including the shared
- * title-bar `headerContent` action surface. Compile-time checked in both
- * directions like the slot props above.
- */
 const NAV_PANEL_REGISTRATION_FIELDS = [
   "id",
   "title",
@@ -369,10 +333,6 @@ const _assertAllCommandPaletteActionRegistrationFieldsListed: MissingCommandPale
   : never = true;
 void _assertAllCommandPaletteActionRegistrationFieldsListed;
 
-/**
- * Mirrors ThreadChatProps (app-contract.ts), compile-time checked in both
- * directions like the registration guards above.
- */
 const THREAD_CHAT_PROP_FIELDS = [
   "threadId",
   "variant",
@@ -393,7 +353,6 @@ const _assertAllThreadChatPropFieldsListed: MissingThreadChatPropField extends n
   : never = true;
 void _assertAllThreadChatPropFieldsListed;
 
-/** Mirrors ThreadChatMessageAction (app-contract.ts). */
 const THREAD_CHAT_MESSAGE_ACTION_FIELDS = [
   "id",
   "title",

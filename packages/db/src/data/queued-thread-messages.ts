@@ -467,13 +467,6 @@ function applyPreservedLeadGroupAfterReorder(
     : queuedMessages;
 }
 
-/**
- * Inserts a queued message inside a caller-owned transaction. Callers that
- * must admit the message against the current thread and environment rows (so
- * an archive or destroy that lands between their read and this insert cannot
- * slip a row in) run their checks in the same transaction, then call this.
- * The caller notifies `queue-changed` after the transaction commits.
- */
 export function createQueuedThreadMessageInTransaction(
   tx: DbTransaction,
   input: CreateQueuedThreadMessageInput,
@@ -570,7 +563,6 @@ export function getQueuedThreadMessage(db: DbConnection, id: string) {
   );
 }
 
-/** Includes messages currently claimed by the queue drain worker. */
 export function hasQueuedThreadMessages(
   db: DbQueryConnection,
   threadId: string,
@@ -595,9 +587,6 @@ export function listIdleThreadsWithQueuedMessages(
     })
     .from(queuedThreadMessages)
     .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
-    // A gone environment (destroying/destroyed) is never reprovisioned, so its
-    // queued rows can never drain. Leave them out of the sweep instead of
-    // failing the same send every cycle (#1789).
     .innerJoin(environments, eq(environments.id, threads.environmentId))
     .where(
       and(

@@ -18,8 +18,6 @@ import {
 } from "../app.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 
-// Install before touching @get-bb/plugin-sdk/app — it binds the runtime global
-// at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
 const {
   definePluginApp,
@@ -250,9 +248,7 @@ function UrlNavigationProbe() {
       </UrlLink>
       <button
         type="button"
-        onClick={() =>
-          navigate.openUrl("https://example.com/imperative")
-        }
+        onClick={() => navigate.openUrl("https://example.com/imperative")}
       >
         Open imperatively
       </button>
@@ -1179,7 +1175,6 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          // A provider id, not a plugin id: `bb-plugin-x/codex` is not one.
           builder.slots.experimental_providerIcon({
             providerId: "bb-plugin-x/codex",
             icon: () => null,
@@ -1444,7 +1439,6 @@ describe("renderSlot", () => {
     expect(slot.inspection.rpcCalls).toBe(slot.rpcCalls);
     expect(slot.behavior.emitRealtime).toBe(slot.emitRealtime);
 
-    // A realtime push re-fetches and renders the new listing.
     listing = ["a.md", "b.md"];
     await slot.behavior.emitRealtime("items-changed", null);
     await slot.findByText("b.md");

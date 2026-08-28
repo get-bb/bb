@@ -64,7 +64,6 @@ export type {
 } from "./types.js";
 
 export interface WorkspaceOpenTargetRuntimeOptions {
-  /** Resolved user login-shell PATH for editor and launcher CLIs. */
   shellPath?: string;
 }
 
@@ -1243,10 +1242,7 @@ async function maybeResolveMacFileOpenInvocation(
   }
 
   if (
-    !(await isServiceExecutableAvailable(
-      fileOpenCommand.executable,
-      runtime,
-    ))
+    !(await isServiceExecutableAvailable(fileOpenCommand.executable, runtime))
   ) {
     return null;
   }
@@ -1306,9 +1302,7 @@ async function resolveXcodeXedPath(
         return selectedXedPath;
       }
     }
-  } catch {
-    // Fall through to the app bundle below.
-  }
+  } catch {}
 
   const appPath = await findMacApplicationPath(definition, runtime);
   if (appPath === null) {

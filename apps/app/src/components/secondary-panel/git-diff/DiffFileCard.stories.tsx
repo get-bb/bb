@@ -12,7 +12,6 @@ export default {
   title: "right-panel/Diff File Card",
 };
 
-// A one-line modified patch — the card parses this and renders the real diff.
 const MODIFIED_PATCH = [
   "diff --git a/src/file.ts b/src/file.ts",
   "index 1111111..2222222 100644",
@@ -26,8 +25,6 @@ const MODIFIED_PATCH = [
 
 const TALL_ADDED_LINES = 40;
 
-// A taller patch so the sticky header has a body to stay pinned over while the
-// file scrolls underneath it.
 const TALL_PATCH = [
   "diff --git a/src/tall.ts b/src/tall.ts",
   "index 1111111..2222222 100644",
@@ -43,7 +40,6 @@ const TALL_PATCH = [
   "",
 ].join("\n");
 
-// A 1x1 transparent PNG so the image-preview branch has something to render.
 const IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
 
@@ -53,8 +49,6 @@ const imageContentsRequester: RequestDiffFileContents = async () => ({
   sizeBytes: 20_480,
 });
 
-// A hunk in the middle of a longer file, plus both full sides, so the card's
-// on-demand "Expand context" affordance has surrounding lines to reach for.
 const CONTEXT_FILE_LINES = Array.from(
   { length: 24 },
   (_, index) => `export const line${index + 1} = ${index + 1};`,
@@ -77,7 +71,6 @@ const CONTEXT_PATCH = [
   "",
 ].join("\n");
 
-// Resolves after a short delay so the loading state is visible on click.
 const contextContentsRequester: RequestDiffFileContents = async (
   path,
   side,
@@ -113,8 +106,6 @@ interface CardStageProps {
   onRequestFileContents?: RequestDiffFileContents;
 }
 
-// Mounts a single DiffFileCard at a panel-realistic width with live theme-aware
-// view options, mirroring how DiffFilesPanel renders each row.
 const CARD_PRESENTATION: DiffPresentation = {
   view: "unified",
   overflow: DEFAULT_CODE_OVERFLOW_MODE,

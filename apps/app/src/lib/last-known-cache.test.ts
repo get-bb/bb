@@ -59,17 +59,12 @@ describe("createLastKnownCache", () => {
       throw new DOMException("blocked", "SecurityError");
     });
     expect(cache.read(cache.key("x"))).toBeNull();
-    // Reads on a restricted store must not poison later writes either.
     vi.restoreAllMocks();
     cache.write(cache.key("x"), { models: ["c"] });
     expect(cache.read(cache.key("x"))).toEqual({ models: ["c"] });
   });
 
   it("never prunes its own zero-scope entry on a fresh load", () => {
-    // A cache with no routing dimensions stores under the bare version key.
-    // Each page load constructs the cache anew and prunes once; the entry
-    // written by the previous load must survive that prune, or the replay
-    // is deleted before its first read on every visit.
     const config = { prefix: "bb.test", version: "1", schema } as const;
     const firstLoad = createLastKnownCache(config);
     firstLoad.write(firstLoad.key(), { models: ["kept"] });

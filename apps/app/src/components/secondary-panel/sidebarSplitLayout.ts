@@ -171,11 +171,6 @@ function preserveSidebarSplitStateIdentity(
   return areSidebarSplitStatesEqual(current, next) ? current : next;
 }
 
-/**
- * True only for the exact state reconstructed when no sidebar split has ever
- * been made. Single-pane states produced by recombination may carry a distinct
- * tab order or identity and therefore remain persistence-worthy.
- */
 export function isCanonicalSidebarSplitState(
   state: SidebarSplitState,
   availableTabIds: readonly string[],
@@ -249,10 +244,6 @@ export function focusSidebarPane(
   };
 }
 
-/**
- * Keeps a one-for-one tab replacement in the pane that owned the old active
- * tab. New Tab launchers use this when they become a Browser or Terminal tab.
- */
 export function replaceSidebarTab(
   state: SidebarSplitState,
   previousTabId: string,
@@ -453,12 +444,6 @@ function removeEmptySidebarPane(
   };
 }
 
-/**
- * Removes one pane without closing any of its tabs. The removed group's tabs
- * join the pane that owns focus after the layout collapses. When the removed
- * pane was focused, its active tab stays active in that survivor; removing an
- * unfocused pane leaves the survivor's current selection unchanged.
- */
 export function removeSidebarSplit(
   state: SidebarSplitState,
   paneId: string,
@@ -566,12 +551,6 @@ export function resizeSidebarSplit(
   return layout === state.layout ? state : { ...state, layout };
 }
 
-/**
- * Reconciles persisted pane membership with the currently open sidebar tabs.
- * Existing ownership/order wins; newly opened tabs join the focused pane;
- * closed or duplicated ids disappear. A stale/invalid layout falls back to the
- * unchanged single-pane treatment instead of stranding content.
- */
 export function reconcileSidebarSplitState(
   state: SidebarSplitState,
   availableTabIds: readonly string[],
@@ -735,9 +714,6 @@ const sidebarSplitStateSchema = z
         focusedPaneId: z.string().min(1),
       })
       .strict(),
-    // Both the original split implementation and current layouts use this v1
-    // field. The intervening implementation omitted it, so absence means the
-    // preserved tree is restored without a maximized pane.
     maximizedPaneId: z.string().min(1).nullable().optional(),
   })
   .strict()
@@ -850,12 +826,6 @@ function getFixedPanelTabsLastUsedAt(
   }
 }
 
-/**
- * Removes sidebar layouts when their owning fixed-tab record is absent,
- * malformed, or older than the fixed-tab cache's established idle lifetime.
- * The layout stays in its current raw v1 format; retention metadata continues
- * to have one owner in the fixed-tab record.
- */
 export function pruneSidebarSplitStorage({
   storage,
   now,
@@ -903,9 +873,7 @@ export function parseSidebarSplitState(
           activeTabId,
         );
       }
-    } catch {
-      // Corrupt or pre-versioned state falls through to the compatible default.
-    }
+    } catch {}
   }
   return createSidebarSplitState(availableTabIds, activeTabId);
 }

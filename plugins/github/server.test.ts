@@ -134,13 +134,10 @@ describe("GitHub RPC contract", () => {
       repos: ["get-bb/bb"],
       ignored: ["nonsense"],
     });
-    // The wildcard from the report: stored, never matched, previously silent.
     expect(parseExtraRepos("SOME-ORG/*")).toEqual({
       repos: [],
       ignored: ["SOME-ORG/*"],
     });
-    // Separators and blanks are structure, not entries — an empty setting has
-    // nothing to complain about.
     expect(parseExtraRepos("")).toEqual({ repos: [], ignored: [] });
     expect(parseExtraRepos("  ,, \n ")).toEqual({ repos: [], ignored: [] });
     expect(parseExtraRepos(" acme/one\nacme/two , acme/one ")).toEqual({

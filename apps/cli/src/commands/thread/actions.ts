@@ -563,7 +563,6 @@ function describeThreadTellOutcome(
   if (response.delivery === "queued") {
     return `Thread ${threadId} message queued`;
   }
-  // `sent`, or an older server that reports only `ok`.
   return response.mode === "steer"
     ? `Thread ${threadId} steered`
     : `Thread ${threadId} updated`;

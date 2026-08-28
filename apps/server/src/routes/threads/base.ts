@@ -347,9 +347,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       });
     }
 
-    // Sticky execution override (model / reasoning level). Validated and
-    // persisted by a dedicated service — kept off the generic metadata update
-    // because execution config must not flow through `updateThread`.
     if ("model" in payload || "reasoningLevel" in payload) {
       await applyThreadExecutionOverride(deps, {
         thread,
@@ -440,8 +437,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
 
     const environment = requireEnvironment(deps.db, thread.environmentId);
-    // Deletion finalization owns non-runtime cleanup; only active runtime work
-    // needs a daemon stop request here.
     requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
     finalizeStoppedThread(deps, {
       threadId: thread.id,

@@ -19,11 +19,6 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 describe("environment cleanup", () => {
   it("does not reprovision a destroying environment and finishes the destroy", async () => {
-    // Decision B*: nothing reprovisions a dying environment, so a destroy runs
-    // to completion. The ENVIRONMENT_LIFECYCLE table has no provision cell from
-    // `destroying`, so a reprovision dispatch is a structural no-op — the race
-    // between a stale provision settlement and a destroy is gone by
-    // construction.
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-destroy-no-revive",
@@ -62,9 +57,6 @@ describe("environment cleanup", () => {
         throw new Error("Expected destroying environment");
       }
 
-      // A reprovision dispatch against the destroying environment no-ops: the
-      // provision.requested transition has no cell from `destroying`, so the
-      // row is untouched.
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -81,7 +73,6 @@ describe("environment cleanup", () => {
         status: "destroying",
       });
 
-      // The destroy completes and the environment becomes terminal.
       await reportQueuedCommandSuccess(harness, destroyCommand, {});
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "destroyed",

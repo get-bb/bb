@@ -7,9 +7,6 @@ import { TabPill } from "./tab-pill";
 afterEach(cleanup);
 
 describe("TabPill", () => {
-  // An icon-only tab has no visible text, so its whole accessible presence
-  // comes from `ariaLabel` plus the visually-hidden label. Losing either one
-  // leaves a button a screen reader announces as unlabelled.
   it("keeps an icon-only tab reachable by its accessible name", () => {
     render(
       <TabPill

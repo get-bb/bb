@@ -20,8 +20,6 @@ it("masks a tinted icon instead of embedding it as an image", () => {
     />,
   );
 
-  // An <img> resolves the SVG's currentColor against the image document, so
-  // the mark would paint black on a dark surface.
   expect(view.container.querySelector("img")).toBeNull();
   expect(
     view.container.querySelector(`[data-plugin-icon-asset="${iconUrl}"]`),

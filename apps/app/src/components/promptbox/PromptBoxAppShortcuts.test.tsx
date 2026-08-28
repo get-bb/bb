@@ -18,8 +18,6 @@ const testState = vi.hoisted(() => ({
   calls: [] as string[],
   composerInputLocked: false,
   sidebarHandlerResult: true,
-  // The sidebar chord under test. Overridden per test to cover both a chord the
-  // editor ignores and a chord the editor's own keymap claims.
   sidebarShortcut: {
     key: "\\",
     mod: true,
@@ -198,8 +196,6 @@ describe("prompt editor app shortcuts", () => {
   });
 
   it("runs a sidebar shortcut whose chord the editor keymap also claims", () => {
-    // Mod+Shift+B toggles a blockquote in the editor. The editor cancels the
-    // event, which used to leave the app command unreachable from the composer.
     testState.sidebarShortcut = {
       key: "b",
       mod: true,
@@ -230,8 +226,6 @@ describe("prompt editor app shortcuts", () => {
   });
 
   it("offers a declined chord to the handlers only once", () => {
-    // The editor dispatches first and leaves a declined event alone, so the
-    // window listener receives the same event. The handlers must not run twice.
     testState.sidebarHandlerResult = false;
     const editor = renderComposer();
 

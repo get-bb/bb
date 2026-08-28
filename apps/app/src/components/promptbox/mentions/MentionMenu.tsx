@@ -27,20 +27,12 @@ import type {
   TypeaheadMenuState,
 } from "@bb/client-core";
 
-/**
- * A row the menu can render — an `@`-mention suggestion or a command
- * suggestion (provider or plugin). They share a discriminant-free union via
- * their own `kind` field (`path`/`thread` vs `command`), so
- * the composer's apply path can branch by kind without a separate callback
- * per menu mode.
- */
 export type TypeaheadSuggestion =
   | PromptMentionSuggestion
   | ComposerCommandSuggestion;
 
 interface MentionMenuProps {
   state: TypeaheadMenuState;
-  /** Currently-highlighted index in the results list (for keyboard nav). */
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
   onDismiss?: () => void;
@@ -58,12 +50,6 @@ interface MenuSection<TKind extends string, TItem> {
   items: MenuSectionItem<TItem>[];
 }
 
-/**
- * Groups a flat suggestion list into sections without changing its section
- * order. The same flat list drives keyboard navigation, so rendering must
- * preserve the first occurrence of every section instead of applying a second
- * visual-only order.
- */
 function groupSections<TKind extends string, TItem>(args: {
   suggestions: readonly TItem[];
   sectionKind: (item: TItem) => TKind;
@@ -89,9 +75,6 @@ function groupSections<TKind extends string, TItem>(args: {
 }
 
 type PathMentionSectionKind = "workspace" | "thread-storage";
-// Plugin providers each get their own section, labeled by the provider
-// (plugin design §4.9); the section kind embeds pluginId + providerId so
-// identically-labeled providers from different plugins never merge.
 type PluginMentionSectionKind = `plugin:${string}`;
 type MentionSectionKind =
   | "threads"
@@ -105,12 +88,9 @@ type SecondaryContextKind = "path" | "project";
 function getPluginSectionKind(
   item: Extract<PromptMentionSuggestion, { kind: "plugin" }>,
 ): PluginMentionSectionKind {
-  // Provider ids exclude ":" (enforced at registration), so this composite
-  // is unambiguous.
   return `plugin:${item.pluginId}:${item.providerId}`;
 }
 
-/** Display label per plugin section kind (first row wins per provider). */
 function getPluginSectionLabels(
   suggestions: readonly PromptMentionSuggestion[],
 ): Map<PluginMentionSectionKind, string> {
@@ -165,8 +145,6 @@ function getMentionSectionLabel(
   if (kind === "workspace" || kind === "thread-storage") {
     return getPathSectionLabel(kind);
   }
-  // Plugin sections display the provider's label; the kind itself is the
-  // pluginId + providerId identity, never shown.
   return pluginSectionLabels.get(kind) ?? kind.slice("plugin:".length);
 }
 
@@ -208,11 +186,6 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
   return `${item.kind}-${item.path}-${index}`;
 }
 
-// Command sections use the shared `providerCommandSection` mapping from
-// @bb/server-contract. PromptBoxInternal runs `orderCommandSuggestions` — which
-// hoists exact name matches and hands back contiguous sections — before that
-// same array reaches rendering, keyboard navigation, and apply; the menu only
-// adds human-readable labels.
 type CommandSectionKind = ProviderCommandSection;
 
 function getCommandSectionKind(
@@ -231,12 +204,6 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
   return kind === "project-command" ? "Project commands" : "User commands";
 }
 
-// Rows share one icon box; plugin rows show the plugin's logo when it ships
-// one (falling back to the generic bolt), everything else a named icon. Skills
-// deliberately do NOT show the thread's agent-provider logo: that logo is a
-// property of the composer, not of where the skill was discovered, so painting
-// it on every non-plugin skill mislabels bb-owned skills (`~/.bb/skills`, bb
-// built-ins) as provider-native ones.
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
@@ -281,7 +248,6 @@ function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
   return `command-${item.source}-${item.origin}-${item.name}-${index}`;
 }
 
-/** Muted, end-truncated trailing text (project name, command description/hint). */
 function MutedTrailing({ children }: { children: string }) {
   return (
     <span className="truncate text-subtle-foreground [flex-shrink:9999]">
@@ -290,7 +256,6 @@ function MutedTrailing({ children }: { children: string }) {
   );
 }
 
-/** Muted, start-truncated trailing path (mention directory). */
 function MutedTrailingPath({ children }: { children: string }) {
   return (
     <TruncateStart className="text-subtle-foreground [flex-shrink:9999]">
@@ -304,8 +269,6 @@ interface SuggestionRowProps {
   selectedIndex: number;
   icon: ReactNode;
   primary: string;
-  /** Muted context rendered after the primary label (mention dir / project, or
-   * command description + argument hint). */
   trailing: ReactNode;
   title: string;
   rowKey: string;
@@ -336,8 +299,6 @@ function SuggestionRow({
         event.preventDefault();
         onApply();
       }}
-      // scroll-mt-7 keeps the row from being scrolled underneath the sticky
-      // section header.
       className={cn(
         "w-full scroll-mt-7 rounded px-2 py-1.5 text-left text-xs",
         isSelected ? "bg-state-active text-foreground" : "hover:bg-state-hover",
@@ -531,8 +492,6 @@ function CommandResults({
     [suggestions],
   );
 
-  // The composer suppresses opening the menu on a loaded-empty result, so an
-  // empty command list is only a transient render. Nothing to show.
   if (sections.length === 0) {
     return null;
   }
@@ -553,8 +512,6 @@ function CommandResults({
                 selectedIndex={selectedIndex}
                 icon={getCommandIcon(item)}
                 primary={item.name}
-                // description sits inline after the name (muted); argumentHint
-                // trails it, further muted, so the name stays the anchor.
                 trailing={
                   <>
                     {item.description !== null ? (
@@ -612,12 +569,10 @@ export function MentionMenu({
   const resultsLength =
     innerState.kind === "results" ? innerState.suggestions.length : 0;
 
-  // Trim refs when the result list shortens so stale entries don't survive.
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, resultsLength);
   }, [resultsLength]);
 
-  // Keep the highlighted row visible as the user arrows through the list.
   useEffect(() => {
     if (resultsLength === 0) return;
     const selectedItem = itemRefs.current[selectedIndex];

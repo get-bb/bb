@@ -102,9 +102,7 @@ async function readLastAttempt(path: string): Promise<UpdateAttempt | null> {
         protocolVersion: parsed.protocolVersion,
       };
     }
-  } catch {
-    // A missing or corrupt marker must not permanently disable repairs.
-  }
+  } catch {}
   return null;
 }
 
@@ -127,11 +125,6 @@ const defaultRunProcess: SelfUpdateProcessRunner = async (
   await execFileAsync(command, args, options);
 };
 
-// bb-app depends on native add-ons whose binaries are fetched or built by npm
-// lifecycle scripts. npm >= 12 blocks dependency install scripts for global
-// installs unless they are named in --allow-scripts; the installed package's
-// own package.json#allowScripts is not consulted for `npm install -g`.
-// npm 10 ignores the unknown flag; npm 11 accepts it.
 const BB_APP_ALLOW_SCRIPTS_ARG =
   "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
 
@@ -144,8 +137,6 @@ async function defaultInstallTarball(
   const path = inheritedPath
     ? `${executableDirectory}${delimiter}${inheritedPath}`
     : executableDirectory;
-  // Installer-managed services keep bb-app under their enrollment data dir.
-  // Legacy/manual daemons omit this and retain their existing global behavior.
   const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
   const configuredPrefix =
     rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;

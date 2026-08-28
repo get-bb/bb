@@ -1,8 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-// Route views render icons outside the shell's core set. Importing the
-// extended registry here ships it as a static dependency of this route chunk,
-// so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -182,7 +179,6 @@ function appPaletteLabel(
 }
 
 interface ExperimentsSettingsSectionProps {
-  /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
   changelogPreviewEnabled: boolean;
   editMessagesEnabled: boolean;
@@ -242,8 +238,6 @@ const CREATE_CUSTOM_PALETTE_PROMPT =
 const PALETTE_SETTING_DESCRIPTION =
   "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
 
-// Renders the favicon glyph itself in the candidate color by using the
-// favicon image as a CSS mask, so the preview matches the resulting tab icon.
 function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   return (
     <span
@@ -916,8 +910,6 @@ export function SettingsView() {
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [richTextEditing, setRichTextEditing] = useRichTextEditingPreference();
-  // The in-app browser only exists on desktop; hide the toggle entirely on web,
-  // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();

@@ -477,10 +477,6 @@ describe("prompt history service", () => {
       providerId: "codex",
     });
 
-    // Side-chat and fork preloads reach the write path with input: [] — the
-    // runtime starts no first turn, so there is no prompt to recall. A row
-    // persisted anyway would store input "[]", which the stored-input schema
-    // rejects at read time (the empty-array rows observed in production).
     expect(
       recordAcceptedPromptHistoryEntry(
         { db },

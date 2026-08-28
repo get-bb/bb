@@ -51,10 +51,6 @@ interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
   status?: "active" | "idle";
 }
 
-/**
- * Seeds a ready environment and a thread with a live provider session.
- * The stored provider thread ID lets queued messages use the warm provider path.
- */
 function seedProviderThreadFixture(
   args: SeedProviderThreadFixtureArgs,
 ): IdleThreadFixture {
@@ -85,11 +81,6 @@ function seedProviderThreadFixture(
   return { environment, thread };
 }
 
-/**
- * Seeds a ready environment + a cold `idle` thread with NO provider session
- * (no stored provider-thread-id), so a `mode: "start"` send resolves to a cold
- * `thread.start` rather than a warm `turn.submit`.
- */
 function seedColdIdleThreadFixture(
   args: SeedIdleThreadFixtureArgs,
 ): IdleThreadFixture {
@@ -139,10 +130,6 @@ describe("queued message dispatch gate", () => {
         content: textInput("queued while idle"),
       });
 
-      // The thread is archived AFTER the message is queued but still `idle`:
-      // this is exactly the race window the manual send path must defend
-      // against. The structural `run.started` gate is what catches it; the
-      // auto-sweep entry guard would otherwise have skipped an archived thread.
       archiveThread(harness.db, harness.hub, thread.id);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
@@ -159,9 +146,6 @@ describe("queued message dispatch gate", () => {
         body: { code: "queued_message_claim_lost" },
       });
 
-      // No turn was dispatched to the host: the transaction rolled back the
-      // claim consumption + the client/turn/requested append, so the message
-      // stays queued and the runtime never sees a turn.submit/thread.start.
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
@@ -172,8 +156,6 @@ describe("queued message dispatch gate", () => {
       expect(
         listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
       ).toContain(queued.id);
-      // The archived thread stays idle: the superseded dispatch never
-      // flipped it to active.
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
       });
@@ -228,8 +210,6 @@ describe("queued message auto-send notification", () => {
         mode: "auto",
       });
 
-      // Every status flip must carry the row snapshot, or the client falls
-      // back to refetching every active thread list for this transition.
       const statusMessages = parseThreadMessages(socket.messages).filter(
         (message) =>
           message.id === thread.id &&
@@ -518,14 +498,9 @@ describe("idle cold-start activation", () => {
         trigger: "user",
       });
 
-      // The dispatch IS the activation: an idle cold-start flips to `active`
-      // synchronously on the dispatch transaction, before the daemon ever
-      // reports run.started. (A turn.submit and an `error` cold-start
-      // already did this; an `idle` cold-start now matches.)
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "active",
       });
-      // A cold thread.start command (not a warm turn.submit) was dispatched.
       await waitForQueuedCommand(
         harness,
         (queued) =>

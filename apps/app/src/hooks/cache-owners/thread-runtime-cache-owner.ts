@@ -151,11 +151,6 @@ interface RollbackRemoveQueuedMessageTransactionArgs {
 }
 
 interface ApplySendThreadMessageSuccessArgs {
-  /**
-   * How the server took the message. `deferred` means the thread awaits a user
-   * interaction, so nothing runs yet and the optimistic accepted turn must be
-   * undone (#1650).
-   */
   delivery: SendMessageDelivery;
   queryClient: QueryClient;
   realtimeConnected: boolean;
@@ -612,9 +607,6 @@ function applyOptimisticAcceptedTurnThreadState({
     updatedAt: Math.max(thread.updatedAt, createdAt),
     runtime: {
       ...thread.runtime,
-      // Flip displayStatus so the working indicator mounts with the optimistic
-      // user-message row. Preserve host blockers because promoting them to
-      // "active" would misrepresent host readiness.
       displayStatus:
         thread.runtime.displayStatus === "host-reconnecting" ||
         thread.runtime.displayStatus === "waiting-for-host"
@@ -857,14 +849,6 @@ export function applySendThreadMessageSuccess({
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
   if (delivery === "deferred" && transaction?.kind === "accepted-turn") {
-    // The server holds the message until the thread's open question or
-    // approval settles, so no turn is running. Undo the optimistic thread
-    // state, which would otherwise show a working indicator for a turn that
-    // has not started, but keep the optimistic message row: it is the only
-    // place the held message is visible, and the real event replaces it when
-    // the interaction settles and the message delivers. Marking the timeline
-    // stale here would drop that row on the next refetch and the message would
-    // look lost — the very symptom #1650 is about.
     if (transaction.previousThread) {
       queryClient.setQueryData<ThreadResponse>(
         threadQueryKey(request.id),
@@ -882,7 +866,6 @@ export function applySendThreadMessageSuccess({
     return;
   }
   if (transaction?.kind === "queued-message") {
-    // Queued prompts enter recall too; prepend locally instead of refetching.
     prependThreadPromptHistory(
       queryClient,
       request.id,
@@ -892,9 +875,6 @@ export function applySendThreadMessageSuccess({
       }),
     );
     if (realtimeConnected) {
-      // Enqueuing does not write the thread record, and `queue-changed`
-      // refreshes prompt history; only the queue list needs a read to swap
-      // the optimistic row for the server row.
       invalidateThreadQueuedMessageListQuery({
         queryClient,
         threadId: request.id,
@@ -1198,11 +1178,6 @@ export async function beginReorderQueuedMessageTransaction({
   const previousQueuedMessages =
     queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
 
-  // Apply the optimistic reorder synchronously — before awaiting cancelQueries
-  // — so the list re-renders in its new order within the same tick as the drop.
-  // If this write lands a microtask late (after the await), dnd-kit has already
-  // animated the dragged row back to its original slot, producing a visible
-  // snap-back before it settles into place.
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     queryKey,
     (currentQueuedMessages) => {

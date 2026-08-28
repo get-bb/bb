@@ -23,19 +23,12 @@ export interface JsonOutputOptions {
   json?: boolean;
 }
 
-/**
- * Print data as formatted JSON and return true, or return false if --json was not requested.
- * Use this as the single JSON output path for all CLI commands.
- */
 export function outputJson(opts: JsonOutputOptions, data: unknown): boolean {
   if (!opts.json) return false;
   console.log(JSON.stringify(data, null, 2));
   return true;
 }
 
-/**
- * Print a context label to stderr when a fallback env ID was used (human output only).
- */
 export function printContextLabel(
   resolved: ResolvedId,
   kind: "Thread" | "Project",
@@ -88,9 +81,6 @@ export async function confirmDestructiveAction(
 
 export function getErrorMessage(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
-  // Node's fetch says "fetch failed" and keeps the actionable socket errors
-  // under `cause`. Multi-address connections use an AggregateError, so walk
-  // both links while guarding against malformed cyclic error graphs.
   const seen = new Set<Error>();
   const messages: string[] = [];
   const pending: Error[] = [err];

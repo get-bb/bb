@@ -82,7 +82,6 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain("host-owned wrapper or header");
     expect(normalized).toContain("Derive fidelity; do not choose it");
     expect(normalized).toContain("no meaningful spatial owner");
-    // The geometry rules are derivation contracts, not authored constants.
     expect(normalized).toContain(
       "min(MAX_FIXTURE_SCALE, availW / authoredW, availH / authoredH)",
     );
@@ -110,7 +109,9 @@ describe("Plugin Guide maintenance skill", () => {
     );
     expect(normalized).toContain("chip's effective footprint");
     expect(normalized).toContain("rides the frame edge");
-    expect(normalized).toContain("shared chip-bar treatment from `scroll-edges.ts`");
+    expect(normalized).toContain(
+      "shared chip-bar treatment from `scroll-edges.ts`",
+    );
     expect(normalized).toContain("`FOCUS_RING_CLASS` owner");
     expect(normalized).toContain(
       "Page tabs are one horizontally scrolling, non-wrapping row",

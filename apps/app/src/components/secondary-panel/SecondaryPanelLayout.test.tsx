@@ -271,12 +271,6 @@ function expectNativeBrowserVisibility(visible: boolean) {
   ).toBe(String(visible));
 }
 
-// `installAnimationFrameQueue` overwrites these with `Object.defineProperty`
-// before spying on them, so `vi.restoreAllMocks` restores the spy to that
-// overwrite rather than to the real function — leaving every test that runs
-// afterwards with a `requestAnimationFrame` that never invokes its callback.
-// Captured once at module load, before any test has had a chance to replace
-// them.
 const PRISTINE_REQUEST_ANIMATION_FRAME = window.requestAnimationFrame;
 const PRISTINE_CANCEL_ANIMATION_FRAME = window.cancelAnimationFrame;
 
@@ -313,9 +307,9 @@ describe("SecondaryPanelLayout", () => {
       resetKey: "thread-grid",
     });
 
-    expect(
-      screen.getByTestId("panel-group").dataset.splitResizeGridRoot,
-    ).toBe("");
+    expect(screen.getByTestId("panel-group").dataset.splitResizeGridRoot).toBe(
+      "",
+    );
   });
 
   it("preserves routed main content when the panel state identity changes", () => {
@@ -361,8 +355,6 @@ describe("SecondaryPanelLayout", () => {
       "0ms",
     );
 
-    // This mirrors storage hydration dropping a transient New tab. The panel
-    // closes while transitions are still suppressed.
     view.rerenderWith({ open: false });
     act(() => frames.flushAll());
     expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(

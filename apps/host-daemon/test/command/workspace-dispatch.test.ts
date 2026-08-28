@@ -129,9 +129,7 @@ describe("workspace command dispatch", () => {
 
     expect(result.outcome).toBe("available");
     expect(refreshed.state.statusReads).toBe(1);
-    expect(
-      harness.manager.get("env-late-git")?.workspace.isGitRepo,
-    ).toBe(true);
+    expect(harness.manager.get("env-late-git")?.workspace.isGitRepo).toBe(true);
   });
 
   it("covers workspace.pull_request", async () => {
@@ -191,8 +189,6 @@ describe("workspace command dispatch", () => {
     );
     expect(absentResult).toEqual({ outcome: "absent" });
 
-    // A failed gh lookup (missing binary, auth failure, timeout) must stay
-    // distinguishable from "checked and found no PR".
     harness.workspaceState.pullRequestLookupError =
       "gh pr view failed: authentication required";
     const unavailableResult = await dispatchOnlineRpcCommand(

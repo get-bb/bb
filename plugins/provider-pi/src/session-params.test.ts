@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPiSessionParams } from "./session-params.js";
 
-/**
- * Pi session parameter mapping: the canonical wire options in, the pi bridge's
- * session-construction params out.
- */
-
 describe("buildPiSessionParams", () => {
   it("injects the bb thread id into the shell env and drops invalid keys", () => {
     expect(
@@ -15,8 +10,6 @@ describe("buildPiSessionParams", () => {
         instructionMode: "append",
         options: {
           envVars: {
-            // Pi applies these as its shell environment policy, which keys by
-            // env-var name; a dotted key is not a name a shell can carry.
             "BAD.KEY": "ignored",
             TEST_VAR: "123",
           },
@@ -37,8 +30,6 @@ describe("buildPiSessionParams", () => {
         options: { reasoningLevel },
       });
 
-    // bb's "none" is Pi's "off"; levels Pi has no name for are dropped rather
-    // than sent as a value the bridge schema would reject.
     expect(params("none").thinkingLevel).toBe("off");
     expect(params("high").thinkingLevel).toBe("high");
     expect(params("ultracode")).not.toHaveProperty("thinkingLevel");

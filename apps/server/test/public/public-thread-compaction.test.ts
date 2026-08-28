@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getLatestThreadSequence,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
   turnScope,
@@ -242,12 +239,14 @@ describe("public thread compaction", () => {
         }),
       ).toBe(true);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      await expect.poll(
-        () =>
-          responder.requests.filter(
-            ({ command }) => command.type === "turn.submit",
-          ).length,
-      ).toBe(2);
+      await expect
+        .poll(
+          () =>
+            responder.requests.filter(
+              ({ command }) => command.type === "turn.submit",
+            ).length,
+        )
+        .toBe(2);
     });
   });
 
