@@ -35,7 +35,7 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     return {
       label: "Provisioning",
       compactLabel: "Provisioning",
-      icon: "Spinner",
+      icon: "Loading",
       typeLabel: undefined,
     };
   }
