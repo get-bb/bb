@@ -401,7 +401,11 @@
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/src/services/skills/builtin-skills/bb-cli/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
     },
     // Integration tests typecheck without the `source` condition, so
     // @get-bb/plugin-sdk (reached through apps/server sources) resolves to the
@@ -467,6 +471,7 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/*/skills/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
         "$TURBO_ROOT$/examples/plugins/echo-provider/*.ts",
