@@ -178,55 +178,9 @@ interface RecoveryBenchmarkCounts {
   unaffectedSubscriptionsReceivingEvents: number;
 }
 
-interface RecoveryBenchmarkSample extends RecoveryBenchmarkCounts {
-  elapsedMs: number;
-}
-
-interface RecoveryBenchmarkSummary {
-  iterations: number;
-  medianElapsedMs: number;
-  p95ElapsedMs: number;
-  countsDeterministic: boolean;
-  counts: RecoveryBenchmarkCounts;
-}
-
-function benchmarkCounts(
-  sample: RecoveryBenchmarkSample,
-): RecoveryBenchmarkCounts {
-  return {
-    subscriptions: sample.subscriptions,
-    affectedSubscriptions: sample.affectedSubscriptions,
-    unaffectedSubscriptions: sample.unaffectedSubscriptions,
-    childRestarts: sample.childRestarts,
-    proxyResubscriptions: sample.proxyResubscriptions,
-    listEntriesCalls: sample.listEntriesCalls,
-    affectedSubscriptionsReceivingErrors:
-      sample.affectedSubscriptionsReceivingErrors,
-    affectedSubscriptionsReceivingEvents:
-      sample.affectedSubscriptionsReceivingEvents,
-    unaffectedSubscriptionsReceivingErrors:
-      sample.unaffectedSubscriptionsReceivingErrors,
-    unaffectedSubscriptionsReceivingEvents:
-      sample.unaffectedSubscriptionsReceivingEvents,
-  };
-}
-
-function percentile(values: readonly number[], quantile: number): number {
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * quantile) - 1),
-  );
-  const value = sorted[index];
-  if (value === undefined) {
-    throw new Error("Cannot calculate a percentile without samples");
-  }
-  return value;
-}
-
-async function runRecoveryBenchmarkSample(
+async function runRecoveryCountSample(
   subscriptionCount: number,
-): Promise<RecoveryBenchmarkSample> {
+): Promise<RecoveryBenchmarkCounts> {
   let listEntriesCalls = 0;
   const { proxy, children, current } = createHarness({
     listEntries: () => {
@@ -258,18 +212,16 @@ async function runRecoveryBenchmarkSample(
   }
   await flush();
 
-  const startedAt = performance.now();
   current().parcel.emitError(
     "/root-0",
     `Events were dropped by the FSEvents client. ${RESCAN_REQUIRED_MESSAGE}.`,
   );
   await flush();
-  const elapsedMs = performance.now() - startedAt;
   const totalSubscribeCalls = children.reduce(
     (total, child) => total + child.parcel.subscriptions.length,
     0,
   );
-  const sample: RecoveryBenchmarkSample = {
+  const counts: RecoveryBenchmarkCounts = {
     subscriptions: subscriptionCount,
     affectedSubscriptions: 1,
     unaffectedSubscriptions: subscriptionCount - 1,
@@ -282,44 +234,9 @@ async function runRecoveryBenchmarkSample(
       unaffectedSubscriptionsReceivingErrors.size,
     unaffectedSubscriptionsReceivingEvents:
       unaffectedSubscriptionsReceivingEvents.size,
-    elapsedMs,
   };
   proxy.dispose();
-  return sample;
-}
-
-async function runRecoveryBenchmark(
-  subscriptionCount: number,
-  iterations: number,
-): Promise<RecoveryBenchmarkSummary> {
-  for (let index = 0; index < 10; index += 1) {
-    await runRecoveryBenchmarkSample(subscriptionCount);
-  }
-  const samples: RecoveryBenchmarkSample[] = [];
-  for (let index = 0; index < iterations; index += 1) {
-    samples.push(await runRecoveryBenchmarkSample(subscriptionCount));
-  }
-  const firstSample = samples[0];
-  if (!firstSample) {
-    throw new Error("Recovery benchmark requires at least one iteration");
-  }
-  const counts = benchmarkCounts(firstSample);
-  return {
-    iterations,
-    medianElapsedMs: percentile(
-      samples.map((sample) => sample.elapsedMs),
-      0.5,
-    ),
-    p95ElapsedMs: percentile(
-      samples.map((sample) => sample.elapsedMs),
-      0.95,
-    ),
-    countsDeterministic: samples.every(
-      (sample) =>
-        JSON.stringify(benchmarkCounts(sample)) === JSON.stringify(counts),
-    ),
-    counts,
-  };
+  return counts;
 }
 
 describe("createParcelWatcherProxy", () => {
@@ -664,16 +581,18 @@ describe("createParcelWatcherProxy", () => {
 });
 
 if (process.env.BB_WATCHER_RECOVERY_BENCHMARK === "1") {
-  describe("watcher recovery benchmark", () => {
-    it("reports two-subscription and fan-out recovery costs", async () => {
+  describe("watcher recovery count harness", () => {
+    it("reports two-subscription and fan-out recovery work", async () => {
       const result = {
-        twoSubscriptions: await runRecoveryBenchmark(2, 100),
-        fanOut: await runRecoveryBenchmark(100, 100),
+        twoSubscriptions: await runRecoveryCountSample(2),
+        fanOut: await runRecoveryCountSample(100),
       };
-      expect(result.twoSubscriptions.countsDeterministic).toBe(true);
-      expect(result.fanOut.countsDeterministic).toBe(true);
+      expect(result.twoSubscriptions.affectedSubscriptions).toBe(1);
+      expect(result.twoSubscriptions.unaffectedSubscriptions).toBe(1);
+      expect(result.fanOut.affectedSubscriptions).toBe(1);
+      expect(result.fanOut.unaffectedSubscriptions).toBe(99);
       process.stdout.write(
-        `WATCHER_RECOVERY_BENCHMARK ${JSON.stringify(result)}\n`,
+        `WATCHER_RECOVERY_COUNTS ${JSON.stringify(result)}\n`,
       );
     }, 30_000);
   });
