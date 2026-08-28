@@ -60,10 +60,46 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
-    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
+    providers: Pick<
+      BbPluginApi["sdk"]["providers"],
+      "list" | "experimental_validateExecutionSelection"
+    >;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
+
+async function validateAgentExecutionSelection(
+  bb: ServiceApi,
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): Promise<void> {
+  await bb.sdk.providers.experimental_validateExecutionSelection({
+    providerId: execution.providerId,
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    ...providerRoutingForEnvironment(execution.environment),
+  });
+}
+
+function agentSelectionChanged(
+  previous: AutomationExecution,
+  next: Extract<AutomationExecution, { mode: "agent" }>,
+): boolean {
+  if (previous.mode !== "agent") return true;
+  const previousRouting = providerRoutingForEnvironment(previous.environment);
+  const nextRouting = providerRoutingForEnvironment(next.environment);
+  return (
+    previous.providerId !== next.providerId ||
+    previous.model !== next.model ||
+    previous.reasoningLevel !== next.reasoningLevel ||
+    previous.targetThreadId !== next.targetThreadId ||
+    ("hostId" in previousRouting ? previousRouting.hostId : undefined) !==
+      ("hostId" in nextRouting ? nextRouting.hostId : undefined) ||
+    ("environmentId" in previousRouting
+      ? previousRouting.environmentId
+      : undefined) !==
+      ("environmentId" in nextRouting ? nextRouting.environmentId : undefined)
+  );
+}
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
@@ -442,13 +478,17 @@ export function createAutomationService(args: {
       const now = Date.now();
       validateTrigger(payload.trigger, now);
       assertNotRecursiveCreation(db, payload.createdByThreadId);
-      if (payload.execution.mode === "agent") {
+      if (
+        payload.execution.mode === "agent" &&
+        payload.execution.targetThreadId === undefined
+      ) {
         await resolvePermissionMode(
           bb,
           payload.execution.providerId,
           payload.execution.permissionMode,
           providerRoutingForEnvironment(payload.execution.environment),
         );
+        await validateAgentExecutionSelection(bb, payload.execution);
       }
       const automationId = createAutomationId();
       const stored = await resolveStoredExecution({
@@ -508,13 +548,17 @@ export function createAutomationService(args: {
           : null;
       }
       if (input.execution !== undefined) {
-        if (input.execution.mode === "agent") {
+        if (
+          input.execution.mode === "agent" &&
+          input.execution.targetThreadId === undefined
+        ) {
           await resolvePermissionMode(
             bb,
             input.execution.providerId,
             input.execution.permissionMode,
             providerRoutingForEnvironment(input.execution.environment),
           );
+          await validateAgentExecutionSelection(bb, input.execution);
         }
         const stored = await resolveStoredExecution({
           pluginDataDir,
@@ -530,9 +574,10 @@ export function createAutomationService(args: {
           input.agent,
         );
         if (
-          input.agent.providerId !== undefined ||
-          input.agent.permissionMode !== undefined ||
-          input.agent.target?.type === "environment"
+          updatedExecution.targetThreadId === undefined &&
+          (input.agent.providerId !== undefined ||
+            input.agent.permissionMode !== undefined ||
+            input.agent.target?.type === "environment")
         ) {
           if (currentExecution.mode !== "agent") {
             throw new Error(
@@ -545,6 +590,13 @@ export function createAutomationService(args: {
             updatedExecution.permissionMode,
             providerRoutingForEnvironment(updatedExecution.environment),
           );
+        }
+        if (
+          updatedExecution.mode === "agent" &&
+          updatedExecution.targetThreadId === undefined &&
+          agentSelectionChanged(currentExecution, updatedExecution)
+        ) {
+          await validateAgentExecutionSelection(bb, updatedExecution);
         }
         patch.execution = updatedExecution;
       }

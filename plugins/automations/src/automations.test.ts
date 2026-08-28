@@ -10,7 +10,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
-import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import {
   claimAutomationScheduledRun,
@@ -45,6 +45,18 @@ import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir } from "./script-files.js";
+
+async function validateExecutionSelectionFixture(
+  input: Parameters<
+    BbPluginApi["sdk"]["providers"]["experimental_validateExecutionSelection"]
+  >[0],
+) {
+  return {
+    providerId: input.providerId,
+    model: input.model,
+    reasoningLevel: input.reasoningLevel,
+  };
+}
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
@@ -129,6 +141,8 @@ function createAutomationServiceBb() {
         list: async () => [],
       },
       providers: {
+        experimental_validateExecutionSelection:
+          validateExecutionSelectionFixture,
         list: async () =>
           [
             {
@@ -859,6 +873,8 @@ describe("automation service", () => {
           list: async () => [],
         },
         providers: {
+          experimental_validateExecutionSelection:
+            validateExecutionSelectionFixture,
           list: async () => [],
         },
         threadSections: {

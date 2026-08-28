@@ -29,6 +29,7 @@ import {
 import {
   assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
+  extractPluginRpcUpstreamCause,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
@@ -1825,9 +1826,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (outcome.cause instanceof PluginRpcBoundaryError) {
         return { ok: false, error: outcome.cause.rpcError };
       }
+      const upstreamCause = extractPluginRpcUpstreamCause(outcome.cause);
       return {
         ok: false,
-        error: { code: "handler_error", message: outcome.error },
+        error: {
+          code: "handler_error",
+          message: outcome.error,
+          ...(upstreamCause === undefined
+            ? {}
+            : { experimental_cause: upstreamCause }),
+        },
       };
     },
 

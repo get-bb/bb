@@ -41,6 +41,15 @@ Spawning:
   requested provider or Codex and resolves its provider-reported default model
   on the target machine. The product reasoning and permission defaults are
   medium and auto.
+  Before creating a thread or environment, bb validates the resolved model and
+  any advertised per-model reasoning support against that target machine's
+  authoritative catalog. Both active and selected-only catalog entries remain
+  valid, as do provider-approved IDs registered in customModels. A bad explicit
+  tuple exits non-zero without provisioning a worktree or submitting a provider
+  turn. Stale inherited project or fork selections recover to compatible target
+  defaults. A transient refresh can use registered fallback catalog rows when
+  they contain the selected model; otherwise bb reports a retryable catalog
+  failure instead of substituting and remembering a different model.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
@@ -198,6 +207,10 @@ Messaging:
   failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
   or `deferred`. A held message waits for a thread that failed while it was
   held, and delivers when the thread is retried.
+  Queue and deferred admission does not require a live model catalog. BB
+  validates when delivery becomes possible. A catalog mismatch retains the
+  input and does not block later valid input; other retryable failures preserve
+  arrival order. Queued input remains available through `thread queue`.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

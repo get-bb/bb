@@ -36,6 +36,7 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
+import { validateSystemExecutionSelection } from "../services/system/execution-selection.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
@@ -304,6 +305,10 @@ export function registerSystemRoutes(
 
   get(routes.executionOptions, async (context, query) =>
     context.json(await resolveSystemExecutionOptions(deps, query)),
+  );
+
+  post(routes.validateExecutionSelection, async (context, body) =>
+    context.json(await validateSystemExecutionSelection(deps, body)),
   );
 
   post(routes.voiceTranscription, async (context) => {

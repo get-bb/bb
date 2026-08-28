@@ -43,6 +43,10 @@ import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
+import {
+  buildExistingThreadExecutionInput,
+  resolveExistingThreadExecutionPlan,
+} from "./thread-execution-plan.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   prependDeferredFirstTurnContext,
@@ -75,6 +79,7 @@ import {
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { isExecutionSelectionCatalogMismatch } from "../system/execution-selection.js";
 
 interface SendQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -183,9 +188,12 @@ export async function createQueuedMessageForThread(
     input: payload.input,
     projectId: thread.projectId,
   });
-  const execution = await buildExecutionOptions(deps, payload, {
+  const executionPlan = await resolveExistingThreadExecutionPlan(deps, {
+    executionSource: "client/turn/requested",
+    input: buildExistingThreadExecutionInput(payload),
     threadId: thread.id,
   });
+  const execution = executionPlan.resolvedExecution;
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
@@ -636,6 +644,21 @@ export async function sendNextQueuedMessageIfPresent(
       }),
     );
   } catch (error) {
+    if (isExecutionSelectionCatalogMismatch(error)) {
+      deps.logger.warn(
+        {
+          queuedMessageId: nextQueuedMessages[0]!.id,
+          ...runtimeErrorLogFields(deps.config, error),
+          threadId: args.threadId,
+        },
+        "Queued message auto-send skipped an unavailable execution selection",
+      );
+      try {
+        return await sendNextQueuedMessageIfPresent(deps, args);
+      } finally {
+        releaseQueuedMessageClaims(deps, nextQueuedMessages);
+      }
+    }
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (isQueuedMessageClaimLostError(error)) {
       return false;

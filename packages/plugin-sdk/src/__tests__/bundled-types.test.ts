@@ -55,6 +55,9 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain(
       "models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;",
     );
+    expect(declarations).toContain(
+      "experimental_validateExecutionSelection(args: ProviderExecutionSelectionValidationArgs): Promise<ProviderExecutionSelectionValidationResult>;",
+    );
     expect(declarations).toContain("interface TerminalsArea");
     expect(declarations).toContain("terminals: TerminalsArea;");
     expect(declarations).toContain(

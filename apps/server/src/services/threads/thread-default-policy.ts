@@ -184,12 +184,13 @@ export function buildProviderThreadExecutionDefaults(
   args: {
     model: string;
     providerId: string;
+    reasoningLevel: ReasoningLevel;
   },
 ): ProjectExecutionDefaults {
   return {
     providerId: args.providerId,
     model: args.model,
-    reasoningLevel: DEFAULT_REASONING_LEVEL,
+    reasoningLevel: args.reasoningLevel,
     permissionMode: resolveSupportedPermissionMode(registry, {
       providerId: args.providerId,
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,

@@ -25,6 +25,7 @@ import {
 import { goneThreadEnvironmentDetails } from "../lib/lifecycle-api-errors.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { isExecutionSelectionCatalogMismatch } from "../system/execution-selection.js";
 import {
   deferThreadMessage,
   parseDeferredThreadMessagePayload,
@@ -149,6 +150,9 @@ async function deliverDeferredThreadMessage(
 }
 
 function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
+  if (isExecutionSelectionCatalogMismatch(error)) {
+    return false;
+  }
   return (
     error instanceof ApiError && (error.status === 400 || error.status === 404)
   );
@@ -240,6 +244,13 @@ async function flushDeferredThreadMessagesNow(
         deps.logger.warn(
           fields,
           "Dropped deferred thread message: request is no longer valid",
+        );
+        continue;
+      }
+      if (isExecutionSelectionCatalogMismatch(error)) {
+        deps.logger.warn(
+          fields,
+          "Deferred thread message skipped an unavailable execution selection; will retry",
         );
         continue;
       }

@@ -544,6 +544,13 @@ describe("@bb/sdk", () => {
           modelLoadError: null,
         },
       },
+      {
+        body: {
+          providerId: "codex",
+          model: "gpt-5.6",
+          reasoningLevel: "high",
+        },
+      },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -562,6 +569,18 @@ describe("@bb/sdk", () => {
         providerId: "acp-remote",
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
+    await expect(
+      sdk.providers.experimental_validateExecutionSelection({
+        hostId: "host_remote",
+        providerId: "codex",
+        model: "gpt-5.6",
+        reasoningLevel: "high",
+      }),
+    ).resolves.toEqual({
+      providerId: "codex",
+      model: "gpt-5.6",
+      reasoningLevel: "high",
+    });
 
     expect(queue.requests).toEqual([
       {
@@ -573,6 +592,16 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+      },
+      {
+        bodyText: JSON.stringify({
+          providerId: "codex",
+          model: "gpt-5.6",
+          reasoningLevel: "high",
+          hostId: "host_remote",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/system/execution-selection/validate",
       },
     ]);
   });

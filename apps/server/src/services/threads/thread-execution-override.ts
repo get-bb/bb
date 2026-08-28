@@ -60,7 +60,7 @@ export function resolveThreadExecutionOverrideUpdate(
       if (!target) {
         throw new ApiError(
           400,
-          "invalid_request",
+          "model_not_available",
           `Model "${patch.model}" is not available in this thread's ${providerId} model catalog. Choose a model offered by ${providerId}; changing providers requires starting a new thread.`,
         );
       }
@@ -89,7 +89,7 @@ export function resolveThreadExecutionOverrideUpdate(
       ) {
         throw new ApiError(
           400,
-          "invalid_request",
+          "reasoning_level_not_supported",
           `Reasoning level "${patch.reasoningLevel}" is not supported by ${
             effectiveModel
               ? `model "${effectiveModel}"`

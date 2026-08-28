@@ -7,6 +7,7 @@ import {
 import type { ClientTurnRequestId } from "@bb/domain";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
 import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queued-messages.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,
@@ -56,6 +57,20 @@ function registerSuccessfulTurnResponder(
   return registerHostRpcResponder(harness, {
     ...args,
     handle: ({ command }): HostRpcHandlerResult => {
+      if (command.type === "provider.list_models") {
+        return {
+          ok: true,
+          result: {
+            models: [
+              availableModelFixture({
+                model: "gpt-5",
+                reasoningLevels: ["medium"],
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        };
+      }
       if (command.type === "host.list_files") {
         return { ok: true, result: { files: [], truncated: false } };
       }

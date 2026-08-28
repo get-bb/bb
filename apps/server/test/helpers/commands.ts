@@ -12,7 +12,11 @@ import {
   hostDaemonServerWsMessageSchema,
   parseHostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import { type HostType, type ThreadEvent } from "@bb/domain";
+import {
+  type HostType,
+  type ReasoningLevel,
+  type ThreadEvent,
+} from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
@@ -43,6 +47,17 @@ interface CapturedRpcRow {
 type QueuedCommandPayload = HostDaemonRpcCommand;
 type QueuedCommandResult<TCommand extends QueuedCommandPayload> =
   HostDaemonRpcResultForCommand<TCommand>;
+
+const SHARED_FAKE_REASONING_LEVELS: readonly ReasoningLevel[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+];
 
 export interface QueuedCommand<
   TCommand extends QueuedCommandPayload = QueuedCommandPayload,
@@ -250,12 +265,46 @@ function respondToProviderModelListCommand(
         models: [
           availableModelFixture({
             model: "test-provider-default",
-            reasoningLevels: ["low", "medium", "high"],
+            reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
             defaultReasoningLevel: "medium",
             isDefault: true,
           }),
+          ...[
+            "fake-model",
+            "gpt-4o-mini",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5.3-codex",
+            "gpt-5.4",
+            "gpt-5.5",
+            "gpt-5.6",
+            "gpt-5.6-sol",
+            "hook-model",
+            "openai/codex-mini",
+            "openai/gpt-5.4",
+            "openai-codex/gpt-5.6-luna",
+            "pi-model",
+            "test-model",
+          ].map((model) =>
+            availableModelFixture({
+              model,
+              reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
+              defaultReasoningLevel: "medium",
+            }),
+          ),
         ],
-        selectedOnlyModels: [],
+        selectedOnlyModels: [
+          "acp-default",
+          "claude-opus-4-6",
+          "claude-opus-4-8",
+          "claude-sonnet-4-6",
+        ].map((model) =>
+          availableModelFixture({
+            model,
+            reasoningLevels: SHARED_FAKE_REASONING_LEVELS,
+            defaultReasoningLevel: "medium",
+          }),
+        ),
       },
     }),
     sessionId: args.sessionId,

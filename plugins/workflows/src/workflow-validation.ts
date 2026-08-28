@@ -68,7 +68,7 @@ export async function validateWorkflowSource(
           `Model-load error for provider ${provider.id}: ${models.modelLoadError.code}`,
         );
       }
-      const model = models.models.find(
+      const model = [...models.models, ...models.selectedOnlyModels].find(
         (candidate) =>
           candidate.id === selection.model ||
           candidate.model === selection.model,
@@ -79,6 +79,7 @@ export async function validateWorkflowSource(
         );
       }
       if (
+        model.supportedReasoningEfforts.length > 0 &&
         !model.supportedReasoningEfforts.some(
           (effort) => effort.reasoningEffort === selection.reasoningLevel,
         )

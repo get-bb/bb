@@ -385,6 +385,14 @@ the web timeline and mobile resolve a row's `"<pluginId>/<name>"` glyph
 against it before drawing, falling back to the per-kind glyph when the name
 is not found.
 
+Server plugins that persist an execution tuple use
+`bb.sdk.providers.experimental_validateExecutionSelection(...)` first. Route
+the request with `environmentId` or `hostId`; validation uses that target's
+live provider catalog, preserves configured `customModels`, canonicalizes
+catalog aliases, and rejects advertised model/reasoning incompatibilities
+without creating a thread or environment. Thread spawn validates again so a
+catalog change between persistence and execution still fails safely.
+
 ## 6. Distribution
 
 Bridges are delivered as content-addressed plugin artifacts the daemon caches

@@ -115,6 +115,10 @@ async function bootAutomationsPlugin(
       },
     },
   });
+  host.harness.sdk.stub(
+    "providers.experimental_validateExecutionSelection",
+    async (input: unknown) => input,
+  );
   await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
   return host;
 }
@@ -262,6 +266,104 @@ describe("automations server plugin harness", () => {
       ),
     ).toHaveLength(0);
     expect(signalKinds(host)).toContain("automations-changed");
+
+    await harness.dispose();
+  });
+
+  it("rejects invalid execution selections before creating or updating an automation", async () => {
+    const host = await bootAutomationsPlugin();
+    const { harness } = host;
+    harness.sdk.stub(
+      "providers.experimental_validateExecutionSelection",
+      async (input: { model: string }) => {
+        if (input.model === "claude-does-not-exist-9") {
+          throw new Error(
+            'HTTP 400: Model "claude-does-not-exist-9" is not available for provider codex.',
+          );
+        }
+        return input;
+      },
+    );
+
+    await expect(
+      harness.callRpc("automations_create", {
+        projectId: PROJECT_ID,
+        name: "Invalid automation",
+        enabled: true,
+        trigger: oneShotTrigger(),
+        execution: {
+          ...agentExecution(),
+          model: "claude-does-not-exist-9",
+        },
+        origin: "human",
+      }),
+    ).rejects.toThrow("claude-does-not-exist-9");
+    await expect(
+      harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+    ).resolves.toEqual([]);
+
+    const created = await createAgentAutomation(harness);
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        agent: { model: "claude-does-not-exist-9" },
+      }),
+    ).rejects.toThrow("claude-does-not-exist-9");
+    await expect(
+      harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    ).resolves.toMatchObject({
+      execution: { model: "gpt-5" },
+    });
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(3);
+
+    await harness.dispose();
+  });
+
+  it("does not validate unused or unchanged execution tuples", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const targetThreadAutomation = await createAgentAutomation(harness, {
+      targetThreadId: THREAD_ID,
+    });
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toEqual([]);
+
+    const spawnedThreadAutomation = await createAgentAutomation(harness);
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(1);
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
+      automationId: spawnedThreadAutomation.id,
+      agent: { prompt: "updated prompt only" },
+    });
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
+      automationId: spawnedThreadAutomation.id,
+      agent: {
+        prompt: "updated prompt through full form",
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        serviceTier: null,
+        permissionMode: "accept-edits",
+      },
+    });
+    await harness.callRpc("automations_update", {
+      projectId: PROJECT_ID,
+      automationId: targetThreadAutomation.id,
+      agent: { model: "unused-target-thread-model" },
+    });
+
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(1);
 
     await harness.dispose();
   });
@@ -918,6 +1020,11 @@ describe("automations server plugin harness", () => {
         environment: { type: "reuse", environmentId: "env_routed" },
       },
     });
+    expect(
+      harness.sdk
+        .callsTo("providers.experimental_validateExecutionSelection")
+        .at(-1),
+    ).toEqual([expect.objectContaining({ environmentId: "env_routed" })]);
 
     await harness.dispose();
   });
@@ -949,6 +1056,42 @@ describe("automations server plugin harness", () => {
         }),
       ).runs,
     ).toHaveLength(1);
+
+    await harness.dispose();
+  });
+
+  it("records a catalog rejection from thread spawn without attaching a provider thread", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const automation = await createAgentAutomation(harness);
+    harness.sdk.stub("threads.spawn", async () => {
+      throw new Error(
+        'HTTP 400: Model "gpt-5" is no longer available on the selected machine.',
+      );
+    });
+
+    const started = automationRunRpcResponseSchema.parse(
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      }),
+    );
+    expect(started.run.status).toBe("running");
+
+    await vi.waitFor(async () => {
+      const runs = automationRunListResponseSchema.parse(
+        await harness.callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      ).runs;
+      expect(runs[0]).toMatchObject({
+        id: started.run.id,
+        status: "failed",
+        threadId: null,
+        error: expect.stringContaining("no longer available"),
+      });
+    });
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
 
     await harness.dispose();
   });

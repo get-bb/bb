@@ -17,6 +17,7 @@ import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
   type ProjectsChangedEvent,
+  type PresetReasoningLevel,
   type SidebarProjectSummary,
   type Task,
   type TaskPullRequest,
@@ -26,6 +27,29 @@ import {
   type CommentsChangedEvent,
   type CommentProvider,
 } from "../shared/contract";
+
+interface PresetExecutionSelection {
+  environmentKind: "project-default" | "new-worktree";
+  machineId: string | null;
+  modelId: string;
+  providerId: string;
+  reasoningLevel: PresetReasoningLevel;
+}
+
+async function validatePresetExecutionSelection(
+  bb: BbPluginApi,
+  selection: PresetExecutionSelection,
+): Promise<void> {
+  await bb.sdk.providers.experimental_validateExecutionSelection({
+    providerId: selection.providerId,
+    model: selection.modelId,
+    reasoningLevel: selection.reasoningLevel,
+    ...(selection.environmentKind === "new-worktree" &&
+    selection.machineId !== null
+      ? { hostId: selection.machineId }
+      : {}),
+  });
+}
 
 interface TaskLabelIdRow {
   task_id: string;
@@ -925,13 +949,39 @@ export function registerHandlers(
     async listTaskPullRequests(input) {
       return listTaskPullRequests(bb, store, input.taskId);
     },
-    createPreset(input) {
+    async createPreset(input) {
+      if (input.environmentKind === "new-worktree") {
+        await validatePresetExecutionSelection(bb, input);
+      }
       const preset = store.tasks.createPreset({ ...input, builtin: false });
       publishProjectsChanged(bb, null);
       return { preset };
     },
-    updatePreset(input) {
+    async updatePreset(input) {
       const { presetId, ...changes } = input;
+      const current = store.tasks.getPreset(presetId);
+      if (current === undefined) {
+        throw new Error(`Preset not found: ${presetId}`);
+      }
+      const selection = {
+        environmentKind: changes.environmentKind ?? current.environmentKind,
+        machineId:
+          changes.machineId === undefined
+            ? current.machineId
+            : changes.machineId,
+        modelId: changes.modelId ?? current.modelId,
+        providerId: changes.providerId ?? current.providerId,
+        reasoningLevel: changes.reasoningLevel ?? current.reasoningLevel,
+      };
+      const selectionChanged =
+        selection.environmentKind !== current.environmentKind ||
+        selection.machineId !== current.machineId ||
+        selection.modelId !== current.modelId ||
+        selection.providerId !== current.providerId ||
+        selection.reasoningLevel !== current.reasoningLevel;
+      if (selectionChanged && selection.environmentKind === "new-worktree") {
+        await validatePresetExecutionSelection(bb, selection);
+      }
       const preset = store.tasks.updatePreset(
         presetId,
         changes.environmentKind === "project-default"

@@ -7,6 +7,8 @@ import {
 import type {
   ProjectExecutionDefaults,
   Project,
+  ReasoningLevel,
+  ResolvedThreadExecutionOptions,
   Thread,
   ThreadOriginKind,
   ThreadVisibility,
@@ -21,12 +23,17 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
-import { buildExecutionOptions } from "./thread-commands.js";
+import {
+  buildExistingThreadExecutionInput,
+  resolveExistingThreadExecutionPlan,
+  resolveExistingThreadPermissionMode,
+} from "./thread-execution-plan.js";
 import {
   copyForkSourceHistory,
   resolveThreadForkPoint,
   type ThreadForkPoint,
 } from "./thread-fork-history.js";
+import { getLastExecutionOptions } from "./thread-events.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -45,6 +52,7 @@ import {
 } from "./thread-request-eligibility.js";
 import {
   buildProviderThreadExecutionDefaults,
+  DEFAULT_REASONING_LEVEL,
   resolveCreateThreadEnvironment,
   resolveProjectDefaultThreadEnvironment,
 } from "./thread-default-policy.js";
@@ -67,7 +75,10 @@ import {
   resolveManagedNamedBaseBranchSpec,
 } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
-import { resolveSystemProviderModels } from "../system/execution-options.js";
+import {
+  loadAuthoritativeProviderExecutionCatalog,
+  validateExecutionSelectionAgainstCatalog,
+} from "../system/execution-selection.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -87,9 +98,7 @@ interface ExistingUnmanagedEnvironmentIntentResult {
 
 interface CreateProvisioningThreadArgs {
   environmentId: string | null;
-  executionDefaults: Parameters<
-    typeof buildExecutionOptions
-  >[2]["projectDefaults"];
+  executionDefaults: ProjectExecutionDefaults;
   fork: ThreadForkPoint | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
@@ -109,35 +118,43 @@ interface ResolveCatalogExecutionDefaultsArgs {
   hostId: string;
   providerId: string;
   requestedModel: string | null;
+  requestedReasoningLevel:
+    | ThreadCreateServiceRequestInput["reasoningLevel"]
+    | null;
+}
+
+interface ResolvedCatalogExecutionDefaults {
+  executionDefaults: ProjectExecutionDefaults;
 }
 
 async function resolveCatalogExecutionDefaults(
   deps: ThreadCreateDeps,
   args: ResolveCatalogExecutionDefaultsArgs,
-): Promise<ProjectExecutionDefaults | null> {
-  if (args.executionDefaults !== null || args.requestedModel !== null) {
-    return args.executionDefaults;
-  }
-
-  const catalog = await resolveSystemProviderModels(deps, {
+): Promise<ResolvedCatalogExecutionDefaults> {
+  const selectedModel =
+    args.requestedModel ?? args.executionDefaults?.model ?? undefined;
+  const catalog = await loadAuthoritativeProviderExecutionCatalog(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
+    ...(selectedModel === undefined ? {} : { model: selectedModel }),
     providerId: args.providerId,
   });
-  if (catalog.modelLoadError !== null) {
-    throw new ApiError(
-      503,
-      "model_catalog_unavailable",
-      `Unable to load ${args.providerId} models to resolve the default. Try again once the host is connected and the provider is ready.`,
-      {
-        details: catalog.modelLoadError,
-        retryable: true,
-      },
-    );
-  }
-  const defaultModel =
+  const defaultModelEntry =
     catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
-  if (defaultModel === undefined) {
+  const candidates = [...catalog.models, ...catalog.selectedOnlyModels];
+  const storedModelEntry = candidates.find(
+    (candidate) =>
+      candidate.id === args.executionDefaults?.model ||
+      candidate.model === args.executionDefaults?.model,
+  );
+  const requestedModelEntry = candidates.find(
+    (candidate) =>
+      candidate.id === args.requestedModel ||
+      candidate.model === args.requestedModel,
+  );
+  const model =
+    args.requestedModel ?? storedModelEntry?.model ?? defaultModelEntry?.model;
+  if (model === undefined) {
     throw new ApiError(
       503,
       "model_catalog_unavailable",
@@ -145,10 +162,60 @@ async function resolveCatalogExecutionDefaults(
       true,
     );
   }
-  return buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+  const modelEntry =
+    requestedModelEntry ?? storedModelEntry ?? defaultModelEntry;
+  const preferredReasoningLevel =
+    args.requestedReasoningLevel ??
+    args.executionDefaults?.reasoningLevel ??
+    modelEntry?.defaultReasoningEffort ??
+    DEFAULT_REASONING_LEVEL;
+  const supportedReasoningLevels =
+    modelEntry?.supportedReasoningEfforts.map(
+      (effort) => effort.reasoningEffort,
+    ) ?? [];
+  const reasoningLevel =
+    args.requestedReasoningLevel === null &&
+    supportedReasoningLevels.length > 0 &&
+    !supportedReasoningLevels.includes(preferredReasoningLevel)
+      ? modelEntry?.defaultReasoningEffort !== undefined &&
+        supportedReasoningLevels.includes(modelEntry.defaultReasoningEffort)
+        ? modelEntry.defaultReasoningEffort
+        : (supportedReasoningLevels[0] ?? DEFAULT_REASONING_LEVEL)
+      : preferredReasoningLevel;
+  const validated = validateExecutionSelectionAgainstCatalog({
+    catalog,
+    model,
     providerId: args.providerId,
-    model: defaultModel.model,
+    reasoningLevel,
   });
+  const baseDefaults =
+    args.executionDefaults ??
+    buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+      providerId: args.providerId,
+      model: validated.model,
+      reasoningLevel: validated.reasoningLevel,
+    });
+  return {
+    executionDefaults: {
+      ...baseDefaults,
+      model: validated.model,
+      reasoningLevel: validated.reasoningLevel,
+    },
+  };
+}
+
+function requestedCreateReasoningLevel(
+  request: ThreadCreateServiceRequestInput,
+): ReasoningLevel | null {
+  const value = request.reasoningLevel;
+  if (value === undefined) return null;
+  if (
+    request.executionInputSources !== undefined &&
+    request.executionInputSources.reasoningLevel === undefined
+  ) {
+    return null;
+  }
+  return value;
 }
 
 function resolveForkPoint(
@@ -445,7 +512,7 @@ async function createProvisioningThread(
     request: args.request,
     environmentId: args.environmentId,
   });
-  let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
+  let execution: ResolvedThreadExecutionOptions;
   let context: ThreadProvisionContext;
   try {
     if (
@@ -459,13 +526,14 @@ async function createProvisioningThread(
         sourceThreadId: args.fork.sourceThreadId,
       });
     }
-    execution = await buildExecutionOptions(deps, args.request, {
-      ...(args.executionDefaults
-        ? { projectDefaults: args.executionDefaults }
-        : {}),
+    const plan = await resolveExistingThreadExecutionPlan(deps, {
+      executionSource: "client/turn/requested",
       hostId: intentHostId(deps, args.environmentIntent),
+      input: buildExistingThreadExecutionInput(args.request),
+      projectDefaults: args.executionDefaults,
       threadId: thread.id,
     });
+    execution = plan.resolvedExecution;
     context = requestThreadProvision(deps, {
       thread,
       environmentIntent: args.environmentIntent,
@@ -650,13 +718,41 @@ export async function createThreadFromRequest(
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
+  const sourceExecutionDefaults =
+    originKind === "fork" && sourceThread !== null
+      ? getLastExecutionOptions(deps, sourceThread.id)
+      : null;
+  const requestedExecutionInput =
+    buildExistingThreadExecutionInput(requestInput);
+  const forkPermissionMode =
+    sourceExecutionDefaults === null || sourceThread === null
+      ? undefined
+      : (requestedExecutionInput.permissionMode?.value ??
+        resolveExistingThreadPermissionMode(deps, sourceThread.id));
+  const forkServiceTier =
+    requestedExecutionInput.serviceTier?.value ??
+    sourceExecutionDefaults?.serviceTier;
+  const inheritedExecutionDefaults =
+    sourceExecutionDefaults === null
+      ? executionDefaults
+      : {
+          ...(executionDefaults ??
+            buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+              providerId,
+              model: sourceExecutionDefaults.model,
+              reasoningLevel: sourceExecutionDefaults.reasoningLevel,
+            })),
+          providerId,
+          model: sourceExecutionDefaults.model,
+          reasoningLevel: sourceExecutionDefaults.reasoningLevel,
+        };
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
-  const request: ThreadCreateServiceRequest = {
+  let request: ThreadCreateServiceRequest = {
     ...requestRest,
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
@@ -689,16 +785,42 @@ export async function createThreadFromRequest(
   ).dataDir;
   const modelCatalogCwd =
     modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
-  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
-    deps,
-    {
-      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults,
-      hostId: childHostId,
-      providerId,
-      requestedModel,
-    },
-  );
+  const catalogResolution = await resolveCatalogExecutionDefaults(deps, {
+    ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+    executionDefaults: inheritedExecutionDefaults,
+    hostId: childHostId,
+    providerId,
+    requestedModel,
+    requestedReasoningLevel: requestedCreateReasoningLevel(requestInput),
+  });
+  request = {
+    ...request,
+    model: catalogResolution.executionDefaults.model,
+    reasoningLevel: catalogResolution.executionDefaults.reasoningLevel,
+    ...(sourceExecutionDefaults === null || forkPermissionMode === undefined
+      ? {}
+      : { permissionMode: forkPermissionMode }),
+    ...(sourceExecutionDefaults === null || forkServiceTier === undefined
+      ? {}
+      : { serviceTier: forkServiceTier }),
+    ...(request.executionInputSources === undefined
+      ? {}
+      : {
+          executionInputSources: {
+            ...request.executionInputSources,
+            model: "client-preference",
+            reasoningLevel: "client-preference",
+            ...(sourceExecutionDefaults === null ||
+            forkPermissionMode === undefined
+              ? {}
+              : { permissionMode: "client-preference" }),
+            ...(sourceExecutionDefaults === null ||
+            forkServiceTier === undefined
+              ? {}
+              : { serviceTier: "client-preference" }),
+          },
+        }),
+  };
 
   let environmentId: string | null = null;
   let environmentIntent: ThreadProvisionEnvironmentIntent;
@@ -818,7 +940,7 @@ export async function createThreadFromRequest(
   const thread = await createProvisioningThread(deps, {
     environmentId,
     environmentIntent,
-    executionDefaults: resolvedExecutionDefaults,
+    executionDefaults: catalogResolution.executionDefaults,
     fork,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }

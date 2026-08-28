@@ -165,7 +165,22 @@ export async function callPluginRpc(
     if (structured !== null) {
       const code = Reflect.get(structured, "code");
       const issues = Reflect.get(structured, "issues");
-      if (typeof code === "string") Reflect.set(error, "code", code);
+      const cause = Reflect.get(structured, "experimental_cause");
+      if (typeof cause === "object" && cause !== null) {
+        const causeCode = Reflect.get(cause, "code");
+        const status = Reflect.get(cause, "status");
+        const retryable = Reflect.get(cause, "retryable");
+        if (typeof code === "string") Reflect.set(error, "rpcCode", code);
+        if (typeof causeCode === "string" || causeCode === null) {
+          Reflect.set(error, "code", causeCode);
+        }
+        if (typeof status === "number") Reflect.set(error, "status", status);
+        if (typeof retryable === "boolean") {
+          Reflect.set(error, "retryable", retryable);
+        }
+      } else if (typeof code === "string") {
+        Reflect.set(error, "code", code);
+      }
       if (Array.isArray(issues)) Reflect.set(error, "issues", issues);
     }
     throw error;

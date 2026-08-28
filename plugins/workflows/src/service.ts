@@ -602,7 +602,6 @@ export function createWorkflowService(
     options: WorkflowAgentOptions,
     signal: AbortSignal,
   ): Promise<ResolvedSelection> {
-    const inherited = options.selection === null;
     const requested = options.selection ?? {
       provider: run.originProvider,
       model: run.originModel,
@@ -630,9 +629,7 @@ export function createWorkflowService(
         `Could not load models for provider ${requested.provider}: ${catalog.modelLoadError.code}`,
       );
     }
-    const eligibleModels = inherited
-      ? [...catalog.models, ...catalog.selectedOnlyModels]
-      : catalog.models;
+    const eligibleModels = [...catalog.models, ...catalog.selectedOnlyModels];
     const model = eligibleModels.find(
       (candidate) =>
         candidate.id === requested.model || candidate.model === requested.model,
@@ -643,6 +640,7 @@ export function createWorkflowService(
       );
     }
     if (
+      model.supportedReasoningEfforts.length > 0 &&
       !model.supportedReasoningEfforts.some(
         (effort) => effort.reasoningEffort === requested.reasoningLevel,
       )

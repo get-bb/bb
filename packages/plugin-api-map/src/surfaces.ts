@@ -573,6 +573,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Connects the plugin's own UI, its server code, and outside services. With this, a plugin can:",
         bullets: [
           "Call its server from its UI over RPC, with arguments and results checked against a schema",
+          "Preserve typed BB SDK failures from the server handler, including status, code, and retryability",
           "Serve HTTP routes other systems can call, webhooks included",
           "Push messages to every open bb window, so the UI does not have to poll",
         ],
@@ -656,6 +657,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Calls bb's own API from the plugin's server code. With this, a plugin can:",
         bullets: [
           "Create threads, send messages to them, and manage projects",
+          "Validate saved provider, model, and reasoning selections against a routed machine or environment",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
         ],

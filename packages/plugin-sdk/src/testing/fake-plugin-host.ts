@@ -17,6 +17,7 @@ import {
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   enforcePluginCliOutputLimit,
+  extractPluginRpcUpstreamCause,
   isStandardSchema,
   isZodSchemaLike,
   KV_VALUE_MAX_BYTES,
@@ -541,7 +542,15 @@ function normalizeRpcIssues(
 
 function throwRpcError(error: PluginRpcError): never {
   const thrown = new Error(error.message);
-  Reflect.set(thrown, "code", error.code);
+  const cause = error.experimental_cause;
+  Reflect.set(thrown, "code", cause === undefined ? error.code : cause.code);
+  if (cause !== undefined) {
+    Reflect.set(thrown, "rpcCode", error.code);
+    Reflect.set(thrown, "status", cause.status);
+    if (cause.retryable !== undefined) {
+      Reflect.set(thrown, "retryable", cause.retryable);
+    }
+  }
   if (error.issues !== undefined) Reflect.set(thrown, "issues", error.issues);
   throw thrown;
 }
@@ -2050,9 +2059,13 @@ function createFakePluginHostInternal(
       try {
         result = await record.handler(validatedInput as never);
       } catch (error) {
+        const upstreamCause = extractPluginRpcUpstreamCause(error);
         return throwRpcError({
           code: "handler_error",
           message: errorMessage(error),
+          ...(upstreamCause === undefined
+            ? {}
+            : { experimental_cause: upstreamCause }),
         });
       }
       const validatedOutput = await validateRpcValue(

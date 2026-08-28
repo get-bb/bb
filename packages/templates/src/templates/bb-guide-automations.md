@@ -54,5 +54,12 @@ agent preserve omitted fields and accept `--prompt`, `--provider`, `--model`,
 target option. Pass provider, model, reasoning, service tier, and permission
 together when switching providers.
 
+Agent automations that spawn threads validate execution selections against the
+selected environment or machine catalog before create and effective selection
+updates persist them. Prompt-only edits, unchanged full-form edits, and
+target-thread automations do not probe an unused model catalog. Spawn validates
+again at run time before thread/environment provisioning. An invalid model or
+an advertised unsupported reasoning level exits non-zero.
+
 Add `--json` for machine-readable output. Use `runs --output <runId>` to print a
 script run's captured output.

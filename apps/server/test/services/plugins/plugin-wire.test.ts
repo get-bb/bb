@@ -19,6 +19,7 @@ const WIRE_SOURCE = `
       output: z.object({ echoed: z.unknown() }),
     },
     boom: { input: z.record(z.string(), z.unknown()), output: z.null() },
+    upstream: { input: z.null(), output: z.null() },
     publish: {
       input: z.object({ channel: z.string(), payload: z.unknown() }),
       output: z.literal("published"),
@@ -87,6 +88,13 @@ const WIRE_SOURCE = `
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
         throw new Error("rpc boom");
+      },
+      upstream: async () => {
+        throw Object.assign(new Error("Model is unavailable"), {
+          code: "model_not_available",
+          status: 400,
+          body: { retryable: false },
+        });
       },
       publish: async (input: any) => {
         bb.realtime.publish(input.channel, input.payload);
@@ -553,6 +561,24 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: {
         code: "unknown_method",
         message: 'plugin "wire" has no rpc method "missing"',
+      },
+    });
+  });
+
+  it("rpc preserves typed upstream SDK errors", async () => {
+    const response = await rpc(harness, "upstream", null);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: {
+        code: "handler_error",
+        message: "Model is unavailable",
+        experimental_cause: {
+          code: "model_not_available",
+          status: 400,
+          retryable: false,
+        },
       },
     });
   });

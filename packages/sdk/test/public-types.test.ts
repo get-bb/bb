@@ -326,7 +326,10 @@ type ExpectedProjectsKey =
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
-type ExpectedProvidersKey = "list" | "models";
+type ExpectedProvidersKey =
+  | "experimental_validateExecutionSelection"
+  | "list"
+  | "models";
 
 type ExpectedStatusKey = "get";
 

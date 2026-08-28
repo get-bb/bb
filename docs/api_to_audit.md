@@ -20,6 +20,47 @@ the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
 `PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
 type of `presentation.label`.
 
+## `bb.sdk.providers.experimental_validateExecutionSelection`
+
+**What it does.** Validates a provider/model/reasoning tuple against the live,
+authoritative model catalog on an explicit environment host, explicit machine,
+or the primary machine. It returns the provider-routable model id (so catalog
+aliases resolve consistently) and throws typed HTTP errors for an unavailable
+model, unsupported advertised reasoning level, or unavailable catalog. The
+Tasks and Automations plugins use it before persisting targetable execution
+presets; project-default Tasks presets defer until dispatch because their host
+is not known at edit time. Thread routes enforce the same server policy again
+at execution time.
+
+**Audit before stabilizing.**
+
+1. Confirm third-party server plugins need a validation-only call rather than a
+   richer mutation API that stores execution settings for them.
+2. Decide whether the host/environment routing union should grow a project and
+   prospective-workspace target for workspace-scoped catalogs. Current callers
+   validate new-worktree settings against the selected host, while thread spawn
+   validates project-default selections against the resolved workspace before
+   provisioning.
+3. Confirm returning only the canonical tuple is enough, rather than returning
+   the matched catalog row for UI display.
+
+## `PluginRpcError.experimental_cause`
+
+**What it does.** Preserves a typed BB SDK HTTP failure thrown by a plugin RPC
+handler. The RPC envelope keeps its stable `handler_error` category while the
+experimental cause carries the upstream code, HTTP status, and optional
+retryability. Plugin frontend calls expose the upstream code as `error.code`
+and retain the envelope category as `error.rpcCode`.
+
+**Audit before stabilizing.**
+
+1. Confirm the cause should remain limited to BB SDK HTTP errors rather than a
+   general plugin-defined error transport.
+2. Decide whether the frontend should expose a published error class instead
+   of decorating `Error` with `code`, `rpcCode`, `status`, and `retryable`.
+3. Confirm forwarding the upstream HTTP status does not need a plugin-specific
+   allowlist beyond the current 400–599 bound.
+
 ## One-release compatibility windows (removal target: bb 0.42)
 
 - The app runtime keeps deprecated aliases for plugin bundles compiled

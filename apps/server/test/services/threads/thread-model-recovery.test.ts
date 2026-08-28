@@ -137,7 +137,7 @@ describe("stale model recovery", () => {
         recoverThreadModelOverride(harness.deps, recovery),
       ).rejects.toMatchObject({
         status: 400,
-        body: { code: "invalid_request" },
+        body: { code: "model_not_available" },
       });
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: "claude-mythos-5",

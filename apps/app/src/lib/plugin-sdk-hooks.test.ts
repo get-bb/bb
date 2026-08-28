@@ -95,6 +95,36 @@ describe("callPluginRpc", () => {
     });
   });
 
+  it("preserves a typed upstream cause from a plugin handler", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () =>
+      jsonResponse(
+        {
+          ok: false,
+          error: {
+            code: "handler_error",
+            message: "Model is unavailable",
+            experimental_cause: {
+              code: "model_not_available",
+              status: 400,
+              retryable: false,
+            },
+          },
+        },
+        false,
+        400,
+      ),
+    );
+
+    await expect(
+      callPluginRpc(fetchImpl, "tasks", "createPreset", {}),
+    ).rejects.toMatchObject({
+      code: "model_not_available",
+      rpcCode: "handler_error",
+      status: 400,
+      retryable: false,
+    });
+  });
+
   it("rejects cyclic and non-finite inputs before fetch", async () => {
     const fetchImpl = vi.fn<FetchLike>();
     const cyclic: { self?: unknown } = {};

@@ -187,6 +187,16 @@ message agents, or inspect projects, providers, and environments.
   context variables. Omitted execution flags use remembered project defaults;
   without a remembered model, bb uses the explicitly requested provider or
   Codex and resolves its provider-reported default model on the target machine.
+- Spawn validates the resolved model and any advertised per-model reasoning
+  support against that target machine's authoritative catalog before creating
+  a thread or environment. Invalid explicit selections exit non-zero without
+  provisioning or a provider turn. Stale inherited project or fork selections
+  recover to the target catalog's model/reasoning defaults. Register a
+  deliberately unlisted provider-accepted id in `customModels`; an arbitrary
+  missing id is rejected. Active and selected-only catalog entries are both
+  valid selections. A transient catalog refresh can use registered fallback
+  rows when they contain the selected model; otherwise spawn reports a
+  retryable catalog failure instead of substituting a different model.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
@@ -413,6 +423,11 @@ or artifacts, validation performed, and blockers.
   stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
   `queued`, or `deferred`. If the thread fails while the message is held (its
   provider exited), the message waits until somebody retries the thread.
+  Queued and deferred messages are stored without requiring a live catalog and
+  validate their execution selection when delivery becomes possible. A catalog
+  mismatch retains the message and does not block later valid held messages;
+  other retryable failures preserve arrival order. `bb thread queue` can edit
+  or remove queued messages.
 
 ## Inspecting Results
 
@@ -565,6 +580,10 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   opaque `--cursor` returned as `nextCursor` in JSON (or printed after a human
   page). Keep the same filters and sort. A task-list mutation makes the cursor
   stale; restart without it.
+- New-worktree preset create and effective selection updates validate the
+  selected machine's model catalog. Full-form edits whose stored selection is
+  unchanged do not probe the catalog. Project-default presets validate at
+  dispatch after the linked project resolves the correct workspace host.
 
 ## Docs
 
@@ -605,6 +624,10 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --reasoning <level> --service-tier <default|fast> --prompt "..."`.
+- Agent automations that spawn threads validate model and reasoning before
+  effective selection changes persist. Prompt-only and unchanged full-form
+  edits, plus target-thread automations, skip the unused catalog probe; spawn
+  validates again at run time.
 - Create a one-shot agent automation with
   `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
   or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.

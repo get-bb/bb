@@ -1025,6 +1025,32 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
+  it("runs a literal selection when the model advertises no reasoning contract", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    test.harness.sdk.stub("providers.models", async () => ({
+      providers: [],
+      models: [{ ...model(), supportedReasoningEfforts: [] }],
+      selectedOnlyModels: [],
+      modelLoadError: null,
+    }));
+    const run = await test.start(
+      source(
+        `return await agent("unknown contract", { provider: "codex", model: "gpt-test", reasoningLevel: "medium" });`,
+      ),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+
+    await eventually(() => expect(test.childCount()).toBe(1));
+    test.service.onThreadIdle("child-1", "accepted");
+    await eventually(() =>
+      expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+    );
+    controller.abort();
+    await worker;
+  });
+
   it("requires a terminal resume ancestor in the same environment", async () => {
     const test = setup();
     harnesses.push(test.harness);

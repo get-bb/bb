@@ -373,6 +373,7 @@ describe("rpc", () => {
       throws: { input: z.null(), output: z.null() },
       cyclic: { input: z.null(), output: z.any() },
       nonFinite: { input: z.null(), output: z.any() },
+      upstream: { input: z.null(), output: z.null() },
     });
     bb.rpc.register(contract, {
       checked(input) {
@@ -389,6 +390,13 @@ describe("rpc", () => {
         return value;
       },
       nonFinite: () => ({ value: Number.POSITIVE_INFINITY }),
+      upstream: () => {
+        throw Object.assign(new Error("Model is unavailable"), {
+          code: "model_not_available",
+          status: 400,
+          body: { retryable: false },
+        });
+      },
     });
 
     await expect(
@@ -410,6 +418,12 @@ describe("rpc", () => {
     });
     await expect(harness.callRpc("nonFinite")).rejects.toMatchObject({
       code: "non_json_result",
+    });
+    await expect(harness.callRpc("upstream")).rejects.toMatchObject({
+      code: "model_not_available",
+      rpcCode: "handler_error",
+      status: 400,
+      retryable: false,
     });
   });
 

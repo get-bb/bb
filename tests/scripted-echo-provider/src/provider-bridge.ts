@@ -847,6 +847,28 @@ const MODEL_LIST = {
       defaultReasoningEffort: "medium",
       isDefault: true,
     },
+    {
+      id: "fake-alpha-model",
+      model: "fake-alpha-model",
+      displayName: "Fake Alpha Model",
+      description: "Fake alpha model for integration and runtime tests",
+      supportedReasoningEfforts: [
+        { reasoningEffort: "medium", description: "Medium" },
+      ],
+      defaultReasoningEffort: "medium",
+      isDefault: false,
+    },
+    {
+      id: "fake-beta-model",
+      model: "fake-beta-model",
+      displayName: "Fake Beta Model",
+      description: "Fake beta model for integration and runtime tests",
+      supportedReasoningEfforts: [
+        { reasoningEffort: "medium", description: "Medium" },
+      ],
+      defaultReasoningEffort: "medium",
+      isDefault: false,
+    },
   ],
   selectedOnlyModels: [],
 };

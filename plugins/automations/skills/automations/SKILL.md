@@ -135,6 +135,13 @@ Choose one of two execution update forms:
   target. When changing providers, pass the provider's coherent model,
   reasoning, tier, and permission selection together:
 
+Agent automations that spawn threads validate the model and advertised
+reasoning support on the selected environment or machine before create and
+effective selection updates save. Prompt-only and unchanged full-form edits,
+plus target-thread automations, do not probe an unused model catalog. Spawn
+validates again before thread or worktree provisioning, so a catalog change
+becomes a failed run rather than a provider turn.
+
 ```bash
 bb plugin run automations update <automationId> --project <id> \
   --environment <environment-id-or-path>

@@ -165,7 +165,7 @@ export function registerSpawnCommand(
   parent
     .command("spawn")
     .description(
-      "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
+      "Spawn a new thread; execution selections are validated against the target catalog before provisioning",
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
     .option("--json", "Print machine-readable JSON output")
@@ -195,11 +195,11 @@ export function registerSpawnCommand(
     )
     .option(
       "--model <model>",
-      "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
+      "Model ID from the target provider catalog or customModels. Omit to use the remembered/catalog default",
     )
     .option(
       "--reasoning-level <level>",
-      "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
+      "Reasoning level: low, medium, high, xhigh, max (validated when the model advertises support)",
     )
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")

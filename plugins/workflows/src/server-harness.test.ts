@@ -1371,7 +1371,7 @@ describe("workflow resume cache integration", () => {
     await worker;
   });
 
-  it("reruns null and failed calls and restricts selected-only models to inherited capture", async () => {
+  it("reruns null and failed calls and accepts selected-only models", async () => {
     const test = setup();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
@@ -1418,21 +1418,24 @@ describe("workflow resume cache integration", () => {
       });`),
       null,
     );
+    await eventually(() => expect(test.childCount()).toBe(5));
+    await test.finish("cache-child-5", "explicit preserved");
     await eventually(() =>
-      expect(getRunRequired(test.db, explicitRetired.id).status).toBe("failed"),
+      expect(getRunRequired(test.db, explicitRetired.id).status).toBe(
+        "succeeded",
+      ),
     );
-    expect(getRunRequired(test.db, explicitRetired.id).error).toContain(
-      "not available",
+    expect(getCall(test.db, explicitRetired.id, 0)?.resolvedModel).toBe(
+      "retired-model",
     );
-    expect(test.childCount()).toBe(4);
 
     test.execution.model = "retired-model";
     const inheritedRetired = await test.start(
       workflowSource(`return await agent("retired");`),
       null,
     );
-    await eventually(() => expect(test.childCount()).toBe(5));
-    await test.finish("cache-child-5", "preserved");
+    await eventually(() => expect(test.childCount()).toBe(6));
+    await test.finish("cache-child-6", "preserved");
     await eventually(() =>
       expect(getRunRequired(test.db, inheritedRetired.id).status).toBe(
         "succeeded",

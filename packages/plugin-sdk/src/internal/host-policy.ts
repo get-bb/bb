@@ -35,9 +35,36 @@ import type {
 } from "../backend-contract.js";
 import type { JsonValue } from "../json-value.js";
 import type {
+  PluginRpcError,
   PluginRpcMethodContract,
   StandardSchemaV1,
 } from "../rpc-contract.js";
+
+export function extractPluginRpcUpstreamCause(
+  error: unknown,
+): NonNullable<PluginRpcError["experimental_cause"]> | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = Reflect.get(error, "code");
+  const status = Reflect.get(error, "status");
+  if (
+    (typeof code !== "string" && code !== null) ||
+    !Number.isInteger(status) ||
+    status < 400 ||
+    status > 599
+  ) {
+    return undefined;
+  }
+  const body = Reflect.get(error, "body");
+  const retryable =
+    typeof body === "object" && body !== null
+      ? Reflect.get(body, "retryable")
+      : undefined;
+  return {
+    code,
+    status,
+    ...(typeof retryable === "boolean" ? { retryable } : {}),
+  };
+}
 
 /**
  * Shared registration policy for the real plugin host and the in-process fake.

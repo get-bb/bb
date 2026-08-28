@@ -920,6 +920,9 @@ describe("bb tasks CLI", () => {
             { id: "host_box", name: "Build box" },
           ],
         },
+        providers: {
+          experimental_validateExecutionSelection: async (input) => input,
+        },
       },
     });
     await plugin(bb);
@@ -1981,7 +1984,14 @@ describe("bb tasks CLI", () => {
   });
 
   it("returns a friendly dispatch error when the task project is not linked", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        providers: {
+          experimental_validateExecutionSelection: async (input) => input,
+        },
+      },
+    });
     await plugin(bb);
     stdout(
       await harness.runCli([

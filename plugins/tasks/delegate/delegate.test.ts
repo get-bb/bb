@@ -356,6 +356,48 @@ describe("task delegation", () => {
     await harness.dispose();
   });
 
+  it("leaves the task untouched when spawn rejects a stale preset selection", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => {
+            throw new Error(
+              'HTTP 400: Model "claude-sonnet-5" is no longer available on the selected machine.',
+            );
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Tasks plugin",
+      prefix: "TASK",
+      color: "blue",
+      linkedBbProjectId: "proj_bb",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Reject stale selection",
+      status: "todo",
+    });
+    registerDelegation(bb, store);
+    const preset = createTestPreset(store);
+
+    await expect(
+      harness.callRpc("delegate", {
+        taskId: task.id,
+        presetId: preset.id,
+      }),
+    ).rejects.toThrow("no longer available");
+    expect(store.tasks.getTask(task.id)?.status).toBe("todo");
+    expect(store.tasks.listTaskThreads(task.id)).toEqual([]);
+    expect(store.tasks.listComments(task.id)).toEqual([]);
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+
+    await harness.dispose();
+  });
+
   it("self-attaches an existing thread through taskThreadsAttach", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

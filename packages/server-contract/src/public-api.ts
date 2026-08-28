@@ -149,6 +149,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemExecutionSelectionValidationRequest,
+  SystemExecutionSelectionValidationResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -275,6 +277,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemExecutionSelectionValidationRequestSchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -1368,6 +1371,15 @@ export const publicApiRoutes = {
         systemExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<SystemExecutionOptionsResponse>(),
+    }),
+    validateExecutionSelection: defineRoute({
+      path: "/system/execution-selection/validate",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        SystemExecutionSelectionValidationRequest
+      >(systemExecutionSelectionValidationRequestSchema),
+      response: jsonResponse<SystemExecutionSelectionValidationResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

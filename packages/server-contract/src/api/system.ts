@@ -11,6 +11,7 @@ import {
   permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
+  reasoningLevelSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
@@ -82,6 +83,27 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
+export const systemExecutionSelectionValidationRequestSchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    providerId: z.string().min(1),
+    model: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema,
+  })
+  .partial({ hostId: true, environmentId: true })
+  .superRefine(rejectMultipleProviderHostSelectors);
+export type SystemExecutionSelectionValidationRequest = z.infer<
+  typeof systemExecutionSelectionValidationRequestSchema
+>;
+
+export const systemExecutionSelectionValidationResponseSchema = z.object({
+  providerId: z.string().min(1),
+  model: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema,
+});
+export type SystemExecutionSelectionValidationResponse = z.infer<
+  typeof systemExecutionSelectionValidationResponseSchema
+>;
 export const systemUsageLimitsQuerySchema = z.object({
   hostId: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),

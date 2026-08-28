@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -29,6 +30,7 @@ import {
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -52,7 +54,7 @@ function seedForkSource(
     serviceTier?: string;
   } = {},
 ) {
-  const { host } = seedHostSession(harness.deps);
+  const { host, session } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: "/tmp/public-thread-fork",
@@ -86,7 +88,7 @@ function seedForkSource(
     threadId: sourceThread.id,
     turnId: "turn-fork-source",
   });
-  return { environment, host, project, sourceThread };
+  return { environment, host, project, session, sourceThread };
 }
 
 function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
@@ -167,6 +169,181 @@ async function createIdleSeededFork(
 }
 
 describe("public thread fork route", () => {
+  it("forks a source thread that uses a selected-only model", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, sourceThread } = seedForkSource(harness, {
+        model: "gpt-selected-only",
+        reasoningLevel: "high",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [
+              availableModelFixture({
+                model: "gpt-selected-only",
+                reasoningLevels: ["high"],
+                defaultReasoningLevel: "high",
+              }),
+            ],
+          },
+        },
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(queued.command).toMatchObject({
+        options: { model: "gpt-selected-only", reasoningLevel: "high" },
+      });
+    });
+  });
+
+  it("recovers a retired source execution when forking", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, sourceThread } = seedForkSource(harness, {
+        model: "gpt-retired",
+        reasoningLevel: "high",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(queued.command).toMatchObject({
+        options: { model: "gpt-current", reasoningLevel: "medium" },
+      });
+    });
+  });
+
+  it("resolves copied fork history against the target catalog", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, project, session, sourceThread } =
+        seedForkSource(harness, {
+          model: "gpt-retired",
+          reasoningLevel: "high",
+        });
+      seedEvent(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-fork-source",
+        sequence: 4,
+        threadId: sourceThread.id,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-fork-source"),
+        data: {
+          providerThreadId: "provider-fork-source",
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-fork-source",
+        sequence: 5,
+        threadId: sourceThread.id,
+        type: "turn/completed",
+        scope: turnScope("turn-fork-source"),
+        data: {
+          providerThreadId: "provider-fork-source",
+          status: "completed",
+          providerCheckpointId: "checkpoint-fork-source",
+        },
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-current",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "sdk",
+          originKind: "fork",
+          sourceThreadId: sourceThread.id,
+          projectId: project.id,
+          providerId: "codex",
+          input: [],
+          environment: { type: "reuse", environmentId: environment.id },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const copiedRequest = listEvents(harness.db, { threadId: fork.id }).find(
+        (event) => event.type === "client/turn/requested",
+      );
+      expect(
+        turnRequestEventDataSchema.parse(
+          JSON.parse(copiedRequest?.data ?? "null"),
+        ).execution.model,
+      ).toBe("gpt-retired");
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(queued.command).toMatchObject({
+        options: { model: "gpt-current", reasoningLevel: "medium" },
+      });
+    });
+  });
+
   it("reuses a switched directory from a personal-project source", async () => {
     await withTestHarness(async (harness) => {
       const { environment, sourceThread } =

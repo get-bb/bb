@@ -21,6 +21,11 @@ export interface PluginRpcError {
   code: PluginRpcErrorCode;
   message: string;
   issues?: PluginRpcValidationIssue[];
+  experimental_cause?: {
+    code: string | null;
+    retryable?: boolean;
+    status: number;
+  };
 }
 
 /**

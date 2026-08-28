@@ -41,6 +41,7 @@ import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { loadActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-environment.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -3603,6 +3604,20 @@ describe("public thread data routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [
+                  availableModelFixture({
+                    model: "gpt-5",
+                    reasoningLevels: ["medium"],
+                  }),
+                ],
+                selectedOnlyModels: [],
+              },
+            };
+          }
           if (request.command.type === "environment.provision") {
             stateAtProvisionStart = {
               activeContextStage:

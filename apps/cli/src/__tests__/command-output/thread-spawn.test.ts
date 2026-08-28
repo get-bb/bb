@@ -454,6 +454,67 @@ describe("bb thread spawn command output", () => {
     );
   });
 
+  it.each([
+    {
+      name: "an unavailable model",
+      body: {
+        code: "model_not_available",
+        message:
+          'Model "claude-does-not-exist-9" is not available for provider claude-code on the selected machine.',
+      },
+      expected: "claude-does-not-exist-9",
+      model: "claude-does-not-exist-9",
+      reasoningLevel: "low",
+    },
+    {
+      name: "an unsupported reasoning level",
+      body: {
+        code: "reasoning_level_not_supported",
+        message:
+          'Reasoning level "medium" is not supported by claude-code model "claude-haiku-test". Supported reasoning levels: low.',
+      },
+      expected: 'Reasoning level "medium"',
+      model: "claude-haiku-test",
+      reasoningLevel: "medium",
+    },
+  ])(
+    "bb thread spawn exits non-zero for $name",
+    async ({ body, expected, model, reasoningLevel }) => {
+      vi.stubEnv("BB_PROJECT_ID", "proj-1");
+      stubServerApi({
+        "v1.threads.$post": async () =>
+          new Response(JSON.stringify(body), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }),
+      });
+
+      await expect(
+        runCommand(
+          [
+            "thread",
+            "spawn",
+            "--project",
+            "proj-1",
+            "--prompt",
+            "hello",
+            "--provider",
+            "claude-code",
+            "--model",
+            model,
+            "--reasoning-level",
+            reasoningLevel,
+          ],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+        expected,
+      );
+    },
+  );
+
   it("bb thread spawn with --parent-thread forwards parent thread id", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const thread: domain.Thread = fixtures.makeThread({

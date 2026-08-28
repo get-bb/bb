@@ -6,6 +6,7 @@ import {
   listDeferredThreadMessages,
   listQueuedThreadMessages,
   markThreadDeleted,
+  setThreadExecutionOverride,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -21,10 +22,12 @@ import {
   flushDeferredThreadMessages,
   runDeferredThreadMessageSweep,
 } from "../../src/services/threads/thread-send-request.js";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   createUserAnswerResolution,
@@ -35,6 +38,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
   seedTurnStarted,
@@ -202,6 +206,169 @@ async function drainSettleFlush(): Promise<void> {
 }
 
 describe("messages to a thread that awaits user interaction (#1650)", () => {
+  it("holds explicit execution input while the provider catalog is unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedBlockedThread(harness, {
+        hostId: "host-1650-catalog-unavailable",
+      });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "timeout",
+            errorMessage: "catalog probe timed out",
+          },
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Deliver after recovery" }],
+            model: "fake-model",
+            reasoningLevel: "medium",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        delivery: "deferred",
+      });
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(responder.requests).toEqual([]);
+    });
+  });
+
+  it("retains a held message when the provider catalog changes before delivery", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-catalog-change" },
+      );
+      const initialCatalog = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "fake-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const held = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Deliver after approval" }],
+            model: "fake-model",
+            reasoningLevel: "medium",
+          }),
+        },
+      );
+      expect(held.status).toBe(200);
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      initialCatalog.unregister();
+      harness.hub.unregisterDaemon(session.id);
+      const replacementSession = seedSession(harness.deps, host.id);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: replacementSession.id,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "replacement-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
+  it("retains a held message when model override recovery finds a catalog mismatch", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-override-mismatch" },
+      );
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "remembered-override",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "current-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const held = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Keep this input" }],
+            model: "retired-request-model",
+            reasoningLevel: "medium",
+          }),
+        },
+      );
+      expect(held.status).toBe(200);
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
   it("holds a worker's tell instead of refusing it, then steers it in once the question is answered", async () => {
     await withTestHarness(async (harness) => {
       const { interactionId, project, thread } = seedBlockedThread(harness, {
@@ -390,6 +557,119 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
         );
       expect(texts).toEqual(["first", "second", "third"]);
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
+  it("retains an invalid held message without blocking later deliverable input", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-invalid-head" },
+      );
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "fake-model",
+                reasoningLevels: ["medium"],
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      for (const [text, model] of [
+        ["invalid first", "retired-model"],
+        ["valid second", "fake-model"],
+      ] as const) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "steer-if-active",
+              input: [{ type: "text", text }],
+              model,
+              reasoningLevel: "medium",
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+      }
+
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      const deferred = listDeferredThreadMessages(harness.db, thread.id);
+      expect(deferred).toHaveLength(1);
+      expect(listTurnRequests(harness.db, thread.id).at(-1)?.input).toEqual([
+        expect.objectContaining({ text: "valid second" }),
+      ]);
+    });
+  });
+
+  it("preserves held-message order across a transient catalog failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, interactionId, session, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-transient-head" },
+      );
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "command_timeout",
+            errorMessage: "model list timed out",
+          },
+        },
+      });
+      for (const request of [
+        {
+          text: "first with an explicit model",
+          model: "fake-model",
+          reasoningLevel: "medium",
+        },
+        { text: "second without a model" },
+      ]) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "steer-if-active",
+              input: [{ type: "text", text: request.text }],
+              ...(request.model === undefined
+                ? {}
+                : {
+                    model: request.model,
+                    reasoningLevel: request.reasoningLevel,
+                  }),
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+      }
+
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(2);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
     });
   });
 

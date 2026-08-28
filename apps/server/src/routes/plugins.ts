@@ -631,10 +631,10 @@ export function registerPluginRoutes(
       input,
     );
     if (!outcome.ok) {
-      return context.json(
-        { ok: false, error: outcome.error },
-        outcome.error.code === "invalid_input" ? 400 : 500,
-      );
+      const status =
+        outcome.error.experimental_cause?.status ??
+        (outcome.error.code === "invalid_input" ? 400 : 500);
+      return Response.json({ ok: false, error: outcome.error }, { status });
     }
     return context.json({ ok: true, result: outcome.result });
   });
