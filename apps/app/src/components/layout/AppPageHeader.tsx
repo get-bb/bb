@@ -1,5 +1,15 @@
-import { useState, type ReactNode, type Ref } from "react";
-import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
+import { clamp } from "motion";
+import {
+  useIsSidebarShowing,
+  useSidebarDesktopMotionProgress,
+} from "@/components/ui/sidebar.js";
 import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
@@ -47,6 +57,7 @@ export function AppPageHeader({
   ownsWindowTopLeft = true,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
+  const sidebarMotionProgress = useSidebarDesktopMotionProgress();
   const isCompactViewport = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
@@ -57,6 +68,26 @@ export function AppPageHeader({
   });
   const shouldReserveSidebarTrigger =
     ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
+  const desktopSidebarTriggerReservePx = reserveMacosTrafficLights ? 104 : 32;
+  const contentRowRef = useRef<HTMLDivElement>(null);
+  const initialSidebarProgress = clamp(0, 1, sidebarMotionProgress.get());
+  useLayoutEffect(() => {
+    const contentRow = contentRowRef.current;
+    if (!contentRow || !ownsWindowTopLeft || isCompactViewport) return;
+
+    const applyProgress = (progress: number) => {
+      contentRow.style.paddingInlineStart = `${
+        (1 - clamp(0, 1, progress)) * desktopSidebarTriggerReservePx
+      }px`;
+    };
+    applyProgress(sidebarMotionProgress.get());
+    return sidebarMotionProgress.on("change", applyProgress);
+  }, [
+    desktopSidebarTriggerReservePx,
+    isCompactViewport,
+    ownsWindowTopLeft,
+    sidebarMotionProgress,
+  ]);
   return (
     <header
       ref={headerRef}
@@ -70,13 +101,23 @@ export function AppPageHeader({
       )}
     >
       <div
+        ref={contentRowRef}
         data-testid="app-page-header-content-row"
+        style={
+          ownsWindowTopLeft && !isCompactViewport
+            ? {
+                paddingInlineStart: `${
+                  (1 - initialSidebarProgress) * desktopSidebarTriggerReservePx
+                }px`,
+              }
+            : undefined
+        }
         className={cn(
           CHROME_ROW_CLASS,
           "relative z-10 gap-1 md:gap-2",
           usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
-          "transition-[padding] duration-200 ease-linear",
-          shouldReserveSidebarTrigger &&
+          isCompactViewport &&
+            shouldReserveSidebarTrigger &&
             (reserveMacosTrafficLights
               ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
               : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),

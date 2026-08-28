@@ -132,6 +132,7 @@ export function RootComposeSecondaryContent({
         renderPanel={({
           presentation,
           canShowNativeBrowserView,
+          inlinePanelToggle,
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
@@ -150,6 +151,9 @@ export function RootComposeSecondaryContent({
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={false}
             onToggleConversationCollapse={onToggleMainCollapse}
+            inlinePanelToggle={
+              presentation === "inline" ? "reserved" : inlinePanelToggle
+            }
             showNewTabButton
             resizablePanelId={resizablePanelId}
           />

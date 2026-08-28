@@ -178,9 +178,11 @@ export const automationExecutionSchema = z.discriminatedUnion("mode", [
 ]);
 export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
 
+const legacyEmptyPromptAgentExecutionSchema =
+  automationAgentExecutionSchema.extend({ prompt: z.literal("") });
 export const repairableAutomationExecutionSchema = z.union([
   automationExecutionSchema,
-  automationAgentExecutionSchema.extend({ prompt: z.literal("") }),
+  legacyEmptyPromptAgentExecutionSchema,
 ]);
 
 function requireExactlyOneScriptSource(
@@ -270,6 +272,37 @@ export const automationResponseSchema = z
   })
   .strict();
 export type AutomationResponse = z.infer<typeof automationResponseSchema>;
+
+export const legacyEmptyPromptAutomationResponseSchema =
+  automationResponseSchema.extend({
+    execution: legacyEmptyPromptAgentExecutionSchema,
+  });
+export type LegacyEmptyPromptAutomationResponse = z.infer<
+  typeof legacyEmptyPromptAutomationResponseSchema
+>;
+
+const invalidStoredAutomationReadProblemSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string(),
+    problem: z.literal("invalid-stored-data"),
+  })
+  .strict();
+export const missingAgentPromptAutomationReadProblemSchema =
+  legacyEmptyPromptAutomationResponseSchema.extend({
+    problem: z.literal("missing-agent-prompt"),
+  });
+export const automationReadProblemSchema = z.discriminatedUnion("problem", [
+  missingAgentPromptAutomationReadProblemSchema,
+  invalidStoredAutomationReadProblemSchema,
+]);
+export type AutomationReadProblem = z.infer<typeof automationReadProblemSchema>;
+export const automationReadResultSchema = z.union([
+  automationResponseSchema,
+  automationReadProblemSchema,
+]);
+export type AutomationReadResult = z.infer<typeof automationReadResultSchema>;
 
 export const automationRunResponseSchema = z
   .object({
@@ -369,7 +402,10 @@ export type ResolvedAutomationRunsInput = z.output<
   typeof automationRunsInputSchema
 >;
 
-export const automationListResponseSchema = z.array(automationResponseSchema);
+export const automationListResponseSchema = z.array(automationReadResultSchema);
+export type AutomationListResponse = z.infer<
+  typeof automationListResponseSchema
+>;
 
 export const automationRunListResponseSchema = z
   .object({
@@ -390,7 +426,7 @@ export type AutomationRunRpcResponse = z.infer<
 
 const automationsOverviewEntrySchema = z
   .object({
-    automation: automationResponseSchema,
+    automation: automationReadResultSchema,
     project: z.object({ id: z.string(), name: z.string() }).strict(),
   })
   .strict();

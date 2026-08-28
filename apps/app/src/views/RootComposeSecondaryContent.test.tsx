@@ -117,11 +117,13 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
 
   const ThreadSecondaryPanel = ({
     browserDeck,
+    inlinePanelToggle,
     isOpen,
     renderAsDrawer,
     showNewTabButton,
   }: {
     browserDeck?: ReactNode;
+    inlinePanelToggle?: "button" | "reserved" | "hidden";
     isOpen: boolean;
     renderAsDrawer: boolean;
     showNewTabButton?: boolean;
@@ -130,6 +132,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
       "section",
       {
         "data-open": String(isOpen),
+        "data-inline-panel-toggle": inlinePanelToggle,
         "data-show-new-tab-button": String(showNewTabButton),
         "data-testid": renderAsDrawer
           ? "drawer-secondary-panel"
@@ -280,7 +283,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     ).toBeNull();
   });
 
-  it("carves the pinned toggle footprint out of the drag strip while the panel is closed", () => {
+  it("carves the fixed toggle footprint out of the drag strip while the panel is closed", () => {
     setMacosDesktopChrome();
 
     renderRootCompose({
@@ -300,7 +303,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     }
   });
 
-  it("keeps the drag strip whole while the panel is open (the panel chrome carves instead)", () => {
+  it("keeps the drag strip whole while the panel is open", () => {
     setMacosDesktopChrome();
 
     renderRootCompose({
@@ -316,7 +319,20 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     ).toBeNull();
   });
 
-  it("forwards root panel open and close state to the shared desktop layout", () => {
+  it("reserves the inline toolbar for the fixed toggle", () => {
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: true,
+    });
+
+    expect(
+      screen
+        .getByTestId("inline-secondary-panel")
+        .getAttribute("data-inline-panel-toggle"),
+    ).toBe("reserved");
+  });
+
+  it("animates root panel open and close state through the shared desktop layout", () => {
     const view = renderRootCompose({
       isCompactViewport: false,
       isSecondaryPanelOpen: false,

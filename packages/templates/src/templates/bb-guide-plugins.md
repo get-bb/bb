@@ -71,7 +71,7 @@ Commands must run from a BB project thread. Workflows has six plugin
 settings, configurable with `bb plugin config workflows set <key> <value>`:
 `maxActiveRuns` (default 4, range 1–32), `maxConcurrentAgents` (8, 1–64),
 `maxAgentCalls` (100, 1–1000), `totalRunTimeoutMs` (86400000, 60000–604800000),
-`retentionDays` (30, 1–3650), and `maxNotificationBytes` (16384,
+`retentionDays` (7, 1–3650), and `maxNotificationBytes` (16384,
 1024–262144). `maxActiveRuns` applies live; the other five are snapshotted for
 each new run. Settings changes do not require a plugin reload.
 

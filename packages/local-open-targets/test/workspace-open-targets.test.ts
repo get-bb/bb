@@ -232,6 +232,7 @@ describe("workspace open targets", () => {
         "[Desktop Entry]",
         "Type=Application",
         "Name=Mock Edit",
+        "Categories=Utility;TextEditor;",
         "Exec=mockedit --open %f",
         "",
       ].join("\n"),
@@ -243,7 +244,38 @@ describe("workspace open targets", () => {
         "Type=Application",
         "Name=Hidden App",
         "NoDisplay=true",
+        "Categories=TextEditor;",
         "Exec=hidden %f",
+        "",
+      ].join("\n"),
+    );
+    await Promise.all(
+      [
+        ["files", "Files", "FileManager"],
+        ["terminal", "Terminal", "TerminalEmulator"],
+      ].map(async ([id, name, category]) =>
+        writeFile(
+          path.join(desktopDirectory, `${id}.desktop`),
+          [
+            "[Desktop Entry]",
+            "Type=Application",
+            `Name=${name}`,
+            `Categories=System;${category};`,
+            `Exec=${id} %f`,
+            "",
+          ].join("\n"),
+        ),
+      ),
+    );
+    await writeFile(
+      path.join(desktopDirectory, "unrelated.desktop"),
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Music Player",
+        "Categories=AudioVideo;Player;",
+        "MimeType=audio/mpeg;inode/directory;",
+        "Exec=music-player %f",
         "",
       ].join("\n"),
     );
@@ -256,8 +288,12 @@ describe("workspace open targets", () => {
         }),
       );
 
-      expect(targets).toEqual([
-        {
+      expect(targets).toEqual(
+        [
+          ["desktop-app:files", "Files"],
+          ["desktop-app:mockedit", "Mock Edit"],
+          ["desktop-app:terminal", "Terminal"],
+        ].map(([id, label]) => ({
           capabilities: {
             openDirectory: true,
             openFile: true,
@@ -265,11 +301,11 @@ describe("workspace open targets", () => {
             openFileAtLine: false,
           },
           icon: { kind: "symbol", name: "app" },
-          id: "desktop-app:mockedit",
+          id,
           kind: "native-app",
-          label: "Mock Edit",
-        },
-      ]);
+          label,
+        })),
+      );
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -469,6 +505,7 @@ describe("workspace open targets", () => {
           "[Desktop Entry]",
           "Type=Application",
           "Name=Mock Edit",
+          "Categories=TextEditor;",
           "Exec=mockedit --open %f",
           "",
         ].join("\n"),

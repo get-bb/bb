@@ -62,10 +62,7 @@ import type {
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
-import {
-  resolveManagedDefaultBaseBranchSpec,
-  resolveManagedNamedBaseBranchSpec,
-} from "../projects/worktree-base-branch.js";
+import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 
@@ -214,7 +211,6 @@ function modelCatalogCwdForResolvedEnvironment(
 interface ResolveManagedBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
-  originKind: ThreadOriginKind | null;
   sourcePath: string;
 }
 
@@ -316,10 +312,7 @@ async function resolveManagedBaseBranchForCreate(
   deps: ThreadCreateDeps,
   args: ResolveManagedBaseBranchForCreateArgs,
 ): Promise<BaseBranchSpec> {
-  if (
-    args.baseBranch.kind === "named" &&
-    (args.originKind !== null || args.baseBranch.name.startsWith("origin/"))
-  ) {
+  if (args.baseBranch.kind === "named") {
     return args.baseBranch;
   }
 
@@ -328,14 +321,12 @@ async function resolveManagedBaseBranchForCreate(
       hostId: args.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
-        type: "host.list_branches",
+        type: "host.inspect_git_source",
         path: args.sourcePath,
-        limit: 1,
+        remoteRefresh: "background",
       },
     });
-    return args.baseBranch.kind === "named"
-      ? resolveManagedNamedBaseBranchSpec(args.baseBranch, result)
-      : resolveManagedDefaultBaseBranchSpec(result);
+    return resolveManagedDefaultBaseBranchSpec(result);
   } catch (error) {
     deps.logger.warn(
       {
@@ -782,7 +773,6 @@ export async function createThreadFromRequest(
         baseBranch: await resolveManagedBaseBranchForCreate(deps, {
           baseBranch: workspace.baseBranch,
           hostId,
-          originKind,
           sourcePath: managedSource.path,
         }),
         workspaceProvisionType: workspace.type,

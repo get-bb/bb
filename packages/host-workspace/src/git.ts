@@ -489,7 +489,7 @@ export async function getAbsoluteGitDir(
 
 export async function getGitCommonDir(
   cwd: string,
-  options: GitProcessOptions = {},
+  options: GitProcessOptions & { signal?: AbortSignal } = {},
 ): Promise<string> {
   const result = await runGit(["rev-parse", "--git-common-dir"], {
     cwd,

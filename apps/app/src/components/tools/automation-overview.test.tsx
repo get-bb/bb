@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
-import type { AutomationsOverviewResponse } from "bb-plugin-automations/rpc-types";
+import type {
+  AutomationResponse,
+  AutomationsOverviewResponse,
+} from "bb-plugin-automations/rpc-types";
 
 function iconNames(element: HTMLElement): string[] {
   return [...element.querySelectorAll("[data-icon]")].map(
@@ -53,13 +56,17 @@ afterEach(cleanup);
 describe("AutomationOverviewView", () => {
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
+    if ("problem" in baseEntry.automation) {
+      throw new Error("Expected a canonical automation fixture");
+    }
+    const baseAutomation = baseEntry.automation;
     const entry = (
       name: string,
-      overrides: Partial<(typeof baseEntry)["automation"]> = {},
+      overrides: Partial<AutomationResponse> = {},
     ) => ({
       ...baseEntry,
       automation: {
-        ...baseEntry.automation,
+        ...baseAutomation,
         id: `auto_${name.toLowerCase().replaceAll(" ", "_")}`,
         name,
         ...overrides,
@@ -126,6 +133,81 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByRole("tab", { name: "Installed0" })).toBeTruthy();
     expect(screen.getByText("No automations installed.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "New automation" })).toBeTruthy();
+  });
+
+  it("opens a missing-prompt row in the standard editor", () => {
+    const onOpenDetail = vi.fn();
+    const healthyAutomation = INSTALLED_AUTOMATIONS[0]!.automation;
+    if (
+      "problem" in healthyAutomation ||
+      healthyAutomation.execution.mode !== "agent"
+    ) {
+      throw new Error("Expected an agent automation fixture");
+    }
+    const entries: AutomationsOverviewResponse["automations"] = [
+      {
+        automation: {
+          ...healthyAutomation,
+          id: "auto_repair",
+          name: "Needs a prompt",
+          execution: { ...healthyAutomation.execution, prompt: "" },
+          problem: "missing-agent-prompt",
+        },
+        project: { id: "proj_1", name: "bb" },
+      },
+      {
+        automation: {
+          id: "auto_invalid",
+          projectId: "proj_1",
+          name: "Unreadable automation",
+          problem: "invalid-stored-data",
+        },
+        project: { id: "proj_1", name: "bb" },
+      },
+      ...INSTALLED_AUTOMATIONS,
+    ];
+    render(
+      <AutomationOverviewView
+        entries={entries}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.getByText("Unreadable automation")).toBeTruthy();
+    expect(screen.getByText("Nightly digest")).toBeTruthy();
+    expect(screen.getAllByText("9AM")).toHaveLength(2);
+
+    const search = screen.getByPlaceholderText("Search automations");
+    fireEvent.change(search, { target: { value: "Prompt required" } });
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.queryByText("Unreadable automation")).toBeNull();
+    expect(screen.queryByText("Nightly digest")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "Invalid data" } });
+    expect(screen.queryByText("Needs a prompt")).toBeNull();
+    expect(screen.getByText("Unreadable automation")).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Active" }));
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.queryByText("Unreadable automation")).toBeNull();
+    expect(screen.getByText("Nightly digest")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(onOpenDetail).toHaveBeenCalledWith(
+      { projectId: "proj_1", automationId: "auto_repair" },
+      { editing: true },
+    );
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
   });
 
   it("offers Projects and Status as groups inside one filter menu", async () => {

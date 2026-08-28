@@ -648,7 +648,8 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
   return (
     <PaneContext.Provider value={context}>
       <div
-        onPointerDown={() => props.onFocusPane(pane.paneId)}
+        onPointerDownCapture={() => props.onFocusPane(pane.paneId)}
+        onFocusCapture={() => props.onFocusPane(pane.paneId)}
         aria-hidden={isHiddenByMaximize || undefined}
         style={
           isMaximized

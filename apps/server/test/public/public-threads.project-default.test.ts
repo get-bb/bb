@@ -2,7 +2,7 @@ import { getThread } from "@bb/db";
 import {
   PERSONAL_PROJECT_ID,
   threadSchema,
-  type ProjectSourceCheckout,
+  type GitSourceInspection,
 } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
@@ -137,24 +137,17 @@ describe("project-default thread environment", () => {
     {
       name: "a repository with no commits",
       checkout: {
-        branches: [],
-        branchesTruncated: false,
         checkout: { kind: "unborn" as const, branchName: "main" },
         defaultBranch: null,
         defaultBranchRelation: null,
         hasUncommittedChanges: false,
         operation: { kind: "none" as const },
         originDefaultBranch: null,
-        remoteBranches: [],
-        remoteBranchesTruncated: false,
-        selectedBranch: null,
-      } satisfies ProjectSourceCheckout,
+      } satisfies GitSourceInspection,
     },
     {
       name: "a non-Git directory",
       checkout: {
-        branches: [],
-        branchesTruncated: false,
         checkout: {
           kind: "unknown" as const,
           reason: "Path is not a git repository",
@@ -164,10 +157,7 @@ describe("project-default thread environment", () => {
         hasUncommittedChanges: false,
         operation: { kind: "none" as const },
         originDefaultBranch: null,
-        remoteBranches: [],
-        remoteBranchesTruncated: false,
-        selectedBranch: null,
-      } satisfies ProjectSourceCheckout,
+      } satisfies GitSourceInspection,
     },
   ])(
     "dispatches a plugin thread in the project source for $name",
@@ -186,9 +176,9 @@ describe("project-default thread environment", () => {
           restoreCommandCaptureAfterResponse: true,
           handle(request) {
             expect(request.command).toEqual({
-              type: "host.list_branches",
+              type: "host.inspect_git_source",
               path: sourcePath,
-              limit: 1,
+              remoteRefresh: "background",
             });
             return { ok: true, result: checkout };
           },

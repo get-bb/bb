@@ -175,6 +175,7 @@ async function reuseTargetThreadForRun(
       await bb.sdk.threads.get({ threadId: args.targetThreadId }),
     );
   } catch (error) {
+    if (!isThreadGoneError(error)) throw error;
     closeRunForUnusableTargetThread(bb, db, {
       ...args,
       detail: errorMessage(error),

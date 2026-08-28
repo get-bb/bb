@@ -215,9 +215,9 @@ export async function resolveProjectDefaultThreadEnvironment(
     hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
-      type: "host.list_branches",
+      type: "host.inspect_git_source",
       path: source.path,
-      limit: 1,
+      remoteRefresh: "background",
     },
   });
   const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);

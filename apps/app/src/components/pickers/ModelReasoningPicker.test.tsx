@@ -489,7 +489,7 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  it("scrolls the desktop models and reasoning rows as one region", () => {
+  it("caps the desktop picker and scrolls only the model list", () => {
     renderPicker({ modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -498,8 +498,9 @@ describe("ModelReasoningPicker", () => {
 
     const menu = screen.getByRole("dialog");
     expect(menu.className).toContain(
-      "max-h-[var(--radix-popover-content-available-height)]",
+      "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))]",
     );
+    expect(menu.className).toContain("overflow-hidden");
 
     const scrollers = [
       ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
@@ -507,15 +508,11 @@ describe("ModelReasoningPicker", () => {
     ];
     expect(scrollers).toHaveLength(1);
 
-    const body = scrollers[0];
-    expect(body.className).toContain("overscroll-contain");
-    expect(body.contains(screen.getByRole("listbox", { name: "Models" }))).toBe(
-      true,
-    );
-    expect(body.contains(screen.getByText("High"))).toBe(true);
-
     const models = screen.getByRole("listbox", { name: "Models" });
-    expect(models.className).not.toContain("max-h-");
+    expect(scrollers[0]).toBe(models);
+    expect(models.className).toContain("overscroll-contain");
+    expect(models.className).toContain("max-h-64");
+    expect(models.contains(screen.getByText("High"))).toBe(false);
   });
 
   it("leaves compact drawer height and scrolling to the responsive shell", async () => {
@@ -525,9 +522,7 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
     );
 
-    expect(screen.getByRole("dialog").className).not.toContain(
-      "max-h-[var(--radix-popover-content-available-height)]",
-    );
+    expect(screen.getByRole("dialog").className).not.toContain("100dvh");
     expect(
       (await screen.findByRole("listbox", { name: "Models" })).className,
     ).not.toContain("max-h-");

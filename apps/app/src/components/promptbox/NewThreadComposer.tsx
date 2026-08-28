@@ -1169,12 +1169,12 @@ export function NewThreadComposer({
     },
     [serviceTier, setServiceTier, snapshotDraftBeforeOptionChange],
   );
-  const refetchBranches = branchesQuery.refetch;
+  const refreshBranchesFromRemote = branchesQuery.refreshFromRemote;
   const handleBranchOpenChange = useCallback(
     (open: boolean) => {
-      if (open) void refetchBranches();
+      if (open) void refreshBranchesFromRemote().catch(() => undefined);
     },
-    [refetchBranches],
+    [refreshBranchesFromRemote],
   );
   const handleWorktreeChange = useCallback(
     (environmentId: string) => {

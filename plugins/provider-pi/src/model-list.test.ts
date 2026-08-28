@@ -125,6 +125,97 @@ describe("pi model list", () => {
     );
   });
 
+  it("restricts and orders the picker using Pi's workspace model scope", () => {
+    const { models, selectedOnlyModels } = buildPiAvailableModels({
+      models: [
+        {
+          id: "claude-sonnet-5",
+          name: "Claude Sonnet 5",
+          provider: "anthropic",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "gpt-5.4",
+          name: "GPT-5.4",
+          provider: "openai",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+      ],
+      scopedModelIds: ["openai/gpt-5.4", "anthropic/claude-sonnet-5"],
+      preferredDefaultId: "openai/gpt-5.4",
+    });
+
+    expect(models.map((model) => model.id)).toEqual([
+      "openai/gpt-5.4",
+      "anthropic/claude-sonnet-5",
+    ]);
+    expect(models.find((model) => model.isDefault)?.id).toBe("openai/gpt-5.4");
+    expect(selectedOnlyModels).toHaveLength(0);
+  });
+
+  it("inherits Pi's saved default when no scope is configured", () => {
+    const { models } = buildPiAvailableModels({
+      models: [
+        {
+          id: "claude-sonnet-5",
+          name: "Claude Sonnet 5",
+          provider: "anthropic",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "gpt-5.4",
+          name: "GPT-5.4",
+          provider: "openai",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+      ],
+      preferredDefaultId: "anthropic/claude-sonnet-5",
+    });
+
+    expect(models.find((model) => model.isDefault)?.id).toBe(
+      "anthropic/claude-sonnet-5",
+    );
+  });
+
+  it("keeps a dated model explicitly included by Pi's scope", () => {
+    const { models, selectedOnlyModels } = buildPiAvailableModels({
+      models: [
+        {
+          id: "claude-opus-4-8",
+          name: "Claude Opus 4.8",
+          provider: "anthropic",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "claude-opus-4-8-20260115",
+          name: "Claude Opus 4.8 (2026-01-15)",
+          provider: "anthropic",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+      ],
+      scopedModelIds: ["anthropic/claude-opus-4-8-20260115"],
+      preferredDefaultId: "anthropic/claude-opus-4-8-20260115",
+    });
+
+    expect(models.map((model) => model.id)).toEqual([
+      "anthropic/claude-opus-4-8-20260115",
+    ]);
+    expect(models[0]?.isDefault).toBe(true);
+    expect(selectedOnlyModels).toHaveLength(0);
+  });
+
   it("reads the context window of the provider that served the message", () => {
     const resolveContextWindow = createPiModelContextWindowResolverFrom([
       {

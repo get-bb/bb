@@ -12,6 +12,7 @@ import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
   AutomationResponse,
+  AutomationReadResult,
   AgentExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -163,7 +164,7 @@ function useOverview(): {
 }
 
 function useAutomation(route: DetailRoute): {
-  automation: AutomationResponse | null;
+  automation: AutomationReadResult | null;
   error: string | null;
   missing: boolean;
   refetch: () => void;
@@ -171,7 +172,7 @@ function useAutomation(route: DetailRoute): {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
-    automation: AutomationResponse | null;
+    automation: AutomationReadResult | null;
     error: string | null;
     missing: boolean;
   }>({ automation: null, error: null, missing: false });
@@ -183,7 +184,7 @@ function useAutomation(route: DetailRoute): {
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
         if (requestRef.current !== requestId) return;
-        const automation = result as AutomationResponse | null;
+        const automation = result as AutomationReadResult | null;
         setState({
           automation: automation ?? null,
           error: null,
@@ -493,7 +494,7 @@ function DetailView({
   );
 
   const openEdit = useCallback(() => {
-    if (automation === null) return;
+    if (automation === null || "problem" in automation) return;
     if (automation.execution.mode === "agent") {
       setEditingRequested(true);
       return;
@@ -562,6 +563,48 @@ function DetailView({
     );
   }
 
+  const deleteDialog = (
+    <DeleteAutomationDialog
+      open={deleteOpen}
+      onOpenChange={setDeleteOpen}
+      name={automation.name}
+      pending={deleting}
+      onConfirm={confirmDelete}
+      onCancel={() => setDeleteOpen(false)}
+    />
+  );
+
+  if ("problem" in automation && automation.problem === "invalid-stored-data") {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-3xl space-y-3">
+          <ResourceListState
+            state="error"
+            message="The stored automation configuration cannot be read."
+            layout="detail"
+            onRetry={refetch}
+          />
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete automation
+            </Button>
+          </div>
+        </div>
+        {deleteDialog}
+      </>
+    );
+  }
+
+  const requiresPrompt =
+    automation.execution.mode === "agent" && automation.execution.prompt === "";
+  const readableAutomation: AutomationResponse = automation;
+
   const overviewEntry = overviewState.entries?.find(
     (entry) =>
       entry.automation.projectId === route.projectId &&
@@ -576,28 +619,19 @@ function DetailView({
 
   return (
     <AutomationDetailView
-      automation={automation}
+      automation={readableAutomation}
       projectLabel={projectLabel}
       runsState={runsState}
       actionPending={actionPending}
-      editing={editingRequested}
+      editing={requiresPrompt || editingRequested}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
-      onCancelEdit={() => setEditingRequested(false)}
+      onCancelEdit={requiresPrompt ? onBack : () => setEditingRequested(false)}
       onUpdateAgent={updateAgent}
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onOpenThread={openThread}
-      footer={
-        <DeleteAutomationDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          name={automation.name}
-          pending={deleting}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteOpen(false)}
-        />
-      }
+      footer={deleteDialog}
     />
   );
 }

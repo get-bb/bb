@@ -9,6 +9,8 @@ import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
   AgentExecutionUpdate,
+  AutomationReadProblem,
+  AutomationReadResult,
   AutomationResponse,
   AutomationRunResponse,
   AutomationScriptInterpreter,
@@ -645,11 +647,19 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
   return `${automation.trigger.cron} (${automation.trigger.timezone})`;
 }
 
-function printAutomation(automation: AutomationResponse): string {
+type PrintableAutomation =
+  | AutomationResponse
+  | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
+
+function printAutomation(
+  automation: PrintableAutomation,
+  status?: string,
+): string {
   const lines = [
     "",
     `  ID:        ${automation.id}`,
     `  Name:      ${automation.name}`,
+    ...(status === undefined ? [] : [`  Status:    ${status}`]),
     `  Enabled:   ${automation.enabled ? "yes" : "no"}`,
     `  Mode:      ${automation.execution.mode}`,
     `  Schedule:  ${formatAutomationTrigger(automation)}`,
@@ -743,18 +753,58 @@ function table(head: string[], rows: string[][]): string {
   return ["", format(head), ...rows.map(format), ""].join("\n") + "\n";
 }
 
-function printAutomationTable(automations: AutomationResponse[]): string {
+function printAutomationProblem(automation: AutomationReadProblem): string {
+  if (automation.problem === "missing-agent-prompt") {
+    return printAutomation(automation, "Prompt required");
+  }
+  return (
+    [
+      "",
+      `  ID:        ${automation.id}`,
+      `  Name:      ${automation.name}`,
+      "  Status:    Invalid data",
+      "",
+    ].join("\n") + "\n"
+  );
+}
+
+function printAutomationTable(automations: AutomationReadResult[]): string {
   return table(
-    ["ID", "Name", "On", "Schedule", "Next run", "Runs", "Origin"],
-    automations.map((automation) => [
-      automation.id,
-      automation.name,
-      automation.enabled ? "yes" : "no",
-      formatAutomationTrigger(automation),
-      formatTimestamp(automation.nextRunAt),
-      String(automation.runCount),
-      automation.origin,
-    ]),
+    ["ID", "Name", "Status", "On", "Schedule", "Next run", "Runs", "Origin"],
+    automations.map((automation) =>
+      "problem" in automation
+        ? automation.problem === "missing-agent-prompt"
+          ? [
+              automation.id,
+              automation.name,
+              "Prompt required",
+              automation.enabled ? "yes" : "no",
+              formatAutomationTrigger(automation),
+              formatTimestamp(automation.nextRunAt),
+              String(automation.runCount),
+              automation.origin,
+            ]
+          : [
+              automation.id,
+              automation.name,
+              "Invalid data",
+              "-",
+              "-",
+              "-",
+              "-",
+              "-",
+            ]
+        : [
+            automation.id,
+            automation.name,
+            "-",
+            automation.enabled ? "yes" : "no",
+            formatAutomationTrigger(automation),
+            formatTimestamp(automation.nextRunAt),
+            String(automation.runCount),
+            automation.origin,
+          ],
+    ),
   );
 }
 
@@ -899,7 +949,14 @@ export function registerAutomationCli(args: {
             automationId,
           });
           const json = optionalJson(parsed, found);
-          return { exitCode: 0, stdout: json ?? printAutomation(found) };
+          return {
+            exitCode: 0,
+            stdout:
+              json ??
+              ("problem" in found
+                ? printAutomationProblem(found)
+                : printAutomation(found)),
+          };
         }
         if (command === "update") {
           const { request, scriptSource } = await buildUpdateRequest(

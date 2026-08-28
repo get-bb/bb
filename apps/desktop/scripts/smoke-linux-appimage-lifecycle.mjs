@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { createPackagedAppLaunchArguments } from "./packaged-app-launch.mjs";
 
 const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,7 @@ const desktopPackageRoot = resolve(scriptDirectory, "..");
 const releaseDir = join(desktopPackageRoot, "release");
 const startupTimeoutMs = 60_000;
 const exitTimeoutMs = 10_000;
+const outputFlushTimeoutMs = 2_000;
 const pollIntervalMs = 100;
 const maxCapturedOutputCharacters = 20_000;
 
@@ -440,21 +442,32 @@ async function smokeLinuxAppImageLifecycle() {
     delete childEnv.BB_DESKTOP_NODE_EXEC_PATH;
     delete childEnv.ELECTRON_RUN_AS_NODE;
 
-    child = spawn(appImage, [`--user-data-dir=${userDataDir}`], {
-      detached: true,
-      env: childEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    child = spawn(
+      appImage,
+      createPackagedAppLaunchArguments({
+        platform: process.platform,
+        userDataDir,
+      }),
+      {
+        detached: true,
+        env: childEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     if (child.pid === undefined) {
       throw new Error("The AppImage process did not expose a PID");
     }
     child.stdout.on("data", (chunk) => appendOutput(stdout, chunk));
     child.stderr.on("data", (chunk) => appendOutput(stderr, chunk));
+    const childClosed = new Promise((resolveClosed) => {
+      child.once("close", resolveClosed);
+    });
 
     runtime = await waitFor({
       describe: "the desktop-owned runtime PID file",
       predicate: async () => {
         if (child.exitCode !== null || child.signalCode !== null) {
+          await Promise.race([childClosed, sleep(outputFlushTimeoutMs)]);
           throw new Error(
             `AppImage exited before its runtime started: code=${String(
               child.exitCode,

@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
@@ -37,11 +38,107 @@ import {
 } from "@get-bb/plugin-sdk";
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
+const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 
-const SKILL_PATH = fileURLToPath(
+const SKILL_ROOT = fileURLToPath(
   new URL(
-    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/SKILL.md",
+    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/",
     import.meta.url,
+  ),
+);
+const SKILL_PATH = join(SKILL_ROOT, "SKILL.md");
+
+function readSkillTree(directory = SKILL_ROOT): string {
+  return readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) return readSkillTree(entryPath);
+      return entry.name.endsWith(".md") ? readFileSync(entryPath, "utf8") : [];
+    })
+    .join("\n");
+}
+
+function readReference(name: string): string {
+  return readFileSync(join(SKILL_ROOT, "references", name), "utf8");
+}
+
+function exportedTypeNames(source: string): string[] {
+  return [...source.matchAll(/^export (?:interface|type) ([A-Za-z0-9_]+)/gm)]
+    .map((match) => match[1])
+    .filter((name): name is string => name !== undefined);
+}
+
+function exportedNames(source: string): string[] {
+  return [
+    ...source.matchAll(
+      /^export (?:async )?(?:interface|type|function|const|class) ([A-Za-z0-9_]+)/gm,
+    ),
+  ]
+    .map((match) => match[1])
+    .filter((name): name is string => name !== undefined);
+}
+
+function declarationExportNames(source: string): string[] {
+  return [...source.matchAll(/^export(?: type)? \{([^}]*)\};/gm)].flatMap(
+    (match) =>
+      (match[1] ?? "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .map((name) => name.split(/\s+as\s+/).at(-1) ?? name),
+  );
+}
+
+const appModule = readFileSync(
+  join(REPO_ROOT, "packages/plugin-sdk/src/app.ts"),
+  "utf8",
+);
+const rpcTypeBlock = appModule.match(
+  /export type \{([\s\S]*?)\} from "\.\/rpc-contract\.js";/,
+)?.[1];
+if (!rpcTypeBlock) throw new Error("The app RPC type export block is missing");
+
+const FRONTEND_TYPE_EXPORT_NAMES = [
+  ...exportedTypeNames(
+    readFileSync(
+      join(REPO_ROOT, "packages/plugin-sdk/src/app-contract.ts"),
+      "utf8",
+    ),
+  ),
+  ...exportedTypeNames(
+    readFileSync(
+      join(REPO_ROOT, "packages/plugin-sdk/src/json-value.ts"),
+      "utf8",
+    ),
+  ),
+  ...rpcTypeBlock
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean),
+];
+
+const FRONTEND_TEST_EXPORT_NAMES = [
+  "packages/plugin-sdk/src/testing/app.tsx",
+  "packages/plugin-sdk/src/testing/host.ts",
+].flatMap((relativePath) =>
+  exportedNames(readFileSync(join(REPO_ROOT, relativePath), "utf8")),
+);
+
+const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
+  "bb-plugin-sdk.d.ts",
+  "bb-plugin-sdk-ai-services.d.ts",
+  "bb-plugin-sdk-provider-bridge.d.ts",
+  "bb-plugin-sdk-provider-bridge-testing.d.ts",
+  "bb-plugin-sdk-provider-bridge-acp.d.ts",
+  "bb-plugin-sdk-host.d.ts",
+  "bb-plugin-sdk-testing.d.ts",
+].flatMap((filename) =>
+  declarationExportNames(
+    readFileSync(
+      join(REPO_ROOT, "packages/plugin-sdk/bundled-types", filename),
+      "utf8",
+    ),
   ),
 );
 
@@ -113,9 +210,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -371,10 +466,11 @@ const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageAct
 void _assertAllThreadChatMessageActionFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
-  const skill = readFileSync(SKILL_PATH, "utf8");
+  const skillEntry = readFileSync(SKILL_PATH, "utf8");
+  const skill = readSkillTree();
 
   it("has frontmatter naming the skill after its directory", () => {
-    expect(skill).toMatch(/^---\nname: bb-plugin-authoring\n/);
+    expect(skillEntry).toMatch(/^---\nname: bb-plugin-authoring\n/);
   });
 
   it("documents every BbPluginApi property", () => {
@@ -389,6 +485,42 @@ describe("bb-plugin-authoring skill", () => {
     for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }
+  });
+
+  it("accounts for every @get-bb/plugin-sdk/app type export", () => {
+    for (const name of FRONTEND_TYPE_EXPORT_NAMES) {
+      expect(skill, `${name} is not documented in the skill`).toContain(name);
+    }
+  });
+
+  it("accounts for every frontend testing export", () => {
+    for (const name of FRONTEND_TEST_EXPORT_NAMES) {
+      expect(skill, `${name} is not documented in the skill`).toContain(name);
+    }
+  });
+
+  it("accounts for every public backend and provider entrypoint export", () => {
+    for (const name of PUBLIC_PLUGIN_SDK_EXPORT_NAMES) {
+      expect(skill, `${name} is not documented in the skill`).toContain(name);
+    }
+  });
+
+  it("keeps fake-host and distribution examples aligned with implementation", () => {
+    const testing = readReference("testing.md");
+    const quickstart = readReference("quickstart.md");
+    const distribution = readReference("distribution.md");
+
+    expect(testing).toContain(
+      "experimental_callHostRpc: async ({ method, input, hostId, signal })",
+    );
+    expect(testing).toContain('const body = JSON.stringify({ event: "test" })');
+    expect(testing).toMatch(
+      /experimental_emitHostSignal\(\s*"host-test",\s*"changed",\s*\{\s*reason: "test",?\s*\}/,
+    );
+    expect(testing).not.toContain("resolveAgentConfiguration(context)");
+    expect(quickstart).toContain("server.js.map");
+    expect(quickstart).toContain("--omit=dev --omit=optional");
+    expect(distribution).not.toMatch(/"engines"\s*:/);
   });
 
   it("documents the complete frontend content-script lifecycle contract", () => {

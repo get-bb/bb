@@ -1,17 +1,28 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const SKILL_PATH = fileURLToPath(
+const SKILL_ROOT = fileURLToPath(
   new URL(
-    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/SKILL.md",
+    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/",
     import.meta.url,
   ),
 );
+
+function readSkillTree(directory = SKILL_ROOT): string {
+  return readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) return readSkillTree(entryPath);
+      return entry.name.endsWith(".md") ? readFileSync(entryPath, "utf8") : [];
+    })
+    .join("\n");
+}
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const pluginSdkEntry = join(
@@ -137,7 +148,7 @@ describe("bb-plugin-authoring skill examples", () => {
   });
 
   it("resolves every SDK reference and compiles every TypeScript example", async () => {
-    const skill = readFileSync(SKILL_PATH, "utf8");
+    const skill = readSkillTree();
     const references = sdkReferences(skill);
     const fences = sdkFences(skill);
     expect(references.length).toBeGreaterThan(0);
@@ -157,5 +168,5 @@ describe("bb-plugin-authoring skill examples", () => {
     const result = spawnSync(tsc, ["--project", workDir], { encoding: "utf8" });
     if (result.error !== undefined) throw result.error;
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
-  });
+  }, 60_000);
 });

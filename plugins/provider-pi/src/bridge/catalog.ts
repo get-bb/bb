@@ -5,7 +5,11 @@ import {
   type PiModelContextWindowResolver,
 } from "../delta-translation.js";
 import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
-import { PiRpcChild, buildPiChildEnv } from "./rpc-child.js";
+import {
+  PiRpcChild,
+  PiRpcChildExitedError,
+  buildPiChildEnv,
+} from "./rpc-child.js";
 
 const EXTENDED_THINKING_LEVELS = [
   "off",
@@ -85,24 +89,90 @@ async function spawnCatalog(
   extensionPath: string,
   touch: () => void,
 ): Promise<PiCatalog> {
-  let child: PiRpcChild | null = null;
-  const spawnChild = (): PiRpcChild => {
-    if (child !== null && !child.exited) {
-      return child;
-    }
-    child = new PiRpcChild({
+  interface CatalogChildGeneration {
+    child: PiRpcChild;
+    ready: Promise<Record<string, unknown>>;
+    getModelScope():
+      | { scopedModelIds: string[]; defaultModelId?: string }
+      | undefined;
+  }
+
+  let generation: CatalogChildGeneration | null = null;
+  const spawnGeneration = (): CatalogChildGeneration => {
+    let modelScope:
+      | { scopedModelIds: string[]; defaultModelId?: string }
+      | undefined;
+    let settleModelScopeRequest: (() => void) | undefined;
+    const acceptModelScope = (value: Record<string, unknown>): void => {
+      const scopedModelIds = Array.isArray(value.scopedModelIds)
+        ? value.scopedModelIds.filter(
+            (id): id is string => typeof id === "string",
+          )
+        : [];
+      modelScope = {
+        scopedModelIds,
+        defaultModelId:
+          typeof value.defaultModelId === "string"
+            ? value.defaultModelId
+            : undefined,
+      };
+    };
+    const child = new PiRpcChild({
       cwd,
       env: buildPiChildEnv({}),
       args: ["--mode", "rpc", "--no-session", "--extension", extensionPath],
       onEvent: () => {},
-      onChannelMessage: () => {},
+      onChannelMessage: (message) => {
+        if (message.kind === "model-scope") {
+          acceptModelScope(message);
+          return;
+        }
+        if (
+          message.kind === "reply" &&
+          message.id === "catalog-model-scope" &&
+          typeof message.result === "object" &&
+          message.result !== null
+        ) {
+          acceptModelScope(message.result as Record<string, unknown>);
+          settleModelScopeRequest?.();
+          settleModelScopeRequest = undefined;
+        }
+      },
       onExit: () => {},
       recordThreadId: null,
     });
-    return child;
+    const ready = (async (): Promise<Record<string, unknown>> => {
+      const data = await child.requestOk({ type: "get_state" });
+      await new Promise<void>((resolveScope) => {
+        const timeout = setTimeout(resolveScope, 2_000);
+        timeout.unref?.();
+        settleModelScopeRequest = () => {
+          clearTimeout(timeout);
+          resolveScope();
+        };
+        child.sendChannel({
+          kind: "request",
+          id: "catalog-model-scope",
+          method: "model-scope",
+        });
+      });
+      return typeof data === "object" && data !== null
+        ? (data as Record<string, unknown>)
+        : {};
+    })();
+    return { child, ready, getModelScope: () => modelScope };
   };
-  const fetchRaw = async (): Promise<PiRpcModel[]> => {
-    const data = (await spawnChild().requestOk({
+  const activeGeneration = (): CatalogChildGeneration => {
+    if (generation === null || generation.child.exited) {
+      generation = spawnGeneration();
+    }
+    return generation;
+  };
+  const fetchRawFrom = async (
+    active: CatalogChildGeneration,
+  ): Promise<PiRpcModel[]> => {
+    await active.ready;
+    const data = (await active.child.requestOk({
       type: "get_available_models",
     })) as { models?: unknown[] } | undefined;
     touch();
@@ -111,16 +181,29 @@ async function spawnCatalog(
         typeof entry === "object" && entry !== null,
     );
   };
-  const probe = async (): Promise<Record<string, unknown>> => {
-    const data = await spawnChild().requestOk({ type: "get_state" });
-    return typeof data === "object" && data !== null
-      ? (data as Record<string, unknown>)
-      : {};
+  const fetchGeneration = async (): Promise<{
+    active: CatalogChildGeneration;
+    raw: PiRpcModel[];
+  }> => {
+    const first = activeGeneration();
+    try {
+      return { active: first, raw: await fetchRawFrom(first) };
+    } catch (error) {
+      if (!(error instanceof PiRpcChildExitedError)) {
+        throw error;
+      }
+      const active = activeGeneration();
+      return { active, raw: await fetchRawFrom(active) };
+    }
   };
+  const fetchRaw = async (): Promise<PiRpcModel[]> =>
+    (await fetchGeneration()).raw;
+  const probe = async (): Promise<Record<string, unknown>> =>
+    activeGeneration().ready;
   await probe();
   return {
     async listModels() {
-      const raw = await fetchRaw();
+      const { active, raw } = await fetchGeneration();
       const models: PiCatalogModel[] = [];
       for (const model of raw) {
         const catalogModel = toCatalogModel(model);
@@ -132,15 +215,18 @@ async function spawnCatalog(
           );
         }
       }
-      return buildPiAvailableModels({ models });
+      const modelScope = active.getModelScope();
+      return buildPiAvailableModels({
+        models,
+        scopedModelIds: modelScope?.scopedModelIds,
+        preferredDefaultId: modelScope?.defaultModelId,
+      });
     },
     rawModels: fetchRaw,
     probe,
     async close() {
-      const activeChild = child;
-      if (activeChild === null) {
-        return;
-      }
+      const activeChild = generation?.child;
+      if (activeChild === undefined) return;
       activeChild.kill();
       await activeChild.waitForExit();
     },

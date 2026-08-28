@@ -233,6 +233,17 @@ export function createParcelWatcherProxy(
         break;
       }
       case "watch-error":
+        if (message.recovery === "rescan-subscription") {
+          const record = subscriptions.get(message.id);
+          if (record) {
+            log("warn", "Watcher subscription requires targeted recovery", {
+              activeSubscriptions: subscriptions.size,
+              watchError: message.message,
+            });
+            record.callback(new Error(message.message), []);
+          }
+          break;
+        }
         log("warn", "Watcher child reported a backend error; recycling", {
           watchError: message.message,
         });

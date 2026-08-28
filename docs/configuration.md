@@ -136,7 +136,7 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | Key                     | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                            |
-| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                  |
+| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                     |
 | `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                    |
 | `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                               |
 | `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace, which lists as BB Community. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. It sets only the reserved `bb-community` marketplace; other marketplaces are added at runtime with `bb marketplace add`. A full launcher or desktop app restart is required. |
@@ -186,11 +186,14 @@ to show them regardless of the toggle. Set the persisted preference from an
 agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
-The "Steer running threads on Enter" toggle in Settings → General changes the
-active-thread composer shortcuts when no typeahead suggestion is active. It
-defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
-steers and Command+Enter queues. Set it with
-`bb settings general steerActiveThreadOnEnter <true|false>`.
+The "Default thread followup behavior" picker in Settings → General changes the
+active-thread composer shortcuts when no typeahead suggestion is active. A
+queued message waits and then runs when the agent stops. A steer message goes
+to the agent during the current run. The picker defaults to "Queue": Enter
+queues and Command+Enter steers. "Steer" swaps them: Enter steers and
+Command+Enter queues. Set it with
+`bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
+"Steer".
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
@@ -820,7 +823,7 @@ settings accept base-10 integer strings through Extensions → Plugins or
 | `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                 |
 | `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                      |
 | `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.            |
-| `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                |
+| `retentionDays`        |        `7` |          `1`–`3650` | Days to retain completed workflow data.                |
 | `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.       |
 
 The five settings other than `maxActiveRuns` are snapshotted into each new run.

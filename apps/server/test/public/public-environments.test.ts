@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import {
+  registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -15,8 +16,13 @@ import { withTestHarness } from "../helpers/test-app.js";
 describe("public environments", () => {
   it("lists cached branch options while remotes refresh in the background", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
+      const { host, session } = seedHostSession(harness.deps, {
         id: "host-environment-branch-options",
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        queueBranchOptions: true,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,

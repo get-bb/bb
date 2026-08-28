@@ -531,8 +531,21 @@ const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
-const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
-  "Steer running threads on Enter";
+const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
+const FOLLOW_UP_BEHAVIOR_OPTIONS = [
+  {
+    steerOnEnter: false,
+    label: "Queue",
+    description:
+      "Enter adds a follow-up. It runs when the agent stops. Command+Enter steers the run.",
+  },
+  {
+    steerOnEnter: true,
+    label: "Steer",
+    description:
+      "Enter steers the run now. Command+Enter adds a follow-up for later.",
+  },
+] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
 export function AppearanceSettingsSection({
@@ -728,15 +741,56 @@ export function GeneralSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+          label={FOLLOW_UP_BEHAVIOR_SETTING_LABEL}
+          description="What Enter does in the prompt box while the thread runs."
         >
-          <Switch
-            checked={steerActiveThreadOnEnter}
-            disabled={steerActiveThreadOnEnterDisabled}
-            onCheckedChange={onSteerActiveThreadOnEnterChange}
-            aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+                disabled={steerActiveThreadOnEnterDisabled}
+                aria-label={FOLLOW_UP_BEHAVIOR_SETTING_LABEL}
+              >
+                {steerActiveThreadOnEnter ? "Steer" : "Queue"}
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className={cn(SETTINGS_DROPDOWN_CONTENT_CLASS, "max-w-72")}
+            >
+              {FOLLOW_UP_BEHAVIOR_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.label}
+                  className="items-start"
+                  onSelect={() =>
+                    onSteerActiveThreadOnEnterChange(option.steerOnEnter)
+                  }
+                >
+                  <span className="min-w-0">
+                    <span className="block">{option.label}</span>
+                    <span className="block text-2xs leading-snug text-subtle-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      steerActiveThreadOnEnter !== option.steerOnEnter &&
+                        "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SettingsWithControl>
 
         {desktopBrowserAvailable ? (

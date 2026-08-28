@@ -1,10 +1,10 @@
-import type { ProjectSourceCheckout } from "@bb/domain";
+import type { GitSourceInspection } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
 
 interface ResolveDefaultWorktreeBaseBranchArgs {
-  defaultBranch: ProjectSourceCheckout["defaultBranch"];
-  defaultBranchRelation: ProjectSourceCheckout["defaultBranchRelation"];
-  originDefaultBranch: ProjectSourceCheckout["originDefaultBranch"];
+  defaultBranch: GitSourceInspection["defaultBranch"];
+  defaultBranchRelation: GitSourceInspection["defaultBranchRelation"];
+  originDefaultBranch: GitSourceInspection["originDefaultBranch"];
 }
 
 export function resolveDefaultWorktreeBaseBranch(
@@ -37,17 +37,4 @@ export function resolveManagedDefaultBaseBranchSpec(
   }
 
   return { kind: "default" };
-}
-
-export function resolveManagedNamedBaseBranchSpec(
-  spec: Extract<BaseBranchSpec, { kind: "named" }>,
-  checkout: ResolveDefaultWorktreeBaseBranchArgs,
-): BaseBranchSpec {
-  if (spec.name !== checkout.defaultBranch) {
-    return spec;
-  }
-  const resolved = resolveDefaultWorktreeBaseBranch(checkout);
-  return resolved && resolved !== spec.name
-    ? { kind: "named", name: resolved }
-    : spec;
 }

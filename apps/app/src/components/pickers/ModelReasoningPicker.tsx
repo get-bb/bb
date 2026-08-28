@@ -888,11 +888,10 @@ export function ModelReasoningPicker({
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
           !isCompactViewport &&
-            "max-h-[var(--radix-popover-content-available-height)] overflow-hidden",
+            "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
-        {}
         {showProviderTabs ? (
           <div
             className={cn(
@@ -956,14 +955,12 @@ export function ModelReasoningPicker({
         ) : null}
 
         <MenuHoverProvider>
-          {}
           <div
             className={cn(
               !isCompactViewport &&
-                "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+                "min-h-0 flex flex-1 flex-col overflow-hidden",
             )}
           >
-            {}
             <div
               key={activeProviderId || "no-provider"}
               role={showSearchInput ? "listbox" : undefined}
@@ -971,7 +968,9 @@ export function ModelReasoningPicker({
               aria-label={showSearchInput ? "Models" : undefined}
               className={cn(
                 "px-1 pb-1 pt-0",
-                isCompactViewport && "overflow-y-auto",
+                isCompactViewport
+                  ? "overflow-y-auto"
+                  : "min-h-0 max-h-64 flex-1 overflow-y-auto overscroll-contain",
               )}
             >
               {isShowingModelError ? null : (
@@ -1015,7 +1014,6 @@ export function ModelReasoningPicker({
                       />
                     );
                   })}
-                  {}
                   {!isCompactViewport &&
                   !isSearching &&
                   filteredMoreModelOptions.length > 0 ? (
@@ -1066,11 +1064,10 @@ export function ModelReasoningPicker({
               )}
             </div>
 
-            {}
             {showReasoningSection ? (
               <>
-                <div className="border-t border-border" />
-                <div className="px-1 pb-1 pt-0">
+                <div className="shrink-0 border-t border-border" />
+                <div className="shrink-0 px-1 pb-1 pt-0">
                   <MenuSectionLabel>Reasoning</MenuSectionLabel>
                   {activeReasoningOptions.map((option) => (
                     <MenuRowButton
@@ -1087,11 +1084,10 @@ export function ModelReasoningPicker({
               </>
             ) : null}
 
-            {}
             {effectiveShowFastModeToggle ? (
               <>
-                <div className="border-t border-border" />
-                <div className="p-1">
+                <div className="shrink-0 border-t border-border" />
+                <div className="shrink-0 p-1">
                   <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
                     <span className="flex min-w-0 items-center gap-2">
                       <Icon
@@ -1113,8 +1109,8 @@ export function ModelReasoningPicker({
 
             {footerAction ? (
               <>
-                <div className="border-t border-border" />
-                <div className="p-1">
+                <div className="shrink-0 border-t border-border" />
+                <div className="shrink-0 p-1">
                   <MenuActionButton
                     label={footerAction.label}
                     iconName={footerAction.iconName ?? "MessageSquarePlus"}

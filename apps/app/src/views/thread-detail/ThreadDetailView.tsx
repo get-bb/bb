@@ -2320,7 +2320,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
 
   if (threadQueryState.status === "loading") {
-    return <RouteLoadingSkeleton />;
+    return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
   }
   if (!thread || thread.projectId !== projectId) {
     return (

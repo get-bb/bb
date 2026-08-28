@@ -368,6 +368,16 @@ function parseDesktopEntryValue(line: string): [string, string] | null {
   ];
 }
 
+const LINUX_WORKSPACE_APPLICATION_CATEGORIES = new Set([
+  "FileManager",
+  "TerminalEmulator",
+  "TextEditor",
+]);
+
+function parseDesktopEntryList(value: string | undefined): string[] {
+  return value?.split(";").filter(Boolean) ?? [];
+}
+
 function parseLinuxDesktopApplication(
   desktopFilePath: string,
   content: string,
@@ -402,7 +412,14 @@ function parseLinuxDesktopApplication(
 
   const label = fields.get("Name");
   const exec = fields.get("Exec");
-  if (!label || !exec) {
+  const categories = parseDesktopEntryList(fields.get("Categories"));
+  if (
+    !label ||
+    !exec ||
+    !categories.some((category) =>
+      LINUX_WORKSPACE_APPLICATION_CATEGORIES.has(category),
+    )
+  ) {
     return null;
   }
 

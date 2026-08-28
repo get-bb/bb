@@ -20,8 +20,8 @@ import {
   provisionEnvironment,
 } from "./command-handlers/environment.js";
 import {
+  inspectHostGitSource,
   listHostBranchOptions,
-  listHostBranches,
 } from "./command-handlers/host-branches.js";
 import {
   installGlobalSkills,
@@ -595,8 +595,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.install_global_skills": installGlobalSkills,
   "host.global_skills_status": async (command) =>
     readGlobalSkillsStatus(command, {}),
+  "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
-  "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,

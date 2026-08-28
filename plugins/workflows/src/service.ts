@@ -15,7 +15,7 @@ import {
   claimQueuedRun,
   countCallsForRun,
   createRun,
-  deleteExpiredTerminalRuns,
+  deleteTerminalRuns,
   getCall,
   getCallByChildThread,
   getLatestRunForOriginThread,
@@ -24,6 +24,7 @@ import {
   incrementRepairAttempts,
   listCallsForRun,
   listCallsForRunPage,
+  listExpiredTerminalRuns,
   listActiveRunsForOriginThread,
   listRuns,
   listPendingNotificationRuns,
@@ -96,6 +97,7 @@ const VALUE_LIMITS = { bytes: 1024 * 1024, nodes: 100_000, depth: 128 };
 const NOTIFICATION_RETRY_BASE_MS = 1_000;
 const NOTIFICATION_RETRY_MAX_MS = 60 * 60 * 1_000;
 const PROVIDER_RETRY_DELAYS_MS = [1_000, 4_000] as const;
+const RETENTION_SWEEP_RUNS = 20;
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1420,6 +1422,32 @@ export function createWorkflowService(
     }
   }
 
+  async function archiveRetiredWorker(threadId: string): Promise<boolean> {
+    try {
+      await bb.sdk.threads.archive({ threadId });
+      return true;
+    } catch (error) {
+      if (isMissingThread(error)) return true;
+      bb.log.warn(
+        `Could not archive retired workflow worker ${threadId}: ${message(error)}`,
+      );
+      return false;
+    }
+  }
+
+  async function sweepExpiredRuns(now: number): Promise<void> {
+    const expired = listExpiredTerminalRuns(db, now, RETENTION_SWEEP_RUNS);
+    if (expired.runIds.length === 0) return;
+    for (const threadId of expired.childThreadIds) {
+      if (await archiveRetiredWorker(threadId)) continue;
+      bb.log.warn(
+        `Retention kept ${expired.runIds.length} expired workflow runs until their workers archive`,
+      );
+      return;
+    }
+    deleteTerminalRuns(db, expired.runIds);
+  }
+
   async function maintenanceTick(): Promise<void> {
     const now = Date.now();
     const isolated = async (
@@ -1436,9 +1464,7 @@ export function createWorkflowService(
     };
     await isolated("reconcile-workers", reconcileRunningCalls);
     await isolated("enforce-timeouts", () => enforceTimeouts(now));
-    await isolated("retention", () => {
-      deleteExpiredTerminalRuns(db, now, 100);
-    });
+    await isolated("retention", () => sweepExpiredRuns(now));
   }
 
   async function runWorker(signal: AbortSignal): Promise<void> {

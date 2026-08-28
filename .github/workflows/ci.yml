@@ -139,7 +139,7 @@ jobs:
           cache-prefix: test-${{ matrix.shard }}
 
       - name: Test
-        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
+        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only --concurrency=4 ${{ matrix.args }}
 
   # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
   # only backs their Linux runners, so on macOS the cache moves over GitHub's

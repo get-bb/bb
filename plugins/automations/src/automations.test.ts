@@ -17,9 +17,11 @@ import {
   closeAutomationRun,
   createAutomation,
   createManualRun,
+  decodeAutomationRow,
   getAutomation,
   getRunningAutomationRun,
   listAutomationsForProject,
+  listDueAutomations,
   listAutomationRuns,
   migrations,
   setAutomationEnabled,
@@ -111,6 +113,50 @@ function createOnceAutomation(db: Db, nextRunAt: number, id = "auto_once") {
 
 function oneShotTrigger() {
   return { triggerType: "once" as const, runAt: Date.now() + 60_000 };
+}
+
+function legacyAutomationRow(
+  overrides: {
+    execution?: string;
+    runMode?: "agent" | "script";
+    targetThreadId?: string | null;
+    triggerType?: "schedule" | "once";
+  } = {},
+) {
+  return {
+    id: "auto_legacy",
+    projectId: "proj_test",
+    targetThreadId: null,
+    name: "Legacy",
+    enabled: true,
+    triggerType: "schedule" as const,
+    triggerConfig: JSON.stringify({
+      triggerType: "schedule",
+      cron: "* * * * *",
+      timezone: "UTC",
+    }),
+    runMode: "agent" as const,
+    execution: JSON.stringify({
+      mode: "agent",
+      prompt: "legacy",
+      providerId: "codex",
+      model: "gpt-5",
+      permissionMode: "readonly",
+    }),
+    environment: JSON.stringify({ type: "project-default" }),
+    autoArchive: false,
+    origin: "human" as const,
+    createdByThreadId: null,
+    nextRunAt: 1000,
+    lastRunAt: null,
+    runCount: 1,
+    lastRunStatus: "succeeded" as const,
+    lastRunThreadId: "thr_legacy",
+    lastError: null,
+    createdAt: 1,
+    updatedAt: 2,
+    ...overrides,
+  };
 }
 
 function createAutomationServiceBb() {
@@ -801,6 +847,92 @@ describe("automation data access", () => {
     expect(
       listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
     ).toHaveLength(0);
+  });
+
+  it("does not repeatedly select degraded agent executions for sweeping", () => {
+    const db = createTestDb();
+    const emptyPrompt = createScheduledAutomation(db, 1000, "auto_empty");
+    const invalidJson = createScheduledAutomation(db, 1000, "auto_invalid");
+    const healthy = createScheduledAutomation(db, 1000, "auto_healthy");
+    db.prepare("UPDATE automations SET execution = ? WHERE id = ?").run(
+      JSON.stringify({
+        mode: "agent",
+        prompt: "",
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "accept-edits",
+        environment: { type: "project-default" },
+      }),
+      emptyPrompt.id,
+    );
+    db.prepare("UPDATE automations SET execution = ? WHERE id = ?").run(
+      "not json",
+      invalidJson.id,
+    );
+
+    expect(
+      listDueAutomations(db, { now: 1000, limit: 100 }).map(
+        (automation) => automation.id,
+      ),
+    ).toEqual([healthy.id]);
+    expect(getAutomation(db, emptyPrompt.id)).toMatchObject({
+      enabled: true,
+      nextRunAt: 1000,
+    });
+    expect(getAutomation(db, invalidJson.id)).toMatchObject({
+      enabled: true,
+      nextRunAt: 1000,
+    });
+  });
+
+  it("finds healthy due work after a full batch of malformed rows", () => {
+    const db = createTestDb();
+    const updateExecution = db.prepare(
+      "UPDATE automations SET execution = ?, created_at = 1 WHERE id = ?",
+    );
+    for (let index = 0; index < 100; index += 1) {
+      const id = `auto_invalid_${index.toString().padStart(3, "0")}`;
+      createScheduledAutomation(db, 1000, id);
+      updateExecution.run(
+        JSON.stringify({ mode: "agent", prompt: "incomplete" }),
+        id,
+      );
+    }
+    const healthy = createScheduledAutomation(db, 1000, "auto_healthy");
+    db.prepare("UPDATE automations SET created_at = 2 WHERE id = ?").run(
+      healthy.id,
+    );
+
+    expect(
+      listDueAutomations(db, { now: 1000, limit: 100 }).map(
+        (automation) => automation.id,
+      ),
+    ).toEqual([healthy.id]);
+  });
+
+  it("rejects denormalized fields that disagree with stored JSON", () => {
+    const mismatches = [
+      "UPDATE automations SET trigger_type = 'once' WHERE id = ?",
+      "UPDATE automations SET run_mode = 'script' WHERE id = ?",
+      "UPDATE automations SET target_thread_id = 'thr_other' WHERE id = ?",
+    ];
+
+    for (const mismatch of mismatches) {
+      const db = createTestDb();
+      const automation = createScheduledAutomation(db, 1000);
+      db.prepare(mismatch).run(automation.id);
+      const row = getAutomation(db, automation.id);
+      expect(row).not.toBeNull();
+      if (row === null) throw new Error("Expected stored automation");
+
+      expect(decodeAutomationRow(row).automation).toEqual({
+        id: automation.id,
+        projectId: automation.projectId,
+        name: automation.name,
+        problem: "invalid-stored-data",
+      });
+    }
   });
 
   it("dedupes manual runs by idempotency key", () => {
@@ -1584,41 +1716,7 @@ describe("legacy import", () => {
     await writeFile(
       join(pluginDataDir, "import", "legacy-automations.json"),
       JSON.stringify({
-        automations: [
-          {
-            id: "auto_legacy",
-            projectId: "proj_test",
-            targetThreadId: null,
-            name: "Legacy",
-            enabled: true,
-            triggerType: "schedule",
-            triggerConfig: JSON.stringify({
-              triggerType: "schedule",
-              cron: "* * * * *",
-              timezone: "UTC",
-            }),
-            runMode: "agent",
-            execution: JSON.stringify({
-              mode: "agent",
-              prompt: "legacy",
-              providerId: "codex",
-              model: "gpt-5",
-              permissionMode: "readonly",
-            }),
-            environment: JSON.stringify({ type: "project-default" }),
-            autoArchive: false,
-            origin: "human",
-            createdByThreadId: null,
-            nextRunAt: 1000,
-            lastRunAt: null,
-            runCount: 1,
-            lastRunStatus: "succeeded",
-            lastRunThreadId: "thr_legacy",
-            lastError: null,
-            createdAt: 1,
-            updatedAt: 2,
-          },
-        ],
+        automations: [legacyAutomationRow()],
         runs: [
           {
             id: "arun_legacy",
@@ -1669,5 +1767,63 @@ describe("legacy import", () => {
       listAutomationRuns(db, { automationId: "auto_legacy", limit: 10 }),
     ).toHaveLength(1);
     expect(kv.get("legacy-import-done")).toBe(true);
+  });
+
+  it("rejects legacy rows with inconsistent execution metadata", async () => {
+    const cases = [
+      {
+        name: "run mode",
+        row: legacyAutomationRow({ runMode: "script" }),
+      },
+      {
+        name: "target thread",
+        row: legacyAutomationRow({
+          targetThreadId: "thr_row",
+          execution: JSON.stringify({
+            mode: "agent",
+            prompt: "legacy",
+            providerId: "codex",
+            model: "gpt-5",
+            permissionMode: "readonly",
+            targetThreadId: "thr_execution",
+          }),
+        }),
+      },
+    ];
+
+    for (const testCase of cases) {
+      const db = createTestDb();
+      const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-plugin-"));
+      try {
+        await mkdir(join(pluginDataDir, "import"), { recursive: true });
+        await writeFile(
+          join(pluginDataDir, "import", "legacy-automations.json"),
+          JSON.stringify({
+            automations: [testCase.row],
+            runs: [],
+            scripts: {},
+          }),
+        );
+        const kv = new Map<string, unknown>();
+        const bb = {
+          storage: {
+            kv: {
+              get: async <T>(key: string) => kv.get(key) as T | undefined,
+              set: async (key: string, value: unknown) => {
+                kv.set(key, value);
+              },
+            },
+          },
+          log: { info: () => undefined },
+        };
+
+        await expect(
+          ingestLegacyImport({ bb, db, pluginDataDir }),
+          testCase.name,
+        ).rejects.toThrow(/does not match/u);
+      } finally {
+        await rm(pluginDataDir, { recursive: true, force: true });
+      }
+    }
   });
 });

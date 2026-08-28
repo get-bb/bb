@@ -306,7 +306,9 @@ function AppRoutes() {
           <Route
             path="*"
             element={
-              <Suspense fallback={<RouteLoadingSkeleton />}>
+              <Suspense
+                fallback={<RouteLoadingSkeleton isBoundedPane={false} />}
+              >
                 <SplitWorkspaceRoute />
               </Suspense>
             }

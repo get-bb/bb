@@ -149,7 +149,10 @@ export function ThreadDetailHeader({
     : "Show right panel";
   const rightPanelIconName = getRightPanelToggleIconName(renderAsDrawer);
   const showRightPanelToggle =
-    secondaryPanelHost === null && !isSecondaryPanelOpen;
+    secondaryPanelHost === null && (!renderAsDrawer || !isSecondaryPanelOpen);
+  const pinsRightPanelToggle = showRightPanelToggle && !renderAsDrawer;
+  const reservesPinnedRightPanelToggle =
+    pinsRightPanelToggle && !isSecondaryPanelOpen;
 
   const center = (
     <>
@@ -189,7 +192,6 @@ export function ThreadDetailHeader({
           {childPillLabel}
         </Pill>
       ) : null}
-      {}
       {actionsMenu == null ? null : (
         <span
           data-testid="thread-detail-header-actions-menu"
@@ -249,7 +251,16 @@ export function ThreadDetailHeader({
         data-thread-header-pane-actions=""
       >
         {showRightPanelToggle ? (
-          <span className="inline-flex items-center gap-1.5">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5",
+              pinsRightPanelToggle &&
+                "fixed right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] z-40",
+              pinsRightPanelToggle &&
+                usesDesktopChrome &&
+                MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
+          >
             <AppCommandShortcutHint shortcut={panelShortcut} />
             <Button
               type="button"
@@ -271,6 +282,13 @@ export function ThreadDetailHeader({
               <Icon name={rightPanelIconName} />
             </Button>
           </span>
+        ) : null}
+        {reservesPinnedRightPanelToggle ? (
+          <span
+            aria-hidden
+            data-thread-header-panel-toggle-reserve=""
+            className={HEADER_ICON_BUTTON_CLASS}
+          />
         ) : null}
         <PaneMaximizeButton />
         {onClosePane ? (

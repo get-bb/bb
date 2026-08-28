@@ -165,6 +165,80 @@ function createHarness(options?: {
   return { proxy, children, current };
 }
 
+interface RecoveryBenchmarkCounts {
+  subscriptions: number;
+  affectedSubscriptions: number;
+  unaffectedSubscriptions: number;
+  childRestarts: number;
+  proxyResubscriptions: number;
+  listEntriesCalls: number;
+  affectedSubscriptionsReceivingErrors: number;
+  affectedSubscriptionsReceivingEvents: number;
+  unaffectedSubscriptionsReceivingErrors: number;
+  unaffectedSubscriptionsReceivingEvents: number;
+}
+
+async function runRecoveryCountSample(
+  subscriptionCount: number,
+): Promise<RecoveryBenchmarkCounts> {
+  let listEntriesCalls = 0;
+  const { proxy, children, current } = createHarness({
+    listEntries: () => {
+      listEntriesCalls += 1;
+      return Promise.resolve(["current-entry"]);
+    },
+  });
+  let affectedErrors = 0;
+  let affectedEvents = 0;
+  const unaffectedSubscriptionsReceivingErrors = new Set<number>();
+  const unaffectedSubscriptionsReceivingEvents = new Set<number>();
+
+  for (let index = 0; index < subscriptionCount; index += 1) {
+    await proxy.subscribe(`/root-${index}`, (error, events) => {
+      if (index === 0) {
+        if (error) {
+          affectedErrors += 1;
+        } else {
+          affectedEvents += events.length;
+        }
+        return;
+      }
+      if (error) {
+        unaffectedSubscriptionsReceivingErrors.add(index);
+      } else if (events.length > 0) {
+        unaffectedSubscriptionsReceivingEvents.add(index);
+      }
+    });
+  }
+  await flush();
+
+  current().parcel.emitError(
+    "/root-0",
+    `Events were dropped by the FSEvents client. ${RESCAN_REQUIRED_MESSAGE}.`,
+  );
+  await flush();
+  const totalSubscribeCalls = children.reduce(
+    (total, child) => total + child.parcel.subscriptions.length,
+    0,
+  );
+  const counts: RecoveryBenchmarkCounts = {
+    subscriptions: subscriptionCount,
+    affectedSubscriptions: 1,
+    unaffectedSubscriptions: subscriptionCount - 1,
+    childRestarts: children.length - 1,
+    proxyResubscriptions: totalSubscribeCalls - subscriptionCount,
+    listEntriesCalls,
+    affectedSubscriptionsReceivingErrors: affectedErrors > 0 ? 1 : 0,
+    affectedSubscriptionsReceivingEvents: affectedEvents > 0 ? 1 : 0,
+    unaffectedSubscriptionsReceivingErrors:
+      unaffectedSubscriptionsReceivingErrors.size,
+    unaffectedSubscriptionsReceivingEvents:
+      unaffectedSubscriptionsReceivingEvents.size,
+  };
+  proxy.dispose();
+  return counts;
+}
+
 describe("createParcelWatcherProxy", () => {
   it("delivers parcel events from the child to the subscriber", async () => {
     const { proxy, current } = createHarness();
@@ -266,6 +340,52 @@ describe("createParcelWatcherProxy", () => {
       { path: "/root/healed.ts", type: "update" },
     ]);
     expect(received).toEqual(["/root/healed.ts"]);
+    proxy.dispose();
+  });
+
+  it("routes rescan-required errors only to the affected subscription", async () => {
+    const listEntries = vi.fn(() => Promise.resolve(["current-entry"]));
+    const { proxy, children, current } = createHarness({ listEntries });
+    const affectedErrors: string[] = [];
+    const affectedEvents: string[] = [];
+    const unaffectedErrors: string[] = [];
+    const unaffectedEvents: string[] = [];
+
+    await proxy.subscribe("/affected", (error, events) => {
+      if (error) {
+        affectedErrors.push(error.message);
+        return;
+      }
+      affectedEvents.push(...events.map((event) => event.path));
+    });
+    await proxy.subscribe("/unaffected", (error, events) => {
+      if (error) {
+        unaffectedErrors.push(error.message);
+        return;
+      }
+      unaffectedEvents.push(...events.map((event) => event.path));
+    });
+    await flush();
+    expect(children).toHaveLength(1);
+
+    current().parcel.emitError(
+      "/affected",
+      `Events were dropped by the FSEvents client. ${RESCAN_REQUIRED_MESSAGE}.`,
+    );
+    await flush();
+
+    expect(children).toHaveLength(1);
+    expect(affectedErrors).toEqual([
+      `Events were dropped by the FSEvents client. ${RESCAN_REQUIRED_MESSAGE}.`,
+    ]);
+    expect(affectedEvents).toEqual([]);
+    expect(unaffectedErrors).toEqual([]);
+    expect(unaffectedEvents).toEqual([]);
+    expect(listEntries).not.toHaveBeenCalled();
+    expect(current().parcel.activeDirs().sort()).toEqual([
+      "/affected",
+      "/unaffected",
+    ]);
     proxy.dispose();
   });
 
@@ -459,3 +579,21 @@ describe("createParcelWatcherProxy", () => {
     proxy.dispose();
   });
 });
+
+if (process.env.BB_WATCHER_RECOVERY_BENCHMARK === "1") {
+  describe("watcher recovery count harness", () => {
+    it("reports two-subscription and fan-out recovery work", async () => {
+      const result = {
+        twoSubscriptions: await runRecoveryCountSample(2),
+        fanOut: await runRecoveryCountSample(100),
+      };
+      expect(result.twoSubscriptions.affectedSubscriptions).toBe(1);
+      expect(result.twoSubscriptions.unaffectedSubscriptions).toBe(1);
+      expect(result.fanOut.affectedSubscriptions).toBe(1);
+      expect(result.fanOut.unaffectedSubscriptions).toBe(99);
+      process.stdout.write(
+        `WATCHER_RECOVERY_COUNTS ${JSON.stringify(result)}\n`,
+      );
+    }, 30_000);
+  });
+}

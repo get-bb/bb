@@ -127,7 +127,23 @@ function normalizeExecution(
   row: z.infer<typeof legacyAutomationRowSchema>,
 ): string {
   const execution = legacyExecutionSchema.parse(JSON.parse(row.execution));
+  if (execution.mode !== row.runMode) {
+    throw new Error(`Automation ${row.id} runMode does not match execution`);
+  }
+  if (execution.mode === "script" && row.targetThreadId !== null) {
+    throw new Error(
+      `Automation ${row.id} targetThreadId does not match execution`,
+    );
+  }
   if (execution.mode === "agent") {
+    if (
+      execution.targetThreadId !== undefined &&
+      execution.targetThreadId !== row.targetThreadId
+    ) {
+      throw new Error(
+        `Automation ${row.id} targetThreadId does not match execution`,
+      );
+    }
     const environment = agentEnvironmentSchema.parse(
       JSON.parse(row.environment),
     );
@@ -136,7 +152,14 @@ function normalizeExecution(
       execution.permissionMode === "readonly"
         ? "accept-edits"
         : execution.permissionMode;
-    return JSON.stringify({ ...execution, permissionMode, environment });
+    return JSON.stringify({
+      ...execution,
+      permissionMode,
+      environment,
+      ...(row.targetThreadId === null
+        ? {}
+        : { targetThreadId: row.targetThreadId }),
+    });
   }
   const { script: _script, ...scriptExecution } = execution;
   return JSON.stringify(scriptExecution);
