@@ -287,6 +287,7 @@ interface SystemRowArgs extends RowBaseOverrideArgs {
   /** Dispatch-hold rows only. */
   reason?: string;
   inputPreview?: string | null;
+  sendAt?: number | null;
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
@@ -308,6 +309,7 @@ interface NonOperationSystemRowArgs extends Omit<
   | "level"
   | "reason"
   | "inputPreview"
+  | "sendAt"
 > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
@@ -1173,6 +1175,7 @@ export function systemRow({
   level,
   reason,
   inputPreview,
+  sendAt,
   seq,
   sourceSeqEnd,
   sourceSeqStart,
@@ -1244,6 +1247,17 @@ export function systemRow({
       completedAt: resolvedCompletedAt,
       reason: reason ?? "Scheduled",
       inputPreview: inputPreview ?? null,
+    };
+  }
+  if (resolvedOperationKind === "queue-state") {
+    return {
+      ...base,
+      systemKind,
+      operationKind: resolvedOperationKind,
+      completedAt: resolvedCompletedAt,
+      reason: reason ?? "Scheduled",
+      inputPreview: inputPreview ?? null,
+      sendAt: sendAt ?? null,
     };
   }
   if (resolvedOperationKind === "plugin-note") {

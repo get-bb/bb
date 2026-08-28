@@ -53,7 +53,7 @@ const idleIndicatorState: ThreadListIndicatorState = {
   isBackgroundAgentActive: false,
   isBackgroundCommandActive: false,
   isGoalActive: false,
-  isHeld: false,
+  isPending: false,
   isPlanModeActive: false,
   isRuntimeActive: false,
   isWorkflowActive: false,
@@ -142,20 +142,20 @@ describe("thread-activity", () => {
       ).toBe("working-draft");
     });
 
-    it("shows the held clock over a draft, and never over active work", () => {
+    it("shows the pending clock over a draft, and never over active work", () => {
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,
           hasUnsubmittedDraft: true,
-          isHeld: true,
+          isPending: true,
         }),
-      ).toBe("held");
-      // A held thread is never running, but a stale runtime flag must not let
+      ).toBe("pending");
+      // A pending thread is never running, but a stale runtime flag must not let
       // the clock replace a spinner that says work is in flight.
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,
-          isHeld: true,
+          isPending: true,
           isRuntimeActive: true,
         }),
       ).toBe("runtime");
@@ -163,7 +163,7 @@ describe("thread-activity", () => {
         resolveThreadListIndicator({
           ...idleIndicatorState,
           hasPendingInteraction: true,
-          isHeld: true,
+          isPending: true,
         }),
       ).toBe("waiting-for-input");
     });

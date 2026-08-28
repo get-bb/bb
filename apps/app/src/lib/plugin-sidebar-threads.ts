@@ -10,7 +10,7 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isHeldThread,
+  isPendingThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
   resolveThreadListIndicator,
@@ -31,15 +31,15 @@ export function toPluginSidebarThread(
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(entry),
     isBackgroundCommandActive: hasActiveBackgroundCommandActivity(entry),
     isGoalActive: hasActiveGoalActivity(entry),
-    isHeld: isHeldThread(entry),
+    isPending: isPendingThread(entry),
     isPlanModeActive: hasActivePlanModeActivity(entry),
     isRuntimeActive: isRuntimeBusyThread(entry),
     isWorkflowActive: hasActiveWorkflowActivity(entry),
   });
-  // `held` has no arm in the plugin contract yet, and adding one is an SDK
-  // surface change; a plugin row reads a held thread as plain until then.
+  // `pending` has no arm in the plugin contract yet, and adding one is an SDK
+  // surface change; a plugin row reads a pending thread as plain until then.
   const indicator: PluginSidebarThreadIndicator =
-    resolvedIndicator === "held" ? "none" : resolvedIndicator;
+    resolvedIndicator === "pending" ? "none" : resolvedIndicator;
 
   return {
     id: entry.id,

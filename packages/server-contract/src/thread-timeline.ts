@@ -169,6 +169,7 @@ export const timelineSystemOperationKindValues = [
   "parent-change",
   "thread-provisioning",
   "dispatch-hold",
+  "queue-state",
   "plugin-note",
   "thread-interrupted",
   "provider-unhandled",
@@ -280,6 +281,39 @@ export type TimelineDispatchHoldSystemRow = z.infer<
   typeof timelineDispatchHoldSystemRowSchema
 >;
 
+/**
+ * A parked queued message. Same shape and same reasoning as the legacy
+ * dispatch-hold row it replaces: the row speaks for a message the user wrote,
+ * so "which message" is quoted (`inputPreview`) rather than dumped into the
+ * monospace block that carries the waiting plugin's progress report (`detail`),
+ * and "what it waits for" is its own field again.
+ *
+ * `reason` is derived by the projection from the event's typed `waitingOn`,
+ * because the event deliberately carries no reason string of its own — a core
+ * wait's words belong to the renderer, and only a plugin wait authors any.
+ * `sendAt` rides alongside rather than being folded into `reason` so the client
+ * can format the instant in the reader's locale.
+ */
+export const timelineQueueStateSystemRowSchema =
+  timelineSystemRowBaseSchema.extend({
+    systemKind: z.literal("operation"),
+    operationKind: z.literal("queue-state"),
+    /** What the dispatch is waiting for, e.g. "Scheduled". */
+    reason: z.string(),
+    /**
+     * Truncated plain text of the parked message. Null when the row has no
+     * message of its own — a `retry` row references a turn already rendered
+     * further up the timeline.
+     */
+    inputPreview: z.string().nullable(),
+    /** The row's scheduled instant, or null when it has no schedule. */
+    sendAt: z.number().nullable(),
+    completedAt: z.number().nullable(),
+  });
+export type TimelineQueueStateSystemRow = z.infer<
+  typeof timelineQueueStateSystemRowSchema
+>;
+
 export const timelineParentChangeSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
@@ -297,6 +331,7 @@ export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   [
     timelineGenericOperationSystemRowSchema,
     timelineDispatchHoldSystemRowSchema,
+    timelineQueueStateSystemRowSchema,
     timelineParentChangeSystemRowSchema,
     timelinePluginNoteSystemRowSchema,
   ],

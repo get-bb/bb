@@ -65,6 +65,7 @@ import {
   upsertUserQuestionLifecycleMessage,
   upsertFileEdit,
   upsertDispatchHoldOperation,
+  upsertQueueStateOperation,
   upsertProvisioningOperation,
   upsertThreadOperationMessage,
 } from "./operation-projection.js";
@@ -951,6 +952,10 @@ function buildFlatProjectionData(
         operation.opType === "dispatch-hold"
       ) {
         upsertDispatchHoldOperation(state, operation);
+        continue;
+      }
+      if (operation.kind === "operation" && operation.opType === "queue-state") {
+        upsertQueueStateOperation(state, operation);
         continue;
       }
       if (operation.kind === "operation" && operation.opType === "operation") {

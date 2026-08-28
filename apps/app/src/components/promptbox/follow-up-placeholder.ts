@@ -17,14 +17,10 @@ export function getFollowUpPromptPlaceholder(
       return "Waiting for host to reconnect...";
     case "error":
       return "Retry by sending a follow-up message";
-    // A held thread's composer is not blocked — it accepts and schedules
-    // messages exactly as an idle one does, and the held card sitting directly
-    // above it already says what is waiting. The old "Held until release..."
-    // both named the mechanism and implied the box was unusable.
-    case "held":
-    // A pending thread's composer is usable for the same reason a held one's
-    // is: the first message is parked, not rejected, and another message
-    // simply parks behind it.
+    // A pending thread's composer is not blocked — it accepts and queues
+    // messages exactly as an idle one does, and the queued rows sitting
+    // directly above it already say what is waiting. The first message is
+    // parked, not rejected, and another message simply parks behind it.
     case "pending":
     case "idle":
     case "active":
@@ -50,7 +46,6 @@ export function getCompactFollowUpPromptPlaceholder(
       return "Reconnecting...";
     case "error":
       return "Send a follow-up";
-    case "held":
     case "pending":
     case "idle":
     case "active":

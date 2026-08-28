@@ -1528,3 +1528,72 @@ describe("QueuedMessagesList", () => {
     expect(container.querySelector('[data-overflow-fade="below"]')).toBeNull();
   });
 });
+
+describe("parked row affordances", () => {
+  it("explains the waits a reader cannot infer, and stays quiet otherwise", () => {
+    const { getByText, queryByText, container } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_busy", "Ordinary queued"),
+        waitingOn: { kind: "thread-busy" },
+      },
+      {
+        ...makeQueuedMessage("q_prov", "Behind provisioning"),
+        waitingOn: { kind: "provisioning" },
+      },
+      {
+        ...makeQueuedMessage("q_plugin", "Held by a limiter"),
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "concurrency-limit",
+          reason: "4 of 4 running",
+        },
+      },
+    ]);
+
+    expect(getByText("Waiting for workspace")).toBeDefined();
+    // The manifest is not loaded in this fixture, so attribution falls back to
+    // the plugin id rather than going unattributed.
+    expect(getByText("Held by concurrency-limit · 4 of 4 running")).toBeDefined();
+    // An ordinary queued row gets no line at all, so a deep queue is not a wall
+    // of "waiting for the current turn".
+    expect(queryByText("Waiting for the current turn")).toBeNull();
+    expect(
+      container.querySelectorAll("[data-queued-message-wait]"),
+    ).toHaveLength(2);
+  });
+
+  it("hides Send now only where a re-attempt could not clear the wait", () => {
+    const { queryByLabelText } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_busy", "Ordinary queued"),
+        waitingOn: { kind: "thread-busy" },
+      },
+    ]);
+    // The ordinary queued row keeps the affordance it has always had.
+    expect(queryByLabelText("Send queued message 1 now")).not.toBeNull();
+
+    cleanup();
+    const parked = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_wait", "Waiting on a reply"),
+        waitingOn: { kind: "interaction" },
+      },
+    ]);
+    expect(parked.queryByLabelText("Send queued message 1 now")).toBeNull();
+  });
+
+  it("offers no edit on a row the server says is not editable", () => {
+    const { queryByLabelText } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_retry", ""),
+        payload: { kind: "retry", retryOfTurnRequestId: "req_1", attempt: 2 },
+        editable: false,
+        waitingOn: { kind: "time" },
+        sendAt: 0,
+      },
+    ]);
+    expect(queryByLabelText("Edit queued message 1")).toBeNull();
+    // A retry names its attempt rather than its wait; it has no message text.
+    expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
+  });
+});

@@ -22,15 +22,21 @@ export {
 } from "./thread-origin-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
 
+/**
+ * The three additions to {@link threadStatusValues} are display-only: they
+ * refine `active`/`idle` with host and workspace facts the durable status does
+ * not record.
+ *
+ * A never-started thread needs no such refinement — `pending` is a real thread
+ * status now, so it travels to the client as itself. It used to arrive as a
+ * separate `held` display status, derived from an `idle` thread holding a live
+ * dispatch hold; that derivation and the holds behind it are both gone.
+ */
 const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
   "provisioning",
   "host-reconnecting",
   "waiting-for-host",
-  // A never-started thread whose first turn is parked in a live dispatch
-  // hold. The row is `idle` — nothing is running and nothing is queued — so
-  // this is display-only, exactly like `waiting-for-host`.
-  "held",
 ] as const;
 const threadRuntimeDisplayStatusSchema = z.enum(
   threadRuntimeDisplayStatusValues,

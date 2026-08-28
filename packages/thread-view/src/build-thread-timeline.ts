@@ -35,6 +35,7 @@ import type {
   EventProjectionTurn,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
+import { describeQueueStateWait } from "./queue-state-helpers.js";
 import {
   durationToCompactString,
   getMessageStartedAt,
@@ -205,7 +206,7 @@ type TimelineWorkflowMessage = Extract<
  * do not carry their own extra fields in the read model. */
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "dispatch-hold" | "parent-change" | "plugin-note"
+  "dispatch-hold" | "queue-state" | "parent-change" | "plugin-note"
 >;
 
 function operationKindForMessage(
@@ -217,6 +218,7 @@ function operationKindForMessage(
     case "context-clear":
     case "thread-provisioning":
     case "dispatch-hold":
+    case "queue-state":
     case "plugin-note":
     case "thread-interrupted":
     case "provider-unhandled":
@@ -324,6 +326,33 @@ function buildDispatchHoldSystemRow(args: {
     completedAt: args.message.completedAt,
     reason: args.dispatchHold.reason,
     inputPreview: args.dispatchHold.inputPreview ?? null,
+  };
+}
+
+/**
+ * A parked row's own row shape, identical in structure to the hold row it
+ * replaces: what it waits for, which message is waiting, and what the plugin
+ * holding it has reported are three different kinds of text, so they stay
+ * separate fields for the client to render rather than being flattened into
+ * one detail string.
+ */
+function buildQueueStateSystemRow(args: {
+  base: TimelineRowBase;
+  message: TimelineOperationMessage;
+  queueState: NonNullable<TimelineOperationMessage["queueState"]>;
+}): TimelineSystemRow {
+  return {
+    ...args.base,
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "queue-state",
+    title: args.message.title,
+    detail: buildQueueStateDetail(args.message),
+    status: args.message.status ?? null,
+    completedAt: args.message.completedAt,
+    reason: describeQueueStateWait(args.queueState.waitingOn),
+    inputPreview: args.queueState.inputPreview ?? null,
+    sendAt: args.queueState.sendAt,
   };
 }
 
@@ -556,6 +585,22 @@ function buildDispatchHoldDetail(
 ): string | null {
   const lines =
     message.dispatchHold?.transcript?.flatMap(
+      formatProvisioningTranscriptEntryLines,
+    ) ?? [];
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
+/**
+ * A parked row's `detail` is the waiting plugin's report and nothing else. The
+ * reason and the parked message are their own row fields, because one is a
+ * label and the other is the user's prose — neither belongs in the monospace
+ * output block the transcript renders as.
+ */
+function buildQueueStateDetail(
+  message: TimelineOperationMessage,
+): string | null {
+  const lines =
+    message.queueState?.transcript?.flatMap(
       formatProvisioningTranscriptEntryLines,
     ) ?? [];
   return lines.length > 0 ? lines.join("\n") : null;
@@ -893,6 +938,27 @@ function convertMessage(
                 base,
                 dispatchHold: message.dispatchHold,
                 message,
+              }),
+            ];
+      }
+      if (operationKind === "queue-state") {
+        // The metadata is written with the row, so its absence means a
+        // malformed projection rather than a parked row without a wait. A
+        // generic row still shows the title and the report, which beats
+        // dropping the one line explaining why the thread has not run.
+        return message.queueState === undefined
+          ? [
+              buildGenericOperationSystemRow({
+                base,
+                message,
+                operationKind: "generic",
+              }),
+            ]
+          : [
+              buildQueueStateSystemRow({
+                base,
+                message,
+                queueState: message.queueState,
               }),
             ];
       }

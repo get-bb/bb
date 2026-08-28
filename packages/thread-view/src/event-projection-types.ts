@@ -23,6 +23,7 @@ export type {
   EventProjectionMessage,
   EventProjectionMessageBase,
   EventProjectionOperationMessage,
+  EventProjectionQueueStateMetadata,
   EventProjectionOwnershipChangeThreadOperationMetadata,
   EventProjectionPermissionGrantLifecycle,
   EventProjectionPermissionGrantGrantScope,

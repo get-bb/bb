@@ -10,7 +10,9 @@ import type {
   ProviderRawEvent,
   ProvisioningTranscriptEntry,
   ResolvedThreadExecutionOptions,
+  QueuedMessageWaitingOn,
   SystemDispatchHoldStatus,
+  SystemQueueStateStatus,
   SystemThreadProvisioningStatus,
   JsonValue,
   ThreadEventItemPresentation,
@@ -258,6 +260,16 @@ interface ThreadProvisioningArgs extends EventFactoryRowOptions {
   status: SystemThreadProvisioningStatus;
 }
 
+interface QueueStateArgs extends EventFactoryRowOptions {
+  entries?: ProvisioningTranscriptEntry[];
+  /** Omitted entirely when absent, matching a row with no message of its own. */
+  inputPreview?: string;
+  queuedMessageId?: string;
+  sendAt?: number | null;
+  status: SystemQueueStateStatus;
+  waitingOn?: QueuedMessageWaitingOn;
+}
+
 interface DispatchHoldArgs extends EventFactoryRowOptions {
   entries?: ProvisioningTranscriptEntry[];
   holdId?: string;
@@ -402,6 +414,9 @@ export interface TimelineEventFactory {
   dispatchHold(
     args: DispatchHoldArgs,
   ): ThreadEventRowOfType<"system/dispatch-hold">;
+  queueState(
+    args: QueueStateArgs,
+  ): ThreadEventRowOfType<"system/queue-state">;
   toolCallCompleted(
     args: ToolCallCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -958,6 +973,23 @@ export function createTimelineEventFactory(
           status: args.status,
           environmentId: args.environmentId ?? "env-1",
           entries: args.entries,
+        },
+      };
+    },
+    queueState(args) {
+      const base = nextThreadScopedRowBase("queue-state", args);
+      return {
+        ...base,
+        type: "system/queue-state",
+        data: {
+          queuedMessageId: args.queuedMessageId ?? "qm_test",
+          status: args.status,
+          waitingOn: args.waitingOn ?? { kind: "time" },
+          sendAt: args.sendAt ?? null,
+          ...(args.inputPreview === undefined
+            ? {}
+            : { inputPreview: args.inputPreview }),
+          entries: args.entries ?? [],
         },
       };
     },

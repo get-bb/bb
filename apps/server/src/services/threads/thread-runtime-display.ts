@@ -61,8 +61,6 @@ interface ResolveThreadRuntimeStateArgs {
 
 interface ResolveThreadRuntimeStateFromLatestSessionArgs {
   environmentHostId: string | null;
-  /** True when this thread's only pending turn is a live hold. */
-  heldBeforeStart: boolean;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
@@ -85,7 +83,6 @@ interface ToThreadListEntryResponsesArgs {
 
 interface ToThreadListEntryResponseFromLatestSessionArgs {
   activity: ThreadActivityState;
-  heldBeforeStart: boolean;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
@@ -185,30 +182,13 @@ function toPublicThread(thread: Thread): Thread {
   };
 }
 
-/**
- * True when the thread has never run a turn and is waiting to — the "held
- * before start" case the `held` display status exists for.
- *
- * This used to be a derivation: an `idle` thread, with at least one live hold,
- * whose event log contained no `client/turn/requested` row. Every part of that
- * was working around the absence of a status for "created but never run". The
- * `pending` status IS that fact, recorded once when the row is inserted and
- * left the instant a first attempt clears, so the count query and the event
- * scan both go away and the answer can no longer disagree with the thread.
- */
-function isThreadHeldBeforeStart(status: ThreadStatus): boolean {
-  return status === "pending";
-}
-
 export function resolveThreadRuntimeState(
   deps: ThreadRuntimeDisplayDeps,
   args: ResolveThreadRuntimeStateArgs,
 ): ThreadRuntimeState {
-  const heldBeforeStart = isThreadHeldBeforeStart(args.status);
   if (args.status !== "active" || args.environmentHostId === null) {
     return resolveThreadRuntimeStateFromLatestSession({
       environmentHostId: args.environmentHostId,
-      heldBeforeStart,
       hostConnected: false,
       latestSession: null,
       now: args.now,
@@ -227,7 +207,6 @@ export function resolveThreadRuntimeState(
       });
   return resolveThreadRuntimeStateFromLatestSession({
     environmentHostId: args.environmentHostId,
-    heldBeforeStart,
     hostConnected,
     latestSession,
     now: args.now,
@@ -238,12 +217,11 @@ export function resolveThreadRuntimeState(
 function resolveThreadRuntimeStateFromLatestSession(
   args: ResolveThreadRuntimeStateFromLatestSessionArgs,
 ): ThreadRuntimeState {
-  if (args.heldBeforeStart) {
-    return {
-      displayStatus: "held",
-      hostReconnectGraceExpiresAt: null,
-    };
-  }
+  // A `pending` thread needs no special case: it is never `active`, so it
+  // falls straight through to `threadStatusRuntimeState`, which reports it as
+  // itself. This used to short-circuit to a separate `held` display status
+  // derived from live dispatch holds — the holds are gone and `pending` is the
+  // status, so the derivation and its second vocabulary went with them.
   if (args.status !== "active" || args.environmentHostId === null) {
     return threadStatusRuntimeState(args.status);
   }
@@ -322,7 +300,6 @@ export function buildThreadStatusChangeMetadataByThreadId(
         activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
         runtime: resolveThreadRuntimeStateFromLatestSession({
           environmentHostId: args.environmentHostId,
-          heldBeforeStart: isThreadHeldBeforeStart(thread.status),
           hostConnected,
           latestSession,
           status: thread.status,
@@ -565,7 +542,6 @@ export function toThreadListEntryResponses(
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
-      heldBeforeStart: isThreadHeldBeforeStart(thread.status),
       hostConnected:
         thread.environmentHostId !== null &&
         connectedActiveHostIds.has(thread.environmentHostId),
@@ -595,7 +571,6 @@ function toThreadListEntryResponseFromLatestSession(
     hasPendingInteraction: args.thread.hasPendingInteraction,
     runtime: resolveThreadRuntimeStateFromLatestSession({
       environmentHostId: args.thread.environmentHostId,
-      heldBeforeStart: args.heldBeforeStart,
       hostConnected: args.hostConnected,
       latestSession: args.latestSession,
       now: args.now,

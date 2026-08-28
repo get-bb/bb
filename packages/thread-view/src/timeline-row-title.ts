@@ -1519,6 +1519,9 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "dispatch-hold") {
     return mapDispatchHoldSystemTitle(row);
   }
+  if (row.systemKind === "operation" && row.operationKind === "queue-state") {
+    return mapQueueStateSystemTitle(row);
+  }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
   const titleText =
@@ -1545,6 +1548,25 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
  * body is left for the two things that genuinely need room: the held message
  * and the holder's progress report.
  */
+/**
+ * A parked queued message: the lifecycle headline, then why it is waiting.
+ * Same two-segment shape as the hold row it replaces, so a thread whose history
+ * spans the rework reads consistently.
+ */
+function mapQueueStateSystemTitle(
+  row: Extract<TimelineSystemViewRow, { operationKind: "queue-state" }>,
+): TimelineTitle {
+  const reason = row.reason.trim();
+  const shimmer = row.status === "pending";
+  const segments: TimelineTitleSegment[] = [
+    segment(row.title, { shimmer, truncate: true }),
+  ];
+  if (reason.length > 0) {
+    segments.push(segment(` \u00b7 ${reason}`, { accent: "subtle", truncate: true }));
+  }
+  return makeTitle({ segments, decorations: [] });
+}
+
 function mapDispatchHoldSystemTitle(
   row: Extract<TimelineSystemViewRow, { operationKind: "dispatch-hold" }>,
 ): TimelineTitle {

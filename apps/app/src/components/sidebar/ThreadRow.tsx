@@ -42,7 +42,7 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isHeldThread,
+  isPendingThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
   getThreadListIndicatorLabel,
@@ -279,7 +279,7 @@ export function ThreadStatusGlyph({
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isGoalActive,
-  isHeld,
+  isPending,
   isPlanModeActive,
   isRuntimeActive,
   isWorkflowActive,
@@ -292,7 +292,7 @@ export function ThreadStatusGlyph({
     isBackgroundAgentActive,
     isBackgroundCommandActive,
     isGoalActive,
-    isHeld,
+    isPending,
     isPlanModeActive,
     isRuntimeActive,
     isWorkflowActive,
@@ -392,9 +392,10 @@ export function ThreadStatusGlyph({
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
-    case "held":
-      // Badge only, by design: the reason lives in the thread view, so the row
-      // says "waiting" without competing with the working glyphs for meaning.
+    case "pending":
+      // Badge only, by design: the reason lives on the thread's queued rows,
+      // so this row says "waiting" without competing with the working glyphs
+      // for meaning.
       return (
         <Icon
           name="Clock"
@@ -441,9 +442,10 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
-    // Collapsed parents roll up work, not held state: a held child is waiting,
-    // and the parent row has no glyph slot to spare for a non-working state.
-    isHeld: false,
+    // Collapsed parents roll up work, not waiting: a pending child has not
+    // started, and the parent row has no glyph slot to spare for a
+    // non-working state.
+    isPending: false,
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
@@ -631,7 +633,7 @@ function ThreadRowComponent({
     isBackgroundAgentActive: trailingBackgroundAgentActive,
     isBackgroundCommandActive: trailingBackgroundCommandActive,
     isGoalActive: trailingGoalActive,
-    isHeld: isHeldThread(thread),
+    isPending: isPendingThread(thread),
     isPlanModeActive: trailingPlanModeActive,
     isRuntimeActive: trailingRuntimeBusy,
     isWorkflowActive: trailingIsWorkflowActive,

@@ -14,6 +14,15 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSecondTick } from "@/hooks/useSecondTick";
+import { usePluginDisplayName } from "@/lib/plugin-logos";
+import {
+  describeQueuedMessageWait,
+  formatQueuedMessageCountdown,
+  isQueuedMessageSendNowAllowed,
+  queuedMessageCountdownInstant,
+  queuedMessageHasWaitLine,
+} from "@/lib/queued-message-wait";
 import {
   DndContext,
   KeyboardSensor,
@@ -588,6 +597,55 @@ function QueuedMessagePreview({
   );
 }
 
+/**
+ * A parked row's status line: what it is waiting for, plus a live countdown
+ * when it is waiting on the clock.
+ *
+ * Split into its own component so that only rows with something to say
+ * subscribe to the shared 1 Hz ticker — an ordinary queue of plain messages
+ * re-renders no more than it does today. The ticker also supplies `now`, which
+ * is why the label is built here rather than in the row: reading the clock
+ * during render is impure, and the ticker is the app's sanctioned way to have
+ * a current time that React knows about.
+ *
+ * The countdown disappears once the instant is due: the row is then waiting on
+ * the drain, not on the clock.
+ */
+function QueuedMessageWaitLine({
+  pluginDisplayName,
+  queuedMessage,
+}: {
+  pluginDisplayName: string;
+  queuedMessage: ThreadQueuedMessage;
+}) {
+  const now = useSecondTick();
+  const label = describeQueuedMessageWait({
+    now,
+    payload: queuedMessage.payload,
+    pluginDisplayName,
+    sendAt: queuedMessage.sendAt,
+    waitingOn: queuedMessage.waitingOn,
+  });
+  if (label === null) return null;
+  const countdownInstant = queuedMessageCountdownInstant(queuedMessage);
+  const countdown =
+    countdownInstant === null
+      ? null
+      : formatQueuedMessageCountdown(countdownInstant - now);
+  return (
+    <div
+      data-queued-message-wait=""
+      className="flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground"
+    >
+      <Icon name="Clock" className="size-3 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
+      {countdown === null ? null : (
+        <span className="shrink-0 tabular-nums">· {countdown}</span>
+      )}
+    </div>
+  );
+}
+
 const QueuedMessageRow = memo(function QueuedMessageRow({
   queuedMessage,
   resolveMentionLink,
@@ -607,6 +665,13 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
     () => countQueuedMessageAttachments(queuedMessage.content),
     [queuedMessage.content],
   );
+  const pluginDisplayName = usePluginDisplayName(
+    queuedMessage.waitingOn?.kind === "plugin"
+      ? queuedMessage.waitingOn.pluginId
+      : "",
+  );
+  const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
+  const sendNowAllowed = isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
   const {
     attributes,
     isDragging,
@@ -690,6 +755,12 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               </span>
             ) : null}
           </div>
+          {hasWaitLine ? (
+            <QueuedMessageWaitLine
+              pluginDisplayName={pluginDisplayName}
+              queuedMessage={queuedMessage}
+            />
+          ) : null}
         </div>
         {isProcessing ? (
           <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
@@ -707,49 +778,53 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
                 )}
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={cn(
-                        "shrink-0 text-muted-foreground",
-                        compact ? "size-7" : "size-8",
-                      )}
-                      disabled={actionDisabled || sendDisabled}
-                      onClick={() => onSendImmediately(queuedMessage.id)}
-                      aria-label={`Send follow-up ${index + 1} now`}
-                    >
-                      <Icon name="Sent" className="size-4" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Send now</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={cn(
-                        "shrink-0 text-muted-foreground",
-                        compact ? "size-7" : "size-8",
-                      )}
-                      disabled={actionDisabled}
-                      onClick={() =>
-                        onEdit({
-                          queuedMessageId: queuedMessage.id,
-                          queuedMessageIndex: index,
-                        })
-                      }
-                      aria-label={`Edit follow-up ${index + 1}`}
-                    >
-                      <Icon name="Edit" className="size-4" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit</TooltipContent>
-                </Tooltip>
+                {sendNowAllowed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled || sendDisabled}
+                        onClick={() => onSendImmediately(queuedMessage.id)}
+                        aria-label={`Send queued message ${index + 1} now`}
+                      >
+                        <Icon name="Sent" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Send now</TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {queuedMessage.editable ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() =>
+                          onEdit({
+                            queuedMessageId: queuedMessage.id,
+                            queuedMessageIndex: index,
+                          })
+                        }
+                        aria-label={`Edit queued message ${index + 1}`}
+                      >
+                        <Icon name="Edit" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit</TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -793,24 +868,28 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[7rem]">
-                <DropdownMenuItem
-                  disabled={sendDisabled}
-                  onSelect={() => onSendImmediately(queuedMessage.id)}
-                >
-                  <Icon name="Sent" aria-hidden />
-                  Send now
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    onEdit({
-                      queuedMessageId: queuedMessage.id,
-                      queuedMessageIndex: index,
-                    })
-                  }
-                >
-                  <Icon name="Edit" aria-hidden />
-                  Edit
-                </DropdownMenuItem>
+                {sendNowAllowed ? (
+                  <DropdownMenuItem
+                    disabled={sendDisabled}
+                    onSelect={() => onSendImmediately(queuedMessage.id)}
+                  >
+                    <Icon name="Sent" aria-hidden />
+                    Send now
+                  </DropdownMenuItem>
+                ) : null}
+                {queuedMessage.editable ? (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      onEdit({
+                        queuedMessageId: queuedMessage.id,
+                        queuedMessageIndex: index,
+                      })
+                    }
+                  >
+                    <Icon name="Edit" aria-hidden />
+                    Edit
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
