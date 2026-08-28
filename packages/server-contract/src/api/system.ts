@@ -11,6 +11,7 @@ import {
   permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
+  threadSettingsSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
@@ -135,6 +136,7 @@ export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
 export const systemConfigResponseSchema = z.object({
   generalSettings: appSettingsSchema,
+  threadSettings: threadSettingsSchema,
   keybindings: appKeybindingsSchema,
   defaultKeybindings: appDefaultKeybindingsSchema,
   keybindingOverrides: appKeybindingOverridesSchema,

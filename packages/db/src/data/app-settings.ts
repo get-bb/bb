@@ -3,16 +3,22 @@ import {
   appKeybindingOverridesSchema,
   appSettingsSchema,
   defaultAppSettings,
+  defaultThreadSettings,
   type AppKeybindingOverrides,
   type AppSettings,
+  type ThreadSettings,
+  threadSettingsSchema,
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { appSettingsValues } from "../schema.js";
 
 const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
+const threadSettingsKeySchema = threadSettingsSchema.keyof();
+const threadSettingsKeys = threadSettingsKeySchema.options;
 
 const KEYBINDING_OVERRIDES_KEY = "keybindingOverrides";
+const THREAD_SETTINGS_KEY_PREFIX = "threads.";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -63,6 +69,48 @@ export function setAppSettings(db: DbConnection, settings: AppSettings): void {
   db.transaction((transaction) => {
     for (const key of appSettingsKeys) {
       writeValue(transaction, key, settings[key], updatedAt);
+    }
+  });
+}
+
+export function getThreadSettings(db: DbConnection): ThreadSettings {
+  const values: Record<string, unknown> = { ...defaultThreadSettings };
+  const storageKeys = threadSettingsKeys.map(
+    (key) => `${THREAD_SETTINGS_KEY_PREFIX}${key}`,
+  );
+  const rows = db
+    .select({ key: appSettingsValues.key, value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(inArray(appSettingsValues.key, storageKeys))
+    .all();
+
+  for (const row of rows) {
+    const key = threadSettingsKeySchema.safeParse(
+      row.key.slice(THREAD_SETTINGS_KEY_PREFIX.length),
+    );
+    if (!key.success) continue;
+    const value = threadSettingsSchema.shape[key.data].safeParse(
+      parseStoredValue(row.value),
+    );
+    if (value.success) values[key.data] = value.data;
+  }
+
+  return threadSettingsSchema.parse(values);
+}
+
+export function setThreadSettings(
+  db: DbConnection,
+  settings: ThreadSettings,
+): void {
+  const updatedAt = Date.now();
+  db.transaction((transaction) => {
+    for (const key of threadSettingsKeys) {
+      writeValue(
+        transaction,
+        `${THREAD_SETTINGS_KEY_PREFIX}${key}`,
+        settings[key],
+        updatedAt,
+      );
     }
   });
 }

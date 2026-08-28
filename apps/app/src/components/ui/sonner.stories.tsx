@@ -1,14 +1,10 @@
-import {
-  appToast,
-  AppToastContent,
-  type AppToastOptions,
-  type AppToastTone,
-} from "./app-toast";
+import { appToast, AppToastContent, type AppToastTone } from "./app-toast";
 import { AppToastCommitDescription } from "./app-toast-descriptions";
-import { ArchivedThreadToastTitle } from "../thread/ArchivedThreadToastTitle";
+import { ArchivedThreadToastDescription } from "../thread/ArchivedThreadToastDescription";
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { toast as sonnerToast } from "sonner";
 
 export default {
   title: "Toasts",
@@ -28,12 +24,16 @@ interface ToastExample {
 interface CurrentToast {
   title: ReactNode;
   description?: ReactNode;
+  dismissible?: boolean;
   tone: ToastTone;
+  primaryAction?: () => void;
   primaryActionLabel?: string;
+  secondaryAction?: () => void;
   secondaryActionLabel?: string;
 }
 
 interface CurrentToastPreviewProps {
+  onDismiss?: () => void;
   toast: CurrentToast;
 }
 
@@ -79,7 +79,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     current: {
       tone: "message",
       title: "Claude Code update queued",
-      description: "Waiting for the current install or update to finish.",
+      description: "Starts after the current update.",
     },
   },
   {
@@ -167,16 +167,18 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     group: "Thread actions",
     label: "archive success",
     source: "ThreadActionsProvider",
-    usage: ["Thread archive succeeds", "Title opens the archived thread"],
+    usage: ["Thread archive succeeds", "Thread name opens the archived thread"],
     current: {
       tone: "success",
-      title: (
-        <ArchivedThreadToastTitle
+      title: "Thread Archived",
+      description: (
+        <ArchivedThreadToastDescription
           archivedThreadCount={1}
           threadTitle="Audit recurring permission failures"
           onOpenThread={() => undefined}
         />
       ),
+      secondaryActionLabel: "Undo",
     },
   },
   {
@@ -190,13 +192,15 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     ],
     current: {
       tone: "success",
-      title: (
-        <ArchivedThreadToastTitle
+      title: "Thread Archived",
+      description: (
+        <ArchivedThreadToastDescription
           archivedThreadCount={3}
           threadTitle="Investigate intermittent provider CLI health check timeouts on managed environments"
           onOpenThread={() => undefined}
         />
       ),
+      secondaryActionLabel: "Undo",
     },
   },
   {
@@ -334,53 +338,23 @@ function toastCatalogId(example: ToastExample): string {
   return `toast-catalog:${example.id}`;
 }
 
-function buildLiveToastOptions(example: ToastExample): AppToastOptions {
+function showToastExample(example: ToastExample): void {
   const id = toastCatalogId(example);
   const { current } = example;
-  const options: AppToastOptions = {
-    id,
-    duration: LIVE_TOAST_DURATION,
-  };
-
-  if (current.description !== undefined) {
-    options.description = current.description;
-  }
-  if (current.secondaryActionLabel) {
-    options.cancel = {
-      label: current.secondaryActionLabel,
-      onClick: () => appToast.dismiss(id),
-    };
-  }
-  if (current.primaryActionLabel) {
-    options.action = {
-      label: current.primaryActionLabel,
-      onClick: () => appToast.dismiss(id),
-    };
-  }
-
-  return options;
-}
-
-function showToastExample(example: ToastExample): void {
-  const { current } = example;
-  const options = buildLiveToastOptions(example);
-  switch (current.tone) {
-    case "success":
-      appToast.success(current.title, options);
-      return;
-    case "warning":
-      appToast.warning(current.title, options);
-      return;
-    case "error":
-      appToast.error(current.title, options);
-      return;
-    case "loading":
-      appToast.loading(current.title, options);
-      return;
-    case "message":
-      appToast.message(current.title, options);
-      return;
-  }
+  sonnerToast.custom(
+    () => (
+      <CurrentToastPreview
+        toast={current}
+        onDismiss={() => sonnerToast.dismiss(id)}
+      />
+    ),
+    {
+      className: "bb-app-toast",
+      dismissible: current.dismissible ?? true,
+      duration: LIVE_TOAST_DURATION,
+      id,
+    },
+  );
 }
 
 function showAllToastExamples(): void {
@@ -390,14 +364,28 @@ function showAllToastExamples(): void {
   }
 }
 
-function CurrentToastPreview({ toast }: CurrentToastPreviewProps) {
+function CurrentToastPreview({ onDismiss, toast }: CurrentToastPreviewProps) {
+  const [visible, setVisible] = useState(true);
+
+  if (!visible) {
+    return null;
+  }
+
+  const dismiss = () => {
+    setVisible(false);
+    onDismiss?.();
+  };
+
   return (
     <AppToastContent
       action={
         toast.primaryActionLabel
           ? {
               label: toast.primaryActionLabel,
-              onClick: () => undefined,
+              onClick: () => {
+                toast.primaryAction?.();
+                dismiss();
+              },
             }
           : undefined
       }
@@ -405,11 +393,16 @@ function CurrentToastPreview({ toast }: CurrentToastPreviewProps) {
         toast.secondaryActionLabel
           ? {
               label: toast.secondaryActionLabel,
-              onClick: () => undefined,
+              onClick: () => {
+                toast.secondaryAction?.();
+                dismiss();
+              },
             }
           : undefined
       }
       description={toast.description}
+      dismissible={toast.dismissible}
+      onDismiss={dismiss}
       title={toast.title}
       tone={toast.tone}
     />

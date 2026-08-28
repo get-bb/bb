@@ -2,6 +2,7 @@ import type {
   AppKeybindingOverrides,
   AppSettings,
   Experiments,
+  ThreadSettings,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import type {
@@ -64,6 +65,7 @@ export type SystemInstallCliSkillsResult = SystemInstallCliSkillsResponse;
 export type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
 export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
+export type SystemUpdateThreadSettingsResult = ThreadSettings;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
 export interface SystemProviderStatesArgs extends SystemProvidersQuery {
@@ -92,6 +94,9 @@ export interface SystemArea {
   updateGeneralSettings(
     args: AppSettings,
   ): Promise<SystemUpdateGeneralSettingsResult>;
+  updateThreadSettings(
+    args: ThreadSettings,
+  ): Promise<SystemUpdateThreadSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
@@ -189,6 +194,11 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async updateGeneralSettings(input) {
       return transport.readJson(
         transport.api.v1.settings.general.$put({ json: input }),
+      );
+    },
+    async updateThreadSettings(input) {
+      return transport.readJson(
+        transport.api.v1.settings.threads.$put({ json: input }),
       );
     },
     async updateKeyboardSettings(input) {

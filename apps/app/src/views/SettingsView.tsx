@@ -6,7 +6,9 @@ import {
   defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
+  defaultThreadSettings,
   type AppTheme,
+  type ArchivedConversationRetention,
   type FaviconColorPreference,
   type PluginThemeMeta,
 } from "@bb/domain";
@@ -55,6 +57,7 @@ import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSetting
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
   useUpdateGeneralSettings,
+  useUpdateThreadSettings,
   useUpdateAppearance,
   useUpdateExperiments,
 } from "@/hooks/mutations/settings-mutations";
@@ -144,20 +147,28 @@ interface AppearanceSettingsSectionProps {
 
 interface GeneralSettingsSectionProps {
   desktopBrowserAvailable: boolean;
-  navigateToThreadAfterCreate: boolean;
-  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
-  onRichTextEditingChange: (enabled: boolean) => void;
-  onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   onStreamerModeChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
+  streamerMode: boolean;
+  streamerModeDisabled: boolean;
+}
+
+interface ThreadsSettingsSectionProps {
+  archivedConversationRetention: ArchivedConversationRetention;
+  archivedConversationRetentionDisabled: boolean;
+  navigateToThreadAfterCreate: boolean;
+  onArchivedConversationRetentionChange: (
+    value: ArchivedConversationRetention,
+  ) => void;
+  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
+  onRichTextEditingChange: (enabled: boolean) => void;
+  onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
-  streamerMode: boolean;
-  streamerModeDisabled: boolean;
 }
 
 interface DebugSettingsSectionProps {
@@ -534,6 +545,13 @@ const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
+const ARCHIVED_CONVERSATIONS_SETTING_LABEL = "Keep archived conversations";
+const ARCHIVED_CONVERSATIONS_SETTING_DESCRIPTION =
+  "Controls conversation history only. Thread environments are removed 24 hours after archiving.";
+const ARCHIVED_CONVERSATION_RETENTION_OPTIONS = [
+  { label: "Forever", value: "forever" },
+  { label: "For 30 days", value: "30-days" },
+] as const;
 
 export function AppearanceSettingsSection({
   appearance,
@@ -691,54 +709,17 @@ export function AppearanceSettingsSection({
 
 export function GeneralSettingsSection({
   desktopBrowserAvailable,
-  navigateToThreadAfterCreate,
-  onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
-  onRichTextEditingChange,
-  onSteerActiveThreadOnEnterChange,
   onStreamerModeChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
-  richTextEditing,
-  steerActiveThreadOnEnter,
-  steerActiveThreadOnEnterDisabled,
   streamerMode,
   streamerModeDisabled,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
       <div className="space-y-5">
-        <SettingsWithControl
-          label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-        >
-          <Switch
-            checked={navigateToThreadAfterCreate}
-            onCheckedChange={onNavigateToThreadAfterCreateChange}
-            aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
-          <Switch
-            checked={richTextEditing}
-            onCheckedChange={onRichTextEditingChange}
-            aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
-        >
-          <Switch
-            checked={steerActiveThreadOnEnter}
-            disabled={steerActiveThreadOnEnterDisabled}
-            onCheckedChange={onSteerActiveThreadOnEnterChange}
-            aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-          />
-        </SettingsWithControl>
-
         {desktopBrowserAvailable ? (
           <SettingsWithControl
             label={IN_APP_BROWSER_LINK_SETTING_LABEL}
@@ -773,6 +754,103 @@ export function GeneralSettingsSection({
             onCheckedChange={onStreamerModeChange}
             aria-label={STREAMER_MODE_SETTING_LABEL}
           />
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
+  );
+}
+
+export function ThreadsSettingsSection({
+  archivedConversationRetention,
+  archivedConversationRetentionDisabled,
+  navigateToThreadAfterCreate,
+  onArchivedConversationRetentionChange,
+  onNavigateToThreadAfterCreateChange,
+  onRichTextEditingChange,
+  onSteerActiveThreadOnEnterChange,
+  richTextEditing,
+  steerActiveThreadOnEnter,
+  steerActiveThreadOnEnterDisabled,
+}: ThreadsSettingsSectionProps) {
+  const selectedRetentionLabel =
+    ARCHIVED_CONVERSATION_RETENTION_OPTIONS.find(
+      (option) => option.value === archivedConversationRetention,
+    )?.label ?? "Forever";
+
+  return (
+    <SettingsSection title="Threads">
+      <div className="space-y-5">
+        <SettingsWithControl
+          label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+        >
+          <Switch
+            checked={navigateToThreadAfterCreate}
+            onCheckedChange={onNavigateToThreadAfterCreateChange}
+            aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+          />
+        </SettingsWithControl>
+        <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
+          <Switch
+            checked={richTextEditing}
+            onCheckedChange={onRichTextEditingChange}
+            aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+          />
+        </SettingsWithControl>
+        <SettingsWithControl label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}>
+          <Switch
+            checked={steerActiveThreadOnEnter}
+            disabled={steerActiveThreadOnEnterDisabled}
+            onCheckedChange={onSteerActiveThreadOnEnterChange}
+            aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+          />
+        </SettingsWithControl>
+        <SettingsWithControl
+          label={ARCHIVED_CONVERSATIONS_SETTING_LABEL}
+          description={ARCHIVED_CONVERSATIONS_SETTING_DESCRIPTION}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(SETTINGS_DROPDOWN_TRIGGER_CLASS, "sm:w-44")}
+                aria-label={ARCHIVED_CONVERSATIONS_SETTING_LABEL}
+                disabled={archivedConversationRetentionDisabled}
+              >
+                <span className="min-w-0 truncate">
+                  {selectedRetentionLabel}
+                </span>
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+            >
+              {ARCHIVED_CONVERSATION_RETENTION_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() =>
+                    onArchivedConversationRetentionChange(option.value)
+                  }
+                >
+                  {option.label}
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      archivedConversationRetention !== option.value &&
+                        "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SettingsWithControl>
       </div>
     </SettingsSection>
@@ -915,7 +993,10 @@ export function SettingsView() {
   const updateExperimentsMutation = useUpdateExperiments();
   const generalSettings =
     systemConfigQuery.data?.generalSettings ?? defaultAppSettings;
+  const threadSettings =
+    systemConfigQuery.data?.threadSettings ?? defaultThreadSettings;
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
+  const updateThreadSettingsMutation = useUpdateThreadSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
   const { activePluginId, activeSection, hasUnknownSection } =
@@ -937,6 +1018,39 @@ export function SettingsView() {
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
           updateGeneralSettingsMutation.mutateAsync(next)
+        }
+      />
+    );
+  } else if (activeSection === "threads") {
+    content = (
+      <ThreadsSettingsSection
+        archivedConversationRetention={
+          threadSettings.archivedConversationRetention
+        }
+        archivedConversationRetentionDisabled={
+          systemConfigQuery.data === undefined ||
+          updateThreadSettingsMutation.isPending
+        }
+        navigateToThreadAfterCreate={navigateToThreadAfterCreate}
+        onArchivedConversationRetentionChange={(value) =>
+          updateThreadSettingsMutation.mutate({
+            ...threadSettings,
+            archivedConversationRetention: value,
+          })
+        }
+        onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
+        onRichTextEditingChange={setRichTextEditing}
+        onSteerActiveThreadOnEnterChange={(enabled) =>
+          updateGeneralSettingsMutation.mutate({
+            ...generalSettings,
+            steerActiveThreadOnEnter: enabled,
+          })
+        }
+        richTextEditing={richTextEditing}
+        steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
+        steerActiveThreadOnEnterDisabled={
+          systemConfigQuery.data === undefined ||
+          updateGeneralSettingsMutation.isPending
         }
       />
     );
@@ -1058,25 +1172,10 @@ export function SettingsView() {
       <>
         <GeneralSettingsSection
           desktopBrowserAvailable={desktopBrowserAvailable}
-          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
-          richTextEditing={richTextEditing}
-          steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
-          steerActiveThreadOnEnterDisabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
-          }
-          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
-          onRichTextEditingChange={setRichTextEditing}
-          onSteerActiveThreadOnEnterChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              steerActiveThreadOnEnter: enabled,
-            })
-          }
           streamerMode={generalSettings.streamerMode}
           streamerModeDisabled={
             systemConfigQuery.data === undefined ||

@@ -562,6 +562,22 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadRetentionSchedules = sqliteTable(
+  "thread_retention_schedules",
+  {
+    threadId: text("thread_id").primaryKey(),
+    archivedAt: integer("archived_at").notNull(),
+    conversationDeleteDueAt: integer("conversation_delete_due_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("thread_retention_conversation_due_idx").on(
+      table.conversationDeleteDueAt,
+    ),
+  ],
+);
+
 export const threadTabs = sqliteTable("thread_tabs", {
   threadId: text("thread_id")
     .primaryKey()

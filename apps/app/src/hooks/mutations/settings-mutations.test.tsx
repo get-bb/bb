@@ -4,6 +4,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   defaultAppSettings,
+  defaultThreadSettings,
   type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
@@ -26,6 +27,7 @@ import {
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
+  useUpdateThreadSettings,
 } from "./settings-mutations";
 
 vi.mock("@/lib/sdk", () => {
@@ -34,6 +36,7 @@ vi.mock("@/lib/sdk", () => {
       system: {
         updateGeneralSettings: vi.fn(),
         updateKeyboardSettings: vi.fn(),
+        updateThreadSettings: vi.fn(),
       },
     },
   };
@@ -166,6 +169,25 @@ describe("general settings mutation", () => {
       expect(queryClient.getQueryData(executionOptionsKey)).toBeUndefined(),
     );
     expect(readCachedModelCatalog(catalogCacheKey)).toBeNull();
+  });
+});
+
+describe("thread settings mutation", () => {
+  it("invalidates system config after a successful write", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(configKey, systemConfig());
+    const nextSettings = {
+      ...defaultThreadSettings,
+      archivedConversationRetention: "30-days" as const,
+    };
+    vi.mocked(sdk.system.updateThreadSettings).mockResolvedValue(nextSettings);
+    const { result } = renderHook(() => useUpdateThreadSettings(), { wrapper });
+
+    act(() => result.current.mutate(nextSettings));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
   });
 });
 

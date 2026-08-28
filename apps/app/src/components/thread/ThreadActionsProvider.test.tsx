@@ -170,14 +170,19 @@ describe("ThreadActionsProvider archive feedback", () => {
       expect(appToast.success).toHaveBeenCalledTimes(1);
     });
     expect(appToast.message).not.toHaveBeenCalled();
+    expect(vi.mocked(appToast.success).mock.calls[0]?.[0]).toBe(
+      "Thread Archived",
+    );
     const toastOptions = vi.mocked(appToast.success).mock.calls[0]?.[1];
     expect(toastOptions).toMatchObject({
-      action: { label: "Undo" },
+      cancel: { label: "Undo" },
       duration: 10_000,
       id: "thread-archived-thr_parent",
     });
+    expect(toastOptions?.description).toBeDefined();
+    expect(toastOptions?.action).toBeUndefined();
 
-    const undoAction = toastOptions?.action;
+    const undoAction = toastOptions?.cancel;
     if (undoAction === undefined) {
       throw new Error("Expected archive toast to provide Undo");
     }

@@ -8,6 +8,8 @@ every window and client sees the same value.
 - `bb settings general <key> <value>` accepts any key listed under
   `generalSettings` in `bb settings show`. Boolean preferences take `true`,
   `false`, `on`, or `off`; `null` clears a preference that can be unset.
+- `bb settings threads <key> <value>` accepts any key listed under
+  `threadSettings` in `bb settings show`.
 - Unknown keys and values of the wrong shape are rejected; the error names the
   keys bb knows.
 
@@ -38,10 +40,14 @@ every window and client sees the same value.
 - Development builds always show unhandled provider events regardless of the
   saved preference.
 
-## Active-thread Enter behavior
+## Thread settings
 
 - `steerActiveThreadOnEnter` defaults to false. Set it with
   `bb settings general steerActiveThreadOnEnter <true|false|on|off>`.
+- `archivedConversationRetention` defaults to `forever`. Set it with
+  `bb settings threads archivedConversationRetention <forever|30-days>`.
+- These controls appear under Settings → Threads. The Enter preference remains
+  in the General settings contract and CLI surface for compatibility.
 - Outside an open composer typeahead menu, disabling it makes Enter queue a
   follow-up and Command+Enter steer the active turn. When enabled, those
   actions are reversed.

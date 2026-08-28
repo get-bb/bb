@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultAppSettings } from "@bb/domain";
+import { defaultAppSettings, defaultThreadSettings } from "@bb/domain";
 import {
   getAppKeybindingOverrides,
   getAppSettings,
+  getThreadSettings,
   setAppKeybindingOverrides,
   setAppSettings,
+  setThreadSettings,
   type DbConnection,
 } from "../../src/index.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -21,9 +23,7 @@ describe("app settings data", () => {
   });
 
   it("persists keyboard overrides without clobbering general settings", () => {
-    const overrides = [
-      { command: "thread.new" as const, shortcut: null },
-    ];
+    const overrides = [{ command: "thread.new" as const, shortcut: null }];
     setAppSettings(db, {
       ...defaultAppSettings,
       showKeyboardHints: false,
@@ -44,6 +44,35 @@ describe("app settings data", () => {
 
     setAppSettings(db, defaultAppSettings);
     expect(getAppKeybindingOverrides(db)).toEqual(overrides);
+  });
+
+  it("defaults and persists thread settings without clobbering general settings", () => {
+    expect(getThreadSettings(db)).toEqual(defaultThreadSettings);
+
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      steerActiveThreadOnEnter: true,
+    });
+    setThreadSettings(db, { archivedConversationRetention: "30-days" });
+
+    expect(getThreadSettings(db)).toEqual({
+      archivedConversationRetention: "30-days",
+    });
+    expect(getAppSettings(db)).toEqual({
+      ...defaultAppSettings,
+      steerActiveThreadOnEnter: true,
+    });
+  });
+
+  it("falls back to the thread-setting default for a corrupt value", () => {
+    setThreadSettings(db, { archivedConversationRetention: "30-days" });
+    db.$client.exec(`
+      UPDATE app_settings_values
+      SET value = '"one-year"'
+      WHERE key = 'threads.archivedConversationRetention';
+    `);
+
+    expect(getThreadSettings(db)).toEqual(defaultThreadSettings);
   });
 
   it("ignores retired keys and falls back per key on an unreadable value", () => {

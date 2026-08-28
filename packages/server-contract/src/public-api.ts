@@ -13,12 +13,14 @@ import type {
   ResolvedThreadExecutionOptions,
   ThreadEventRow,
   ThreadQueuedMessage,
+  ThreadSettings,
 } from "@bb/domain";
 import {
   appSettingsSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
+  threadSettingsSchema,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import {
@@ -1310,6 +1312,12 @@ export const publicApiRoutes = {
       method: "put",
       request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
       response: jsonResponse<AppSettings>(),
+    }),
+    threadSettings: defineRoute({
+      path: "/settings/threads",
+      method: "put",
+      request: jsonRequest<EmptyInput, ThreadSettings>(threadSettingsSchema),
+      response: jsonResponse<ThreadSettings>(),
     }),
     keyboardSettings: defineRoute({
       path: "/settings/keyboard",

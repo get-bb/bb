@@ -1,14 +1,21 @@
 import {
   archiveThread,
   listUnarchivedAssignedChildThreads,
+  scheduleArchivedThreadRetention,
   type DbNotifier,
   type DbTransaction,
   updateThread,
 } from "@bb/db";
-import type { PromptInput, SystemMessageSubject, Thread } from "@bb/domain";
+import type {
+  ArchivedConversationRetention,
+  PromptInput,
+  SystemMessageSubject,
+  Thread,
+} from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
+import { ARCHIVED_CONVERSATION_RETENTION_MS } from "../../constants.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -50,6 +57,7 @@ interface ReleaseUnarchivedChildrenFromArchivedThreadArgs {
 }
 
 interface ArchiveThreadAndReleaseChildrenArgs {
+  archivedConversationRetention: ArchivedConversationRetention;
   threadId: string;
 }
 
@@ -188,6 +196,18 @@ export function archiveThreadAndReleaseChildren(
       if (!archivedThread) {
         return null;
       }
+      if (archivedThread.archivedAt === null) {
+        throw new Error("Archived thread is missing archivedAt");
+      }
+
+      scheduleArchivedThreadRetention(tx, {
+        archivedAt: archivedThread.archivedAt,
+        conversationDeleteDueAt:
+          args.archivedConversationRetention === "30-days"
+            ? archivedThread.archivedAt + ARCHIVED_CONVERSATION_RETENTION_MS
+            : null,
+        threadId: archivedThread.id,
+      });
 
       releaseUnarchivedChildrenFromArchivedThreadInTransaction(
         {

@@ -44,6 +44,17 @@ describe("useSettingsNavState", () => {
     expect(result.current.hasUnknownSection).toBe(false);
   });
 
+  it("places Threads immediately after General", () => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/threads"),
+    });
+
+    expect(result.current.activeSection).toBe("threads");
+    expect(
+      result.current.sections.slice(0, 2).map((section) => section.id),
+    ).toEqual(["general", "threads"]);
+  });
+
   it("shows the Machines section", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/machines"),

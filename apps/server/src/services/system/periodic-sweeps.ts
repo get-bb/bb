@@ -50,6 +50,7 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
+import { runArchivedConversationRetentionSweep } from "../threads/thread-retention.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
@@ -532,6 +533,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "destroyed-environment-prune",
     run: runDestroyedEnvironmentPruneSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "archived-conversation-retention",
+    run: (deps, now) => runArchivedConversationRetentionSweep(deps, { now }),
   },
   {
     cadenceMs: 0,

@@ -41,7 +41,7 @@ import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
-import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
+import { ArchivedThreadToastDescription } from "@/components/thread/ArchivedThreadToastDescription";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -314,33 +314,33 @@ export function ThreadActionsProvider({
             navigateAwayIfArchived,
           );
           const toastId = `thread-archived-${thread.id}`;
-          appToast.success(
-            <ArchivedThreadToastTitle
-              archivedThreadCount={response.archivedThreadIds.length}
-              threadTitle={getThreadDisplayTitle(thread)}
-              onOpenThread={() => {
-                navigate(
-                  getThreadRoutePath({
-                    projectId: thread.projectId,
-                    threadId: thread.id,
-                  }),
-                );
-                appToast.dismiss(toastId);
-              }}
-            />,
-            {
-              action: {
-                label: "Undo",
-                onClick: () => {
-                  for (const threadId of response.archivedThreadIds) {
-                    unarchiveMutate({ id: threadId });
-                  }
-                },
+          appToast.success("Thread Archived", {
+            description: (
+              <ArchivedThreadToastDescription
+                archivedThreadCount={response.archivedThreadIds.length}
+                threadTitle={getThreadDisplayTitle(thread)}
+                onOpenThread={() => {
+                  navigate(
+                    getThreadRoutePath({
+                      projectId: thread.projectId,
+                      threadId: thread.id,
+                    }),
+                  );
+                  appToast.dismiss(toastId);
+                }}
+              />
+            ),
+            cancel: {
+              label: "Undo",
+              onClick: () => {
+                for (const threadId of response.archivedThreadIds) {
+                  unarchiveMutate({ id: threadId });
+                }
               },
-              duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
-              id: toastId,
             },
-          );
+            duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+            id: toastId,
+          });
         },
         (error: unknown) => {
           appToast.error(

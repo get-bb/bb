@@ -1,9 +1,12 @@
 import { eq } from "drizzle-orm";
 import {
+  archiveThread,
   CLOSED_SESSION_ROW_RETENTION_MS,
   DESTROYED_ENVIRONMENT_TTL_MS,
   environments,
+  getThread,
   hostDaemonSessions,
+  scheduleArchivedThreadRetention,
 } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -19,6 +22,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedThreadFixture,
 } from "../helpers/seed.js";
 import { testLogger, withTestHarness } from "../helpers/test-app.js";
 
@@ -32,6 +36,30 @@ function releaseRunningJob(release: ReleaseCallback | null): void {
 }
 
 describe("runPeriodicSweeps", () => {
+  it("runs archived conversation retention as a registered periodic job", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const archived = archiveThread(harness.db, harness.hub, thread.id);
+      if (!archived || archived.archivedAt === null) {
+        throw new Error("Expected archive to succeed");
+      }
+      const now = Date.now();
+      scheduleArchivedThreadRetention(harness.db, {
+        archivedAt: archived.archivedAt,
+        conversationDeleteDueAt: now,
+        threadId: thread.id,
+      });
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+      };
+
+      await runPeriodicSweeps(deps);
+
+      expect(getThread(harness.db, thread.id)).toBeNull();
+    });
+  });
+
   it("continues later sweep jobs after an earlier job fails", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);
