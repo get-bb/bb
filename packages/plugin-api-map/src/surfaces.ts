@@ -631,6 +631,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Get a key-value store for small values such as flags and cursors",
           "Get its own SQLite database, with migrations, for larger or relational data",
+          "Reject a changed or reused migration number before it can hide a schema change",
           "Read and write only its own namespace; other plugins cannot see it",
         ],
         apiSymbols: ["PluginStorage"],

@@ -198,6 +198,37 @@ describe("storage", () => {
     ]);
     const rows = again.prepare("SELECT body, starred FROM notes").all();
     expect(rows).toEqual([{ body: "hello", starred: 0 }]);
+    expect(() =>
+      bb.storage.migrate(again, [
+        "CREATE TABLE replacements (id INTEGER PRIMARY KEY)",
+      ]),
+    ).toThrow(/migration 0 does not match the recorded statement/);
+  });
+
+  it("reserves unknown legacy migration indexes", () => {
+    const { bb } = createFakePluginHost();
+    const db = bb.storage.database();
+    db.exec(
+      "CREATE TABLE notes (id INTEGER PRIMARY KEY); CREATE TABLE _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL); INSERT INTO _bb_migrations VALUES (0, 1), (2, 1)",
+    );
+
+    bb.storage.migrate(db, ["CREATE TABLE notes (id INTEGER PRIMARY KEY)"]);
+
+    expect(
+      db
+        .prepare("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .all(),
+    ).toEqual([
+      { id: 0, statement_hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { id: 2, statement_hash: "legacy-unknown" },
+    ]);
+    expect(() =>
+      bb.storage.migrate(db, [
+        "CREATE TABLE notes (id INTEGER PRIMARY KEY)",
+        "SELECT 1",
+        "SELECT 2",
+      ]),
+    ).toThrow(/migration 2 does not match the recorded statement/);
   });
 
   it("database() replaces a handle the plugin closed itself, like the host", () => {

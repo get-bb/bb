@@ -138,7 +138,8 @@ export interface PluginStorage {
   database(): Database.Database;
   /**
    * Ordered-statement migration helper: statement index = migration id in a
-   * `_bb_migrations` table; unapplied statements run in one transaction.
+   * `_bb_migrations` table; unapplied statements run in one transaction. The
+   * host records each statement hash and rejects changed or reused indexes.
    * Append-only — never reorder or edit shipped statements.
    */
   migrate(db: Database.Database, statements: string[]): void;

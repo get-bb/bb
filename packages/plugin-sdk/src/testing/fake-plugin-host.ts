@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -99,6 +100,12 @@ import {
   type FakeSdkHarness,
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
+
+const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
+
+function migrationStatementHash(statement: string): string {
+  return createHash("sha256").update(statement).digest("hex");
+}
 
 /**
  * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
@@ -952,23 +959,58 @@ function createFakePluginHostInternal(
     migrate(database, statements) {
       assertLive();
       database.exec(
-        "CREATE TABLE IF NOT EXISTS _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL, statement_hash TEXT)",
       );
-      const applied = new Set(
-        (
-          database.prepare("SELECT id FROM _bb_migrations").all() as Array<{
-            id: number;
-          }>
-        ).map((row) => row.id),
+      const migrationColumns = database
+        .prepare<[], { name: string }>("PRAGMA table_info(_bb_migrations)")
+        .all();
+      if (
+        !migrationColumns.some((column) => column.name === "statement_hash")
+      ) {
+        database.exec(
+          "ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT",
+        );
+      }
+      const rows = database
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .all();
+      const applied = new Map<number, string | null>();
+      for (const row of rows) applied.set(row.id, row.statement_hash);
+      statements.forEach((statement, index) => {
+        const recordedHash = applied.get(index);
+        if (
+          recordedHash !== undefined &&
+          recordedHash !== null &&
+          recordedHash !== migrationStatementHash(statement)
+        ) {
+          throw new Error(
+            `migration ${index} does not match the recorded statement; append a new migration instead of changing or reusing an index`,
+          );
+        }
+      });
+      const adopt = database.prepare(
+        "UPDATE _bb_migrations SET statement_hash = ? WHERE id = ? AND statement_hash IS NULL",
       );
       const record = database.prepare(
-        "INSERT INTO _bb_migrations (id, applied_at) VALUES (?, ?)",
+        "INSERT INTO _bb_migrations (id, applied_at, statement_hash) VALUES (?, ?, ?)",
       );
       database.transaction(() => {
+        for (const row of rows) {
+          const statement = statements[row.id];
+          adopt.run(
+            statement === undefined
+              ? LEGACY_UNKNOWN_MIGRATION_HASH
+              : migrationStatementHash(statement),
+            row.id,
+          );
+        }
         statements.forEach((statement, index) => {
           if (applied.has(index)) return;
           database.exec(statement);
-          record.run(index, Date.now());
+          record.run(index, Date.now(), migrationStatementHash(statement));
         });
       })();
     },

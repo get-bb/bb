@@ -403,6 +403,65 @@ describe("plugin settings + storage", () => {
       expect(rerunRow.count).toBe(1);
     });
 
+    it("rejects a changed migration statement at an applied index", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-migration-collision",
+        serverSource: `
+          export default function plugin(bb: any) {
+            const db = bb.storage.database();
+            bb.storage.migrate(db, [
+              "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+            ]);
+          }
+        `,
+      });
+      await service.installPath(rootDir);
+
+      const api = service.getApi("migration-collision");
+      expect(api).toBeDefined();
+      if (!api) throw new Error("migration-collision plugin did not load");
+      const database = api.storage.database();
+      expect(() =>
+        api.storage.migrate(database, [
+          "CREATE TABLE replacements (id INTEGER PRIMARY KEY)",
+        ]),
+      ).toThrow(/migration 0 does not match the recorded statement/);
+    });
+
+    it("reserves unknown legacy indexes before later statements can reuse them", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-legacy-migrations",
+        serverSource: `export default function plugin() {}`,
+      });
+      await service.installPath(rootDir);
+
+      const api = service.getApi("legacy-migrations");
+      expect(api).toBeDefined();
+      if (!api) throw new Error("legacy-migrations plugin did not load");
+      const database = api.storage.database();
+      database.exec(
+        "CREATE TABLE items (id INTEGER PRIMARY KEY); CREATE TABLE _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL); INSERT INTO _bb_migrations VALUES (0, 1), (2, 1)",
+      );
+      api.storage.migrate(database, [
+        "CREATE TABLE items (id INTEGER PRIMARY KEY)",
+      ]);
+
+      const rows = database
+        .prepare("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .all();
+      expect(rows).toEqual([
+        { id: 0, statement_hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+        { id: 2, statement_hash: "legacy-unknown" },
+      ]);
+      expect(() =>
+        api.storage.migrate(database, [
+          "CREATE TABLE items (id INTEGER PRIMARY KEY)",
+          "SELECT 1",
+          "SELECT 2",
+        ]),
+      ).toThrow(/migration 2 does not match the recorded statement/);
+    });
+
     it("returns one reused handle per plugin load instead of a connection per call", async () => {
       const CALLS = 200;
       const rootDir = await writePlugin(workDir, {
