@@ -9,13 +9,13 @@ import {
   repairableAutomationExecutionSchema,
   type AutomationExecution,
   type AutomationOrigin,
+  type AutomationReadProblem,
   type AutomationResponse,
   type AutomationRunMode,
   type AutomationRunResponse,
   type AutomationRunStatus,
   type AutomationRunTrigger,
   type AutomationTrigger,
-  type LegacyEmptyPromptAutomationResponse,
 } from "./rpc-types.js";
 
 const AUTOMATION_COLUMNS = `id, project_id AS projectId, target_thread_id AS targetThreadId,
@@ -78,6 +78,10 @@ export interface AutomationRunRow {
   startedAt: number;
   finishedAt: number | null;
 }
+
+type DecodedAutomationRow =
+  | { automation: AutomationResponse }
+  | { automation: AutomationReadProblem; error: Error };
 
 interface RawAutomationRow extends Omit<AutomationRow, "enabled"> {
   enabled: 0 | 1;
@@ -283,7 +287,7 @@ export function parseAutomationExecution(
   return automationExecutionSchema.parse(JSON.parse(execution));
 }
 
-export function parseRepairableAutomationExecution(
+function parseRepairableAutomationExecution(
   execution: string,
 ): AutomationExecution {
   return repairableAutomationExecutionSchema.parse(JSON.parse(execution));
@@ -314,30 +318,57 @@ function automationResponseValue(
   };
 }
 
-export function toAutomationResponse(row: AutomationRow): AutomationResponse {
-  return automationResponseSchema.parse(
-    automationResponseValue(
-      row,
-      parseAutomationTrigger(row.triggerConfig),
-      parseAutomationExecution(row.execution),
-    ),
-  );
+function invalidAutomationRow(
+  row: AutomationRow,
+  error: Error,
+): DecodedAutomationRow {
+  return {
+    automation: {
+      id: row.id,
+      projectId: row.projectId,
+      name: row.name,
+      problem: "invalid-stored-data",
+    },
+    error,
+  };
 }
 
-export function toLegacyEmptyPromptAutomationResponse(
-  row: AutomationRow,
-): LegacyEmptyPromptAutomationResponse {
-  const execution = parseRepairableAutomationExecution(row.execution);
-  if (execution.mode !== "agent" || execution.prompt !== "") {
-    throw new Error("Not a legacy empty-prompt agent automation");
-  }
-  return legacyEmptyPromptAutomationResponseSchema.parse(
-    automationResponseValue(
+export function decodeAutomationRow(row: AutomationRow): DecodedAutomationRow {
+  let value: ReturnType<typeof automationResponseValue>;
+  try {
+    value = automationResponseValue(
       row,
       parseAutomationTrigger(row.triggerConfig),
-      execution,
-    ),
-  );
+      parseRepairableAutomationExecution(row.execution),
+    );
+  } catch (error) {
+    return invalidAutomationRow(
+      row,
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+
+  const canonical = automationResponseSchema.safeParse(value);
+  if (canonical.success) {
+    return { automation: canonical.data };
+  }
+  const missingPrompt =
+    legacyEmptyPromptAutomationResponseSchema.safeParse(value);
+  return missingPrompt.success
+    ? {
+        automation: {
+          ...missingPrompt.data,
+          problem: "missing-agent-prompt",
+        },
+        error: canonical.error,
+      }
+    : invalidAutomationRow(row, canonical.error);
+}
+
+export function toAutomationResponse(row: AutomationRow): AutomationResponse {
+  const decoded = decodeAutomationRow(row);
+  if ("error" in decoded) throw decoded.error;
+  return decoded.automation;
 }
 
 export function toAutomationRunResponse(

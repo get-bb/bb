@@ -182,6 +182,26 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByText("Needs a prompt")).toBeTruthy();
     expect(screen.getByText("Unreadable automation")).toBeTruthy();
     expect(screen.getByText("Nightly digest")).toBeTruthy();
+    expect(screen.getAllByText("9AM")).toHaveLength(2);
+
+    const search = screen.getByPlaceholderText("Search automations");
+    fireEvent.change(search, { target: { value: "Prompt required" } });
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.queryByText("Unreadable automation")).toBeNull();
+    expect(screen.queryByText("Nightly digest")).toBeNull();
+
+    fireEvent.change(search, { target: { value: "Invalid data" } });
+    expect(screen.queryByText("Needs a prompt")).toBeNull();
+    expect(screen.getByText("Unreadable automation")).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Active" }));
+    expect(screen.getByText("Needs a prompt")).toBeTruthy();
+    expect(screen.queryByText("Unreadable automation")).toBeNull();
+    expect(screen.getByText("Nightly digest")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(onOpenDetail).toHaveBeenCalledWith(
       { projectId: "proj_1", automationId: "auto_repair" },

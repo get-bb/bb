@@ -806,14 +806,18 @@ describe("automations server plugin harness", () => {
     expect(cliShow.stdout).toContain("Enabled:   yes");
     expect(cliShow.stdout).toContain("Schedule:  once at");
     expect(cliShow.stdout?.endsWith("\n\n")).toBe(true);
-    await expect(
-      harness.callRpc("automations_run", {
-        projectId: PROJECT_ID,
-        automationId: repairTarget.id,
-      }),
-    ).rejects.toThrow(
-      'Automation "Hidden legacy row" requires a prompt before it can run. Edit it and add a prompt first.',
-    );
+    const rejectedLifecycleWrites = [
+      ["automations_run", repairTarget.id, "it can run"],
+      ["automations_pause", repairTarget.id, "it can be paused"],
+      ["automations_resume", repairTarget.id, "it can be resumed"],
+    ] as const;
+    for (const [method, automationId, operation] of rejectedLifecycleWrites) {
+      await expect(
+        harness.callRpc(method, { projectId: PROJECT_ID, automationId }),
+      ).rejects.toThrow(
+        `Automation "Hidden legacy row" requires a prompt before ${operation}. Edit it and add a prompt first.`,
+      );
+    }
     await expect(
       harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
@@ -822,22 +826,6 @@ describe("automations server plugin harness", () => {
       }),
     ).rejects.toThrow(
       'Automation "Hidden legacy row" requires a prompt before other fields can be updated. Edit it and add a prompt first.',
-    );
-    await expect(
-      harness.callRpc("automations_pause", {
-        projectId: PROJECT_ID,
-        automationId: repairTarget.id,
-      }),
-    ).rejects.toThrow(
-      'Automation "Hidden legacy row" requires a prompt before it can be paused. Edit it and add a prompt first.',
-    );
-    await expect(
-      harness.callRpc("automations_resume", {
-        projectId: PROJECT_ID,
-        automationId: repairTarget.id,
-      }),
-    ).rejects.toThrow(
-      'Automation "Hidden legacy row" requires a prompt before it can be resumed. Edit it and add a prompt first.',
     );
     await expect(
       harness.callRpc("automations_pause", {

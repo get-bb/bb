@@ -116,7 +116,6 @@ describe("automation provider and model picker", () => {
         }}
         actionPending={false}
         editing
-        requiresPrompt
         onToggle={vi.fn()}
         onEdit={vi.fn()}
         onCancelEdit={vi.fn()}
@@ -170,7 +169,6 @@ describe("automation provider and model picker", () => {
         }}
         actionPending={false}
         editing
-        requiresPrompt={false}
         onToggle={vi.fn()}
         onEdit={vi.fn()}
         onCancelEdit={vi.fn()}

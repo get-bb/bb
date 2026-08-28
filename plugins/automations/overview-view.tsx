@@ -94,6 +94,9 @@ type AutomationProjectFilter = `project:${string}`;
 type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
 export type AutomationCollectionMode = "installed" | "browse";
+type ReadableOverviewAutomation =
+  | AutomationResponse
+  | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
 
 interface AutomationDetailRoute {
   projectId: string;
@@ -104,7 +107,9 @@ interface AutomationDetailNavigationOptions {
   editing?: boolean;
 }
 
-function routeOf(automation: AutomationResponse): AutomationDetailRoute {
+function routeOf(
+  automation: Pick<AutomationResponse, "id" | "projectId">,
+): AutomationDetailRoute {
   return { projectId: automation.projectId, automationId: automation.id };
 }
 
@@ -195,6 +200,54 @@ function automationLifecycleSortRank(automation: AutomationResponse): number {
   return 0;
 }
 
+function AutomationRowMetadata({
+  automation,
+  project,
+}: {
+  automation: ReadableOverviewAutomation | null;
+  project: OverviewEntry["project"];
+}) {
+  const projectLabel = automationProjectLabel(project);
+  const personalProject = project.id === PERSONAL_PROJECT_ID;
+  const scheduleMetadata =
+    automation === null
+      ? null
+      : formatOverviewScheduleMetadata({
+          enabled: automation.enabled,
+          nextRunAt: automation.nextRunAt,
+          trigger: automation.trigger,
+          runCount: automation.runCount,
+          lastRunStatus: automation.lastRunStatus,
+        });
+  return (
+    <ResourceMeta
+      items={[
+        <AutomationMetadataItem
+          icon={personalProject ? "Laptop" : "Folder"}
+          iconLabel={personalProject ? "Local project" : "Project"}
+          title={projectLabel}
+        >
+          {projectLabel}
+        </AutomationMetadataItem>,
+        automation !== null ? (
+          <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
+            {formatAutomationTrigger(automation.trigger)}
+          </AutomationMetadataItem>
+        ) : null,
+        automation !== null && scheduleMetadata !== null ? (
+          <AutomationMetadataItem
+            icon={scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined}
+            iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
+          >
+            {scheduleMetadata.text}
+          </AutomationMetadataItem>
+        ) : null,
+        automation === null ? "The stored configuration cannot be read." : null,
+      ]}
+    />
+  );
+}
+
 function OverviewRow({
   automation,
   project,
@@ -218,46 +271,13 @@ function OverviewRow({
     lastRunStatus: automation.lastRunStatus,
   });
   const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
-  const triggerLabel = formatAutomationTrigger(automation.trigger);
-  const scheduleMetadata = formatOverviewScheduleMetadata({
-    enabled: automation.enabled,
-    nextRunAt: automation.nextRunAt,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-    lastRunStatus: automation.lastRunStatus,
-  });
-  const projectLabel = automationProjectLabel(project);
-  const personalProject = project.id === PERSONAL_PROJECT_ID;
 
   return (
     <ResourceRow
       leading={<AutomationRowLeading automation={automation} />}
       title={automation.name}
       description={
-        <ResourceMeta
-          items={[
-            <AutomationMetadataItem
-              icon={personalProject ? "Laptop" : "Folder"}
-              iconLabel={personalProject ? "Local project" : "Project"}
-              title={projectLabel}
-            >
-              {projectLabel}
-            </AutomationMetadataItem>,
-            <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
-              {triggerLabel}
-            </AutomationMetadataItem>,
-            scheduleMetadata ? (
-              <AutomationMetadataItem
-                icon={
-                  scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined
-                }
-                iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
-              >
-                {scheduleMetadata.text}
-              </AutomationMetadataItem>
-            ) : null,
-          ]}
-        />
+        <AutomationRowMetadata automation={automation} project={project} />
       }
       muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
@@ -300,19 +320,8 @@ function AutomationProblemRow({
 }) {
   const repairTarget =
     automation.problem === "missing-agent-prompt" ? automation : null;
-  const projectLabel = automationProjectLabel(project);
   const problemLabel = automationProblemLabel(automation);
-  const personalProject = project.id === PERSONAL_PROJECT_ID;
-  const scheduleMetadata =
-    repairTarget === null
-      ? null
-      : formatOverviewScheduleMetadata({
-          enabled: repairTarget.enabled,
-          nextRunAt: repairTarget.nextRunAt,
-          trigger: repairTarget.trigger,
-          runCount: repairTarget.runCount,
-          lastRunStatus: repairTarget.lastRunStatus,
-        });
+  const route = routeOf(automation);
   return (
     <ResourceRow
       leading={
@@ -339,62 +348,19 @@ function AutomationProblemRow({
         </span>
       }
       description={
-        <ResourceMeta
-          items={[
-            <AutomationMetadataItem
-              icon={personalProject ? "Laptop" : "Folder"}
-              iconLabel={personalProject ? "Local project" : "Project"}
-              title={projectLabel}
-            >
-              {projectLabel}
-            </AutomationMetadataItem>,
-            repairTarget !== null ? (
-              <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
-                {formatAutomationTrigger(repairTarget.trigger)}
-              </AutomationMetadataItem>
-            ) : null,
-            repairTarget !== null && scheduleMetadata !== null ? (
-              <AutomationMetadataItem
-                icon={
-                  scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined
-                }
-                iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
-              >
-                {scheduleMetadata.text}
-              </AutomationMetadataItem>
-            ) : null,
-            repairTarget === null
-              ? "The stored configuration cannot be read."
-              : null,
-          ]}
-        />
+        <AutomationRowMetadata automation={repairTarget} project={project} />
       }
       className="items-start"
-      onOpen={() => {
-        const route = {
-          projectId: automation.projectId,
-          automationId: automation.id,
-        };
-        onNavigate(
-          route,
-          repairTarget === null ? undefined : { editing: true },
-        );
-      }}
+      onOpen={() =>
+        onNavigate(route, repairTarget === null ? undefined : { editing: true })
+      }
       persistentActions={
         repairTarget !== null ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() =>
-              onNavigate(
-                {
-                  projectId: repairTarget.projectId,
-                  automationId: repairTarget.id,
-                },
-                { editing: true },
-              )
-            }
+            onClick={() => onNavigate(route, { editing: true })}
           >
             Edit
           </Button>
@@ -416,6 +382,31 @@ function automationProblemSearchText(
   return automation.problem === "missing-agent-prompt"
     ? `${automationProblemLabel(automation)} needs prompt missing prompt`
     : `${automationProblemLabel(automation)} invalid stored data`;
+}
+
+function matchesAutomationReadStatusFilters(
+  automation: OverviewEntry["automation"],
+  statusFilters: readonly AutomationStatusFilter[],
+): boolean {
+  if ("problem" in automation && automation.problem === "invalid-stored-data") {
+    return statusFilters.length === 0;
+  }
+  return matchesAutomationStatusFilters(automation, statusFilters);
+}
+
+function automationSearchValues(
+  automation: OverviewEntry["automation"],
+  projectName: string,
+): string[] {
+  const values = [automation.name, projectName];
+  if ("problem" in automation) {
+    values.push(automationProblemSearchText(automation));
+    if (automation.problem === "invalid-stored-data") return values;
+  }
+  const status = formatScheduleStatusLabel(automation);
+  if (status !== undefined) values.push(status);
+  values.push(formatAutomationTrigger(automation.trigger));
+  return values;
 }
 
 export function AutomationOverviewView({
@@ -495,38 +486,15 @@ export function AutomationOverviewView({
       ) {
         return false;
       }
-      if ("problem" in automation) {
-        if (automation.problem === "invalid-stored-data") {
-          if (statusFilters.length > 0) return false;
-          if (normalizedQuery.length === 0) return true;
-          return [
-            automation.name,
-            project.name,
-            automationProblemSearchText(automation),
-          ].some((value) => value.toLowerCase().includes(normalizedQuery));
-        }
-        if (!matchesAutomationStatusFilters(automation, statusFilters)) {
-          return false;
-        }
-        if (normalizedQuery.length === 0) return true;
-        return [
-          automation.name,
-          project.name,
-          automationProblemSearchText(automation),
-          formatScheduleStatusLabel(automation),
-          formatAutomationTrigger(automation.trigger),
-        ].some((value) => value?.toLowerCase().includes(normalizedQuery));
-      }
-      if (!matchesAutomationStatusFilters(automation, statusFilters)) {
+      if (!matchesAutomationReadStatusFilters(automation, statusFilters)) {
         return false;
       }
-      if (normalizedQuery.length === 0) return true;
-      return [
-        automation.name,
-        project.name,
-        formatScheduleStatusLabel(automation),
-        formatAutomationTrigger(automation.trigger),
-      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+      return (
+        normalizedQuery.length === 0 ||
+        automationSearchValues(automation, project.name).some((value) =>
+          value.toLowerCase().includes(normalizedQuery),
+        )
+      );
     });
   }, [entries, normalizedQuery, projectFilters, statusFilters]);
   const visibleEntries = useMemo(() => {

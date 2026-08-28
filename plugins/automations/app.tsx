@@ -563,6 +563,17 @@ function DetailView({
     );
   }
 
+  const deleteDialog = (
+    <DeleteAutomationDialog
+      open={deleteOpen}
+      onOpenChange={setDeleteOpen}
+      name={automation.name}
+      pending={deleting}
+      onConfirm={confirmDelete}
+      onCancel={() => setDeleteOpen(false)}
+    />
+  );
+
   if ("problem" in automation && automation.problem === "invalid-stored-data") {
     return (
       <>
@@ -585,19 +596,13 @@ function DetailView({
             </Button>
           </div>
         </div>
-        <DeleteAutomationDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          name={automation.name}
-          pending={deleting}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteOpen(false)}
-        />
+        {deleteDialog}
       </>
     );
   }
 
-  const requiresPrompt = "problem" in automation;
+  const requiresPrompt =
+    automation.execution.mode === "agent" && automation.execution.prompt === "";
   const readableAutomation: AutomationResponse = automation;
 
   const overviewEntry = overviewState.entries?.find(
@@ -619,7 +624,6 @@ function DetailView({
       runsState={runsState}
       actionPending={actionPending}
       editing={requiresPrompt || editingRequested}
-      requiresPrompt={requiresPrompt}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
       onCancelEdit={requiresPrompt ? onBack : () => setEditingRequested(false)}
@@ -627,16 +631,7 @@ function DetailView({
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onOpenThread={openThread}
-      footer={
-        <DeleteAutomationDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          name={readableAutomation.name}
-          pending={deleting}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteOpen(false)}
-        />
-      }
+      footer={deleteDialog}
     />
   );
 }
