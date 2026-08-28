@@ -72,14 +72,16 @@ async function tryPluginCommandProxy(
     }
     return;
   }
-  process.exit(
-    await proxy.runPluginCliCommand(
-      getUrl(),
-      match.pluginId,
-      process.argv.slice(3),
-      match.commands,
-    ),
-  );
+  const argv = process.argv.slice(3);
+  const command = match.commands.find((entry) => entry.name === argv[0]);
+  if (
+    command !== undefined &&
+    argv.slice(1).some((arg) => arg === "--help" || arg === "-h")
+  ) {
+    console.log(command.usage);
+    process.exit(0);
+  }
+  process.exit(await proxy.runPluginCliCommand(getUrl(), match.pluginId, argv));
 }
 
 async function main(): Promise<void> {

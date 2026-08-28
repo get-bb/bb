@@ -155,6 +155,25 @@ describe("bb startup module graph", () => {
     }
   }, 30_000);
 
+  it("shows and enforces the thread search result limit", async () => {
+    const help = await runCli(
+      "source",
+      ["thread", "search", "--help"],
+      "http://127.0.0.1:1",
+    );
+    expect(help.stdout).toContain("Maximum results per group (1-50)");
+
+    await expect(
+      runCli(
+        "source",
+        ["thread", "search", "query", "--limit", "51"],
+        "http://127.0.0.1:1",
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("Error: --limit must be at most 50."),
+    });
+  }, 30_000);
+
   describe("split dist/index.js", () => {
     let chunkDirUrl: string;
 
@@ -206,13 +225,27 @@ describe("bb startup module graph", () => {
       }
     }, 30_000);
 
-    it("executes plugin commands from the split artifact", async () => {
+    it("uses registered plugin help from the split artifact", async () => {
+      let pluginCalls = 0;
       const server = createServer(async (request, response) => {
         response.setHeader("content-type", "application/json");
         if (request.url === "/api/v1/plugins/contributions") {
           response.end(
             JSON.stringify({
-              cliCommands: [{ pluginId: "fixture-plugin", name: "fixture" }],
+              cliCommands: [
+                {
+                  pluginId: "fixture-plugin",
+                  name: "fixture",
+                  summary: "Fixture command",
+                  commands: [
+                    {
+                      name: "inspect",
+                      summary: "Inspect a fixture",
+                      usage: "bb fixture inspect <id>",
+                    },
+                  ],
+                },
+              ],
             }),
           );
           return;
@@ -222,6 +255,7 @@ describe("bb startup module graph", () => {
           response.end();
           return;
         }
+        pluginCalls += 1;
         let body = "";
         for await (const chunk of request) body += chunk;
         const { argv } = z
@@ -245,13 +279,30 @@ describe("bb startup module graph", () => {
       const serverUrl = `http://127.0.0.1:${address.port}`;
 
       try {
-        for (const args of [
-          ["fixture", "--help"],
-          ["plugin", "run", "fixture-plugin", "--help"],
-        ]) {
-          const run = await runCli("dist", args, serverUrl);
-          expect(run.stdout).toBe("fixture ran: --help\n");
+        for (const helpFlag of ["-h", "--help"]) {
+          const run = await runCli(
+            "dist",
+            ["fixture", "inspect", helpFlag],
+            serverUrl,
+          );
+          expect(run.stdout).toBe("bb fixture inspect <id>\n");
         }
+        expect(pluginCalls).toBe(0);
+
+        const direct = await runCli(
+          "dist",
+          ["fixture", "inspect", "fixture-1"],
+          serverUrl,
+        );
+        expect(direct.stdout).toBe("fixture ran: inspect fixture-1\n");
+
+        const raw = await runCli(
+          "dist",
+          ["plugin", "run", "fixture-plugin", "--help"],
+          serverUrl,
+        );
+        expect(raw.stdout).toBe("fixture ran: --help\n");
+        expect(pluginCalls).toBe(2);
       } finally {
         await new Promise<void>((resolvePromise, rejectPromise) =>
           server.close((error) =>

@@ -455,40 +455,6 @@ describe("runPluginCliCommand", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(["-h", "--help"])(
-    "prints registered nested help for %s without calling the plugin",
-    async (helpFlag) => {
-      const fetchMock = vi.fn();
-      vi.stubGlobal("fetch", fetchMock);
-      const writes: string[] = [];
-      const stream = {
-        write(value: string, callback: (error?: Error | null) => void) {
-          writes.push(value);
-          callback();
-          return true;
-        },
-      };
-
-      const exitCode = await runPluginCliCommand(
-        "http://localhost",
-        "memory",
-        ["update", helpFlag],
-        [
-          {
-            name: "update",
-            summary: "Update a memory",
-            usage: "bb memory update <id> --expected-version N",
-          },
-        ],
-        { stdout: stream, stderr: stream },
-      );
-
-      expect(exitCode).toBe(0);
-      expect(writes).toEqual(["bb memory update <id> --expected-version N\n"]);
-      expect(fetchMock).not.toHaveBeenCalled();
-    },
-  );
-
   it("waits for output larger than 64 KiB to flush before returning", async () => {
     const stdout = "x".repeat(1024 * 1024);
     vi.stubGlobal(
@@ -518,7 +484,6 @@ describe("runPluginCliCommand", () => {
     const exitCode = await runPluginCliCommand(
       "http://localhost",
       "fixture",
-      [],
       [],
       { stdout: outputStream("stdout"), stderr: outputStream("stderr") },
     );
@@ -570,7 +535,6 @@ describe("runPluginCliCommand", () => {
         baseUrl,
         "secrets",
         ["request", "--purpose", "Testing the transport \u2014 an em dash"],
-        [],
         { stdout: stream, stderr: stream },
       );
 

@@ -416,11 +416,11 @@ or artifacts, validation performed, and blockers.
 
 ## Inspecting Results
 
-- Use `bb thread search`, `history`, `read|unread`, and `section` for the same
-  organization and recall features as the sidebar. `bb thread queue` exposes
-  queued-message list/create/update/send/reorder/group/delete operations. Queue
-  updates use the listed message version to prevent overwriting a concurrent
-  edit and accept repeatable `--file` and `--image` attachment options.
+- Use `bb thread search <query> [--limit <1-50>]` for sidebar search features.
+  Use `bb thread history`, `read|unread`, and `section` for organization and
+  recall features. `bb thread queue` exposes queued-message operations. Queue
+  updates use the listed version and accept repeatable `--file` and `--image`
+  attachment options.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.

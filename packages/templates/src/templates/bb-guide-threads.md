@@ -114,7 +114,8 @@ Listing:
   titles are cut at 60 characters. Project shows the project name; the
   personal project shows "-". Use --json for the full thread records.
 
-  bb thread search <query>                 Search threads and messages
+  bb thread search <query> [--limit <1-50>]
+                                             Search threads and messages
   bb thread history <id>                   List prompt history
 
 Sections:
