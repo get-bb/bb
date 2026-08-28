@@ -7,6 +7,7 @@ import type {
 } from "./plugin-slots";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
+  DOWNLOAD_FILE_OPENER_PREFERENCE,
   buildFileOpenerRef,
   resolveComposerActions,
   resolveComposerBanners,
@@ -17,6 +18,7 @@ import {
   resolveMessageDirectiveRegistry,
   resolvePendingInteraction,
   resolveReplacement,
+  shouldDownloadWithFileOpenerPreference,
 } from "./plugin-slot-resolvers";
 
 function Component() {
@@ -241,5 +243,30 @@ describe("replacement resolvers", () => {
         path: "README.md",
       }),
     ).toEqual({ kind: "owner" });
+  });
+
+  it("downloads only for the saved choice or an explicit one-off override", () => {
+    const preference = { pdf: DOWNLOAD_FILE_OPENER_PREFERENCE };
+
+    expect(
+      shouldDownloadWithFileOpenerPreference({
+        path: "report.PDF",
+        preference,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDownloadWithFileOpenerPreference({
+        path: "report.pdf",
+        preference,
+        override: "builtin",
+      }),
+    ).toBe(false);
+    expect(
+      shouldDownloadWithFileOpenerPreference({
+        path: "notes.txt",
+        preference,
+        override: "download",
+      }),
+    ).toBe(true);
   });
 });

@@ -1,10 +1,21 @@
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
+  buildAttachmentContentDisposition,
   createDaemonFileContentResponse,
   requestMatchesEntityTag,
   type DaemonFileReadResult,
 } from "../../src/services/hosts/daemon-file-response.js";
+
+describe("buildAttachmentContentDisposition", () => {
+  it("provides safe ASCII and UTF-8 filenames", () => {
+    expect(
+      buildAttachmentContentDisposition('/tmp/quarterly "résumé".pdf'),
+    ).toBe(
+      "attachment; filename=\"quarterly _r_sum__.pdf\"; filename*=UTF-8''quarterly%20%22r%C3%A9sum%C3%A9%22.pdf",
+    );
+  });
+});
 
 const IMAGE_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
 const IMAGE_RESULT: DaemonFileReadResult = {

@@ -72,6 +72,14 @@ function daemonFileEntityTag(result: DaemonFileReadResult): string {
   return `"${result.sha256}"`;
 }
 
+export function buildAttachmentContentDisposition(path: string): string {
+  const filename = path.split(/[\\/]/u).at(-1) ?? "download";
+  const fallback = filename
+    .replace(/[^\x20-\x7E]/gu, "_")
+    .replace(/["\\]/gu, "_");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
 export function requestMatchesEntityTag(
   ifNoneMatch: string | undefined,
   entityTag: string,

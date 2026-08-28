@@ -1030,6 +1030,7 @@ export type ThreadStoragePathsQuery = z.infer<
 >;
 
 export const threadStorageContentQuerySchema = z.object({
+  disposition: z.literal("attachment").optional(),
   path: z.string().min(1),
 });
 export type ThreadStorageContentQuery = z.infer<
@@ -1047,6 +1048,7 @@ export type ThreadStorageLocationResponse = z.infer<
 >;
 
 export const threadHostFileContentQuerySchema = z.object({
+  disposition: z.literal("attachment").optional(),
   path: z.string().min(1),
 });
 export type ThreadHostFileContentQuery = z.infer<
