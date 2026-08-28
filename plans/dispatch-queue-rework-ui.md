@@ -1,5 +1,14 @@
 # Dispatch queue rework — visual prototyping brief
 
+> **STATUS: COMPLETE / HISTORICAL.** The prototyping round-trip is done and
+> its output is applied (see `DispatchQueueVisualVariants.stories.tsx` next
+> to the component, and the as-shipped section of
+> `plans/dispatch-queue-rework.md`). Two items below were superseded during
+> implementation: there is NO never-started banner (queue rows + a derived
+> delete-thread offer cover it), and the thread-list badge shipped as the
+> single clock glyph on canonical `pending` (no micro-signal exploration).
+> The timeline queue-state row shipped as described.
+
 Standalone brief for free-form visual exploration. Work from **clean
 `origin/main`** in your own worktree — this does NOT build against the
 rework branch. Prototype in Storybook (apps/app has existing `*.stories.tsx`
