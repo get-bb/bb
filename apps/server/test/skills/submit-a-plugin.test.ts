@@ -19,7 +19,20 @@ const deriveIdScriptPath = path.join(
   "scripts",
   "derive-plugin-id.mjs",
 );
+const skillReferencePaths = [
+  "marketplace-entry.md",
+  "plugin-release.md",
+  "pull-request.md",
+].map((name) => path.join(skillRoot, "references", name));
 const tempDirs: string[] = [];
+
+async function readSkillTree(): Promise<string> {
+  return (
+    await Promise.all(
+      [skillPath, ...skillReferencePaths].map((file) => readFile(file, "utf8")),
+    )
+  ).join("\n");
+}
 
 async function makeTempDir(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), "bb-submit-plugin-"));
@@ -77,11 +90,9 @@ describe("submit-a-plugin skill", () => {
   });
 
   it("keeps release commands behind approval and disables npm lifecycle scripts", async () => {
-    const skill = await readFile(skillPath, "utf8");
+    const skill = await readSkillTree();
 
-    expect(skill).toContain(
-      "A request to submit a plugin does not approve an npm publication or a Git push.",
-    );
+    expect(skill).toContain("A submission request does not approve a release.");
     expect(skill).toContain("npm ci --ignore-scripts");
     expect(skill).toContain("npm pack --dry-run --ignore-scripts");
     expect(skill).toContain("npm publish --ignore-scripts");
@@ -89,14 +100,14 @@ describe("submit-a-plugin skill", () => {
   });
 
   it("provides a local submission path without gh", async () => {
-    const skill = await readFile(skillPath, "utf8");
+    const skill = await readSkillTree();
 
-    expect(skill).toContain("## Continue without gh");
+    expect(skill).toContain("If gh is unavailable or authentication fails");
     expect(skill).toContain(
       "git clone https://github.com/get-bb/marketplace.git /SAFE/NEW/PATH/marketplace",
     );
-    expect(skill).toContain(
-      "Return the local clone path, entry path, icon path, branch name, and validation results.",
+    expect(skill).toMatch(
+      /Return their paths, the clone path,\s+branch name, and results\./,
     );
   });
 });

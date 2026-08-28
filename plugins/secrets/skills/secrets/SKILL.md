@@ -1,6 +1,6 @@
 ---
 name: secrets
-description: Securely request API keys, access tokens, passwords, webhook secrets, or other credentials from the user and write them to a dotenv file without exposing their values to the agent.
+description: Securely request API keys, access tokens, passwords, webhook secrets, or other credentials and write them to a dotenv file without exposing their values to the agent. Use whenever a task needs a credential that the user must supply.
 ---
 
 # Request secrets securely
