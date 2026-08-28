@@ -71,13 +71,14 @@ slot). A plugin that parks a steer owns the staleness of its later delivery.
 
 ## Workstream split
 
-Backend (this thread): everything in this document — domain/db/server/
-plugins/SDK/CLI. UI (separate thread): `plans/dispatch-queue-rework-ui.md`,
-a self-contained brief. The boundary is the server contract; the backend
-lands the new response shapes in `packages/server-contract` as its FIRST
-commit so the UI thread can build against real types immediately. Contract
-changes are negotiated by editing the UI doc's contract section, not by
-either side unilaterally.
+Everything in this document — domain/db/server/plugins/SDK/CLI *and*
+applying the final UI — happens on this branch. The separate UI thread does
+**standalone visual prototyping only**: Storybook exploration from clean
+`origin/main` with mock data (`plans/dispatch-queue-rework-ui.md` is its
+self-contained brief, including the full state inventory). Its output is
+story files/components handed back to this branch for wiring. No shared
+contract, no coordination protocol — the backend does not wait for it, and
+interim backend UI can stay functional-but-plain until the visuals arrive.
 
 ## Settled decisions
 
