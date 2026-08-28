@@ -17,8 +17,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
   it("omits unmanaged branch checkout when no branch is selected", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: null,
-        defaultWorktreeBaseBranch: null,
         environmentValue: hostLocalEnvironmentValue,
         projectId,
         selectedBranch: null,
@@ -36,8 +34,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
   it("sends explicit existing branch checkout for host local", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: null,
-        defaultWorktreeBaseBranch: null,
         environmentValue: hostLocalEnvironmentValue,
         projectId,
         selectedBranch: selectedBranch("develop"),
@@ -56,8 +52,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
   it("sends explicit new branch checkout for host local", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: null,
-        defaultWorktreeBaseBranch: null,
         environmentValue: hostLocalEnvironmentValue,
         projectId,
         selectedBranch: { name: "develop", isNew: true },
@@ -70,11 +64,9 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
-  it("sends default base branch for managed worktrees without an explicit pick", () => {
+  it("preserves implicit default intent for authoritative server resolution", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: "main",
-        defaultWorktreeBaseBranch: "main",
         environmentValue: hostWorktreeEnvironmentValue,
         projectId,
         selectedBranch: null,
@@ -83,40 +75,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
       workspace: {
         type: "managed-worktree",
         baseBranch: { kind: "default" },
-      },
-    });
-  });
-
-  it("can submit the server-resolved default while branch metadata is still loading", () => {
-    expect(
-      resolveRootComposeThreadEnvironment({
-        defaultBranch: undefined,
-        defaultWorktreeBaseBranch: undefined,
-        environmentValue: hostWorktreeEnvironmentValue,
-        projectId,
-        selectedBranch: null,
-      }),
-    ).toMatchObject({
-      workspace: {
-        type: "managed-worktree",
-        baseBranch: { kind: "default" },
-      },
-    });
-  });
-
-  it("sends smart remote default base branch for managed worktrees without an explicit pick", () => {
-    expect(
-      resolveRootComposeThreadEnvironment({
-        defaultBranch: "main",
-        defaultWorktreeBaseBranch: "origin/main",
-        environmentValue: hostWorktreeEnvironmentValue,
-        projectId,
-        selectedBranch: null,
-      }),
-    ).toMatchObject({
-      workspace: {
-        type: "managed-worktree",
-        baseBranch: { kind: "named", name: "origin/main" },
       },
     });
   });
@@ -124,8 +82,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
   it("sends a named base branch when the selected branch matches the env's current", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: "main",
-        defaultWorktreeBaseBranch: "origin/main",
         environmentValue: hostWorktreeEnvironmentValue,
         projectId,
         selectedBranch: selectedBranch("develop"),
@@ -141,8 +97,6 @@ describe("resolveRootComposeThreadEnvironment", () => {
   it("uses personal workspaces for the personal project", () => {
     expect(
       resolveRootComposeThreadEnvironment({
-        defaultBranch: null,
-        defaultWorktreeBaseBranch: null,
         environmentValue: hostLocalEnvironmentValue,
         projectId: PERSONAL_PROJECT_ID,
         selectedBranch: selectedBranch("develop"),

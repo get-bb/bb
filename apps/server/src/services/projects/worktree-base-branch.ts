@@ -1,10 +1,10 @@
-import type { ProjectSourceCheckout } from "@bb/domain";
+import type { GitSourceInspection } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
 
 interface ResolveDefaultWorktreeBaseBranchArgs {
-  defaultBranch: ProjectSourceCheckout["defaultBranch"];
-  defaultBranchRelation: ProjectSourceCheckout["defaultBranchRelation"];
-  originDefaultBranch: ProjectSourceCheckout["originDefaultBranch"];
+  defaultBranch: GitSourceInspection["defaultBranch"];
+  defaultBranchRelation: GitSourceInspection["defaultBranchRelation"];
+  originDefaultBranch: GitSourceInspection["originDefaultBranch"];
 }
 
 export function resolveDefaultWorktreeBaseBranch(

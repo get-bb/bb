@@ -129,9 +129,17 @@ const testRpcCursorByHost = new Map<string, number>();
 interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
-  listBranchesResult?: HostDaemonOnlineRpcResult<"host.list_branches">;
-  onListBranches?: (
-    command: Extract<HostDaemonRpcCommand, { type: "host.list_branches" }>,
+  queueBranchOptions?: boolean;
+  gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
+  onListBranchOptions?: (
+    command: Extract<
+      HostDaemonRpcCommand,
+      { type: "host.list_branch_options" }
+    >,
+  ) => void;
+  gitSourceInspectionResult?: HostDaemonOnlineRpcResult<"host.inspect_git_source">;
+  onInspectGitSource?: (
+    command: Extract<HostDaemonRpcCommand, { type: "host.inspect_git_source" }>,
   ) => void;
 }
 
@@ -263,12 +271,8 @@ function respondToProviderModelListCommand(
   return true;
 }
 
-function buildDefaultBranchListResult(
-  selectedBranch: string | undefined,
-): HostDaemonOnlineRpcResult<"host.list_branches"> {
+function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"host.inspect_git_source"> {
   return {
-    branches: ["main"],
-    branchesTruncated: false,
     checkout: {
       kind: "branch",
       branchName: "main",
@@ -279,6 +283,15 @@ function buildDefaultBranchListResult(
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",
+  };
+}
+
+function buildDefaultGitBranchOptionsResult(
+  selectedBranch: string | undefined,
+): HostDaemonOnlineRpcResult<"host.list_branch_options"> {
+  return {
+    branches: ["main"],
+    branchesTruncated: false,
     remoteBranches: ["origin/main"],
     remoteBranchesTruncated: false,
     selectedBranch: selectedBranch
@@ -383,8 +396,11 @@ export function registerTestHostRpcCapture(
       if (respondToProviderModelListCommand(deps, args, message)) {
         return;
       }
-      if (command.type === "host.list_branches") {
-        args.onListBranches?.(command);
+      if (
+        command.type === "host.list_branch_options" &&
+        !args.queueBranchOptions
+      ) {
+        args.onListBranchOptions?.(command);
         deps.hub.recordHostOnlineRpcResponse({
           message: hostDaemonOnlineRpcResponseMessageSchema.parse({
             type: "host-rpc.response",
@@ -392,8 +408,24 @@ export function registerTestHostRpcCapture(
             commandType: command.type,
             ok: true,
             result:
-              args.listBranchesResult ??
-              buildDefaultBranchListResult(command.selectedBranch),
+              args.gitBranchOptionsResult ??
+              buildDefaultGitBranchOptionsResult(command.selectedBranch),
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
+      if (command.type === "host.inspect_git_source") {
+        args.onInspectGitSource?.(command);
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result:
+              args.gitSourceInspectionResult ??
+              buildDefaultGitSourceInspectionResult(),
           }),
           sessionId: args.sessionId,
         });

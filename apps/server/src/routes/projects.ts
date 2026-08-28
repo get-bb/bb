@@ -834,17 +834,38 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const branchQuery = normalizeBranchQuery(query.query);
     const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-    const result = await callHostRetryableOnlineRpc(deps, {
+    const remoteRefresh = query.refresh ?? "background";
+    const inspectionPromise = callHostRetryableOnlineRpc(deps, {
       hostId: source.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
-        type: "host.list_branches",
+        type: "host.inspect_git_source",
         path: source.path,
-        ...(branchQuery ? { query: branchQuery } : {}),
-        ...(selectedBranch ? { selectedBranch } : {}),
-        limit: parseBranchListLimit(query.limit),
+        remoteRefresh,
       },
     });
+    const readBranchOptions = () =>
+      callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_branch_options",
+          path: source.path,
+          ...(branchQuery ? { query: branchQuery } : {}),
+          ...(selectedBranch ? { selectedBranch } : {}),
+          limit: parseBranchListLimit(query.limit),
+          remoteRefresh: "none",
+        },
+      });
+    const branchOptionsPromise =
+      remoteRefresh === "background"
+        ? readBranchOptions()
+        : inspectionPromise.then(readBranchOptions);
+    const [inspection, branchOptions] = await Promise.all([
+      inspectionPromise,
+      branchOptionsPromise,
+    ]);
+    const result = { ...inspection, ...branchOptions };
     return context.json({
       ...result,
       defaultWorktreeBaseBranch: resolveDefaultWorktreeBaseBranch(result),

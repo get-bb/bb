@@ -328,9 +328,9 @@ async function resolveManagedBaseBranchForCreate(
       hostId: args.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
-        type: "host.list_branches",
+        type: "host.inspect_git_source",
         path: args.sourcePath,
-        limit: 1,
+        remoteRefresh: "blocking",
       },
     });
     return args.baseBranch.kind === "named"

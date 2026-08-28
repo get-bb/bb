@@ -12,8 +12,6 @@ function roundTrip(
   expect(seed).not.toBeNull();
   if (seed === null) return null;
   return resolveRootComposeThreadEnvironment({
-    defaultBranch: "main",
-    defaultWorktreeBaseBranch: null,
     environmentValue: seed.selectionValue,
     projectId: PROJECT_ID,
     selectedBranch: seed.branch,

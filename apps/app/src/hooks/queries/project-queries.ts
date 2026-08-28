@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
 import type {
   CommandListResponse,
   ProjectBranchesResponse,
@@ -93,7 +94,12 @@ export function useProjectSourceBranches(
   const query = options?.query?.trim() ?? "";
   const limit = options?.limit ?? PROJECT_SOURCE_BRANCHES_LIMIT;
   const selectedBranch = options?.selectedBranch?.trim() ?? "";
-  return useQuery<ProjectBranchesResponse>({
+  const remoteRefreshRef = useRef<{
+    blockingSignal: AbortSignal | null;
+    inFlight: Promise<void> | null;
+    requested: boolean;
+  }>({ blockingSignal: null, inFlight: null, requested: false });
+  const result = useQuery<ProjectBranchesResponse>({
     queryKey: projectSourceBranchesQueryKey(
       projectId ?? "",
       hostId ?? "",
@@ -101,15 +107,28 @@ export function useProjectSourceBranches(
       limit,
       selectedBranch,
     ),
-    queryFn: ({ signal }) =>
-      sdk.projects.branches({
+    queryFn: ({ signal }) => {
+      const remoteRefresh = remoteRefreshRef.current;
+      const startsBlockingRefresh =
+        remoteRefresh.requested && remoteRefresh.blockingSignal === null;
+      const refresh =
+        startsBlockingRefresh || remoteRefresh.blockingSignal === signal
+          ? "blocking"
+          : "background";
+      if (startsBlockingRefresh) {
+        remoteRefresh.requested = false;
+        remoteRefresh.blockingSignal = signal;
+      }
+      return sdk.projects.branches({
         projectId: requireProjectId(projectId, "useProjectSourceBranches"),
         hostId: hostId ?? "",
         ...(query ? { query } : {}),
         ...(selectedBranch ? { selectedBranch } : {}),
         limit: String(limit),
+        refresh,
         signal,
-      }),
+      });
+    },
     enabled,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
     staleTime: PROJECT_SOURCE_BRANCHES_STALE_MS,
@@ -125,6 +144,27 @@ export function useProjectSourceBranches(
           })
         : undefined,
   });
+  const refetch = result.refetch;
+  const refreshFromRemote = useCallback((): Promise<void> => {
+    const remoteRefresh = remoteRefreshRef.current;
+    if (remoteRefresh.inFlight) return remoteRefresh.inFlight;
+
+    const run = async (): Promise<void> => {
+      remoteRefresh.requested = true;
+      remoteRefresh.blockingSignal = null;
+      try {
+        await refetch();
+        if (remoteRefresh.requested) await refetch();
+      } finally {
+        remoteRefresh.requested = false;
+        remoteRefresh.blockingSignal = null;
+        remoteRefresh.inFlight = null;
+      }
+    };
+    remoteRefresh.inFlight = run();
+    return remoteRefresh.inFlight;
+  }, [refetch]);
+  return { ...result, refreshFromRemote };
 }
 
 export function useProjectPromptHistory(

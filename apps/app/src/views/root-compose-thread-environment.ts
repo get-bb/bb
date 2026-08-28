@@ -8,34 +8,19 @@ export interface RootComposeSelectedBranch {
 }
 
 interface ResolveRootComposeThreadEnvironmentArgs {
-  defaultBranch: string | null | undefined;
-  defaultWorktreeBaseBranch: string | null | undefined;
   environmentValue: string;
   projectId: string | undefined;
   selectedBranch: RootComposeSelectedBranch | null;
 }
 
-interface ResolveManagedBaseBranchArgs {
-  defaultBranch: string | null | undefined;
-  defaultWorktreeBaseBranch: string | null | undefined;
-  selectedBranch: RootComposeSelectedBranch | null;
-}
-
 function resolveManagedBaseBranch(
-  args: ResolveManagedBaseBranchArgs,
+  selectedBranch: RootComposeSelectedBranch | null,
 ): BaseBranchSpec {
-  if (!args.selectedBranch) {
-    if (
-      args.defaultWorktreeBaseBranch &&
-      args.defaultWorktreeBaseBranch !== args.defaultBranch
-    ) {
-      return { kind: "named", name: args.defaultWorktreeBaseBranch };
-    }
-
+  if (!selectedBranch) {
     return { kind: "default" };
   }
 
-  return { kind: "named", name: args.selectedBranch.name };
+  return { kind: "named", name: selectedBranch.name };
 }
 
 export function resolveRootComposeThreadEnvironment(
@@ -65,11 +50,7 @@ export function resolveRootComposeThreadEnvironment(
         hostId: parsed.hostId,
         workspace: {
           type: "managed-worktree",
-          baseBranch: resolveManagedBaseBranch({
-            defaultBranch: args.defaultBranch,
-            defaultWorktreeBaseBranch: args.defaultWorktreeBaseBranch,
-            selectedBranch: args.selectedBranch,
-          }),
+          baseBranch: resolveManagedBaseBranch(args.selectedBranch),
         },
       };
     }
