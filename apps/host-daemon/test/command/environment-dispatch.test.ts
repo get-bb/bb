@@ -68,6 +68,8 @@ class FakeTerminalPty implements TerminalPtyProcess {
     this.exitListeners = [];
   }
 
+  dispose(): void {}
+
   kill(signal?: string): void {
     this.killCalls.push(signal ?? null);
   }
