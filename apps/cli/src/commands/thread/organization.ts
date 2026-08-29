@@ -96,7 +96,7 @@ const MAX_QUEUE_TEXT_WIDTH = 40;
 /**
  * The queue as a table rather than raw JSON.
  *
- * `Waiting on` and `Send at` are the two columns that make a parked row
+ * `Waiting on` and `Send at` are the two columns that make a queued row
  * legible: without them a queued message and one blocked behind a rate-limit
  * window look identical, which is exactly the confusion the typed waits exist
  * to remove.
@@ -323,7 +323,7 @@ export function registerOrganizationCommands(
   queue
     .command("list [threadId]")
     .description(
-      "List parked and queued messages; omit the thread to list every one",
+      "List queued messages; omit the thread to list every one",
     )
     .option(
       "--wait-holder <holder>",
@@ -336,7 +336,7 @@ export function registerOrganizationCommands(
           const sdk = createCliBbSdk(getUrl());
           // A thread argument keeps the thread-scoped route, which is the one
           // that returns queue ORDER; the cross-thread route answers "what is
-          // parked anywhere" and is ordered by age instead.
+          // queued anywhere" and is ordered by age instead.
           const result =
             threadId === undefined
               ? await sdk.threads.queue.list({

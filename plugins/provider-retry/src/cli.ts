@@ -1,9 +1,9 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import {
-  findParkedRetry,
-  listParkedRetries,
-  type ParkedRetry,
-} from "./parked-retries.js";
+  findQueuedRetry,
+  listQueuedRetries,
+  type QueuedRetry,
+} from "./queued-retries.js";
 
 function requestedThreadId(
   argv: string[],
@@ -14,12 +14,12 @@ function requestedThreadId(
   );
 }
 
-function textParkedRetry(parked: ParkedRetry): string {
+function textQueuedRetry(queued: QueuedRetry): string {
   const retry =
-    parked.sendAt === null
+    queued.sendAt === null
       ? "pending"
-      : `retrying ${new Date(parked.sendAt).toISOString()}`;
-  return `${parked.threadId}\t${parked.id}\t${retry}`;
+      : `retrying ${new Date(queued.sendAt).toISOString()}`;
+  return `${queued.threadId}\t${queued.id}\t${retry}`;
 }
 
 /**
@@ -65,22 +65,22 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
       const threadId = requestedThreadId(args, context);
 
       if (command === "status") {
-        const parked = await listParkedRetries(
+        const queued = await listQueuedRetries(
           bb,
           threadId === null ? undefined : threadId,
         );
         if (json) {
           return {
             exitCode: 0,
-            stdout: `${JSON.stringify({ retries: parked }, null, 2)}\n`,
+            stdout: `${JSON.stringify({ retries: queued }, null, 2)}\n`,
           };
         }
         return {
           exitCode: 0,
           stdout:
-            parked.length === 0
+            queued.length === 0
               ? "No provider retries are pending.\n"
-              : `${parked.map(textParkedRetry).join("\n")}\n`,
+              : `${queued.map(textQueuedRetry).join("\n")}\n`,
         };
       }
 
@@ -90,8 +90,8 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
           stderr: `A thread id is required: bb provider-retry ${command} <thread-id>\n`,
         };
       }
-      const parked = await findParkedRetry(bb, threadId);
-      if (parked === null) {
+      const queued = await findQueuedRetry(bb, threadId);
+      if (queued === null) {
         return json
           ? {
               exitCode: 1,
@@ -104,22 +104,22 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
       }
       if (command === "cancel") {
         await bb.sdk.threads.queuedMessages.delete({
-          threadId: parked.threadId,
-          queuedMessageId: parked.id,
+          threadId: queued.threadId,
+          queuedMessageId: queued.id,
         });
       } else {
         // Send now: bypasses this plugin's own wait and the row's schedule,
         // which is exactly what "retry it now" means.
         await bb.sdk.threads.queuedMessages.send({
-          threadId: parked.threadId,
-          queuedMessageId: parked.id,
+          threadId: queued.threadId,
+          queuedMessageId: queued.id,
           mode: "auto",
         });
       }
       if (json) {
         return {
           exitCode: 0,
-          stdout: `${JSON.stringify({ ok: true, threadId, queuedMessageId: parked.id }, null, 2)}\n`,
+          stdout: `${JSON.stringify({ ok: true, threadId, queuedMessageId: queued.id }, null, 2)}\n`,
         };
       }
       return {

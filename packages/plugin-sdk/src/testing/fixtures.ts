@@ -1,7 +1,7 @@
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
+type QueueEntry = PluginThreadEventPayloads["queue.waiting"]["entry"];
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -42,9 +42,9 @@ export function makeThreadResponse(
 }
 
 /**
- * A complete, deterministic parked queue row for the `queue.*` event payloads
+ * A complete, deterministic queued row for the `queue.*` event payloads
  * and for faking `sdk.threads.queuedMessages.list`. Defaults are a live inline
- * row parked on this plugin's wait; override what the test is about. If the
+ * row on this plugin's wait; override what the test is about. If the
  * contract grows a required field, this builder fails typecheck — update the
  * default here.
  */
@@ -52,7 +52,7 @@ export function makeQueueEntry(overrides: Partial<QueueEntry> = {}): QueueEntry 
   return {
     id: "queued_1",
     threadId: "thread-1",
-    content: [{ type: "text", text: "Parked turn", mentions: [] }],
+    content: [{ type: "text", text: "Queued turn", mentions: [] }],
     model: "test-model",
     reasoningLevel: "medium",
     permissionMode: "auto",

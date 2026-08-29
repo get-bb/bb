@@ -16,7 +16,7 @@ interface AcceptThreadSendRequestArgs {
  * tell`, `sdk.threads.send`) and runs it through the dispatch checkpoint.
  *
  * There is nothing left here to decide. What used to be a four-way routing
- * decision — queue it, defer it behind an interaction, park it in a hold, or
+ * decision — queue it, defer it behind an interaction, hold it back, or
  * send it — was four spellings of "this cannot run yet", and the checkpoint
  * answers all four with one typed wait on one queued row. So this function's
  * whole job is now to translate the attempt's outcome into the wire response.
@@ -40,9 +40,9 @@ export async function acceptThreadSendRequest(
   }
   return {
     ok: true,
-    delivery: "parked",
+    delivery: "queued",
     queuedMessageId: outcome.entry.id,
-    // A parked row always has a wait; `waitingOn` is nullable on the DTO only
+    // A queued row always has a wait; `waitingOn` is nullable on the DTO only
     // for rows written by the plain queue route before any attempt ran, which
     // are ordinary "behind the running turn" rows.
     waitingOn: outcome.entry.waitingOn ?? { kind: "thread-busy" },

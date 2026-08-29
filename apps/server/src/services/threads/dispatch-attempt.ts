@@ -30,11 +30,14 @@ import {
   dispatchExecutionSources,
   dispatchWaitReasonForPass,
   hasDispatchGates,
-  noteDispatchReparked,
+  noteDispatchRequeued,
   runDispatchGatePass,
   type DispatchAttemptKind,
 } from "./dispatch-gates.js";
-import { parkDispatch, settleQueueRowDispatched } from "./queue-parking.js";
+import {
+  recordQueuedMessageWait,
+  settleQueueRowDispatched,
+} from "./queue-waits.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import { isManualCompactionActive } from "./thread-events.js";
@@ -66,7 +69,7 @@ import type { TurnRequestRetryMarker } from "./thread-events.js";
  * Persisted on the thread (`threads.pending_start_context`) rather than
  * recomputed, because the live provisioning context is in-memory only and
  * requires the thread to be `starting` — a `pending` thread's first message can
- * wait for a week and across a restart, so a parked context would not survive
+ * wait for a week and across a restart, so an in-memory context would not survive
  * the wait.
  */
 export const pendingThreadStartContextSchema = z.object({
@@ -95,7 +98,7 @@ export function readPendingThreadStartContext(
  *
  * `inline` is somebody sending right now; `drain` is a re-attempt of rows a
  * drain already claimed. The two run the SAME checkpoint — that is the whole
- * point — and differ only in what parking does (create a row vs. hand the
+ * point — and differ only in what queueing does (create a row vs. hand the
  * claimed one back) and in whether a failure has a caller to report to.
  */
 export type DispatchAttemptSource =
@@ -121,7 +124,7 @@ export interface DispatchAttemptArgs {
    * thread. Absent on a drain re-attempt, which reads it back off the thread.
    */
   startContext?: PendingThreadStartContext;
-  /** What the parked row would carry; `retry` for a re-submitted failed turn. */
+  /** What the queued row would carry; `retry` for a re-submitted failed turn. */
   queuePayload: QueuedMessagePayload;
   /** Retry provenance, when this attempt re-submits a failed turn. */
   retryOf?: TurnRequestRetryMarker;
@@ -135,7 +138,7 @@ export interface DispatchAttemptArgs {
 
 export type DispatchAttemptOutcome =
   | { kind: "dispatched" }
-  | { kind: "parked"; entry: ThreadQueuedMessage };
+  | { kind: "queued"; entry: ThreadQueuedMessage };
 
 /**
  * Whether this attempt starts a turn or joins one that is already running.
@@ -160,12 +163,12 @@ export function resolveDispatchAttemptKind(
  * THE dispatch checkpoint.
  *
  * Every message on its way to a provider passes through here exactly once per
- * attempt, whether it was just sent, was parked and became eligible again, or
+ * attempt, whether it was just sent, was queued and became eligible again, or
  * is a retry of a turn that failed. The shape is the plan's three steps:
  *
  * 1. **Core waits.** A future `sendAt`, a thread already running a turn this
  *    message did not ask to join, a workspace still provisioning, an
- *    unanswered interaction. Each parks the message with its typed reason and
+ *    unanswered interaction. Each queues the message with its typed reason and
  *    returns; none of them consults a plugin, because none of them is a
  *    policy — they are the invariants a dispatch cannot violate.
  * 2. **The single plugin pass.** One stage, one chain, `proceed` / `wait` /
@@ -185,7 +188,7 @@ export async function attemptDispatch(
   ensureThreadIsWritable(thread);
   if (args.trigger === "user" && args.source.kind === "inline") {
     // Reject what can never deliver while the sender is still listening; a
-    // drain has nobody to tell, and its rows were validated when they parked.
+    // drain has nobody to tell, and its rows were validated when they were queued.
     await validatePromptAttachmentReferences({
       dataDir: deps.config.dataDir,
       input: payload.input,
@@ -211,18 +214,18 @@ export async function attemptDispatch(
   );
   const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
 
-  const park = (
+  const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,
   ): DispatchAttemptOutcome => {
-    const entry = parkDispatch(deps, {
+    const entry = recordQueuedMessageWait(deps, {
       thread,
       message: {
         input: payload.input,
         execution,
         senderThreadId,
         payload: args.queuePayload,
-        // Only core parks a system notice, and it does so directly rather
+        // Only core queues a system notice, and it does so directly rather
         // than through a send request, so an attempt never carries one.
         systemNotice: null,
       },
@@ -231,19 +234,19 @@ export async function attemptDispatch(
       claimed,
     });
     if (entry === null) {
-      // The row vanished under a re-park (the user deleted it). Nothing is
+      // The row vanished under a re-queue (the user deleted it). Nothing is
       // waiting and nothing dispatched; report it as dispatched-away so the
       // drain stops rather than looping on a row that no longer exists.
       return { kind: "dispatched" };
     }
-    return { kind: "parked", entry };
+    return { kind: "queued", entry };
   };
 
   // --- 1. core waits, in the order a message meets them -------------------
 
   const sendAt = payload.sendAt ?? null;
   if (!sendNow && sendAt !== null && sendAt > Date.now()) {
-    return park({ kind: "time" }, sendAt);
+    return waitOn({ kind: "time" }, sendAt);
   }
 
   if (thread.status === "active" && attempt === "start-turn") {
@@ -252,22 +255,22 @@ export async function attemptDispatch(
       // conflict rather than something to wait behind. Unchanged 409.
       throwThreadNotWritable(thread, "already_active", "Thread is already active");
     }
-    return park({ kind: "thread-busy" }, null);
+    return waitOn({ kind: "thread-busy" }, null);
   }
   if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
-    return park({ kind: "thread-busy" }, null);
+    return waitOn({ kind: "thread-busy" }, null);
   }
   if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
     // A follow-up or steer sent while the workspace is being (re)provisioned.
     // The workspace-ready drain re-attempts it; the thread's first message
     // never lands here, because it rides the cold-start command instead.
-    return park({ kind: "provisioning" }, null);
+    return waitOn({ kind: "provisioning" }, null);
   }
   if (
     payload.mode !== "start" &&
     deps.pendingInteractions.hasPendingThreadInteraction(thread.id)
   ) {
-    return park({ kind: "interaction" }, null);
+    return waitOn({ kind: "interaction" }, null);
   }
 
   // --- 2. the single plugin pass ------------------------------------------
@@ -322,9 +325,9 @@ export async function attemptDispatch(
     });
     if (outcome.kind === "wait") {
       if (claimed !== null) {
-        noteDispatchReparked(thread.id);
+        noteDispatchRequeued(thread.id);
       }
-      return park(
+      return waitOn(
         {
           kind: "plugin",
           pluginId: outcome.waiter.pluginId,
@@ -416,7 +419,7 @@ interface PendingThreadAdmission {
 
 /**
  * The committing half of a cleared FIRST attempt: the thread leaves `pending`
- * for `starting`, and the parked row that carried the message is consumed.
+ * for `starting`, and the queued row that carried the message is consumed.
  *
  * This runs INSIDE the gate evaluation lock whenever a gate pass ran, which is
  * the whole flip-before-unlock invariant — the next attempt in the queue reads
@@ -448,7 +451,7 @@ async function admitPendingThread(
   });
   const claimedRow = args.claimed?.[0] ?? null;
   if (args.claimed !== null && args.claimed.length > 0) {
-    // Consume the parked row before anything else: the claim CAS already
+    // Consume the queued row before anything else: the claim CAS already
     // picked this drain as the winner, and provisioning is driven off this
     // stack, so there is no later transaction to fold the delete into.
     deps.db.transaction(

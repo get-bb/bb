@@ -152,8 +152,8 @@ row, a retry of a failed turn — and it runs identically for all of them. The
 handler receives a typed context (project, environment/host, prompt blocks plus
 a plain-text view, the resolved execution tuple with per-field provenance,
 origin/parent provenance, the target thread, whether the attempt would
-`start-turn` or `join-turn`, and the parked row when the attempt is a
-re-attempt) and answers `proceed`, `wait` (park the message as a queued row
+`start-turn` or `join-turn`, and the queued row when the attempt is a
+re-attempt) and answers `proceed`, `wait` (queue the message as a row
 with a reason and an optional `retryAt`), or `reject` (a synchronous 409
 carrying the plugin's message). A gate cannot rewrite the dispatch it is
 deciding about: there is no amendment arm.
@@ -165,7 +165,7 @@ only describe a dispatch that has not happened (`executionSources`, `attempt`,
 request id of the retry chain, the provider turn id, the failure message, the
 provider's `ProviderErrorInfo`, the latest `ProviderRateLimitState`, and
 `attemptNumber`. It answers `none` or `retry(reason, resumeAt)`, and a `retry`
-parks a by-reference queued row that re-submits the ORIGINAL turn when it
+queues a by-reference row that re-submits the ORIGINAL turn when it
 dispatches.
 
 Gates run as a deterministic chain in plugin install order, `reject`
@@ -177,7 +177,7 @@ throws or exceeds a 10s decision box fails the attempt with the plugin named
 
 A plugin's wait clears without the plugin doing anything: the row's `retryAt`
 comes due, a thread leaves the running set and core re-attempts every
-plugin-parked row, the user sends it now, or the orphan sweep clears a wait
+plugin-queued row, the user sends it now, or the orphan sweep clears a wait
 whose plugin is no longer running.
 
 At `turn.failed` fail-closed resolves the other way, deliberately. The turn has
@@ -185,7 +185,7 @@ already failed, so the safe state is the failure standing exactly as core
 applied it. A gate that throws, times out or returns a malformed verdict has its
 verdict DISCARDED with the plugin named in the server log. The chain also
 short-circuits on the first `retry`, and the pass is serialized per thread so
-two failures arriving together cannot park the same turn twice.
+two failures arriving together cannot queue the same turn twice.
 
 **Audit before stabilizing.**
 
@@ -193,7 +193,7 @@ two failures arriving together cannot park the same turn twice.
   handler failure; `"turn.failed"` ignores it. Both are right, and they are one
   method name. Confirm the doc comment carries that, or split the registration.
 - **`wait` returns no row id.** A gate returns a reason; the id arrives later on
-  `queue.parked`. Every plugin that must act on its own wait therefore
+  `queue.waiting`. Every plugin that must act on its own wait therefore
   correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
   Decide whether the verdict should be able to name a correlation key.
 - **A wait has no plugin-driven release.** The only ways out are `retryAt`,
@@ -210,7 +210,7 @@ two failures arriving together cannot park the same turn twice.
 - **`PluginTurnFailure` completeness.** Confirm the failure record answers every
   question a retry policy asks without replaying the event log.
 - **Attempt caps are entirely the plugin's.** Core enforces no ceiling on retry
-  chains beyond one parked row per original request.
+  chains beyond one queued row per original request.
 - **"Never started" is now a thread status, not an event-log fact.** That
   replaced a `getLastProviderThreadId(...) === null` probe on a hot-ish path.
   Confirm `pending` is maintained everywhere that probe used to be consulted.
@@ -271,24 +271,25 @@ plugin, counted in an in-memory sliding window.
   adds a row every turn. The rate limit bounds the burst, not the total. Decide
   whether notes need a supersede/replace affordance before this is stable.
 
-## `queue.parked` / `queue.dispatched` / `queue.cancelled` (`bb.events.on`)
+## `queue.waiting` / `queue.dispatched` (`bb.events.on`)
 
 **What it does.** Queue lifecycle events on the existing observe-only
 `bb.events.on` registry, each carrying the `ThreadQueuedMessage` DTO that
-`GET /threads/:id/queued-messages` serves. `queue.parked` fires on a re-park as
-well as a first park, because a row that moved from one wait to another is news
-to whoever was waiting on the old one. `queue.cancelled` is a waiting plugin's
-teardown signal.
+`GET /threads/:id/queued-messages` serves. `queue.waiting` fires when a row's
+wait is rewritten as well as when the row is first queued, because a row that
+moved from one wait to another is news to whoever was waiting on the old one.
 
 **Audit before stabilizing.** These are still the only non-thread events on
 `bb.events.on`, so the interface is called `PluginThreadEventPayloads` and its
 handler type `PluginThreadEventHandler`; renaming both project-wide is part of
-stabilizing. Decide whether every plugin should see every parked row (it does
+stabilizing. Decide whether every plugin should see every queued row (it does
 today, and filtering on `entry.waitingOn` is the documented pattern) or whether
-a plugin should only see the rows it is holding. Decide too whether
-`queue.parked` firing on every re-park is what a listener wants, or whether a
-separate `queue.updated` belongs alongside it — the timeline event already
-distinguishes the two.
+a plugin should only see the rows whose wait it owns. Decide too whether
+`queue.waiting` firing on every rewritten wait is what a listener wants, or
+whether a separate `queue.updated` belongs alongside it — the timeline event
+already distinguishes the two. There is no cancellation event: a plugin that
+needs a teardown signal has none today, so decide whether one belongs here
+before this is stable.
 
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 
@@ -2041,7 +2042,7 @@ slots need the same treatment.
 ## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Runs the composer's own submit pipeline with the draft that
-is on screen, parking the result until `sendAt` instead of dispatching it.
+is on screen, queueing the result until `sendAt` instead of dispatching it.
 In a thread composer that is a send that is held rather than sent or queued; in
 the new-thread composer the thread is created idle and its first turn becomes
 the hold. The point is that everything the user selected travels with the

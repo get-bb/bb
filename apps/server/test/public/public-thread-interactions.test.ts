@@ -833,8 +833,8 @@ describe("public thread interaction routes", () => {
         status: "idle",
       });
       // An `idle` thread has always run a turn, and the checkpoint resolves the
-      // execution tuple it would freeze on a parked row before it decides to
-      // park — so the fixture needs the prior turn a real thread would have.
+      // execution tuple it would freeze on a queued row before it decides to
+      // queue — so the fixture needs the prior turn a real thread would have.
       seedThreadRuntimeState(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-thread-blocked",
@@ -889,16 +889,16 @@ describe("public thread interaction routes", () => {
         },
       );
       // A prompt cannot interrupt the interaction, but the message is not lost:
-      // it parks on the queue and delivers once the interaction settles (#1650).
+      // it joins the queue and delivers once the interaction settles (#1650).
       expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
         ok: true,
-        delivery: "parked",
+        delivery: "queued",
         queuedMessageId: expect.any(String),
         waitingOn: { kind: "interaction" },
         sendAt: null,
       });
-      // The parked row sits alongside the message that was already queued, and
+      // The queued row sits alongside the message that was already queued, and
       // it is the only one carrying the interaction wait.
       expect(
         listQueuedThreadMessages(harness.db, thread.id).filter(
@@ -990,12 +990,12 @@ describe("public thread interaction routes", () => {
         },
       );
       // The queue drains when the thread is next idle, which an open
-      // interaction does not change, so an explicit queue request parks behind
+      // interaction does not change, so an explicit queue request queues behind
       // the running turn rather than behind the interaction.
       expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toEqual({
         ok: true,
-        delivery: "parked",
+        delivery: "queued",
         queuedMessageId: expect.any(String),
         waitingOn: { kind: "thread-busy" },
         sendAt: null,

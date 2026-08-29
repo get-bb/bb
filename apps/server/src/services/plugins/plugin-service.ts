@@ -214,8 +214,8 @@ export interface PluginService {
   getApi(id: string): BbPluginApi | undefined;
   /**
    * Whether this plugin's runtime is live right now. Core uses it to decide
-   * whether a `plugin:<id>` owner still exists — a dispatch hold whose owner
-   * is gone is released as `orphaned` rather than stranding the user's turn.
+   * whether a `plugin:<id>` owner still exists — a queue wait whose owner is
+   * gone is cleared as `orphaned` rather than stranding the user's turn.
    */
   isPluginLoaded(id: string): boolean;
   /**
@@ -1361,9 +1361,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
-      emitQueueParked: buildQueueEventEmitter("queue.parked"),
+      emitQueueWaiting: buildQueueEventEmitter("queue.waiting"),
       emitQueueDispatched: buildQueueEventEmitter("queue.dispatched"),
-      emitQueueCancelled: buildQueueEventEmitter("queue.cancelled"),
     },
 
     dispatchGates: {

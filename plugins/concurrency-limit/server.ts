@@ -9,7 +9,7 @@
 // ones. That has a real cost, stated here rather than hidden behind an
 // exemption: under a tight limit, an orchestration pattern where a running
 // parent waits on threads it spawned (the workflows plugin) can wedge, because
-// the parent holds a slot while the children it is waiting for sit parked
+// the parent holds a slot while the children it is waiting for sit queued
 // behind that same limit. It unwedges when other slots free, or when the user
 // sends a child now from its queue. The alternative — exempting whole classes
 // of thread from a limit the user set — silently overruns the number the user
@@ -18,7 +18,7 @@
 // It used to be four times this size, because it kept its own occupancy
 // tally — a baseline seeded from `threads.count`, maintained by lifecycle
 // events, plus its own in-flight `proceed`s — and its own registry of the rows
-// it had parked, so it could clear the oldest one when a slot freed. None of
+// it had queued, so it could clear the oldest one when a slot freed. None of
 // that is needed now:
 //
 //   * `sdk.threads.listRunning()` answers "which threads are occupying
@@ -27,9 +27,9 @@
 //     that lock releases, so inside a gate the answer already includes every
 //     admission granted ahead of this one. No in-flight bookkeeping, no
 //     reseeding, no drift to reconcile.
-//   * Core re-attempts every plugin-parked row whenever a thread leaves the
-//     occupying set. A parked row is re-decided by this very gate, so a
-//     release that is not warranted simply re-parks — which is why the plugin
+//   * Core re-attempts every plugin-queued row whenever a thread leaves the
+//     occupying set. A queued row is re-decided by this very gate, so a
+//     release that is not warranted simply re-queues — which is why the plugin
 //     never needed to choose *which* row to release.
 //
 // What remains, deliberately: unparseable settings report through
@@ -108,7 +108,7 @@ export default async function concurrencyLimitPlugin(
 
   bb.experimental_dispatch.gate("dispatch", async (context) => {
     // A thread that is already occupying its slot is not asking for a new one.
-    // Re-evaluating it would park a running thread's own follow-up behind the
+    // Re-evaluating it would queue a running thread's own follow-up behind the
     // pool it is itself filling — and a `join-turn` attempt is by definition
     // joining a turn whose slot is already ours.
     if (

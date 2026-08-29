@@ -88,10 +88,10 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the freed-capacity drain", () => {
-  it("re-attempts a plugin-parked row once the gate lets it through", async () => {
+  it("re-attempts a plugin-queued row once the gate lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core
     // re-attempts, the gate re-decides, and a row that is still blocked simply
-    // re-parks. No plugin has to work out which row deserves the freed slot.
+    // re-queues. No plugin has to work out which row deserves the freed slot.
     await withTestHarness(async (harness) => {
       let full = true;
       const registry: GateRegistry = { dispatch: [], "turn.failed": [] };
@@ -108,7 +108,7 @@ describe("the freed-capacity drain", () => {
         status: "idle",
       });
 
-      // Parked inline, so the re-park pacing window never opens.
+      // Queued inline, so the re-queue pacing window never opens.
       await acceptThreadSendRequest(harness.deps, {
         payload: { input: textInput("held work"), mode: "auto" },
         thread,
@@ -139,8 +139,8 @@ describe("the freed-capacity drain", () => {
         payload: { input: textInput("after this turn"), mode: "queue-if-active" },
         thread,
       });
-      const parked = listQueuedThreadMessages(harness.db, thread.id);
-      expect(parked).toHaveLength(1);
+      const queued = listQueuedThreadMessages(harness.db, thread.id);
+      expect(queued).toHaveLength(1);
 
       registry.dispatch.push({
         pluginId: "limiter",
@@ -157,7 +157,7 @@ describe("the freed-capacity drain", () => {
     });
   });
 
-  it("honours the re-park pacing so a plugin that stays full is not re-asked in a loop", async () => {
+  it("honours the re-queue pacing so a plugin that stays full is not re-asked in a loop", async () => {
     await withTestHarness(async (harness) => {
       let passes = 0;
       const registry: GateRegistry = { dispatch: [], "turn.failed": [] };
@@ -179,7 +179,7 @@ describe("the freed-capacity drain", () => {
       });
       expect(passes).toBe(1);
 
-      // The first drain re-parks, which starts the thread's cooldown; the
+      // The first drain re-queues, which starts the thread's cooldown; the
       // second finds it and does nothing, so a burst of completions costs one
       // gate pass per thread rather than one per completion.
       await runFreedCapacityQueueDrain(harness.deps);

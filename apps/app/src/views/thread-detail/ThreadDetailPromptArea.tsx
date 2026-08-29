@@ -673,7 +673,7 @@ export function ThreadDetailPromptArea({
     environmentGoneStatus !== null || thread.archivedAt !== null;
   // A `pending` thread has never dispatched, so an empty queue means there is
   // nothing left that will ever run — the empty shell cancelling the last
-  // parked message leaves behind. Derived rather than tracked as a "just
+  // queued message leaves behind. Derived rather than tracked as a "just
   // cancelled" flag: the condition IS the state, and a flag would miss the
   // same shell arrived at any other way (a queued row sent from the CLI, a
   // second tab). Guarded on submission so the gap between "send accepted" and
@@ -871,9 +871,9 @@ export function ThreadDetailPromptArea({
   /**
    * `handleSend` for a submission that is being scheduled rather than sent.
    *
-   * Deliberately NOT `handleSend`'s queue/send fork: the server parks a
+   * Deliberately NOT `handleSend`'s queue/send fork: the server queues a
    * `sendAt` send whether or not the thread is busy, so scheduling while a
-   * turn runs must produce a parked row, not a queued message that dispatches
+   * turn runs must produce a queued row, not a queued message that dispatches
    * the moment the turn ends. Everything else is shared — the same draft, the
    * same resolved attachments and @-mentions, the same frozen execution tuple,
    * the same clear-and-restore-on-failure.

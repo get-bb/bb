@@ -391,7 +391,7 @@ export {
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
   releaseQueuedMessageClaim,
-  reparkClaimedQueuedThreadMessages,
+  requeueClaimedQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageWaitingOn,
   releaseStaleQueuedMessageClaims,

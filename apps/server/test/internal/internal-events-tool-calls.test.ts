@@ -600,7 +600,7 @@ describe("internal event and tool-call routes", () => {
       expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
         ok: true,
-        delivery: "parked",
+        delivery: "queued",
         queuedMessageId: expect.any(String),
         waitingOn: { kind: "thread-busy" },
         sendAt: null,

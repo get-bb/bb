@@ -238,7 +238,7 @@ const groupedMessages: readonly ThreadQueuedMessage[] = multipleMessages.map(
 );
 
 // ---------------------------------------------------------------------------
-// Wait states: one fixture per condition that can park a row.
+// Wait states: one fixture per condition that can queue a row.
 // ---------------------------------------------------------------------------
 
 const waitingForWorkspace: readonly ThreadQueuedMessage[] = [
@@ -283,7 +283,7 @@ const scheduledSoon: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-const pluginHeld: readonly ThreadQueuedMessage[] = [
+const pluginWait: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_plugin_held",
     text: "Run the browser matrix against the candidate build.",
@@ -295,7 +295,7 @@ const pluginHeld: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
-const pluginHeldStale: readonly ThreadQueuedMessage[] = [
+const pluginWaitStale: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_plugin_stale",
     text: "Build the simulator bundle and capture the drawer trace.",
@@ -679,7 +679,7 @@ export function SteerWaitStates() {
   );
 }
 
-export function ScheduledAndHeldDispatch() {
+export function ScheduledAndWaitingDispatch() {
   return (
     <StoryCard>
       <StoryRow
@@ -699,24 +699,24 @@ export function ScheduledAndHeldDispatch() {
         </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
-        label="plugin hold"
-        hint="a plugin names why it is holding the dispatch"
+        label="plugin wait"
+        hint="a plugin names why the dispatch is waiting"
       >
         <ResponsivePromptStage>
-          <StaticQueuedMessagesList queuedMessages={pluginHeld} />
+          <StaticQueuedMessagesList queuedMessages={pluginWait} />
         </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
-        label="plugin hold · stale"
+        label="plugin wait · stale"
         hint="the plugin has stopped reporting progress"
       >
         <ResponsivePromptStage>
-          <StaticQueuedMessagesList queuedMessages={pluginHeldStale} />
+          <StaticQueuedMessagesList queuedMessages={pluginWaitStale} />
         </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="retry"
-        hint="a failed turn parked by reference; no message to quote, not editable"
+        hint="a failed turn queued by reference; no message to quote, not editable"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={retry} />
@@ -822,11 +822,11 @@ export function NarrowSurface() {
         </PromptStage>
       </StoryRow>
       <StoryRow
-        label="parked"
+        label="queued"
         hint="the wait line truncates rather than wrapping"
       >
         <PromptStage size="mobile">
-          <StaticQueuedMessagesList queuedMessages={pluginHeldStale} />
+          <StaticQueuedMessagesList queuedMessages={pluginWaitStale} />
         </PromptStage>
       </StoryRow>
       <StoryRow

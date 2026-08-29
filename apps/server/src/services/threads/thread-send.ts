@@ -237,7 +237,6 @@ function ensureRuntimeCanAcceptActiveSend(
   }
 
   const runtime = resolveThreadRuntimeState(deps, {
-    threadId: args.thread.id,
     environmentHostId: args.environment.hostId,
     status: args.thread.status,
   });

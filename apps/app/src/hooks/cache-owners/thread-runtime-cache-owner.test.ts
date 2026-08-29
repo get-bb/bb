@@ -935,8 +935,8 @@ describe("thread runtime cache owner", () => {
       )?.rows,
     ).toEqual([]);
   });
-  it("drops the optimistic turn when a send parks on the queue", async () => {
-    // The queued row above the composer is what renders a parked message, so
+  it("drops the optimistic turn when a send joins the queue", async () => {
+    // The queued row above the composer is what renders a queued message, so
     // the optimistic row must go: keeping it would show the message twice and
     // imply it had already been sent.
     const queryClient = createAppQueryClient({
@@ -967,7 +967,7 @@ describe("thread runtime cache owner", () => {
     expect(transaction.kind).toBe("accepted-turn");
 
     applySendThreadMessageSuccess({
-      delivery: "parked",
+      delivery: "queued",
       queryClient,
       realtimeConnected: true,
       request,

@@ -2,7 +2,7 @@
 =======
 // Version 175 adds a `host-offline` arm to the queued-message wait union,
 // which `system/queue-state` carries in `threadEventSchema` and the daemon's
-// event batch parses. It names the enrolled machine a parked row is waiting to
+// event batch parses. It names the enrolled machine a queued row is waiting to
 // reach, so the wait carries the host's display name — the renderers that word
 // it (the timeline projection, `bb thread queue`) have no database to resolve
 // an id against. The server is the only writer of the event and no daemon or
@@ -14,7 +14,7 @@
 //
 // Version 174 loosens `system/dispatch-hold`'s `holder` from the closed
 // hold-owner union to a plain non-empty string. Dispatch holds are gone —
-// parked queue rows and `system/queue-state` replaced them — so nothing writes
+// queued rows and `system/queue-state` replaced them — so nothing writes
 // that event any more and nothing dispatches on the field; the arm survives
 // only so a thread whose history contains one still decodes. Keeping a closed
 // union alive to validate dead rows would have kept the whole holder
@@ -24,8 +24,8 @@
 // precedent).
 //
 // Version 173 adds the `system/queue-state` thread event and the `pending`
-// thread status. The event is the timeline row a parked queued message owns
-// (parked/updated/dispatched/cancelled, with the typed wait it is parked on);
+// thread status. The event is the timeline row a queued message owns
+// (queued/updated/dispatched/cancelled, with the typed wait it is waiting on);
 // `pending` is a thread that exists but has never cleared a dispatch attempt.
 // The server is the only writer of both and no daemon or bridge produces
 // either, so the bytes on the wire are unchanged; the bump records that the

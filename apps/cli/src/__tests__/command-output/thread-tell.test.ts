@@ -32,12 +32,12 @@ describe("bb thread tell command output", () => {
     });
   });
 
-  it("bb thread tell names the typed reason a message parked for", async () => {
+  it("bb thread tell names the typed reason a message queued for", async () => {
     // The server says WHY, so the CLI stops inferring it from the flags it
     // sent — which is what let the old four-way delivery enum collapse.
     const post = vi.fn(async () => ({
       ok: true,
-      delivery: "parked",
+      delivery: "queued",
       queuedMessageId: "qm_1",
       waitingOn: { kind: "interaction" },
       sendAt: null,
@@ -51,10 +51,10 @@ describe("bb thread tell command output", () => {
     );
   });
 
-  it("bb thread tell names the plugin a message is parked on", async () => {
+  it("bb thread tell names the plugin a message is waiting on", async () => {
     const post = vi.fn(async () => ({
       ok: true,
-      delivery: "parked",
+      delivery: "queued",
       queuedMessageId: "qm_2",
       waitingOn: {
         kind: "plugin",

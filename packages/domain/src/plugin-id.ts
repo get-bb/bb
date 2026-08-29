@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * A plugin id as {@link derivePluginId} produces it: lowercase alphanumerics
  * and dashes, starting with an alphanumeric. Anywhere a plugin id crosses a
- * boundary (a parked row's wait holder) this is what makes it a value the
+ * boundary (a queued row's wait holder) this is what makes it a value the
  * routes and CLI can address back.
  */
 export const pluginIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);

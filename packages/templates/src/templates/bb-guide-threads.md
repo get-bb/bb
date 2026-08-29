@@ -209,10 +209,10 @@ Messaging:
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free. A target that is awaiting user interaction (an open question or
-  approval) cannot take a prompt; tell then parks the message on the thread's
+  approval) cannot take a prompt; tell then adds the message to the thread's
   queue and dispatches it once the interaction settles. That outcome is not a
-  failure, so do not resend. `--json` reports `delivery` as `sent` or `parked`,
-  and a parked answer carries `queuedMessageId`, `waitingOn` and `sendAt`. A deferred message waits for a thread that failed while
+  failure, so do not resend. `--json` reports `delivery` as `sent` or `queued`,
+  and a queued answer carries `queuedMessageId`, `waitingOn` and `sendAt`. A deferred message waits for a thread that failed while
   it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
@@ -289,19 +289,19 @@ Queued messages:
   A queued message is one that could not dispatch yet. Every one carries a
   typed reason in its `Waiting on` column: waiting for the current turn to
   finish, for the workspace, for a pending interaction, for a clock (`Send at`),
-  or for a plugin that has parked it. `queue list` with no thread id lists every
-  parked row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
+  or for a plugin that has queued it. `queue list` with no thread id lists every
+  queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an
-  unanswered interaction) still apply, and a message that hits one simply parks
+  unanswered interaction) still apply, and a message that hits one simply queues
   again. `queue delete` discards it instead. Both are always permitted.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several
-  parked rows on one thread are normal: two scheduled sends coexist.
+  queued rows on one thread are normal: two scheduled sends coexist.
 
 Persisted panel tabs:
 

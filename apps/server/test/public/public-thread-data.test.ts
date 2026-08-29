@@ -2609,7 +2609,7 @@ describe("public thread data routes", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         ok: true,
-        delivery: "parked",
+        delivery: "queued",
         queuedMessageId: expect.any(String),
         waitingOn: { kind: "thread-busy" },
         sendAt: null,
@@ -2624,7 +2624,7 @@ describe("public thread data routes", () => {
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
         { type: "text", text: "Queued active follow-up", mentions: [] },
       ]);
-      // Nothing was dispatched, and parking writes no timeline event at all:
+      // Nothing was dispatched, and queueing writes no timeline event at all:
       // the queue rows above the composer are the only narration of a wait.
       expect(
         harness.db
@@ -2676,7 +2676,7 @@ describe("public thread data routes", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         ok: true,
-        delivery: "parked",
+        delivery: "queued",
         queuedMessageId: expect.any(String),
         waitingOn: { kind: "thread-busy" },
         sendAt: null,
@@ -4005,7 +4005,7 @@ describe("public thread data routes", () => {
       );
 
       // "Send now" overrides plugin waits, not core ones: the workspace is
-      // still being prepared, so the row goes back on the queue parked on that
+      // still being prepared, so the row goes back on the queue waiting on that
       // rather than being dispatched into a thread that cannot take it.
       expect(sendResponse.status).toBe(409);
       await expect(readJson(sendResponse)).resolves.toMatchObject({

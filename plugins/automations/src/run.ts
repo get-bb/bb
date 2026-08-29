@@ -422,7 +422,7 @@ async function reconcileOutcome(
         error: "Turn failed while the automations plugin was not running",
       };
     // Still going somewhere: leave the run marked running and re-check later.
-    // `pending` belongs here — the thread's first dispatch is parked, not
+    // `pending` belongs here — the thread's first dispatch is queued, not
     // failed, so the run has neither succeeded nor finished.
     case "pending":
     case "starting":

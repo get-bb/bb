@@ -479,9 +479,8 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "queue.parked": [],
+    "queue.waiting": [],
     "queue.dispatched": [],
-    "queue.cancelled": [],
   };
   const dispatchGates: PluginDispatchGateRecords = {
     dispatch: null,

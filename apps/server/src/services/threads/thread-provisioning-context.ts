@@ -48,8 +48,8 @@ const reuseIntentSchema = z.object({
 });
 
 /**
- * Exported so a held thread-start can persist the intent it resolved at create
- * time and rebuild this context when the hold releases, possibly after a
+ * Exported so a queued thread-start can persist the intent it resolved at
+ * create time and rebuild this context when its wait clears, possibly after a
  * restart. Nothing else should construct one by hand.
  */
 export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(

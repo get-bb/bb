@@ -56,8 +56,6 @@ interface ResolveThreadRuntimeStateArgs {
   environmentHostId: string | null;
   now?: number;
   status: ThreadStatus;
-  /** The thread whose first turn is parked in a live hold, for `held`. */
-  threadId: string;
 }
 
 interface ResolveThreadRuntimeStateFromLatestSessionArgs {
@@ -271,7 +269,6 @@ export function buildThreadStatusChangeMetadata(
     runtime: resolveThreadRuntimeState(deps, {
       environmentHostId: resolveThreadEnvironmentHostId(deps, thread),
       status: thread.status,
-      threadId: thread.id,
     }),
     thread,
   });
@@ -338,7 +335,6 @@ function toThreadResponseWithHost(
       environmentHostId: args.environmentHostId,
       now: args.now,
       status: thread.status,
-      threadId: thread.id,
     }),
   };
 }
@@ -515,7 +511,7 @@ function buildThreadActivityStateByThreadId(
 }
 
 /**
- * Whether each thread has parked work, from one grouped count over live queued
+ * Whether each thread has queued work, from one grouped count over live queued
  * rows. Threads with an empty queue are absent, so the caller fills "none".
  *
  * A failure outranks a plain wait: a row that failed to go out is the one the

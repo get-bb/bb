@@ -66,10 +66,10 @@ export interface ThreadListIndicatorState {
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
   /**
-   * Whether the thread has work parked on its queue. Read straight off the list
+   * Whether the thread has work waiting on its queue. Read straight off the list
    * entry rather than inferred from the thread's status: a `pending` thread is
    * only the most obvious case, and an idle thread with a scheduled send or a
-   * plugin-parked follow-up is waiting just as much.
+   * plugin-queued follow-up is waiting just as much.
    */
   queuedWork: ThreadQueuedWork;
 }
@@ -144,7 +144,7 @@ export function resolveThreadListIndicator(
   if (state.isWorkflowActive) return "workflow";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
-  // Parked work outranks a draft: the draft is the user's to send whenever,
+  // Queued work outranks a draft: the draft is the user's to send whenever,
   // while a queued row is work already committed that has not run yet. It sits
   // below every working arm above deliberately — a thread that is BOTH running
   // and holding a queued follow-up is best described by what it is doing, and

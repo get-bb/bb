@@ -37,7 +37,7 @@ export function formatQueuedMessageCountdown(remainingMs: number): string | null
  * schedule skipped, so a `time` or `plugin` wait clears by definition. The core
  * waits split, and NOT along the "core vs plugin" line the name suggests:
  *
- * - `provisioning` and `interaction` re-park on every attempt regardless of how
+ * - `provisioning` and `interaction` re-queue on every attempt regardless of how
  *   it was made, so send-now can only fail with a 409. Hide it.
  * - `thread-busy` is different. Send-now dispatches with `mode: "auto"`, which
  *   against a running thread resolves to a `join-turn` attempt, and the
@@ -82,7 +82,7 @@ export function queuedMessageHasWaitLine(args: {
   waitingOn: QueuedMessageWaitingOn | null;
 }): boolean {
   // A failed attempt is the one thing that outranks the wait: the row is still
-  // parked on whatever it was parked on, but what a reader needs to know is
+  // waiting on whatever it was waiting on, but what a reader needs to know is
   // that the last try did not go through.
   if (args.failureReason !== null) return true;
   if (args.payload.kind === "retry") return true;
@@ -91,7 +91,7 @@ export function queuedMessageHasWaitLine(args: {
 }
 
 /**
- * The glyph that opens a parked row's status line, or null when the row has no
+ * The glyph that opens a queued row's status line, or null when the row has no
  * line to open.
  *
  * One icon per wait kind, chosen so the queue can be read at a glance without
@@ -141,7 +141,7 @@ export interface DescribeQueuedMessageWaitArgs {
  * Only a `retry` row does: it re-submits a failed turn by reference, and its
  * stored blocks are marked agent-only precisely so the timeline does not print
  * the user's message twice. Naming the turn it retries — by the time it failed
- * — is the only thing that tells two parked retries apart.
+ * — is the only thing that tells two queued retries apart.
  */
 export function queuedMessageFallbackTitle(args: {
   createdAt: number;
@@ -156,7 +156,7 @@ export function queuedMessageFallbackTitle(args: {
 }
 
 /**
- * The one-line status a parked row shows above the composer, or null when the
+ * The one-line status a queued row shows above the composer, or null when the
  * row has nothing to explain and should render exactly as a queued message
  * always has.
  *
@@ -173,7 +173,7 @@ export function queuedMessageFallbackTitle(args: {
 export function describeQueuedMessageWait(
   args: DescribeQueuedMessageWaitArgs,
 ): string | null {
-  // A failure outranks the wait. The row is still parked on whatever parked
+  // A failure outranks the wait. The row is still waiting on whatever queued
   // it, but "this did not go through" is what the reader needs first, and the
   // renderer marks this line as an error rather than a status.
   if (args.failureReason !== null) return args.failureReason;

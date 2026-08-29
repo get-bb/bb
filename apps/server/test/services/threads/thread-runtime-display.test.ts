@@ -218,7 +218,7 @@ function createThreadListEntry(
     environmentName: null,
     environmentWorkspaceDisplayKind: "other",
     hasPendingInteraction: false,
-    // Only a `pending` thread whose first message parked carries one, and
+    // Only a `pending` thread whose first message queued carries one, and
     // these fixtures are all threads that already started.
     pendingStartContext: null,
   };
@@ -238,7 +238,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
+        { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "active",
@@ -258,7 +258,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
+        { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
@@ -280,7 +280,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
+        { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "host-reconnecting",
@@ -302,7 +302,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
+        { environmentHostId: hostId, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
@@ -319,7 +319,6 @@ describe("thread runtime display", () => {
         {
           environmentHostId: hostId,
           now: 1_000,
-          threadId: "thr_absent",
           status: "idle",
         },
       ),
@@ -338,7 +337,6 @@ describe("thread runtime display", () => {
         {
           environmentHostId: null,
           now: 1_000,
-          threadId: "thr_absent",
           status: "active",
         },
       ),
@@ -409,7 +407,7 @@ describe("thread runtime display", () => {
     const failed = createThreadWithEnvironment({ db, hostId, status: "idle" });
 
     // The failed thread holds BOTH a healthy row and a failed one, which is the
-    // case the precedence rule exists for: a thread that parked two messages
+    // case the precedence rule exists for: a thread that queued two messages
     // and only the first one blew up must not read as merely waiting.
     for (const { thread, count } of [
       { thread: waiting.thread, count: 1 },

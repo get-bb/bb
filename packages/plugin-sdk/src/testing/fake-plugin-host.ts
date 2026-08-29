@@ -1602,9 +1602,8 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "queue.parked": [],
+    "queue.waiting": [],
     "queue.dispatched": [],
-    "queue.cancelled": [],
   };
   const dispatchGates: {
     [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
@@ -1993,9 +1992,8 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
-          "queue.parked": threadEventHandlers["queue.parked"].length,
+          "queue.waiting": threadEventHandlers["queue.waiting"].length,
           "queue.dispatched": threadEventHandlers["queue.dispatched"].length,
-          "queue.cancelled": threadEventHandlers["queue.cancelled"].length,
         };
       },
       get dispatchGates() {

@@ -297,7 +297,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "The cross-thread queue list is unfiltered by default: omitting threadId or waitHolder means every live parked row, which is what a workspace-wide pending view asks for.",
+      "The cross-thread queue list is unfiltered by default: omitting threadId or waitHolder means every live queued row, which is what a workspace-wide pending view asks for.",
     fields: [
       "queuedMessageListQuerySchema.threadId",
       "queuedMessageListQuerySchema.waitHolder",

@@ -906,19 +906,17 @@ bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // la
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
-bb.events.on("queue.parked", ({ entry }) => { ... });                      // entry: ThreadQueuedMessage
+bb.events.on("queue.waiting", ({ entry }) => { ... });                     // entry: ThreadQueuedMessage
 bb.events.on("queue.dispatched", ({ entry }) => { ... });
-bb.events.on("queue.cancelled", ({ entry }) => { ... });
 ```
 
-Nine events. The six `thread.*` ones are thread lifecycle; the three `queue.*`
-ones fire when a dispatch parks as a queued row, when a parked row's waits all
-clear and it dispatches, and when one is cancelled and discarded. Every
-listener sees every parked row, so a plugin that only wants its own filters on
+Eight events. The six `thread.*` ones are thread lifecycle; the two `queue.*`
+ones fire when a dispatch is queued behind a wait, and when a queued row's
+waits all clear and it dispatches. Every listener sees every queued row, so a
+plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`queue.parked` fires on a re-park too, because a row that moved from one wait
-to another is news to whoever was waiting on the old one. `queue.cancelled` is
-a waiting plugin's teardown signal.
+`queue.waiting` fires again when a row's wait is rewritten, because a row that
+moved from one wait to another is news to whoever was waiting on the old one.
 
 `thread.active` fires when an applied lifecycle
 transition enters the running `active` state. `thread.archived` fires after a
@@ -952,7 +950,7 @@ bb.experimental_dispatch.gate("dispatch", (ctx) => {
   // ctx.project / ctx.environment / ctx.host, ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
   // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
-  // ctx.queuedMessage (the parked row on a re-attempt, else null).
+  // ctx.queuedMessage (the queued row on a re-attempt, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
   return { action: "proceed" };
@@ -980,36 +978,36 @@ then) and `reject` (`message` shown to the user; the caller gets a 409
 `dispatch_rejected`). A gate decides; it never rewrites the dispatch it is
 deciding about.
 
-A `wait` PARKS the message as a queued row whose `waitingOn` names your plugin
+A `wait` QUEUES the message as a row whose `waitingOn` names your plugin
 and carries your reason verbatim. The row sits in the thread's queue with a
 card, a Send-now and a Cancel — it is the same row a user's own queued message
 uses, which is why there is no separate hold concept any more.
 
 **Where a wait is visible.** In exactly two places, and neither is the
 timeline: the queued card above the composer, which shows your reason, and the
-thread's sidebar row, which shows a clock while the thread holds parked work
+thread's sidebar row, which shows a clock while the thread holds queued work
 and is not itself running. If a drain attempt on the row fails outright, the
-sidebar row shows the same failure glyph a failed thread gets. Parking appends
+sidebar row shows the same failure glyph a failed thread gets. Queueing appends
 no thread event, so a `wait` never writes anything into the transcript the
 model or the user reads back.
 
 **How a wait clears.** You do not release it yourself. It clears when the row's
 `retryAt` comes due, when a thread leaves the running set and core re-attempts
-every plugin-parked row, when the user sends it now, or when the orphan sweep
+every plugin-queued row, when the user sends it now, or when the orphan sweep
 clears a wait whose plugin stopped running. Every one of those re-runs the full
 pass, including your own gate, so a message that is still blocked simply
-re-parks. Waiting on an external event you cannot predict means polling: set a
+re-queues. Waiting on an external event you cannot predict means polling: set a
 `retryAt` you can live with and answer again on the re-attempt.
 
 `turn.failed` is the POST-HOC stage and answers a different union: `none` or
 `retry` (`reason`, required `resumeAt`). It runs after the failure has been
-applied, so it cannot refuse or amend anything. A `retry` parks a by-reference
+applied, so it cannot refuse or amend anything. A `retry` queues a by-reference
 queued row that re-submits the ORIGINAL turn when it dispatches: the user's
 message is not appended again, the provider is asked the identical question,
 and the new attempt carries a retry marker so the next failure's
 `attemptNumber` is right. The re-attempt runs the `"dispatch"` checkpoint like
 any other, so a retry still respects a limiter at capacity. Cap your own
-retries with `attemptNumber`; core will park as many as you ask for. Its
+retries with `attemptNumber`; core will queue as many as you ask for. Its
 context omits the attempt-only fields (`executionSources`, `attempt`,
 `queuedMessage`) and adds `failure`.
 
@@ -1022,7 +1020,7 @@ provider is fixed when the thread is created.
 
 Composition: gates run in plugin install order, a `reject` short-circuits, and
 `wait` verdicts are collected across the whole pass rather than
-short-circuiting. One row is parked per pass, owned by the FIRST waiter; the
+short-circuiting. One row is queued per pass, owned by the FIRST waiter; the
 rest have their reasons appended to that row's reason, and each of them votes
 again on the next attempt. Because nothing a gate returns changes what the next
 gate is deciding about, every gate in a pass sees the same context. The whole
@@ -1044,14 +1042,14 @@ DISCARDED with your plugin named in the log, and the failure is untouched. A
 broken retry policy costs a retry; it can never make failures unrecoverable.
 The chain also stops at the first `retry` — one failure earns at most one row.
 
-**Core waits you never see.** Before your gate runs, core parks a message that
+**Core waits you never see.** Before your gate runs, core queues a message that
 cannot run for a structural reason: a future `sendAt`, a thread already running
 a turn the message did not ask to join, a workspace still provisioning, an
 unanswered interaction. Those rows carry `waitingOn.kind` of `time`,
 `thread-busy`, `provisioning` or `interaction` and are not yours to clear.
 
 **Finding your own rows.** A `wait` verdict returns a reason, not an id — the
-id arrives on `queue.parked`. After a restart, ask for them:
+id arrives on `queue.waiting`. After a restart, ask for them:
 
 ```ts
 const mine = await bb.sdk.threads.queue.list({
@@ -1078,7 +1076,7 @@ return { action: "proceed" };
 serialized under one server-wide lock, AND a cleared first dispatch commits its
 `pending → starting` flip before that lock releases — so inside your gate the
 answer already contains every admission granted ahead of you in the same burst.
-Five creates arriving together against a limit of two admit two and park three.
+Five creates arriving together against a limit of two admit two and queue three.
 Read the same method from a background service, a timer or a `turn.failed`
 gate and it is an ordinary query racing every concurrent dispatch, exactly like
 `threads.count`. One boundary: a follow-up admitted on an already-live `idle`
@@ -1087,8 +1085,8 @@ so a burst of follow-ups to distinct idle threads can momentarily under-report.
 
 You do NOT need to release your own waits — there is no way to. When a thread
 leaves the occupying set — idle, failed, archived, deleted — core re-attempts
-every plugin-parked row in queue order, which re-runs your gate; rows still
-over the limit re-park, and core paces the retries. Subscribing to lifecycle
+every plugin-queued row in queue order, which re-runs your gate; rows still
+over the limit re-queue, and core paces the retries. Subscribing to lifecycle
 events to chase the same moment duplicates that and races it.
 
 `bb.sdk.threads.count({ status, hostId, providerId, projectId,
@@ -1099,7 +1097,7 @@ carries no exactness guarantee.
 
 A well-behaved limiter proceeds unconditionally on a `join-turn` attempt, and
 on a thread already `starting` or `active`: that thread holds its slot already,
-so re-deciding it would park a running thread behind the pool it is itself
+so re-deciding it would queue a running thread behind the pool it is itself
 filling. That is the one rule that is correctness rather than policy.
 
 **Wedge hazard, stated rather than carved out.** The shipped limiter
@@ -1107,7 +1105,7 @@ filling. That is the one rule that is correctness rather than policy.
 dispatch, with no exemption for child or plugin-spawned threads. Under a tight
 limit, an orchestration pattern where a running parent waits on threads it
 spawned — the `workflows` plugin — can wedge: the parent holds a slot while the
-children it awaits sit parked behind the same limit, until other slots free or
+children it awaits sit queued behind the same limit, until other slots free or
 the user sends a child now from its queue. The limit is deliberately uniform;
 exempting a class of thread would silently overrun the number the user asked
 for. If you write a limiter whose pattern cannot tolerate that, give the
@@ -1135,7 +1133,7 @@ attribution cannot be forged.
 
 Notes are display-only by construction: nothing that builds a provider request
 reads thread events, so a note can never reach a model. Content meant FOR the
-agent is an attributed agent-only message, not a note. Why a parked row is
+agent is an attributed agent-only message, not a note. Why a queued row is
 waiting belongs on that row instead, as your gate's own `wait` reason.
 
 ### bb.http — HTTP routes
@@ -2719,9 +2717,9 @@ openThreadPanel({ actionId, title?, params? }), openUrl(url) }`.
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
   fresh context at send time;
   `experimental_submit({ sendAt })` runs THIS composer's own submit
-  pipeline with the draft on screen, parked until `sendAt` (epoch ms)
-  instead of dispatched now — a parked message in a thread, or a thread created
-  `pending` whose first message is the parked row. Use it instead of scheduling from your
+  pipeline with the draft on screen, queued until `sendAt` (epoch ms)
+  instead of dispatched now — a queued message in a thread, or a thread created
+  `pending` whose first message is the queued row. Use it instead of scheduling from your
   backend: only the composer resolves the draft's attachments and @-mentions
   and, on the new-thread screen, the provider, model, reasoning level, service
   tier, permission mode and environment the user selected, so a backend

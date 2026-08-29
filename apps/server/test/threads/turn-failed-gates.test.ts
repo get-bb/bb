@@ -211,8 +211,8 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
   );
 }
 
-/** The thread's parked rows: a live queued row with a wait on it. */
-function parkedRows(
+/** The thread's queued rows: a live queued row with a wait on it. */
+function queuedRows(
   harness: TestAppHarness,
   threadId: string,
 ): ThreadQueuedMessage[] {
@@ -221,13 +221,13 @@ function parkedRows(
     .filter((entry) => entry.waitingOn !== null);
 }
 
-function onlyParkedRow(
+function onlyQueuedRow(
   harness: TestAppHarness,
   threadId: string,
 ): ThreadQueuedMessage {
-  const rows = parkedRows(harness, threadId);
+  const rows = queuedRows(harness, threadId);
   if (rows.length !== 1 || rows[0] === undefined) {
-    throw new Error(`expected exactly one parked row, found ${rows.length}`);
+    throw new Error(`expected exactly one queued row, found ${rows.length}`);
   }
   return rows[0];
 }
@@ -348,14 +348,14 @@ describe("turn.failed gate context", () => {
       // Fail-closed here means the broken plugin loses its vote, not that the
       // failure becomes unrecoverable: the thread stays in error and the next
       // gate still gets to decide.
-      expect(onlyParkedRow(harness, thread.id).waitingOn).toMatchObject({
+      expect(onlyQueuedRow(harness, thread.id).waitingOn).toMatchObject({
         kind: "plugin",
         pluginId: "working-retry",
       });
     });
   });
 
-  it("parks one retry row per failure even if the failure is applied twice", async () => {
+  it("queues one retry row per failure even if the failure is applied twice", async () => {
     await withTestHarness(async (harness) => {
       installGates({
         "turn.failed": [
@@ -376,12 +376,12 @@ describe("turn.failed gate context", () => {
       failThread(harness, thread.id);
       await flushTurnFailedPass();
 
-      expect(parkedRows(harness, thread.id)).toHaveLength(1);
+      expect(queuedRows(harness, thread.id)).toHaveLength(1);
     });
   });
 });
 
-describe("parked retry dispatch", () => {
+describe("queued retry dispatch", () => {
   it("re-submits the original turn without duplicating the user's message", async () => {
     await withTestHarness(async (harness) => {
       const resumeAt = Date.now() + 60_000;
@@ -402,21 +402,21 @@ describe("parked retry dispatch", () => {
       failThread(harness, thread.id);
       await flushTurnFailedPass();
 
-      const parked = onlyParkedRow(harness, thread.id);
+      const queued = onlyQueuedRow(harness, thread.id);
       // A by-reference row: it names the request it will re-submit, waits on
       // the plugin that asked for the retry, and is due at that plugin's
       // `resumeAt` so the ordinary due sweep is what wakes it.
-      expect(parked.payload).toEqual({
+      expect(queued.payload).toEqual({
         kind: "retry",
         retryOfTurnRequestId: requestId,
         attempt: 2,
       });
-      expect(parked.waitingOn).toEqual({
+      expect(queued.waitingOn).toEqual({
         kind: "plugin",
         pluginId: "retry-policy",
         reason: "Rate limited",
       });
-      expect(parked.sendAt).toBe(resumeAt);
+      expect(queued.sendAt).toBe(resumeAt);
 
       await sweepPastResume(harness);
 
@@ -481,7 +481,7 @@ describe("parked retry dispatch", () => {
       expect(attempts).toEqual([1, 2]);
       // The chain still points at the turn the user actually sent.
       expect(originals).toEqual([requestId, requestId]);
-      expect(onlyParkedRow(harness, thread.id).payload).toEqual({
+      expect(onlyQueuedRow(harness, thread.id).payload).toEqual({
         kind: "retry",
         retryOfTurnRequestId: requestId,
         attempt: 3,
@@ -499,7 +499,7 @@ describe("parked retry dispatch", () => {
             handler: (context) => {
               dispatchCalls += 1;
               // The re-attempt must look like a re-decision about an existing
-              // parked row, not a fresh send, or a limiter would double-count
+              // queued row, not a fresh send, or a limiter would double-count
               // it — and the row it names is the retry, not a user message.
               expect(context.queuedMessage?.payload.kind).toBe("retry");
               return { action: "wait", reason: "At capacity" };
@@ -525,18 +525,18 @@ describe("parked retry dispatch", () => {
       await sweepPastResume(harness);
 
       expect(dispatchCalls).toBe(1);
-      // The turn did not dispatch; the same row is parked again, this time by
+      // The turn did not dispatch; the same row is queued again, this time by
       // the limiter, and its schedule is cleared because the limiter named no
       // retry instant.
       expect(turnRequests(harness, thread.id)).toHaveLength(1);
-      const reparked = onlyParkedRow(harness, thread.id);
-      expect(reparked.waitingOn).toEqual({
+      const requeued = onlyQueuedRow(harness, thread.id);
+      expect(requeued.waitingOn).toEqual({
         kind: "plugin",
         pluginId: "concurrency-limit",
         reason: "At capacity",
       });
-      expect(reparked.sendAt).toBeNull();
-      expect(reparked.payload.kind).toBe("retry");
+      expect(requeued.sendAt).toBeNull();
+      expect(requeued.payload.kind).toBe("retry");
     });
   });
 });

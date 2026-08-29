@@ -1530,7 +1530,7 @@ describe("QueuedMessagesList", () => {
   });
 });
 
-describe("parked row affordances", () => {
+describe("queued row affordances", () => {
   it("explains the waits a reader cannot infer, and stays quiet otherwise", () => {
     const { getByText, queryByText, container } = renderQueuedMessages([
       {
@@ -1574,13 +1574,13 @@ describe("parked row affordances", () => {
     expect(queryByLabelText("Send queued message 1 now")).not.toBeNull();
 
     cleanup();
-    const parked = renderQueuedMessages([
+    const queued = renderQueuedMessages([
       {
         ...makeQueuedMessage("q_wait", "Waiting on a reply"),
         waitingOn: { kind: "interaction" },
       },
     ]);
-    expect(parked.queryByLabelText("Send queued message 1 now")).toBeNull();
+    expect(queued.queryByLabelText("Send queued message 1 now")).toBeNull();
   });
 
   it("names the absent machine on a host-offline row and hides Send now", () => {
@@ -1598,7 +1598,7 @@ describe("parked row affordances", () => {
   });
 
   it("lets a drain failure take over the line the wait would have used", () => {
-    // A failed drain leaves the row parked on its original wait, so both facts
+    // A failed drain leaves the row on its original wait, so both facts
     // are true at once — but only one of them belongs on a one-line row, and
     // it is the one that says the message did not go.
     const { getByText, queryByText, container } = renderQueuedMessages([

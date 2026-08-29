@@ -114,7 +114,7 @@ export const createThreadRequestSchema = z
     /**
      * Epoch ms at which this thread's first message should dispatch. Present ⇒
      * the thread is created `pending` with no turn and no environment work,
-     * and the first message parks as a queued row waiting on the clock. Absent
+     * and the first message is queued as a row waiting on the clock. Absent
      * ⇒ attempt the dispatch now; when nothing blocks it no queued row is ever
      * created and creation runs exactly as it did before the queue existed.
      */
@@ -198,7 +198,7 @@ const sendMessageRequestBaseSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
   /**
    * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
-   * now; the message parks as a queued row waiting on the clock, and the due
+   * now; the message is queued as a row waiting on the clock, and the due
    * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
    */
   sendAt: z.number().int().nonnegative().optional(),
@@ -211,12 +211,12 @@ export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
  * How a `send` request was taken.
  *
  * Two outcomes, because there are two: the attempt cleared and dispatched, or
- * something blocked it and it parked. The four-way `sent`/`queued`/`deferred`/
- * `held` split this replaces described WHICH parking mechanism took the
+ * something blocked it and it queued. The four-way `sent`/`queued`/`deferred`/
+ * `held` split this replaces described WHICH queueing mechanism took the
  * message, and there is only one now — so the useful half of that answer, WHY
- * it is waiting, moved onto the parked arm where it can be typed.
+ * it is waiting, moved onto the queued arm where it can be typed.
  */
-export const sendMessageDeliverySchema = z.enum(["sent", "parked"]);
+export const sendMessageDeliverySchema = z.enum(["sent", "queued"]);
 export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
 
 /**
@@ -228,7 +228,7 @@ export const sendMessageResponseSchema = z.discriminatedUnion("delivery", [
   z.object({ ok: z.literal(true), delivery: z.literal("sent") }),
   z.object({
     ok: z.literal(true),
-    delivery: z.literal("parked"),
+    delivery: z.literal("queued"),
     /** The row now carrying this message; addressable for send-now or cancel. */
     queuedMessageId: z.string().min(1),
     /** Why it is waiting, as the card and `bb thread queue` render it. */
@@ -396,7 +396,7 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
-  // How many messages are parked on this thread's queue right now — waiting on
+  // How many messages are waiting on this thread's queue right now — waiting on
   // the clock, on the running turn, on provisioning, on an interaction, or on
   // a plugin. The count alone drives the pending-region and thread-row badges;
   // `GET /threads/:id/queued-messages` supplies the reasons once a surface
@@ -454,7 +454,7 @@ export type RespondPluginInteractionRequest = z.infer<
 
 /**
  * Filters for the cross-thread queue list — the replacement for the hold
- * list, and cross-thread for the same reason it was: "what is parked right
+ * list, and cross-thread for the same reason it was: "what is queued right
  * now" is a whole-workspace question (`bb thread queue list` with no thread, a
  * limiter plugin's own bookkeeping, a router recovering its rows after a
  * restart) that no single thread's list can answer.

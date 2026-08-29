@@ -81,8 +81,8 @@ export type ClientTurnLifecycleEventData = z.infer<
 export const turnRequestEventDataSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
-  // Retry provenance, written only when a `turn.failed` gate's retry hold is
-  // released. Both fields are present together or not at all: absence means
+  // Retry provenance, written only when a `turn.failed` gate's retry row
+  // dispatches. Both fields are present together or not at all: absence means
   // "this is an original dispatch", which is the overwhelmingly common case.
   // (Supersedes the pre-plugin `continuationOfRequestId` key, which the removed
   // core rate-limit recovery wrote and nothing ever read.)
@@ -276,7 +276,7 @@ export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
 /**
  * A LEGACY timeline row, retained for decode only.
  *
- * Dispatch holds were replaced by parked queue rows;
+ * Dispatch holds were replaced by queued rows;
  * nothing emits this event any more, and nothing renders it either — its
  * timeline row and projection were deleted. The arm stays purely so a stored
  * event still decodes: narrowing `threadEventSchema` would churn the daemon
@@ -314,6 +314,12 @@ export type SystemDispatchHoldEventData = z.infer<
   typeof systemDispatchHoldEventDataSchema
 >;
 
+/**
+ * Stored values, not current vocabulary: `"parked"` is spelled the way rows
+ * were written when this event was still emitted, so it must not be renamed
+ * along with the code that replaced it — existing rows are validated against
+ * this enum on decode.
+ */
 const systemQueueStateStatusValues = [
   "parked",
   "updated",
@@ -337,8 +343,8 @@ export const QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH = 240;
  * A LEGACY timeline row, retained for decode only — the same treatment
  * `system/dispatch-hold` above gets, for the same reason.
  *
- * Parking is narrated in exactly one place: the queue rows above the composer,
- * which read the queued row's own columns and stay correct as it is re-parked,
+ * Queueing is narrated in exactly one place: the queue rows above the composer,
+ * which read the queued row's own columns and stay correct as it is re-queued,
  * edited or sent now. This event duplicated that narration into the timeline,
  * where it could only ever be a stale copy, so nothing emits it any more and
  * nothing renders it. The arm stays purely so a stored event still decodes:
@@ -360,7 +366,7 @@ export const systemQueueStateEventDataSchema = z.object({
    */
   sendAt: z.number().int().nonnegative().nullable(),
   /**
-   * Truncated plain text of the parked message, when the row carries one of
+   * Truncated plain text of the queued message, when the row carries one of
    * its own. Optional because omission is real: a `retry` row references a
    * turn that is already persisted and already rendered further up the
    * timeline, so it has no message to preview, and an `inline` row whose

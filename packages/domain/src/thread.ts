@@ -337,7 +337,7 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
   /**
-   * The thread this row is parked on. Redundant on the thread-scoped list
+   * The thread this row is waiting on. Redundant on the thread-scoped list
    * route that first served this DTO, and load-bearing everywhere else it is
    * now served: a `queue.*` plugin event and a cross-thread wait-holder query
    * both hand out rows with no surrounding thread to read it from.
@@ -355,7 +355,7 @@ export const threadQueuedMessageSchema = z.object({
    */
   sendAt: z.number().int().nonnegative().nullable(),
   /**
-   * Why this row is parked, or null for a plain queued row that is simply
+   * Why this row is queued, or null for a plain queued row that is simply
    * next in line behind the running turn. Null rather than a
    * `{ kind: "thread-busy" }` default because rows written before waits were
    * typed carry no reason at all, and inventing one for them would be a lie.
@@ -364,12 +364,12 @@ export const threadQueuedMessageSchema = z.object({
   /**
    * Why this row's last DRAIN attempt failed outright, or null when it has not
    * failed one — which is every row that has never been re-attempted, and
-   * every row whose latest attempt merely parked again. An inline attempt
+   * every row whose latest attempt merely queued again. An inline attempt
    * reports its failure to the sender that is still listening and never lands
    * here.
    *
-   * Independent of `waitingOn`, not folded into it: the row is still parked on
-   * whatever it was parked on, and a park rewrites the wait wholesale, so a
+   * Independent of `waitingOn`, not folded into it: the row is still waiting on
+   * whatever it was waiting on, and writing a wait rewrites it wholesale, so a
    * failure stored there would not survive the next attempt.
    */
   failureReason: queuedMessageFailureReasonSchema.nullable(),
@@ -418,7 +418,7 @@ export const threadWithRuntimeSchema = threadSchema.extend({
 export type ThreadWithRuntime = z.infer<typeof threadWithRuntimeSchema>;
 
 /**
- * Whether a thread has work parked on its queue, as a list row needs to know
+ * Whether a thread has work waiting on its queue, as a list row needs to know
  * it: not how many rows, but whether any are waiting and whether any of them
  * failed to go out.
  *

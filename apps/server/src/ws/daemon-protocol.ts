@@ -85,11 +85,11 @@ export function onDaemonSocketOpen(
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
   });
-  // A dispatch that could not reach an absent host is parked on the queue like
+  // A dispatch that could not reach an absent host is waiting on the queue like
   // any other blocked dispatch, and the periodic drain re-attempts it — so
   // there is nothing host-specific to kick here. Reconnect used to release
   // `core:host-offline` holds; the queue's own sweep covers the same case
-  // without a second parking mechanism keyed to one signal.
+  // without a second queueing mechanism keyed to one signal.
 }
 
 export function onDaemonSocketMessage(

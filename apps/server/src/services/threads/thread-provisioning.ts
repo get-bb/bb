@@ -159,10 +159,10 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
 
-  // The workspace exists, so anything that parked waiting for it stops
+  // The workspace exists, so anything that queued waiting for it stops
   // waiting here rather than after the dispatch below: the wait is over at
   // this line, and the `run.succeeded` branch below returns without
-  // dispatching anything. A thread with nothing parked no-ops.
+  // dispatching anything. A thread with nothing queued no-ops.
   drainThreadQueueOnWorkspaceReady(deps, args.thread.id);
 
   if (
@@ -389,8 +389,8 @@ export async function advanceThreadProvisioning(
 
 /**
  * Drives provisioning off the caller's stack. Creation returns the thread row
- * before the workspace exists, and a released cold-start hold returns to its
- * sweep or route the same way, so neither waits on the daemon.
+ * before the workspace exists, and a cold-start row whose wait cleared returns
+ * to its sweep or route the same way, so neither waits on the daemon.
  */
 export function scheduleThreadProvisioningAdvance(
   deps: ThreadProvisioningDeps & Pick<AppDeps, "config" | "logger">,

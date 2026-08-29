@@ -1,11 +1,11 @@
 /**
- * The queue's parking columns: `send_at`, the typed `waiting_on`, and the
+ * The queue's wait columns: `send_at`, the typed `waiting_on`, and the
  * `wait_holder` denormalization that exists purely so the orphan sweep can ask
  * "which rows does this plugin hold?" with an indexed lookup.
  *
  * What is worth pinning here is the set of guards a drain depends on and that
  * a refactor could quietly drop: waits only mutate LIVE rows (a claimed row is
- * already on its way to a provider, so parking it would be a lost update), the
+ * already on its way to a provider, so queueing it would be a lost update), the
  * due sweep's boundary is inclusive and excludes threads the user threw away,
  * and `wait_holder` is derived from `waiting_on` rather than passed in, so the
  * two can never disagree.
@@ -73,7 +73,7 @@ function queue(
 }
 
 describe("queued message waits", () => {
-  it("defaults a fresh row to an unparked inline message", () => {
+  it("defaults a fresh row to an inline message with no wait", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id);
 
@@ -89,7 +89,7 @@ describe("queued message waits", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id);
 
-    const parked = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
+    const queued = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: row.id,
       threadId: thread.id,
       waitingOn: {
@@ -99,23 +99,23 @@ describe("queued message waits", () => {
       },
       sendAt: null,
     });
-    expect(parked?.waitHolder).toBe("plugin:concurrency-limit");
-    expect(JSON.parse(parked!.waitingOn!)).toEqual({
+    expect(queued?.waitHolder).toBe("plugin:concurrency-limit");
+    expect(JSON.parse(queued!.waitingOn!)).toEqual({
       kind: "plugin",
       pluginId: "concurrency-limit",
       reason: "4 of 4 running",
     });
 
-    // Re-parking onto a core wait must retire the previous holder, or the
+    // Re-queueing onto a core wait must retire the previous holder, or the
     // orphan sweep would keep finding a row that plugin no longer holds.
-    const reparked = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
+    const requeued = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: row.id,
       threadId: thread.id,
       waitingOn: { kind: "provisioning" },
       sendAt: null,
     });
-    expect(reparked?.waitHolder).toBeNull();
-    expect(JSON.parse(reparked!.waitingOn!)).toEqual({ kind: "provisioning" });
+    expect(requeued?.waitHolder).toBeNull();
+    expect(JSON.parse(requeued!.waitingOn!)).toEqual({ kind: "provisioning" });
   });
 
   it("clears sendAt when a wait is replaced by a non-time wait", () => {
@@ -128,16 +128,16 @@ describe("queued message waits", () => {
       waitingOn: { kind: "time" },
       sendAt: 9_000,
     });
-    const reparked = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
+    const requeued = setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: row.id,
       threadId: thread.id,
       waitingOn: { kind: "thread-busy" },
       sendAt: null,
     });
-    expect(reparked?.sendAt).toBeNull();
+    expect(requeued?.sendAt).toBeNull();
   });
 
-  it("refuses to park or clear a claimed row", () => {
+  it("refuses to write or clear a wait on a claimed row", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id);
     setQueuedThreadMessageWaitingOn(db, noopNotifier, {
@@ -164,12 +164,12 @@ describe("queued message waits", () => {
       }),
     ).toBeNull();
 
-    // The claimed row keeps the wait it was parked on: neither call touched it.
+    // The claimed row keeps the wait it was waiting on: neither call touched it.
     const after = getQueuedThreadMessage(db, row.id);
     expect(JSON.parse(after!.waitingOn!)).toEqual({ kind: "provisioning" });
   });
 
-  it("refuses to park a row belonging to another thread", () => {
+  it("refuses to write a wait on a row belonging to another thread", () => {
     const { db, project, thread } = setup();
     const other = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -376,7 +376,7 @@ describe("wait lookups", () => {
     ).toEqual([first.id, second.id]);
   });
 
-  it("does not mistake an unparked row for any wait kind", () => {
+  it("does not mistake a row with no wait for any wait kind", () => {
     const { db, thread } = setup();
     queue(db, thread.id);
 

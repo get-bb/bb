@@ -150,7 +150,7 @@ describe("thread-activity", () => {
           queuedWork: "waiting",
         }),
       ).toBe("queued-waiting");
-      // Parked work does not mean the thread is idle — a running thread can
+      // Queued work does not mean the thread is idle — a running thread can
       // hold a queued follow-up — and what it is DOING outranks what is
       // waiting behind it.
       expect(

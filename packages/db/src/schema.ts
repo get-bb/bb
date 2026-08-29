@@ -506,12 +506,12 @@ export const threads = sqliteTable(
     // the provider-facing input and the `startedOnBehalfOf`/title facts that
     // `requestThreadProvision` needs and that nothing else persists.
     //
-    // It lives on the THREAD rather than on the parked message because it
+    // It lives on the THREAD rather than on the queued message because it
     // describes how to start the thread, not what to say once it has started —
     // and because the live provisioning context is in-memory and only valid
-    // while a thread is `starting`, so a thread parked for a week (or across a
+    // while a thread is `starting`, so a thread queued for a week (or across a
     // restart) would otherwise have nothing to start from. Written only when a
-    // first message actually parks, and cleared when the thread leaves
+    // first message actually queues, and cleared when the thread leaves
     // `pending`, so it is NULL for every thread that started immediately.
     pendingStartContext: text("pending_start_context"),
     parentThreadId: text("parent_thread_id").references(
@@ -823,7 +823,7 @@ export const queuedThreadMessages = sqliteTable(
     // Epoch ms this row is scheduled to attempt dispatch. NULL means "as soon
     // as the other waits clear", which is what an ordinary queued row is.
     sendAt: integer("send_at"),
-    // JSON `QueuedMessageWaitingOn`: the typed reason this row is parked.
+    // JSON `QueuedMessageWaitingOn`: the typed reason this row is queued.
     // NULL for a plain queued row that is simply next in line behind the
     // running turn — including every row written before waits were typed, for
     // which inventing a reason would be a lie.
@@ -841,9 +841,9 @@ export const queuedThreadMessages = sqliteTable(
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
     // Why this row's last DRAIN attempt failed outright, NULL when it has not
     // failed one. Its own column rather than a shape inside `waiting_on`
-    // because a park rewrites that column wholesale on every attempt, which
+    // because writing a wait rewrites that column wholesale on every attempt, which
     // would erase a failure recorded there before anybody could read it. The
-    // row stays parked on whatever it was parked on; this only says what went
+    // row stays waiting on whatever it was waiting on; this only says what went
     // wrong the last time the drain tried to send it.
     failureReason: text("failure_reason"),
     payloadKind: text("payload_kind")

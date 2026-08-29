@@ -90,7 +90,7 @@ export function currentPermissionMode(
 
 interface ClientTurnRequestedEventArgs {
   /**
-   * Set only when a `turn.failed` retry hold is dispatching, marking this turn
+   * Set only when a `turn.failed` retry row is dispatching, marking this turn
    * as attempt N of an earlier request rather than something the user just
    * asked for.
    */

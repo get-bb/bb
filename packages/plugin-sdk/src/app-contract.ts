@@ -1616,7 +1616,7 @@ export interface PluginComposerApi {
   focus(): void;
   /**
    * Submit this composer's draft through the composer's OWN submit pipeline,
-   * parked until `sendAt` instead of dispatched now.
+   * queued until `sendAt` instead of dispatched now.
    *
    * This is a real submission, not a plugin-issued send: the host builds the
    * request exactly as pressing Enter would, so the draft's attachments and
@@ -1626,9 +1626,9 @@ export interface PluginComposerApi {
    * tuple itself, which is why sending from the backend instead would silently
    * run the message with different settings than the ones in front of the user.
    *
-   * In a thread composer the message parks as a queued row instead of being
+   * In a thread composer the message is queued as a row instead of being
    * sent or queued for the next idle moment. In the new-thread composer the
-   * thread is created `pending` and its first message becomes the parked row.
+   * thread is created `pending` and its first message becomes the queued row.
    * Either way the resulting row is core's: the queued card above the
    * composer, the countdown, Send now and Cancel all work with no further
    * plugin involvement.
@@ -1842,7 +1842,7 @@ export interface NewThreadRequest {
    * submission came from `useComposer().experimental_submit` — a scheduled
    * create — and absent otherwise, which is what makes an ordinary submission
    * start work at once. Forward it to `threads.spawn` unchanged: the thread is
-   * created `pending` and its first message parks as a queued row until then.
+   * created `pending` and its first message is queued as a row until then.
    */
   sendAt?: number;
 }

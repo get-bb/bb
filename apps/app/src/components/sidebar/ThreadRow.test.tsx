@@ -881,7 +881,7 @@ describe("ThreadRow", () => {
     ).toBe("CircleQuestion");
   });
 
-  it("clocks a thread with parked work, and drops the clock once it runs", () => {
+  it("clocks a thread with queued work, and drops the clock once it runs", () => {
     const { rerenderThreadRow } = renderThreadRow({
       thread: createThread({ queuedWork: "waiting" }),
     });
@@ -893,7 +893,7 @@ describe("ThreadRow", () => {
     ).toBe("Clock");
 
     // The queue fact is independent of the runtime, so the row has to resolve
-    // the overlap: a running thread says what it is DOING, and the parked row
+    // the overlap: a running thread says what it is DOING, and the queued row
     // is narrated by the queue above its composer instead.
     rerenderThreadRow(
       createThread({

@@ -77,16 +77,16 @@ import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
 
 /**
- * A send that could not dispatch parks as a queued row and delivers itself
+ * A send that could not dispatch is queued as a row and delivers itself
  * once whatever blocks it clears (#1650). The message is accepted, not lost,
  * and resending it would double-send — say so, because nothing in the timeline
  * runs yet.
  *
  * Collapsed from the old `deferred` arm: every non-dispatching outcome is now
- * one `parked` row, so there is no longer a reason-specific case to single out.
+ * one `queued` row, so there is no longer a reason-specific case to single out.
  */
-function reportParkedSendDelivery(delivery: SendMessageDelivery): void {
-  if (delivery !== "parked") {
+function reportQueuedSendDelivery(delivery: SendMessageDelivery): void {
+  if (delivery !== "queued") {
     return;
   }
   appToast.message(
@@ -446,7 +446,7 @@ function EmbeddedThreadChatWithComposer({
         mode: "queue-if-active",
         ...executionRequestFields,
       });
-      reportParkedSendDelivery(result.delivery);
+      reportQueuedSendDelivery(result.delivery);
     },
     [
       createQueuedMessage,
@@ -534,7 +534,7 @@ function EmbeddedThreadChatWithComposer({
         ...executionRequestFields,
       })
       .then((result) => {
-        reportParkedSendDelivery(result.delivery);
+        reportQueuedSendDelivery(result.delivery);
       })
       .catch((error) => {
         if (!isMountedRef.current) {

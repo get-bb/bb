@@ -60,7 +60,7 @@ const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
 export interface DispatchGateWaitVerdict {
   pluginId: string;
   reason: string;
-  /** Becomes the parked row's `sendAt`, so core's due sweep re-attempts then. */
+  /** Becomes the queued row's `sendAt`, so core's due sweep re-attempts then. */
   retryAt: number | null;
 }
 
@@ -69,7 +69,7 @@ export type DispatchGatePassOutcome =
   | {
       kind: "wait";
       /**
-       * The pass parks ONE row, owned by the FIRST plugin that voted to wait.
+       * The pass queues ONE row, owned by the FIRST plugin that voted to wait.
        * Several rows would multiply the user's Send-now/Cancel affordances for
        * one decision and make "send this message" ambiguous, while one row
        * keeps a single card whose reason line names every waiter. The losers'
@@ -95,7 +95,7 @@ export interface DispatchGatePassRequest {
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
-  /** The parked row being re-attempted; null for an inline first attempt. */
+  /** The queued row being re-attempted; null for an inline first attempt. */
   queuedMessage: ThreadQueuedMessage | null;
   /**
    * Commits this admission BEFORE the evaluation lock releases.
@@ -117,50 +117,50 @@ export interface DispatchGatePassRequest {
 }
 
 /**
- * Minimum gap between a re-attempt that re-parked and the next drain attempt
+ * Minimum gap between a re-attempt that re-queued and the next drain attempt
  * on that thread.
  *
  * Clearing a wait re-runs the gate pass, and a pass that votes to wait again
- * parks the row afresh — so a plugin that clears the moment it sees
- * `queue.parked` would spin clear → re-park → clear at whatever rate its event
+ * queues the row afresh — so a plugin that clears the moment it sees
+ * `queue.waiting` would spin clear → re-queue → clear at whatever rate its event
  * handler fires. Core owns the pacing rather than trusting plugins, the same
  * way `STALE_QUEUED_MESSAGE_CLAIM_MS` in the queue owns claim recovery rather
  * than trusting senders.
  *
- * Only a re-park starts the clock. An attempt that dispatched is not a loop
- * and must never be delayed — a due scheduled send that re-parks for a busy
+ * Only a re-queue starts the clock. An attempt that dispatched is not a loop
+ * and must never be delayed — a due scheduled send that re-queues for a busy
  * thread and then dispatches the moment the turn ends is one normal sequence
  * of two attempts milliseconds apart. And the window is per thread, not per
- * row, because a re-park can land on a different row entirely.
+ * row, because a re-queue can land on a different row entirely.
  */
-const DISPATCH_REPARK_MIN_INTERVAL_MS = 1_000;
+const DISPATCH_REQUEUE_MIN_INTERVAL_MS = 1_000;
 
 /**
- * When each thread last had a drain attempt turn straight back into a park.
+ * When each thread last had a drain attempt turn straight back into a queue.
  * In-memory on purpose: this paces a live spin, and a restart is already a
  * hard stop for one. Entries are dropped as they age out, so a long-lived
  * server does not accumulate one per thread ever drained.
  */
-const lastReparkedAtByThreadId = new Map<string, number>();
+const lastRequeuedAtByThreadId = new Map<string, number>();
 
-export function noteDispatchReparked(threadId: string): void {
+export function noteDispatchRequeued(threadId: string): void {
   const now = Date.now();
-  for (const [id, at] of lastReparkedAtByThreadId) {
-    if (now - at >= DISPATCH_REPARK_MIN_INTERVAL_MS) {
-      lastReparkedAtByThreadId.delete(id);
+  for (const [id, at] of lastRequeuedAtByThreadId) {
+    if (now - at >= DISPATCH_REQUEUE_MIN_INTERVAL_MS) {
+      lastRequeuedAtByThreadId.delete(id);
     }
   }
-  lastReparkedAtByThreadId.set(threadId, now);
+  lastRequeuedAtByThreadId.set(threadId, now);
 }
 
 /**
- * True when this thread re-parked moments ago and the next drain attempt
- * should wait. The caller does nothing, so the row stays parked and the next
+ * True when this thread re-queued moments ago and the next drain attempt
+ * should wait. The caller does nothing, so the row stays queued and the next
  * sweep tick, drain or user action tries again.
  */
-export function isDispatchReparkedRecently(threadId: string): boolean {
-  const at = lastReparkedAtByThreadId.get(threadId);
-  return at !== undefined && Date.now() - at < DISPATCH_REPARK_MIN_INTERVAL_MS;
+export function isDispatchRequeuedRecently(threadId: string): boolean {
+  const at = lastRequeuedAtByThreadId.get(threadId);
+  return at !== undefined && Date.now() - at < DISPATCH_REQUEUE_MIN_INTERVAL_MS;
 }
 
 /**
@@ -269,7 +269,7 @@ async function decideWithinBox<T>(
  * The gate chain for a stage: plugin install order, which is deterministic and
  * is the only order there is. Nothing reorders it — a chain of pure decisions
  * composes the same way whichever order it runs in, because a `reject` from
- * any gate refuses and a `wait` from any gate parks.
+ * any gate refuses and a `wait` from any gate queues.
  */
 function orderedGates(
   provider: DispatchGateProvider,
@@ -347,7 +347,7 @@ function buildGateContext(
  *
  * Order is plugin install order; a `reject` short-circuits the pass and throws
  * a 409; `wait` verdicts are COLLECTED across the whole pass rather than
- * short-circuiting, so every gate that would have parked the message gets its
+ * short-circuiting, so every gate that would have queued the message gets its
  * reason onto the one row. The attempt proceeds only when a pass yields no
  * waits.
  *

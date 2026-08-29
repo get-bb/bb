@@ -535,7 +535,7 @@ export function RootComposeView() {
         navigateToThreadAfterCreate,
       });
       const {
-        // Applied once below so a scheduled fork parks too: the fork branch
+        // Applied once below so a scheduled fork queues too: the fork branch
         // builds its request from the seed and would otherwise drop it.
         sendAt,
         ...requestFields

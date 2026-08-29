@@ -21,14 +21,14 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 const WORKSPACE_PATH = "/tmp/queue-drain-failure-project";
 
 /**
- * A thread with a parked row on a host that is either connected or not.
+ * A thread with a queued row on a host that is either connected or not.
  *
  * `seedHostSession` opens a daemon session; `seedHost` alone leaves the host
  * enrolled but away, which is exactly the state a drain hits when a laptop
  * shuts. Nothing else about the fixture differs, so a test that flips this flag
  * is testing the host's liveness and nothing else.
  */
-function seedParkedRow(
+function seedQueuedRow(
   harness: TestAppHarness,
   args: { hostConnected: boolean; hostName: string; sendAt?: number },
 ) {
@@ -59,14 +59,14 @@ function seedParkedRow(
 
 function reread(harness: TestAppHarness, queuedMessageId: string) {
   const row = getQueuedThreadMessage(harness.db, queuedMessageId);
-  if (row === null) throw new Error("the parked row vanished");
+  if (row === null) throw new Error("the queued row vanished");
   return toThreadQueuedMessage(row);
 }
 
 describe("recordQueuedMessageDrainFailure", () => {
-  it("re-parks on the named host when the machine is the thing that is missing", async () => {
+  it("re-queues on the named host when the machine is the thing that is missing", async () => {
     await withTestHarness(async (harness) => {
-      const { thread, row } = seedParkedRow(harness, {
+      const { thread, row } = seedQueuedRow(harness, {
         hostConnected: false,
         hostName: "M4",
         // A due row that could not be delivered: the instant has passed and
@@ -80,12 +80,12 @@ describe("recordQueuedMessageDrainFailure", () => {
         thread,
       });
 
-      const parked = reread(harness, row.id);
-      expect(parked.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
-      expect(parked.sendAt).toBeNull();
+      const queued = reread(harness, row.id);
+      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.sendAt).toBeNull();
       // An absent machine is a wait, not a failure: the row recovers by itself
       // when the host comes back, so presenting it as an error would be wrong.
-      expect(parked.failureReason).toBeNull();
+      expect(queued.failureReason).toBeNull();
       // A drain failure changes the row, not the transcript.
       expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
@@ -93,7 +93,7 @@ describe("recordQueuedMessageDrainFailure", () => {
 
   it("records the reason and keeps the wait when the host is present", async () => {
     await withTestHarness(async (harness) => {
-      const { thread, row } = seedParkedRow(harness, {
+      const { thread, row } = seedQueuedRow(harness, {
         hostConnected: true,
         hostName: "M4",
       });
@@ -104,19 +104,19 @@ describe("recordQueuedMessageDrainFailure", () => {
         thread,
       });
 
-      const parked = reread(harness, row.id);
-      expect(parked.failureReason).toBe("Thread is archived");
-      // The row is still parked on what parked it. A failure says what went
-      // wrong last time, not what the row is waiting for, and a park would
+      const queued = reread(harness, row.id);
+      expect(queued.failureReason).toBe("Thread is archived");
+      // The row is still waiting on what queued it. A failure says what went
+      // wrong last time, not what the row is waiting for, and a queue would
       // have erased it on the very next attempt.
-      expect(parked.waitingOn).toEqual({ kind: "thread-busy" });
+      expect(queued.waitingOn).toEqual({ kind: "thread-busy" });
       expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
 
   it("does not leak an internal fault's wording onto the row", async () => {
     await withTestHarness(async (harness) => {
-      const { thread, row } = seedParkedRow(harness, {
+      const { thread, row } = seedQueuedRow(harness, {
         hostConnected: true,
         hostName: "M4",
       });
@@ -135,9 +135,9 @@ describe("recordQueuedMessageDrainFailure", () => {
     });
   });
 
-  it("lets a later successful park clear a failure the row was showing", async () => {
+  it("lets a later successful queue clear a failure the row was showing", async () => {
     await withTestHarness(async (harness) => {
-      const { thread, row } = seedParkedRow(harness, {
+      const { thread, row } = seedQueuedRow(harness, {
         hostConnected: false,
         hostName: "M4",
       });
@@ -154,12 +154,12 @@ describe("recordQueuedMessageDrainFailure", () => {
         thread,
       });
 
-      // The host is away, so this attempt re-parks rather than failing — and a
+      // The host is away, so this attempt re-queues rather than failing — and a
       // fresh statement of why the row is waiting supersedes the stale failure
       // instead of showing the reader two contradictory explanations.
-      const parked = reread(harness, row.id);
-      expect(parked.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
-      expect(parked.failureReason).toBeNull();
+      const queued = reread(harness, row.id);
+      expect(queued.waitingOn).toEqual({ kind: "host-offline", hostName: "M4" });
+      expect(queued.failureReason).toBeNull();
     });
   });
 });

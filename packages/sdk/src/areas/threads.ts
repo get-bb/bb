@@ -291,7 +291,7 @@ export interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGr
 
 /**
  * Both filters are genuinely absent by default: no filter lists every live
- * parked row in the workspace, which is what `bb thread queue list` with no
+ * queued row in the workspace, which is what `bb thread queue list` with no
  * thread and a limiter plugin's own bookkeeping ask for.
  */
 export interface ThreadQueueListArgs {
@@ -488,12 +488,12 @@ export interface ThreadTabsArea {
 }
 
 /**
- * Parked queue rows across every thread.
+ * Queued rows across every thread.
  *
  * The per-thread list, send-now, edit, reorder and delete all live on
  * `queuedMessages`, which is where a row's own operations belong. This area
  * exists for the one question a thread-scoped list cannot answer: "what is
- * parked right now, anywhere" — a workspace-wide pending view, or a plugin
+ * queued right now, anywhere" — a workspace-wide pending view, or a plugin
  * recovering the rows it is holding after a restart.
  */
 export interface ThreadQueueArea {
@@ -614,8 +614,8 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,
     executionInputSources: args.executionInputSources,
-    // Present ⇒ the message parks on the queue waiting for the clock instead
-    // of attempting now; the response reports `delivery: "parked"`.
+    // Present ⇒ the message joins the queue waiting for the clock instead
+    // of attempting now; the response reports `delivery: "queued"`.
     sendAt: args.sendAt,
   };
 }

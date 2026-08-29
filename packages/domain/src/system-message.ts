@@ -6,7 +6,7 @@ import { z } from "zod";
  * Its own module rather than part of `thread-events.ts` because two modules on
  * opposite sides of an import edge need it: thread events stamp it on a
  * `client/turn/requested`, and a queued row carries it while one of core's own
- * notices is parked. Leaving it in `thread-events.ts` made those two import
+ * notices is queued. Leaving it in `thread-events.ts` made those two import
  * each other, which left whichever loaded second holding `undefined` schemas.
  */
 

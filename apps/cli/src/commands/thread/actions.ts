@@ -110,7 +110,7 @@ interface PostThreadMessageArgs {
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
-// echoed back here so the outcome line could name the time; the parked arm of
+// echoed back here so the outcome line could name the time; the queued arm of
 // the response now carries it, along with the reason, so the CLI no longer
 // has to reconstruct what happened from the flags it sent.
 type PostThreadMessageResult = ThreadSendResult & {
@@ -567,7 +567,7 @@ function describeThreadTellOutcome(
   threadId: string,
   response: PostThreadMessageResult,
 ): string {
-  if (response.delivery === "parked") {
+  if (response.delivery === "queued") {
     // The server says WHY it is waiting, so the CLI does not have to guess
     // from the flags it happened to send. `bb thread queue list` shows the
     // same reason for the row afterwards.
@@ -578,7 +578,7 @@ function describeThreadTellOutcome(
     : `Thread ${threadId} updated`;
 }
 
-/** One short phrase for a parked row's wait, shared by `tell` and `queue`. */
+/** One short phrase for a queued row's wait, shared by `tell` and `queue`. */
 export function describeQueueWait(row: {
   sendAt: number | null;
   waitingOn: QueuedMessageWaitingOn | null;

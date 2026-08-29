@@ -686,7 +686,7 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
 /**
  * Undo migration 0110, the dispatch-queue rework.
  *
- * 0110 adds the queue's parking columns (schedule, typed wait, wait holder,
+ * 0110 adds the queue's wait columns (schedule, typed wait, wait holder,
  * payload kind and its retry reference), the system-notice and failure-reason
  * sidecars, their two partial indexes, and the thread's pending start
  * context.

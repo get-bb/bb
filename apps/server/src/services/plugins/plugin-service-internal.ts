@@ -205,9 +205,8 @@ export interface PluginThreadEventEmitter {
    * DTO is built once and shared by every listener, exactly like the thread
    * events above.
    */
-  emitQueueParked(entry: ThreadQueuedMessage): void;
+  emitQueueWaiting(entry: ThreadQueuedMessage): void;
   emitQueueDispatched(entry: ThreadQueuedMessage): void;
-  emitQueueCancelled(entry: ThreadQueuedMessage): void;
 }
 
 export type PluginWireLookup<T> =

@@ -642,7 +642,7 @@ function QueuedMessagePreview({
 }
 
 /**
- * A parked row's status line: what it is waiting for, plus a live countdown
+ * A queued row's status line: what it is waiting for, plus a live countdown
  * when it is waiting on the clock.
  *
  * Split into its own component so that only rows with something to say

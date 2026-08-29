@@ -395,7 +395,7 @@ type ExpectedThreadsKey =
 
 type ExpectedThreadEventsKey = "list" | "wait";
 /**
- * The cross-thread queue area answers exactly one question — what is parked
+ * The cross-thread queue area answers exactly one question — what is queued
  * right now — so it has exactly one method. A row's own operations (send-now,
  * edit, reorder, delete) live on `queuedMessages`.
  */

@@ -48,8 +48,8 @@ export interface CreateQueuedThreadMessageInput {
   permissionMode: PermissionMode;
   serviceTier: string;
   /**
-   * Why the row is parked, written in the SAME insert rather than by a
-   * follow-up update: a row that existed unparked for even one statement
+   * Why the row is queued, written in the SAME insert rather than by a
+   * follow-up update: a row that existed with no wait for even one statement
    * could be claimed by a concurrent drain, which is exactly the dispatch the
    * wait exists to prevent.
    */
@@ -750,8 +750,8 @@ export function claimQueuedThreadMessageGroup(
       }
 
       // Grouping is computed over the DRAINABLE rows, because a group is a
-      // batch that dispatches together and a parked row cannot. Send-now on a
-      // parked row is therefore always a claim of that row alone, which is
+      // batch that dispatches together and a queued row cannot. Send-now on a
+      // queued row is therefore always a claim of that row alone, which is
       // also the honest answer: the user asked for that message, not for
       // whatever happens to sit next to it.
       const queuedMessages = listDrainableQueuedThreadMessages(
@@ -1017,7 +1017,7 @@ export function setQueuedThreadMessageGroupBoundary({
   return result;
 }
 
-export interface ReparkClaimedQueuedThreadMessagesArgs {
+export interface RequeueClaimedQueuedThreadMessagesArgs {
   /** Every row the drain claimed, lead first. */
   claims: readonly ClaimedQueuedThreadMessageMutationArgs[];
   threadId: string;
@@ -1026,27 +1026,27 @@ export interface ReparkClaimedQueuedThreadMessagesArgs {
 }
 
 /**
- * Hands a claimed group back to the queue and parks the lead row on a wait, in
+ * Hands a claimed group back to the queue and writes the lead row's wait, in
  * ONE transaction.
  *
- * Two statements would leave the rows unclaimed and unparked in between, which
+ * Two statements would leave the rows unclaimed and with no wait in between, which
  * is a window where the idle drain can pick up a message that a gate has just
  * said must wait. Doing both under one immediate transaction closes it: from
  * every other reader's view the group goes straight from "being dispatched" to
- * "parked on this reason".
+ * "waiting on this reason".
  *
- * Returns the parked lead row, or null when the claim no longer holds (the row
+ * Returns the queued lead row, or null when the claim no longer holds (the row
  * was deleted, or a stale-claim sweep already reclaimed it) — in which case the
- * caller has nothing left to park.
+ * caller has nothing left to queue.
  */
-export function reparkClaimedQueuedThreadMessages(
+export function requeueClaimedQueuedThreadMessages(
   db: DbConnection,
   notifier: DbNotifier,
-  args: ReparkClaimedQueuedThreadMessagesArgs,
+  args: RequeueClaimedQueuedThreadMessagesArgs,
 ): QueuedThreadMessageRow | null {
   const lead = args.claims[0];
   if (lead === undefined) return null;
-  const parked = db.transaction(
+  const queued = db.transaction(
     (tx) => {
       const now = Date.now();
       for (const claim of args.claims) {
@@ -1067,7 +1067,7 @@ export function reparkClaimedQueuedThreadMessages(
             waitingOn: JSON.stringify(args.waitingOn),
             waitHolder: waitHolderFor(args.waitingOn),
             sendAt: args.sendAt,
-            // A re-park is a fresh, successful statement of why this row is
+            // A re-queue is a fresh, successful statement of why this row is
             // waiting, which supersedes whatever the previous attempt failed
             // with. Leaving a stale failure next to a current wait would show
             // the user two contradictory explanations of the same row.
@@ -1087,10 +1087,10 @@ export function reparkClaimedQueuedThreadMessages(
     },
     { behavior: "immediate" },
   );
-  if (parked) {
+  if (queued) {
     notifier.notifyThread(args.threadId, ["queue-changed"]);
   }
-  return parked;
+  return queued;
 }
 
 export function releaseQueuedMessageClaim(
@@ -1240,7 +1240,7 @@ export function deleteClaimedQueuedThreadMessageBatchInTransaction(
 }
 
 /**
- * A row is live while no drain worker holds it. Parking, re-parking and
+ * A row is live while no drain worker holds it. Queueing, re-queueing and
  * clearing a wait are all lost updates against a row that is already being
  * dispatched, so every wait mutation is gated on liveness in the same
  * statement that performs it.
@@ -1260,7 +1260,7 @@ function liveQueuedThreadMessage() {
  * Every other wait belongs to a different drain and must be invisible here, or
  * the idle sweep would dispatch a message scheduled for 9am the moment the
  * thread went quiet. That is also why an ineligible row does not BLOCK the
- * ones behind it: the queue is a parking lot, not a pipeline, so a row parked
+ * ones behind it: the queue is a queue, not a pipeline, so a row queued
  * on a plugin for an hour is overtaken by the follow-up the user sent after
  * it rather than stalling the whole thread. Plain queued rows are all
  * `thread-busy`, so among themselves they keep strict FIFO order, which is
@@ -1278,7 +1278,7 @@ function drainableQueuedThreadMessage() {
 
 /**
  * A thread's drainable rows in queue order. This is what the claim paths read;
- * {@link listQueuedThreadMessages} keeps showing everything, because a parked
+ * {@link listQueuedThreadMessages} keeps showing everything, because a queued
  * row is still on the user's queue even when no drain will touch it yet.
  */
 export function listDrainableQueuedThreadMessages(
@@ -1301,7 +1301,7 @@ export interface ListQueuedThreadMessagesForApiArgs {
 }
 
 /**
- * The cross-thread parked-row list behind `GET /queued-messages`. Both filters
+ * The cross-thread queued-row list behind `GET /queued-messages`. Both filters
  * are genuinely absent by default: unfiltered means every live row in the
  * workspace, which is what a whole-workspace pending view asks for.
  */
@@ -1333,14 +1333,14 @@ export interface QueuedThreadMessageCounts {
   /**
    * How many of those rows last failed to dispatch. Counted in the same pass
    * as the total because both answers come from the same rows, and the thread
-   * list needs them together: a thread with parked work shows a clock, and one
-   * whose parked work failed shows the failure instead.
+   * list needs them together: a thread with queued work shows a clock, and one
+   * whose queued work failed shows the failure instead.
    */
   failedQueuedMessageCount: number;
 }
 
 /**
- * How many live rows each of these threads has parked, and how many of those
+ * How many live rows each of these threads has queued, and how many of those
  * failed. One grouped query rather than one per thread: the thread list renders
  * a glyph per row and would otherwise issue a query per visible thread.
  *
@@ -1396,7 +1396,7 @@ export interface SetQueuedThreadMessageWaitingOnArgs {
   waitingOn: QueuedMessageWaitingOn;
   /**
    * The row's scheduled instant. Passed on every call rather than left alone,
-   * because a re-park is a fresh statement of when this row may run: a
+   * because a re-queue is a fresh statement of when this row may run: a
    * `time` wait sets it, and every other wait kind clears it by passing null.
    */
   sendAt: number | null;
@@ -1413,7 +1413,7 @@ export interface ListQueuedThreadMessagesWaitingOnKindArgs {
 }
 
 /**
- * Park a live row on a typed wait. Returns the updated row, or null when the
+ * Queue a live row on a typed wait. Returns the updated row, or null when the
  * row is gone, belongs to another thread, or has already been claimed.
  */
 export function setQueuedThreadMessageWaitingOn(
@@ -1428,7 +1428,7 @@ export function setQueuedThreadMessageWaitingOn(
         waitingOn: JSON.stringify(args.waitingOn),
         waitHolder: waitHolderFor(args.waitingOn),
         sendAt: args.sendAt,
-        // Same rule as `reparkClaimedQueuedThreadMessages`: any fresh,
+        // Same rule as `requeueClaimedQueuedThreadMessages`: any fresh,
         // successful statement of why this row is waiting supersedes whatever
         // a previous attempt failed with. Leaving a stale failure beside a
         // current wait would show the reader two contradictory explanations of
@@ -1463,9 +1463,9 @@ export interface SetQueuedThreadMessageFailureReasonArgs {
  *
  * Only the drain writes this: an inline attempt has a caller still listening
  * and reports to them instead. The row's wait is deliberately untouched — it
- * is still parked on whatever it was parked on, and the failure is a separate
+ * is still waiting on whatever it was waiting on, and the failure is a separate
  * fact about the last attempt rather than a new reason to wait. A later
- * successful park clears it (see `reparkClaimedQueuedThreadMessages`).
+ * successful re-queue clears it (see `requeueClaimedQueuedThreadMessages`).
  */
 export function setQueuedThreadMessageFailureReason(
   db: DbConnection,
@@ -1595,7 +1595,7 @@ export function listQueuedThreadMessagesByWaitHolder(
 }
 
 /**
- * Every live row parked on SOME plugin's wait, across every thread.
+ * Every live row on SOME plugin's wait, across every thread.
  *
  * The orphan sweep asks this once per tick and then filters by which plugins
  * are loaded, rather than asking per plugin: the set of holders is not known
@@ -1619,7 +1619,7 @@ export function listQueuedThreadMessagesWithPluginWait(
 }
 
 /**
- * A thread's live rows parked on one kind of wait, in queue order. Read
+ * A thread's live rows on one kind of wait, in queue order. Read
  * straight out of the stored JSON so the kind has exactly one home; the
  * thread predicate is what makes this selective, so no index on the extracted
  * kind is warranted.

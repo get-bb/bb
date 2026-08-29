@@ -20,7 +20,7 @@ import { notifyThreadRunFailed } from "./turn-failed.js";
  *
  * Deliberately after the failure is fully applied and announced: this stage
  * observes, it does not decide whether the failure happens. A gate can only ask
- * for a retry, and it asks by parking a hold, so nothing here can change how the
+ * for a retry, and it asks by queueing a row, so nothing here can change how the
  * failure was handled.
  */
 function notifyTurnFailedGates(

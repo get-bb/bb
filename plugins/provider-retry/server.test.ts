@@ -20,7 +20,7 @@ import {
   decideRetry,
 } from "./src/retry-policy.js";
 
-type QueueEntry = PluginThreadEventPayloads["queue.parked"]["entry"];
+type QueueEntry = PluginThreadEventPayloads["queue.waiting"]["entry"];
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
@@ -142,10 +142,10 @@ function dispatchContext(
 }
 
 /**
- * A parked retry as the server would return it: this plugin's wait, a retry
+ * A queued retry as the server would return it: this plugin's wait, a retry
  * payload and a `sendAt` for core's due sweep.
  */
-function parkedRetry(overrides: Partial<QueueEntry> = {}): QueueEntry {
+function queuedRetry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return makeQueueEntry({
     id: "queued_1",
     threadId: THREAD_ID,
@@ -172,14 +172,14 @@ interface QueuedMessageSend extends QueuedMessageTarget {
   mode: string;
 }
 
-function createHost(parked: QueueEntry[] = []) {
+function createHost(queued: QueueEntry[] = []) {
   const deleted: QueuedMessageTarget[] = [];
   const sent: QueuedMessageSend[] = [];
   const sdk: CreateFakePluginHostOptions["sdk"] = {
     threads: {
       get: async ({ threadId }) =>
         makeThreadResponse({ id: threadId, providerId: "codex" }),
-      queue: { list: async () => parked },
+      queue: { list: async () => queued },
       queuedMessages: {
         delete: async (args: QueuedMessageTarget) => {
           deleted.push(args);
@@ -402,7 +402,7 @@ describe("provider retry plugin", () => {
     // Just the cause, no time: every surface renders the row's `sendAt`
     // itself, so a time here shows up twice on the card and in the queue list.
     expect(decision.reason).toBe("Rate limited");
-    // The "scheduled" narration is the parked row's own card and timeline row;
+    // The "scheduled" narration is the queued row's own card and timeline row;
     // a note here would say the same thing twice.
     expect(host.harness.registrations.appendedThreadNotes).toEqual([]);
     await host.harness.dispose();
@@ -456,7 +456,7 @@ describe("provider retry plugin", () => {
     await host.harness.dispose();
   });
 
-  it("parks new sends into an account it just watched hit its limit", async () => {
+  it("queues new sends into an account it just watched hit its limit", async () => {
     const host = createHost();
     await plugin(host.bb);
     const failedGate = host.harness.registrations.dispatchGates["turn.failed"];
@@ -467,13 +467,13 @@ describe("provider retry plugin", () => {
 
     await failedGate?.(turnFailedContext());
 
-    const parked = await gate?.(dispatchContext());
-    expect(parked?.action).toBe("wait");
-    if (parked?.action !== "wait") return;
-    expect(parked.reason).toBe("Rate limited");
+    const queued = await gate?.(dispatchContext());
+    expect(queued?.action).toBe("wait");
+    if (queued?.action !== "wait") return;
+    expect(queued.reason).toBe("Rate limited");
     // `retryAt` becomes the row's `sendAt`, so core's due sweep re-attempts
     // without this plugin holding a timer.
-    expect(parked.retryAt).toBe(RESET_AT_MS + RESET_BUFFER_MS);
+    expect(queued.retryAt).toBe(RESET_AT_MS + RESET_BUFFER_MS);
 
     // Once the window has passed the account is presumed usable again; being
     // wrong costs one failure, which is what re-arms the wait.
@@ -484,7 +484,7 @@ describe("provider retry plugin", () => {
 
   it("lets a steer into a blocked account through", async () => {
     // A `join-turn` attempt joins a turn the provider already accepted, so the
-    // account is demonstrably not blocked for it; parking it would strand the
+    // account is demonstrably not blocked for it; queueing it would strand the
     // user mid-turn for a limit that is not being hit.
     const host = createHost();
     await plugin(host.bb);
@@ -499,18 +499,16 @@ describe("provider retry plugin", () => {
     await host.harness.dispose();
   });
 
-  it("notes a retry when its row dispatches and when the user cancels it", async () => {
+  it("notes a retry when its row dispatches", async () => {
     const host = createHost();
     await plugin(host.bb);
-    const entry = parkedRetry();
+    const entry = queuedRetry();
 
     await host.harness.emitThreadEvent("queue.dispatched", { entry });
-    await host.harness.emitThreadEvent("queue.cancelled", { entry });
 
     const notes = host.harness.registrations.appendedThreadNotes;
     expect(notes.map((note) => note.note.text)).toEqual([
       "Rate limit window reset — retrying now.",
-      "Automatic retry cancelled.",
     ]);
     await host.harness.dispose();
   });
@@ -519,10 +517,10 @@ describe("provider retry plugin", () => {
     const host = createHost();
     await plugin(host.bb);
 
-    // Another plugin's wait, and an ordinary message this plugin parked
+    // Another plugin's wait, and an ordinary message this plugin queued
     // nothing about — neither is a retry of ours.
     await host.harness.emitThreadEvent("queue.dispatched", {
-      entry: parkedRetry({
+      entry: queuedRetry({
         waitingOn: {
           kind: "plugin",
           pluginId: "concurrency-limit",
@@ -531,7 +529,7 @@ describe("provider retry plugin", () => {
       }),
     });
     await host.harness.emitThreadEvent("queue.dispatched", {
-      entry: parkedRetry({ payload: { kind: "inline" } }),
+      entry: queuedRetry({ payload: { kind: "inline" } }),
     });
 
     expect(host.harness.registrations.appendedThreadNotes).toEqual([]);
@@ -539,7 +537,7 @@ describe("provider retry plugin", () => {
   });
 
   it("reports pending retries from the queue rather than private state", async () => {
-    const host = createHost([parkedRetry()]);
+    const host = createHost([queuedRetry()]);
     await plugin(host.bb);
 
     await expect(
@@ -561,10 +559,10 @@ describe("provider retry plugin", () => {
     await host.harness.dispose();
   });
 
-  it("cancels by deleting the parked row and retries by sending it now", async () => {
+  it("cancels by deleting the queued row and retries by sending it now", async () => {
     // Both are the affordances the user already has on the queued card, rather
     // than a second mechanism this plugin owns.
-    const host = createHost([parkedRetry()]);
+    const host = createHost([queuedRetry()]);
     await plugin(host.bb);
 
     await expect(
@@ -582,7 +580,7 @@ describe("provider retry plugin", () => {
     await host.harness.dispose();
   });
 
-  it("reports no pending retry when no row is parked", async () => {
+  it("reports no pending retry when no row is queued", async () => {
     const host = createHost();
     await plugin(host.bb);
 

@@ -14,8 +14,7 @@ interface CollectTimelineAutoExpansionRowIdsArgs {
 export interface TimelineAutoExpansionRowIds {
   /**
    * Rows the timeline opens for as long as the condition holds and closes
-   * again when it stops: the active scope's live frontier, plus every waiting
-   * dispatch hold.
+   * again when it stops: the active scope's live frontier.
    */
   liveExpandedRowIds: ReadonlySet<string>;
   terminalFrontierRowIds: ReadonlySet<string>;

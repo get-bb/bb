@@ -35,19 +35,14 @@ export function emitPluginThreadDeleted(thread: Thread): void {
   noteThreadCapacityFreed();
 }
 
-/** Called after a dispatch attempt parks as a queued row (parkDispatch). */
-export function emitPluginQueueParked(entry: ThreadQueuedMessage): void {
-  emitter?.emitQueueParked(entry);
+/** Called after a dispatch attempt is queued as a row (recordQueuedMessageWait). */
+export function emitPluginQueueWaiting(entry: ThreadQueuedMessage): void {
+  emitter?.emitQueueWaiting(entry);
 }
 
-/** Called after a parked row's waits cleared and it dispatched. */
+/** Called after a queued row's waits cleared and it dispatched. */
 export function emitPluginQueueDispatched(entry: ThreadQueuedMessage): void {
   emitter?.emitQueueDispatched(entry);
-}
-
-/** Called after a parked row is cancelled and its dispatch discarded. */
-export function emitPluginQueueCancelled(entry: ThreadQueuedMessage): void {
-  emitter?.emitQueueCancelled(entry);
 }
 
 /**

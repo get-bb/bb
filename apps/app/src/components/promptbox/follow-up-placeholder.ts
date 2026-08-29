@@ -20,7 +20,7 @@ export function getFollowUpPromptPlaceholder(
     // A pending thread's composer is not blocked — it accepts and queues
     // messages exactly as an idle one does, and the queued rows sitting
     // directly above it already say what is waiting. The first message is
-    // parked, not rejected, and another message simply parks behind it.
+    // queued, not rejected, and another message simply queues behind it.
     case "pending":
     case "idle":
     case "active":

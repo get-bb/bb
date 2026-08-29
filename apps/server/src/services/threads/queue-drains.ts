@@ -13,8 +13,8 @@ import {
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { isDispatchReparkedRecently } from "./dispatch-gates.js";
-import { clearQueuedMessageWait } from "./queue-parking.js";
+import { isDispatchRequeuedRecently } from "./dispatch-gates.js";
+import { clearQueuedMessageWait } from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   runQueuedMessageAutoSendForThread,
@@ -37,7 +37,7 @@ type QueueDrainDeps = LoggedPendingInteractionWorkSessionDeps;
  * Clearing rather than dispatching is the whole trick: a cleared row is an
  * ordinary queued row, so the existing idle drain picks it up when the thread
  * is actually able to take it. A row cleared into a thread that is still busy
- * simply re-parks on `thread-busy` at its next attempt, which is correct and
+ * simply re-queues on `thread-busy` at its next attempt, which is correct and
  * costs nothing — so a drain never has to reason about whether its signal was
  * the LAST thing the message was waiting for.
  */
@@ -82,10 +82,10 @@ export function drainThreadQueueOnWorkspaceReady(
  * The waits are cleared rather than the rows cancelled: the messages are still
  * the user's, and a thread that failed to provision is one the user can retry,
  * at which point these are exactly the messages that should go. Leaving them
- * parked on a `provisioning` that will never complete is the shape that
+ * waiting on a `provisioning` that will never complete is the shape that
  * produced #1789 — a row nothing will ever move.
  */
-export function releaseThreadQueueProvisioningWaits(
+export function clearThreadQueueProvisioningWaits(
   deps: Pick<QueueDrainDeps, "db" | "hub">,
   threadId: string,
 ): void {
@@ -161,8 +161,8 @@ async function dispatchDueQueuedMessage(
   deps: QueueDrainDeps,
   row: QueuedThreadMessageRow,
 ): Promise<void> {
-  if (isDispatchReparkedRecently(row.threadId)) {
-    // This thread turned an attempt straight back into a park moments ago.
+  if (isDispatchRequeuedRecently(row.threadId)) {
+    // This thread turned an attempt straight back into a queue moments ago.
     // Nothing is settled here, so the row stays and the next tick tries again.
     return;
   }
@@ -179,7 +179,7 @@ async function dispatchDueQueuedMessage(
   } catch (error) {
     // A background attempt has no caller left to report to, so the row carries
     // the outcome itself — as a `host-offline` wait when the machine is simply
-    // away, or as a failure reason otherwise. Re-parking the ORIGINAL wait here
+    // away, or as a failure reason otherwise. Re-queueing the ORIGINAL wait here
     // would let a broken dispatch loop forever; the row was already returned to
     // the queue by the claim release.
     recordQueuedMessageDrainFailure(deps, { error, row, thread });
@@ -219,7 +219,7 @@ let freedCapacityDrainPending = false;
  * {@link noteThreadCapacityFreed} listener.
  *
  * Bursts coalesce into one pass: five turns completing together free five
- * slots, and one walk of the parked rows fills as many of them as the gates
+ * slots, and one walk of the queued rows fills as many of them as the gates
  * allow. The flag clears when the walk starts, so a thread that frees while a
  * walk is in progress still gets its own pass.
  */
@@ -239,27 +239,27 @@ export function requestFreedCapacityQueueDrain(deps: QueueDrainDeps): void {
 }
 
 /**
- * Re-attempts every plugin-parked row, oldest first, because a thread left the
+ * Re-attempts every plugin-queued row, oldest first, because a thread left the
  * occupying set.
  *
  * Deliberately global rather than scoped to the freed thread's host or
  * project: a limit can be expressed over any grouping and core does not know
- * which one a plugin used. A row that is still blocked simply re-parks, which
+ * which one a plugin used. A row that is still blocked simply re-queues, which
  * costs one gate pass and is exactly what makes the release safe — no plugin
  * has to decide whether its own release was warranted.
  *
  * Only plugin waits: core waits (`time`, `thread-busy`, `provisioning`,
  * `interaction`, `host-offline`) each have their own release signal and are
  * unaffected by somebody else's slot freeing. Rows are walked in queue order
- * so a full pool drains in the order it filled, and the existing re-park
- * pacing (`isDispatchReparkedRecently`, one second per thread) is what keeps a
- * plugin that re-parks everything from being re-asked on every completion.
+ * so a full pool drains in the order it filled, and the existing re-queue
+ * pacing (`isDispatchRequeuedRecently`, one second per thread) is what keeps a
+ * plugin that re-queues everything from being re-asked on every completion.
  */
 export async function runFreedCapacityQueueDrain(
   deps: QueueDrainDeps,
 ): Promise<void> {
   for (const row of listQueuedThreadMessagesWithPluginWait(deps.db)) {
-    if (isDispatchReparkedRecently(row.threadId)) continue;
+    if (isDispatchRequeuedRecently(row.threadId)) continue;
     const thread = getThread(deps.db, row.threadId);
     if (!thread || thread.deletedAt !== null) continue;
     try {
@@ -274,7 +274,7 @@ export async function runFreedCapacityQueueDrain(
           threadId: row.threadId,
           ...runtimeErrorLogFields(deps.config, error),
         },
-        "Failed to re-attempt a plugin-parked message after capacity freed",
+        "Failed to re-attempt a plugin-queued message after capacity freed",
       );
     }
   }
@@ -286,7 +286,7 @@ export async function runFreedCapacityQueueDrain(
  * their owner is the product itself and cannot go away.
  *
  * Clearing (not cancelling) is deliberate — the user asked for this message,
- * and the plugin that parked it is no longer around to object.
+ * and the plugin that queued it is no longer around to object.
  */
 export async function runOrphanedQueueWaitSweep(
   deps: QueueDrainDeps,

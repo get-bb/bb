@@ -294,7 +294,7 @@ describe("the dispatch gate", () => {
     ).resolves.toEqual({ action: "proceed" });
   });
 
-  it("parks a start-turn attempt on an idle thread when the pool is full", async () => {
+  it("queues a start-turn attempt on an idle thread when the pool is full", async () => {
     const { gate } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "a" })],

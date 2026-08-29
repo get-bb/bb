@@ -218,12 +218,12 @@ const threadEventScopeDefinitionByType = {
   "system/dispatch-hold": {
     policy: "thread",
     rationale:
-      "A hold defers a turn that has not started, so there is no turn to scope it to; the row sits in the thread timeline where that turn will land.",
+      "Legacy, retained for decode only: a hold deferred a turn that had not started, so there was no turn to scope it to. Dispatch holds were replaced by queued rows and nothing emits this.",
   },
   "system/queue-state": {
     policy: "thread",
     rationale:
-      "Legacy, retained for decode only: a queued row parked a dispatch that had not started, so there was no turn to scope it to. Parking is now narrated by the queue rows above the composer and nothing emits this.",
+      "Legacy, retained for decode only: a queued row was waiting on a dispatch that had not started, so there was no turn to scope it to. Queueing is now narrated by the queue rows above the composer and nothing emits this.",
   },
   "system/plugin-note": {
     policy: "thread",

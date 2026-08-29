@@ -69,8 +69,8 @@ describe("describeQueuedMessageWait", () => {
     );
   });
 
-  it("lets a failure outrank the wait the row is still parked on", () => {
-    // The row keeps its wait — a failed drain does not un-park it — but what a
+  it("lets a failure outrank the wait the row is still waiting on", () => {
+    // The row keeps its wait — a failed drain does not clear its wait — but what a
     // reader needs first is that the last attempt did not go through.
     expect(
       describeWait(
@@ -113,7 +113,7 @@ describe("describeQueuedMessageWait", () => {
   });
 
   it("leads a retry with why the turn failed, then when and which attempt", () => {
-    // A retry row is parked on the retry policy's own plugin wait, so its
+    // A retry row is waiting on the retry policy's own plugin wait, so its
     // reason IS the failure that caused the retry — the most useful thing the
     // row can say about itself, since it has no message of its own to show.
     expect(
@@ -160,7 +160,7 @@ describe("queuedMessageWaitIcon", () => {
     expect(icon({ kind: "thread-busy" })).toBeNull();
     expect(icon(null)).toBeNull();
     // A failure is not a kind of waiting, so it overrides whatever the row is
-    // still parked on.
+    // still waiting on.
     expect(icon({ kind: "time" }, "Host is not connected")).toBe("AlertCircle");
   });
 
@@ -208,7 +208,7 @@ describe("isQueuedMessageSendNowAllowed", () => {
     // has always offered Send now.
     expect(isQueuedMessageSendNowAllowed({ kind: "thread-busy" })).toBe(true);
     expect(isQueuedMessageSendNowAllowed(null)).toBe(true);
-    // These two re-park on every attempt regardless of how it was made, so
+    // These two re-queue on every attempt regardless of how it was made, so
     // offering send-now could only produce a 409.
     expect(isQueuedMessageSendNowAllowed({ kind: "provisioning" })).toBe(false);
     expect(isQueuedMessageSendNowAllowed({ kind: "interaction" })).toBe(false);

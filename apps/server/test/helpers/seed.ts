@@ -247,7 +247,7 @@ export function seedQueuedMessage(
     permissionMode?: PermissionMode;
       senderThreadId?: string | null;
     serviceTier?: string;
-    /** Defaults to an unparked row: an ordinary queued message. */
+    /** Defaults to a row with no wait: an ordinary queued message. */
     waitingOn?: QueuedMessageWaitingOn | null;
     sendAt?: number | null;
   },

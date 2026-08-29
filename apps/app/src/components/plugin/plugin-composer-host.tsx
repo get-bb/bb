@@ -23,7 +23,7 @@ export interface PluginComposerHost {
   focus(): void;
   /**
    * Runs this composer's own submit pipeline with the draft it holds right
-   * now, parking the result until `sendAt` instead of dispatching it. Backs
+   * now, queueing the result until `sendAt` instead of dispatching it. Backs
    * `useComposer().experimental_submit`.
    *
    * Omitted — not a no-op — by composers that have no schedulable submit of

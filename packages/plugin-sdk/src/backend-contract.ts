@@ -188,28 +188,23 @@ export interface PluginThreadEventPayloads {
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
   /**
-   * Fired after a dispatch attempt parks as a queued row — by a gate's `wait`
+   * Fired after a dispatch attempt is queued as a row — by a gate's `wait`
    * verdict, by a `sendAt` in the future, or by a core wait (the thread is
    * busy, provisioning, or awaiting an interaction).
    *
-   * Every listener sees every parked row, not just the ones it is holding: an
+   * Every listener sees every queued row, not just the ones it is holding: an
    * observer that only wants its own filters on
    * `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
    *
-   * A re-park fires this again with the new wait, because a row that moved
+   * A re-queue fires this again with the new wait, because a row that moved
    * from one wait to another is news to whoever was waiting on the old one.
    */
-  "queue.parked": { entry: ThreadQueuedMessage };
+  "queue.waiting": { entry: ThreadQueuedMessage };
   /**
-   * Fired after a parked row's waits all cleared and it dispatched. The turn
+   * Fired after a queued row's waits all cleared and it dispatched. The turn
    * it carried runs after this, so a handler must not assume it has started.
    */
   "queue.dispatched": { entry: ThreadQueuedMessage };
-  /**
-   * Fired when a parked row is cancelled and its dispatch discarded. A plugin
-   * whose wait the row was on gets this as its teardown signal.
-   */
-  "queue.cancelled": { entry: ThreadQueuedMessage };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -219,16 +214,16 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
 ) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
-// The dispatch checkpoint and the queue rows it parks
+// The dispatch checkpoint and the rows it queues
 // (plans/dispatch-queue-rework.md).
 // ---------------------------------------------------------------------------
 
 /**
  * A gate's answer.
  *
- * `proceed` lets the attempt continue. `wait` PARKS the message as a queued
- * row whose `waitingOn` names this plugin and carries `reason` verbatim; the
- * row stays parked until `retryAt` comes due, capacity frees, the user sends
+ * `proceed` lets the attempt continue. `wait` QUEUES the message as a row
+ * whose `waitingOn` names this plugin and carries `reason` verbatim; the
+ * row stays queued until `retryAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
  * running. `retryAt` (epoch ms) sets the row's `sendAt`, so core's due sweep
  * re-attempts at that instant without the plugin holding a timer of its own —
@@ -314,7 +309,7 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * `dispatch`: the one checkpoint, run before any message reaches a provider.
  *
  * It runs identically whether the attempt is inline (someone just sent) or
- * from a drain (a parked row became eligible again), and whether the message
+ * from a drain (a queued row became eligible again), and whether the message
  * is a thread's first, a follow-up, a steer, or a retry of a failed turn. A
  * handler must therefore be idempotent for one logical dispatch: passes re-run
  * on every drain, on restart, and on retry.
@@ -337,7 +332,7 @@ export interface PluginDispatchAttemptContext
    */
   executionSources: PluginDispatchExecutionSources;
   /**
-   * The parked row this attempt is re-trying, or null when the attempt is
+   * The queued row this attempt is re-trying, or null when the attempt is
    * inline and no row has ever existed for it.
    *
    * This is how a gate tells a fresh send from a re-attempt of something it
@@ -383,15 +378,15 @@ export interface PluginTurnFailure {
 /**
  * What a `turn.failed` gate may answer.
  *
- * `none` leaves the failure exactly as core applied it. `retry` parks a queued
- * row of payload kind `retry`, waiting on this plugin, that re-submits the
+ * `none` leaves the failure exactly as core applied it. `retry` queues a row
+ * of payload kind `retry`, waiting on this plugin, that re-submits the
  * ORIGINAL turn when it dispatches: `resumeAt` (epoch ms) becomes the row's
  * `sendAt`, so core's due sweep re-attempts then, and `reason` is the
  * user-visible line on the row's card and timeline row.
  *
  * The re-attempt runs the `dispatch` checkpoint like any other, so a retry
  * coming back after a rate-limit window still respects a limiter that is at
- * capacity — it re-parks rather than jumping the queue.
+ * capacity — it re-queues rather than jumping the queue.
  *
  * There is no `wait`/`reject`/amendment arm: the turn already failed, so there
  * is nothing left to admit, refuse or rewrite.
@@ -516,8 +511,8 @@ export interface PluginThreads {
    * plugin.
    *
    * This is the plugin timeline-contribution surface for things that are not
-   * a parked row: "retry scheduled for 6:30", "routed to opus", "rate-limit
-   * window exhausted". Why a parked row is waiting belongs on that row
+   * a queued row: "retry scheduled for 6:30", "routed to opus", "rate-limit
+   * window exhausted". Why a queued row is waiting belongs on that row
    * instead, as the gate's own `wait` reason.
    *
    * Rate limited to 6 notes per thread per minute per plugin; exceeding it
@@ -1568,8 +1563,8 @@ export interface BbPluginApi {
   /** Additive plugin lifecycle listeners (design §4.5). */
   readonly events: PluginEvents;
   /**
-   * The dispatch checkpoint and the queue rows it parks: intercept every
-   * message on its way to a provider, park it with a reason, and let it go
+   * The dispatch checkpoint and the rows it queues: intercept every
+   * message on its way to a provider, queue it with a reason, and let it go
    * later.
    */
   readonly experimental_dispatch: PluginDispatch;

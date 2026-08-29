@@ -31,15 +31,15 @@ export function describeDispatchFailure(error: unknown): string {
 }
 
 /**
- * Settles a DRAIN attempt that neither dispatched nor parked.
+ * Settles a DRAIN attempt that neither dispatched nor queued.
  *
  * Two outcomes, and which one applies is decided by asking the world rather
  * than by pattern-matching the error: if the thread's host has no live daemon
  * session *right now*, the attempt did not fail so much as arrive at a machine
- * that is not there, and the row re-parks on a `host-offline` wait that the
+ * that is not there, and the row re-queues on a `host-offline` wait that the
  * periodic drain will clear when the machine comes back. Any other failure is
  * recorded as the row's failure reason, leaving its existing wait alone —
- * the row is still parked on whatever it was parked on, and what went wrong
+ * the row is still waiting on whatever it was waiting on, and what went wrong
  * last time is a different fact from what it is waiting for.
  *
  * Only the drain calls this. An inline attempt has a caller still listening

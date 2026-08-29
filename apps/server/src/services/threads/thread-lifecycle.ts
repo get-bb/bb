@@ -89,7 +89,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
-import { releaseThreadQueueProvisioningWaits } from "./queue-drains.js";
+import { clearThreadQueueProvisioningWaits } from "./queue-drains.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
@@ -1210,7 +1210,7 @@ function requestPreStartThreadStop(
   // those waits end here. This runs outside the transaction below because
   // clearing a wait notifies, and it runs first so no row is left waiting on
   // provisioning by an early return inside it.
-  releaseThreadQueueProvisioningWaits(deps, thread.id);
+  clearThreadQueueProvisioningWaits(deps, thread.id);
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
     (tx) => {

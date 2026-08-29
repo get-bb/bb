@@ -64,7 +64,7 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasDispatchGates } from "./dispatch-gates.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
-import { settleQueueRowDispatched } from "./queue-parking.js";
+import { settleQueueRowDispatched } from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   ensureThreadIsWritable,
@@ -621,7 +621,7 @@ async function sendClaimedSystemNotice(
  * Re-attempts a claimed group through the dispatch checkpoint.
  *
  * The drain is nothing but a re-attempt: the same checkpoint runs, so a row
- * whose wait cleared but whose thread went busy in the meantime simply parks
+ * whose wait cleared but whose thread went busy in the meantime simply queues
  * again on the new reason rather than dispatching into a running turn. The
  * claim the caller already won is handed to the attempt, which either consumes
  * it inside the dispatch transaction (exactly once) or gives it back.
@@ -675,7 +675,7 @@ async function sendClaimedQueuedMessageForThread(
     startedOnBehalfOf: null,
     trigger: "auto-dispatch",
   });
-  if (args.sendNow && outcome.kind === "parked") {
+  if (args.sendNow && outcome.kind === "queued") {
     // "Send now" overrides every plugin wait and the row's own schedule, but
     // not a core wait — those guard invariants rather than express a policy.
     // The row is back on the queue with its new reason; say so rather than

@@ -14,7 +14,7 @@ import { toThreadQueuedMessage } from "../services/threads/thread-queued-message
  *
  * A thread's own rows are served by `GET /threads/:id/queued-messages`, which
  * is also where every per-row operation lives. This route exists for the one
- * question that list cannot answer: "what is parked right now, anywhere" — a
+ * question that list cannot answer: "what is queued right now, anywhere" — a
  * workspace-wide pending view, a limiter plugin's bookkeeping, or a plugin
  * recovering the rows it is holding after a restart. It replaced `GET /holds`,
  * which existed for exactly the same reason.

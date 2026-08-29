@@ -19,7 +19,7 @@ export interface PendingThreadDeleteOfferProps {
 }
 
 /**
- * Cancelling the only parked message of a never-started thread leaves an empty
+ * Cancelling the only queued message of a never-started thread leaves an empty
  * shell: the thread is `pending`, nothing is queued, and nothing will ever run
  * unless the user writes something new. This is the lightweight, dismissible
  * offer to clean it up — deletion itself still runs through the app's normal

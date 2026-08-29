@@ -1568,7 +1568,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
   /**
    * `system/queue-state` follows `system/dispatch-hold` below: still decodable,
-   * no longer rendered. Parking is narrated once, by the queue rows above the
+   * no longer rendered. Queueing is narrated once, by the queue rows above the
    * composer, which read the queued row's live columns; the timeline copy could
    * only ever go stale, so the emission and every projection arm were deleted.
    * Dev databases are full of stored ones, so a decoded event has to reach the
@@ -1584,6 +1584,7 @@ describe("buildThreadTimelineFromEvents", () => {
       type: "system/queue-state",
       data: {
         queuedMessageId: "qm_1",
+        // The spelling stored rows carry, which is what this decodes.
         status: "parked",
         waitingOn: { kind: "time" },
         sendAt: 1_000,

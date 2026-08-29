@@ -446,7 +446,7 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
-    // Collapsed parents roll up work, not waiting: a child's parked queue is
+    // Collapsed parents roll up work, not waiting: a child's queue is
     // its own row's business, and the parent row has no glyph slot to spare
     // for a non-working state.
     queuedWork: "none",

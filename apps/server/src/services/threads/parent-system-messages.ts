@@ -397,7 +397,7 @@ export async function queueParentSystemMessage(
   if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
     // A prompt cannot interrupt an open question or approval, and dropping the
     // notice left the parent believing its child had gone silent (#1650). It
-    // parks on the thread's queue like every other blocked dispatch, carrying
+    // queues on the thread's queue like every other blocked dispatch, carrying
     // its own taxonomy so the turn it eventually becomes is the same turn it
     // would have been a moment earlier.
     const execution = await buildExecutionOptions(deps, {}, {
@@ -438,10 +438,10 @@ interface DeliverParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
 /**
  * Dispatches a parent-system notice, with no interaction check of its own.
  *
- * Split out so the queue drain can deliver a notice that PARKED on an
- * interaction without re-entering the check that parked it — which, on a
+ * Split out so the queue drain can deliver a notice that QUEUED on an
+ * interaction without re-entering the check that queued it — which, on a
  * thread whose interaction settled a moment ago, would otherwise be a race
- * that could park a second copy of the same notice.
+ * that could queue a second copy of the same notice.
  */
 export async function deliverParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,

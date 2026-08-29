@@ -412,7 +412,7 @@ function intentHostId(
  *
  * This is the whole of thread creation's dispatch story now, and it replaced a
  * pair of near-identical functions — one that provisioned immediately and one
- * that parked the first turn in a hold — whose only real difference was
+ * that queued the first turn — whose only real difference was
  * whether anything was allowed to run yet. That is a question the checkpoint
  * answers, so asking it here as well meant two code paths that had to be kept
  * in agreement about forks, execution defaults, telemetry and cleanup.
@@ -420,7 +420,7 @@ function intentHostId(
  * The row inserts `pending`: created, with its provider resolved, and nothing
  * provisioned. Creation itself is ungated — it is a cheap row — and admission
  * happens at the first message's attempt. A cleared attempt moves the thread
- * to `starting` and provisions with the message riding along; a parked one
+ * to `starting` and provisions with the message riding along; a queued one
  * leaves the thread exactly where it is, with the start context recorded so a
  * later drain (or a later server) can start it.
  */
@@ -465,7 +465,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     };
-    // Recorded BEFORE the attempt, not after it parks: the attempt drives
+    // Recorded BEFORE the attempt, not after it queues: the attempt drives
     // provisioning off this stack when it clears, and a context written
     // afterwards would race that. Writing it unconditionally and clearing it
     // when the thread leaves `pending` keeps one owner for the field.
@@ -665,7 +665,7 @@ export async function createThreadFromRequest(
   // the first message's dispatch attempt, where a plugin sees the thread it is
   // deciding about and can amend its provider and environment while neither is
   // settled yet. That collapses what used to be a `thread.create` pass plus a
-  // second re-evaluation pass when its hold released into one checkpoint that
+  // second re-evaluation pass when it was let through into one checkpoint that
   // runs the same way every time.
   const {
     originKind: _requestedOriginKind,

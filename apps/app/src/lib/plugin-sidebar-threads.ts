@@ -37,7 +37,7 @@ export function toPluginSidebarThread(
   });
   // The queued-work arms have no counterpart in the plugin contract yet, and
   // adding one is an SDK surface change; a plugin row reads a thread with
-  // parked work as plain until then.
+  // queued work as plain until then.
   const indicator: PluginSidebarThreadIndicator =
     resolvedIndicator === "queued-waiting" || resolvedIndicator === "queued-failed"
       ? "none"

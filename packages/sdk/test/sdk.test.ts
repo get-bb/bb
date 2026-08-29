@@ -1259,7 +1259,7 @@ describe("@bb/sdk", () => {
 
   // The queue list is cross-thread by design: an omitted filter drops out of
   // the query string entirely rather than narrowing on `undefined`.
-  it("routes parked-row reads onto the cross-thread queue route and a row's own operations onto its thread", async () => {
+  it("routes queued-row reads onto the cross-thread queue route and a row's own operations onto its thread", async () => {
     const queue = createFetchQueue([
       { body: [] },
       { body: { ok: true, delivery: "sent" } },
@@ -1294,13 +1294,13 @@ describe("@bb/sdk", () => {
     expect(queue.requests[1].bodyText).toBe(JSON.stringify({ mode: "auto" }));
   });
 
-  it("applies both queue list filters and parks a scheduled send on the queue", async () => {
+  it("applies both queue list filters and queues a scheduled send on the queue", async () => {
     const queue = createFetchQueue([
       { body: [] },
       {
         body: {
           ok: true,
-          delivery: "parked",
+          delivery: "queued",
           queuedMessageId: "qm_1",
           waitingOn: { kind: "time" },
           sendAt: 1750,
@@ -1328,7 +1328,7 @@ describe("@bb/sdk", () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      delivery: "parked",
+      delivery: "queued",
       queuedMessageId: "qm_1",
       waitingOn: { kind: "time" },
       sendAt: 1750,

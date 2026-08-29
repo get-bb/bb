@@ -7,20 +7,20 @@ import {
 } from "./system-message.js";
 
 /**
- * The queue is the one parking lot for a dispatch that cannot run yet.
+ * The queue is the one queue for a dispatch that cannot run yet.
  *
  * A send is always a dispatch attempt: when nothing blocks it, it dispatches
  * directly and no queued row ever exists. When something blocks it, the
- * message parks as a queued row carrying the typed reason it is waiting, and
+ * message is queued as a row carrying the typed reason it is waiting, and
  * the drain re-attempts the dispatch when that reason could have cleared.
  *
- * These types describe what a parked row carries. The row's message itself
+ * These types describe what a queued row carries. The row's message itself
  * (content, execution tuple, plugin inputs) already lives in columns, so
  * nothing here re-encodes it.
  */
 
 /**
- * Why a parked row is not dispatching yet.
+ * Why a queued row is not dispatching yet.
  *
  * - `time` — the row has a future `sendAt`. The instant lives in the row's
  *   own `sendAt` field, which is what the due sweep indexes, so this arm
@@ -62,7 +62,7 @@ export type QueuedMessageWaitingOnKind = z.infer<
 
 /**
  * The host display name a `host-offline` wait carries. Denormalized onto the
- * wait at park time: the row outlives the attempt that parked it, and a rename
+ * wait at queue time: the row outlives the attempt that queued it, and a rename
  * between then and the read is a cosmetic staleness, not a correctness one.
  */
 export const queuedMessageWaitHostNameSchema = z.string().min(1).max(200);
@@ -107,15 +107,15 @@ export type QueuedMessageHostOfflineWaitingOn = Extract<
 >;
 
 /**
- * Why the last dispatch attempt on a parked row failed outright, as opposed to
- * parking again.
+ * Why the last dispatch attempt on a queued row failed outright, as opposed to
+ * queueing again.
  *
  * A row acquires one only on a drain attempt: an inline attempt has a caller
  * listening and surfaces the error to them instead. Until the drain has failed
  * on a row, it has none — which is the overwhelming majority of rows — so this
  * is null rather than a string that has to be read as "no failure yet".
  *
- * It is deliberately NOT part of `waitingOn`: a park rewrites the wait
+ * It is deliberately NOT part of `waitingOn`: writing a wait rewrites it
  * wholesale, so a failure recorded there would be erased by the very next
  * attempt, and the two answer different questions ("what is this row waiting
  * for" vs "what went wrong last time it tried").
@@ -149,7 +149,7 @@ export type QueuedMessageWaitHolder = z.infer<
  * What a queued row dispatches when its waits clear.
  *
  * `inline` carries its own message in the row's columns — the prompt blocks
- * the sender wrote and the execution tuple frozen at park time. It is a draft
+ * the sender wrote and the execution tuple frozen at queue time. It is a draft
  * that has not run, so it is editable while it waits.
  *
  * `retry` only references a failed turn's original request. Nothing about it
@@ -186,16 +186,16 @@ export type QueuedMessageRetryPayload = Extract<
 >;
 
 /**
- * Core's own taxonomy for a parked row that is a SYSTEM notice rather than
+ * Core's own taxonomy for a queued row that is a SYSTEM notice rather than
  * someone's message — today, the "your child thread finished" notice a parent
  * gets while it is busy answering a question.
  *
  * Null for every ordinary row, which is the overwhelming majority. It exists
  * because such a notice is dispatched as an `initiator: "system"` turn whose
- * event carries this taxonomy, and a notice that parked and then dispatched
+ * event carries this taxonomy, and a notice that queued and then dispatched
  * without it would be a different turn than the one that would have been sent
  * a moment earlier. The `deferred_thread_messages` table used to carry it; the
- * queue is the one parking lot now, so it carries it here.
+ * queue is the one queue now, so it carries it here.
  */
 export const queuedMessageSystemNoticeSchema = z.object({
   kind: systemMessageKindSchema,

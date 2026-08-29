@@ -297,10 +297,10 @@ describe("thread runtime mutations", () => {
     );
   });
 
-  it("returns the server's delivery so a parked message is not treated as a started turn", async () => {
+  it("returns the server's delivery so a queued message is not treated as a started turn", async () => {
     vi.mocked(sdk.threads.send).mockResolvedValue({
       ok: true,
-      delivery: "parked",
+      delivery: "queued",
       queuedMessageId: "qmsg-1",
       waitingOn: { kind: "interaction" },
       sendAt: null,
@@ -322,7 +322,7 @@ describe("thread runtime mutations", () => {
 
     expect(sendResult).toEqual({
       ok: true,
-      delivery: "parked",
+      delivery: "queued",
       queuedMessageId: "qmsg-1",
       waitingOn: { kind: "interaction" },
       sendAt: null,

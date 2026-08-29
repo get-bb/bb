@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
-import { findParkedRetry, retryViewForThread } from "./src/parked-retries.js";
+import { findQueuedRetry, retryViewForThread } from "./src/queued-retries.js";
 import {
   DEFAULT_MAXIMUM_WAIT_MS,
   RESET_BUFFER_MS,
@@ -28,7 +28,7 @@ function maximumWaitMs(value: string | boolean | undefined): number | null {
 
 /**
  * What a rate-limited row is waiting for. Deliberately just the cause: the time
- * rides the row's `sendAt`, and every surface that shows a parked row renders
+ * rides the row's `sendAt`, and every surface that shows a queued row renders
  * that itself — the card above the composer puts the clock next to the reason,
  * `bb thread queue list` gives it its own Send-at column. Formatting it into
  * the reason as well printed it twice in both.
@@ -73,7 +73,7 @@ export default async function plugin(bb: BbPluginApi) {
    * `hostId:providerId`.
    *
    * This is the whole replacement for the old per-account release pacing: once
-   * one thread proves an account is exhausted, `turn.submit` parks OTHER
+   * one thread proves an account is exhausted, `turn.submit` queues OTHER
    * dispatches into the same account until the window resets, instead of
    * letting them each discover it by failing. Purely an optimisation, so
    * in-memory is right — losing it on restart costs one extra failure, and a
@@ -162,12 +162,12 @@ export default async function plugin(bb: BbPluginApi) {
    * Admission control for an account already known to be exhausted.
    *
    * A dispatch into a blocked account can only fail, and a failure costs the
-   * user a red turn plus a wait. Parking it until the window resets turns that
+   * user a red turn plus a wait. Queueing it until the window resets turns that
    * into one card that says why. The re-attempt re-enters this gate, so a
-   * window that has not actually reset simply parks it again.
+   * window that has not actually reset simply queues it again.
    *
    * A `join-turn` attempt is exempt: it is joining a turn the provider already
-   * accepted, so the account is demonstrably not blocked for it, and parking a
+   * accepted, so the account is demonstrably not blocked for it, and queueing a
    * steer behind a window would strand the user mid-turn for a limit that is
    * not being hit.
    */
@@ -194,8 +194,6 @@ export default async function plugin(bb: BbPluginApi) {
 
   // The user-facing narration of a retry's life. It hangs off the queue events
   // rather than the gate so the note reflects what core actually did with the
-  // verdict, and so a row the user cancels says so without this plugin
-  // tracking cancellation itself.
   //
   // `queue.dispatched` reports the wait the row was holding when it went, so
   // "was this ours?" is answerable from the event alone.
@@ -211,20 +209,16 @@ export default async function plugin(bb: BbPluginApi) {
     if (!isOwnRetry(entry)) return;
     appendNote(entry.threadId, "Rate limit window reset — retrying now.", "info");
   });
-  bb.events.on("queue.cancelled", ({ entry }) => {
-    if (!isOwnRetry(entry)) return;
-    appendNote(entry.threadId, "Automatic retry cancelled.", "info");
-  });
 
   bb.rpc.register(providerRetryRpcContract, {
     async providerRetryCancel({ threadId }) {
-      const parked = await findParkedRetry(bb, threadId);
-      if (parked === null) return { cancelled: false };
-      // Cancelling a parked dispatch is deleting its queued row — the same
+      const queued = await findQueuedRetry(bb, threadId);
+      if (queued === null) return { cancelled: false };
+      // Cancelling a queued dispatch is deleting its queued row — the same
       // affordance the user has on the card, rather than a second mechanism.
       await bb.sdk.threads.queuedMessages.delete({
-        threadId: parked.threadId,
-        queuedMessageId: parked.id,
+        threadId: queued.threadId,
+        queuedMessageId: queued.id,
       });
       return { cancelled: true };
     },

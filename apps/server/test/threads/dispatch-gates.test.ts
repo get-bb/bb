@@ -127,10 +127,10 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
 }
 
 /**
- * A thread's parked rows: a live queued row carrying a wait. This is the queue
- * shape that replaced the hold table — the row IS the parked dispatch.
+ * A thread's queued rows: a live queued row carrying a wait. This is the queue
+ * shape that replaced the hold table — the row IS the queued dispatch.
  */
-function parkedRows(
+function queuedRows(
   harness: TestAppHarness,
   threadId: string,
 ): ThreadQueuedMessage[] {
@@ -139,13 +139,13 @@ function parkedRows(
     .filter((entry) => entry.waitingOn !== null);
 }
 
-function onlyParkedRow(
+function onlyQueuedRow(
   harness: TestAppHarness,
   threadId: string,
 ): ThreadQueuedMessage {
-  const rows = parkedRows(harness, threadId);
+  const rows = queuedRows(harness, threadId);
   if (rows.length !== 1 || rows[0] === undefined) {
-    throw new Error(`expected exactly one parked row, found ${rows.length}`);
+    throw new Error(`expected exactly one queued row, found ${rows.length}`);
   }
   return rows[0];
 }
@@ -208,7 +208,7 @@ describe("dispatch gate composition", () => {
           handler: (context) => {
             seen.push("second");
             secondSawModel = context.requestedExecution.model;
-            // Waiting here parks the dispatch so the frozen tuple is
+            // Waiting here queues the dispatch so the frozen tuple is
             // observable without dispatching a real turn.
             return { action: "wait", reason: "checking" } as const;
           },
@@ -225,9 +225,9 @@ describe("dispatch gate composition", () => {
 
       expect(seen).toEqual(["first", "second"]);
       // Every gate decides about the same resolved request, and that is the
-      // tuple the parked row freezes.
+      // tuple the queued row freezes.
       expect(secondSawModel).toBe("requested-model");
-      expect(onlyParkedRow(harness, thread.id).model).toBe("requested-model");
+      expect(onlyQueuedRow(harness, thread.id).model).toBe("requested-model");
     });
   });
 
@@ -252,7 +252,7 @@ describe("dispatch gate composition", () => {
         projectId: project.id,
       });
 
-      expect(onlyParkedRow(harness, thread.id).waitingOn).toEqual({
+      expect(onlyQueuedRow(harness, thread.id).waitingOn).toEqual({
         kind: "plugin",
         pluginId: "limiter",
         reason: "at capacity (also waiting on quiet-hours: after hours)",
@@ -364,12 +364,12 @@ describe("dispatch gate admission visibility", () => {
       expect(seen[1]).toHaveLength(1);
 
       const admittedId = seen[1]![0]!;
-      const parked = created.find((thread) => thread.id !== admittedId)!;
+      const queued = created.find((thread) => thread.id !== admittedId)!;
       expect(created.map((thread) => thread.id)).toContain(admittedId);
-      // One admitted and started, one still pending with its message parked.
+      // One admitted and started, one still pending with its message queued.
       expect(getThread(harness.db, admittedId)?.status).not.toBe("pending");
-      expect(getThread(harness.db, parked.id)?.status).toBe("pending");
-      expect(onlyParkedRow(harness, parked.id).waitingOn).toEqual({
+      expect(getThread(harness.db, queued.id)?.status).toBe("pending");
+      expect(onlyQueuedRow(harness, queued.id).waitingOn).toEqual({
         kind: "plugin",
         pluginId: "limiter",
         reason: "1 of 1 running on all hosts",
@@ -508,11 +508,11 @@ describe("dispatch gates on the queue drain", () => {
 
       expect(drained).toBe(true);
       // The claim is handed back rather than consumed: it is the SAME row, now
-      // parked, so the user still has one card for one message.
-      const parked = onlyParkedRow(harness, thread.id);
-      expect(parked.id).toBe(queued.id);
-      expect(parked.content).toEqual(textInput("queued work"));
-      expect(parked.waitingOn).toEqual({
+      // queued, so the user still has one card for one message.
+      const waiting = onlyQueuedRow(harness, thread.id);
+      expect(waiting.id).toBe(queued.id);
+      expect(waiting.content).toEqual(textInput("queued work"));
+      expect(waiting.waitingOn).toEqual({
         kind: "plugin",
         pluginId: "limiter",
         reason: "at capacity",

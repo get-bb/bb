@@ -28,7 +28,7 @@ export function setFreedThreadCapacityListener(
  * Deliberately carries no thread id. A limit can be expressed over any
  * grouping and core does not know which one a plugin used, so "something
  * freed, re-ask everyone" is the only honest signal; the listener re-attempts
- * every plugin-parked row and the ones still blocked simply re-park.
+ * every plugin-queued row and the ones still blocked simply re-queue.
  */
 export function noteThreadCapacityFreed(): void {
   listener?.();

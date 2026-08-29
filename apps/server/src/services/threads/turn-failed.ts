@@ -20,7 +20,7 @@ import type { AppDeps } from "../../types.js";
 import { requirePublicProject } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { listQueuedThreadMessages } from "@bb/db";
-import { parkDispatch } from "./queue-parking.js";
+import { recordQueuedMessageWait } from "./queue-waits.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import {
@@ -103,7 +103,7 @@ function loadFailedTurn(
  * Which attempt just failed, and which request the chain started from.
  *
  * Both come off the failed request itself rather than a tally: the marker
- * written when a retry dispatched IS the counter, so restarts, re-holds and a
+ * written when a retry dispatched IS the counter, so restarts, re-queues and a
  * server that never saw the earlier attempts all arrive at the same number.
  */
 function retryChain(request: TurnRequestEventData): {
@@ -167,13 +167,13 @@ function buildTurnFailure(
 }
 
 /**
- * True when this original request already has a parked retry row.
+ * True when this original request already has a queued retry row.
  *
  * `run.failed` applies once per failure, so this is not the common path — it is
- * the guard that keeps a duplicate or replayed failure from parking the same
+ * the guard that keeps a duplicate or replayed failure from queueing the same
  * turn twice, which the user would see as two identical retry cards.
  */
-function hasParkedRetryFor(
+function hasQueuedRetryFor(
   deps: Pick<TurnFailedGateDeps, "db">,
   args: { threadId: string; originalRequestId: string },
 ): boolean {
@@ -234,14 +234,14 @@ async function runTurnFailedGatesForThread(
     return;
   }
   if (
-    hasParkedRetryFor(deps, {
+    hasQueuedRetryFor(deps, {
       threadId,
       originalRequestId: failure.originalRequestId,
     })
   ) {
     deps.logger.info(
       { threadId, pluginId: outcome.verdict.pluginId },
-      "Ignored a turn.failed retry verdict: this turn already has a parked retry",
+      "Ignored a turn.failed retry verdict: this turn already has a queued retry",
     );
     return;
   }
@@ -250,7 +250,7 @@ async function runTurnFailedGatesForThread(
   // sweep re-attempts it — and that re-attempt runs the dispatch checkpoint
   // like any other, which is what makes a retry respect a limiter that is at
   // capacity instead of jumping the queue.
-  parkDispatch(deps, {
+  recordQueuedMessageWait(deps, {
     thread,
     message: {
       // The original blocks verbatim, so the provider is asked the same
@@ -260,7 +260,7 @@ async function runTurnFailedGatesForThread(
       // is what keeps the timeline from showing the user's message a second
       // time, using the same projection rule that has always hidden system
       // continuations. The user's message stays where it was, on the attempt
-      // that failed. Applied here, at the park, so the frozen row carries it
+      // that failed. Applied here, at the queue, so the frozen row carries it
       // and every later re-attempt of this row inherits it.
       input: failed.request.input.map((block) => ({
         ...block,
@@ -290,7 +290,7 @@ async function runTurnFailedGatesForThread(
  *
  * Two failures on one thread are rare but not impossible (a command failure
  * settling as a turn completion arrives), and running their passes concurrently
- * would let both read "no live retry hold" and park the turn twice. Chaining
+ * would let both read "no live retry row" and queue the turn twice. Chaining
  * per thread rather than globally keeps one slow retry policy from delaying
  * every other thread's failure handling; the gate pass itself still takes the
  * server-wide evaluation lock.
@@ -350,7 +350,7 @@ export function notifyThreadRunFailed(threadId: string): void {
  * The pass is deferred to the next macrotask because one of the two lifecycle
  * seams applies its event inside the caller's still-open transaction. Reading
  * the failed turn from there would see a half-written thread, and writing the
- * hold would nest a transaction inside it. Deferring also makes the "no gates
+ * queued row would nest a transaction inside it. Deferring also makes the "no gates
  * installed" path cost one boolean check on the failure path and nothing else.
  */
 export function createTurnFailedGateNotifier(
