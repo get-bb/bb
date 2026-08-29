@@ -9,8 +9,6 @@ export const PROMPT_STACK_INLAY_SEGMENT_CLASS = cn(
   "min-h-6 px-2 py-1",
   PROMPT_STACK_INLAY_RADIUS_CLASS,
 );
-// Right-edge caret controls share a 24px horizontal box so their icon centers
-// land on the same visual line, even when their vertical hit targets differ.
 export const PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS = "w-6 px-0";
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
