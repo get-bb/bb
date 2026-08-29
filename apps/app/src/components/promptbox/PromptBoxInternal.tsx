@@ -119,7 +119,11 @@ import {
 import { exitHeading } from "./editor/prompt-editor-heading";
 import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
-import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
+import {
+  MentionMenu,
+  typeaheadSuggestionKey,
+  type TypeaheadSuggestion,
+} from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
@@ -1209,7 +1213,9 @@ export function PromptBoxInternal({
   const [activeTrigger, setActiveTrigger] = useState<ActiveTrigger | null>(
     null,
   );
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<
+    string | null
+  >(null);
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
   );
@@ -1545,7 +1551,7 @@ export function PromptBoxInternal({
         : "";
       if (nextKey !== triggerKeyRef.current) {
         triggerKeyRef.current = nextKey;
-        setSelectedIndex(0);
+        setSelectedSuggestionKey(null);
       }
       setActiveTrigger(nextTrigger);
 
@@ -2042,6 +2048,14 @@ export function PromptBoxInternal({
           : [],
     [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
   );
+  const selectedSuggestionIndex = useMemo(() => {
+    if (selectedSuggestionKey === null) return -1;
+    return activeSuggestions.findIndex(
+      (suggestion) =>
+        typeaheadSuggestionKey(suggestion) === selectedSuggestionKey,
+    );
+  }, [activeSuggestions, selectedSuggestionKey]);
+  const selectedIndex = Math.max(0, selectedSuggestionIndex);
 
   const activeMentionQuery =
     activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
@@ -2107,14 +2121,13 @@ export function PromptBoxInternal({
   }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
 
   useEffect(() => {
-    if (activeSuggestions.length === 0) {
-      setSelectedIndex(0);
-      return;
+    if (
+      selectedSuggestionKey !== null &&
+      selectedSuggestionIndex === -1
+    ) {
+      setSelectedSuggestionKey(null);
     }
-    if (selectedIndex >= activeSuggestions.length) {
-      setSelectedIndex(0);
-    }
-  }, [activeSuggestions.length, selectedIndex]);
+  }, [selectedSuggestionIndex, selectedSuggestionKey]);
 
   useEffect(() => {
     if (
@@ -2181,7 +2194,7 @@ export function PromptBoxInternal({
       };
       isRestoringAppliedMentionRef.current = true;
       setActiveTrigger(null);
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       onMentionQueryChange(null, null);
 
       try {
@@ -2237,7 +2250,7 @@ export function PromptBoxInternal({
       };
       isRestoringAppliedMentionRef.current = true;
       setActiveTrigger(null);
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       onCommandQueryChange(null);
 
       try {
@@ -2421,7 +2434,7 @@ export function PromptBoxInternal({
         dismissedTriggerRef.current = null;
         isRestoringAppliedMentionRef.current = true;
         setActiveTrigger(null);
-        setSelectedIndex(0);
+        setSelectedSuggestionKey(null);
         onCommandQueryChange(null);
 
         try {
@@ -2455,7 +2468,7 @@ export function PromptBoxInternal({
 
       triggerKeyRef.current = "";
       dismissedTriggerRef.current = null;
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       currentEditor
         .chain()
         .focus()
@@ -2723,7 +2736,11 @@ export function PromptBoxInternal({
             }
             return true;
           }
-          setSelectedIndex((prev) => (prev + 1) % activeSuggestions.length);
+          const nextIndex = (selectedIndex + 1) % activeSuggestions.length;
+          const nextSuggestion = activeSuggestions[nextIndex];
+          if (nextSuggestion) {
+            setSelectedSuggestionKey(typeaheadSuggestionKey(nextSuggestion));
+          }
           return true;
         }
         if (
@@ -2732,10 +2749,13 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          setSelectedIndex(
-            (prev) =>
-              (prev + activeSuggestions.length - 1) % activeSuggestions.length,
-          );
+          const nextIndex =
+            (selectedIndex + activeSuggestions.length - 1) %
+            activeSuggestions.length;
+          const nextSuggestion = activeSuggestions[nextIndex];
+          if (nextSuggestion) {
+            setSelectedSuggestionKey(typeaheadSuggestionKey(nextSuggestion));
+          }
           return true;
         }
         if (

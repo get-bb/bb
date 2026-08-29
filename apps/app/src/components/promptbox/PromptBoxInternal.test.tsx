@@ -3113,6 +3113,108 @@ describe("PromptBoxInternal mention triggers", () => {
       expect(threadButton.className).toContain("bg-state-active"),
     );
   });
+
+  it("keeps the keyboard-selected mention when a stronger delayed result arrives", async () => {
+    const threadSuggestion: PromptMentionSuggestion = {
+      kind: "thread",
+      path: "thread:thr_atlas",
+      replacement: "Atlas launch notes",
+      projectId: "proj_atlas",
+      projectName: "Atlas",
+      threadId: "thr_atlas",
+      title: "Atlas launch notes",
+    };
+    const sectionSuggestion: PromptMentionSuggestion = {
+      kind: "section",
+      path: "section:sec_atlas_planning",
+      replacement: "Atlas planning",
+      sectionId: "sec_atlas_planning",
+      name: "Atlas planning",
+    };
+    const delayedExactSuggestion: PromptMentionSuggestion = {
+      kind: "plugin",
+      pluginId: "installed",
+      providerId: "plugins",
+      itemId: "plugins:atlas",
+      providerLabel: "Installed",
+      title: "Atlas",
+      subtitle: null,
+      icon: null,
+      replacement: "Atlas",
+    };
+    const changes: PromptChange[] = [];
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function Harness({
+      mentionSuggestions,
+    }: {
+      mentionSuggestions: readonly PromptMentionSuggestion[];
+    }) {
+      const [value, setValue] = useState("@atlas");
+      const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+        [],
+      );
+      return (
+        <PromptBoxInternal
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={(nextValue, nextMentions) => {
+            changes.push({ mentions: nextMentions, value: nextValue });
+            setValue(nextValue);
+            setMentionRanges(nextMentions);
+          }}
+          onSubmit={vi.fn()}
+          typeahead={{
+            mention: {
+              results: orderPromptMentionSuggestions({
+                query: "atlas",
+                suggestions: mentionSuggestions,
+              }),
+              isLoading: false,
+              isError: false,
+              onQueryChange: vi.fn(),
+            },
+            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+          }}
+          mentionMenuPlacement="bottom"
+          promptBoxRef={promptBoxRef}
+        />
+      );
+    }
+
+    const initialSuggestions = [threadSuggestion, sectionSuggestion];
+    const view = render(<Harness mentionSuggestions={initialSuggestions} />);
+    await focusPromptEnd(promptBoxRef);
+
+    const sectionButton = await screen.findByRole("button", {
+      name: "Section: Atlas planning",
+    });
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(sectionButton.className).toContain("bg-state-active"),
+    );
+
+    view.rerender(
+      <Harness
+        mentionSuggestions={[
+          ...initialSuggestions,
+          delayedExactSuggestion,
+        ]}
+      />,
+    );
+    await screen.findByRole("button", { name: "Installed: Atlas" });
+    await waitFor(() =>
+      expect(sectionButton.className).toContain("bg-state-active"),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("@Atlas planning "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "section",
+      sectionId: "sec_atlas_planning",
+    });
+  });
 });
 
 describe("PromptBoxInternal selection reveal", () => {

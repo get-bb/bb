@@ -123,14 +123,30 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
   return `${getPathSectionLabel(item)}: ${item.path}`;
 }
 
-function getMentionKey(item: PromptMentionSuggestion, index: number): string {
+function getMentionKey(item: PromptMentionSuggestion): string {
   if (item.kind === "path") {
-    return `${item.kind}-${item.source}-${item.entryKind}-${item.path}-${index}`;
+    return JSON.stringify([
+      item.kind,
+      item.source,
+      item.entryKind,
+      item.path,
+    ]);
   }
   if (item.kind === "plugin") {
-    return `${item.kind}-${item.pluginId}-${item.itemId}-${index}`;
+    return JSON.stringify([
+      item.kind,
+      item.pluginId,
+      item.providerId,
+      item.itemId,
+    ]);
   }
-  return `${item.kind}-${item.path}-${index}`;
+  if (item.kind === "thread") {
+    return JSON.stringify([item.kind, item.threadId]);
+  }
+  if (item.kind === "project") {
+    return JSON.stringify([item.kind, item.projectId]);
+  }
+  return JSON.stringify([item.kind, item.sectionId]);
 }
 
 type CommandSectionKind = ProviderCommandSection;
@@ -191,8 +207,18 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
   );
 }
 
-function getCommandKey(item: ComposerCommandSuggestion, index: number): string {
-  return `command-${item.source}-${item.origin}-${item.name}-${index}`;
+function getCommandKey(item: ComposerCommandSuggestion): string {
+  return JSON.stringify([
+    item.kind,
+    item.source,
+    item.origin,
+    item.pluginId ?? null,
+    item.name,
+  ]);
+}
+
+export function typeaheadSuggestionKey(item: TypeaheadSuggestion): string {
+  return item.kind === "command" ? getCommandKey(item) : getMentionKey(item);
 }
 
 function MutedTrailing({ children }: { children: string }) {
@@ -375,7 +401,7 @@ function MentionResults({
 
               return (
                 <SuggestionRow
-                  key={getMentionKey(item, index)}
+                  key={getMentionKey(item)}
                   index={index}
                   selectedIndex={selectedIndex}
                   icon={getMentionIcon(item)}
@@ -389,7 +415,7 @@ function MentionResults({
                     )
                   }
                   title={getMentionTitle(item)}
-                  rowKey={getMentionKey(item, index)}
+                  rowKey={getMentionKey(item)}
                   onApply={() => onApply(item)}
                   itemRefs={itemRefs}
                 />
@@ -434,7 +460,7 @@ function CommandResults({
           <div className="flex flex-col gap-px px-1">
             {section.items.map(({ item, index }) => (
               <SuggestionRow
-                key={getCommandKey(item, index)}
+                key={getCommandKey(item)}
                 index={index}
                 selectedIndex={selectedIndex}
                 icon={getCommandIcon(item)}
@@ -452,7 +478,7 @@ function CommandResults({
                   </>
                 }
                 title={item.description ?? item.name}
-                rowKey={getCommandKey(item, index)}
+                rowKey={getCommandKey(item)}
                 onApply={() => onApply(item)}
                 itemRefs={itemRefs}
               />
