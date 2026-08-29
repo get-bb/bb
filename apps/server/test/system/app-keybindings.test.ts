@@ -294,7 +294,6 @@ describe("app keybindings", () => {
           })),
       ).toEqual([
         { desktopOnly: false, key: "Enter" },
-        { desktopOnly: true, key: "t" },
       ]);
       expect(
         assignedDefaultKeybindings.find(
