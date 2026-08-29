@@ -11,6 +11,7 @@ import {
 
 const MAX_GENERATED_TITLE_LENGTH = 36;
 const MAX_BRANCH_SLUG_LENGTH = 48;
+const MAX_TITLE_INFERENCE_USER_PROMPT_LENGTH = 4_000;
 
 interface ApplyGeneratedThreadTitleArgs {
   threadId: string;
@@ -94,7 +95,6 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
 const threadMetadataSchema = Type.Object({
   title: Type.String({
     minLength: 1,
-    maxLength: MAX_GENERATED_TITLE_LENGTH,
   }),
 });
 
@@ -122,7 +122,10 @@ export async function generateThreadMetadataWithOutcome(
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
-  const userPrompt = cleanPromptText(args.input);
+  const userPrompt = cleanPromptText(args.input).slice(
+    0,
+    MAX_TITLE_INFERENCE_USER_PROMPT_LENGTH,
+  );
   const complete = (
     metadata: GeneratedThreadMetadata | null,
     reason?: ThreadMetadataGenerationOutcomeReason,

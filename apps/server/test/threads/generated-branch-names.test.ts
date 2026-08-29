@@ -6,6 +6,7 @@ import {
   turnScope,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import { renderTemplate } from "@bb/templates";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
@@ -1176,7 +1177,7 @@ describe("generated managed branch names", () => {
     });
   });
 
-  it("generates titles for short prompts using the full initial text", async () => {
+  it("uses the full short prompt and caps long title-inference input", async () => {
     mockThreadMetadata({ title: "Generated concise title" });
     await withTestHarness(async (harness) => {
       await expect(
@@ -1191,8 +1192,9 @@ describe("generated managed branch names", () => {
         },
       });
 
+      const includedPrompt = "x".repeat(4_000);
       const tail = "SEARCHABLE_PROMPT_TAIL";
-      const longPrompt = `${"context ".repeat(20)}${tail}`;
+      const longPrompt = `${includedPrompt}${tail}`;
       await generateThreadMetadataWithOutcome(harness.deps, {
         input: textInput(longPrompt),
         threadId: "thr_full_title_prompt",
@@ -1200,18 +1202,54 @@ describe("generated managed branch names", () => {
 
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
       expect(piAiMocks.complete).toHaveBeenNthCalledWith(
-        2,
+        1,
         { provider: "test" },
         expect.objectContaining({
           messages: [
             expect.objectContaining({
-              content: expect.stringContaining(tail),
+              content: renderTemplate("generateThreadTitle", {
+                userPrompt: "fix",
+              }),
             }),
           ],
           systemPrompt: "Call the `result` tool with your answer.",
         }),
         expect.anything(),
       );
+      expect(piAiMocks.complete).toHaveBeenNthCalledWith(
+        2,
+        { provider: "test" },
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: renderTemplate("generateThreadTitle", {
+                userPrompt: includedPrompt,
+              }),
+            }),
+          ],
+          systemPrompt: "Call the `result` tool with your answer.",
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("sanitizes overlong titles after inference schema validation", async () => {
+    mockThreadMetadata({
+      title: "Investigate Extremely Long Generated Thread Title Output",
+    });
+    await withTestHarness(async (harness) => {
+      await expect(
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: textInput("Investigate generated thread titles"),
+          threadId: "thr_overlong_generated_title",
+        }),
+      ).resolves.toMatchObject({
+        metadata: {
+          branchSlug: "investigate-extremely-long-generated",
+          title: "Investigate Extremely Long Generated",
+        },
+      });
     });
   });
 
