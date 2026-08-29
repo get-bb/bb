@@ -29,8 +29,6 @@
 
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
-import { providerRetryRpcContract } from "./src/contract.js";
-import { findQueuedRetry, retryViewForThread } from "./src/queued-retries.js";
 import { DEFAULT_MAXIMUM_WAIT_MS, decideRetry } from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
@@ -100,21 +98,5 @@ export default async function plugin(bb: BbPluginApi) {
     };
   });
 
-  bb.rpc.register(providerRetryRpcContract, {
-    async providerRetryCancel({ threadId }) {
-      const queued = await findQueuedRetry(bb, threadId);
-      if (queued === null) return { cancelled: false };
-      // Cancelling a queued dispatch is deleting its queued row — the same
-      // affordance the user has on the card, rather than a second mechanism.
-      await bb.sdk.threads.queuedMessages.delete({
-        threadId: queued.threadId,
-        queuedMessageId: queued.id,
-      });
-      return { cancelled: true };
-    },
-    async providerRetryStatus({ threadId }) {
-      return { view: await retryViewForThread(bb, threadId) };
-    },
-  });
   registerProviderRetryCli(bb);
 }

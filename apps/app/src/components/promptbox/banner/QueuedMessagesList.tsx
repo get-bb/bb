@@ -159,6 +159,19 @@ const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
 const COLLAPSED_HEIGHT = 44;
 const DRAWER_HEIGHT = 174;
 const DRAWER_MAX_VISIBLE_MESSAGES = 3;
+// The drawer's own chrome, above and below the scrolling list: the card's top
+// border, the `h-8` header, the card's `pb-3`, and the two 1px sentinels the
+// scroller keeps around the list to drive the overflow fades — they are inside
+// the scrolling box, so the list only fits when they do too.
+const DRAWER_CHROME_HEIGHT = 1 + 32 + 12 + 2;
+// The list's `py-1`.
+const DRAWER_LIST_PADDING = 8;
+// A one-line row: an `h-7` control plus the row's `py-0.5` and bottom border.
+const DRAWER_ROW_HEIGHT = 33;
+// What a row grows by when it also renders a wait/failure or processing line:
+// the `text-2xs` line plus the `mt-0.5` above it and the extra row padding a
+// two-line row switches to (`py-1.5` rather than `py-1`).
+const DRAWER_SECOND_LINE_HEIGHT = 16;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -170,6 +183,50 @@ const SURFACE_DRAG_THRESHOLD = 72;
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
   PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
+
+/**
+ * How tall the docked drawer has to be to show its rows whole.
+ *
+ * Rows are not one height. A row that says what it is waiting on — a typed
+ * wait, a failure, a retry payload's attempt count — or that is mid-send
+ * renders a second line under its text, and an estimate of one row height
+ * apiece cut that line off under the bottom scroll fade on a queue small
+ * enough to have no overflow at all. So the estimate asks each row which it
+ * is, using the same predicate the row itself renders on.
+ *
+ * It stays an estimate rather than a measurement because the surface's height
+ * is an animated inline pixel value that drag also offsets from, so it has to
+ * be known during render; the constants are the row's own Tailwind steps and
+ * are verified against the browser in the queue stories.
+ *
+ * `DRAWER_HEIGHT` still caps it: past three two-line rows the drawer is a
+ * scrolling summary and the workspace is where the whole queue is read.
+ */
+function getDrawerHeight({
+  queuedMessages,
+  processingMessageId,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+  processingMessageId: string | null;
+}): number {
+  const rowsHeight =
+    queuedMessages.length === 0
+      ? DRAWER_ROW_HEIGHT
+      : queuedMessages.reduce(
+          (total, queuedMessage) =>
+            total +
+            DRAWER_ROW_HEIGHT +
+            (queuedMessageHasWaitLine(queuedMessage) ||
+            queuedMessage.id === processingMessageId
+              ? DRAWER_SECOND_LINE_HEIGHT
+              : 0),
+          0,
+        );
+  return Math.min(
+    DRAWER_HEIGHT,
+    DRAWER_CHROME_HEIGHT + DRAWER_LIST_PADDING + rowsHeight,
+  );
+}
 
 function getWorkspaceHeight({
   messageCount,
@@ -1530,7 +1587,7 @@ export function QueuedMessagesList({
           messageCount: queuedMessages.length,
         })
       : mode === "drawer"
-        ? Math.min(DRAWER_HEIGHT, 57 + Math.max(1, queuedMessages.length) * 33)
+        ? getDrawerHeight({ queuedMessages, processingMessageId })
         : COLLAPSED_HEIGHT;
   const unconstrainedSurfaceHeight = surfaceDragging
     ? clamp(

@@ -41,10 +41,10 @@ workers and their child processes.
 
 The builtin Provider retry plugin is enabled on fresh installations. It
 continues Codex and Claude Code turns after a structured subscription window
-resets, and adds a composer banner with a Cancel action while an automatic retry
-is pending. The banner disappears when the retry starts, is cancelled, or the
-user continues the thread. A pending retry is a queued row on the thread, so a
-server restart does not lose it. Inspect it with `bb provider-retry status`. See
+resets. A pending retry is a queued row on the thread, so a server restart does
+not lose it, and that row — on the queue card above the composer, with its
+reason, its time and its own Cancel — is the only place the wait is narrated.
+Inspect it with `bb provider-retry status`. See
 `bb guide providers` for the eligibility rules. The plugin only reacts to a
 failed turn — it never blocks a send. Prior output or tool activity does not
 block recovery. Its `maximumWait` setting defaults to `6 hours`; choose

@@ -805,8 +805,9 @@ bb plugin config provider-retry set maximumWait "24 hours"
 ```
 
 A pending retry is a queued row on the thread, not an in-process timer, so it
-survives a restart and shows its reason and time above the composer. Inspect
-them with `bb provider-retry status`, cancel one from the composer or with
+survives a restart and shows its reason and time on the queue card above the
+composer — the one surface that narrates the wait. Inspect them with
+`bb provider-retry status`, cancel one on that card or with
 `bb provider-retry cancel <thread-id>`, or run
 `bb provider-retry retry <thread-id>` to send it now instead of waiting. Limits
 that do not reset on a clock — credit and spend-control exhaustion — schedule

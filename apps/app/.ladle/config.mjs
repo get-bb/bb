@@ -41,7 +41,6 @@ function formatNetworkUrls(serverUrl) {
 export default {
   stories: [
     "src/**/*.stories.tsx",
-    "../../plugins/provider-retry/**/*.stories.tsx",
     "../../plugins/workflows/**/*.stories.tsx",
   ],
   defaultStory: "",

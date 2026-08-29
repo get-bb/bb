@@ -160,9 +160,7 @@ describe("QueuedMessagesList", () => {
     const heading = getByText("Follow-ups");
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(heading.className).toContain("font-normal");
-    expect(heading.className).toContain("text-subtle-foreground");
-    expect(surface?.style.height).toBe("123px");
+    expect(surface?.style.height).toBe("121px");
     expect(
       getByRole("button", { name: "Collapse follow-ups" }).querySelector(
         '[data-icon="ChevronDown"]',
@@ -180,7 +178,39 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(getByRole("button", { name: "Show follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(surface?.style.height).toBe("123px");
+    expect(surface?.style.height).toBe("121px");
+  });
+
+  it("gives a row that renders a wait line room for it", () => {
+    // The drawer's height is an estimate made during render, so a row that
+    // says what it is waiting on has to be counted as the two-line row it is.
+    // Estimating one row height apiece cut the wait line off under the bottom
+    // scroll fade on a single-row queue that had nothing to scroll.
+    const plain = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+    ]);
+    const plainHeight = plain.container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    )?.style.height;
+    cleanup();
+
+    const waiting = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_one", "First queued message"),
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "provider-retry",
+          reason: "Rate limited",
+        },
+        sendAt: Date.now() + 60_000,
+      },
+    ]);
+    const waitingHeight = waiting.container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    )?.style.height;
+
+    expect(plainHeight).toBe("88px");
+    expect(waitingHeight).toBe("104px");
   });
 
   it("toggles an overflowing queue between the workspace and collapsed modes", () => {
@@ -606,7 +636,7 @@ describe("QueuedMessagesList", () => {
     rerender(renderSurface(false));
 
     await waitFor(() => {
-      expect(surface?.style.height).toBe("123px");
+      expect(surface?.style.height).toBe("121px");
       expect(
         container
           .querySelector("[data-queued-messages-mode]")

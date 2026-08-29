@@ -435,3 +435,21 @@ above:
   crossed this wire. The pin in `contract.test.ts` moves to 175 — it had been
   left at 174 against a constant of 175, so that test was failing before this
   change.
+
+- **The queued row is the only narration surface: provider-retry's composer
+  banner is gone.** The plugin shipped a `composer.customize` banner that said
+  "<provider> usage limit reached. Retrying <time>." with a Cancel button,
+  served by a `providerRetryStatus`/`providerRetryCancel` RPC pair polling for
+  a view assembled from the same queued row. Once a rate-limited retry became
+  an ordinary queued row with a typed wait, that banner was the row's own
+  sentence printed a second time, in a second widget, immediately below the
+  card that already carried the reason, the countdown and a Cancel — two
+  surfaces to keep in sync and two places for the user to look. The banner,
+  its view component and stories, the RPC contract and its handlers, and the
+  `retryViewForThread` assembly are deleted; with nothing else in it, the
+  plugin's `app` entry goes too (`bb.app` is optional in the manifest, and
+  `bb.server` is what a plugin actually needs). Nothing was repointed: the CLI
+  never went through that RPC — `bb provider-retry status/cancel/retry` reads
+  and acts on public queue surfaces (`threads.queue.list` filtered by wait
+  holder, `threads.queuedMessages.delete/send`), so it is unchanged and its
+  tests now cover the cancel path the RPC test used to.

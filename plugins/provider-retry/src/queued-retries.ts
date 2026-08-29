@@ -1,5 +1,4 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { ProviderRetryView } from "./contract.js";
 
 /**
  * A queued retry as this plugin's surfaces need it. Structural rather than
@@ -49,25 +48,4 @@ export async function findQueuedRetry(
 ): Promise<QueuedRetry | null> {
   const rows = await listQueuedRetries(bb, threadId);
   return rows[0] ?? null;
-}
-
-/**
- * The banner's view of a queued retry.
- *
- * The provider id comes from the thread rather than the row because that is
- * where it lives — a queued row is about a dispatch, not about who will serve
- * it — and the banner only wants it to name the provider in its sentence.
- */
-export async function retryViewForThread(
-  bb: BbPluginApi,
-  threadId: string,
-): Promise<ProviderRetryView | null> {
-  const queued = await findQueuedRetry(bb, threadId);
-  if (queued === null) return null;
-  const thread = await bb.sdk.threads.get({ threadId });
-  return {
-    threadId,
-    providerId: thread.providerId,
-    retryAtMs: queued.sendAt,
-  };
 }

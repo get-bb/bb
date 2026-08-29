@@ -146,8 +146,6 @@ function createHost(queued: QueueEntry[] = []) {
   const sent: QueuedMessageSend[] = [];
   const sdk: CreateFakePluginHostOptions["sdk"] = {
     threads: {
-      get: async ({ threadId }) =>
-        makeThreadResponse({ id: threadId, providerId: "codex" }),
       queue: { list: async () => queued },
       queuedMessages: {
         delete: async (args: QueuedMessageTarget) => {
@@ -424,22 +422,21 @@ describe("provider retry plugin", () => {
     const host = createHost([queuedRetry()]);
     await plugin(host.bb);
 
-    await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId: THREAD_ID }),
-    ).resolves.toEqual({
-      view: {
-        threadId: THREAD_ID,
-        providerId: "codex",
-        retryAtMs: RESET_AT_MS + RESET_BUFFER_MS,
-      },
+    const status = await host.harness.runCli(["status", THREAD_ID, "--json"]);
+    expect(status.exitCode).toBe(0);
+    expect(JSON.parse(status.stdout ?? "")).toEqual({
+      retries: [
+        {
+          id: "queued_1",
+          threadId: THREAD_ID,
+          sendAt: RESET_AT_MS + RESET_BUFFER_MS,
+        },
+      ],
     });
     // Scoped by the indexed wait-holder filter rather than by listing the
     // whole queue and filtering here.
     expect(host.harness.inspection.sdk.callsTo("threads.queue.list")[0]?.[0])
       .toEqual({ waitHolder: `plugin:${PLUGIN_ID}`, threadId: THREAD_ID });
-    await expect(host.harness.runCli(["status", THREAD_ID])).resolves.toEqual(
-      expect.objectContaining({ exitCode: 0 }),
-    );
     await host.harness.dispose();
   });
 
@@ -449,9 +446,8 @@ describe("provider retry plugin", () => {
     const host = createHost([queuedRetry()]);
     await plugin(host.bb);
 
-    await expect(
-      host.harness.callRpc("providerRetryCancel", { threadId: THREAD_ID }),
-    ).resolves.toEqual({ cancelled: true });
+    const cancelled = await host.harness.runCli(["cancel", THREAD_ID]);
+    expect(cancelled.exitCode).toBe(0);
     expect(host.deleted).toEqual([
       { threadId: THREAD_ID, queuedMessageId: "queued_1" },
     ]);
@@ -468,14 +464,11 @@ describe("provider retry plugin", () => {
     const host = createHost();
     await plugin(host.bb);
 
-    await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId: THREAD_ID }),
-    ).resolves.toEqual({ view: null });
-    await expect(
-      host.harness.callRpc("providerRetryCancel", { threadId: THREAD_ID }),
-    ).resolves.toEqual({ cancelled: false });
     const status = await host.harness.runCli(["status"]);
     expect(status.stdout).toBe("No provider retries are pending.\n");
+    const cancelled = await host.harness.runCli(["cancel", THREAD_ID]);
+    expect(cancelled.exitCode).toBe(1);
+    expect(host.deleted).toEqual([]);
     await host.harness.dispose();
   });
 });
