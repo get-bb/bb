@@ -1422,10 +1422,6 @@ export function systemOperationLeadingIcon(
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
       return "Terminal";
-    case "plugin-note":
-      // The plugin's own icon rides the row; this is the fallback for a note
-      // that asked for none or named one the icon set does not have.
-      return "Puzzle";
     case "thread-interrupted":
       return "AlertCircle";
     case "compaction":
@@ -1448,13 +1444,6 @@ function leadingIconForSystemRow(
   if (row.kind !== "system" || row.systemKind !== "operation") {
     return undefined;
   }
-  if (row.operationKind === "plugin-note") {
-    // A plugin picks its own glyph; an unknown name falls through to the
-    // generic note icon rather than breaking the row.
-    return row.iconName !== null && isIconName(row.iconName)
-      ? row.iconName
-      : "Puzzle";
-  }
   return systemOperationLeadingIcon(
     row.operationKind,
     row.operationKind === "parent-change" ? row.parentChange.action : null,
@@ -1468,17 +1457,6 @@ function leadingIconForRow(row: ThreadTimelineViewRow): IconName | undefined {
 function leadingIconStyleForRow(
   row: ThreadTimelineViewRow,
 ): CSSProperties | undefined {
-  if (
-    row.kind === "system" &&
-    row.systemKind === "operation" &&
-    row.operationKind === "plugin-note" &&
-    row.level === "warning"
-  ) {
-    // A warning note is the one place a note raises its voice, and it does it
-    // with its glyph alone — the title stays neutral so the row never reads
-    // like the thread itself failed.
-    return { color: "var(--warning)" };
-  }
   if (row.kind !== "work") {
     return undefined;
   }

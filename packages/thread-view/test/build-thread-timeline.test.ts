@@ -1626,6 +1626,35 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
   });
 
+  /**
+   * `system/plugin-note` joins the two above: still decodable, no longer
+   * rendered. `bb.experimental_threads.appendNote` was the only writer, and its
+   * only caller narrated a retry its own queued row already narrated — so the
+   * API, and every projection/row/title arm behind it, were deleted once the
+   * duplicate went. Stored notes still have to reach the renderer's if-chain
+   * and fall out the far end, producing no row rather than throwing.
+   */
+  it("renders a stored legacy plugin-note event as nothing", () => {
+    const legacyNote: ThreadEventRow = {
+      id: "evt-legacy-plugin-note-1",
+      threadId: "thread-1",
+      seq: 1,
+      createdAt: 1,
+      scope: threadScope(),
+      type: "system/plugin-note",
+      data: {
+        pluginId: "provider-retry",
+        text: "Rate limited — retrying at 6:30",
+        iconName: "Clock",
+        level: "warning",
+      },
+    };
+
+    const events = fromRows([legacyNote]);
+    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
+    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
+  });
+
   it("normalizes carriage-return provisioning output in operation detail", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const rows = buildTimelineRows(

@@ -782,13 +782,20 @@ the plugin so it can be surfaced as needing attention.
 
 ### Provider retry plugin
 
-The builtin Provider retry plugin is enabled on fresh installations. It
-automatically waits for structured Codex and Claude Code subscription-window
-resets when the failed turn was accepted, the provider has stopped its own
-retries, and the original execution settings remain available. Prior output or
-tool activity does not block recovery. Recovery sends one agent-only
-`Please continue.` turn on the existing provider conversation. Disable it
-under Extensions → Plugins or with `bb plugin disable provider-retry`.
+The builtin Provider retry plugin is enabled on fresh installations. When a turn
+fails on a structured Codex or Claude Code subscription-window limit that
+reports a reset time, it queues that turn to be re-sent after the window opens.
+Prior output or tool activity does not block recovery. The retry re-sends the
+original message verbatim, marked agent-only so the timeline does not show it
+twice. Disable it under Extensions → Plugins or with
+`bb plugin disable provider-retry`.
+
+It never blocks a send. A remembered rate limit is a stale picture of the
+provider's state, so the plugin never refuses a dispatch on one — if you raised
+your plan or the window opened early, the next send simply works. The cost is
+that several threads on one exhausted subscription each fail once before each
+schedules its own retry; the retries are jittered so they do not all wake in the
+same instant.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
 not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
 configure it from the CLI:
@@ -797,15 +804,13 @@ configure it from the CLI:
 bb plugin config provider-retry set maximumWait "24 hours"
 ```
 
-Pending waits are coordinated by machine/provider subscription and live only
-in the current server/plugin process. Restarting bb, reloading the plugin, or
-disabling it clears the timers without changing the original failed thread. A
-later 429 without a fresh provider rate-limit update can still inherit the last
-blocked window during that process.
-Inspect them with `bb provider-retry status`, or cancel one from its composer
-banner or with `bb provider-retry cancel <thread-id>`. Run
-`bb provider-retry retry <thread-id>` for a manual recovery, including credit
-or spend-control limits that do not report a reset time.
+A pending retry is a queued row on the thread, not an in-process timer, so it
+survives a restart and shows its reason and time above the composer. Inspect
+them with `bb provider-retry status`, cancel one from the composer or with
+`bb provider-retry cancel <thread-id>`, or run
+`bb provider-retry retry <thread-id>` to send it now instead of waiting. Limits
+that do not reset on a clock — credit and spend-control exhaustion — schedule
+nothing, because waiting does not fix them.
 
 ### Workflows plugin
 

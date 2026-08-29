@@ -43,14 +43,18 @@ provider's global configuration.
 Subscription limit recovery
 
 The builtin Provider retry plugin is enabled on fresh installations and
-recognizes structured Codex and Claude Code subscription windows. If a provider
-terminally rejects an accepted turn whose execution settings remain available,
-the plugin waits in memory until the reported reset plus a short buffer, then
-starts one agent-only `Please continue.` turn on the existing provider
-conversation. Prior output or tool activity does not block recovery. Threads
-sharing a machine/provider subscription are released one at a time.
-Provider-native retries remain authoritative while the provider reports that
-it will retry on its own.
+recognizes structured Codex and Claude Code subscription windows. When a turn
+fails on one, the plugin queues that turn to be re-sent after the reported reset
+plus a short buffer and some jitter. The retry re-sends the original message
+verbatim, marked agent-only so the timeline does not show it twice. Prior output
+or tool activity does not block recovery. Provider-native retries remain
+authoritative while the provider reports that it will retry on its own.
+
+The plugin never blocks a send. It only reacts to a failure, because a
+remembered rate limit is a stale picture of the provider's state: if you raised
+your plan or the window opened early, the next send simply works. Several
+threads on one exhausted subscription therefore each fail once, then each
+schedule their own jittered retry.
 
 Automatic waits default to a maximum of six hours. Longer reset windows are not
 scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin
@@ -58,14 +62,14 @@ settings, or run:
 
   bb plugin config provider-retry set maximumWait "24 hours"
 
-  bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
+  bb provider-retry status [thread-id] [--json]    Inspect pending retries
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
-  bb provider-retry retry <thread-id> [--json]     Request a manual retry
+  bb provider-retry retry <thread-id> [--json]     Send a pending retry now
 
-Timed waits exist only while the current bb server/plugin process remains
-running. Disabling/reloading the plugin or restarting the server clears them;
-the original failed thread remains available for `bb provider-retry retry`.
-Credit and spend-control exhaustion without a reset time is manual-only.
+A pending retry is a queued row on the thread, so it survives a server restart
+and appears above the composer with its reason and time. Credit and
+spend-control exhaustion does not reset on a clock, so nothing is scheduled for
+it — waiting does not fix it.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,

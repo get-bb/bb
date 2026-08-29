@@ -1296,12 +1296,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
-      appendThreadNote: ({ threadId, note }) => {
-        if (!deps.appendThreadNote) {
-          throw new Error("thread notes are unavailable in this host");
-        }
-        deps.appendThreadNote({ pluginId: row.id, threadId, note });
-      },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");

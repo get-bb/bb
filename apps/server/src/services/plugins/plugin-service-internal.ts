@@ -82,16 +82,6 @@ export interface PluginServiceDeps {
    * rows waiting on it) is cleared here instead of waiting for a sweep.
    */
   onPluginUnregistered?: (pluginId: string) => void;
-  /**
-   * Display-only timeline notes behind `bb.experimental_threads.appendNote`.
-   * Assembled in server.ts where the full thread services exist; omitted only
-   * by isolated plugin-runtime tests, where the call throws.
-   */
-  appendThreadNote?: (args: {
-    pluginId: string;
-    threadId: string;
-    note: unknown;
-  }) => void;
   /** Per-gate decision box; tests shrink it to exercise the timeout path. */
   dispatchGateTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +

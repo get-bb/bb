@@ -519,6 +519,20 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
+  it("ships the only dispatch-stage gate disabled on a fresh database", async () => {
+    // `concurrency-limit` is the sole bundled plugin that registers a
+    // `dispatch` gate, and `provider-retry` gates only `turn.failed`. So this
+    // flag is what makes `hasDispatchGates("dispatch")` false on a stock
+    // install, which is what keeps every send on the untouched pre-gates path.
+    // Flipping it to true would silently put a gate pass, and its server-wide
+    // evaluation lock, in front of every dispatch on every fresh machine.
+    const limiter = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "concurrency-limit",
+    );
+    expect(limiter).toBeDefined();
+    expect(limiter?.defaultEnabled).toBe(false);
+  });
+
   it("ships Provider retry enabled on a fresh database", async () => {
     const providerRetry = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "provider-retry",

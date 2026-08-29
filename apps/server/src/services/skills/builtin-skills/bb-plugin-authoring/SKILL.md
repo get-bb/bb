@@ -1112,30 +1112,6 @@ for. If you write a limiter whose pattern cannot tolerate that, give the
 spawned work its own pool — fetch the rows' threads and count them under a
 second limit — rather than making it free.
 
-### bb.experimental_threads — timeline notes
-
-A note is a one-line, display-only annotation on a thread's timeline,
-attributed to your plugin. It renders as a system row: your text, your icon,
-and your plugin id.
-
-```ts
-await bb.experimental_threads.appendNote(threadId, {
-  text: "Rate limited — retrying at 6:30",
-  iconName: "Clock",     // optional; unknown names fall back to a generic glyph
-  level: "warning",      // "info" (default) | "warning" (tints the row's glyph)
-});
-```
-
-`text` is capped at 500 characters. Rate limited to 6 notes per thread per
-minute per plugin; exceeding it rejects with an error naming the limit, as does
-an unknown thread or an invalid note. Your plugin id is stamped server-side, so
-attribution cannot be forged.
-
-Notes are display-only by construction: nothing that builds a provider request
-reads thread events, so a note can never reach a model. Content meant FOR the
-agent is an attributed agent-only message, not a note. Why a queued row is
-waiting belongs on that row instead, as your gate's own `wait` reason.
-
 ### bb.http — HTTP routes
 
 `bb.http.route(method, path, handler, { auth? })` mounts an exact-match

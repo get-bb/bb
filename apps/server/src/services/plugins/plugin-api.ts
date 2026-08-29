@@ -57,7 +57,6 @@ import type {
   PluginStorage,
   PluginThreadEventHandler,
   PluginThreadEventName,
-  PluginThreads,
   PluginUi,
   StandardSchemaV1,
   PluginRpcContract,
@@ -393,12 +392,6 @@ export function createPluginApi(options: {
     timeoutMs: number;
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
-  /**
-   * Appends this plugin's display-only note to a thread. Throws on an unknown
-   * thread, an invalid note, or the per-thread rate limit. Undefined in
-   * isolated plugin-runtime harnesses that carry no thread services.
-   */
-  appendThreadNote?: (args: { threadId: string; note: unknown }) => void;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
     hostId: string,
@@ -447,7 +440,6 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     declaredIconNames,
     requestInteraction,
-    appendThreadNote,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
     declareSharedPorts,
@@ -1316,26 +1308,6 @@ export function createPluginApi(options: {
     },
   };
 
-  const experimental_threads: PluginThreads = {
-    appendNote(threadId, note) {
-      assertLive();
-      if (appendThreadNote === undefined) {
-        return Promise.reject(
-          new Error("thread notes are unavailable in this host"),
-        );
-      }
-      // Synchronous under the hood (one event append), but promised so the
-      // rate limit and the not-found refusal reach the plugin as a rejection
-      // rather than a throw from what looks like a fire-and-forget call.
-      try {
-        appendThreadNote({ threadId, note });
-        return Promise.resolve();
-      } catch (error) {
-        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    },
-  };
-
   const providers: PluginProviders = {
     register: providerRegistrations.register,
   };
@@ -1369,7 +1341,6 @@ export function createPluginApi(options: {
     ui,
     events,
     experimental_dispatch,
-    experimental_threads,
     status,
     server,
     hosts,

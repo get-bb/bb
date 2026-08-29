@@ -228,7 +228,7 @@ const threadEventScopeDefinitionByType = {
   "system/plugin-note": {
     policy: "thread",
     rationale:
-      "A plugin annotates the thread, not a turn: notes are appended from background services and gates that run between turns, and a note about a turn that failed would otherwise be scoped to a turn that is over.",
+      "Legacy, retained for decode only: a plugin annotated the thread rather than any one turn, since notes were appended from background services and gates running between turns. The appendNote API was removed once it had no consumer and nothing emits this.",
   },
   "system/provider-turn-watchdog": {
     policy: "thread",

@@ -486,42 +486,6 @@ export interface PluginDispatch {
   ): void;
 }
 
-/**
- * A one-line annotation a plugin adds to a thread's timeline.
- *
- * Display-only, and structurally so: nothing that builds a provider request
- * reads thread events, so a note can never reach a model. Content meant FOR the
- * agent is a message, not a note.
- */
-export interface PluginThreadNote {
-  /** The line the user reads. At most 500 characters. */
-  text: string;
-  /**
-   * A lucide icon name rendered beside the note when the client knows it. An
-   * unknown name renders without an icon rather than failing.
-   */
-  iconName?: string;
-  /** `warning` tints the row; defaults to `info`. */
-  level?: "info" | "warning";
-}
-
-export interface PluginThreads {
-  /**
-   * Append a display-only note to a thread's timeline, attributed to this
-   * plugin.
-   *
-   * This is the plugin timeline-contribution surface for things that are not
-   * a queued row: "retry scheduled for 6:30", "routed to opus", "rate-limit
-   * window exhausted". Why a queued row is waiting belongs on that row
-   * instead, as the gate's own `wait` reason.
-   *
-   * Rate limited to 6 notes per thread per minute per plugin; exceeding it
-   * rejects with an error naming the limit. Appending to a thread that does not
-   * exist rejects.
-   */
-  appendNote(threadId: string, note: PluginThreadNote): Promise<void>;
-}
-
 // ---------------------------------------------------------------------------
 // Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
 // ---------------------------------------------------------------------------
@@ -1568,11 +1532,6 @@ export interface BbPluginApi {
    * later.
    */
   readonly experimental_dispatch: PluginDispatch;
-  /**
-   * Plugin contributions to a thread's timeline. Display-only notes today;
-   * anything that reads or writes thread data goes through `bb.sdk.threads`.
-   */
-  readonly experimental_threads: PluginThreads;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

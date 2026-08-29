@@ -13,9 +13,9 @@ export const RESET_BUFFER_MS = 15_000;
  *
  * Every thread blocked on one account hears about the same reset, so without
  * this they would all retry in the same instant and re-exhaust the window
- * together. Jitter is what replaced the old scheduler's one-release-per-second
- * pacing: the holds are independent, so they need to disagree about when to
- * wake rather than take turns.
+ * together. This is the only thing spreading them out — nothing tracks which
+ * accounts are exhausted, by design — so the queued retries have to disagree
+ * about when to wake rather than take turns.
  */
 export const RESET_JITTER_MS = 30_000;
 
@@ -25,7 +25,7 @@ export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
  * How many times one turn may be retried before the plugin gives up.
  *
  * A provider that keeps reporting a window that never moves would otherwise
- * retry forever, one hold at a time. The old scheduler prevented that by
+ * retry forever, one queued row at a time. The old scheduler prevented that by
  * remembering every window it had attempted in process memory, which a restart
  * erased; the attempt number rides the turn itself, so this cap survives one.
  */
@@ -40,7 +40,7 @@ export type RetryDeclineReason =
 
 export type RetryDecision =
   | { kind: "decline"; reason: RetryDeclineReason }
-  | { kind: "retry"; resumeAt: number; resetsAtMs: number };
+  | { kind: "retry"; resumeAt: number };
 
 export interface RetryPolicyInput {
   failure: PluginTurnFailure;
@@ -123,7 +123,6 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
   }
   return {
     kind: "retry",
-    resetsAtMs,
     resumeAt: retryAtMs({
       resetsAtMs,
       now: input.now,

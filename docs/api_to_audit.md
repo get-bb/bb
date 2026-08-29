@@ -220,57 +220,6 @@ two failures arriving together cannot queue the same turn twice.
 - **The single server-wide lock.** One slow gate delays every dispatch in the
   server, up to its box.
 
-## `bb.experimental_threads` (`appendNote`)
-
-**What it does.** The plugin timeline-contribution surface for anything that is
-not a hold. `bb.experimental_threads.appendNote(threadId, { text, iconName?,
-level? })` appends a `system/plugin-note` thread event that renders as one
-system row: the note's text, the plugin's icon, and the plugin's id as
-attribution. `text` is capped at 500 characters, `level` is `"info"` or
-`"warning"` (warning tints the row's glyph), and `iconName` is a plain string a
-client renders only if it recognizes it, so a note from a newer plugin never
-becomes unrenderable in an older client.
-
-Notes are display-only by construction rather than by policy. Nothing that
-builds a provider request reads thread events — a turn command carries prompt
-blocks and the provider resumes its own session by id — and the fork inheritance
-allowlist in `thread-fork-history.ts` names the conversation event types
-explicitly, so a note has no path to a model. Content meant FOR the agent is an
-attributed agent-only message, not a note.
-
-The plugin id is stamped server-side from the caller's bound identity, so
-attribution cannot be forged. The call rejects on an unknown or deleted thread,
-on an invalid note, and on the rate limit: 6 notes per thread per minute per
-plugin, counted in an in-memory sliding window.
-
-**Audit before stabilizing.**
-
-- **The namespace, and what else belongs in it.** `bb.experimental_threads`
-  currently holds exactly one method, and everything else a plugin does with
-  threads goes through `bb.sdk.threads`. Decide whether this is the beginning of
-  a real host-side thread namespace or whether `appendNote` should move under
-  `bb.sdk.threads.notes.append` (the shape the plan originally named) so plugins
-  have one obvious home for thread operations. Shipping it in-process means
-  there is no public route and no `BbHttpError.code` for callers to branch on —
-  a rate-limit rejection is a plain `Error` with a descriptive message.
-- **The rate limit's unit and enforcement.** 6/thread/minute/plugin is the first
-  per-plugin rate limit in the server and has no precedent to inherit. It is
-  in-memory, so a restart forgives a plugin mid-spree, and it is silent to the
-  user (only the calling plugin sees the rejection). Confirm the budget, and
-  decide whether repeated rejections should surface as plugin status.
-- **`iconName` as an unvalidated string.** The server stores whatever the plugin
-  sends and each client decides whether it knows the name. That is what keeps
-  old clients working, but it also means a typo is invisible until someone looks
-  at the timeline. Consider validating against the shipped icon set at
-  registration-adjacent time, or reporting unknown names back to the plugin.
-- **`level` as a two-value enum.** `info`/`warning` covers what the bundled
-  plugins need; confirm before freezing that nothing wants `error` (and that if
-  it did, the answer is not "that is a failure, not a note").
-- **One row per note, forever.** Notes never collapse or supersede each other
-  the way a hold's transcript rows do, so a plugin that annotates every turn
-  adds a row every turn. The rate limit bounds the burst, not the total. Decide
-  whether notes need a supersede/replace affordance before this is stable.
-
 ## `queue.waiting` / `queue.dispatched` (`bb.events.on`)
 
 **What it does.** Queue lifecycle events on the existing observe-only

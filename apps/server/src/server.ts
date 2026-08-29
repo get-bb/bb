@@ -29,7 +29,6 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setDispatchGateProvider } from "./services/plugins/dispatch-gate-registry.js";
-import { appendPluginNote } from "./services/threads/plugin-notes.js";
 import {
   createTurnFailedGateNotifier,
   setTurnFailedGateNotifier,
@@ -585,11 +584,6 @@ export function createApp(
         },
       );
     },
-    // `bb.experimental_threads.appendNote`. The plugin id comes from the
-    // runtime's bound identity, so attribution on the timeline row cannot be
-    // forged by the caller.
-    appendThreadNote: ({ pluginId, threadId, note }) =>
-      appendPluginNote(deps, { pluginId, threadId, note }),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });

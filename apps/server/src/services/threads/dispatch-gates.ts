@@ -168,6 +168,16 @@ export function isDispatchRequeuedRecently(threadId: string): boolean {
  * site checks this first: with no gates the dispatch path must be
  * byte-for-byte what it was before gates existed — no lock, no context
  * assembly, no queued row.
+ *
+ * For the `dispatch` stage that is not a hypothetical — it is what a stock
+ * install actually does. Exactly one bundled plugin registers a `dispatch`
+ * gate, `concurrency-limit`, and it ships `defaultEnabled: false`; a disabled
+ * plugin never loads, so it never reaches `listGates`. (`provider-retry` ships
+ * enabled but gates only `turn.failed`: it deliberately never intercepts a
+ * send, because a remembered rate limit is a stale cache of provider state.)
+ * So on a fresh install every send takes the untouched pre-gates path, and a
+ * user pays for admission control only by asking for it.
+ * `builtin-plugins.test.ts` pins both halves.
  */
 export function hasDispatchGates(stage: DispatchGateStage): boolean {
   const provider = dispatchGateProvider();

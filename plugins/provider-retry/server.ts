@@ -1,13 +1,37 @@
+// bb-plugin-provider-retry — continue a turn once a subscription window resets.
+//
+// The entire plugin is one gate on `turn.failed`: if the failure is a rate
+// limit that reports a reset, ask for a retry at that time. Buffer, jitter,
+// maximum wait and the attempt cap are the only policy it owns.
+//
+// **It never intercepts a send.** An earlier version also registered a
+// `dispatch` gate: once one thread proved an account exhausted, it queued every
+// other dispatch into that account until the window it remembered had passed.
+// That is wrong on principle. A rate-limit record is a stale cache of provider
+// state — the provider is the only thing that knows whether the limit still
+// binds. A user who fixed it out of band (upgraded the plan, had the window
+// reset early, swapped the credentials behind the provider) would be refused
+// without an attempt, on this plugin's memory of a failure that no longer
+// applied, with no way to tell that the refusal was ours and not theirs. The
+// only authoritative check is trying.
+//
+// The cost of that is accepted rather than engineered around: N threads sharing
+// one exhausted account each fail once, instead of the first failing and the
+// rest queueing behind it. One honest failure per thread — visible, explained,
+// and immediately followed by a scheduled retry — is cheaper than one wrong
+// refusal, and it is the only version of this plugin that cannot be wrong about
+// the present.
+//
+// It also narrates nothing. A scheduled retry IS a queued row, and that row
+// already says what it is waiting on and when it will go, on the card above the
+// composer and in `bb thread queue list`. A note repeating it could only go
+// stale when the row is cancelled, sent now or re-queued.
+
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
 import { findQueuedRetry, retryViewForThread } from "./src/queued-retries.js";
-import {
-  DEFAULT_MAXIMUM_WAIT_MS,
-  RESET_BUFFER_MS,
-  decideRetry,
-  type RetryDeclineReason,
-} from "./src/retry-policy.js";
+import { DEFAULT_MAXIMUM_WAIT_MS, decideRetry } from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
 
@@ -35,22 +59,6 @@ function maximumWaitMs(value: string | boolean | undefined): number | null {
  */
 const RATE_LIMITED_WAIT_REASON = "Rate limited";
 
-/**
- * The decline reasons worth telling the user about.
- *
- * Most declines mean "this failure had nothing to do with a rate limit", which
- * is every ordinary failure on the machine — annotating those would put a note
- * on failures this plugin has no opinion about. These two are different: the
- * user hit a limit and is being told, once, that nothing will happen
- * automatically.
- */
-const NOTED_DECLINE_REASONS: Partial<Record<RetryDeclineReason, string>> = {
-  "beyond-maximum-wait":
-    "Rate limited, and the reset is farther away than the configured maximum wait — no retry scheduled.",
-  "attempts-exhausted":
-    "Rate limited again after several retries — giving up on this turn.",
-};
-
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     maximumWait: {
@@ -69,68 +77,11 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   /**
-   * Windows this plugin has seen a provider account blocked on, keyed by
-   * `hostId:providerId`.
+   * The retry decision, which is the whole plugin.
    *
-   * This is the whole replacement for the old per-account release pacing: once
-   * one thread proves an account is exhausted, `turn.submit` queues OTHER
-   * dispatches into the same account until the window resets, instead of
-   * letting them each discover it by failing. Purely an optimisation, so
-   * in-memory is right — losing it on restart costs one extra failure, and a
-   * stale entry expires by its own reset time.
-   */
-  const blockedScopes = new Map<string, number>();
-
-  function noteBlockedScope(
-    hostId: string | null,
-    providerId: string,
-    resetsAtMs: number,
-  ): void {
-    if (hostId === null) return;
-    blockedScopes.set(`${hostId}:${providerId}`, resetsAtMs);
-  }
-
-  function blockedScopeResetAt(
-    hostId: string | null,
-    providerId: string,
-    now: number,
-  ): number | null {
-    if (hostId === null) return null;
-    const key = `${hostId}:${providerId}`;
-    const resetsAtMs = blockedScopes.get(key);
-    if (resetsAtMs === undefined) return null;
-    if (resetsAtMs + RESET_BUFFER_MS <= now) {
-      blockedScopes.delete(key);
-      return null;
-    }
-    return resetsAtMs;
-  }
-
-  function appendNote(
-    threadId: string,
-    text: string,
-    level: "info" | "warning",
-  ): void {
-    // Deliberately not awaited: notes annotate, they do not gate anything, and
-    // a gate that waited on one would spend its decision box on a write.
-    void bb.experimental_threads
-      .appendNote(threadId, { text, iconName: "ArrowReloadHorizontal", level })
-      .catch((error: unknown) => {
-        bb.log.warn(
-          `Could not append a provider retry note: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
-  }
-
-  /**
-   * The retry decision itself.
-   *
-   * Everything this used to need — did the turn really fail, which request was
-   * it, what did the provider say, which window is blocked, how many times have
-   * we tried — arrives on the context. What is left is policy, which is all
-   * this plugin was ever for.
+   * Everything it needs — did the turn really fail, what did the provider say
+   * about its windows, how many times has this turn been retried — arrives on
+   * the context. What is left is policy.
    */
   bb.experimental_dispatch.gate("turn.failed", (context) => {
     const decision = decideRetry({
@@ -140,74 +91,13 @@ export default async function plugin(bb: BbPluginApi) {
       random: Math.random(),
     });
     if (decision.kind === "decline") {
-      const noteText = NOTED_DECLINE_REASONS[decision.reason];
-      if (noteText !== undefined) {
-        appendNote(context.thread.id, noteText, "warning");
-      }
       return { action: "none" };
     }
-    noteBlockedScope(
-      context.host?.id ?? null,
-      context.requestedExecution.providerId,
-      decision.resetsAtMs,
-    );
     return {
       action: "retry",
       reason: RATE_LIMITED_WAIT_REASON,
       resumeAt: decision.resumeAt,
     };
-  });
-
-  /**
-   * Admission control for an account already known to be exhausted.
-   *
-   * A dispatch into a blocked account can only fail, and a failure costs the
-   * user a red turn plus a wait. Queueing it until the window resets turns that
-   * into one card that says why. The re-attempt re-enters this gate, so a
-   * window that has not actually reset simply queues it again.
-   *
-   * A `join-turn` attempt is exempt: it is joining a turn the provider already
-   * accepted, so the account is demonstrably not blocked for it, and queueing a
-   * steer behind a window would strand the user mid-turn for a limit that is
-   * not being hit.
-   */
-  bb.experimental_dispatch.gate("dispatch", (context) => {
-    if (context.attempt === "join-turn") {
-      return { action: "proceed" };
-    }
-    const resetsAtMs = blockedScopeResetAt(
-      context.host?.id ?? null,
-      context.requestedExecution.providerId,
-      Date.now(),
-    );
-    if (resetsAtMs === null) {
-      return { action: "proceed" };
-    }
-    return {
-      action: "wait",
-      reason: RATE_LIMITED_WAIT_REASON,
-      // `retryAt` becomes the row's `sendAt`, so core's due sweep re-attempts
-      // when the window resets without this plugin holding a timer.
-      retryAt: resetsAtMs + RESET_BUFFER_MS,
-    };
-  });
-
-  // The user-facing narration of a retry's life. It hangs off the queue events
-  // rather than the gate so the note reflects what core actually did with the
-  //
-  // `queue.dispatched` reports the wait the row was holding when it went, so
-  // "was this ours?" is answerable from the event alone.
-  const isOwnRetry = (entry: {
-    payload: { kind: string };
-    waitingOn: { kind: string; pluginId?: string } | null;
-  }): boolean =>
-    entry.payload.kind === "retry" &&
-    entry.waitingOn?.kind === "plugin" &&
-    entry.waitingOn.pluginId === bb.pluginId;
-
-  bb.events.on("queue.dispatched", ({ entry }) => {
-    if (!isOwnRetry(entry)) return;
-    appendNote(entry.threadId, "Rate limit window reset — retrying now.", "info");
   });
 
   bb.rpc.register(providerRetryRpcContract, {

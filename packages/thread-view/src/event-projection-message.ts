@@ -9,7 +9,6 @@ import type {
   PendingInteractionUserQuestionQuestion,
   ProviderErrorInfo,
   PromptTextMention,
-  PluginNoteLevel,
   SystemMessageKind,
   SystemMessageSubject,
   Thread,
@@ -290,7 +289,6 @@ const eventProjectionOperationTypeValues = [
   "deprecation",
   "thread-interrupted",
   "thread-provisioning",
-  "plugin-note",
   "operation",
   "compaction",
   "context-clear",
@@ -355,17 +353,6 @@ export interface EventProjectionProvisioningMetadata {
   transcript?: EventProjectionProvisioningTranscriptEntry[];
 }
 
-/**
- * The plugin behind a `plugin-note` row. Attribution is not decoration here:
- * the note's text is a plugin's words in the middle of the user's
- * conversation, so who wrote it travels with it.
- */
-export interface EventProjectionPluginNoteMetadata {
-  pluginId: string;
-  iconName: string | null;
-  level: PluginNoteLevel;
-}
-
 interface EventProjectionApprovalTarget {
   itemId: string;
   toolName: string | null;
@@ -384,7 +371,6 @@ export interface EventProjectionOperationMessage extends EventProjectionMessageB
   >;
   completedAt: number | null;
   provisioning?: EventProjectionProvisioningMetadata;
-  pluginNote?: EventProjectionPluginNoteMetadata;
   threadOperation?: EventProjectionThreadOperationMetadata;
 }
 

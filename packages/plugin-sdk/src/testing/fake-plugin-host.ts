@@ -76,8 +76,6 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
-  PluginThreadNote,
-  PluginThreads,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -256,8 +254,6 @@ export interface FakePluginRegistrations {
   dispatchGates: {
     [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
   };
-  /** Every `bb.experimental_threads.appendNote` call, in order. */
-  appendedThreadNotes: Array<{ threadId: string; note: PluginThreadNote }>;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1611,10 +1607,6 @@ function createFakePluginHostInternal(
     dispatch: null,
     "turn.failed": null,
   };
-  const appendedThreadNotes: Array<{
-    threadId: string;
-    note: PluginThreadNote;
-  }> = [];
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -1879,13 +1871,6 @@ function createFakePluginHostInternal(
     },
   };
 
-  const experimental_threads: PluginThreads = {
-    appendNote(threadId, note) {
-      appendedThreadNotes.push({ threadId, note });
-      return Promise.resolve();
-    },
-  };
-
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1901,7 +1886,6 @@ function createFakePluginHostInternal(
     ui,
     events,
     experimental_dispatch,
-    experimental_threads,
     status,
     server,
     hosts,
@@ -1998,9 +1982,6 @@ function createFakePluginHostInternal(
       },
       get dispatchGates() {
         return { ...dispatchGates };
-      },
-      get appendedThreadNotes() {
-        return [...appendedThreadNotes];
       },
       mentionProviders,
       providerRegistrations,

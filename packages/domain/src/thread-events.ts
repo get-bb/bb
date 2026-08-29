@@ -384,12 +384,7 @@ export type SystemQueueStateEventData = z.infer<
   typeof systemQueueStateEventDataSchema
 >;
 
-/**
- * Longest note a plugin may append. Deliberately short: a note is a one-line
- * annotation on the timeline ("Rate limited — retrying at 6:30"), and anything
- * that needs a paragraph is content for the agent, which goes through an
- * attributed agent-only message.
- */
+/** The cap stored notes were written under; kept so old rows still decode. */
 export const PLUGIN_NOTE_TEXT_MAX_LENGTH = 500;
 
 const pluginNoteLevelValues = ["info", "warning"] as const;
@@ -397,14 +392,17 @@ export const pluginNoteLevelSchema = z.enum(pluginNoteLevelValues);
 export type PluginNoteLevel = z.infer<typeof pluginNoteLevelSchema>;
 
 /**
- * A plugin's one-line annotation on a thread's timeline.
+ * A LEGACY timeline row, retained for decode only — the same treatment
+ * `system/dispatch-hold` and `system/queue-state` above get, for the same
+ * reason.
  *
- * Display-only by construction, not by policy: nothing that builds a provider
- * request reads thread events (a turn command carries prompt blocks and the
- * provider resumes its own session by id), and the fork allowlist in
- * `thread-fork-history.ts` names the conversation types explicitly, so a note
- * cannot reach a model. Plugin content meant FOR the agent goes through an
- * attributed agent-only message instead.
+ * `bb.experimental_threads.appendNote` was the plugin timeline-contribution
+ * surface, and its only caller was the provider-retry plugin narrating a retry
+ * that its own queued row already narrated. With that duplicate removed the API
+ * had no consumer, so it was deleted along with every projection and renderer
+ * arm. The schema stays purely so a stored event still decodes: narrowing
+ * `threadEventSchema` would churn the daemon protocol and make existing rows
+ * undecodable. A decoded plugin-note event contributes no row.
  */
 export const systemPluginNoteEventDataSchema = z.object({
   pluginId: z.string().min(1),

@@ -427,24 +427,25 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
-- The Provider retry plugin is enabled on fresh installations and automatically
-  waits for structured Codex and Claude Code subscription-window resets when
-  the failed turn was accepted and its execution settings remain available.
-  Prior output or tool activity does not block recovery. Its timers last only
-  while the current bb server/plugin process is running. Inspect it
-  with `bb provider-retry status [thread-id]`, or cancel one with
+- The Provider retry plugin is enabled on fresh installations. When a turn fails
+  on a structured Codex or Claude Code subscription-window limit that reports a
+  reset, it queues that turn to be re-sent after the window opens, re-sending
+  the original message verbatim and marked agent-only. Prior output or tool
+  activity does not block recovery. A pending retry is a queued row on the
+  thread, so it survives a restart; inspect it with
+  `bb provider-retry status [thread-id]`, or cancel one with
   `bb provider-retry cancel <thread-id>`. Automatic waits default to six hours;
   configure longer waits with
   `bb plugin config provider-retry set maximumWait "24 hours"` or select
   `No limit` in the plugin settings. Resets beyond the configured horizon are
-  not scheduled. Each reported reset window is attempted automatically at most
-  once during that process. A later failed turn that omits a fresh rate-limit
-  update can still inherit the last blocked window.
-- Use `bb provider-retry retry <thread-id>` for a manual provider retry when no
-  plugin timer remains. It sends agent-only “Please continue.” on the existing
-  provider conversation and declines when input was not accepted, execution
-  settings are unavailable, a newer request exists, or the provider still owns
-  the retry.
+  not scheduled, and neither are credit or spend-control limits, which do not
+  reset on a clock.
+- The plugin never blocks a send — it only reacts to a failed turn, because a
+  remembered rate limit is a stale picture of the provider’s state and the only
+  authoritative check is attempting. Threads sharing an exhausted subscription
+  each fail once, then each schedule their own jittered retry.
+- Use `bb provider-retry retry <thread-id>` to send a pending retry now instead
+  of waiting for its reset.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.

@@ -9,7 +9,6 @@ type ExpectedBbPluginApiKey =
   | "events"
   | "experimental_aiServices"
   | "experimental_dispatch"
-  | "experimental_threads"
   | "hosts"
   | "http"
   | "log"
@@ -105,8 +104,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventHandler",
   "PluginThreadEventName",
   "PluginThreadEventPayloads",
-  "PluginThreadNote",
-  "PluginThreads",
   "PluginTurnFailedDecision",
   "PluginTurnFailedGateContext",
   "PluginTurnFailure",

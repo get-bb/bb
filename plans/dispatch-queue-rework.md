@@ -12,7 +12,8 @@ Single integrated rework on this branch; no phased landing.
 directly — no queue row ever exists; today's happy path is byte-for-byte
 unchanged and allocates nothing. If something blocks it, the message **queues**
 as a queued row carrying a typed `waitingOn`, and the drain re-attempts when
-conditions change. The queue is the parking lot, not the pipeline.
+conditions change. The queue is where blocked messages wait — not a stage every
+message passes through.
 
 **Plugins get one checkpoint: the dispatch attempt.** It runs identically
 whether the attempt is inline (fresh send) or from the drain (a queued
@@ -348,3 +349,49 @@ above:
   variant — one error vocabulary, differing only in label. `pending` keeps its
   sorting, filtering and status copy and drives no glyph at all. `queue-changed`
   now dirties the thread lists on web and mobile, which it did not before.
+
+- **Provider retry never intercepts a send, so a stock install runs zero
+  gates.** The plugin briefly also registered a `dispatch` gate: once one thread
+  proved an account exhausted it queued every other dispatch into that account
+  until the window it remembered had passed, saving them each a failure. That is
+  deleted, along with the in-memory blocked-scope map and every structure
+  feeding it. A rate-limit record is a stale cache of provider state; a user who
+  fixed the limit out of band — raised the plan, had the window reset early,
+  swapped the credentials behind the provider — would be refused without an
+  attempt, on a plugin's memory of a failure that no longer applied, with no way
+  to tell whose refusal it was. **The only authoritative check is trying.** The
+  accepted cost is stated rather than engineered around: N threads on one
+  exhausted account each fail once instead of the first failing and the rest
+  queueing; the reset jitter, now the only thing spreading retries out, keeps
+  them from waking together. The plugin is exactly one `turn.failed` gate —
+  buffer, jitter, maximum wait, attempt cap — plus its queue-reading RPC/CLI.
+
+  That deletion has a structural consequence worth naming: **`dispatch` is now
+  an empty stage on a fresh install.** `concurrency-limit` is the only bundled
+  plugin that registers one and it ships `defaultEnabled: false`, and a disabled
+  plugin never loads, so `listGates("dispatch")` is empty. The
+  `hasDispatchGates` guard's promise — "with no gates the dispatch path is
+  byte-for-byte what it was before gates existed" — therefore describes the
+  default machine rather than a hypothetical one: a user pays for the evaluation
+  lock and context assembly only by asking for admission control. Both halves
+  are pinned in `builtin-plugins.test.ts`.
+
+- **`bb.experimental_threads.appendNote` is deleted; `system/plugin-note` is
+  decode-only.** Retry narration was the API's only caller, and it was a second
+  copy of what the queued row already says — with the row's live columns as the
+  correct source, the timeline copy could only go stale when the row was
+  cancelled, re-queued or sent now. Removing it left the API with zero consumers
+  in any plugin or doc, so it went the way the rework cut every other
+  consumer-less surface: the `PluginThreads`/`PluginThreadNote` contract types
+  and the `BbPluginApi` member, the `plugin-notes.ts` service with its
+  6-per-thread-per-minute sliding-window rate limiter, the runtime/server wiring
+  and the fake-host seam, the `plugin-note` timeline row shape in
+  `@bb/server-contract`, the projection metadata, the timeline row builder, the
+  title mapper with its attribution segment, and the app's icon/warning-tint
+  arms — plus the api_to_audit entry and the authoring-skill section. The event
+  type stays registered and decodable under the `system/dispatch-hold` /
+  `system/queue-state` precedent and renders as nothing, pinned by a third
+  tolerance test beside theirs. Nothing narrowed, so no daemon-protocol bump.
+  `queue.waiting`/`queue.dispatched` stay: they are event-bus members like
+  `turn.*`, which no bundled plugin subscribes to either, and cutting only the
+  queue pair would be a carve-out rather than a rule.
