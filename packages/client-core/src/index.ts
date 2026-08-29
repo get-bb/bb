@@ -23,6 +23,7 @@ export * from "./prompt/effective-prompt-mode.js";
 export * from "./prompt/permission-mode-options.js";
 export * from "./prompt/mentions/plugin-mention-triggers.js";
 export * from "./prompt/mentions/types.js";
+export * from "./prompt/mentions/mention-candidates.js";
 export * from "./prompt/mentions/find-active-trigger.js";
 export * from "./prompt/mentions/command-trigger.js";
 export * from "./prompt/fork-thread-request.js";

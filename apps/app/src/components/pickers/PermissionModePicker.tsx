@@ -81,6 +81,7 @@ export function PermissionModePicker({
       options={compactOptions}
       onChange={onChange}
       className={cn(LIST_HOVER_TRANSITION, className)}
+      caretClassName="text-subtle-foreground/75"
       contentClassName="max-w-72"
       muted={muted}
       defaultOpen={defaultOpen}

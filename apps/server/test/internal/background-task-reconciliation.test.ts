@@ -492,7 +492,7 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
-  it("interrupts active turns when a different daemon instance registers", async () => {
+  it("records a confirmed daemon restart when a different daemon instance registers", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, thread } = seedActiveTurnThread(harness);
 
@@ -542,7 +542,7 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
-  it("interrupts active turns after the live event window elapses without a reconnect", async () => {
+  it("records a lost host connection after the live event window elapses without a reconnect", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedActiveTurnThread(harness);
 
@@ -575,13 +575,17 @@ describe("active thread disconnect reconciliation triggers", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             code: "thread_command_failed",
-            message: "Thread interrupted because the host daemon disconnected",
+            message:
+              "Thread interrupted because the connection to the host was lost",
             detail: "Please retry the thread to continue.",
           }),
           type: "system/error",
         }),
         expect.objectContaining({
-          data: { reason: "host-daemon-restarted" },
+          data: {
+            reason: "host-daemon-restarted",
+            cause: "host-connection-lost",
+          },
           type: "system/thread/interrupted",
         }),
       ]);

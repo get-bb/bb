@@ -109,7 +109,13 @@ function createThreadOperationMetadata(
   };
 }
 
-function threadInterruptedTitle(reason: SystemThreadInterruptedReason): string {
+function threadInterruptedTitle(
+  reason: SystemThreadInterruptedReason,
+  cause?: "host-connection-lost",
+): string {
+  if (cause === "host-connection-lost") {
+    return "Stopped — connection to host was lost";
+  }
   switch (reason) {
     case "manual-stop":
       return "Stopped manually";
@@ -490,7 +496,7 @@ export function parseOperationMessage(
   if (decoded.type === "system/thread/interrupted") {
     return op(decoded, meta, "thread-interrupted", {
       opType: "thread-interrupted",
-      title: threadInterruptedTitle(decoded.reason),
+      title: threadInterruptedTitle(decoded.reason, decoded.cause),
       status: "interrupted",
     });
   }

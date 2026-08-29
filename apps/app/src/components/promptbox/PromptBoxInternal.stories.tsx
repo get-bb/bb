@@ -23,6 +23,7 @@ import {
   makeExecutionControlsProps,
   makeTypeaheadConfig as makeTypeahead,
 } from "../../../.ladle/story-fixtures";
+import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 
 export default {
   title: "promptbox/Prompt Box Internal",
@@ -817,7 +818,10 @@ function WithLiveMentionsRow() {
       onSubmit={noop}
       placeholder="Type @ to mention a file, folder, section, or thread"
       typeahead={makeTypeahead({
-        suggestions,
+        results: orderPromptMentionSuggestions({
+          query: query ?? "",
+          suggestions,
+        }),
         onQueryChange: setQuery,
       })}
       mentionMenuPlacement="bottom"

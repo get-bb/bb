@@ -51,7 +51,10 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
@@ -1522,7 +1525,10 @@ export function QueuedMessagesList({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="size-6 text-muted-foreground hover:bg-surface-recessed"
+                  className={cn(
+                    "h-6 text-muted-foreground hover:bg-surface-recessed",
+                    PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
+                  )}
                   onClick={handleCaretClick}
                   aria-label={caretLabel}
                   aria-expanded={mode !== "collapsed"}

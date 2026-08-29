@@ -1211,7 +1211,7 @@ export function NewThreadComposer({
           typeahead={{
             mention: {
               triggers: promptMentions.triggers,
-              suggestions: promptMentions.suggestions,
+              results: promptMentions.results,
               isLoading: promptMentions.isLoading,
               isError: promptMentions.isError,
               onQueryChange: promptMentions.setQuery,

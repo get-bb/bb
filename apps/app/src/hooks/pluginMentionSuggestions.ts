@@ -1,10 +1,14 @@
 import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-queries";
 import type { PromptMentionSuggestion } from "@bb/client-core";
 
+type PluginMentionSuggestion = Extract<
+  PromptMentionSuggestion,
+  { kind: "plugin" }
+>;
 export function buildPluginMentionSuggestions(
   groups: readonly PluginMentionSearchGroup[],
-): PromptMentionSuggestion[] {
-  const suggestions: PromptMentionSuggestion[] = [];
+): PluginMentionSuggestion[] {
+  const suggestions: PluginMentionSuggestion[] = [];
   for (const group of groups) {
     for (const item of group.items) {
       const title = item.title.trim();

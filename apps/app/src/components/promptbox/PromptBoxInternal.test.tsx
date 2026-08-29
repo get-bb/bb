@@ -22,7 +22,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { emptyPromptDraftState } from "@bb/client-core";
+import {
+  EMPTY_ORDERED_MENTION_SUGGESTIONS,
+  emptyPromptDraftState,
+} from "@bb/client-core";
 import {
   getComposerInputLock,
   useComposer,
@@ -66,6 +69,7 @@ import {
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
 import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
+import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -123,7 +127,7 @@ function createPromptBoxProps(
     mentionMenuPlacement: "bottom",
     typeahead: {
       mention: {
-        suggestions: [],
+        results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
         isLoading: false,
         isError: false,
         onQueryChange: vi.fn(),
@@ -142,7 +146,7 @@ function buildTypeaheadConfig({
   onCommandQueryChange = () => {},
 }: {
   mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
-  mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+  mentionSuggestions?: readonly PromptMentionSuggestion[];
   onMentionQueryChange?: TypeaheadConfig["mention"]["onQueryChange"];
   commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   onCommandQueryChange?: (query: string | null) => void;
@@ -150,7 +154,10 @@ function buildTypeaheadConfig({
   return {
     mention: {
       triggers: mentionTriggers,
-      suggestions: mentionSuggestions,
+      results: orderPromptMentionSuggestions({
+        query: "",
+        suggestions: mentionSuggestions,
+      }),
       isLoading: false,
       isError: false,
       onQueryChange: onMentionQueryChange,
@@ -269,7 +276,7 @@ function renderPromptBox(
   options: {
     initialMentionRanges?: PromptTextMention[];
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
-    mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+    mentionSuggestions?: readonly PromptMentionSuggestion[];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   } = {},
 ) {
@@ -1641,9 +1648,17 @@ describe("PromptBoxInternal size controls", () => {
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Collapse prompt box" }),
-    );
+    const collapseButton = screen.getByRole("button", {
+      name: "Collapse prompt box",
+    });
+    expect(collapseButton.classList).toContain("text-subtle-foreground/75");
+    expect(collapseButton.classList).toContain("w-6");
+    expect(collapseButton.classList).toContain("px-0");
+    expect(collapseButton.parentElement?.classList).toContain("right-[13px]");
+    expect(
+      collapseButton.querySelector('[data-icon="ChevronDown"]')?.classList,
+    ).toContain("size-3.5");
+    fireEvent.click(collapseButton);
 
     expect(onCollapse).toHaveBeenCalledOnce();
     expect(document.activeElement).not.toBe(getPromptEditorElement());
@@ -3106,6 +3121,108 @@ describe("PromptBoxInternal mention triggers", () => {
       expect(threadButton.className).toContain("bg-state-active"),
     );
   });
+
+  it("keeps the keyboard-selected mention when a stronger delayed result arrives", async () => {
+    const threadSuggestion: PromptMentionSuggestion = {
+      kind: "thread",
+      path: "thread:thr_atlas",
+      replacement: "Atlas launch notes",
+      projectId: "proj_atlas",
+      projectName: "Atlas",
+      threadId: "thr_atlas",
+      title: "Atlas launch notes",
+    };
+    const sectionSuggestion: PromptMentionSuggestion = {
+      kind: "section",
+      path: "section:sec_atlas_planning",
+      replacement: "Atlas planning",
+      sectionId: "sec_atlas_planning",
+      name: "Atlas planning",
+    };
+    const delayedExactSuggestion: PromptMentionSuggestion = {
+      kind: "plugin",
+      pluginId: "installed",
+      providerId: "plugins",
+      itemId: "plugins:atlas",
+      providerLabel: "Installed",
+      title: "Atlas",
+      subtitle: null,
+      icon: null,
+      replacement: "Atlas",
+    };
+    const changes: PromptChange[] = [];
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function Harness({
+      mentionSuggestions,
+    }: {
+      mentionSuggestions: readonly PromptMentionSuggestion[];
+    }) {
+      const [value, setValue] = useState("@atlas");
+      const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+        [],
+      );
+      return (
+        <PromptBoxInternal
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={(nextValue, nextMentions) => {
+            changes.push({ mentions: nextMentions, value: nextValue });
+            setValue(nextValue);
+            setMentionRanges(nextMentions);
+          }}
+          onSubmit={vi.fn()}
+          typeahead={{
+            mention: {
+              results: orderPromptMentionSuggestions({
+                query: "atlas",
+                suggestions: mentionSuggestions,
+              }),
+              isLoading: false,
+              isError: false,
+              onQueryChange: vi.fn(),
+            },
+            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+          }}
+          mentionMenuPlacement="bottom"
+          promptBoxRef={promptBoxRef}
+        />
+      );
+    }
+
+    const initialSuggestions = [threadSuggestion, sectionSuggestion];
+    const view = render(<Harness mentionSuggestions={initialSuggestions} />);
+    await focusPromptEnd(promptBoxRef);
+
+    const sectionButton = await screen.findByRole("button", {
+      name: "Atlas planning",
+    });
+    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(sectionButton.className).toContain("bg-state-active"),
+    );
+
+    view.rerender(
+      <Harness
+        mentionSuggestions={[
+          ...initialSuggestions,
+          delayedExactSuggestion,
+        ]}
+      />,
+    );
+    await screen.findByRole("button", { name: "Atlas" });
+    await waitFor(() =>
+      expect(sectionButton.className).toContain("bg-state-active"),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("@Atlas planning "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "section",
+      sectionId: "sec_atlas_planning",
+    });
+  });
 });
 
 describe("PromptBoxInternal selection reveal", () => {
@@ -3753,7 +3870,7 @@ describe("PromptBoxInternal command typeahead submit", () => {
           onSubmit={onSubmit}
           typeahead={{
             mention: {
-              suggestions: [],
+              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
               isLoading: false,
               isError: false,
               onQueryChange: () => {},

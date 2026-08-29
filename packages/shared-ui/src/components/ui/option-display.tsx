@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 export const OPTION_BASE_CLASS_NAME =
   "h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight";
@@ -9,7 +10,7 @@ export const OPTION_CONTENT_CLASS_NAME = "flex min-w-0 items-center gap-1.5";
 export const OPTION_TRIGGER_CONTENT_CLASS_NAME = "contents";
 export const OPTION_MENU_CONTENT_CLASS_NAME = "w-max min-w-0 max-w-96";
 export const OPTION_MUTED_CLASS_NAME =
-  "text-muted-foreground hover:text-foreground";
+  "text-muted-foreground hover:text-muted-foreground";
 
 export interface OptionDisplayProps {
   label: string;
@@ -21,6 +22,7 @@ export interface OptionDisplayProps {
   compactValueHiddenWhenTiny?: boolean;
   className?: string;
   title?: string;
+  tooltip?: ReactNode;
   muted?: boolean;
 }
 
@@ -34,18 +36,22 @@ export function OptionDisplay({
   compactValueHiddenWhenTiny,
   className,
   title,
+  tooltip,
   muted,
 }: OptionDisplayProps) {
   const defaultTitle =
     typeof value === "string" ? `${label}: ${value}` : undefined;
 
-  return (
+  const display = (
     <div
       data-option-display=""
-      title={title ?? defaultTitle}
+      title={tooltip ? undefined : (title ?? defaultTitle)}
+      tabIndex={tooltip ? 0 : undefined}
       className={cn(
         "inline-flex",
         OPTION_BASE_CLASS_NAME,
+        tooltip &&
+          "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         muted && OPTION_MUTED_CLASS_NAME,
         tone === "warning" && "text-warning-text",
         className,
@@ -71,5 +77,16 @@ export function OptionDisplay({
         ) : null}
       </span>
     </div>
+  );
+
+  if (!tooltip) {
+    return display;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{display}</TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

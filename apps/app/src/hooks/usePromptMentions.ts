@@ -22,12 +22,13 @@ import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
-import type { PromptMentionSuggestion } from "@bb/client-core";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
+  type OrderedMentionSuggestions,
   type PluginMentionTrigger,
 } from "@bb/client-core";
+import { buildPromptMentionResults } from "./promptMentionCandidates";
 
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
@@ -45,38 +46,9 @@ interface UsePromptMentionsResult {
     query: string | null,
     trigger: PluginMentionTrigger | null,
   ) => void;
-  suggestions: PromptMentionSuggestion[];
+  results: OrderedMentionSuggestions;
   isLoading: boolean;
   isError: boolean;
-}
-
-interface BuildPromptMentionSuggestionsArgs {
-  pathSuggestions: readonly PromptMentionSuggestion[];
-  threadSuggestions: readonly PromptMentionSuggestion[];
-  projectSuggestions: readonly PromptMentionSuggestion[];
-  sectionSuggestions: readonly PromptMentionSuggestion[];
-  pluginSuggestions: readonly PromptMentionSuggestion[];
-  trimmedQuery: string;
-}
-
-function buildPromptMentionSuggestions(
-  args: BuildPromptMentionSuggestionsArgs,
-): PromptMentionSuggestion[] {
-  return args.trimmedQuery.includes("/")
-    ? [
-        ...args.pathSuggestions,
-        ...args.threadSuggestions,
-        ...args.projectSuggestions,
-        ...args.sectionSuggestions,
-        ...args.pluginSuggestions,
-      ]
-    : [
-        ...args.threadSuggestions,
-        ...args.projectSuggestions,
-        ...args.sectionSuggestions,
-        ...args.pathSuggestions,
-        ...args.pluginSuggestions,
-      ];
 }
 
 function buildProjectNamesById(
@@ -269,18 +241,16 @@ export function usePromptMentions(
         : [],
     [hasMentionProviders, pluginSearch.data, pluginSearchMatchesInput],
   );
-  const suggestions = useMemo(
+  const results = useMemo(
     () =>
-      hasQuery
-        ? buildPromptMentionSuggestions({
-            pathSuggestions,
-            threadSuggestions,
-            projectSuggestions,
-            sectionSuggestions,
-            pluginSuggestions,
-            trimmedQuery,
-          })
-        : [],
+      buildPromptMentionResults({
+        query: hasQuery ? trimmedQuery : "",
+        paths: hasQuery ? pathSuggestions : [],
+        threads: hasQuery ? threadSuggestions : [],
+        projects: hasQuery ? projectSuggestions : [],
+        sections: hasQuery ? sectionSuggestions : [],
+        plugins: hasQuery ? pluginSuggestions : [],
+      }),
     [
       hasQuery,
       pathSuggestions,
@@ -294,7 +264,7 @@ export function usePromptMentions(
 
   const isLoading =
     hasQuery &&
-    suggestions.length === 0 &&
+    results.suggestions.length === 0 &&
     ((includeBuiltInSources &&
       (pathSearch.isDebouncing ||
         pathSearch.isLoading ||
@@ -317,7 +287,7 @@ export function usePromptMentions(
     query,
     triggers: mentionTriggers,
     setQuery,
-    suggestions,
+    results,
     isLoading,
     isError,
   };

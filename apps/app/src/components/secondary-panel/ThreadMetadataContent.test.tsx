@@ -118,7 +118,7 @@ describe("ThreadMetadataCard", () => {
 describe("EnvironmentRow", () => {
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
-      'aria-label="Create new thread in this worktree"',
+      'aria-label="Create thread in worktree"',
     );
   });
 
@@ -137,12 +137,12 @@ describe("EnvironmentRow", () => {
 
     fireEvent.focus(
       screen.getByRole("button", {
-        name: "Create new thread in this worktree",
+        name: "Create thread in worktree",
       }),
     );
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Create new thread in this worktree",
+      "Create thread in worktree",
     );
   });
 
@@ -155,9 +155,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain(
-      'aria-label="Create new thread in this worktree"',
-    );
+    expect(markup).not.toContain('aria-label="Create thread in worktree"');
   });
 
   it("hides the create-thread action before a prepared worktree has a path", () => {
@@ -168,9 +166,7 @@ describe("EnvironmentRow", () => {
       }),
     );
 
-    expect(markup).not.toContain(
-      'aria-label="Create new thread in this worktree"',
-    );
+    expect(markup).not.toContain('aria-label="Create thread in worktree"');
   });
 });
 

@@ -41,8 +41,9 @@ function provisioningTitle(
 function interruptedTitle(
   reason: SystemThreadInterruptedReason,
   threadName: string,
+  cause?: "host-connection-lost",
 ): string {
-  const row = factory().systemThreadInterrupted({ reason });
+  const row = factory().systemThreadInterrupted({ reason, cause });
   return operationTitleFor(row, threadName);
 }
 
@@ -137,6 +138,13 @@ describe("parseOperationMessage operation titles", () => {
       expect(interruptedTitle("host-daemon-restarted", THREAD_NAME)).toBe(
         "Stopped — host daemon restarted",
       );
+      expect(
+        interruptedTitle(
+          "host-daemon-restarted",
+          THREAD_NAME,
+          "host-connection-lost",
+        ),
+      ).toBe("Stopped — connection to host was lost");
     });
   });
 

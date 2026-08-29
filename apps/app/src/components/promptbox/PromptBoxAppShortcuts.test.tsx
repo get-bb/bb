@@ -4,6 +4,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type AppShortcut } from "@bb/domain";
+import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
   AppCommandProvider,
   useAppCommandHandler,
@@ -119,7 +120,7 @@ function renderComposer(extra: React.ReactNode = null) {
           mentionMenuPlacement="bottom"
           typeahead={{
             mention: {
-              suggestions: [],
+              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
               isLoading: false,
               isError: false,
               onQueryChange: vi.fn(),

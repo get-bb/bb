@@ -283,6 +283,7 @@ interface SystemOperationArgs extends EventFactoryRowOptions {
 }
 
 interface SystemThreadInterruptedArgs extends EventFactoryRowOptions {
+  cause?: "host-connection-lost";
   reason?: SystemThreadInterruptedReason;
 }
 
@@ -924,6 +925,7 @@ export function createTimelineEventFactory(
         type: "system/thread/interrupted",
         data: {
           reason: args.reason ?? "manual-stop",
+          ...(args.cause ? { cause: args.cause } : {}),
         },
       };
     },

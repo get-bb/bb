@@ -518,13 +518,18 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Worktree actions" }),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Rename worktree" }),
+    );
 
     expect(
-      await screen.findByRole("dialog", { name: "Rename environment" }),
+      await screen.findByRole("dialog", { name: "Rename worktree" }),
     ).not.toBeNull();
+    expect(screen.getByText("feat/menu-close")).not.toBeNull();
     await waitFor(() => {
-      expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+      expect(
+        screen.queryByRole("menuitem", { name: "Rename worktree" }),
+      ).toBeNull();
     });
   });
 });

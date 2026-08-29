@@ -180,7 +180,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
 vi.mock("@/hooks/usePromptMentions", () => ({
   usePromptMentions: () => ({
     triggers: [],
-    suggestions: [],
+    results: { groups: [], suggestions: [] },
     isLoading: false,
     isError: false,
     setQuery: vi.fn(),

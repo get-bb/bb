@@ -93,7 +93,7 @@ describe("usePromptMentions thread contexts", () => {
       result.current.setQuery("Only worktree", "@");
     });
 
-    expect(result.current.suggestions).toEqual([
+    expect(result.current.results.suggestions).toEqual([
       expect.objectContaining({
         kind: "thread",
         threadId: "thr_existing",

@@ -30,6 +30,7 @@ import {
   type CommandMenuState,
   type ComposerCommandSuggestion,
   type MentionMenuState,
+  type OrderedMentionSuggestions,
   type ProviderCommandSuggestion,
   type PromptMentionSuggestion,
   type TypeaheadMenuState,
@@ -67,6 +68,7 @@ import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   getMediaQuerySnapshot,
@@ -85,6 +87,7 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
@@ -118,7 +121,11 @@ import {
 import { exitHeading } from "./editor/prompt-editor-heading";
 import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
-import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
+import {
+  MentionMenu,
+  typeaheadSuggestionKey,
+  type TypeaheadSuggestion,
+} from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
@@ -278,7 +285,7 @@ function PromptSubmitButton({
 
 export interface TypeaheadMentionConfig {
   triggers?: readonly PluginMentionTrigger[];
-  suggestions: readonly PromptMentionSuggestion[];
+  results: OrderedMentionSuggestions;
   isLoading: boolean;
   isError: boolean;
   onQueryChange: (
@@ -1127,7 +1134,7 @@ export function PromptBoxInternal({
   } = submission;
   const {
     triggers: mentionTriggerChars = DEFAULT_TYPEAHEAD_MENTION_TRIGGERS,
-    suggestions: mentionSuggestions,
+    results: mentionResults,
     isLoading: mentionLoading,
     isError: mentionError,
     onQueryChange: onMentionQueryChange,
@@ -1208,7 +1215,9 @@ export function PromptBoxInternal({
   const [activeTrigger, setActiveTrigger] = useState<ActiveTrigger | null>(
     null,
   );
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<
+    string | null
+  >(null);
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
   );
@@ -1544,7 +1553,7 @@ export function PromptBoxInternal({
         : "";
       if (nextKey !== triggerKeyRef.current) {
         triggerKeyRef.current = nextKey;
-        setSelectedIndex(0);
+        setSelectedSuggestionKey(null);
       }
       setActiveTrigger(nextTrigger);
 
@@ -2037,10 +2046,18 @@ export function PromptBoxInternal({
       activeTriggerKind === "command"
         ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
-          ? mentionSuggestions
+          ? mentionResults.suggestions
           : [],
-    [activeTriggerKind, mentionSuggestions, orderedCommandSuggestions],
+    [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
   );
+  const selectedSuggestionIndex = useMemo(() => {
+    if (selectedSuggestionKey === null) return -1;
+    return activeSuggestions.findIndex(
+      (suggestion) =>
+        typeaheadSuggestionKey(suggestion) === selectedSuggestionKey,
+    );
+  }, [activeSuggestions, selectedSuggestionKey]);
+  const selectedIndex = Math.max(0, selectedSuggestionIndex);
 
   const activeMentionQuery =
     activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
@@ -2051,7 +2068,7 @@ export function PromptBoxInternal({
         ? { kind: "loading" }
         : mentionError
           ? { kind: "error" }
-          : { kind: "results", suggestions: mentionSuggestions };
+          : { kind: "results", results: mentionResults };
 
   const commandMenuState: CommandMenuState = commandLoading
     ? { kind: "loading" }
@@ -2106,14 +2123,13 @@ export function PromptBoxInternal({
   }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
 
   useEffect(() => {
-    if (activeSuggestions.length === 0) {
-      setSelectedIndex(0);
-      return;
+    if (
+      selectedSuggestionKey !== null &&
+      selectedSuggestionIndex === -1
+    ) {
+      setSelectedSuggestionKey(null);
     }
-    if (selectedIndex >= activeSuggestions.length) {
-      setSelectedIndex(0);
-    }
-  }, [activeSuggestions.length, selectedIndex]);
+  }, [selectedSuggestionIndex, selectedSuggestionKey]);
 
   useEffect(() => {
     if (
@@ -2180,7 +2196,7 @@ export function PromptBoxInternal({
       };
       isRestoringAppliedMentionRef.current = true;
       setActiveTrigger(null);
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       onMentionQueryChange(null, null);
 
       try {
@@ -2236,7 +2252,7 @@ export function PromptBoxInternal({
       };
       isRestoringAppliedMentionRef.current = true;
       setActiveTrigger(null);
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       onCommandQueryChange(null);
 
       try {
@@ -2420,7 +2436,7 @@ export function PromptBoxInternal({
         dismissedTriggerRef.current = null;
         isRestoringAppliedMentionRef.current = true;
         setActiveTrigger(null);
-        setSelectedIndex(0);
+        setSelectedSuggestionKey(null);
         onCommandQueryChange(null);
 
         try {
@@ -2454,7 +2470,7 @@ export function PromptBoxInternal({
 
       triggerKeyRef.current = "";
       dismissedTriggerRef.current = null;
-      setSelectedIndex(0);
+      setSelectedSuggestionKey(null);
       currentEditor
         .chain()
         .focus()
@@ -2722,7 +2738,11 @@ export function PromptBoxInternal({
             }
             return true;
           }
-          setSelectedIndex((prev) => (prev + 1) % activeSuggestions.length);
+          const nextIndex = (selectedIndex + 1) % activeSuggestions.length;
+          const nextSuggestion = activeSuggestions[nextIndex];
+          if (nextSuggestion) {
+            setSelectedSuggestionKey(typeaheadSuggestionKey(nextSuggestion));
+          }
           return true;
         }
         if (
@@ -2731,10 +2751,13 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          setSelectedIndex(
-            (prev) =>
-              (prev + activeSuggestions.length - 1) % activeSuggestions.length,
-          );
+          const nextIndex =
+            (selectedIndex + activeSuggestions.length - 1) %
+            activeSuggestions.length;
+          const nextSuggestion = activeSuggestions[nextIndex];
+          if (nextSuggestion) {
+            setSelectedSuggestionKey(typeaheadSuggestionKey(nextSuggestion));
+          }
           return true;
         }
         if (
@@ -2997,7 +3020,7 @@ export function PromptBoxInternal({
                     data-promptbox-expanded-only=""
                     data-promptbox-standard-actions=""
                     inert={showVoiceActionGroup ? true : undefined}
-                    className="absolute right-2 top-2 z-20 flex items-center"
+                    className="absolute right-[13px] top-2 z-20 flex items-center"
                   >
                     <Button
                       type="button"
@@ -3009,11 +3032,12 @@ export function PromptBoxInternal({
                       onClick={collapsePromptBox}
                       aria-label="Collapse prompt box"
                       className={cn(
-                        "text-subtle-foreground hover:text-muted-foreground",
+                        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
                         COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+                        PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
                       )}
                     >
-                      <Icon name="ChevronDown" className="size-3" />
+                      <Icon name="ChevronDown" className="size-3.5" />
                     </Button>
                   </div>
                 ) : null}

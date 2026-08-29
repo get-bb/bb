@@ -8,6 +8,7 @@ import {
 } from "@bb/server-contract";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import type { PluginMentionTrigger } from "./plugin-mention-triggers.js";
+import type { OrderedMentionSuggestions } from "./mention-candidates.js";
 
 type PromptPathMentionSource = "workspace" | "thread-storage";
 type PromptPathMentionEntryKind = "file" | "directory";
@@ -179,7 +180,7 @@ export type MentionMenuState =
   | { kind: "error" }
   | {
       kind: "results";
-      suggestions: readonly PromptMentionSuggestion[];
+      results: OrderedMentionSuggestions;
     };
 
 export type CommandMenuState =

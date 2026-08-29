@@ -222,6 +222,7 @@ export type SystemThreadInterruptedReason = z.infer<
 
 export const systemThreadInterruptedEventDataSchema = z.object({
   reason: systemThreadInterruptedReasonSchema,
+  cause: z.literal("host-connection-lost").optional(),
 });
 
 export const provisioningTranscriptEntrySchema = z.object({

@@ -9,6 +9,7 @@ export const PROMPT_STACK_INLAY_SEGMENT_CLASS = cn(
   "min-h-6 px-2 py-1",
   PROMPT_STACK_INLAY_RADIUS_CLASS,
 );
+export const PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS = "w-6 px-0";
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
   "border border-border bg-surface-raised-solid",

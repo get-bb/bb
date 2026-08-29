@@ -7,6 +7,7 @@ import type {
   PromptMentionSuggestion,
   TypeaheadMenuState,
 } from "@bb/client-core";
+import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -238,7 +239,10 @@ interface ResultsStateConfig {
 function makeResultsState(args: ResultsStateConfig): MentionMenuState {
   return {
     kind: "results",
-    suggestions: args.suggestions,
+    results: orderPromptMentionSuggestions({
+      query: "",
+      suggestions: args.suggestions,
+    }),
   };
 }
 

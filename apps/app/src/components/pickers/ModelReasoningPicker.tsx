@@ -790,6 +790,7 @@ export function ModelReasoningPicker({
         OPTION_INTERACTIVE_CLASS_NAME,
         LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
+        muted && "font-normal",
         disabled && "cursor-default disabled:opacity-100",
         className,
       )}
@@ -855,7 +856,10 @@ export function ModelReasoningPicker({
       {disabled ? null : (
         <Icon
           name="ChevronDown"
-          className="size-3.5 shrink-0 text-muted-foreground"
+          className={cn(
+            "size-3.5 shrink-0",
+            muted ? "text-subtle-foreground/75" : "text-muted-foreground",
+          )}
         />
       )}
       <AppCommandShortcutHint

@@ -47,6 +47,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result).toEqual({
         modeLabel: "Working locally",
         compactModeLabel: "Local",
+        lifecycle: null,
         id: "env_test",
         mode: "direct",
         workspaceDisplayKind: "other",
@@ -61,6 +62,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result).toEqual({
         modeLabel: "Working remotely",
         compactModeLabel: "Remote",
+        lifecycle: null,
         id: "env_test",
         mode: "direct",
         workspaceDisplayKind: "other",
@@ -78,6 +80,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result).toEqual({
         modeLabel: "Worktree",
         compactModeLabel: "Worktree",
+        lifecycle: null,
         id: "env_test",
         mode: "worktree",
         workspaceDisplayKind: "managed-worktree",
@@ -175,6 +178,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result).toEqual({
         modeLabel: "Provisioning",
         compactModeLabel: "Provisioning",
+        lifecycle: "provisioning",
         id: "env_test",
         mode: "direct",
         workspaceDisplayKind: "managed-worktree",
@@ -198,6 +202,7 @@ describe("formatEnvironmentDisplay", () => {
       expect(result).toEqual({
         modeLabel: "Provisioning",
         compactModeLabel: "Provisioning",
+        lifecycle: "provisioning",
         id: "env_test",
         mode: "direct",
         workspaceDisplayKind: "other",

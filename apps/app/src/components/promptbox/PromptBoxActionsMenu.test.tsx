@@ -43,10 +43,9 @@ describe("PromptBoxActionsMenu", () => {
     const onAttach = vi.fn();
     render(<PromptBoxActionsMenu onAction={() => {}} onAttach={onAttach} />);
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Prompt actions" }),
-      { button: 0 },
-    );
+    const trigger = screen.getByRole("button", { name: "Prompt actions" });
+    expect(trigger.classList).toContain("text-subtle-foreground/75");
+    fireEvent.pointerDown(trigger, { button: 0 });
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Attach files" }),
     );
