@@ -183,7 +183,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
     expect(result.current.reopenClosedTab()).toBe(false);
   });
 
-  it("skips deleted current-thread storage files while preserving owner-valid history", () => {
+  it("skips storage history with a deleted path or different owner", () => {
     let storageFiles: readonly { path: string }[] = [
       { path: "available.md" },
       { path: "deleted.md" },
@@ -234,13 +234,6 @@ describe("useThreadFileTabs recently closed tabs", () => {
       didReopen = result.current.reopenClosedTab();
     });
     expect(didReopen).toBe(true);
-    expect(result.current.activeStorageFilePath).toBe("foreign.md");
-    expect(result.current.activeStorageFileThreadId).toBe("thr_foreign");
-
-    act(() => {
-      didReopen = result.current.reopenClosedTab();
-    });
-    expect(didReopen).toBe(true);
     expect(result.current.activeStorageFilePath).toBe("available.md");
     expect(result.current.activeStorageFileThreadId).toBe("thr_current");
 
@@ -250,43 +243,133 @@ describe("useThreadFileTabs recently closed tabs", () => {
     expect(didReopen).toBe(false);
   });
 
-  it("skips workspace history from the previous environment", () => {
+  it.each([
+    {
+      changedContext: {
+        environmentId: "env_2",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      },
+      dimension: "environment",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_2",
+      },
+      dimension: "project",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_2",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      },
+      dimension: "file owner",
+    },
+    {
+      changedContext: {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_2",
+        projectId: "proj_1",
+      },
+      dimension: "project host",
+    },
+  ])(
+    "skips workspace history from a different $dimension",
+    ({ changedContext, dimension }) => {
+      let context = {
+        environmentId: "env_1",
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
+      };
+      const { result, rerender } = renderThreadHook(() =>
+        useThreadFileTabs({
+          panelStateId: `recently-closed-${dimension}`,
+          syncThreadId: null,
+          environmentId: context.environmentId,
+          fileOwnerThreadId: context.fileOwnerThreadId,
+          projectHostId: context.projectHostId,
+          projectId: context.projectId,
+          storageFiles: undefined,
+          terminalSessions: undefined,
+        }),
+      );
+
+      let workspaceTabId = "";
+      act(() => {
+        workspaceTabId =
+          result.current.openTab({
+            kind: "workspace-file-preview",
+            tab: {
+              lineRange: null,
+              path: "src/index.ts",
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+          })?.id ?? "";
+      });
+      act(() => result.current.closeTab(workspaceTabId));
+      act(() => {
+        context = changedContext;
+        rerender();
+      });
+
+      let didReopen = false;
+      act(() => {
+        didReopen = result.current.reopenClosedTab();
+      });
+      expect(didReopen).toBe(false);
+      expect(result.current.activeWorkspaceFilePath).toBeNull();
+    },
+  );
+
+  it("restores the nearest history entry owned by the current context", () => {
     let environmentId = "env_1";
     const { result, rerender } = renderThreadHook(() =>
       useThreadFileTabs({
-        panelStateId: "recently-closed-environment-switch",
+        panelStateId: "recently-closed-context-order",
         syncThreadId: null,
         environmentId,
+        fileOwnerThreadId: "thr_1",
+        projectHostId: "host_1",
+        projectId: "proj_1",
         storageFiles: undefined,
         terminalSessions: undefined,
       }),
     );
 
-    let browserTabId = "";
-    let workspaceTabId = "";
-    act(() => {
-      browserTabId =
-        result.current.openTab({
-          kind: "browser",
-          url: "https://example.com",
-        })?.id ?? "";
-      workspaceTabId =
-        result.current.openTab({
-          kind: "workspace-file-preview",
-          tab: {
-            lineRange: null,
-            path: "src/index.ts",
-            source: { kind: "working-tree" },
-            statusLabel: null,
-          },
-        })?.id ?? "";
-    });
-    act(() => {
-      result.current.closeTab(browserTabId);
-      result.current.closeTab(workspaceTabId);
-    });
+    const openAndCloseWorkspaceFile = (path: string) => {
+      let tabId = "";
+      act(() => {
+        tabId =
+          result.current.openTab({
+            kind: "workspace-file-preview",
+            tab: {
+              lineRange: null,
+              path,
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+          })?.id ?? "";
+      });
+      act(() => result.current.closeTab(tabId));
+    };
+
+    openAndCloseWorkspaceFile("src/env-one.ts");
     act(() => {
       environmentId = "env_2";
+      rerender();
+    });
+    openAndCloseWorkspaceFile("src/env-two.ts");
+    act(() => {
+      environmentId = "env_1";
       rerender();
     });
 
@@ -295,8 +378,7 @@ describe("useThreadFileTabs recently closed tabs", () => {
       didReopen = result.current.reopenClosedTab();
     });
     expect(didReopen).toBe(true);
-    expect(result.current.activeBrowserTab?.id).toBe(browserTabId);
-    expect(result.current.activeWorkspaceFilePath).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("src/env-one.ts");
 
     act(() => {
       didReopen = result.current.reopenClosedTab();
