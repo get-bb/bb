@@ -17,6 +17,12 @@ import type { PromptDraftState } from "@bb/client-core";
 export interface PluginComposerHost {
   scope: PluginComposerScope;
   textEffectKey: string;
+  newThreadMentionContext?: {
+    projectId: string;
+    environmentId: string | null;
+    hostId: string | null;
+    threadStorageThreadId: string | null;
+  };
   getCurrent(): PromptDraftState;
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;

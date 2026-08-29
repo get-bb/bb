@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -378,7 +384,7 @@ function ComposerProbe() {
       <button
         type="button"
         onClick={() =>
-          composer.insertMention({
+          void composer.insertMention({
             provider: "notes",
             id: "ideas",
             label: "Ideas",
@@ -386,6 +392,17 @@ function ComposerProbe() {
         }
       >
         mention
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void composer.insertMention({
+            kind: "thread",
+            threadId: "thr_reference",
+          })
+        }
+      >
+        built-in mention
       </button>
       <button type="button" onClick={() => composer.focus()}>
         focus
@@ -1621,6 +1638,27 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
+  });
+
+  it("uses the configured host resolver for BB-owned mentions", async () => {
+    const resolveBuiltInMention = vi.fn(async () => "Resolved thread");
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: { resolveBuiltInMention } },
+    );
+
+    fireEvent.click(slot.getByText("built-in mention"));
+
+    await waitFor(() => expect(slot.composer.text).toBe("Resolved thread "));
+    expect(resolveBuiltInMention).toHaveBeenCalledWith({
+      kind: "thread",
+      threadId: "thr_reference",
+    });
+    expect(slot.composer.mentions).toEqual([
+      { kind: "thread", threadId: "thr_reference" },
+    ]);
+    expect(slot.composer.focusCount).toBe(1);
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {

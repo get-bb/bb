@@ -855,6 +855,15 @@ export const publicApiRoutes = {
   },
 
   threadSections: {
+    get: defineRoute({
+      path: "/thread-sections/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: [
+        jsonResponse<ThreadSectionResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
+    }),
     create: defineRoute({
       path: "/thread-sections",
       method: "post",

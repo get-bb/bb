@@ -108,6 +108,14 @@ describe("public thread data routes", () => {
       const section = threadSectionSchema.parse(await readJson(createResponse));
       expect(section.name).toBe("Release QA");
 
+      const getResponse = await harness.app.request(
+        `/api/v1/thread-sections/${section.id}`,
+      );
+      expect(getResponse.status).toBe(200);
+      expect(threadSectionSchema.parse(await readJson(getResponse))).toEqual(
+        section,
+      );
+
       const duplicateResponse = await harness.app.request(
         "/api/v1/thread-sections",
         {
@@ -191,6 +199,14 @@ describe("public thread data routes", () => {
       );
       expect(missingResponse.status).toBe(404);
       await expect(readJson(missingResponse)).resolves.toMatchObject({
+        code: "section_not_found",
+      });
+
+      const missingGetResponse = await harness.app.request(
+        `/api/v1/thread-sections/${section.id}`,
+      );
+      expect(missingGetResponse.status).toBe(404);
+      await expect(readJson(missingGetResponse)).resolves.toMatchObject({
         code: "section_not_found",
       });
     });

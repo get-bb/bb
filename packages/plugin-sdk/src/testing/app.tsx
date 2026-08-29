@@ -23,6 +23,7 @@ import {
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
+  type ExperimentalPluginComposerBuiltInMention,
   type PluginComposerMention,
   type PluginComposerScope,
   type PluginComposerTextEffect,
@@ -1105,6 +1106,10 @@ export interface RenderSlotOptions<
     text?: string;
     scope?: PluginComposerScope;
     attachmentCount?: number;
+    /** Resolve the pill label for each BB-owned `insertMention()` call. */
+    resolveBuiltInMention?: (
+      mention: ExperimentalPluginComposerBuiltInMention,
+    ) => string | Promise<string>;
   };
   /**
    * Threads and projects `experimental_useSidebarThreads()` reports. Omitted →
@@ -1537,11 +1542,27 @@ export function renderSlot<
         }
         composerLog.focusCount += 1;
       },
-      insertMention(mention) {
-        const label = mention.label.trim() || mention.id;
+      async insertMention(mention) {
+        const label =
+          "provider" in mention
+            ? mention.label.trim() || mention.id
+            : await (() => {
+                const resolveBuiltInMention =
+                  options.composer?.resolveBuiltInMention;
+                if (resolveBuiltInMention === undefined) {
+                  throw new Error(
+                    "renderSlot composer.resolveBuiltInMention must resolve BB-owned insertMention calls",
+                  );
+                }
+                return resolveBuiltInMention(mention);
+              })();
+        const resolvedLabel = label.trim();
+        if (resolvedLabel.length === 0) {
+          throw new Error("Resolved composer mention label must not be empty");
+        }
         const separator =
           composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
-        commitComposerText(`${composerText}${separator}${label} `);
+        commitComposerText(`${composerText}${separator}${resolvedLabel} `);
         composerLog.mentions.push(mention);
         composerLog.focusCount += 1;
       },

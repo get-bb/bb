@@ -1553,7 +1553,7 @@ export interface PluginComposerThreadRowStatus {
 }
 
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
-export interface PluginComposerMention {
+export interface ExperimentalPluginComposerProviderMention {
   /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
   provider: string;
   /** Item id your provider's `resolve` will receive at send time. */
@@ -1561,6 +1561,25 @@ export interface PluginComposerMention {
   /** Pill text shown in the composer. */
   label: string;
 }
+
+/** A BB-owned entity that `insertMention()` resolves before insertion. */
+export type ExperimentalPluginComposerBuiltInMention = { label?: never } & (
+  | { kind: "thread"; threadId: string }
+  | { kind: "project"; projectId: string }
+  | { kind: "section"; sectionId: string }
+  | {
+      kind: "path";
+      /** Root that `path` is relative to. */
+      source: "workspace" | "thread-storage";
+      /** Relative path inside `source`. BB resolves its name and entry kind. */
+      path: string;
+    }
+);
+
+/** A plugin-owned or BB-owned @-mention pill. */
+export type PluginComposerMention =
+  | ExperimentalPluginComposerProviderMention
+  | ExperimentalPluginComposerBuiltInMention;
 
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
@@ -1607,11 +1626,11 @@ export interface PluginComposerApi {
    */
   addQuote(text: string): void;
   /**
-   * Insert an @-mention pill that resolves through this plugin's mention
-   * provider at send time — the durable way to reference an entity whose
-   * content should be fetched fresh when the message is sent.
+   * Insert an @-mention pill. Provider mentions resolve through this plugin at
+   * send time. BB resolves built-in entity labels and path kinds before it
+   * inserts them. The promise rejects when BB cannot resolve a built-in entity.
    */
-  insertMention(mention: PluginComposerMention): void;
+  insertMention(mention: PluginComposerMention): Promise<void>;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
 }

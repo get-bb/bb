@@ -62,6 +62,7 @@ import {
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffects } from "@/lib/composer-text-effects";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { sdk } from "@/lib/sdk";
 import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
@@ -311,7 +312,7 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.insertMention({
+              void composer.insertMention({
                 provider: "notes",
                 id: "work/ideas.md",
                 label: "ideas.md",
@@ -319,18 +320,6 @@ describe("useComposer", () => {
             }
           >
             {label}-mention
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              composer.insertMention({
-                provider: "bad:colon",
-                id: "x",
-                label: "x",
-              })
-            }
-          >
-            {label}-bad-mention
           </button>
         </div>
       );
@@ -1237,20 +1226,70 @@ describe("useComposer", () => {
     );
   });
 
-  it("rejects provider ids containing ':' without touching the draft", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    registerComposerProbe("b");
+  it("resolves and inserts BB-owned mention resources", async () => {
+    vi.spyOn(sdk.threads, "resolveMentions").mockResolvedValue([
+      {
+        threadId: "thr_target",
+        projectId: "proj_target",
+        label: "Canonical thread title",
+      },
+    ]);
+    let composer: PluginComposerApi | null = null;
+    registerComposerProbe("built-in", (nextComposer) => {
+      composer = nextComposer;
+    });
     render(
       <MemoryRouter initialEntries={["/"]}>
         <ComposerCustomizationMount />
         <NewThreadDraftViewer />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByText("b-bad-mention"));
-    expect(screen.getByTestId("draft-text").textContent).toBe("");
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("invalid provider id"),
+
+    await act(async () => {
+      if (composer === null) throw new Error("Composer did not render");
+      await composer.insertMention({
+        kind: "thread",
+        threadId: "thr_target",
+      });
+    });
+
+    expect(screen.getByTestId("draft-text").textContent).toBe(
+      "Canonical thread title ",
     );
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toEqual([
+      {
+        start: 0,
+        end: 22,
+        resource: {
+          kind: "thread",
+          threadId: "thr_target",
+          projectId: "proj_target",
+          label: "Canonical thread title",
+        },
+      },
+    ]);
+  });
+
+  it("rejects provider ids containing ':' without touching the draft", async () => {
+    let composer: PluginComposerApi | null = null;
+    registerComposerProbe("b", (api) => {
+      composer = api;
+    });
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ComposerCustomizationMount />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      if (composer === null) throw new Error("Composer did not render");
+      await expect(
+        composer.insertMention({ provider: "bad:colon", id: "x", label: "x" }),
+      ).rejects.toThrow("invalid provider id");
+    });
+    expect(screen.getByTestId("draft-text").textContent).toBe("");
   });
 });
 

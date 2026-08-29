@@ -39,11 +39,17 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
   from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
   the editor read-only and busy and auto-releases when the customization
   unmounts or changes scope;
-  `insertMention({ provider, id, label })` inserts an @-mention pill bound
-  to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret. The `scope` is
-  `thread`, `queued-message`, `side-chat`, or `new-thread`, with the identifiers
-  for that surface.
+  `insertMention(input)` inserts a structured @-mention pill and returns a
+  promise. Use `{ provider, id, label }` for one of your
+  `bb.ui.registerMentionProvider` providers. The provider resolves fresh
+  context when the user sends the message. Built-in inputs use one of these
+  forms: `{ kind: "thread", threadId }`, `{ kind: "project", projectId }`,
+  `{ kind: "section", sectionId }`, or `{ kind: "path", source, path }`.
+  A path source is `"workspace"` or `"thread-storage"`. The path is relative
+  to its source. BB resolves the built-in label and path-entry kind. Await the
+  promise. It rejects when BB cannot resolve the entity. `focus()` focuses the
+  caret. The `scope` is `thread`, `queued-message`, `side-chat`, or
+  `new-thread`, with the identifiers for that surface.
 - `useComposerView()` → reactive `{ scope, layout, draft, run }` for the
   composer instance that mounted an action or banner. `layout` is
   `"expanded" | "compact" | "zen"`; `draft` is

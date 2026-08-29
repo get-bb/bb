@@ -1887,3 +1887,34 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+## `ExperimentalPluginComposerBuiltInMention` / `ExperimentalPluginComposerProviderMention` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Widens `useComposer().insertMention()` beyond plugin-provider
+mentions. `PluginComposerMention` is now a union of the provider form
+(`ExperimentalPluginComposerProviderMention`) and a BB-owned form
+(`ExperimentalPluginComposerBuiltInMention`, `kind: "thread" | "project" |
+"section" | "path"`). BB resolves the built-in forms to canonical
+`PromptMentionResource` values before insertion, so the inserted pill matches
+one the user picked by hand. `insertMention` became async (`void` ->
+`Promise<void>`) and rejects when resolution fails. The testing harness gained
+the `renderSlot` option `composer.resolveBuiltInMention`, which stands in for
+BB's resolver.
+
+**Audit before stabilizing.**
+
+1. **Path resolution primitive.** Path mentions resolve through the fuzzy path
+   listing. Hidden and ignored paths never resolve, and a truncated listing is
+   reported as an error rather than avoided. An exact server-side
+   existence/stat lookup would retire both limits. Decide the final primitive
+   before freezing the contract.
+2. **`insertMention` signature.** The union changed a shipped member's return
+   type from `void` to `Promise<void>`. Confirm the union shape and the async
+   signature are final, and whether the SDK compatibility fence needs to gate
+   built-in mentions for older plugins.
+3. **New-thread reach.** `NewThreadMentionContext` only reaches composers
+   mounted in the root compose view. Nav-panel and homepage composers fall
+   back to project-default resolution. Close or document the gap.
+4. **Harness fidelity.** `composer.resolveBuiltInMention` lets a test resolver
+   return labels production would reject. Decide whether the harness should
+   enforce the production invariants.
