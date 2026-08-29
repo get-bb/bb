@@ -3,6 +3,7 @@ import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
+  resolveRootRelativeFilePath,
 } from "./absolute-file-path";
 
 describe("getAbsoluteDirname", () => {
@@ -55,5 +56,31 @@ describe("isAbsoluteFilePathWithinRoot", () => {
         rootPath: "/Users/me/project",
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveRootRelativeFilePath", () => {
+  it("preserves spaces, Unicode, and percent characters inside the root", () => {
+    expect(
+      resolveRootRelativeFilePath({
+        path: "/work space/资料%/docs/../asset %.png",
+        rootPath: "/work space/资料%/",
+      }),
+    ).toBe("asset %.png");
+  });
+
+  it("rejects the root itself and paths outside the root", () => {
+    expect(
+      resolveRootRelativeFilePath({
+        path: "/workspace/project",
+        rootPath: "/workspace/project",
+      }),
+    ).toBeNull();
+    expect(
+      resolveRootRelativeFilePath({
+        path: "/workspace/project/../../secret.txt",
+        rootPath: "/workspace/project",
+      }),
+    ).toBeNull();
   });
 });

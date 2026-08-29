@@ -72,6 +72,7 @@ interface ProjectFilePreviewTabContentProps {
   environmentId: string | null;
   hostId: string | null;
   lineRange: FilePreviewLineRange | null;
+  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   projectId: string;
@@ -349,6 +350,7 @@ export function ProjectFilePreviewTabContent({
   hostId,
   isPanelOpen,
   lineRange,
+  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   projectId,
@@ -375,6 +377,7 @@ export function ProjectFilePreviewTabContent({
       isLoading={isProjectFilePreviewLoading}
       isRefreshing={isProjectFilePreviewFetching}
       lineRange={lineRange}
+      markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchProjectFilePreview()}

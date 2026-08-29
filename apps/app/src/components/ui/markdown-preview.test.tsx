@@ -373,13 +373,16 @@ describe("MarkdownPreview", () => {
         content={[
           "![absolute](/workspace/generated.png)",
           "![relative](art/chart.png)",
+          "![parent](../shared.png)",
           "![remote](https://example.com/image.png)",
+          "![data](data:image/png;base64,AAAA)",
+          "![escape](../../secret.png)",
         ].join("\n\n")}
         linkRouting={{
           localImage: {
             absolutePaths: { kind: "trusted-host" },
             relativePaths: {
-              baseDir: "/workspace",
+              baseDir: "/workspace/docs",
               rootPath: "/workspace",
             },
             resolveSrc,
@@ -393,11 +396,20 @@ describe("MarkdownPreview", () => {
     ).toBe("/api/files/content?path=%2Fworkspace%2Fgenerated.png");
     expect(
       container.querySelector('img[alt="relative"]')?.getAttribute("src"),
-    ).toBe("/api/files/content?path=%2Fworkspace%2Fart%2Fchart.png");
+    ).toBe("/api/files/content?path=%2Fworkspace%2Fdocs%2Fart%2Fchart.png");
+    expect(
+      container.querySelector('img[alt="parent"]')?.getAttribute("src"),
+    ).toBe("/api/files/content?path=%2Fworkspace%2Fshared.png");
     expect(
       container.querySelector('img[alt="remote"]')?.getAttribute("src"),
     ).toBe("https://example.com/image.png");
-    expect(resolveSrc).toHaveBeenCalledTimes(2);
+    expect(
+      container.querySelector('img[alt="data"]')?.hasAttribute("src") ?? false,
+    ).toBe(false);
+    expect(
+      container.querySelector('img[alt="escape"]')?.getAttribute("src"),
+    ).toBe("../../secret.png");
+    expect(resolveSrc).toHaveBeenCalledTimes(3);
   });
 
   it("keeps absolute app-origin URLs on the app-route path", () => {

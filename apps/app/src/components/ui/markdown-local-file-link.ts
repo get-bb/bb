@@ -8,6 +8,7 @@ import {
 } from "@bb/client-core";
 
 export interface MarkdownPreviewLocalFileLink {
+  fragment?: string;
   lineRange: FilePreviewLineRange | null;
   path: string;
 }
@@ -35,6 +36,7 @@ export interface MarkdownRelativeLocalFileLinkRouting {
 }
 
 interface LocalFileHrefParts {
+  fragment?: string;
   lineRange: FilePreviewLineRange | null;
   path: string;
 }
@@ -131,6 +133,7 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
     }
 
     return {
+      fragment: `#${fragment}`,
       lineRange: null,
       path: value.slice(0, hashIndex),
     };
@@ -249,7 +252,13 @@ function parseAbsoluteLocalFileHref(
     return null;
   }
 
-  return parsed;
+  if (parsed.fragment === undefined) {
+    return parsed;
+  }
+  const fragmentIndex = href.indexOf("#");
+  return fragmentIndex === -1
+    ? parsed
+    : { ...parsed, fragment: href.slice(fragmentIndex) };
 }
 
 const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
@@ -313,7 +322,11 @@ export function resolveRelativeLocalFileHref({
     return null;
   }
 
-  return `${normalizedHrefPath}${decodedHref.slice(parsedHref.path.length)}`;
+  const suffix =
+    parsedHref.fragment === undefined
+      ? decodedHref.slice(parsedHref.path.length)
+      : href.slice(href.indexOf("#"));
+  return `${normalizedHrefPath}${suffix}`;
 }
 
 function isLinkContainedInRoot({
@@ -405,7 +418,7 @@ export function buildLocalFileAnchorHref(
     return originalHref;
   }
 
-  return `file://${encodeFileUrlPath(link.path)}${buildLineRangeAnchorFragment(
-    link.lineRange,
-  )}`;
+  const targetFragment =
+    link.fragment ?? buildLineRangeAnchorFragment(link.lineRange);
+  return `file://${encodeFileUrlPath(link.path)}${targetFragment}`;
 }

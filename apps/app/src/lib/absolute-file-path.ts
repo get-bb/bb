@@ -3,6 +3,11 @@ interface ResolveAbsoluteFilePathArgs {
   rootPath: string | null | undefined;
 }
 
+interface ResolveRootRelativeFilePathArgs {
+  path: string;
+  rootPath: string;
+}
+
 interface BuildAbsoluteFilePathArgs {
   path: string;
   rootPath: string;
@@ -111,6 +116,29 @@ export function resolveAbsoluteFilePath({
     return null;
   }
   return buildAbsoluteFilePath({ path, rootPath });
+}
+
+export function resolveRootRelativeFilePath({
+  path,
+  rootPath,
+}: ResolveRootRelativeFilePathArgs): string | null {
+  const normalizedPath = normalizeAbsoluteFilePath({ path });
+  const normalizedRootPath = normalizeAbsoluteFilePath({ path: rootPath });
+  if (
+    normalizedPath === null ||
+    normalizedRootPath === null ||
+    normalizedPath === normalizedRootPath ||
+    !isAbsoluteFilePathWithinRoot({
+      candidatePath: normalizedPath,
+      rootPath: normalizedRootPath,
+    })
+  ) {
+    return null;
+  }
+
+  return normalizedRootPath === "/"
+    ? normalizedPath.slice(1)
+    : normalizedPath.slice(normalizedRootPath.length + 1);
 }
 
 export function getAbsoluteDirname({ path }: GetAbsoluteDirnameArgs): string {

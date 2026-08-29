@@ -156,15 +156,26 @@ describe("parseLocalFileHref", () => {
     }
   });
 
-  it("parses local file links with non-line fragments as the file path", () => {
+  it("preserves non-line fragments separately from the file path", () => {
     expect(
       parseLocalFileHref({
         absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
         href: "/workspace/app.ts#section",
       }),
     ).toEqual({
+      fragment: "#section",
       path: "/workspace/app.ts",
       lineRange: null,
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "/work%20space/%E8%B5%84%E6%96%99%25.md#section%20one",
+      }),
+    ).toEqual({
+      fragment: "#section%20one",
+      lineRange: null,
+      path: "/work space/资料%.md",
     });
     for (const href of [
       "/workspace/with#hash/app.ts:12",
@@ -209,10 +220,24 @@ describe("buildLocalFileAnchorHref", () => {
     ).toBe("file:///workspace/README.md");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/README.md", lineRange: null },
+        {
+          fragment: "#intro",
+          path: "/workspace/README.md",
+          lineRange: null,
+        },
         "/workspace/README.md#intro",
       ),
-    ).toBe("file:///workspace/README.md");
+    ).toBe("file:///workspace/README.md#intro");
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          fragment: "#section%20one",
+          path: "/work space/资料%.md",
+          lineRange: null,
+        },
+        "/work%20space/%E8%B5%84%E6%96%99%25.md#section%20one",
+      ),
+    ).toBe("file:///work%20space/%E8%B5%84%E6%96%99%25.md#section%20one");
     expect(
       buildLocalFileAnchorHref(
         {
@@ -252,6 +277,13 @@ describe("resolveRelativeLocalFileHref", () => {
         rootPath: "/storage/thr_1",
       }),
     ).toBe("/storage/thr_1/current/summary.md#L7");
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/work space/资料%/docs",
+        href: "../child%20file.md#section%20one",
+        rootPath: "/work space/资料%",
+      }),
+    ).toBe("/work space/资料%/child file.md#section%20one");
   });
 
   it("parses file line suffixes before checking URI schemes", () => {
