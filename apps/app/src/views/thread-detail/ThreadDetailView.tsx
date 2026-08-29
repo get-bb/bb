@@ -924,8 +924,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     if (!environmentHostId) return null;
     return hosts.find((host) => host.id === environmentHostId) ?? null;
   }, [environment?.hostId, hostsQuery.data]);
-  // Name the thread's machine on multi-machine setups so offline notices and
-  // metadata say which computer is involved instead of a generic "host".
   const threadEnvironmentHost =
     (hostsQuery.data?.length ?? 0) > 1 ? resolvedThreadEnvironmentHost : null;
   const hostConnectionNotice = useMemo(
