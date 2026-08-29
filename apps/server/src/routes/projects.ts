@@ -26,6 +26,7 @@ import {
   publicApiRoutes,
   typedRoutes,
   type ProjectListIncludeOption,
+  type ProjectBranchesQuery,
   type ProjectListQuery,
   type ProjectResponse,
   type ProjectWithThreadsResponse,
@@ -839,8 +840,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(result);
   });
 
-  get(routes.branches, async (context, query) => {
-    const projectId = context.req.param("id");
+  const readProjectBranches = async (
+    projectId: string,
+    query: ProjectBranchesQuery,
+    remoteRefresh: "background" | "blocking",
+  ) => {
     requirePublicStandardProject(deps.db, projectId);
 
     const source = resolveProjectWorkspaceTarget(deps, {
@@ -849,7 +853,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const branchQuery = normalizeBranchQuery(query.query);
     const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-    const remoteRefresh = query.refresh ?? "background";
     const inspectionPromise = callHostRetryableOnlineRpc(deps, {
       hostId: source.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -881,11 +884,22 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       branchOptionsPromise,
     ]);
     const result = { ...inspection, ...branchOptions };
-    return context.json({
+    return {
       ...result,
       defaultWorktreeBaseBranch: resolveDefaultWorktreeBaseBranch(result),
-    });
-  });
+    };
+  };
+
+  get(routes.branches, async (context, query) =>
+    context.json(
+      await readProjectBranches(context.req.param("id"), query, "blocking"),
+    ),
+  );
+  get(routes.branchOptions, async (context, query) =>
+    context.json(
+      await readProjectBranches(context.req.param("id"), query, "background"),
+    ),
+  );
 
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));

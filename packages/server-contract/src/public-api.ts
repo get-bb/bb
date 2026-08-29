@@ -486,6 +486,14 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ProjectBranchesResponse>(),
     }),
+    branchOptions: defineRoute({
+      path: "/projects/:id/branch-options",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectBranchesQuery>(
+        projectBranchesQuerySchema,
+      ),
+      response: jsonResponse<ProjectBranchesResponse>(),
+    }),
     uploadAttachment: defineRoute({
       path: "/projects/:id/attachments",
       method: "post",

@@ -208,11 +208,12 @@ export type ProjectFileContentQuery = z.infer<
   typeof projectFileContentQuerySchema
 >;
 
-export const projectBranchesQuerySchema = branchListQuerySchema.extend({
-  hostId: z.string().min(1),
-  refresh: z.enum(["background", "blocking"]).optional(),
-  selectedBranch: gitBranchNameSchema.optional(),
-});
+export const projectBranchesQuerySchema = branchListQuerySchema
+  .extend({
+    hostId: z.string().min(1),
+    selectedBranch: gitBranchNameSchema.optional(),
+  })
+  .strict();
 export type ProjectBranchesQuery = z.infer<typeof projectBranchesQuerySchema>;
 
 export const projectBranchesResponseSchema = projectSourceCheckoutSchema.extend(
