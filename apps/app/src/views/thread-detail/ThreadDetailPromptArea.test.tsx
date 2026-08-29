@@ -963,7 +963,7 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea();
     expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
 
     const inlineEditor = within(
@@ -1040,7 +1040,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1095,7 +1095,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1123,7 +1123,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1142,7 +1142,7 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 2" }),
+      screen.getByRole("button", { name: "Edit follow-up 2" }),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
     expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
@@ -1199,7 +1199,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1214,7 +1214,7 @@ describe("ThreadDetailPromptArea", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 2" }),
+      screen.getByRole("button", { name: "Edit follow-up 2" }),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
     expect(inlineEditor.getByTestId("plugin-composer-scope").textContent).toBe(
@@ -1255,7 +1255,7 @@ describe("ThreadDetailPromptArea", () => {
 
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1289,7 +1289,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     const view = renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
 
     view.rerender(
@@ -1307,7 +1307,7 @@ describe("ThreadDetailPromptArea", () => {
 
     view.rerender(buildPromptAreaElement());
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     mocks.queuedMessages = [];
     view.rerender(buildPromptAreaElement());
@@ -1335,7 +1335,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.queuedMessages = [makeQueuedMessage({ id: "qmsg_1" })];
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1343,7 +1343,7 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(inlineEditor.getByRole("button", { name: "Attach file" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
 
@@ -1382,7 +1382,7 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea();
     fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
 
     upload.resolve(uploaded);
@@ -1409,7 +1409,7 @@ describe("ThreadDetailPromptArea", () => {
     );
     renderPromptArea();
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),

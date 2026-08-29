@@ -514,7 +514,7 @@ describe("ThreadDetailPromptArea published composer host", () => {
     const threadHost = observedShellHosts().at(-1);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
+      screen.getByRole("button", { name: "Edit follow-up 1" }),
     );
     expect(shellRenderCount()).toBe(rendersAfterMount + 1);
     expect(observedShellHosts().at(-1)).not.toBe(threadHost);

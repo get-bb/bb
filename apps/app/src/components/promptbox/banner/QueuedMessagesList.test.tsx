@@ -149,27 +149,27 @@ describe("QueuedMessagesList", () => {
       "[data-queued-messages-mode]",
     );
     const surface = container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     );
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
     expect(surface?.style.height).toBe("123px");
     expect(
-      getByRole("button", { name: "Collapse queued messages" }).querySelector(
+      getByRole("button", { name: "Collapse follow-ups" }).querySelector(
         '[data-icon="ChevronDown"]',
       ),
     ).not.toBeNull();
 
-    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Collapse follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
     expect(
-      getByRole("button", { name: "Show queued messages" }).querySelector(
+      getByRole("button", { name: "Show follow-ups" }).querySelector(
         '[data-icon="ChevronUp"]',
       ),
     ).not.toBeNull();
     expect(surface?.style.height).toBe("44px");
 
-    fireEvent.click(getByRole("button", { name: "Show queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Show follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
     expect(surface?.style.height).toBe("123px");
   });
@@ -185,11 +185,11 @@ describe("QueuedMessagesList", () => {
     );
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Expand follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("workspace");
-    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Collapse follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
-    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Expand follow-ups" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("workspace");
   });
 
@@ -210,7 +210,7 @@ describe("QueuedMessagesList", () => {
       <QueuedMessagesList {...sharedProps} queuedMessages={[firstMessage]} />,
     );
 
-    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Collapse follow-ups" }));
     expect(
       container
         .querySelector("[data-queued-messages-mode]")
@@ -242,7 +242,7 @@ describe("QueuedMessagesList", () => {
       makeQueuedMessage("q_two", "Second queued message"),
     ]);
     const handle = getByRole("button", {
-      name: "Drag up to open the queue workspace",
+      name: "Drag up to open the follow-up workspace",
     });
     Object.defineProperty(handle, "setPointerCapture", {
       configurable: true,
@@ -299,17 +299,17 @@ describe("QueuedMessagesList", () => {
       ]);
 
     const sendButton = getByRole("button", {
-      name: "Send queued message 1 now",
+      name: "Send follow-up 1 now",
     });
     const editButton = getByRole("button", {
-      name: "Edit queued message 1",
+      name: "Edit follow-up 1",
     });
     const deleteButton = getByRole("button", {
-      name: "Delete queued message 1",
+      name: "Delete follow-up 1",
     });
 
     expect(
-      getByRole("button", { name: "Queued message 1 actions" }),
+      getByRole("button", { name: "Follow-up 1 actions" }),
     ).toBeTruthy();
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
@@ -390,14 +390,14 @@ describe("QueuedMessagesList", () => {
         item.hasAttribute("data-queued-message-inline-editor"),
       ),
     ).toBe(true);
-    const editingLabel = getByText(/Editing queued message/u);
+    const editingLabel = getByText(/Editing follow-up/u);
     expect(
       editingLabel.closest('[data-inline-message-editor-frame="embedded"]'),
     ).not.toBeNull();
     expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
     fireEvent.click(
-      getByRole("button", { name: "Stop editing queued message" }),
+      getByRole("button", { name: "Stop editing follow-up" }),
     );
     expect(onDismiss).toHaveBeenCalledOnce();
   });
@@ -467,7 +467,7 @@ describe("QueuedMessagesList", () => {
       />,
     );
     const surface = container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     );
 
     expect(surface?.style.height).toBe("240px");
@@ -514,7 +514,7 @@ describe("QueuedMessagesList", () => {
       />,
     );
 
-    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Collapse follow-ups" }));
     expect(onDismiss).toHaveBeenCalledOnce();
 
     rerender(<QueuedMessagesList {...sharedProps} />);
@@ -540,7 +540,7 @@ describe("QueuedMessagesList", () => {
         if (this.hasAttribute("data-queue-test-footer")) {
           return new DOMRect(0, 0, 600, 420);
         }
-        if (this.getAttribute("aria-label") === "Queued messages") {
+        if (this.getAttribute("aria-label") === "Follow-ups") {
           return new DOMRect(0, 0, 600, 240);
         }
         return nativeGetBoundingClientRect.call(this);
@@ -585,7 +585,7 @@ describe("QueuedMessagesList", () => {
     );
     const { container, rerender } = render(renderSurface(true));
     const surface = container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     );
     const composer = container.querySelector("[data-test-bottom-composer]");
 
@@ -618,7 +618,7 @@ describe("QueuedMessagesList", () => {
         if (this.hasAttribute("data-queue-test-footer")) {
           return new DOMRect(0, 0, 600, 340);
         }
-        if (this.getAttribute("aria-label") === "Queued messages") {
+        if (this.getAttribute("aria-label") === "Follow-ups") {
           return new DOMRect(0, 0, 600, 240);
         }
         if (this.hasAttribute("data-queued-messages-scroll")) {
@@ -670,7 +670,7 @@ describe("QueuedMessagesList", () => {
       </div>,
     );
     const surface = container.querySelector<HTMLElement>(
-      'section[aria-label="Queued messages"]',
+      'section[aria-label="Follow-ups"]',
     );
 
     await waitFor(() => expect(surface?.style.height).toBe("360px"));
@@ -701,7 +701,7 @@ describe("QueuedMessagesList", () => {
         if (this.hasAttribute("data-queue-test-footer")) {
           return new DOMRect(0, 0, 600, 340);
         }
-        if (this.getAttribute("aria-label") === "Queued messages") {
+        if (this.getAttribute("aria-label") === "Follow-ups") {
           return new DOMRect(0, 0, 600, 240);
         }
         if (this.hasAttribute("data-queued-messages-scroll")) {
@@ -807,7 +807,7 @@ describe("QueuedMessagesList", () => {
         if (this.hasAttribute("data-queue-test-footer")) {
           return new DOMRect(0, 0, 600, 340);
         }
-        if (this.getAttribute("aria-label") === "Queued messages") {
+        if (this.getAttribute("aria-label") === "Follow-ups") {
           return new DOMRect(0, 0, 600, 240);
         }
         if (this.hasAttribute("data-queued-messages-scroll")) {
@@ -860,7 +860,7 @@ describe("QueuedMessagesList", () => {
         </div>,
       );
       const surface = container.querySelector<HTMLElement>(
-        'section[aria-label="Queued messages"]',
+        'section[aria-label="Follow-ups"]',
       );
       const scroll = container.querySelector<HTMLElement>(
         "[data-queued-messages-scroll]",
@@ -876,7 +876,7 @@ describe("QueuedMessagesList", () => {
         '[data-inline-message-editor-frame="embedded"]',
       );
       expect(editorFrame?.firstElementChild?.textContent).toContain(
-        "Editing queued message",
+        "Editing follow-up",
       );
       expect(scroll?.scrollTop).toBe(expectedScrollTop);
     },
