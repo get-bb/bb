@@ -67,6 +67,15 @@ type MockTransportPromise = Promise<MockTransportResolved>;
 type ConsoleLogArgs = Parameters<typeof console.log>;
 export type CommandRegistrar = (program: Command) => void;
 
+function toStubResponse(resolved: MockTransportResolved): Response {
+  return resolved instanceof Response
+    ? resolved
+    : new Response(JSON.stringify(resolved), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+}
+
 interface ServerClientOverride {
   api: object;
 }
@@ -137,7 +146,9 @@ export function stubServerApi(handlers: Record<string, ApiStubHandler>): void {
       node[segment] = child;
       node = child;
     }
-    node[segments[segments.length - 1]] = handler;
+    node[segments[segments.length - 1]] = path.endsWith(".wait.$get")
+      ? async (...args: never[]) => toStubResponse(await handler(...args))
+      : handler;
   }
   createClientMock.mockReturnValue(asServerClient({ api }));
 }

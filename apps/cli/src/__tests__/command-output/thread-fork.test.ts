@@ -7,7 +7,7 @@ import {
 } from "../helpers/command-output-harness.js";
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
-import { registerThreadCommands } from "../../commands/thread/index.js";
+import { registerThreadCommands } from "../../commands/thread/register-all.js";
 
 describe("bb thread fork command output", () => {
   setupCommandOutputTestEnvironment();

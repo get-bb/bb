@@ -5,7 +5,7 @@ import {
   stubServerApi,
 } from "../helpers/command-output-harness.js";
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
-import { registerThreadCommands } from "../../commands/thread/index.js";
+import { registerThreadCommands } from "../../commands/thread/register-all.js";
 
 describe("bb thread tell command output", () => {
   setupCommandOutputTestEnvironment();
