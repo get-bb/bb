@@ -10,6 +10,7 @@ import {
   SIDEBAR_FIXED_DIFF_TAB_ID,
   SIDEBAR_FIXED_INFO_TAB_ID,
   createSidebarSplitState,
+  getSidebarTabPlacement,
   focusSidebarPane,
   getSidebarGroupForPane,
   isCanonicalSidebarSplitState,
@@ -20,6 +21,7 @@ import {
   reconcileSidebarSplitState,
   removeSidebarSplit,
   reorderSidebarTab,
+  restoreSidebarTabPlacement,
   replaceSidebarTab,
   resizeSidebarSplit,
   selectSidebarTab,
@@ -333,33 +335,46 @@ describe("sidebar split layout", () => {
     ).toContain("terminal-a");
   });
 
-  it("restores closed tabs to their canonical order", () => {
+  it("restores closed tabs to their prior visible order", () => {
     const firstTabId = "browser:first";
     const secondTabId = "browser:second";
     let state = createSidebarSplitState(
       [SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId],
       secondTabId,
     );
+    const firstPlacement = getSidebarTabPlacement(state, firstTabId);
+    if (firstPlacement === null) throw new Error("Missing first tab placement");
 
     state = reconcileSidebarSplitState(
       state,
       [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId],
       secondTabId,
     );
+    const secondPlacement = getSidebarTabPlacement(state, secondTabId);
+    if (secondPlacement === null)
+      throw new Error("Missing second tab placement");
     state = reconcileSidebarSplitState(
       state,
       [SIDEBAR_FIXED_INFO_TAB_ID],
       SIDEBAR_FIXED_INFO_TAB_ID,
     );
-    state = reconcileSidebarSplitState(
-      state,
-      [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId],
+    state = restoreSidebarTabPlacement(
+      reconcileSidebarSplitState(
+        state,
+        [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId],
+        secondTabId,
+      ),
       secondTabId,
+      secondPlacement,
     );
-    state = reconcileSidebarSplitState(
-      state,
-      [SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId],
+    state = restoreSidebarTabPlacement(
+      reconcileSidebarSplitState(
+        state,
+        [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId, firstTabId],
+        firstTabId,
+      ),
       firstTabId,
+      firstPlacement,
     );
 
     expect(
