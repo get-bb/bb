@@ -870,9 +870,6 @@ export function ControlEmphasis() {
   );
 }
 
-// This catalog is intentionally mixed across direct/worktree and local/remote
-// environments. Leaving every functional row on Row's local default hides the
-// environment icon and label variants this overview is meant to expose.
 export function Overview() {
   return (
     <StoryCard>
