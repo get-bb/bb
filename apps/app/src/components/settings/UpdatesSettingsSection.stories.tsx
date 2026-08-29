@@ -551,7 +551,6 @@ export function MultiMachine() {
               label="Update all 3 CLI tools"
               tooltipLabel="Update all"
               icon={UPDATE_ACTION_ICON}
-              iconPosition="end"
               visibleLabel="Update all"
               variant="default"
               onClick={noop}
