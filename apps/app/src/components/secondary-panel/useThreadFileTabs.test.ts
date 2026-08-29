@@ -62,9 +62,7 @@ function renderThreadHook<Result>(hook: () => Result) {
 }
 
 function createDeferred<T>() {
-  let resolve = (_value: T) => {
-    throw new Error("Deferred promise was not initialized");
-  };
+  let resolve!: (value: T) => void;
   const promise = new Promise<T>((nextResolve) => {
     resolve = nextResolve;
   });

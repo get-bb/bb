@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import type {
   TerminalSession,
   ThreadStorageFileListResponse,
@@ -174,12 +180,6 @@ type TakeClosedPanelTabResult =
   | { kind: "available"; entry: RecentlyClosedPanelTab }
   | { kind: "unresolved"; entry: RecentlyClosedPanelTab }
   | { kind: "empty" };
-
-function isRecentlyClosedPanelTab(
-  entry: RecentlyClosedPanelTab | null,
-): entry is RecentlyClosedPanelTab {
-  return entry !== null;
-}
 
 type RecentlyClosedPanelContextKey = string;
 type OpenResolvedTabBehavior = "open" | "replace-new-tab";
@@ -508,7 +508,11 @@ export function useThreadFileTabs({
   );
   const pendingStorageValidationRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
-  recentlyClosedPanelContextKeyRef.current = recentlyClosedPanelContextKey;
+
+  useLayoutEffect(() => {
+    recentlyClosedPanelContextKeyRef.current = recentlyClosedPanelContextKey;
+    pendingStorageValidationRef.current = null;
+  }, [recentlyClosedPanelContextKey]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -810,7 +814,7 @@ export function useThreadFileTabs({
 
     const attemptReopen = (): boolean => {
       let didReopen = false;
-      let unresolvedEntry: RecentlyClosedPanelTab | null = null;
+      const unresolvedEntries: RecentlyClosedPanelTab[] = [];
       updateFixedPanelTabsState((state) => {
         const result = takeClosedPanelTab(
           contextKey,
@@ -820,21 +824,18 @@ export function useThreadFileTabs({
         );
         if (result.kind === "empty") return state;
         if (result.kind === "unresolved") {
-          unresolvedEntry = result.entry;
+          unresolvedEntries.push(result.entry);
           return state;
         }
         didReopen = true;
         return restoreEntry(state, result.entry);
       });
       if (didReopen) return true;
-      if (
-        !isRecentlyClosedPanelTab(unresolvedEntry) ||
-        storageFileExists === undefined
-      ) {
+      const entry = unresolvedEntries.at(0);
+      if (entry === undefined || storageFileExists === undefined) {
         return false;
       }
 
-      const entry = unresolvedEntry;
       const storagePath = storagePathForRecentlyClosedPanelTab(entry.tab);
       if (storagePath === null) return false;
       const validationKey = `${contextKey}:${entry.tab.id}`;
