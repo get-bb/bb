@@ -384,6 +384,16 @@ describe("useThreadFileTabs recently closed tabs", () => {
       didReopen = result.current.reopenClosedTab();
     });
     expect(didReopen).toBe(false);
+
+    act(() => {
+      environmentId = "env_2";
+      rerender();
+    });
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeWorkspaceFilePath).toBe("src/env-two.ts");
   });
 });
 
