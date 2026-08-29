@@ -738,6 +738,7 @@ describe("PluginNewThreadComposer seeding", () => {
         environmentHostId: "host_1",
         environmentName: "source",
         environmentBranchName: "feature/source",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       }),
     ];
@@ -853,6 +854,7 @@ describe("PluginNewThreadComposer seeding", () => {
         environmentHostId: "host_1",
         environmentName: "source",
         environmentBranchName: "feature/source",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       }),
     ];

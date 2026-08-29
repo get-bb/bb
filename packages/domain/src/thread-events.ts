@@ -276,7 +276,7 @@ export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
 /**
  * A LEGACY timeline row, retained for decode only.
  *
- * Dispatch holds were replaced by parked queue rows and `system/queue-state`;
+ * Dispatch holds were replaced by parked queue rows;
  * nothing emits this event any more, and nothing renders it either — its
  * timeline row and projection were deleted. The arm stays purely so a stored
  * event still decodes: narrowing `threadEventSchema` would churn the daemon
@@ -326,23 +326,24 @@ export type SystemQueueStateStatus = z.infer<
 >;
 
 /**
- * Longest queued-message preview carried on a `system/queue-state` row. The
- * row says why a dispatch is waiting; the preview is only there to answer
- * "which message?", so it is sized for a couple of wrapped lines. The full
- * message is always one send-now away, and until then an `inline` row is
- * editable on the queued card.
+ * Longest queued-message preview carried on a legacy `system/queue-state`
+ * event. It answered "which message is waiting?" back when the event still had
+ * a timeline row of its own. Kept because stored events are validated against
+ * this schema on decode.
  */
 export const QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH = 240;
 
 /**
- * The one timeline row a parked queued message owns, rewritten in place as the
- * row progresses (`parked` → `updated`… → `dispatched` | `cancelled`). It sits
- * where the parked turn will land.
+ * A LEGACY timeline row, retained for decode only — the same treatment
+ * `system/dispatch-hold` above gets, for the same reason.
  *
- * There is no separate `reason` field: an authored reason exists only for a
- * `plugin` wait and lives in `waitingOn.reason`, and every core wait's display
- * string is derived by the renderer from `waitingOn.kind` plus `sendAt`. One
- * home for the reason, so a rewritten row can never contradict itself.
+ * Parking is narrated in exactly one place: the queue rows above the composer,
+ * which read the queued row's own columns and stay correct as it is re-parked,
+ * edited or sent now. This event duplicated that narration into the timeline,
+ * where it could only ever be a stale copy, so nothing emits it any more and
+ * nothing renders it. The arm stays purely so a stored event still decodes:
+ * narrowing `threadEventSchema` would churn the daemon protocol and make
+ * existing rows undecodable. A decoded queue-state event contributes no row.
  */
 export const systemQueueStateEventDataSchema = z.object({
   queuedMessageId: z.string().min(1),

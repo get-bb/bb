@@ -19,6 +19,7 @@ import type {
   ThreadActivityState,
   ThreadChangeMetadata,
   ThreadListEntry,
+  ThreadQueuedWork,
   ThreadRuntimeState,
   ThreadStatus,
   ThreadWithRuntime,
@@ -86,6 +87,7 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
+  queuedWork: ThreadQueuedWork;
   thread: ThreadWithPendingInteractionState;
 }
 
@@ -512,6 +514,30 @@ function buildThreadActivityStateByThreadId(
   return result;
 }
 
+/**
+ * Whether each thread has parked work, from one grouped count over live queued
+ * rows. Threads with an empty queue are absent, so the caller fills "none".
+ *
+ * A failure outranks a plain wait: a row that failed to go out is the one the
+ * reader has to do something about, and a thread can easily hold both.
+ */
+function buildThreadQueuedWorkByThreadId(
+  deps: ThreadRuntimeDisplayDeps,
+  threads: readonly Thread[],
+): Map<string, ThreadQueuedWork> {
+  const result = new Map<string, ThreadQueuedWork>();
+  for (const counts of listQueuedThreadMessageCountsByThreadIds(deps.db, {
+    threadIds: threads.map((thread) => thread.id),
+  })) {
+    if (counts.queuedMessageCount === 0) continue;
+    result.set(
+      counts.threadId,
+      counts.failedQueuedMessageCount > 0 ? "failed" : "waiting",
+    );
+  }
+  return result;
+}
+
 export function toThreadListEntryResponses(
   deps: ThreadPromptBannerDeps,
   args: ToThreadListEntryResponsesArgs,
@@ -539,9 +565,14 @@ export function toThreadListEntryResponses(
       ),
     }).map((session) => [session.hostId, session]),
   );
+  const queuedWorkByThreadId = buildThreadQueuedWorkByThreadId(
+    deps,
+    args.threads,
+  );
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
+      queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
         thread.environmentHostId !== null &&
         connectedActiveHostIds.has(thread.environmentHostId),
@@ -562,6 +593,7 @@ function toThreadListEntryResponseFromLatestSession(
   return {
     ...thread,
     activity: args.activity,
+    queuedWork: args.queuedWork,
     pinSortKey: args.thread.pinSortKey,
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,

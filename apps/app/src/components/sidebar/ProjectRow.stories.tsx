@@ -193,6 +193,7 @@ const rootThread = makeThread({
   titleFallback: "Stabilize Pnpm Dev Environment",
   environmentHostId: HOST_IDS.local,
   environmentBranchName: BRANCH_NAMES.default,
+  queuedWork: "none",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
 const sharedWorktreeThreadA = makeThread({
@@ -202,6 +203,7 @@ const sharedWorktreeThreadA = makeThread({
   environmentId: "env_shared_worktree",
   environmentHostId: HOST_IDS.local,
   environmentBranchName: "bb/set-default-tab-for-panel-thr_vnj2qze4fg",
+  queuedWork: "none",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
 const sharedWorktreeThreadB = makeThread({
@@ -211,6 +213,7 @@ const sharedWorktreeThreadB = makeThread({
   environmentId: "env_shared_worktree",
   environmentHostId: HOST_IDS.local,
   environmentBranchName: "bb/set-default-tab-for-panel-thr_vnj2qze4fg",
+  queuedWork: "none",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
 const parentThread = makeThread({
@@ -272,6 +275,7 @@ const deepWorktreeA = makeThread({
   environmentId: "env_deep_worktree",
   environmentHostId: HOST_IDS.local,
   environmentBranchName: "bb/sidebar-parent-child-nesting",
+  queuedWork: "none",
   environmentWorkspaceDisplayKind: "managed-worktree",
 });
 const deepWorktreeB = makeThread({
@@ -282,6 +286,7 @@ const deepWorktreeB = makeThread({
   environmentId: "env_deep_worktree",
   environmentHostId: HOST_IDS.local,
   environmentBranchName: "bb/sidebar-parent-child-nesting",
+  queuedWork: "none",
   environmentWorkspaceDisplayKind: "managed-worktree",
   hasPendingInteraction: true,
 });
@@ -674,6 +679,7 @@ const fullProjectAThreads: ThreadListEntry[] = [
     environmentId: "env_full_a_codex_train",
     environmentHostId: "host_local",
     environmentBranchName: "bb/squash-merge-ready-app-train-thr_s6fn8fuv9w",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   }),
   makeThread({
@@ -685,6 +691,7 @@ const fullProjectAThreads: ThreadListEntry[] = [
     environmentId: "env_full_a_codex_train",
     environmentHostId: "host_local",
     environmentBranchName: "bb/squash-merge-ready-app-train-thr_s6fn8fuv9w",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   }),
   makeThread({
@@ -694,6 +701,7 @@ const fullProjectAThreads: ThreadListEntry[] = [
     titleFallback: "Stabilize Pnpm Dev Environment",
     environmentHostId: "host_local",
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   }),
   makeThread({
@@ -712,6 +720,7 @@ const fullProjectAThreads: ThreadListEntry[] = [
     environmentId: "env_full_a_sidebar_rail",
     environmentHostId: "host_local",
     environmentBranchName: "bb/fix-diff-panel-issues-thr_u8cnp5fnea",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   }),
   makeThread({
@@ -722,6 +731,7 @@ const fullProjectAThreads: ThreadListEntry[] = [
     environmentId: "env_full_a_sidebar_rail",
     environmentHostId: "host_local",
     environmentBranchName: "bb/fix-diff-panel-issues-thr_u8cnp5fnea",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   }),
 ];

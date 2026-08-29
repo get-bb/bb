@@ -605,6 +605,7 @@ export function optimisticallyInsertThread(
         runtime: thread.runtime,
         hasPendingInteraction: false,
         pinSortKey: null,
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "other",
       },
       ...data,

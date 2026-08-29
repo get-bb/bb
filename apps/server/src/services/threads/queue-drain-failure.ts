@@ -10,7 +10,6 @@ import {
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { dispatchGateEnvironmentAndHost } from "./dispatch-gates.js";
-import { noteQueueStateUpdated, queuedMessageWaitingOn } from "./queue-parking.js";
 
 type QueueDrainFailureDeps = Pick<AppDeps, "db" | "hub">;
 
@@ -53,31 +52,21 @@ export function recordQueuedMessageDrainFailure(
 ): void {
   const { host } = dispatchGateEnvironmentAndHost(deps, args.thread.environmentId);
   if (host !== null && host.status === "disconnected") {
-    const waitingOn = { kind: "host-offline", hostName: host.name } as const;
-    const updated = setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
+    setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
       id: args.row.id,
       threadId: args.row.threadId,
-      waitingOn,
+      waitingOn: { kind: "host-offline", hostName: host.name },
       // An offline host is not a schedule. Whatever instant this row carried
       // has already passed by the time a drain picked it up, and keeping it
       // would leave the due sweep re-claiming a row that cannot dispatch.
       sendAt: null,
     });
-    if (updated !== null) {
-      noteQueueStateUpdated(deps, { row: updated, waitingOn });
-    }
     return;
   }
 
-  const updated = setQueuedThreadMessageFailureReason(deps.db, deps.hub, {
+  setQueuedThreadMessageFailureReason(deps.db, deps.hub, {
     id: args.row.id,
     threadId: args.row.threadId,
     failureReason: describeDispatchFailure(args.error),
   });
-  if (updated !== null) {
-    noteQueueStateUpdated(deps, {
-      row: updated,
-      waitingOn: queuedMessageWaitingOn(updated),
-    });
-  }
 }

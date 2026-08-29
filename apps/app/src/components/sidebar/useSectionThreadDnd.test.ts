@@ -47,6 +47,7 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "idle",

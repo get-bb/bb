@@ -902,6 +902,7 @@ describe("server-contract canonical schemas", () => {
           environmentHostId: "host_123",
           environmentName: null,
           environmentBranchName: "bb/test",
+          queuedWork: "none",
           environmentWorkspaceDisplayKind: "managed-worktree",
         },
       ]),
@@ -912,6 +913,7 @@ describe("server-contract canonical schemas", () => {
         environmentHostId: "host_123",
         environmentName: null,
         environmentBranchName: "bb/test",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       },
     ]);

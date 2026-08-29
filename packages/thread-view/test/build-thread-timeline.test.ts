@@ -1566,123 +1566,34 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toHaveLength(1);
   });
 
-  it("collapses a parked row's events into one row and keeps it pending", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        event.queueState({
-          queuedMessageId: "qm_1",
-          status: "parked",
-          waitingOn: { kind: "time" },
-          inputPreview: "ship the release notes",
-        }),
-        event.queueState({
-          queuedMessageId: "qm_1",
-          status: "updated",
-          waitingOn: {
-            kind: "plugin",
-            pluginId: "concurrency-limit",
-            reason: "4 of 4 running",
-          },
-        }),
-      ]),
-      // Idle is exactly the state a never-started thread reports: the row must
-      // not be swept to "interrupted" just because nothing is running.
-      "idle",
-    );
-
-    const queueRows = collectSystemRows(rows).filter(
-      (row) => row.systemKind === "operation" && row.title === "Waiting to send",
-    );
-    expect(queueRows).toHaveLength(1);
-    expect(queueRows[0]?.status).toBe("pending");
-    // The reason is derived from the newest event's typed wait, and the preview
-    // survives an event that omits it.
-    expect(queueRows[0]).toMatchObject({
-      reason: "4 of 4 running",
-      detail: null,
-      inputPreview: "ship the release notes",
-    });
-  });
-
-  it("derives each core wait's words from its kind, not from the event", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const reasonFor = (waitingOn: Parameters<typeof event.queueState>[0]["waitingOn"]) => {
-      const rows = buildTimelineRows(
-        fromRows([
-          event.queueState({
-            queuedMessageId: "qm_1",
-            status: "parked",
-            ...(waitingOn ? { waitingOn } : {}),
-          }),
-        ]),
-        "idle",
-      );
-      const row = collectSystemRows(rows).find(
-        (candidate) =>
-          candidate.systemKind === "operation" &&
-          candidate.title === "Waiting to send",
-      );
-      return row && "reason" in row ? row.reason : null;
+  /**
+   * `system/queue-state` follows `system/dispatch-hold` below: still decodable,
+   * no longer rendered. Parking is narrated once, by the queue rows above the
+   * composer, which read the queued row's live columns; the timeline copy could
+   * only ever go stale, so the emission and every projection arm were deleted.
+   * Dev databases are full of stored ones, so a decoded event has to reach the
+   * renderer's if-chain and fall out the far end, producing no row.
+   */
+  it("renders a stored legacy queue-state event as nothing", () => {
+    const legacyQueueState: ThreadEventRow = {
+      id: "evt-legacy-queue-state-1",
+      threadId: "thread-1",
+      seq: 1,
+      createdAt: 1,
+      scope: threadScope(),
+      type: "system/queue-state",
+      data: {
+        queuedMessageId: "qm_1",
+        status: "parked",
+        waitingOn: { kind: "time" },
+        sendAt: 1_000,
+        inputPreview: "ship the release notes",
+      },
     };
 
-    expect(reasonFor({ kind: "time" })).toBe("Scheduled");
-    expect(reasonFor({ kind: "provisioning" })).toBe("Waiting for workspace");
-    expect(reasonFor({ kind: "interaction" })).toBe("Waiting for reply");
-    expect(reasonFor({ kind: "thread-busy" })).toBe(
-      "Waiting for the current turn",
-    );
-  });
-
-  it("settles a parked row from its own dispatch event and keeps the wait", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        event.queueState({
-          queuedMessageId: "qm_1",
-          status: "parked",
-          waitingOn: { kind: "time" },
-          inputPreview: "ship the release notes",
-        }),
-        event.queueState({
-          queuedMessageId: "qm_1",
-          status: "dispatched",
-          waitingOn: { kind: "time" },
-        }),
-      ]),
-      "idle",
-    );
-
-    const queueRows = collectSystemRows(rows).filter(
-      (row) =>
-        row.systemKind === "operation" &&
-        (row.title === "Waiting to send" || row.title === "Sent"),
-    );
-    expect(queueRows).toHaveLength(1);
-    expect(queueRows[0]?.title).toBe("Sent");
-    expect(queueRows[0]?.status).toBe("completed");
-    // A settled row still says what it had been waiting for, and still shows
-    // which message went.
-    expect(queueRows[0]).toMatchObject({
-      reason: "Scheduled",
-      inputPreview: "ship the release notes",
-    });
-  });
-
-  it("leaves the message null for a parked row that has none of its own", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const rows = buildTimelineRows(
-      fromRows([
-        // A retry row references a turn already rendered above it.
-        event.queueState({ queuedMessageId: "qm_1", status: "parked" }),
-      ]),
-      "idle",
-    );
-
-    const queueRow = collectSystemRows(rows).find(
-      (row) => row.systemKind === "operation" && row.title === "Waiting to send",
-    );
-    expect(queueRow).toMatchObject({ inputPreview: null });
+    const events = fromRows([legacyQueueState]);
+    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
+    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
   });
 
   /**

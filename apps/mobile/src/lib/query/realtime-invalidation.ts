@@ -90,6 +90,9 @@ const THREAD_LIST_AFFECTING_KINDS: ReadonlySet<ThreadChangeKind> =
     "interactions-changed",
     "status-changed",
     "title-changed",
+    // List rows render `queuedWork`, so parking and draining a row change the
+    // list, not just the thread's own queue.
+    "queue-changed",
     "archived-changed",
     "pin-state-changed",
     "parent-changed",

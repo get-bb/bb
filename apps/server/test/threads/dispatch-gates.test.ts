@@ -446,7 +446,6 @@ describe("dispatch gates and the no-gate path", () => {
         (event) => event.type,
       );
       expect(types).toContain("client/turn/requested");
-      expect(types).not.toContain("system/queue-state");
     });
   });
 

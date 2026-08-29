@@ -92,6 +92,7 @@ function createThread(
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "idle",
@@ -878,6 +879,59 @@ describe("ThreadRow", () => {
         .getByLabelText("Thread needs user input")
         .getAttribute("data-icon"),
     ).toBe("CircleQuestion");
+  });
+
+  it("clocks a thread with parked work, and drops the clock once it runs", () => {
+    const { rerenderThreadRow } = renderThreadRow({
+      thread: createThread({ queuedWork: "waiting" }),
+    });
+
+    expect(
+      screen
+        .getByLabelText("Thread has a message waiting to send")
+        .getAttribute("data-icon"),
+    ).toBe("Clock");
+
+    // The queue fact is independent of the runtime, so the row has to resolve
+    // the overlap: a running thread says what it is DOING, and the parked row
+    // is narrated by the queue above its composer instead.
+    rerenderThreadRow(
+      createThread({
+        queuedWork: "waiting",
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      }),
+    );
+    expect(
+      screen.queryByLabelText("Thread has a message waiting to send"),
+    ).toBeNull();
+    expect(screen.getByLabelText("Thread working").getAttribute("data-icon")).toBe(
+      "Loading",
+    );
+  });
+
+  it("gives a failed queued row the same glyph a failed thread gets", () => {
+    // One error vocabulary: the two states differ in what they name, never in
+    // how loudly they say it, so this pins the glyph AND the colour together.
+    renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
+    const queueFailure = screen.getByLabelText("Queued message failed to send");
+
+    cleanup();
+    renderThreadRow({
+      thread: createThread({
+        status: "error",
+        lastReadAt: 0,
+        latestAttentionAt: 10,
+      }),
+    });
+    const threadFailure = screen.getByLabelText("Unread thread failed");
+
+    expect(queueFailure.getAttribute("data-icon")).toBe("CircleX");
+    expect(threadFailure.getAttribute("data-icon")).toBe(
+      queueFailure.getAttribute("data-icon"),
+    );
+    expect(queueFailure.getAttribute("class")).toBe(
+      threadFailure.getAttribute("class"),
+    );
   });
 
   it("keeps the parent-thread disclosure caret visible on mobile", () => {

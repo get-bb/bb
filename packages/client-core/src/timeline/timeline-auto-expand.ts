@@ -63,12 +63,6 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
     case "conversation":
       return false;
     case "system":
-      if (row.systemKind === "operation" && row.operationKind === "queue-state") {
-        // A parked row's reason rides its title line, so the only thing the
-        // body has to show is the parked message itself. A `retry` row has
-        // none — its turn is already rendered above — and stays closed.
-        return row.inputPreview !== null;
-      }
       return row.detail !== null && row.detail.trim().length > 0;
     case "bundle-summary":
     case "step-summary":
@@ -115,37 +109,6 @@ function shouldAutoExpandLiveFrontierRow(row: ThreadTimelineViewRow): boolean {
   }
 }
 
-/**
- * A dispatch that is still waiting opens wherever it sits. Unlike the
- * frontier rules this does not depend on an active scope: a thread whose first
- * turn is parked is *not* running, so frontier logic would leave the one row
- * explaining the silence closed. It is not latched either, so the row closes
- * again on its own once the send goes through.
- */
-function isWaitingDispatchRow(row: ThreadTimelineViewRow): boolean {
-  return (
-    row.kind === "system" &&
-    row.systemKind === "operation" &&
-    row.operationKind === "queue-state" &&
-    row.status === "pending" &&
-    isRowExpandable(row)
-  );
-}
-
-function visitForWaitingDispatchAutoExpand(
-  rows: readonly ThreadTimelineViewRow[],
-  ids: Set<string>,
-): void {
-  for (const row of rows) {
-    if (isWaitingDispatchRow(row)) {
-      ids.add(row.id);
-    }
-    if (row.kind === "work" && row.workKind === "delegation") {
-      visitForWaitingDispatchAutoExpand(row.childRows, ids);
-    }
-  }
-}
-
 function shouldAutoExpandTerminalFrontierRow(
   row: ThreadTimelineViewRow,
 ): boolean {
@@ -188,9 +151,6 @@ function visitForTerminalFrontierAutoExpand(
 //      open while they are the current active frontier, then stop being
 //      auto-expanded when newer agent/system/work output supersedes them.
 //
-//   3. Waiting dispatch holds: scope-independent, because a held thread is by
-//      definition not running. See `isWaitingDispatchRow`.
-//
 // Active containers are the timeline's top-level row list (when the thread
 // is active) and the childRows of pending delegations *inside an active
 // container*. A completed delegation closes its scope, so a pending
@@ -228,7 +188,6 @@ export function collectTimelineAutoExpansionRowIds({
   const liveExpandedRowIds = new Set<string>();
   visitForTerminalFrontierAutoExpand(rows, terminalFrontierRowIds);
   visitForLiveFrontierAutoExpand(rows, scopeActive, liveExpandedRowIds);
-  visitForWaitingDispatchAutoExpand(rows, liveExpandedRowIds);
   return {
     liveExpandedRowIds,
     terminalFrontierRowIds,

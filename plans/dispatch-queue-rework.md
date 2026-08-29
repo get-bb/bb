@@ -314,3 +314,32 @@ above:
   `HOST_DAEMON_PROTOCOL_VERSION` stays where the branch had already left it. The branch's
   migration was re-squashed onto main's 0109 as a single
   `0110_white_hulk.sql` with no `plugin_inputs` column.
+
+- **Parking is narrated once, and not on the timeline.** The
+  `system/queue-state` event is no longer emitted: the queue rows above the
+  composer read the queued row's own live columns, so a second copy in the
+  transcript could only ever go stale (a re-park, an edit or a Send-now rewrote
+  the row and left the timeline saying something else). Emission, the
+  `queuedMessageInputPreview` extraction it was the only consumer of, the
+  thread-view projection/merge/title arms, the `queue-state` timeline row shape
+  in `@bb/server-contract`, the renderer body and its auto-expand rule are all
+  deleted. The event type stays registered and decodable under the
+  `system/dispatch-hold` precedent — dev databases are full of stored ones — and
+  renders as nothing, pinned by a tolerance test beside the dispatch-hold one.
+  Nothing narrowed, so no daemon-protocol bump.
+
+- **The sidebar clock is queue-driven, not status-driven.** The waiting glyph
+  stopped keying on canonical `pending` — which described only the narrowest
+  case, a thread whose FIRST message parked — and keys on a new thread-list
+  fact, `queuedWork: "none" | "waiting" | "failed"`, so an idle thread holding a
+  scheduled send or a plugin-parked follow-up says so too. It is one grouped
+  count over live queued rows per list build (batched over the SQLite variable
+  limit, alongside the existing count the single-thread DTO already used), with
+  `failed` set when any live row carries a `failureReason`. The not-running
+  half is the renderer's: the arm sits below every working arm in
+  `resolveThreadListIndicator`, so a running thread with a queued follow-up
+  still shows what it is doing. `failed` shares the canonical-`error` glyph arm
+  outright (`CircleX` + `text-destructive`) rather than growing a warning
+  variant — one error vocabulary, differing only in label. `pending` keeps its
+  sorting, filtering and status copy and drives no glyph at all. `queue-changed`
+  now dirties the thread lists on web and mobile, which it did not before.

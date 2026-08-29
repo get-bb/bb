@@ -37,6 +37,7 @@ import {
   createOrderKeyAfter,
   createOrderKeyBetween,
 } from "./order-keys.js";
+import { queryInSqliteVariableBatches } from "./events.js";
 
 export interface CreateQueuedThreadMessageInput {
   threadId: string;
@@ -1326,30 +1327,53 @@ export function listQueuedThreadMessagesForApi(
     .all();
 }
 
+export interface QueuedThreadMessageCounts {
+  threadId: string;
+  queuedMessageCount: number;
+  /**
+   * How many of those rows last failed to dispatch. Counted in the same pass
+   * as the total because both answers come from the same rows, and the thread
+   * list needs them together: a thread with parked work shows a clock, and one
+   * whose parked work failed shows the failure instead.
+   */
+  failedQueuedMessageCount: number;
+}
+
 /**
- * How many live rows each of these threads has parked. One grouped query
- * rather than one per thread: the thread list renders a badge per row and
- * would otherwise issue a query per visible thread.
+ * How many live rows each of these threads has parked, and how many of those
+ * failed. One grouped query rather than one per thread: the thread list renders
+ * a glyph per row and would otherwise issue a query per visible thread.
+ *
+ * Batched over the SQLite variable limit because the thread list is unbounded —
+ * a workspace with tens of thousands of threads builds its sidebar from one
+ * call.
  */
 export function listQueuedThreadMessageCountsByThreadIds(
   db: DbQueryConnection,
   args: { threadIds: readonly string[] },
-): { threadId: string; queuedMessageCount: number }[] {
-  if (args.threadIds.length === 0) return [];
-  return db
-    .select({
-      threadId: queuedThreadMessages.threadId,
-      queuedMessageCount: count(queuedThreadMessages.id),
-    })
-    .from(queuedThreadMessages)
-    .where(
-      and(
-        inArray(queuedThreadMessages.threadId, [...args.threadIds]),
-        liveQueuedThreadMessage(),
-      ),
-    )
-    .groupBy(queuedThreadMessages.threadId)
-    .all();
+): QueuedThreadMessageCounts[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
+    fixedVariableCount: 0,
+    variableCountPerValue: 1,
+    values: args.threadIds,
+    queryBatch: (threadIds) =>
+      db
+        .select({
+          threadId: queuedThreadMessages.threadId,
+          queuedMessageCount: count(queuedThreadMessages.id),
+          failedQueuedMessageCount: count(queuedThreadMessages.failureReason),
+        })
+        .from(queuedThreadMessages)
+        .where(
+          and(
+            inArray(queuedThreadMessages.threadId, [...threadIds]),
+            liveQueuedThreadMessage(),
+          ),
+        )
+        .groupBy(queuedThreadMessages.threadId)
+        .all(),
+  });
 }
 
 /**

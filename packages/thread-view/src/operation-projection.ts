@@ -8,11 +8,6 @@ import type {
   EventProjectionUserQuestionLifecycleMessage,
 } from "./event-projection-types.js";
 import type { CompactionLifecycleEvent } from "./compaction-lifecycle.js";
-import {
-  mergeQueueStateMetadata,
-  queueStateKey,
-  queueStateTitleForStatus,
-} from "./queue-state-helpers.js";
 import type { EventMeta } from "./event-decode.js";
 import type { FileEditPartial } from "./file-edit-parsing.js";
 import { messageId } from "./format-helpers.js";
@@ -46,7 +41,6 @@ export interface OperationProjectionState {
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
   provisioningOperationsByKey: Map<string, EventProjectionOperationMessage>;
-  queueStateOperationsByKey: Map<string, EventProjectionOperationMessage>;
   permissionGrantsByInteractionId: Map<
     string,
     EventProjectionPermissionGrantLifecycleMessage
@@ -66,7 +60,6 @@ export function createOperationProjectionState(
     openCompactionsByKey: new Map(),
     finalizedCompactionKeys: new Set(),
     provisioningOperationsByKey: new Map(),
-    queueStateOperationsByKey: new Map(),
     permissionGrantsByInteractionId: new Map(),
     userQuestionsByInteractionId: new Map(),
     threadOperationsById: new Map(),
@@ -212,49 +205,6 @@ export function upsertProvisioningOperation(
     incoming,
     key: provisioningKey(incoming),
     mergeExisting: mergeProvisioningOperation,
-    state,
-  });
-}
-
-/**
- * A parked row's timeline row is rewritten in place by every later event for
- * the same queued message: the newest event carries the current status and
- * wait, and the transcript accumulates. Like the hold merge it took over from,
- * the title comes from the queue status rather than the row's lifecycle status
- * — `parked` and `updated` are both pending rows and share a headline, so
- * deriving it from the lifecycle status alone would lose nothing but deriving
- * it from the queue status keeps the two questions separate.
- */
-function mergeQueueStateOperation(
-  existing: EventProjectionOperationMessage,
-  incoming: EventProjectionOperationMessage,
-): void {
-  const wasPending = (existing.status ?? "pending") === "pending";
-  existing.queueState = mergeQueueStateMetadata(
-    existing.queueState,
-    incoming.queueState,
-  );
-  existing.status = mergeLifecycleStatus(
-    existing.status ?? "pending",
-    incoming.status ?? "pending",
-  );
-  if (existing.queueState) {
-    existing.title = queueStateTitleForStatus(existing.queueState.queueStatus);
-  }
-  if (wasPending && existing.status !== "pending") {
-    existing.completedAt = incoming.completedAt ?? incoming.createdAt;
-  }
-}
-
-export function upsertQueueStateOperation(
-  state: OperationProjectionState,
-  incoming: EventProjectionOperationMessage,
-): void {
-  upsertKeyedLifecycleMessage({
-    index: state.queueStateOperationsByKey,
-    incoming,
-    key: queueStateKey(incoming),
-    mergeExisting: mergeQueueStateOperation,
     state,
   });
 }

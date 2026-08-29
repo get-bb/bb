@@ -417,8 +417,23 @@ export const threadWithRuntimeSchema = threadSchema.extend({
 });
 export type ThreadWithRuntime = z.infer<typeof threadWithRuntimeSchema>;
 
+/**
+ * Whether a thread has work parked on its queue, as a list row needs to know
+ * it: not how many rows, but whether any are waiting and whether any of them
+ * failed to go out.
+ *
+ * `failed` outranks `waiting` because a failure is the only one of the two a
+ * reader has to act on — a waiting row will clear itself. Deliberately a
+ * queue fact only: whether the thread is also running is the list row's
+ * question, not the queue's, and the row's glyph precedence answers it.
+ */
+export const threadQueuedWorkValues = ["none", "waiting", "failed"] as const;
+export const threadQueuedWorkSchema = z.enum(threadQueuedWorkValues);
+export type ThreadQueuedWork = z.infer<typeof threadQueuedWorkSchema>;
+
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   activity: threadActivityStateSchema,
+  queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),
   hasPendingInteraction: z.boolean(),
   environmentHostId: z.string().nullable(),

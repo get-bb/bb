@@ -1,22 +1,18 @@
 import {
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessageInTransaction,
-  getThread,
   reparkClaimedQueuedThreadMessages,
   type ClaimedQueuedThreadMessageRow,
   type QueuedThreadMessageRow,
 } from "@bb/db";
-import {
-  QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH,
-  threadScope,
-  type PromptInput,
-  type QueuedMessagePayload,
-  type QueuedMessageSystemNotice,
-  type QueuedMessageWaitingOn,
-  type ResolvedThreadExecutionOptions,
-  type SystemQueueStateStatus,
-  type Thread,
-  type ThreadQueuedMessage,
+import type {
+  PromptInput,
+  QueuedMessagePayload,
+  QueuedMessageSystemNotice,
+  QueuedMessageWaitingOn,
+  ResolvedThreadExecutionOptions,
+  Thread,
+  ThreadQueuedMessage,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
@@ -24,118 +20,19 @@ import {
   emitPluginQueueDispatched,
   emitPluginQueueParked,
 } from "../plugins/plugin-thread-events.js";
-import { appendThreadEvent } from "./thread-events.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 
 type QueueParkingDeps = Pick<AppDeps, "db" | "hub">;
 
 /**
- * Plain text of the message a parked row is sitting on, for its timeline row.
- * The row otherwise says only why the dispatch is waiting, which leaves the
- * reader guessing which of their messages it is.
+ * A settling row, for the plugin event its transition raises.
  *
- * Undefined — never an empty string — when there is nothing of the user's to
- * show: a `retry` row re-submits a turn that is already rendered further up the
- * timeline, and an `inline` row can be attachments or agent-only context with
- * no visible prose. The field is omitted in those cases so a reader that sees
- * it knows it means something.
- */
-export function queuedMessageInputPreview(
-  row: QueuedThreadMessageRow,
-): string | undefined {
-  if (row.payloadKind !== "inline") {
-    return undefined;
-  }
-  let blocks: PromptInput[];
-  try {
-    blocks = toThreadQueuedMessage(row).content;
-  } catch {
-    return undefined;
-  }
-  const text = blocks
-    .filter(
-      (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
-        chunk.type === "text" && chunk.visibility !== "agent-only",
-    )
-    .map((chunk) => chunk.text)
-    .join("\n\n")
-    // A preview is one run of prose on a row that is already a summary, so
-    // paragraph breaks and indentation collapse rather than fighting the
-    // row's layout.
-    .replace(/\s+/gu, " ")
-    .trim();
-  if (text.length === 0) {
-    return undefined;
-  }
-  return text.length <= QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH
-    ? text
-    : // The ellipsis is one character and replaces one, so a truncated preview
-      // lands exactly on the cap the schema enforces.
-      `${text.slice(0, QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH - 1)}…`;
-}
-
-/**
- * The one timeline row a parked message owns. Events are append-only, so a
- * status change appends another row carrying the same `queuedMessageId`; the
- * timeline projection collapses them by that id exactly as it does
- * `system/thread-provisioning`.
- */
-function appendQueueStateEvent(
-  deps: QueueParkingDeps,
-  args: {
-    row: QueuedThreadMessageRow;
-    status: SystemQueueStateStatus;
-    waitingOn: QueuedMessageWaitingOn;
-  },
-): void {
-  const inputPreview = queuedMessageInputPreview(args.row);
-  appendThreadEvent(deps, {
-    threadId: args.row.threadId,
-    environmentId: getThread(deps.db, args.row.threadId)?.environmentId ?? null,
-    type: "system/queue-state",
-    scope: threadScope(),
-    data: {
-      queuedMessageId: args.row.id,
-      status: args.status,
-      waitingOn: args.waitingOn,
-      sendAt: args.row.sendAt,
-      ...(inputPreview === undefined ? {} : { inputPreview }),
-    },
-  });
-}
-
-/**
- * Appends the "this row changed while it waited" timeline write for a caller
- * that has already persisted the change itself.
- *
- * {@link parkDispatch} owns the write for a re-park because it owns the park.
- * A drain failure is the other way round: the row's own columns are what
- * changed (its wait, or its failure reason), the writer that changed them
- * returned the fresh row, and only the timeline still needs telling.
- */
-export function noteQueueStateUpdated(
-  deps: QueueParkingDeps,
-  args: { row: QueuedThreadMessageRow; waitingOn: QueuedMessageWaitingOn },
-): void {
-  appendQueueStateEvent(deps, {
-    row: args.row,
-    status: "updated",
-    waitingOn: args.waitingOn,
-  });
-  deps.hub.notifyThread(args.row.threadId, ["queue-changed"]);
-}
-
-/**
- * The wait a settled row reports on its final timeline write.
- *
- * A row that dispatched has just had its wait cleared, so reading the column
- * would say "nothing", which is not what the reader wants to know — they want
- * to know what it had been waiting for. The caller therefore passes the wait
- * it was holding when the drain picked it up.
+ * Parking is narrated by the queue rows above the composer, which read the
+ * row's own columns — so a settle has nothing to write down, only somebody to
+ * tell.
  */
 export interface SettleQueueRowArgs {
   row: QueuedThreadMessageRow;
-  waitingOn: QueuedMessageWaitingOn;
 }
 
 /** The message a parked row will carry, as the parking site supplies it. */
@@ -227,11 +124,6 @@ export function parkDispatch(
     // stale-claim sweep reclaimed it. Either way there is nothing left to park.
     return null;
   }
-  appendQueueStateEvent(deps, {
-    row,
-    status: leadClaim === undefined ? "parked" : "updated",
-    waitingOn: args.waitingOn,
-  });
   const entry = toThreadQueuedMessage(row);
   emitPluginQueueParked(entry);
   deps.hub.notifyThread(args.thread.id, ["queue-changed"]);
@@ -240,46 +132,16 @@ export function parkDispatch(
 
 /**
  * Records that a parked row's waits all cleared and it dispatched. Called
- * AFTER the row is consumed, so the timeline row lands next to the turn it
- * became rather than ahead of it.
+ * AFTER the row is consumed, so a plugin listening on `queue.dispatched` sees
+ * the row leave the queue rather than a row that is about to.
  */
-export function settleQueueRowDispatched(
-  deps: QueueParkingDeps,
-  args: SettleQueueRowArgs,
-): void {
-  appendQueueStateEvent(deps, {
-    row: args.row,
-    status: "dispatched",
-    waitingOn: args.waitingOn,
-  });
+export function settleQueueRowDispatched(args: SettleQueueRowArgs): void {
   emitPluginQueueDispatched(toThreadQueuedMessage(args.row));
 }
 
 /** Records that a parked row was discarded instead of dispatched. */
-export function settleQueueRowCancelled(
-  deps: QueueParkingDeps,
-  args: SettleQueueRowArgs,
-): void {
-  appendQueueStateEvent(deps, {
-    row: args.row,
-    status: "cancelled",
-    waitingOn: args.waitingOn,
-  });
+export function settleQueueRowCancelled(args: SettleQueueRowArgs): void {
   emitPluginQueueCancelled(toThreadQueuedMessage(args.row));
-}
-
-/**
- * The wait a row is parked on, for callers that only have the row.
- *
- * A live row with no `waitingOn` is an ordinary queued message behind the
- * running turn, which IS a `thread-busy` wait — it just predates waits being
- * typed, or was created through the plain queue route. Naming it rather than
- * returning null keeps every settle and every renderer on one vocabulary.
- */
-export function queuedMessageWaitingOn(
-  row: QueuedThreadMessageRow,
-): QueuedMessageWaitingOn {
-  return toThreadQueuedMessage(row).waitingOn ?? { kind: "thread-busy" };
 }
 
 /**

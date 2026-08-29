@@ -64,7 +64,6 @@ import {
   upsertPermissionGrantLifecycleMessage,
   upsertUserQuestionLifecycleMessage,
   upsertFileEdit,
-  upsertQueueStateOperation,
   upsertProvisioningOperation,
   upsertThreadOperationMessage,
 } from "./operation-projection.js";
@@ -944,10 +943,6 @@ function buildFlatProjectionData(
         operation.opType === "thread-provisioning"
       ) {
         upsertProvisioningOperation(state, operation);
-        continue;
-      }
-      if (operation.kind === "operation" && operation.opType === "queue-state") {
-        upsertQueueStateOperation(state, operation);
         continue;
       }
       if (operation.kind === "operation" && operation.opType === "operation") {

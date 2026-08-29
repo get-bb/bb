@@ -130,8 +130,6 @@ import {
   type PluginMessageActionSlot,
 } from "@/lib/plugin-slots.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
-import { formatScheduledTime } from "@/lib/relative-time";
-import { useSecondTick } from "@/hooks/useSecondTick";
 import { isPluginSideChatSenderThread } from "@/lib/side-chat-plugin.js";
 import {
   buildMessageDirectiveRegistry,
@@ -1134,71 +1132,6 @@ function TimelineSystemDetailBlock({
   );
 }
 
-/**
- * The body of a held-dispatch row: the message that is waiting, then whatever
- * the hold's owner has reported.
- *
- * The reason is not repeated here — it rides the row's own title line, so a
- * collapsed hold already answers "waiting for what?" and opening it adds the
- * thing that actually needed the space. The message keeps the left-rule quote
- * treatment quoted message text gets everywhere else in the app, which is also
- * what keeps it from reading as a second copy of the boxed monospace report
- * directly beneath it — they are different kinds of text. A hold
- * with no message of its own (a retry re-submitting a turn already rendered
- * above) omits it, as do rows recorded before holds carried a preview.
- */
-/**
- * The body of a parked queue row: when it is due, and the message that is
- * waiting.
- *
- * The reason is not repeated here — it rides the row's own title line, so a
- * collapsed row already answers "waiting for what?" and opening it adds the
- * thing that actually needed the space. The scheduled instant is the one part
- * the title cannot carry (it is locale-formatted), so it leads the body when
- * the row has one. The message keeps the left-rule quote treatment quoted
- * message text gets everywhere else in the app. A row with no message of its
- * own (a retry re-submitting a turn already rendered above) omits it.
- */
-function TimelineQueueStateBody({
-  row,
-}: {
-  row: Extract<
-    ThreadTimelineViewRow,
-    { kind: "system"; systemKind: "operation"; operationKind: "queue-state" }
-  >;
-}) {
-  if (row.sendAt === null && row.inputPreview === null) {
-    return null;
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {row.sendAt === null ? null : (
-        <TimelineQueueStateScheduledLine sendAt={row.sendAt} />
-      )}
-      {row.inputPreview === null ? null : (
-        <blockquote className="whitespace-pre-wrap break-words border-l-2 border-surface-selected-border pl-3 text-sm leading-5 text-muted-foreground">
-          {row.inputPreview}
-        </blockquote>
-      )}
-    </div>
-  );
-}
-
-/**
- * The scheduled instant of a parked row, in the reader's locale. Reads `now`
- * off the shared ticker rather than the clock because a component may not call
- * an impure function during render; the day qualifier ("Tomorrow 9:00") is the
- * only part that moves, and it moves at midnight.
- */
-function TimelineQueueStateScheduledLine({ sendAt }: { sendAt: number }) {
-  const now = useSecondTick();
-  return (
-    <div className="text-xs text-muted-foreground">
-      Scheduled for {formatScheduledTime({ now, timestamp: sendAt })}
-    </div>
-  );
-}
-
 function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
@@ -1305,12 +1238,6 @@ function TimelineExpandableBody({
         />
       );
     case "system":
-      if (
-        row.systemKind === "operation" &&
-        row.operationKind === "queue-state"
-      ) {
-        return <TimelineQueueStateBody row={row} />;
-      }
       return row.detail ? (
         <TimelineSystemDetailBlock
           detail={row.detail}
@@ -1495,8 +1422,6 @@ export function systemOperationLeadingIcon(
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
       return "Terminal";
-    case "queue-state":
-      return "Clock";
     case "plugin-note":
       // The plugin's own icon rides the row; this is the fallback for a note
       // that asked for none or named one the icon set does not have.

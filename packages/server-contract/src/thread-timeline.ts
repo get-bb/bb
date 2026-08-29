@@ -147,7 +147,6 @@ export const timelineSystemOperationKindValues = [
   "context-clear",
   "parent-change",
   "thread-provisioning",
-  "queue-state",
   "plugin-note",
   "thread-interrupted",
   "provider-unhandled",
@@ -231,38 +230,6 @@ export type TimelinePluginNoteSystemRow = z.infer<
   typeof timelinePluginNoteSystemRowSchema
 >;
 
-/**
- * A parked queued message. It earns its own row shape because it is the one
- * system row that speaks for a message the user wrote, so "which message" is
- * quoted (`inputPreview`) rather than dumped into the shared `detail` block,
- * and "what it waits for" is its own field.
- *
- * `reason` is derived by the projection from the event's typed `waitingOn`,
- * because the event deliberately carries no reason string of its own — a core
- * wait's words belong to the renderer, and only a plugin wait authors any.
- * `sendAt` rides alongside rather than being folded into `reason` so the client
- * can format the instant in the reader's locale.
- */
-export const timelineQueueStateSystemRowSchema =
-  timelineSystemRowBaseSchema.extend({
-    systemKind: z.literal("operation"),
-    operationKind: z.literal("queue-state"),
-    /** What the dispatch is waiting for, e.g. "Scheduled". */
-    reason: z.string(),
-    /**
-     * Truncated plain text of the parked message. Null when the row has no
-     * message of its own — a `retry` row references a turn already rendered
-     * further up the timeline.
-     */
-    inputPreview: z.string().nullable(),
-    /** The row's scheduled instant, or null when it has no schedule. */
-    sendAt: z.number().nullable(),
-    completedAt: z.number().nullable(),
-  });
-export type TimelineQueueStateSystemRow = z.infer<
-  typeof timelineQueueStateSystemRowSchema
->;
-
 export const timelineParentChangeSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
@@ -279,7 +246,6 @@ export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   "operationKind",
   [
     timelineGenericOperationSystemRowSchema,
-    timelineQueueStateSystemRowSchema,
     timelineParentChangeSystemRowSchema,
     timelinePluginNoteSystemRowSchema,
   ],

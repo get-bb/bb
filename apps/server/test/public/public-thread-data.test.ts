@@ -2624,15 +2624,15 @@ describe("public thread data routes", () => {
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
         { type: "text", text: "Queued active follow-up", mentions: [] },
       ]);
-      // Nothing was dispatched: the only event the parked message writes is
-      // the queue-state row it owns on the timeline.
+      // Nothing was dispatched, and parking writes no timeline event at all:
+      // the queue rows above the composer are the only narration of a wait.
       expect(
         harness.db
           .select({ type: events.type })
           .from(events)
           .where(eq(events.threadId, thread.id))
           .all(),
-      ).toEqual([{ type: "system/queue-state" }]);
+      ).toEqual([]);
       expect(capture).not.toHaveBeenCalled();
     });
   });

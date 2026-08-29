@@ -985,6 +985,14 @@ and carries your reason verbatim. The row sits in the thread's queue with a
 card, a Send-now and a Cancel — it is the same row a user's own queued message
 uses, which is why there is no separate hold concept any more.
 
+**Where a wait is visible.** In exactly two places, and neither is the
+timeline: the queued card above the composer, which shows your reason, and the
+thread's sidebar row, which shows a clock while the thread holds parked work
+and is not itself running. If a drain attempt on the row fails outright, the
+sidebar row shows the same failure glyph a failed thread gets. Parking appends
+no thread event, so a `wait` never writes anything into the transcript the
+model or the user reads back.
+
 **How a wait clears.** You do not release it yourself. It clears when the row's
 `retryAt` comes due, when a thread leaves the running set and core re-attempts
 every plugin-parked row, when the user sends it now, or when the orphan sweep

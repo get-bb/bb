@@ -54,6 +54,7 @@ export function threadListEntry(
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -71,6 +72,7 @@ export function threadResponse(
     environmentName: _envName,
     environmentBranchName: _branch,
     environmentWorkspaceDisplayKind: _kind,
+    queuedWork: _queuedWork,
     ...base
   } = threadListEntry({ id: overrides.id });
   return {

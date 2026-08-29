@@ -94,6 +94,7 @@ function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
     environmentHostId: "host-1",
     environmentName: "Environment",
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
   };
 }

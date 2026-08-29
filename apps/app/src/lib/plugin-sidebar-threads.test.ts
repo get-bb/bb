@@ -36,6 +36,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
@@ -147,6 +148,7 @@ describe("toPluginSidebarThread", () => {
         environmentId: "env_1",
         environmentName: "Worktree",
         environmentBranchName: "bb/feature",
+        queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
       }),
     );

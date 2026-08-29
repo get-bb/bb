@@ -366,24 +366,9 @@ export async function attemptDispatch(
       : { beforeAppendInTransaction: consumeClaimedRows(claimed) }),
   });
   if (claimed !== null) {
-    settleQueueRowDispatched(deps, {
-      row: claimed[0]!,
-      waitingOn: parkedWaitOf(claimed[0]!),
-    });
+    settleQueueRowDispatched({ row: claimed[0]! });
   }
   return { kind: "dispatched" };
-}
-
-/** The wait a claimed row was holding, for its settle event. */
-function parkedWaitOf(
-  row: ClaimedQueuedThreadMessageRow,
-): QueuedMessageWaitingOn {
-  if (row.waitingOn === null) return { kind: "thread-busy" };
-  try {
-    return JSON.parse(row.waitingOn) as QueuedMessageWaitingOn;
-  } catch {
-    return { kind: "thread-busy" };
-  }
 }
 
 /**
@@ -527,10 +512,7 @@ async function launchAdmittedThread(
     titleProvided: startContext.titleProvided,
   });
   if (claimedRow !== null) {
-    settleQueueRowDispatched(deps, {
-      row: claimedRow,
-      waitingOn: parkedWaitOf(claimedRow),
-    });
+    settleQueueRowDispatched({ row: claimedRow });
   }
   if (startContext.environmentIntent.type === "direct-personal") {
     // A personal workspace needs no worktree, so provisioning it is fast and

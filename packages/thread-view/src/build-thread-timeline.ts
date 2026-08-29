@@ -35,7 +35,6 @@ import type {
   EventProjectionTurn,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
-import { describeQueueStateWait } from "./queue-state-helpers.js";
 import {
   durationToCompactString,
   getMessageStartedAt,
@@ -206,7 +205,7 @@ type TimelineWorkflowMessage = Extract<
  * do not carry their own extra fields in the read model. */
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
-  "queue-state" | "parent-change" | "plugin-note"
+  "parent-change" | "plugin-note"
 >;
 
 function operationKindForMessage(
@@ -217,7 +216,6 @@ function operationKindForMessage(
     case "compaction":
     case "context-clear":
     case "thread-provisioning":
-    case "queue-state":
     case "plugin-note":
     case "thread-interrupted":
     case "provider-unhandled":
@@ -300,34 +298,6 @@ function buildPluginNoteSystemRow(args: {
     pluginId: args.pluginNote.pluginId,
     iconName: args.pluginNote.iconName,
     level: args.pluginNote.level,
-  };
-}
-
-/**
- * A parked row's own row shape: what it waits for, which message is waiting,
- * and what the plugin holding it has reported are three different kinds of
- * text, so they stay separate fields for the client to render rather than
- * being flattened into one detail string.
- */
-function buildQueueStateSystemRow(args: {
-  base: TimelineRowBase;
-  message: TimelineOperationMessage;
-  queueState: NonNullable<TimelineOperationMessage["queueState"]>;
-}): TimelineSystemRow {
-  return {
-    ...args.base,
-    kind: "system",
-    systemKind: "operation",
-    operationKind: "queue-state",
-    title: args.message.title,
-    // A parked row says what it waits for (`reason`) and quotes the message
-    // (`inputPreview`); it has no free-form detail block of its own.
-    detail: null,
-    status: args.message.status ?? null,
-    completedAt: args.message.completedAt,
-    reason: describeQueueStateWait(args.queueState.waitingOn),
-    inputPreview: args.queueState.inputPreview ?? null,
-    sendAt: args.queueState.sendAt,
   };
 }
 
@@ -858,27 +828,6 @@ function convertMessage(
                 base,
                 message,
                 pluginNote: message.pluginNote,
-              }),
-            ];
-      }
-      if (operationKind === "queue-state") {
-        // The metadata is written with the row, so its absence means a
-        // malformed projection rather than a parked row without a wait. A
-        // generic row still shows the title and the report, which beats
-        // dropping the one line explaining why the thread has not run.
-        return message.queueState === undefined
-          ? [
-              buildGenericOperationSystemRow({
-                base,
-                message,
-                operationKind: "generic",
-              }),
-            ]
-          : [
-              buildQueueStateSystemRow({
-                base,
-                message,
-                queueState: message.queueState,
               }),
             ];
       }

@@ -607,6 +607,7 @@ export function Overview() {
             projectId="proj_demo"
             crossProjectId={null}
             thread={makeThread({
+              queuedWork: "none",
               environmentWorkspaceDisplayKind: "managed-worktree",
             })}
             isActive={false}
@@ -620,6 +621,7 @@ export function Overview() {
             projectId="proj_demo"
             crossProjectId={null}
             thread={makeThread({
+              queuedWork: "none",
               environmentWorkspaceDisplayKind: "unmanaged-worktree",
             })}
             isActive={false}
@@ -633,6 +635,7 @@ export function Overview() {
             projectId="proj_demo"
             crossProjectId={null}
             thread={makeThread({
+              queuedWork: "none",
               environmentWorkspaceDisplayKind: "unmanaged-worktree",
             })}
             isActive={false}

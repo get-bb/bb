@@ -310,6 +310,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
     runtime: {
       displayStatus: "idle",

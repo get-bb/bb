@@ -18,10 +18,6 @@ import type { EventMeta } from "./event-decode.js";
 import { capitalize, messageId } from "./format-helpers.js";
 import { buildProviderUnhandledDetail } from "./provider-unhandled-detail.js";
 import {
-  queueStateOperationStatus,
-  queueStateTitleForStatus,
-} from "./queue-state-helpers.js";
-import {
   provisioningTitleForStatus,
   readProvisioningTranscript,
 } from "./provisioning-helpers.js";
@@ -535,22 +531,6 @@ export function parseOperationMessage(
     });
   }
 
-  if (decoded.type === "system/queue-state") {
-    const { queuedMessageId, inputPreview, sendAt, status, waitingOn } = decoded;
-    return op(decoded, meta, "queue-state", {
-      opType: "queue-state",
-      title: queueStateTitleForStatus(status),
-      status: queueStateOperationStatus(status),
-      queueState: {
-        queuedMessageId,
-        queueStatus: status,
-        waitingOn,
-        sendAt,
-        ...(inputPreview ? { inputPreview } : {}),
-      },
-    });
-  }
-
   if (decoded.type === "system/plugin-note") {
     const { pluginId, text, iconName, level } = decoded;
     // A note is one complete statement, not a progress row: it is `completed`
@@ -632,12 +612,6 @@ export function parseOperationMessage(
 export function interruptOperationMessage(
   message: EventProjectionOperationMessage,
 ): void {
-  // A parked row is pending on purpose: the thread is idle precisely because
-  // nothing is dispatching. Only the row's own `dispatched`/`cancelled` event
-  // settles it, never the end-of-stream sweep.
-  if (message.opType === "queue-state") {
-    return;
-  }
   if (message.status !== "pending") return;
   message.status = "interrupted";
   message.completedAt = message.createdAt;

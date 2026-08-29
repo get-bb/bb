@@ -63,12 +63,6 @@ function reread(harness: TestAppHarness, queuedMessageId: string) {
   return toThreadQueuedMessage(row);
 }
 
-function queueStateEvents(harness: TestAppHarness, threadId: string) {
-  return listEvents(harness.db, { threadId }).filter(
-    (event) => event.type === "system/queue-state",
-  );
-}
-
 describe("recordQueuedMessageDrainFailure", () => {
   it("re-parks on the named host when the machine is the thing that is missing", async () => {
     await withTestHarness(async (harness) => {
@@ -92,7 +86,8 @@ describe("recordQueuedMessageDrainFailure", () => {
       // An absent machine is a wait, not a failure: the row recovers by itself
       // when the host comes back, so presenting it as an error would be wrong.
       expect(parked.failureReason).toBeNull();
-      expect(queueStateEvents(harness, thread.id)).toHaveLength(1);
+      // A drain failure changes the row, not the transcript.
+      expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
 
@@ -115,7 +110,7 @@ describe("recordQueuedMessageDrainFailure", () => {
       // wrong last time, not what the row is waiting for, and a park would
       // have erased it on the very next attempt.
       expect(parked.waitingOn).toEqual({ kind: "thread-busy" });
-      expect(queueStateEvents(harness, thread.id)).toHaveLength(1);
+      expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
 

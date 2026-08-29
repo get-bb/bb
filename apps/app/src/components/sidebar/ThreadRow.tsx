@@ -42,7 +42,6 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isPendingThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
   getThreadListIndicatorLabel,
@@ -279,10 +278,10 @@ export function ThreadStatusGlyph({
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isGoalActive,
-  isPending,
   isPlanModeActive,
   isRuntimeActive,
   isWorkflowActive,
+  queuedWork,
 }: ThreadStatusGlyphProps) {
   const kind = resolveThreadListIndicator({
     hasPendingInteraction,
@@ -292,14 +291,19 @@ export function ThreadStatusGlyph({
     isBackgroundAgentActive,
     isBackgroundCommandActive,
     isGoalActive,
-    isPending,
     isPlanModeActive,
     isRuntimeActive,
     isWorkflowActive,
+    queuedWork,
   });
 
   switch (kind) {
+    // One error vocabulary: a thread that failed and a thread whose queued
+    // message failed to go out share this arm outright, so the row cannot grow
+    // a second, softer way of saying "something went wrong". Only the label
+    // differs, because only the label knows which of the two it is.
     case "unread-error":
+    case "queued-failed":
       return (
         <Icon
           name="CircleX"
@@ -392,7 +396,7 @@ export function ThreadStatusGlyph({
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
-    case "pending":
+    case "queued-waiting":
       // Badge only, by design: the reason lives on the thread's queued rows,
       // so this row says "waiting" without competing with the working glyphs
       // for meaning.
@@ -442,10 +446,10 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
-    // Collapsed parents roll up work, not waiting: a pending child has not
-    // started, and the parent row has no glyph slot to spare for a
-    // non-working state.
-    isPending: false,
+    // Collapsed parents roll up work, not waiting: a child's parked queue is
+    // its own row's business, and the parent row has no glyph slot to spare
+    // for a non-working state.
+    queuedWork: "none",
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
@@ -633,7 +637,7 @@ function ThreadRowComponent({
     isBackgroundAgentActive: trailingBackgroundAgentActive,
     isBackgroundCommandActive: trailingBackgroundCommandActive,
     isGoalActive: trailingGoalActive,
-    isPending: isPendingThread(thread),
+    queuedWork: thread.queuedWork,
     isPlanModeActive: trailingPlanModeActive,
     isRuntimeActive: trailingRuntimeBusy,
     isWorkflowActive: trailingIsWorkflowActive,

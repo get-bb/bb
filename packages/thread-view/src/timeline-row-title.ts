@@ -1516,9 +1516,6 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "plugin-note") {
     return mapPluginNoteSystemTitle(row);
   }
-  if (row.systemKind === "operation" && row.operationKind === "queue-state") {
-    return mapQueueStateSystemTitle(row);
-  }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
   const titleText =
@@ -1533,35 +1530,6 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
     segments: [segment(titleText, { shimmer, truncate: true })],
     decorations,
   });
-}
-
-/**
- * A held dispatch: the lifecycle headline, then why it is waiting.
- *
- * The reason belongs on the title line rather than in the body because it is
- * the short answer to the only question a collapsed hold row raises — "waiting
- * for what?". Keeping it here means the ordinary hold ("Scheduled", nothing
- * reported yet) says everything it has to say without being opened, and the
- * body is left for the two things that genuinely need room: the held message
- * and the holder's progress report.
- */
-/**
- * A parked queued message: the lifecycle headline, then why it is waiting.
- * Same two-segment shape as the hold row it replaces, so a thread whose history
- * spans the rework reads consistently.
- */
-function mapQueueStateSystemTitle(
-  row: Extract<TimelineSystemViewRow, { operationKind: "queue-state" }>,
-): TimelineTitle {
-  const reason = row.reason.trim();
-  const shimmer = row.status === "pending";
-  const segments: TimelineTitleSegment[] = [
-    segment(row.title, { shimmer, truncate: true }),
-  ];
-  if (reason.length > 0) {
-    segments.push(segment(` \u00b7 ${reason}`, { accent: "subtle", truncate: true }));
-  }
-  return makeTitle({ segments, decorations: [] });
 }
 
 /**

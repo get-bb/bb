@@ -1,5 +1,14 @@
 import { assertNever } from "@bb/core-ui";
-import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import type {
+  Thread,
+  ThreadListEntry,
+  ThreadQueuedWork,
+  ThreadWithRuntime,
+} from "@bb/domain";
+// Imported from the defining leaf module, not the timeline barrel: the sidebar
+// thread list reaches this helper before first paint, and the barrel would pull
+// the whole timeline (and @pierre/diffs, Shiki, KaTeX behind it) onto the boot
+// path for one predicate.
 import { isRunningThreadRuntimeDisplayStatus } from "../timeline/thread-runtime-status.js";
 import { isThreadRead } from "./thread-read-state.js";
 
@@ -13,18 +22,6 @@ type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
 
 export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
-}
-
-/**
- * A thread whose first message has never cleared a dispatch attempt: it exists,
- * something is parked on it, and nothing has been provisioned or run.
- *
- * Read off the runtime status only because that is the shape every caller here
- * already holds; unlike the display-only statuses around it, this one is the
- * durable thread status travelling through unchanged.
- */
-export function isPendingThread(thread: ThreadRuntimeShape): boolean {
-  return thread.runtime.displayStatus === "pending";
 }
 
 export function hasActiveWorkflowActivity(
@@ -65,10 +62,16 @@ export interface ThreadListIndicatorState {
   isBackgroundAgentActive: boolean;
   isBackgroundCommandActive: boolean;
   isGoalActive: boolean;
-  isPending: boolean;
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
+  /**
+   * Whether the thread has work parked on its queue. Read straight off the list
+   * entry rather than inferred from the thread's status: a `pending` thread is
+   * only the most obvious case, and an idle thread with a scheduled send or a
+   * plugin-parked follow-up is waiting just as much.
+   */
+  queuedWork: ThreadQueuedWork;
 }
 
 export type ThreadListIndicatorKind =
@@ -81,7 +84,8 @@ export type ThreadListIndicatorKind =
   | "plan-mode"
   | "goal"
   | "runtime"
-  | "pending"
+  | "queued-failed"
+  | "queued-waiting"
   | "draft"
   | "unread-success"
   | "none";
@@ -99,7 +103,8 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   "plan-mode": "Plan mode active",
   goal: "Goal active",
   runtime: "Thread working",
-  pending: "Thread waiting to start",
+  "queued-failed": "Queued message failed to send",
+  "queued-waiting": "Thread has a message waiting to send",
   draft: "Thread has unsubmitted draft",
   "unread-success": "Unread thread succeeded",
 };
@@ -139,10 +144,13 @@ export function resolveThreadListIndicator(
   if (state.isWorkflowActive) return "workflow";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
-  // A parked first message outranks a draft: the draft is the user's to send
-  // whenever, while a pending thread is work already committed that has not
-  // run yet.
-  if (state.isPending) return "pending";
+  // Parked work outranks a draft: the draft is the user's to send whenever,
+  // while a queued row is work already committed that has not run yet. It sits
+  // below every working arm above deliberately — a thread that is BOTH running
+  // and holding a queued follow-up is best described by what it is doing, and
+  // the queue rows above its composer say the rest.
+  if (state.queuedWork === "failed") return "queued-failed";
+  if (state.queuedWork === "waiting") return "queued-waiting";
   if (state.hasUnsubmittedDraft) return "draft";
   if (state.hasUnreadSuccess) return "unread-success";
   return "none";

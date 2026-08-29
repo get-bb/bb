@@ -223,7 +223,7 @@ const threadEventScopeDefinitionByType = {
   "system/queue-state": {
     policy: "thread",
     rationale:
-      "A queued row parks a dispatch that has not started, so there is no turn to scope it to; the row sits in the thread timeline where that dispatch will land.",
+      "Legacy, retained for decode only: a queued row parked a dispatch that had not started, so there was no turn to scope it to. Parking is now narrated by the queue rows above the composer and nothing emits this.",
   },
   "system/plugin-note": {
     policy: "thread",

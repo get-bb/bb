@@ -78,6 +78,7 @@ export function threadListEntry(
     environmentHostId: DEMO_HOST_ID,
     environmentName: null,
     environmentBranchName: "main",
+    queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
   };
 }
@@ -94,6 +95,7 @@ export function threadResponse(
     environmentName: _environmentName,
     environmentBranchName: _environmentBranchName,
     environmentWorkspaceDisplayKind: _environmentWorkspaceDisplayKind,
+    queuedWork: _queuedWork,
     ...thread
   } = threadListEntry(view, now);
   return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true, queuedMessageCount: 0 };

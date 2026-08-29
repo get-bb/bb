@@ -64,10 +64,7 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasDispatchGates } from "./dispatch-gates.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
-import {
-  queuedMessageWaitingOn,
-  settleQueueRowDispatched,
-} from "./queue-parking.js";
+import { settleQueueRowDispatched } from "./queue-parking.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
   ensureThreadIsWritable,
@@ -570,10 +567,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       );
     },
   });
-  settleQueueRowDispatched(deps, {
-    row: args.queuedMessages[0]!,
-    waitingOn: queuedMessageWaitingOn(args.queuedMessages[0]!),
-  });
+  settleQueueRowDispatched({ row: args.queuedMessages[0]! });
   return queuedMessage;
 }
 
@@ -619,10 +613,7 @@ async function sendClaimedSystemNotice(
   if (!consumed) {
     throw createQueuedMessageClaimLostError();
   }
-  settleQueueRowDispatched(deps, {
-    row: lead,
-    waitingOn: queuedMessageWaitingOn(lead),
-  });
+  settleQueueRowDispatched({ row: lead });
   return queuedMessage;
 }
 

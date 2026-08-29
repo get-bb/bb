@@ -10,10 +10,8 @@ import type {
   ProviderErrorInfo,
   PromptTextMention,
   PluginNoteLevel,
-  QueuedMessageWaitingOn,
   SystemMessageKind,
   SystemMessageSubject,
-  SystemQueueStateStatus,
   Thread,
   ThreadEventItemPresentation,
   ThreadEventPlanStep,
@@ -292,7 +290,6 @@ const eventProjectionOperationTypeValues = [
   "deprecation",
   "thread-interrupted",
   "thread-provisioning",
-  "queue-state",
   "plugin-note",
   "operation",
   "compaction",
@@ -359,30 +356,6 @@ export interface EventProjectionProvisioningMetadata {
 }
 
 /**
- * The parked queue row behind a `queue-state` operation row. `queueStatus` is
- * kept alongside the row's lifecycle status because the two are not the same
- * question: `parked` and `updated` are both pending rows, and only the queue
- * status says whether the wait has been revised since it was first recorded.
- *
- * `waitingOn` is carried structurally rather than as a rendered string so the
- * renderer can say "Scheduled" one way on the timeline and another on the card
- * without the projection having to guess which it is feeding.
- */
-export interface EventProjectionQueueStateMetadata {
-  queuedMessageId: string;
-  queueStatus: SystemQueueStateStatus;
-  waitingOn: QueuedMessageWaitingOn;
-  /** The row's scheduled instant, or null when it is eligible as soon as its other waits clear. */
-  sendAt: number | null;
-  /**
-   * Truncated plain text of the parked message. Absent — not empty — when the
-   * row has no message of its own (a `retry` row references a turn already on
-   * the timeline).
-   */
-  inputPreview?: string;
-}
-
-/**
  * The plugin behind a `plugin-note` row. Attribution is not decoration here:
  * the note's text is a plugin's words in the middle of the user's
  * conversation, so who wrote it travels with it.
@@ -411,7 +384,6 @@ export interface EventProjectionOperationMessage extends EventProjectionMessageB
   >;
   completedAt: number | null;
   provisioning?: EventProjectionProvisioningMetadata;
-  queueState?: EventProjectionQueueStateMetadata;
   pluginNote?: EventProjectionPluginNoteMetadata;
   threadOperation?: EventProjectionThreadOperationMetadata;
 }
