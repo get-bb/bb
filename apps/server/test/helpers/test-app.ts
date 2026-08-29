@@ -45,6 +45,7 @@ export interface TestAppHarness {
   hub: NotificationHub;
   pluginService: ReturnType<typeof createApp>["pluginService"];
   pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
+  threadWaitCoordinator: ReturnType<typeof createApp>["threadWaitCoordinator"];
   cleanup(): Promise<void>;
 }
 
@@ -269,7 +270,8 @@ export async function createTestAppHarness(
     sharedPorts,
     workspaceReadCaches,
   };
-  const { app, pluginCatalogService, pluginService } = createApp(deps);
+  const { app, pluginCatalogService, pluginService, threadWaitCoordinator } =
+    createApp(deps);
 
   return {
     app,
@@ -279,7 +281,9 @@ export async function createTestAppHarness(
     hub,
     pluginService,
     pluginCatalogService,
+    threadWaitCoordinator,
     async cleanup(): Promise<void> {
+      threadWaitCoordinator.close();
       await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });
     },
@@ -318,9 +322,13 @@ export async function startTestServer(
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
   let addressInfo: AddressInfo | null = null;
-  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
-    harness.deps,
-  );
+  const {
+    app,
+    closeWebSockets,
+    injectWebSocket,
+    pluginService,
+    threadWaitCoordinator,
+  } = createApp(harness.deps);
   const server = serve(
     {
       hostname: TEST_SERVER_HOST,
@@ -343,6 +351,7 @@ export async function startTestServer(
     ...harness,
     app,
     pluginService,
+    threadWaitCoordinator,
     baseUrl: `http://${TEST_SERVER_HOST}:${resolvedAddress.port}`,
     async close(): Promise<void> {
       const closeServer = new Promise<void>((resolve, reject) => {

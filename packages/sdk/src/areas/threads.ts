@@ -1,5 +1,6 @@
 import {
   parseThreadEventRow,
+  isThreadWaitTargetUnreachable,
   type PromptInput,
   type PendingInteraction,
   type PendingInteractionResolution,
@@ -51,6 +52,7 @@ import type {
   SetQueuedMessageGroupBoundaryRequest,
   ThreadEventsQuery,
   ThreadEventWaitQuery,
+  ThreadStatusWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
   ThreadSearchQuery,
@@ -63,6 +65,7 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import { BbHttpError } from "../response.js";
 
 export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
@@ -283,6 +286,13 @@ export interface ThreadEventWaitArgs {
   signal?: AbortSignal;
   threadId: string;
   type: string;
+  waitMs: string;
+}
+
+interface ThreadStatusWaitArgs {
+  signal?: AbortSignal;
+  status: ThreadStatus;
+  threadId: string;
   waitMs: string;
 }
 
@@ -580,6 +590,13 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   };
 }
 
+function statusWaitQuery(args: ThreadStatusWaitArgs): ThreadStatusWaitQuery {
+  return {
+    status: args.status,
+    waitMs: args.waitMs,
+  };
+}
+
 function searchQuery(args: ThreadSearchArgs): ThreadSearchQuery {
   return {
     limitPerGroup: args.limitPerGroup,
@@ -610,8 +627,26 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(
+      new DOMException("The thread wait was aborted.", "AbortError"),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (signal !== undefined) {
+        signal.removeEventListener("abort", onAbort);
+      }
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("The thread wait was aborted.", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
@@ -661,14 +696,11 @@ function formatThreadWaitTimeoutMessage(args: {
   return `Timed out waiting for thread ${args.threadId} event ${args.target.eventType}.`;
 }
 
-function isThreadWaitTargetUnreachable(
-  currentStatus: ThreadStatus,
-  target: ThreadWaitTarget,
-): target is Extract<ThreadWaitTarget, { kind: "status" }> {
+function isMissingStatusWaitRoute(error: Error): boolean {
   return (
-    target.kind === "status" &&
-    target.status === "idle" &&
-    currentStatus === "error"
+    error instanceof BbHttpError &&
+    error.status === 404 &&
+    error.code === "not_found"
   );
 }
 
@@ -714,6 +746,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       }
       return parseThreadEventRow(await response.json());
     },
+  };
+  const waitForStatus = async (
+    input: ThreadStatusWaitArgs,
+  ): Promise<ThreadGetResult | null> => {
+    const response = await transport.resolve(
+      transport.api.v1.threads[":id"].wait.$get(
+        {
+          param: { id: input.threadId },
+          query: statusWaitQuery(input),
+        },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+    const statusCode: number = response.status;
+    if (statusCode === 204) return null;
+    return response.json();
   };
   const interactions: ThreadInteractionsArea = {
     async cancel(input) {
@@ -1182,8 +1230,53 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       const { pollIntervalMs, target, timeoutMs } =
         validateThreadWaitArgs(input);
       const deadline = Date.now() + timeoutMs;
-      while (true) {
-        if (target.kind === "status") {
+      if (target.kind === "status") {
+        let useLegacyPolling = false;
+        while (!useLegacyPolling) {
+          const remainingMs = Math.max(0, deadline - Date.now());
+          const waitMs = Math.floor(Math.min(remainingMs, 30_000));
+          let thread: ThreadGetResult | null;
+          try {
+            thread = await waitForStatus({
+              signal: input.signal,
+              status: target.status,
+              threadId: input.threadId,
+              waitMs: String(waitMs),
+            });
+          } catch (error) {
+            if (error instanceof Error && isMissingStatusWaitRoute(error)) {
+              useLegacyPolling = true;
+              break;
+            }
+            throw error;
+          }
+          if (thread !== null) {
+            if (thread.status === target.status) {
+              return {
+                matched: true,
+                target,
+                thread,
+                threadId: input.threadId,
+              };
+            }
+            if (isThreadWaitTargetUnreachable(thread.status, target.status)) {
+              throw new ThreadWaitUnreachableError({
+                currentStatus: thread.status,
+                target,
+                threadId: input.threadId,
+              });
+            }
+          }
+          if (Date.now() >= deadline) {
+            throw new ThreadWaitTimeoutError({
+              target,
+              threadId: input.threadId,
+            });
+          }
+          await sleep(pollIntervalMs, input.signal);
+        }
+
+        while (true) {
           const thread = await getThread({
             signal: input.signal,
             threadId: input.threadId,
@@ -1196,7 +1289,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             };
           }
-          if (isThreadWaitTargetUnreachable(thread.status, target)) {
+          if (isThreadWaitTargetUnreachable(thread.status, target.status)) {
             throw new ThreadWaitUnreachableError({
               currentStatus: thread.status,
               target,
@@ -1209,10 +1302,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             });
           }
-          await sleep(pollIntervalMs);
-          continue;
+          await sleep(pollIntervalMs, input.signal);
         }
+      }
 
+      while (true) {
         const remainingMs = Math.max(0, deadline - Date.now());
         const waitMs = Math.floor(Math.min(remainingMs, 30_000));
         const event = await events.wait({
@@ -1235,7 +1329,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             threadId: input.threadId,
           });
         }
-        await sleep(pollIntervalMs);
+        await sleep(pollIntervalMs, input.signal);
       }
     },
   };

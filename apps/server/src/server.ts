@@ -18,6 +18,7 @@ import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import type { ThreadWaitCoordinator } from "./services/threads/wait-coordinator.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
@@ -95,6 +96,7 @@ interface ServerApp {
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
+  threadWaitCoordinator: ThreadWaitCoordinator;
 }
 
 interface CloseWebSocketServerArgs {
@@ -144,8 +146,8 @@ const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
 const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
   new URL("./assets/install-machine.sh", import.meta.url),
 );
-const THREAD_EVENT_WAIT_PATH_PATTERN =
-  /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
+const THREAD_WAIT_PATH_PATTERN =
+  /^\/api\/v1\/threads\/[^/]+\/(?:events\/)?wait$/u;
 const PLUGIN_APP_ASSET_PATH_PATTERN =
   /^\/api\/v1\/plugins\/[^/]+\/assets\/app\.(?:js|css)$/u;
 const PRECOMPRESSED_STATIC_FILES = [
@@ -163,7 +165,7 @@ function shouldLogSlowApiRequest(args: ShouldLogSlowApiRequestArgs): boolean {
   if (args.durationMs < args.thresholdMs) {
     return false;
   }
-  return !THREAD_EVENT_WAIT_PATH_PATTERN.test(args.path);
+  return !THREAD_WAIT_PATH_PATTERN.test(args.path);
 }
 
 function staticCacheControlForPath(urlPath: string): string {
@@ -595,7 +597,7 @@ export function createApp(
   registerHostRoutes(publicApi, deps, pluginService);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
-  registerThreadRoutes(publicApi, deps);
+  const threadWaitCoordinator = registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);
@@ -723,14 +725,17 @@ export function createApp(
 
   return {
     app,
-    closeWebSockets: () =>
-      closeWebSocketServer({
+    closeWebSockets: async () => {
+      threadWaitCoordinator.close();
+      await closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,
         reason: WEB_SOCKET_SHUTDOWN_REASON,
         server: wss,
-      }),
+      });
+    },
     injectWebSocket,
     pluginService,
     pluginCatalogService,
+    threadWaitCoordinator,
   };
 }

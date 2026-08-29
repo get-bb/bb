@@ -16,6 +16,7 @@ import {
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
+  threadStatusSchema,
   threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
@@ -661,6 +662,12 @@ export const threadEventWaitQuerySchema = z.object({
   waitMs: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadEventWaitQuery = z.infer<typeof threadEventWaitQuerySchema>;
+
+export const threadStatusWaitQuerySchema = z.object({
+  status: threadStatusSchema,
+  waitMs: z.string().regex(/^\d+$/).optional(),
+});
+export type ThreadStatusWaitQuery = z.infer<typeof threadStatusWaitQuerySchema>;
 
 export const threadStorageFilesQuerySchema = z
   .object({
