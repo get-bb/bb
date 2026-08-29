@@ -59,7 +59,6 @@ import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import { PendingThreadDeleteOffer } from "@/components/promptbox/banner/PendingThreadDeleteOffer";
 import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
@@ -671,18 +670,6 @@ export function ThreadDetailPromptArea({
   const hasPendingInteraction = activePendingInteraction !== null;
   const shouldHideComposer =
     environmentGoneStatus !== null || thread.archivedAt !== null;
-  // A `pending` thread has never dispatched, so an empty queue means there is
-  // nothing left that will ever run — the empty shell cancelling the last
-  // queued message leaves behind. Derived rather than tracked as a "just
-  // cancelled" flag: the condition IS the state, and a flag would miss the
-  // same shell arrived at any other way (a queued row sent from the CLI, a
-  // second tab). Guarded on submission so the gap between "send accepted" and
-  // "queue row observed" cannot flash the offer at a thread that is starting.
-  const [pendingThreadDeleteOfferDismissed, setPendingThreadDeleteOfferDismissed] =
-    useState(false);
-  const dismissPendingThreadDeleteOffer = useCallback(() => {
-    setPendingThreadDeleteOfferDismissed(true);
-  }, []);
   const {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
@@ -1109,13 +1096,6 @@ export function ThreadDetailPromptArea({
     () => (sentMessageEdit ? promptDraftToInput(sentMessageEdit.draft) : []),
     [sentMessageEdit],
   );
-  const showPendingThreadDeleteOffer =
-    thread.status === "pending" &&
-    queuedMessages.length === 0 &&
-    !shouldHideComposer &&
-    !isFollowUpSubmitting &&
-    !isQueueMutationPending &&
-    !pendingThreadDeleteOfferDismissed;
   const canSubmitSentMessageEdit =
     sentMessageEdit !== undefined &&
     sentMessageEditInput.length > 0 &&
@@ -1635,12 +1615,6 @@ export function ThreadDetailPromptArea({
             threadId={thread.id}
           />
         ) : null}
-        {showPendingThreadDeleteOffer ? (
-          <PendingThreadDeleteOffer
-            thread={thread}
-            onDismiss={dismissPendingThreadDeleteOffer}
-          />
-        ) : null}
         {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
@@ -1670,8 +1644,6 @@ export function ThreadDetailPromptArea({
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,
-      dismissPendingThreadDeleteOffer,
-      showPendingThreadDeleteOffer,
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
@@ -1705,7 +1677,8 @@ export function ThreadDetailPromptArea({
       runtimeDisplayStatus,
       shouldHideComposer,
       submitMode.kind,
-      thread,
+      thread.archivedAt,
+      thread.id,
       workspaceChangedFilesSection,
       workspaceStatusPending,
     ],

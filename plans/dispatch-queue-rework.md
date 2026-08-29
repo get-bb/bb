@@ -146,9 +146,14 @@ above:
   `interaction` waits re-queue on every attempt and hide the button.
 - **Never-started threads render as queue rows, not a banner**: the queued
   message list is status-independent, so a pending thread's queued first
-  message is just a row with reason/countdown/Send-now/Cancel; a pending
-  thread whose queue empties gets the delete-thread offer, derived from that
-  condition rather than tracked as a flag.
+  message is just a row with reason/countdown/Send-now/Delete. A pending
+  thread whose queue empties is left alone — no delete-thread offer, no empty
+  shell banner. It sits there like any other thread and the user archives or
+  deletes it through the normal affordances.
+- **Cancel is exactly delete, as on main**: removing a queued row deletes it
+  and nothing else. The text is not restored into the composer draft, and
+  there is no undo — up-arrow prompt-history recall is the way back to it.
+  This rework's only queue-behavior delta is the typed waits.
 - **Scheduled spawns survive restarts via `threads.pending_start_context`**
   (the relocated cold-start record); Wave 2 also added
   `queued_thread_messages.system_notice` so queued parent-system notices

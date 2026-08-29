@@ -1630,7 +1630,7 @@ export interface PluginComposerApi {
    * sent or queued for the next idle moment. In the new-thread composer the
    * thread is created `pending` and its first message becomes the queued row.
    * Either way the resulting row is core's: the queued card above the
-   * composer, the countdown, Send now and Cancel all work with no further
+   * composer, the countdown, Send now and Delete all work with no further
    * plugin involvement.
    *
    * Resolves once the host has accepted the submission and cleared the draft.
