@@ -21,6 +21,11 @@ const cursorPluginManifestSchema = z
 
 type CursorPluginManifest = z.infer<typeof cursorPluginManifestSchema>;
 
+interface CursorPluginCandidate {
+  completedAtMs: number;
+  plugin: ExperimentalVendorPlugin;
+}
+
 async function readCursorPluginManifest(
   pluginRootPath: string,
 ): Promise<CursorPluginManifest | null> {
@@ -39,16 +44,38 @@ async function readCursorPluginManifest(
   return null;
 }
 
+function cursorVendorPlugin(
+  pluginRootPath: string,
+  manifest: CursorPluginManifest,
+): ExperimentalVendorPlugin {
+  return {
+    rootPath: pluginRootPath,
+    name: manifest.name,
+    origin: "user",
+    ...(manifest.skills === undefined ? {} : { skills: manifest.skills }),
+    ...(manifest.commands === undefined ? {} : { commands: manifest.commands }),
+  };
+}
+
+async function readDirectoryEntries(directoryPath: string): Promise<Dirent[]> {
+  try {
+    return await fs.readdir(directoryPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
+function sortedDirectoryEntries(entries: readonly Dirent[]): Dirent[] {
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 async function resolveLocalCursorPlugins(
   homeDir: string,
 ): Promise<ExperimentalVendorPlugin[]> {
   const localPluginsPath = path.join(homeDir, ".cursor", "plugins", "local");
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(localPluginsPath, { withFileTypes: true });
-  } catch {
-    return [];
-  }
+  const entries = await readDirectoryEntries(localPluginsPath);
 
   const plugins: ExperimentalVendorPlugin[] = [];
   for (const entry of entries.sort((left, right) =>
@@ -63,21 +90,82 @@ async function resolveLocalCursorPlugins(
     if (manifest === null) {
       continue;
     }
-    plugins.push({
-      rootPath: pluginRootPath,
-      name: manifest.name,
-      origin: "user",
-      ...(manifest.skills === undefined ? {} : { skills: manifest.skills }),
-      ...(manifest.commands === undefined
-        ? {}
-        : { commands: manifest.commands }),
-    });
+    plugins.push(cursorVendorPlugin(pluginRootPath, manifest));
   }
   return plugins;
 }
 
-export const resolveCursorNativeRoots: AcpNativeRootsResolver = async (args) =>
-  experimental_resolveVendorPluginRoots({
-    plugins: await resolveLocalCursorPlugins(args.homeDir),
+async function resolveMarketplaceCursorPlugins(
+  homeDir: string,
+): Promise<ExperimentalVendorPlugin[]> {
+  const cachePath = path.join(homeDir, ".cursor", "plugins", "cache");
+  const plugins: ExperimentalVendorPlugin[] = [];
+  for (const marketplace of sortedDirectoryEntries(
+    await readDirectoryEntries(cachePath),
+  )) {
+    const marketplacePath = path.join(cachePath, marketplace.name);
+    for (const pluginEntry of sortedDirectoryEntries(
+      await readDirectoryEntries(marketplacePath),
+    )) {
+      const pluginPath = path.join(marketplacePath, pluginEntry.name);
+      const candidates: CursorPluginCandidate[] = [];
+      for (const version of sortedDirectoryEntries(
+        await readDirectoryEntries(pluginPath),
+      )) {
+        const pluginRootPath = path.join(pluginPath, version.name);
+        const completion = await fs
+          .lstat(path.join(pluginRootPath, ".cache-complete"))
+          .catch(() => null);
+        if (completion === null || !completion.isFile()) {
+          continue;
+        }
+        const manifest = await readCursorPluginManifest(pluginRootPath);
+        if (manifest === null) {
+          continue;
+        }
+        candidates.push({
+          completedAtMs: completion.mtimeMs,
+          plugin: cursorVendorPlugin(pluginRootPath, manifest),
+        });
+      }
+      const latest = candidates.sort(
+        (left, right) =>
+          right.completedAtMs - left.completedAtMs ||
+          right.plugin.rootPath.localeCompare(left.plugin.rootPath),
+      )[0];
+      if (latest !== undefined) {
+        plugins.push(latest.plugin);
+      }
+    }
+  }
+  return plugins;
+}
+
+async function deduplicateCursorPlugins(
+  plugins: readonly ExperimentalVendorPlugin[],
+): Promise<ExperimentalVendorPlugin[]> {
+  const uniquePlugins: ExperimentalVendorPlugin[] = [];
+  const seen = new Set<string>();
+  for (const plugin of plugins) {
+    const key = await fs.realpath(plugin.rootPath).catch(() => plugin.rootPath);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    uniquePlugins.push(plugin);
+  }
+  return uniquePlugins;
+}
+
+export const resolveCursorNativeRoots: AcpNativeRootsResolver = async (
+  args,
+) => {
+  const plugins = await deduplicateCursorPlugins([
+    ...(await resolveLocalCursorPlugins(args.homeDir)),
+    ...(await resolveMarketplaceCursorPlugins(args.homeDir)),
+  ]);
+  return experimental_resolveVendorPluginRoots({
+    plugins,
     layout: "claude",
   });
+};

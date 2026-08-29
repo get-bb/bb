@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,6 +104,149 @@ describe("resolveAcpNativeRoots", () => {
         path: path.join(pluginRoot, "skills"),
         origin: "user",
         namePrefix: "scott-engineering:",
+        shape: "skills",
+      },
+    ]);
+  });
+
+  it("lists skills from a completed Cursor marketplace cache entry", async () => {
+    const homeDir = path.join(tempRoot, "home");
+    const pluginRoot = path.join(
+      homeDir,
+      ".cursor",
+      "plugins",
+      "cache",
+      "cursor-public",
+      "review-tools",
+      "revision-one",
+    );
+    await mkdir(path.join(pluginRoot, ".cursor-plugin"), { recursive: true });
+    await mkdir(path.join(pluginRoot, "skills", "review"), {
+      recursive: true,
+    });
+    await writeFile(path.join(pluginRoot, ".cache-complete"), "", "utf8");
+    await writeFile(
+      path.join(pluginRoot, ".cursor-plugin", "plugin.json"),
+      JSON.stringify({ name: "review-tools", skills: "./skills/" }),
+      "utf8",
+    );
+    await writeFile(
+      path.join(pluginRoot, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review code\n---\n",
+      "utf8",
+    );
+
+    const answer = await resolveAcpNativeRoots({
+      agentId: "acp-cursor",
+      cwd: path.join(tempRoot, "workspace"),
+      homeDir,
+      env: {},
+    });
+
+    expect(answer.skills).toEqual([
+      {
+        path: path.join(pluginRoot, "skills"),
+        origin: "user",
+        namePrefix: "review-tools:",
+        shape: "skills",
+      },
+    ]);
+  });
+
+  it("uses the newest completed Cursor marketplace plugin revision", async () => {
+    const homeDir = path.join(tempRoot, "home");
+    const pluginCache = path.join(
+      homeDir,
+      ".cursor",
+      "plugins",
+      "cache",
+      "cursor-public",
+      "review-tools",
+    );
+    const olderRoot = path.join(pluginCache, "older");
+    const newerRoot = path.join(pluginCache, "newer");
+    const incompleteRoot = path.join(pluginCache, "incomplete");
+    for (const pluginRoot of [olderRoot, newerRoot, incompleteRoot]) {
+      await mkdir(path.join(pluginRoot, "skills", "review"), {
+        recursive: true,
+      });
+      await writeFile(
+        path.join(pluginRoot, "plugin.json"),
+        JSON.stringify({ name: "review-tools" }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(pluginRoot, "skills", "review", "SKILL.md"),
+        "---\nname: review\ndescription: Review code\n---\n",
+        "utf8",
+      );
+    }
+    const olderMarker = path.join(olderRoot, ".cache-complete");
+    const newerMarker = path.join(newerRoot, ".cache-complete");
+    await writeFile(olderMarker, "", "utf8");
+    await writeFile(newerMarker, "", "utf8");
+    await utimes(olderMarker, new Date(1_000), new Date(1_000));
+    await utimes(newerMarker, new Date(2_000), new Date(2_000));
+
+    const answer = await resolveAcpNativeRoots({
+      agentId: "acp-cursor",
+      cwd: null,
+      homeDir,
+      env: {},
+    });
+
+    expect(answer.skills?.map((root) => root.path)).toEqual([
+      path.join(newerRoot, "skills"),
+    ]);
+  });
+
+  it("deduplicates a local link to a cached Cursor plugin", async () => {
+    const homeDir = path.join(tempRoot, "home");
+    const pluginRoot = path.join(
+      homeDir,
+      ".cursor",
+      "plugins",
+      "cache",
+      "cursor-public",
+      "review-tools",
+      "revision-one",
+    );
+    const localPluginRoot = path.join(
+      homeDir,
+      ".cursor",
+      "plugins",
+      "local",
+      "review-tools",
+    );
+    await mkdir(path.join(pluginRoot, "skills", "review"), {
+      recursive: true,
+    });
+    await mkdir(path.dirname(localPluginRoot), { recursive: true });
+    await writeFile(path.join(pluginRoot, ".cache-complete"), "", "utf8");
+    await writeFile(
+      path.join(pluginRoot, "plugin.json"),
+      JSON.stringify({ name: "review-tools" }),
+      "utf8",
+    );
+    await writeFile(
+      path.join(pluginRoot, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review code\n---\n",
+      "utf8",
+    );
+    await symlink(pluginRoot, localPluginRoot, "dir");
+
+    const answer = await resolveAcpNativeRoots({
+      agentId: "acp-cursor",
+      cwd: null,
+      homeDir,
+      env: {},
+    });
+
+    expect(answer.skills).toEqual([
+      {
+        path: path.join(localPluginRoot, "skills"),
+        origin: "user",
+        namePrefix: "review-tools:",
         shape: "skills",
       },
     ]);
