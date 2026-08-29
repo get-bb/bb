@@ -1,44 +1,36 @@
 <<<<<<< HEAD
-=======
-// Version 175 adds a `host-offline` arm to the queued-message wait union,
-// which `system/queue-state` carries in `threadEventSchema` and the daemon's
-// event batch parses. It names the enrolled machine a queued row is waiting to
-// reach, so the wait carries the host's display name — the renderers that word
-// it (the timeline projection, `bb thread queue`) have no database to resolve
-// an id against. The server is the only writer of the event and no daemon or
-// bridge produces one, so the bytes on the wire are unchanged; the bump records
-// that the server's acceptance rules widened (the version 173 precedent) and
-// stops an older daemon that would reject the new wait kind as an
-// `invalid-message` from staying connected. The queued-message DTO's new
-// `failureReason` rides no daemon message at all — it is server-to-client only.
 //
-// Version 174 loosens `system/dispatch-hold`'s `holder` from the closed
-// hold-owner union to a plain non-empty string. Dispatch holds are gone —
-// queued rows and `system/queue-state` replaced them — so nothing writes
-// that event any more and nothing dispatches on the field; the arm survives
-// only so a thread whose history contains one still decodes. Keeping a closed
-// union alive to validate dead rows would have kept the whole holder
-// vocabulary with it. The server is the only writer that ever existed and no
-// daemon or bridge produced one, so the bytes on the wire are unchanged; the
-// bump records that the server's acceptance rules widened (the version 159
-// precedent).
+// 1. `threadEventSchema` — which the daemon event batch parses (`session.ts`)
+//    — NARROWS by three event types: `system/dispatch-hold`,
+//    `system/queue-state` and `system/plugin-note` are deleted outright rather
+//    than kept decode-only. All three were emitted only on this branch, so no
+//    released build ever wrote one and no production row can contain one; the
+//    only stored rows are in dev databases, which are being wiped. A thread
+//    holding one no longer decodes. The server was the only writer and no
+//    daemon or bridge produced one, so the bytes on the wire are unchanged;
+//    the bump records that the server's acceptance rules narrowed (the version
+//    164 precedent).
 //
-// Version 173 adds the `system/queue-state` thread event and the `pending`
-// thread status. The event is the timeline row a queued message owns
-// (queued/updated/dispatched/cancelled, with the typed wait it is waiting on);
-// `pending` is a thread that exists but has never cleared a dispatch attempt.
-// The server is the only writer of both and no daemon or bridge produces
-// either, so the bytes on the wire are unchanged; the bump records that the
-// server's acceptance rules widened (the version 159 precedent) and stops an
-// older daemon that would reject the new event type from staying connected.
+// 2. `host.inspect_git_source` is replaced by `host.list_branches`, and this
+//    is the load-bearing half: it is not a rename. The command payload swaps
+//    `remoteRefresh` for `query`/`selectedBranch`/`limit`, and the result
+//    grows from `gitSourceInspection` to `projectSourceCheckout` — the same
+//    six fields plus `branches`, `branchesTruncated`, `remoteBranches`,
+//    `remoteBranchesTruncated` and `selectedBranch`, which the daemon actually
+//    produces. An older daemon cannot serve the new command type at all and a
+//    newer one no longer serves the old, so this breaks in both directions and
+//    the bump is what moves an enrolled machine onto a matching daemon.
 //
-// Version 172 adds an optional `inputPreview` to `system/dispatch-hold` in
-// `threadEventSchema`, which the daemon event batch parses. It carries a
-// truncated plain-text copy of the held message so the hold's timeline row can
-// say which message is waiting. The server is the only writer of that event
-// type and no daemon or bridge ever produced one, so the bytes on the wire are
-// unchanged; the bump records that the server's acceptance rules widened (the
-// version 159 precedent).
+// 3. `environment.destroy` drops the required `teardownTimeoutMs` from a
+//    `.strict()` command — so a newer daemon rejects an older server's destroy
+//    outright — and its result is now empty where it used to carry a
+//    provisioning transcript no caller read.
+//
+// The rework's queue surface needs no narration here: `system/queue-state` was
+// the only thing carrying `queuedMessageWaitingOn` into `threadEventSchema`, so
+// with that event gone the wait union (including its `host-offline` arm) is
+// server-to-client only, and the `pending` thread status never crossed this
+// wire at all.
 //
 // Version 164 stops the server accepting any interaction lifecycle record
 // from a daemon event batch. `system/interaction/lifecycle` and the legacy

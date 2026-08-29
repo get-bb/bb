@@ -13,7 +13,6 @@ import {
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
-import { queuedMessageWaitingOnSchema } from "./queued-message.js";
 import {
   systemMessageKindSchema,
   systemMessageSubjectSchema,
@@ -32,9 +31,6 @@ export const systemEventTypeValues = [
   "system/permissionGrant/lifecycle",
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
-  "system/dispatch-hold",
-  "system/queue-state",
-  "system/plugin-note",
   // Legacy persisted watchdog diagnostic; retained for read/decode/render
   // only, with no current producer.
   "system/provider-turn-watchdog",
@@ -253,171 +249,6 @@ export const systemThreadProvisioningEventDataSchema = z.object({
   environmentId: z.string(),
   entries: z.array(provisioningTranscriptEntrySchema),
 });
-
-const systemDispatchHoldStatusValues = [
-  "active",
-  "released",
-  "cancelled",
-  "orphaned",
-] as const;
-const systemDispatchHoldStatusSchema = z.enum(systemDispatchHoldStatusValues);
-export type SystemDispatchHoldStatus = z.infer<
-  typeof systemDispatchHoldStatusSchema
->;
-
-/**
- * Longest held-message preview carried on a legacy `system/dispatch-hold`
- * event. It answered "which message is waiting?" in a couple of wrapped lines
- * back when the event still had a row of its own. Kept because stored events
- * are validated against this schema on decode.
- */
-export const DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH = 240;
-
-/**
- * A LEGACY timeline row, retained for decode only.
- *
- * Dispatch holds were replaced by queued rows;
- * nothing emits this event any more, and nothing renders it either — its
- * timeline row and projection were deleted. The arm stays purely so a stored
- * event still decodes: narrowing `threadEventSchema` would churn the daemon
- * protocol and make existing rows undecodable. A decoded hold contributes no
- * row, which is what a reader saw before the row shape ever existed.
- *
- * `holder` is a plain string here rather than the old parsed union: no code
- * dispatches on it now, and re-deriving a closed union just to validate dead
- * rows would keep the whole holder vocabulary alive for nothing.
- */
-export const systemDispatchHoldEventDataSchema = z.object({
-  holdId: z.string().min(1),
-  holder: z.string().min(1),
-  status: systemDispatchHoldStatusSchema,
-  reason: z.string(),
-  /**
-   * Truncated plain text of the held message, when the hold carries one of its
-   * own. Optional because omission is real: a retry hold references a turn that
-   * is already persisted and already rendered further up the timeline, so it
-   * has no message to preview, and an inline hold whose visible input is empty
-   * (attachments only) has nothing to say either. Absent and empty must not be
-   * confused, hence `min(1)` — a reader that sees the field can trust it.
-   *
-   * Rows written before this field existed simply lack it and render as they
-   * always did.
-   */
-  inputPreview: z
-    .string()
-    .min(1)
-    .max(DISPATCH_HOLD_INPUT_PREVIEW_MAX_LENGTH)
-    .optional(),
-  entries: z.array(provisioningTranscriptEntrySchema),
-});
-export type SystemDispatchHoldEventData = z.infer<
-  typeof systemDispatchHoldEventDataSchema
->;
-
-/**
- * Stored values, not current vocabulary: `"parked"` is spelled the way rows
- * were written when this event was still emitted, so it must not be renamed
- * along with the code that replaced it — existing rows are validated against
- * this enum on decode.
- */
-const systemQueueStateStatusValues = [
-  "parked",
-  "updated",
-  "dispatched",
-  "cancelled",
-] as const;
-const systemQueueStateStatusSchema = z.enum(systemQueueStateStatusValues);
-export type SystemQueueStateStatus = z.infer<
-  typeof systemQueueStateStatusSchema
->;
-
-/**
- * Longest queued-message preview carried on a legacy `system/queue-state`
- * event. It answered "which message is waiting?" back when the event still had
- * a timeline row of its own. Kept because stored events are validated against
- * this schema on decode.
- */
-export const QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH = 240;
-
-/**
- * A LEGACY timeline row, retained for decode only — the same treatment
- * `system/dispatch-hold` above gets, for the same reason.
- *
- * Queueing is narrated in exactly one place: the queue rows above the composer,
- * which read the queued row's own columns and stay correct as it is re-queued,
- * edited or sent now. This event duplicated that narration into the timeline,
- * where it could only ever be a stale copy, so nothing emits it any more and
- * nothing renders it. The arm stays purely so a stored event still decodes:
- * narrowing `threadEventSchema` would churn the daemon protocol and make
- * existing rows undecodable. A decoded queue-state event contributes no row.
- */
-export const systemQueueStateEventDataSchema = z.object({
-  queuedMessageId: z.string().min(1),
-  status: systemQueueStateStatusSchema,
-  /**
-   * The wait as of this write. Retained verbatim on `dispatched`/`cancelled`
-   * so a settled row still says what it had been waiting for.
-   */
-  waitingOn: queuedMessageWaitingOnSchema,
-  /**
-   * Snapshot of the row's scheduled instant, so the row renders "Scheduled ·
-   * 9:00" without a second read. Null when the row is eligible as soon as its
-   * other waits clear.
-   */
-  sendAt: z.number().int().nonnegative().nullable(),
-  /**
-   * Truncated plain text of the queued message, when the row carries one of
-   * its own. Optional because omission is real: a `retry` row references a
-   * turn that is already persisted and already rendered further up the
-   * timeline, so it has no message to preview, and an `inline` row whose
-   * visible input is empty (attachments only) has nothing to say either.
-   * Absent and empty must not be confused, hence `min(1)` — a reader that sees
-   * the field can trust it.
-   */
-  inputPreview: z
-    .string()
-    .min(1)
-    .max(QUEUE_STATE_INPUT_PREVIEW_MAX_LENGTH)
-    .optional(),
-});
-export type SystemQueueStateEventData = z.infer<
-  typeof systemQueueStateEventDataSchema
->;
-
-/** The cap stored notes were written under; kept so old rows still decode. */
-export const PLUGIN_NOTE_TEXT_MAX_LENGTH = 500;
-
-const pluginNoteLevelValues = ["info", "warning"] as const;
-export const pluginNoteLevelSchema = z.enum(pluginNoteLevelValues);
-export type PluginNoteLevel = z.infer<typeof pluginNoteLevelSchema>;
-
-/**
- * A LEGACY timeline row, retained for decode only — the same treatment
- * `system/dispatch-hold` and `system/queue-state` above get, for the same
- * reason.
- *
- * `bb.experimental_threads.appendNote` was the plugin timeline-contribution
- * surface, and its only caller was the provider-retry plugin narrating a retry
- * that its own queued row already narrated. With that duplicate removed the API
- * had no consumer, so it was deleted along with every projection and renderer
- * arm. The schema stays purely so a stored event still decodes: narrowing
- * `threadEventSchema` would churn the daemon protocol and make existing rows
- * undecodable. A decoded plugin-note event contributes no row.
- */
-export const systemPluginNoteEventDataSchema = z.object({
-  pluginId: z.string().min(1),
-  text: z.string().min(1).max(PLUGIN_NOTE_TEXT_MAX_LENGTH),
-  /**
-   * A lucide-style icon name the client renders when it recognizes it. A plain
-   * string rather than the client's `IconName` union so a note persisted by a
-   * newer plugin never becomes unparseable to an older client.
-   */
-  iconName: z.string().min(1).optional(),
-  level: pluginNoteLevelSchema,
-});
-export type SystemPluginNoteEventData = z.infer<
-  typeof systemPluginNoteEventDataSchema
->;
 
 export const systemLegacyUserMessageEventDataSchema = z.object({
   text: z.string(),

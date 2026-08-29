@@ -7,7 +7,6 @@ import type {
   ProviderErrorInfo,
   ThreadEventBackgroundTaskItem,
   ThreadEventFileChange,
-  ThreadEventRow,
   ThreadEventItemStatus,
   UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
@@ -1564,95 +1563,6 @@ describe("buildThreadTimelineFromEvents", () => {
           row.systemKind === "operation" && row.title === "Provisioned thread",
       ),
     ).toHaveLength(1);
-  });
-
-  /**
-   * `system/queue-state` follows `system/dispatch-hold` below: still decodable,
-   * no longer rendered. Queueing is narrated once, by the queue rows above the
-   * composer, which read the queued row's live columns; the timeline copy could
-   * only ever go stale, so the emission and every projection arm were deleted.
-   * Dev databases are full of stored ones, so a decoded event has to reach the
-   * renderer's if-chain and fall out the far end, producing no row.
-   */
-  it("renders a stored legacy queue-state event as nothing", () => {
-    const legacyQueueState: ThreadEventRow = {
-      id: "evt-legacy-queue-state-1",
-      threadId: "thread-1",
-      seq: 1,
-      createdAt: 1,
-      scope: threadScope(),
-      type: "system/queue-state",
-      data: {
-        queuedMessageId: "qm_1",
-        // The spelling stored rows carry, which is what this decodes.
-        status: "parked",
-        waitingOn: { kind: "time" },
-        sendAt: 1_000,
-        inputPreview: "ship the release notes",
-      },
-    };
-
-    const events = fromRows([legacyQueueState]);
-    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
-    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
-  });
-
-  /**
-   * `system/dispatch-hold` is still a decodable event type — dev databases hold
-   * stored ones and narrowing `threadEventSchema` would churn the daemon
-   * protocol — but nothing renders it any more. It has to reach the renderer's
-   * if-chain and fall out the far end, producing no row, rather than throwing
-   * or landing on a generic row that says nothing useful.
-   */
-  it("renders a stored legacy dispatch-hold event as nothing", () => {
-    const legacyHold: ThreadEventRow = {
-      id: "evt-legacy-hold-1",
-      threadId: "thread-1",
-      seq: 1,
-      createdAt: 1,
-      scope: threadScope(),
-      type: "system/dispatch-hold",
-      data: {
-        holdId: "hold_1",
-        holder: "user",
-        status: "active",
-        reason: "Scheduled",
-        entries: [],
-      },
-    };
-
-    const events = fromRows([legacyHold]);
-    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
-    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
-  });
-
-  /**
-   * `system/plugin-note` joins the two above: still decodable, no longer
-   * rendered. `bb.experimental_threads.appendNote` was the only writer, and its
-   * only caller narrated a retry its own queued row already narrated — so the
-   * API, and every projection/row/title arm behind it, were deleted once the
-   * duplicate went. Stored notes still have to reach the renderer's if-chain
-   * and fall out the far end, producing no row rather than throwing.
-   */
-  it("renders a stored legacy plugin-note event as nothing", () => {
-    const legacyNote: ThreadEventRow = {
-      id: "evt-legacy-plugin-note-1",
-      threadId: "thread-1",
-      seq: 1,
-      createdAt: 1,
-      scope: threadScope(),
-      type: "system/plugin-note",
-      data: {
-        pluginId: "provider-retry",
-        text: "Rate limited — retrying at 6:30",
-        iconName: "Clock",
-        level: "warning",
-      },
-    };
-
-    const events = fromRows([legacyNote]);
-    expect(parseOperationMessage(events[0]!.event, events[0]!.meta)).toBeNull();
-    expect(collectSystemRows(buildTimelineRows(events))).toEqual([]);
   });
 
   it("normalizes carriage-return provisioning output in operation detail", () => {

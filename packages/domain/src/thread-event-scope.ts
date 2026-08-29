@@ -215,21 +215,6 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "Workspace provisioning lifecycle event; environment setup belongs to the thread, not a turn.",
   },
-  "system/dispatch-hold": {
-    policy: "thread",
-    rationale:
-      "Legacy, retained for decode only: a hold deferred a turn that had not started, so there was no turn to scope it to. Dispatch holds were replaced by queued rows and nothing emits this.",
-  },
-  "system/queue-state": {
-    policy: "thread",
-    rationale:
-      "Legacy, retained for decode only: a queued row was waiting on a dispatch that had not started, so there was no turn to scope it to. Queueing is now narrated by the queue rows above the composer and nothing emits this.",
-  },
-  "system/plugin-note": {
-    policy: "thread",
-    rationale:
-      "Legacy, retained for decode only: a plugin annotated the thread rather than any one turn, since notes were appended from background services and gates running between turns. The appendNote API was removed once it had no consumer and nothing emits this.",
-  },
   "system/provider-turn-watchdog": {
     policy: "thread",
     rationale:

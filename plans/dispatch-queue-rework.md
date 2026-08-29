@@ -185,8 +185,9 @@ above:
 - **The branch's migrations are squashed** into one
   `0110_wild_warlock.sql` on main's 0109 (preserving the real
   `deferred_thread_messages` drop; `dispatch_holds` nets out and never
-  appears). Daemon protocol ended at 174 across the rework's acceptance
-  widenings.
+  appears). Daemon protocol ends at a single bump to 175 — see "The three
+  legacy decode-only event types are purged" below for why the branch's
+  stacked intermediate bumps were flattened away.
 
 - **Auto provider routing was removed afterwards.** The `model-router` plugin,
   the `app.slots.experimental_executionPickerEntry` slot and its
@@ -314,10 +315,11 @@ above:
   Stored-data tolerance: every thread-event payload schema is a plain
   non-strict `z.object`, so removing `amendedByPluginId`, `originalInput` and
   `entries` strips them from stored events rather than failing the decode.
-  Nothing was kept for decode's sake, and no daemon-protocol acceptance was
-  narrowed — the daemon contract never references these event schemas, and a
-  non-strict object accepts strictly more after a field leaves it — so
-  `HOST_DAEMON_PROTOCOL_VERSION` stays where the branch had already left it. The branch's
+  Nothing was kept for decode's sake, and this step narrowed no daemon-protocol
+  acceptance on its own — the daemon contract never references these event
+  schemas, and a non-strict object accepts strictly more after a field leaves
+  it. (The later purge of the three legacy event types *does* narrow
+  `threadEventSchema`; that is what the branch's single bump to 175 records.) The branch's
   migration was re-squashed onto main's 0109 as a single
   `0110_white_hulk.sql` with no `plugin_inputs` column.
 
@@ -329,10 +331,8 @@ above:
   `queuedMessageInputPreview` extraction it was the only consumer of, the
   thread-view projection/merge/title arms, the `queue-state` timeline row shape
   in `@bb/server-contract`, the renderer body and its auto-expand rule are all
-  deleted. The event type stays registered and decodable under the
-  `system/dispatch-hold` precedent — dev databases are full of stored ones — and
-  renders as nothing, pinned by a tolerance test beside the dispatch-hold one.
-  Nothing narrowed, so no daemon-protocol bump.
+  deleted. The event type itself was subsequently purged too — see "The three
+  legacy decode-only event types are purged" below.
 
 - **The sidebar clock is queue-driven, not status-driven.** The waiting glyph
   stopped keying on canonical `pending` — which described only the narrowest
@@ -389,9 +389,49 @@ above:
   `@bb/server-contract`, the projection metadata, the timeline row builder, the
   title mapper with its attribution segment, and the app's icon/warning-tint
   arms — plus the api_to_audit entry and the authoring-skill section. The event
-  type stays registered and decodable under the `system/dispatch-hold` /
-  `system/queue-state` precedent and renders as nothing, pinned by a third
-  tolerance test beside theirs. Nothing narrowed, so no daemon-protocol bump.
+  type itself was subsequently purged too — see "The three legacy decode-only
+  event types are purged" below.
   `queue.waiting`/`queue.dispatched` stay: they are event-bus members like
   `turn.*`, which no bundled plugin subscribes to either, and cutting only the
   queue pair would be a carve-out rather than a rule.
+
+- **The three legacy decode-only event types are purged, and the protocol is
+  flattened to one bump.** `system/dispatch-hold`, `system/queue-state` and
+  `system/plugin-note` were each kept "registered and decodable" after their
+  emission, projection and renderers went, on the reasoning that narrowing
+  `threadEventSchema` would churn the daemon protocol and strand stored rows.
+  That reasoning does not survive the fact that all three were only ever
+  emitted on this branch: no released build wrote one, so production databases
+  cannot contain them and the only rows that exist are in the author's own dev
+  databases, which are being wiped. Keeping three schemas, a status enum spelled
+  the retired way (`"parked"`), two preview-length constants and three
+  renders-as-nothing tolerance tests alive to serve zero real rows is pure
+  carrying cost, so all of it is deleted: the `systemEventTypeValues` arms, the
+  payload schemas and their inferred types, the `provider-event.ts` union arms,
+  the `thread-event-scope.ts` policy entries, and the case arms in the two
+  `assertNever` switches (`packages/thread-view/src/event-decode.ts` and
+  `apps/server/src/internal/events.ts`), which shrink accordingly.
+
+  **Dev-database consequence, accepted deliberately:** a thread whose history
+  contains one of these three stored events no longer decodes. `threadEventSchema`
+  rejects the unknown type, so reading that thread 500s until the dev database is
+  wiped. Threads without such rows are unaffected, and no released build can have
+  written one.
+
+  **Protocol flattened.** The branch had stacked four bumps (172, 173, 174, 175)
+  narrating dispatch-hold's `inputPreview`, the `system/queue-state` event plus
+  the `pending` status, dispatch-hold's `holder` loosening, and the `host-offline`
+  wait arm. Three of those describe event types that no longer exist, and the
+  numbers had drifted into main's own 172-174, which mean unrelated things. They
+  collapse into a single bump to **175 = main's 174 + 1**, narrating everything
+  a daemon can actually observe across the whole branch: `threadEventSchema`
+  narrowed by three event types; `host.inspect_git_source` replaced by
+  `host.list_branches` with a different payload and a five-field-wider result
+  (the load-bearing half — it breaks in both directions, so the bump is what
+  moves an enrolled machine); and `environment.destroy` dropping a required
+  field from a strict command while emptying its result. The queue surface
+  needs no narration: with `system/queue-state` gone, the `waitingOn` union
+  (`host-offline` arm included) is server-to-client only, and `pending` never
+  crossed this wire. The pin in `contract.test.ts` moves to 175 — it had been
+  left at 174 against a constant of 175, so that test was failing before this
+  change.
