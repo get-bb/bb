@@ -120,7 +120,9 @@ describe("ThreadEnvironmentSummary", () => {
       );
 
       fireEvent.focus(
-        screen.getByLabelText(`Environment type: ${environmentTypeLabel}`),
+        screen.getByRole("img", {
+          name: `Environment type: ${environmentTypeLabel}`,
+        }),
       );
 
       expect((await screen.findByRole("tooltip")).textContent).toBe(

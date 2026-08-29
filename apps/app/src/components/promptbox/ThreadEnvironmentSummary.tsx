@@ -91,33 +91,38 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         </div>
       ) : null}
       {environmentCheckout && checkoutCopyValue !== null ? (
-        <button
-          type="button"
-          data-promptbox-hide-branch-compact=""
-          className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
-          title={environmentCheckout.title}
-          aria-label={
-            checkoutMatchesEnvironmentLabel
-              ? (environmentCheckout.copyLabel ?? environmentCheckout.title)
-              : undefined
-          }
-          onClick={() => {
-            void copyToClipboardWithToast(checkoutCopyValue, {
-              successMessage:
-                environmentCheckout.copySuccessMessage ?? "Value copied",
-              errorMessage:
-                environmentCheckout.copyErrorMessage ?? "Failed to copy value",
-            });
-          }}
-        >
-          <Icon
-            name={checkoutMatchesEnvironmentLabel ? "Copy" : "GitBranch"}
-            className="size-3.5 shrink-0"
-          />
-          {checkoutMatchesEnvironmentLabel ? null : (
-            <span className="truncate">{environmentCheckout.label}</span>
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-promptbox-hide-branch-compact=""
+              className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
+              aria-label={
+                checkoutMatchesEnvironmentLabel
+                  ? (environmentCheckout.copyLabel ?? environmentCheckout.title)
+                  : undefined
+              }
+              onClick={() => {
+                void copyToClipboardWithToast(checkoutCopyValue, {
+                  successMessage:
+                    environmentCheckout.copySuccessMessage ?? "Value copied",
+                  errorMessage:
+                    environmentCheckout.copyErrorMessage ??
+                    "Failed to copy value",
+                });
+              }}
+            >
+              <Icon
+                name={checkoutMatchesEnvironmentLabel ? "Copy" : "GitBranch"}
+                className="size-3.5 shrink-0"
+              />
+              {checkoutMatchesEnvironmentLabel ? null : (
+                <span className="truncate">{environmentCheckout.label}</span>
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{environmentCheckout.title}</TooltipContent>
+        </Tooltip>
       ) : environmentCheckout ? (
         <span
           data-promptbox-hide-branch-compact=""
