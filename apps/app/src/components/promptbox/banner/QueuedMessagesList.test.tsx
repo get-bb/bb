@@ -141,7 +141,7 @@ afterEach(() => {
 
 describe("QueuedMessagesList", () => {
   it("toggles a few messages between the fitted drawer and collapsed modes", () => {
-    const { container, getByRole } = renderQueuedMessages([
+    const { container, getByRole, getByText } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
       makeQueuedMessage("q_two", "Second queued message"),
     ]);
@@ -151,8 +151,10 @@ describe("QueuedMessagesList", () => {
     const surface = container.querySelector<HTMLElement>(
       'section[aria-label="Follow-ups"]',
     );
+    const heading = getByText("Follow-ups");
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
+    expect(heading.className).toContain("font-[450]");
     expect(surface?.style.height).toBe("123px");
     expect(
       getByRole("button", { name: "Collapse follow-ups" }).querySelector(
