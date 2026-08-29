@@ -1490,7 +1490,9 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-[450] text-foreground">Follow-ups</span>
+          <span className="text-xs font-normal text-subtle-foreground">
+            Follow-ups
+          </span>
           <span className="text-2xs text-subtle-foreground">
             {queuedMessages.length}
           </span>

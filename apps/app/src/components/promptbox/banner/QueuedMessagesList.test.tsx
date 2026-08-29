@@ -154,7 +154,8 @@ describe("QueuedMessagesList", () => {
     const heading = getByText("Follow-ups");
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(heading.className).toContain("font-[450]");
+    expect(heading.className).toContain("font-normal");
+    expect(heading.className).toContain("text-subtle-foreground");
     expect(surface?.style.height).toBe("123px");
     expect(
       getByRole("button", { name: "Collapse follow-ups" }).querySelector(
