@@ -249,6 +249,60 @@ describe("useThreadFileTabs recently closed tabs", () => {
     });
     expect(didReopen).toBe(false);
   });
+
+  it("skips workspace history from the previous environment", () => {
+    let environmentId = "env_1";
+    const { result, rerender } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-environment-switch",
+        syncThreadId: null,
+        environmentId,
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let browserTabId = "";
+    let workspaceTabId = "";
+    act(() => {
+      browserTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://example.com",
+        })?.id ?? "";
+      workspaceTabId =
+        result.current.openTab({
+          kind: "workspace-file-preview",
+          tab: {
+            lineRange: null,
+            path: "src/index.ts",
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(browserTabId);
+      result.current.closeTab(workspaceTabId);
+    });
+    act(() => {
+      environmentId = "env_2";
+      rerender();
+    });
+
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeBrowserTab?.id).toBe(browserTabId);
+    expect(result.current.activeWorkspaceFilePath).toBeNull();
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+  });
 });
 
 describe("useThreadFileTabs terminal pruning", () => {

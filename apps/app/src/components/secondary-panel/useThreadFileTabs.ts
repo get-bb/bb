@@ -623,11 +623,14 @@ export function useThreadFileTabs({
         resolvedPanelStateId,
         new Set(state.secondary.tabs.map((tab) => tab.id)),
         (tab) =>
-          tab.kind !== "thread-storage-file-preview" ||
-          knownStoragePaths === null ||
-          (tab.threadId !== null &&
-            tab.threadId !== resolvedFileOwnerThreadId) ||
-          knownStoragePaths.has(tab.path),
+          (tab.kind !== "workspace-file-preview" ||
+            preserveWorkspaceTabsAcrossContexts ||
+            tab.environmentId === resolvedEnvironmentId) &&
+          (tab.kind !== "thread-storage-file-preview" ||
+            knownStoragePaths === null ||
+            (tab.threadId !== null &&
+              tab.threadId !== resolvedFileOwnerThreadId) ||
+            knownStoragePaths.has(tab.path)),
       );
       if (entry === null) return state;
       const index = Math.max(
@@ -647,6 +650,8 @@ export function useThreadFileTabs({
     return didReopen;
   }, [
     knownStoragePaths,
+    preserveWorkspaceTabsAcrossContexts,
+    resolvedEnvironmentId,
     resolvedFileOwnerThreadId,
     resolvedPanelStateId,
     updateFixedPanelTabsState,
