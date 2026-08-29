@@ -156,7 +156,16 @@ Inspecting:
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
     --timeout <seconds>                    Timeout in seconds (default: 1200 / 20 min)
-    --poll-interval <ms>                   Polling interval in milliseconds
+    --poll-interval <ms>                   Legacy polling and long-poll pause in milliseconds
+    --output                               Get final output after a status match
+
+  bb thread wait-many <id...>              Wait for several threads in one process
+    --status <status>                      Apply one status target to every thread
+    --event <type>                         Apply one event target to every thread
+    --timeout <seconds>                    Timeout for each thread
+    --poll-interval <ms>                   Legacy polling and long-poll pause in milliseconds
+    --output                               Get final output after each status match
+    --json                                 Print one JSON line for each completed wait
 
 Opening threads and files in the app:
 

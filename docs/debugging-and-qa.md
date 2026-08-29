@@ -47,6 +47,31 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
+## Thread Wait Resource QA
+
+Start an active test thread before this check. Use one CLI process for 100
+duplicate logical waits:
+
+```bash
+eval "$(scripts/bb-dev-app env)"
+thread_id=<active-thread-id>
+wait_ids=()
+for _ in {1..100}; do wait_ids+=("$thread_id"); done
+pnpm bb:dev thread wait-many "${wait_ids[@]}" --output &
+wait_pid=$!
+rg '^(Pss|Private_Dirty):' "/proc/$wait_pid/smaps_rollup"
+pgrep -af '[b]b.*thread wait'
+wait "$wait_pid"
+```
+
+Confirm these results:
+
+- One Node CLI process serves the batch.
+- No second process waits for the same thread and target.
+- The server log reports 100 callers and one unique wait.
+- PSS and private dirty memory remain near one CLI process.
+- The process exits after it prints final output.
+
 ## Record Provider Bridge Traffic
 
 Export `BB_PROVIDER_BRIDGE_RECORD_DIR` before you start the dev app and every

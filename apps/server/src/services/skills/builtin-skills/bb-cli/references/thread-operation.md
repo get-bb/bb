@@ -6,10 +6,17 @@
 - Spawn independent tasks separately when parallel work is useful.
 - Let threads work after spawning. Do not poll with shell sleeps, repeated log
   reads, or repeated status reads.
-- Use `bb thread wait <thread-id>` when you explicitly need to block until a
-  thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
-  pass `--status` or `--event` for a different target, and `--timeout
-<seconds>` when you need a shorter or longer budget.
+- Follow one thread with one `bb thread wait <thread-id> --output` command.
+  Follow a batch with one `bb thread wait-many <thread-id...> --output`
+  command. The command defaults to `idle` and waits for up to 20 minutes.
+- Never alternate `bb thread log` and `bb thread wait` in a loop. Treat
+  successful thread output as terminal. Do not wait for that thread again.
+- Retry a transient wait error with backoff. Confirm that the prior wait
+  process exited before the retry.
+- Server plugins and in-server orchestration must call `sdk.threads.wait`
+  directly. They must not create a `bb thread wait` process.
+- Use `--event` only when an event is the terminal condition. `--output`
+  cannot be combined with `--event`.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 - Add `--plan` to `bb thread spawn` or `bb thread tell` to send the prompt as

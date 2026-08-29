@@ -99,6 +99,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 
 - `bb thread`
 - `bb thread wait`
+- `bb thread wait-many`
 - `bb thread spawn`
 - `bb thread fork`
 - `bb thread list`

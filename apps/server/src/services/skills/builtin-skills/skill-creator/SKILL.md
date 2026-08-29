@@ -89,11 +89,13 @@ Spawn a fresh thread for every test:
 
 ```sh
 bb thread spawn --project "$BB_PROJECT_ID" --prompt "<test prompt>" --json
-bb thread wait <thread-id>
-bb thread output <thread-id>
+bb thread wait <thread-id> --output
 bb thread log <thread-id>
 bb thread show <thread-id> --git-diff
 ```
+
+Use one wait command for each test thread. Never alternate log and wait
+commands. Treat the successful output as terminal. Do not wait again.
 
 Read the transcript, not only the final answer. Check whether the skill
 triggered, whether the agent read only relevant resources, and whether the

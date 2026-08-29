@@ -49,6 +49,10 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Pass an environment or machine selector when the default host is uncertain.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
+- Follow one thread with one `bb thread wait <id> --output` command.
+- Follow a batch with one `bb thread wait-many <id...> --output` command.
+- Never alternate `bb thread log` and `bb thread wait` in a loop.
+- Treat successful thread output as terminal. Do not wait for that thread again.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.
 - Inspect real status, logs, API results, or diffs instead of assumptions.
