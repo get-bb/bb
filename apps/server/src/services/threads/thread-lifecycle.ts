@@ -244,11 +244,13 @@ interface InterruptActiveThreadArgs {
 }
 
 interface InterruptActiveThreadsArgs {
+  cause?: "host-connection-lost";
   reason: SystemThreadInterruptedReason;
   threads: readonly InterruptActiveThreadArgs[];
 }
 
 interface InterruptActiveThreadsForHostArgs {
+  cause?: "host-connection-lost";
   hostId: string;
   reason: SystemThreadInterruptedReason;
 }
@@ -312,8 +314,12 @@ interface SettleThreadPlanCancelCommandResultArgs {
   report: ThreadPlanCancelCommandResultReport;
 }
 
+type RuntimeThreadInterruptionReason =
+  | SystemThreadInterruptedReason
+  | "host-connection-lost";
+
 function lifecycleEventForInterruptedThread(
-  reason: SystemThreadInterruptedReason,
+  reason: RuntimeThreadInterruptionReason,
 ): ThreadLifecycleEvent {
   switch (reason) {
     case "manual-stop":
@@ -329,7 +335,7 @@ function lifecycleEventForInterruptedThread(
 }
 
 function pendingInteractionStopReason(
-  reason: SystemThreadInterruptedReason,
+  reason: RuntimeThreadInterruptionReason,
 ): string {
   switch (reason) {
     case "manual-stop":
@@ -346,7 +352,7 @@ function pendingInteractionStopReason(
 }
 
 function threadCommandFailureMessageForInterruption(
-  reason: SystemThreadInterruptedReason,
+  reason: RuntimeThreadInterruptionReason,
 ): string | null {
   switch (reason) {
     case "manual-stop":
@@ -363,7 +369,7 @@ function threadCommandFailureMessageForInterruption(
 }
 
 function threadCommandFailureDetailForInterruption(
-  reason: SystemThreadInterruptedReason,
+  reason: RuntimeThreadInterruptionReason,
 ): string {
   switch (reason) {
     case "manual-stop":
@@ -1489,7 +1495,8 @@ function interruptActiveThreads(
 
   const results: InterruptedActiveThreadResult[] = [];
   const threadIds = args.threads.map((thread) => thread.threadId);
-  const lifecycleEvent = lifecycleEventForInterruptedThread(args.reason);
+  const effectiveReason = args.cause ?? args.reason;
+  const lifecycleEvent = lifecycleEventForInterruptedThread(effectiveReason);
 
   deps.db.transaction(
     (tx) => {
@@ -1504,9 +1511,8 @@ function interruptActiveThreads(
         const state = stateByThreadId.get(thread.threadId);
         const activeTurnId = state?.activeTurnId ?? null;
         const providerThreadId = state?.latestProviderThreadId ?? null;
-        const failureMessage = threadCommandFailureMessageForInterruption(
-          args.reason,
-        );
+        const failureMessage =
+          threadCommandFailureMessageForInterruption(effectiveReason);
 
         if (activeTurnId !== null) {
           eventArgs.push({
@@ -1533,7 +1539,8 @@ function interruptActiveThreads(
             data: buildSystemErrorEventData({
               code: "thread_command_failed",
               message: failureMessage,
-              detail: threadCommandFailureDetailForInterruption(args.reason),
+              detail:
+                threadCommandFailureDetailForInterruption(effectiveReason),
             }),
           });
         }
@@ -1544,6 +1551,7 @@ function interruptActiveThreads(
           scope: threadScope(),
           data: {
             reason: args.reason,
+            ...(args.cause ? { cause: args.cause } : {}),
           },
         });
         results.push({
@@ -1566,7 +1574,7 @@ function interruptActiveThreads(
 
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
     threadIds: results.map((result) => result.threadId),
-    reason: pendingInteractionStopReason(args.reason),
+    reason: pendingInteractionStopReason(effectiveReason),
   });
 
   for (const result of results) {
@@ -1617,6 +1625,7 @@ export function interruptActiveThreadsForHost(
   return interruptActiveThreads(deps, {
     threads: activeThreads,
     reason: args.reason,
+    ...(args.cause ? { cause: args.cause } : {}),
   });
 }
 

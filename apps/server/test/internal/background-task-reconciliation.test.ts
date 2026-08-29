@@ -582,7 +582,10 @@ describe("active thread disconnect reconciliation triggers", () => {
           type: "system/error",
         }),
         expect.objectContaining({
-          data: { reason: "host-connection-lost" },
+          data: {
+            reason: "host-daemon-restarted",
+            cause: "host-connection-lost",
+          },
           type: "system/thread/interrupted",
         }),
       ]);
