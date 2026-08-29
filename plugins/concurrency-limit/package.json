@@ -11,7 +11,7 @@
     "name": "Concurrency limit",
     "description": "Limit how many threads run at once, in total and per host. Every running thread counts, including child and plugin-spawned ones.",
     "branding": {
-      "icon": "Pause"
+      "icon": "Limitation"
     },
     "server": "./server.ts"
   },
