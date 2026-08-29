@@ -2348,6 +2348,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     ? getEnvironmentWorkspaceSummaryDisplay({
         display: threadEnvironmentDisplay,
         environmentName: environment?.name ?? null,
+        branchName: environment?.branchName ?? undefined,
         locality: environmentDisplayHostContext.locality,
         hostName: resolvedThreadEnvironmentHost?.name,
         machinePrefix: environmentMachinePrefix,

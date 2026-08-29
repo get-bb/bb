@@ -40,6 +40,8 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   }
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
+  const checkoutMatchesEnvironmentLabel =
+    environmentCheckout?.label === environmentLabel;
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       {projectName ? (
@@ -94,6 +96,11 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           data-promptbox-hide-branch-compact=""
           className={CHECKOUT_CHIP_BUTTON_CLASS_NAME}
           title={environmentCheckout.title}
+          aria-label={
+            checkoutMatchesEnvironmentLabel
+              ? (environmentCheckout.copyLabel ?? environmentCheckout.title)
+              : undefined
+          }
           onClick={() => {
             void copyToClipboardWithToast(checkoutCopyValue, {
               successMessage:
@@ -103,8 +110,13 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             });
           }}
         >
-          <Icon name="GitBranch" className="size-3.5 shrink-0" />
-          <span className="truncate">{environmentCheckout.label}</span>
+          <Icon
+            name={checkoutMatchesEnvironmentLabel ? "Copy" : "GitBranch"}
+            className="size-3.5 shrink-0"
+          />
+          {checkoutMatchesEnvironmentLabel ? null : (
+            <span className="truncate">{environmentCheckout.label}</span>
+          )}
         </button>
       ) : environmentCheckout ? (
         <span

@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   Environment,
   PermissionMode,
@@ -44,6 +50,7 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import { EnvironmentRenameDialogContent } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
@@ -51,6 +58,7 @@ import {
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { DialogStage } from "../../../.ladle/story-dialog-stage";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
@@ -193,6 +201,7 @@ function makeEnvironmentSummary({
   const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
     display,
     environmentName: environment.name,
+    branchName,
     locality: host.locality,
     hostName: machineName,
     machinePrefix: machineName ? `${machineName} · ` : "",
@@ -1140,6 +1149,71 @@ export function EnvironmentMatrix() {
           submitMode={{ kind: "blocked", reason: "pending-interaction" }}
           stack={environmentGoneContextBannerElement}
           hideComposer
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ProvisioningEnvironmentSummary() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="provisioning"
+        hint="active loading icon + lifecycle label"
+      >
+        <div className="w-full max-w-xl rounded-md border bg-background p-3">
+          {provisioningEnvironmentSummary}
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function WorktreeNamingContract() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <StoryCard>
+      <StoryRow
+        label="custom name"
+        hint="clearing the alias returns to the branch name"
+      >
+        <DialogStage>
+          <EnvironmentRenameDialogContent
+            target={{
+              id: "env_named",
+              currentName: "Design system polish",
+              branchName: STORY_BRANCH_NAME,
+              canClearName: true,
+            }}
+            pending={false}
+            onRename={noop}
+            inputRef={inputRef}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="after clear"
+        hint="worktree icon + branch name; copy remains available"
+      >
+        <div className="w-full max-w-xl rounded-md border bg-background p-3">
+          {worktreeEnvironmentSummary}
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function WorktreeCopyAction() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="copy action"
+        hint="branch text is identity; Copy icon describes the action"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={worktreeEnvironmentSummary}
         />
       </StoryRow>
     </StoryCard>

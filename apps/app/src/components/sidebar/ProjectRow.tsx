@@ -871,7 +871,7 @@ function EnvironmentThreadGroupHeaderActions({
             }}
           >
             <Icon name="Edit" aria-hidden="true" />
-            Rename
+            Rename worktree
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={archiveThreadsPending}

@@ -51,6 +51,7 @@ interface RenameDialogContentProps {
   pending: boolean;
   errorMessage?: string | null;
   placeholder?: string;
+  inputDetails?: ReactNode;
   maxLength?: { limit: number; message: string };
   autoCapitalize: "words" | "sentences";
   compact?: boolean;
@@ -65,6 +66,7 @@ export function RenameDialogContent({
   pending,
   errorMessage,
   placeholder,
+  inputDetails,
   maxLength,
   autoCapitalize,
   compact = false,
@@ -119,6 +121,7 @@ export function RenameDialogContent({
               clearMessage();
             }}
           />
+          {inputDetails}
           {displayedErrorMessage ? (
             <p className="text-sm text-destructive">{displayedErrorMessage}</p>
           ) : null}

@@ -12,6 +12,7 @@ export type EnvironmentWorkspaceTypeLabel =
 interface EnvironmentWorkspaceSummaryDisplayArgs {
   display: EnvironmentDisplayInfo;
   environmentName: string | null;
+  branchName?: string;
   locality: "local" | "remote";
   hostName?: string;
   machinePrefix?: string;
@@ -27,6 +28,7 @@ export interface EnvironmentWorkspaceSummaryDisplay {
 export function getEnvironmentWorkspaceSummaryDisplay({
   display,
   environmentName,
+  branchName,
   locality,
   hostName,
   machinePrefix = "",
@@ -40,15 +42,21 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     };
   }
 
+  const unnamedWorktreeLabel = branchName ?? hostName;
+
   return {
     label:
-      display.mode === "direct" || environmentName === null
+      display.mode === "direct"
         ? hostName
-        : `${machinePrefix}${display.modeLabel}`,
+        : environmentName === null
+          ? unnamedWorktreeLabel
+          : `${machinePrefix}${display.modeLabel}`,
     compactLabel:
-      display.mode === "direct" || environmentName === null
+      display.mode === "direct"
         ? hostName
-        : display.compactModeLabel,
+        : environmentName === null
+          ? unnamedWorktreeLabel
+          : display.compactModeLabel,
     icon: getEnvironmentWorkspaceLabelIconName(display.workspaceDisplayKind),
     typeLabel: getEnvironmentWorkspaceTypeLabel(
       display.workspaceDisplayKind,

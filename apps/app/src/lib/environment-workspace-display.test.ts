@@ -39,7 +39,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     });
   });
 
-  it("uses the host name instead of repeating the generated worktree label", () => {
+  it("uses the branch name for a worktree without a custom name", () => {
     expect(
       getEnvironmentWorkspaceSummaryDisplay({
         display: {
@@ -51,15 +51,39 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           workspaceDisplayKind: "managed-worktree",
         },
         environmentName: null,
+        branchName: "bb/fix-environment-summary",
         locality: "remote",
         hostName: "Build Mac mini",
         machinePrefix: "Build Mac mini · ",
       }),
     ).toMatchObject({
-      label: "Build Mac mini",
-      compactLabel: "Build Mac mini",
+      label: "bb/fix-environment-summary",
+      compactLabel: "bb/fix-environment-summary",
       icon: "FolderGit",
       typeLabel: "Remote worktree",
+    });
+  });
+
+  it("falls back to the host for a worktree without a branch or custom name", () => {
+    expect(
+      getEnvironmentWorkspaceSummaryDisplay({
+        display: {
+          modeLabel: "Worktree",
+          compactModeLabel: "Worktree",
+          lifecycle: null,
+          id: "env_test",
+          mode: "worktree",
+          workspaceDisplayKind: "unmanaged-worktree",
+        },
+        environmentName: null,
+        locality: "local",
+        hostName: "Bersabel's MacBook Pro",
+      }),
+    ).toMatchObject({
+      label: "Bersabel's MacBook Pro",
+      compactLabel: "Bersabel's MacBook Pro",
+      icon: "FolderGit",
+      typeLabel: "Local worktree",
     });
   });
 
