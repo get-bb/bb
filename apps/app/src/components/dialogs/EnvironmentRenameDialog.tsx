@@ -82,7 +82,7 @@ export function EnvironmentRenameDialogContent({
       clearAction={
         target.canClearName
           ? {
-              label: "Use branch name",
+              label: "Clear custom name",
               onClear: () => onRename(target.id, null),
             }
           : undefined

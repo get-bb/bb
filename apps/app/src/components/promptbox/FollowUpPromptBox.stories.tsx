@@ -201,7 +201,6 @@ function makeEnvironmentSummary({
   const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
     display,
     environmentName: environment.name,
-    branchName,
     locality: host.locality,
     hostName: machineName,
     machinePrefix: machineName ? `${machineName} · ` : "",
@@ -1176,7 +1175,7 @@ export function WorktreeNamingContract() {
     <StoryCard>
       <StoryRow
         label="custom name"
-        hint="clearing the alias returns to the branch name"
+        hint="clearing the alias restores the host as environment identity"
       >
         <DialogStage>
           <EnvironmentRenameDialogContent
@@ -1194,7 +1193,7 @@ export function WorktreeNamingContract() {
       </StoryRow>
       <StoryRow
         label="after clear"
-        hint="worktree icon + branch name; copy remains available"
+        hint="host identifies the environment; branch remains checkout metadata"
       >
         <div className="w-full max-w-xl rounded-md border bg-background p-3">
           {worktreeEnvironmentSummary}
@@ -1209,7 +1208,7 @@ export function WorktreeCopyAction() {
     <StoryCard>
       <StoryRow
         label="copy action"
-        hint="branch text is identity; Copy icon describes the action"
+        hint="branch stays visible as secondary checkout metadata and copies on click"
       >
         <Row
           submitMode={{ kind: "ready" }}

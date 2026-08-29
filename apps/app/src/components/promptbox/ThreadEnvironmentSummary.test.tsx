@@ -48,7 +48,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
   });
 
-  it("shows a branch fallback once while preserving its copy action", () => {
+  it("keeps matching environment and branch labels visibly separate", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <ThreadEnvironmentSummary
@@ -70,38 +70,9 @@ describe("ThreadEnvironmentSummary", () => {
     );
 
     const copyButton = screen.getByRole("button", {
-      name: "Copy branch name",
-    });
-    expect(screen.getAllByText("bb/fix-environment-summary")).toHaveLength(2);
-    expect(copyButton.textContent).toBe("");
-    expect(copyButton.querySelector('[data-icon="Copy"]')).not.toBeNull();
-    expect(copyButton.querySelector('[data-icon="GitBranch"]')).toBeNull();
-  });
-
-  it("keeps the branch icon when the checkout label is shown separately", () => {
-    render(
-      <TooltipProvider delayDuration={0}>
-        <ThreadEnvironmentSummary
-          environmentLabel="Environment summary polish"
-          environmentCompactLabel="Environment summary polish"
-          environmentIcon="FolderGit"
-          environmentTypeLabel="Local worktree"
-          environmentCheckout={{
-            copyErrorMessage: "Failed to copy branch name",
-            copyLabel: "Copy branch name",
-            copySuccessMessage: "Branch name copied",
-            copyValue: "bb/fix-environment-summary",
-            label: "bb/fix-environment-summary",
-            rowLabel: "Branch",
-            title: "Copy branch name: bb/fix-environment-summary",
-          }}
-        />
-      </TooltipProvider>,
-    );
-
-    const copyButton = screen.getByRole("button", {
       name: "bb/fix-environment-summary",
     });
+    expect(screen.getAllByText("bb/fix-environment-summary")).toHaveLength(3);
     expect(copyButton.textContent).toBe("bb/fix-environment-summary");
     expect(copyButton.querySelector('[data-icon="GitBranch"]')).not.toBeNull();
     expect(copyButton.querySelector('[data-icon="Copy"]')).toBeNull();

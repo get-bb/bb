@@ -189,7 +189,6 @@ function PluginThreadChatBody({
     const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
       display,
       environmentName: environment.name,
-      branchName: environment.branchName ?? undefined,
       locality: host.locality,
       hostName: environmentHostName ?? undefined,
     });
