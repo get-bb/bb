@@ -133,7 +133,83 @@ type SecondaryPanelTab =
   | NewTabFixedPanelTab
   | PluginPanelFixedPanelTab;
 
+type ReopenableSecondaryPanelTab = Exclude<
+  SecondaryPanelTab,
+  NewTabFixedPanelTab
+>;
+
+interface RecentlyClosedPanelTab {
+  index: number;
+  tab: ReopenableSecondaryPanelTab;
+}
+
 type OpenResolvedTabBehavior = "open" | "replace-new-tab";
+
+const MAX_RECENTLY_CLOSED_PANEL_TABS = 25;
+const recentlyClosedPanelTabs = new Map<string, RecentlyClosedPanelTab[]>();
+
+function isReopenableSecondaryPanelTab(
+  tab: FixedPanelTab,
+): tab is ReopenableSecondaryPanelTab {
+  switch (tab.kind) {
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+    case "browser":
+    case "plugin-panel":
+      return true;
+    case "thread-info":
+    case "git-diff":
+    case "plugin-page-fixed":
+    case "new-tab":
+    case "terminal":
+      return false;
+  }
+}
+
+function rememberClosedPanelTab(
+  panelStateId: string,
+  entry: RecentlyClosedPanelTab,
+): void {
+  const stack = recentlyClosedPanelTabs.get(panelStateId) ?? [];
+  stack.push(entry);
+  if (stack.length > MAX_RECENTLY_CLOSED_PANEL_TABS) {
+    stack.splice(0, stack.length - MAX_RECENTLY_CLOSED_PANEL_TABS);
+  }
+  recentlyClosedPanelTabs.set(panelStateId, stack);
+}
+
+function forgetClosedPanelTab(panelStateId: string, tabId: string): void {
+  const stack = recentlyClosedPanelTabs.get(panelStateId);
+  if (stack === undefined) return;
+  const next = stack.filter((entry) => entry.tab.id !== tabId);
+  if (next.length === 0) {
+    recentlyClosedPanelTabs.delete(panelStateId);
+    return;
+  }
+  recentlyClosedPanelTabs.set(panelStateId, next);
+}
+
+function takeClosedPanelTab(
+  panelStateId: string,
+  openTabIds: ReadonlySet<string>,
+): RecentlyClosedPanelTab | null {
+  const stack = recentlyClosedPanelTabs.get(panelStateId);
+  if (stack === undefined) return null;
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (entry !== undefined && !openTabIds.has(entry.tab.id)) {
+      if (stack.length === 0) recentlyClosedPanelTabs.delete(panelStateId);
+      return entry;
+    }
+  }
+  recentlyClosedPanelTabs.delete(panelStateId);
+  return null;
+}
+
+export function resetRecentlyClosedPanelTabsForTest(): void {
+  recentlyClosedPanelTabs.clear();
+}
 
 function createStorageTab(
   environmentId: string | null,
@@ -260,8 +336,11 @@ export function useThreadFileTabs({
     syncThreadId,
   );
   const recordRecentItem = useRecordThreadRecentItem(panelStateId);
-  const isPanelStateResolved =
-    panelStateId !== null && panelStateId !== undefined;
+  const resolvedPanelStateId =
+    typeof panelStateId === "string" && panelStateId.length > 0
+      ? panelStateId
+      : null;
+  const isPanelStateResolved = resolvedPanelStateId !== null;
   const resolvedFileOwnerThreadId =
     fileOwnerThreadId !== undefined
       ? fileOwnerThreadId
@@ -442,6 +521,10 @@ export function useThreadFileTabs({
         });
       if (tab === null) return null;
 
+      if (resolvedPanelStateId !== null) {
+        forgetClosedPanelTab(resolvedPanelStateId, tab.id);
+      }
+
       if (
         request.kind === "workspace-file-preview" &&
         request.tab.source.kind === "working-tree"
@@ -468,6 +551,7 @@ export function useThreadFileTabs({
       projectId,
       resolvedEnvironmentId,
       resolvedFileOwnerThreadId,
+      resolvedPanelStateId,
       updateFixedPanelTabsState,
     ],
   );
@@ -497,12 +581,54 @@ export function useThreadFileTabs({
 
   const closeTab = useCallback(
     (tabId: string) => {
-      updateFixedPanelTabsState((state) =>
-        closeSecondaryPanelTabInState(state, tabId),
-      );
+      updateFixedPanelTabsState((state) => {
+        const tabIndex = state.secondary.tabs.findIndex(
+          (tab) => tab.id === tabId,
+        );
+        const tab = state.secondary.tabs[tabIndex];
+        const next = closeSecondaryPanelTabInState(state, tabId);
+        if (
+          next !== state &&
+          resolvedPanelStateId !== null &&
+          tab !== undefined &&
+          isReopenableSecondaryPanelTab(tab)
+        ) {
+          rememberClosedPanelTab(resolvedPanelStateId, {
+            index: tabIndex,
+            tab,
+          });
+        }
+        return next;
+      });
     },
-    [updateFixedPanelTabsState],
+    [resolvedPanelStateId, updateFixedPanelTabsState],
   );
+
+  const reopenClosedTab = useCallback((): boolean => {
+    if (resolvedPanelStateId === null) return false;
+    let didReopen = false;
+    updateFixedPanelTabsState((state) => {
+      const entry = takeClosedPanelTab(
+        resolvedPanelStateId,
+        new Set(state.secondary.tabs.map((tab) => tab.id)),
+      );
+      if (entry === null) return state;
+      const index = Math.max(
+        0,
+        Math.min(entry.index, state.secondary.tabs.length),
+      );
+      const tabs = [...state.secondary.tabs];
+      tabs.splice(index, 0, entry.tab);
+      didReopen = true;
+      return setSecondaryPanelTabsInState({
+        activeTabId: entry.tab.id,
+        isOpen: true,
+        state,
+        tabs,
+      });
+    });
+    return didReopen;
+  }, [resolvedPanelStateId, updateFixedPanelTabsState]);
 
   const openPluginPanel = useCallback(
     ({ pluginId, actionId, title, paramsJson }: OpenPluginPanelArgs) => {
@@ -512,6 +638,9 @@ export function useThreadFileTabs({
         pluginId,
         title,
       });
+      if (resolvedPanelStateId !== null) {
+        forgetClosedPanelTab(resolvedPanelStateId, tab.id);
+      }
       updateFixedPanelTabsState((state) => {
         const existing = findSecondaryPanelTab(state.secondary.tabs, tab.id);
         if (existing !== null && existing.kind === "plugin-panel") {
@@ -527,7 +656,7 @@ export function useThreadFileTabs({
         return replaceNewTabWithSecondaryPanelTabInState({ state, tab });
       });
     },
-    [updateFixedPanelTabsState],
+    [resolvedPanelStateId, updateFixedPanelTabsState],
   );
 
   const selectFileSearchResult = useCallback(
@@ -680,6 +809,7 @@ export function useThreadFileTabs({
     openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     selectFileSearchResult,
     updateBrowserTab,

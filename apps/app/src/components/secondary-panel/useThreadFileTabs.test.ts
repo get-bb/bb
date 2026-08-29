@@ -16,7 +16,10 @@ import {
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
-import { useThreadFileTabs } from "./useThreadFileTabs";
+import {
+  resetRecentlyClosedPanelTabsForTest,
+  useThreadFileTabs,
+} from "./useThreadFileTabs";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -82,10 +85,103 @@ afterEach(() => {
   cleanup();
   queryClient.clear();
   window.localStorage.clear();
+  resetRecentlyClosedPanelTabsForTest();
   resetPluginSlotStoreForTest();
   syncMocks.scheduleLocalThreadTabsMigration.mockClear();
   syncMocks.scheduleThreadTabsPersistence.mockClear();
   syncMocks.useThreadTabs.mockClear();
+});
+
+describe("useThreadFileTabs recently closed tabs", () => {
+  it("reopens closed tabs in reverse close order and restores their positions", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let firstTabId = "";
+    let secondTabId = "";
+    act(() => {
+      firstTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://first.example",
+        })?.id ?? "";
+      secondTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://second.example",
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(firstTabId);
+      result.current.closeTab(secondTabId);
+    });
+
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(0);
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeBrowserTab?.id).toBe(secondTabId);
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeBrowserTab?.id).toBe(firstTabId);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+    ).toEqual([firstTabId, secondTabId]);
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+  });
+
+  it("does not reopen a launcher tab or a file reopened another way", () => {
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-launcher",
+        syncThreadId: null,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    const fileRequest = {
+      kind: "workspace-file-preview" as const,
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" as const },
+        statusLabel: null,
+      },
+    };
+
+    act(() => {
+      const launcher = result.current.openTab({ kind: "new-tab" });
+      result.current.closeTab(launcher?.id ?? "");
+    });
+    expect(result.current.reopenClosedTab()).toBe(false);
+
+    let fileTabId = "";
+    act(() => {
+      fileTabId = result.current.openTab(fileRequest)?.id ?? "";
+    });
+    act(() => result.current.closeTab(fileTabId));
+    act(() => {
+      result.current.openTab(fileRequest);
+    });
+    expect(result.current.reopenClosedTab()).toBe(false);
+  });
 });
 
 describe("useThreadFileTabs terminal pruning", () => {

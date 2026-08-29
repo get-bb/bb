@@ -9,6 +9,7 @@ import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
 
 const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
 const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
+const REOPEN_CLOSED_TAB_MENU_LABEL = "Reopen Closed Tab";
 const NEW_THREAD_MENU_LABEL = "New Thread";
 const NEW_WINDOW_MENU_LABEL = "New Window";
 const CLOSE_WINDOW_MENU_LABEL = "Close Window";
@@ -44,6 +45,7 @@ export interface InstallApplicationMenuArgs {
   openNewTab(): void;
   openNewThread(): void;
   openSettings(): void;
+  reopenClosedTab(): void;
   reloadWindow(
     browserWindow: BaseWindow | undefined,
     ignoreCache: boolean,
@@ -152,6 +154,13 @@ export function buildApplicationMenuTemplate(
             args.openNewTab();
           },
           label: OPEN_NEW_TAB_MENU_LABEL,
+        },
+        {
+          accelerator: args.accelerators.reopenClosedTab,
+          click() {
+            args.reopenClosedTab();
+          },
+          label: REOPEN_CLOSED_TAB_MENU_LABEL,
         },
         {
           accelerator: args.accelerators.openNewThread,

@@ -87,7 +87,8 @@ Slot props contracts (versioned, additive-only):
   main body; it must not mount a second panel layout or register Browser and
   Terminal itself. BB owns the desktop split, compact drawer, header/panel
   toggle, resizing, tab strip, persistence, and the shared `panel.toggle`,
-  `panel.newTab`, and `terminal.open` keyboard commands.
+  `panel.newTab`, `panel.reopenClosedTab`, and `terminal.open` keyboard
+  commands.
 
   New tab is a transient host launcher. On a plugin page it offers Browser
   (when the desktop browser is available) and Terminal; it does not offer

@@ -741,6 +741,16 @@ function installCurrentApplicationMenu(): void {
         );
       }
     },
+    reopenClosedTab() {
+      const browserWindow = getFocusedApplicationWindow();
+      if (browserWindow !== null) {
+        sendToApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_APP_COMMAND_CHANNEL,
+          "panel.reopenClosedTab",
+        );
+      }
+    },
     openSettings() {
       const browserWindow = getFocusedApplicationWindow();
       if (browserWindow !== null) {

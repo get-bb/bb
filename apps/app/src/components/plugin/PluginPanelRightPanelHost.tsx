@@ -278,6 +278,7 @@ export function PluginPanelRightPanelHost({
     closeTab,
     openTab,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     updateBrowserTab,
   } = useThreadFileTabs({
@@ -485,6 +486,11 @@ export function PluginPanelRightPanelHost({
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused || panel === null) return false;
     openNewTab();
+    return true;
+  });
+  useAppCommandHandler("panel.reopenClosedTab", () => {
+    if (!isFocused || panel === null || !reopenClosedTab()) return false;
+    revealPanel();
     return true;
   });
 

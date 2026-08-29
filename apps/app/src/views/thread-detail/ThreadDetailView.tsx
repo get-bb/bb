@@ -681,6 +681,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     openTab,
     openPluginPanel,
     orderedSecondaryFileTabs,
+    reopenClosedTab,
     reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
@@ -1552,6 +1553,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused) return false;
     handleOpenNewTab();
+    return true;
+  });
+  useAppCommandHandler("panel.reopenClosedTab", () => {
+    if (!isFocused || !reopenClosedTab()) return false;
+    openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
