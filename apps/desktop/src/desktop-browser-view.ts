@@ -157,6 +157,7 @@ export interface DesktopBrowserViewManager {
   ): void;
   beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
+  prepareWindowReload(hostWindow: DesktopBrowserHostWindow): void;
   releaseWindow(hostWebContentsId: number): void;
   destroyAll(): void;
 }
@@ -803,6 +804,17 @@ export function createDesktopBrowserViewManager(
           tabId: key.slice(prefix.length),
           dataUrl: null,
         });
+      }
+    },
+    prepareWindowReload(hostWindow) {
+      resizingHostIds.delete(hostWindow.webContents.id);
+      const prefix = `${hostWindow.webContents.id}:`;
+      for (const [key, entry] of entries.entries()) {
+        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
+          continue;
+        }
+        entry.visible = false;
+        applyEntryVisibility(entry, hostWindow);
       }
     },
     releaseWindow(hostWebContentsId) {

@@ -171,6 +171,34 @@ function preserveSidebarSplitStateIdentity(
   return areSidebarSplitStatesEqual(current, next) ? current : next;
 }
 
+function insertMissingTabsInAvailableOrder(
+  tabIds: readonly string[],
+  missingTabIds: readonly string[],
+  availableTabIds: readonly string[],
+): string[] {
+  const next = [...tabIds];
+  for (const missingTabId of missingTabIds) {
+    const availableIndex = availableTabIds.indexOf(missingTabId);
+    const followingTabId = availableTabIds
+      .slice(availableIndex + 1)
+      .find((tabId) => next.includes(tabId));
+    if (followingTabId !== undefined) {
+      next.splice(next.indexOf(followingTabId), 0, missingTabId);
+      continue;
+    }
+    const precedingTabId = availableTabIds
+      .slice(0, availableIndex)
+      .reverse()
+      .find((tabId) => next.includes(tabId));
+    const insertAt =
+      precedingTabId === undefined
+        ? next.length
+        : next.indexOf(precedingTabId) + 1;
+    next.splice(insertAt, 0, missingTabId);
+  }
+  return next;
+}
+
 export function isCanonicalSidebarSplitState(
   state: SidebarSplitState,
   availableTabIds: readonly string[],
@@ -610,7 +638,11 @@ export function reconcileSidebarSplitState(
         ...next.groups,
         [focusedGroup.id]: {
           ...focusedGroup,
-          tabIds: [...focusedGroup.tabIds, ...missing],
+          tabIds: insertMissingTabsInAvailableOrder(
+            focusedGroup.tabIds,
+            missing,
+            available,
+          ),
           activeTabId:
             focusedGroup.tabIds.length === 0
               ? activeTabId

@@ -475,6 +475,10 @@ function registerApplicationRendererReloadShortcut(
       return;
     }
     event.preventDefault();
+    const browserWindow = resolveApplicationWindow(webContents);
+    if (browserWindow !== null) {
+      desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+    }
     if (shortcut === "force-reload") {
       webContents.reloadIgnoringCache();
     } else {
@@ -765,6 +769,7 @@ function installCurrentApplicationMenu(): void {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
       }
+      desktopBrowserViewManager?.prepareWindowReload(browserWindow);
       if (ignoreCache) {
         browserWindow.webContents.reloadIgnoringCache();
       } else {

@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo } from "react";
-import type { TerminalSession } from "@bb/server-contract";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type {
+  TerminalSession,
+  ThreadStorageFileListResponse,
+} from "@bb/server-contract";
 import {
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
@@ -13,6 +16,7 @@ import {
   createWorkspaceFilePreviewFixedPanelTab,
   type BrowserFixedPanelTab,
   type FixedPanelTab,
+  type FixedPanelTabsState,
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
   type PluginPanelFixedPanelTab,
@@ -67,12 +71,11 @@ interface UseThreadFileTabsParams {
   projectHostId?: string | null;
   projectId?: string | null;
   retainedTerminalId?: string | null;
-  storageFiles: readonly ThreadStorageFileListItem[] | undefined;
+  storageFileExists?: (path: string) => Promise<boolean>;
+  storageFiles:
+    | Pick<ThreadStorageFileListResponse, "files" | "truncated">
+    | undefined;
   terminalSessions: readonly TerminalSession[] | undefined;
-}
-
-interface ThreadStorageFileListItem {
-  path: string;
 }
 
 interface FileSearchWorkspaceSelection {
@@ -157,6 +160,27 @@ interface IsReopenablePanelTabOwnedByContextArgs {
   tab: ReopenableSecondaryPanelTab;
 }
 
+interface StorageFileInventory {
+  knownPaths: ReadonlySet<string>;
+  truncated: boolean;
+}
+
+type RecentlyClosedPanelTabAvailability =
+  | "available"
+  | "missing"
+  | "unresolved";
+
+type TakeClosedPanelTabResult =
+  | { kind: "available"; entry: RecentlyClosedPanelTab }
+  | { kind: "unresolved"; entry: RecentlyClosedPanelTab }
+  | { kind: "empty" };
+
+function isRecentlyClosedPanelTab(
+  entry: RecentlyClosedPanelTab | null,
+): entry is RecentlyClosedPanelTab {
+  return entry !== null;
+}
+
 type RecentlyClosedPanelContextKey = string;
 type OpenResolvedTabBehavior = "open" | "replace-new-tab";
 
@@ -200,15 +224,17 @@ function rememberClosedPanelTab(
 function forgetClosedPanelTab(
   contextKey: RecentlyClosedPanelContextKey,
   tabId: string,
-): void {
+): boolean {
   const stack = recentlyClosedPanelTabs.get(contextKey);
-  if (stack === undefined) return;
+  if (stack === undefined) return false;
+  const wasTop = stack.at(-1)?.tab.id === tabId;
   const next = stack.filter((entry) => entry.tab.id !== tabId);
   if (next.length === 0) {
     recentlyClosedPanelTabs.delete(contextKey);
-    return;
+    return wasTop;
   }
   recentlyClosedPanelTabs.set(contextKey, next);
+  return wasTop;
 }
 
 function buildRecentlyClosedPanelContextKey(
@@ -248,40 +274,55 @@ function isReopenablePanelTabOwnedByContext({
   }
 }
 
-function isRecentlyClosedPanelTabAvailable(
+function storagePathForRecentlyClosedPanelTab(
   tab: ReopenableSecondaryPanelTab,
-  knownStoragePaths: ReadonlySet<string> | null,
-): boolean {
+): string | null {
   const originalTab =
     tab.kind === "plugin-panel" ? createFileOpenerOriginalTab(tab) : null;
   const resourceTab = originalTab ?? tab;
-  return (
-    resourceTab.kind !== "thread-storage-file-preview" ||
-    knownStoragePaths === null ||
-    knownStoragePaths.has(resourceTab.path)
-  );
+  return resourceTab.kind === "thread-storage-file-preview"
+    ? resourceTab.path
+    : null;
+}
+
+function recentlyClosedPanelTabAvailability(
+  tab: ReopenableSecondaryPanelTab,
+  storageInventory: StorageFileInventory | null,
+): RecentlyClosedPanelTabAvailability {
+  const storagePath = storagePathForRecentlyClosedPanelTab(tab);
+  if (storagePath === null) return "available";
+  if (storageInventory === null) return "unresolved";
+  if (storageInventory.knownPaths.has(storagePath)) return "available";
+  return storageInventory.truncated ? "unresolved" : "missing";
 }
 
 function takeClosedPanelTab(
   contextKey: RecentlyClosedPanelContextKey,
   openTabIds: ReadonlySet<string>,
-  isEntryValid?: (entry: RecentlyClosedPanelTab) => boolean,
-): RecentlyClosedPanelTab | null {
+  availability: (
+    entry: RecentlyClosedPanelTab,
+  ) => RecentlyClosedPanelTabAvailability,
+): TakeClosedPanelTabResult {
   const stack = recentlyClosedPanelTabs.get(contextKey);
-  if (stack === undefined) return null;
+  if (stack === undefined) return { kind: "empty" };
   while (stack.length > 0) {
-    const entry = stack.pop();
-    if (
-      entry !== undefined &&
-      !openTabIds.has(entry.tab.id) &&
-      (isEntryValid === undefined || isEntryValid(entry))
-    ) {
-      if (stack.length === 0) recentlyClosedPanelTabs.delete(contextKey);
-      return entry;
+    const entry = stack.at(-1);
+    if (entry === undefined) break;
+    if (openTabIds.has(entry.tab.id)) {
+      stack.pop();
+      continue;
     }
+    const entryAvailability = availability(entry);
+    if (entryAvailability === "unresolved") {
+      return { kind: "unresolved", entry };
+    }
+    stack.pop();
+    if (entryAvailability === "missing") continue;
+    if (stack.length === 0) recentlyClosedPanelTabs.delete(contextKey);
+    return { kind: "available", entry };
   }
   recentlyClosedPanelTabs.delete(contextKey);
-  return null;
+  return { kind: "empty" };
 }
 
 export function resetRecentlyClosedPanelTabsForTest(): void {
@@ -401,6 +442,7 @@ export function useThreadFileTabs({
   projectHostId = null,
   projectId = null,
   retainedTerminalId = null,
+  storageFileExists,
   storageFiles,
   terminalSessions,
 }: UseThreadFileTabsParams) {
@@ -425,11 +467,14 @@ export function useThreadFileTabs({
   const resolvedEnvironmentId = isPanelStateResolved
     ? environmentId
     : undefined;
-  const knownStoragePaths = useMemo(
+  const storageInventory = useMemo<StorageFileInventory | null>(
     () =>
       storageFiles === undefined
         ? null
-        : new Set(storageFiles.map((file) => file.path)),
+        : {
+            knownPaths: new Set(storageFiles.files.map((file) => file.path)),
+            truncated: storageFiles.truncated,
+          },
     [storageFiles],
   );
   const recentlyClosedPanelContext = useMemo(
@@ -458,6 +503,19 @@ export function useThreadFileTabs({
         : buildRecentlyClosedPanelContextKey(recentlyClosedPanelContext),
     [recentlyClosedPanelContext],
   );
+  const recentlyClosedPanelContextKeyRef = useRef(
+    recentlyClosedPanelContextKey,
+  );
+  const pendingStorageValidationRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+  recentlyClosedPanelContextKeyRef.current = recentlyClosedPanelContextKey;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!resolvedFileOwnerThreadId) return;
@@ -552,12 +610,18 @@ export function useThreadFileTabs({
   ]);
 
   useEffect(() => {
-    if (!isPanelStateResolved || knownStoragePaths === null) return;
+    if (
+      !isPanelStateResolved ||
+      storageInventory === null ||
+      storageInventory.truncated
+    ) {
+      return;
+    }
     updateFixedPanelTabsState((state) => {
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
         tabs: pruneStorageTabs({
-          knownPaths: knownStoragePaths,
+          knownPaths: storageInventory.knownPaths,
           tabs: state.secondary.tabs,
           threadId: resolvedFileOwnerThreadId,
         }),
@@ -571,8 +635,8 @@ export function useThreadFileTabs({
     });
   }, [
     isPanelStateResolved,
-    knownStoragePaths,
     resolvedFileOwnerThreadId,
+    storageInventory,
     updateFixedPanelTabsState,
   ]);
 
@@ -724,33 +788,98 @@ export function useThreadFileTabs({
 
   const reopenClosedTab = useCallback((): boolean => {
     if (recentlyClosedPanelContextKey === null) return false;
-    let didReopen = false;
-    updateFixedPanelTabsState((state) => {
-      const entry = takeClosedPanelTab(
-        recentlyClosedPanelContextKey,
-        new Set(state.secondary.tabs.map((tab) => tab.id)),
-        (entry) =>
-          isRecentlyClosedPanelTabAvailable(entry.tab, knownStoragePaths),
-      );
-      if (entry === null) return state;
+    const contextKey = recentlyClosedPanelContextKey;
+
+    const restoreEntry = (
+      state: FixedPanelTabsState,
+      entry: RecentlyClosedPanelTab,
+    ) => {
       const index = Math.max(
         0,
         Math.min(entry.index, state.secondary.tabs.length),
       );
       const tabs = [...state.secondary.tabs];
       tabs.splice(index, 0, entry.tab);
-      didReopen = true;
       return setSecondaryPanelTabsInState({
         activeTabId: entry.tab.id,
         isOpen: true,
         state,
         tabs,
       });
-    });
-    return didReopen;
+    };
+
+    const attemptReopen = (): boolean => {
+      let didReopen = false;
+      let unresolvedEntry: RecentlyClosedPanelTab | null = null;
+      updateFixedPanelTabsState((state) => {
+        const result = takeClosedPanelTab(
+          contextKey,
+          new Set(state.secondary.tabs.map((tab) => tab.id)),
+          (entry) =>
+            recentlyClosedPanelTabAvailability(entry.tab, storageInventory),
+        );
+        if (result.kind === "empty") return state;
+        if (result.kind === "unresolved") {
+          unresolvedEntry = result.entry;
+          return state;
+        }
+        didReopen = true;
+        return restoreEntry(state, result.entry);
+      });
+      if (didReopen) return true;
+      if (
+        !isRecentlyClosedPanelTab(unresolvedEntry) ||
+        storageFileExists === undefined
+      ) {
+        return false;
+      }
+
+      const entry = unresolvedEntry;
+      const storagePath = storagePathForRecentlyClosedPanelTab(entry.tab);
+      if (storagePath === null) return false;
+      const validationKey = `${contextKey}:${entry.tab.id}`;
+      if (pendingStorageValidationRef.current === validationKey) return true;
+      pendingStorageValidationRef.current = validationKey;
+      void storageFileExists(storagePath)
+        .then((exists) => {
+          if (
+            !isMountedRef.current ||
+            recentlyClosedPanelContextKeyRef.current !== contextKey ||
+            pendingStorageValidationRef.current !== validationKey
+          ) {
+            return;
+          }
+          pendingStorageValidationRef.current = null;
+          if (!exists) {
+            const wasTop = forgetClosedPanelTab(contextKey, entry.tab.id);
+            if (wasTop) attemptReopen();
+            return;
+          }
+          updateFixedPanelTabsState((state) => {
+            const result = takeClosedPanelTab(
+              contextKey,
+              new Set(state.secondary.tabs.map((tab) => tab.id)),
+              (candidate) =>
+                candidate.tab.id === entry.tab.id ? "available" : "unresolved",
+            );
+            return result.kind === "available"
+              ? restoreEntry(state, result.entry)
+              : state;
+          });
+        })
+        .catch(() => {
+          if (pendingStorageValidationRef.current === validationKey) {
+            pendingStorageValidationRef.current = null;
+          }
+        });
+      return true;
+    };
+
+    return attemptReopen();
   }, [
-    knownStoragePaths,
     recentlyClosedPanelContextKey,
+    storageFileExists,
+    storageInventory,
     updateFixedPanelTabsState,
   ]);
 

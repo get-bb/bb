@@ -61,6 +61,16 @@ function renderThreadHook<Result>(hook: () => Result) {
   return renderHook(hook, { wrapper: QueryWrapper });
 }
 
+function createDeferred<T>() {
+  let resolve = (_value: T) => {
+    throw new Error("Deferred promise was not initialized");
+  };
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 function terminalSession(overrides: TerminalSessionOverrides): TerminalSession {
   return {
     id: "term_1",
@@ -184,10 +194,13 @@ describe("useThreadFileTabs recently closed tabs", () => {
   });
 
   it("skips storage history with a deleted path or different owner", () => {
-    let storageFiles: readonly { path: string }[] = [
-      { path: "available.md" },
-      { path: "deleted.md" },
-    ];
+    let storageFiles = {
+      files: [
+        { name: "available.md", path: "available.md" },
+        { name: "deleted.md", path: "deleted.md" },
+      ],
+      truncated: false,
+    };
     const { result, rerender } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "recently-closed-storage",
@@ -225,7 +238,10 @@ describe("useThreadFileTabs recently closed tabs", () => {
       result.current.closeTab(deletedTabId);
     });
     act(() => {
-      storageFiles = [{ path: "available.md" }];
+      storageFiles = {
+        files: [{ name: "available.md", path: "available.md" }],
+        truncated: false,
+      };
       rerender();
     });
 
@@ -241,6 +257,154 @@ describe("useThreadFileTabs recently closed tabs", () => {
       didReopen = result.current.reopenClosedTab();
     });
     expect(didReopen).toBe(false);
+  });
+
+  it("does not consume or transiently restore storage history before exact validation", async () => {
+    const validation = createDeferred<boolean>();
+    const storageFileExists = vi.fn(() => validation.promise);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-loading",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let storageTabId = "";
+    act(() => {
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "still-here.md" },
+        })?.id ?? "";
+    });
+    act(() => result.current.closeTab(storageTabId));
+
+    let didHandle = false;
+    act(() => {
+      didHandle = result.current.reopenClosedTab();
+    });
+    expect(didHandle).toBe(true);
+    expect(result.current.orderedSecondaryFileTabs).toHaveLength(0);
+    expect(storageFileExists).toHaveBeenCalledWith("still-here.md");
+
+    await act(async () => {
+      validation.resolve(true);
+      await validation.promise;
+      await Promise.resolve();
+    });
+    expect(result.current.activeStorageFilePath).toBe("still-here.md");
+  });
+
+  it("checks a path omitted from a truncated inventory and skips it when deleted", async () => {
+    const storageFileExists = vi.fn(async () => false);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-truncated",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    let browserTabId = "";
+    let storageTabId = "";
+    act(() => {
+      browserTabId =
+        result.current.openTab({
+          kind: "browser",
+          url: "https://fallback.example",
+        })?.id ?? "";
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "deleted-after-close.md" },
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(browserTabId);
+      result.current.closeTab(storageTabId);
+    });
+    act(() => {
+      result.current.reopenClosedTab();
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeBrowserTab?.id).toBe(browserTabId);
+    });
+    expect(storageFileExists).toHaveBeenCalledWith("deleted-after-close.md");
+    expect(result.current.activeStorageFilePath).toBeNull();
+  });
+
+  it("restores a valid path omitted from a truncated inventory", async () => {
+    const storageFileExists = vi.fn(async () => true);
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage-truncated-valid",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFileExists,
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    let storageTabId = "";
+    act(() => {
+      storageTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "after-page-one.md" },
+        })?.id ?? "";
+    });
+    act(() => result.current.closeTab(storageTabId));
+    act(() => {
+      result.current.reopenClosedTab();
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeStorageFilePath).toBe("after-page-one.md");
+    });
+    expect(storageFileExists).toHaveBeenCalledWith("after-page-one.md");
+  });
+
+  it("keeps an open storage tab when the inventory is truncated", () => {
+    const threadId = "storage-truncated-open-tab";
+    const storageTab = createThreadStorageFilePreviewFixedPanelTab({
+      environmentId: "env_1",
+      isPinned: false,
+      tab: { lineRange: null, path: "after-page-one.md" },
+      threadId,
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: storageTab.id,
+        isOpen: true,
+        tabs: [storageTab],
+      },
+      lastUsedAt: Date.now(),
+    });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({ state }),
+    );
+
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: { files: [], truncated: true },
+        terminalSessions: undefined,
+      }),
+    );
+
+    expect(result.current.activeStorageFilePath).toBe("after-page-one.md");
   });
 
   it.each([
@@ -1043,7 +1207,10 @@ describe("useThreadFileTabs file opener diversion", () => {
         panelStateId: "opener-storage-search",
         syncThreadId: "thr_storage_search",
         environmentId: "env_1",
-        storageFiles: [{ path: "artifacts/notes.md" }],
+        storageFiles: {
+          files: [{ name: "notes.md", path: "artifacts/notes.md" }],
+          truncated: false,
+        },
         terminalSessions: undefined,
       }),
     );

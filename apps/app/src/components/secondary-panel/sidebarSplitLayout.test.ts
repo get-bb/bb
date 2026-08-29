@@ -333,6 +333,40 @@ describe("sidebar split layout", () => {
     ).toContain("terminal-a");
   });
 
+  it("restores closed tabs to their canonical order", () => {
+    const firstTabId = "browser:first";
+    const secondTabId = "browser:second";
+    let state = createSidebarSplitState(
+      [SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId],
+      secondTabId,
+    );
+
+    state = reconcileSidebarSplitState(
+      state,
+      [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId],
+      secondTabId,
+    );
+    state = reconcileSidebarSplitState(
+      state,
+      [SIDEBAR_FIXED_INFO_TAB_ID],
+      SIDEBAR_FIXED_INFO_TAB_ID,
+    );
+    state = reconcileSidebarSplitState(
+      state,
+      [SIDEBAR_FIXED_INFO_TAB_ID, secondTabId],
+      secondTabId,
+    );
+    state = reconcileSidebarSplitState(
+      state,
+      [SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId],
+      firstTabId,
+    );
+
+    expect(
+      getSidebarGroupForPane(state, state.layout.focusedPaneId)?.tabIds,
+    ).toEqual([SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId]);
+  });
+
   it("keeps a New Tab replacement in its existing split pane", () => {
     const newTabId = "new-tab:launcher";
     const terminalTabId = "terminal:term-a:none";
