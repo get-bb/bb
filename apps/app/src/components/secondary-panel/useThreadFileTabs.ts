@@ -193,12 +193,17 @@ function forgetClosedPanelTab(panelStateId: string, tabId: string): void {
 function takeClosedPanelTab(
   panelStateId: string,
   openTabIds: ReadonlySet<string>,
+  isTabValid?: (tab: ReopenableSecondaryPanelTab) => boolean,
 ): RecentlyClosedPanelTab | null {
   const stack = recentlyClosedPanelTabs.get(panelStateId);
   if (stack === undefined) return null;
   while (stack.length > 0) {
     const entry = stack.pop();
-    if (entry !== undefined && !openTabIds.has(entry.tab.id)) {
+    if (
+      entry !== undefined &&
+      !openTabIds.has(entry.tab.id) &&
+      (isTabValid === undefined || isTabValid(entry.tab))
+    ) {
       if (stack.length === 0) recentlyClosedPanelTabs.delete(panelStateId);
       return entry;
     }
@@ -348,6 +353,13 @@ export function useThreadFileTabs({
   const resolvedEnvironmentId = isPanelStateResolved
     ? environmentId
     : undefined;
+  const knownStoragePaths = useMemo(
+    () =>
+      storageFiles === undefined
+        ? null
+        : new Set(storageFiles.map((file) => file.path)),
+    [storageFiles],
+  );
 
   useEffect(() => {
     if (!resolvedFileOwnerThreadId) return;
@@ -442,13 +454,12 @@ export function useThreadFileTabs({
   ]);
 
   useEffect(() => {
-    if (!isPanelStateResolved || !storageFiles) return;
+    if (!isPanelStateResolved || knownStoragePaths === null) return;
     updateFixedPanelTabsState((state) => {
-      const knownPaths = new Set(storageFiles.map((file) => file.path));
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
         tabs: pruneStorageTabs({
-          knownPaths,
+          knownPaths: knownStoragePaths,
           tabs: state.secondary.tabs,
           threadId: resolvedFileOwnerThreadId,
         }),
@@ -462,8 +473,8 @@ export function useThreadFileTabs({
     });
   }, [
     isPanelStateResolved,
+    knownStoragePaths,
     resolvedFileOwnerThreadId,
-    storageFiles,
     updateFixedPanelTabsState,
   ]);
 
@@ -611,6 +622,12 @@ export function useThreadFileTabs({
       const entry = takeClosedPanelTab(
         resolvedPanelStateId,
         new Set(state.secondary.tabs.map((tab) => tab.id)),
+        (tab) =>
+          tab.kind !== "thread-storage-file-preview" ||
+          knownStoragePaths === null ||
+          (tab.threadId !== null &&
+            tab.threadId !== resolvedFileOwnerThreadId) ||
+          knownStoragePaths.has(tab.path),
       );
       if (entry === null) return state;
       const index = Math.max(
@@ -628,7 +645,12 @@ export function useThreadFileTabs({
       });
     });
     return didReopen;
-  }, [resolvedPanelStateId, updateFixedPanelTabsState]);
+  }, [
+    knownStoragePaths,
+    resolvedFileOwnerThreadId,
+    resolvedPanelStateId,
+    updateFixedPanelTabsState,
+  ]);
 
   const openPluginPanel = useCallback(
     ({ pluginId, actionId, title, paramsJson }: OpenPluginPanelArgs) => {

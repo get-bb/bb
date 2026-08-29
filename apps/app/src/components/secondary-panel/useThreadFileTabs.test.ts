@@ -182,6 +182,73 @@ describe("useThreadFileTabs recently closed tabs", () => {
     });
     expect(result.current.reopenClosedTab()).toBe(false);
   });
+
+  it("skips deleted current-thread storage files while preserving owner-valid history", () => {
+    let storageFiles: readonly { path: string }[] = [
+      { path: "available.md" },
+      { path: "deleted.md" },
+    ];
+    const { result, rerender } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "recently-closed-storage",
+        syncThreadId: "thr_current",
+        environmentId: "env_1",
+        storageFiles,
+        terminalSessions: undefined,
+      }),
+    );
+
+    let availableTabId = "";
+    let foreignTabId = "";
+    let deletedTabId = "";
+    act(() => {
+      availableTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "available.md" },
+        })?.id ?? "";
+      foreignTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "foreign.md" },
+          threadId: "thr_foreign",
+        })?.id ?? "";
+      deletedTabId =
+        result.current.openTab({
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "deleted.md" },
+        })?.id ?? "";
+    });
+    act(() => {
+      result.current.closeTab(availableTabId);
+      result.current.closeTab(foreignTabId);
+      result.current.closeTab(deletedTabId);
+    });
+    act(() => {
+      storageFiles = [{ path: "available.md" }];
+      rerender();
+    });
+
+    let didReopen = false;
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeStorageFilePath).toBe("foreign.md");
+    expect(result.current.activeStorageFileThreadId).toBe("thr_foreign");
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(true);
+    expect(result.current.activeStorageFilePath).toBe("available.md");
+    expect(result.current.activeStorageFileThreadId).toBe("thr_current");
+
+    act(() => {
+      didReopen = result.current.reopenClosedTab();
+    });
+    expect(didReopen).toBe(false);
+  });
 });
 
 describe("useThreadFileTabs terminal pruning", () => {
