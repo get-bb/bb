@@ -3187,7 +3187,7 @@ describe("PromptBoxInternal mention triggers", () => {
     await focusPromptEnd(promptBoxRef);
 
     const sectionButton = await screen.findByRole("button", {
-      name: "Section: Atlas planning",
+      name: "Atlas planning",
     });
     fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
     await waitFor(() =>
@@ -3202,7 +3202,7 @@ describe("PromptBoxInternal mention triggers", () => {
         ]}
       />,
     );
-    await screen.findByRole("button", { name: "Installed: Atlas" });
+    await screen.findByRole("button", { name: "Atlas" });
     await waitFor(() =>
       expect(sectionButton.className).toContain("bg-state-active"),
     );
