@@ -170,6 +170,7 @@ export class TunnelSession {
     }, HEARTBEAT_INTERVAL_MS);
 
     tunnel.on("message", (data: Buffer, isBinary: boolean) => {
+      if (this.disposed) return;
       if (!isBinary) {
         if (data.toString() === HEARTBEAT_RESPONSE) this.lastAck = Date.now();
         return;
@@ -219,6 +220,7 @@ export class TunnelSession {
   }
 
   private onFrame(frame: Frame): void {
+    if (this.disposed) return;
     this.noteActivity();
     switch (frame.type) {
       case "open-http": {
@@ -298,19 +300,18 @@ export class TunnelSession {
     stream: HttpStream,
   ): Promise<void> {
     const { meta } = stream;
-    const originResult = this.options.resolveOrigin(meta.target);
-    if (originResult.kind === "unregistered") {
-      this.rejectUnregisteredHttp(streamId);
-      this.httpStreams.delete(streamId);
-      return;
-    }
-    const { resolved } = originResult;
-    const headers = headersForLoopbackRequest(meta.headers, {
-      publicOrigin: resolved.publicOrigin,
-      loopbackOrigin: new URL(resolved.origin).origin,
-      ...(resolved.host !== undefined ? { host: resolved.host } : {}),
-    });
     try {
+      const originResult = this.options.resolveOrigin(meta.target);
+      if (originResult.kind === "unregistered") {
+        this.rejectUnregisteredHttp(streamId);
+        return;
+      }
+      const { resolved } = originResult;
+      const headers = headersForLoopbackRequest(meta.headers, {
+        publicOrigin: resolved.publicOrigin,
+        loopbackOrigin: new URL(resolved.origin).origin,
+        ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+      });
       const startedAt = performance.now();
       const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
       const res = await requestOriginHttp({
