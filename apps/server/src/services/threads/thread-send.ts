@@ -191,7 +191,10 @@ function resolveSendMode(
     if (thread.status === "active") {
       return "steer";
     }
-    if (thread.status === "idle") {
+    if (
+      thread.status === "idle" ||
+      (requestedMode === "steer-if-active" && thread.status === "error")
+    ) {
       return "start";
     }
     throwThreadNotWritable(
