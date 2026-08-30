@@ -77,6 +77,8 @@ const COMMAND_USAGE = {
 } satisfies Record<ArcCliCommand, string>;
 const UNSAFE_TERMINAL_CHARACTER =
   /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/gu;
+const UNSAFE_JSON_CHARACTER =
+  /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/gu;
 
 interface ArcCliInvocation {
   command: ArcCliCommand;
@@ -206,7 +208,7 @@ export function safeCliField(value: string): string {
 export function safeCliJson(value: unknown, pretty: boolean): string {
   const serialized = JSON.stringify(value, null, pretty ? 2 : undefined);
   return (serialized ?? "null").replace(
-    UNSAFE_TERMINAL_CHARACTER,
+    UNSAFE_JSON_CHARACTER,
     (character) =>
       `\\u${character.codePointAt(0)?.toString(16).padStart(4, "0") ?? "fffd"}`,
   );

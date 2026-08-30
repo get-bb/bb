@@ -102,4 +102,15 @@ describe("Arc CLI terminal safety", () => {
       status: "ready",
     });
   });
+
+  it("preserves valid formatting in pretty JSON", () => {
+    const text = safeCliJson(
+      [{ displayName: "arc\u009b31m\u202e", status: "ready" }],
+      true,
+    );
+    expect(text).toContain("\n");
+    expect(JSON.parse(text)).toEqual([
+      { displayName: "arc\u009b31m\u202e", status: "ready" },
+    ]);
+  });
 });

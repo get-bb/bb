@@ -17,10 +17,6 @@ export function riftProviderDeclaration(): PluginProviderDeclaration {
     },
     serviceTiers: [{ id: "default", label: "Default" }],
     experimental_bridgeOptions: {
-      acpAccountAuthorization: {
-        authorizeMethod: "_riftar.cc/account/authorize",
-        statusMethod: "_riftar.cc/account/status",
-      },
       acpClientMeta: {
         "riftar.cc": {
           accountAuthorization: { version: 1 },
