@@ -22,6 +22,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@bb/client-core";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { useThreadActions } from "./ThreadActionsProvider";
 
 interface ThreadActionsMenuBaseProps {
@@ -39,6 +40,7 @@ interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
   onOpenChange?: (open: boolean) => void;
   triggerClassName?: string;
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
+  threadUrl?: string;
 }
 
 interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
@@ -51,6 +53,7 @@ type ThreadActionsMenuSurface = "context" | "dropdown";
 interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
   responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
   surface: ThreadActionsMenuSurface;
+  threadUrl?: string;
 }
 
 interface ThreadActionMenuItemProps {
@@ -120,6 +123,7 @@ function ThreadActionsMenuItems({
   onOpenInSplit,
   responsiveActions = [],
   surface,
+  threadUrl,
 }: ThreadActionsMenuItemsProps) {
   const {
     archiveThreadAndChildren,
@@ -174,6 +178,20 @@ function ThreadActionsMenuItems({
         </>
       ) : null}
       {}
+      {threadUrl ? (
+        <ThreadActionMenuItem
+          surface={surface}
+          icon="Copy"
+          onSelect={() => {
+            void copyToClipboardWithToast(threadUrl, {
+              successMessage: "Thread link copied",
+              errorMessage: "Failed to copy thread link",
+            });
+          }}
+        >
+          Copy thread link
+        </ThreadActionMenuItem>
+      ) : null}
       <ThreadActionMenuItem
         surface={surface}
         icon={isRead ? "Mail" : "MailOpen"}
@@ -279,6 +297,7 @@ export function ThreadActionsMenu({
   responsiveActions,
   onOpenChange,
   triggerClassName,
+  threadUrl,
 }: ThreadActionsMenuProps) {
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
@@ -309,6 +328,7 @@ export function ThreadActionsMenu({
           onOpenInSplit={onOpenInSplit}
           responsiveActions={responsiveActions}
           surface="dropdown"
+          threadUrl={threadUrl}
         />
       </DropdownMenuContent>
     </DropdownMenu>
