@@ -42,7 +42,10 @@ describe("ThreadActionsMenu", () => {
   it("copies the canonical thread URL from every menu instance", () => {
     render(<ThreadActionsMenu thread={createThread()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy thread link" }));
 
     expect(mocks.copyToClipboardWithToast).toHaveBeenCalledWith(
