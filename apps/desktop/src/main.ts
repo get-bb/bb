@@ -351,6 +351,7 @@ let serverTargetGeneration = 0;
 let connectAccountServers: ConnectAccountServer[] = [];
 let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
+let builtinWindowUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
@@ -1214,7 +1215,7 @@ function ensureDesktopMachineEnrolled(): void {
 }
 
 function localServerUrls(): string[] {
-  const urls = [builtinServerUrl];
+  const urls = [builtinServerUrl, builtinWindowUrl];
   if (currentRuntime !== null) {
     urls.push(currentRuntime.serverUrl);
   }
@@ -2239,6 +2240,7 @@ async function runDesktopApp(): Promise<void> {
   );
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
   builtinServerUrl = serverUrl;
+  builtinWindowUrl = resolveDesktopWindowUrl({ env: process.env, serverUrl });
   desktopBridgePath = bridgePath;
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
   const desktopPlatform = resolveBbDesktopPlatform(process.platform);
