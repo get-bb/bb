@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopServerOption,
@@ -20,7 +21,6 @@ import {
 interface DesktopStub {
   addCustomServer: ReturnType<typeof vi.fn>;
   removeCustomServer: ReturnType<typeof vi.fn>;
-  setConnectTrusted: ReturnType<typeof vi.fn>;
   setServerTarget: ReturnType<typeof vi.fn>;
 }
 
@@ -41,12 +41,11 @@ const CUSTOM: BbDesktopServerOption = {
 };
 
 function installDesktopApi(
-  target: Pick<BbDesktopServerTarget, "canManageServers" | "connectTrusted">,
+  target: Pick<BbDesktopServerTarget, "canManageServers">,
 ): DesktopStub {
   const stub: DesktopStub = {
     addCustomServer: vi.fn(() => Promise.resolve(true)),
     removeCustomServer: vi.fn(() => Promise.resolve(true)),
-    setConnectTrusted: vi.fn(() => Promise.resolve(true)),
     setServerTarget: vi.fn(() => Promise.resolve(true)),
   };
   Object.defineProperty(window, "bbDesktop", {
@@ -56,14 +55,14 @@ function installDesktopApi(
         Promise.resolve({
           canManageServers: target.canManageServers,
           connectServersSkipReason: null,
-          connectTrusted: target.connectTrusted,
+          connectTrusted: true,
           servers: [BUILTIN, CUSTOM],
         } satisfies BbDesktopServerTarget),
       experimental_onServerTargetChange: () => () => {},
       experimental_setServerTarget: stub.setServerTarget,
       experimental_addCustomServer: stub.addCustomServer,
       experimental_removeCustomServer: stub.removeCustomServer,
-      experimental_setConnectTrusted: stub.setConnectTrusted,
+      experimental_setConnectTrusted: vi.fn(() => Promise.resolve(true)),
     },
   });
   return stub;
@@ -73,31 +72,33 @@ function isDisabled(element: HTMLElement): boolean {
   return (element as HTMLButtonElement | HTMLInputElement).disabled;
 }
 
+function renderSection(remoteAccessPluginId: string | null = "connect"): void {
+  render(
+    <MemoryRouter>
+      <ConnectionSettingsSection remoteAccessPluginId={remoteAccessPluginId} />
+    </MemoryRouter>,
+  );
+}
+
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(window, "bbDesktop");
 });
 
 describe("ConnectionSettingsSection", () => {
-  it("adds a custom server and removes an existing one", async () => {
-    const stub = installDesktopApi({
-      canManageServers: true,
-      connectTrusted: true,
-    });
-    render(<ConnectionSettingsSection />);
+  it("adds a server by URL and removes an existing one", async () => {
+    const stub = installDesktopApi({ canManageServers: true });
+    renderSection();
 
     const address = await screen.findByLabelText("Server address");
     expect(screen.queryByText(MANAGE_FROM_THIS_MAC_TEXT)).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Server name"), {
-      target: { value: "Studio" },
-    });
     fireEvent.change(address, {
       target: { value: "https://studio.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(stub.addCustomServer).toHaveBeenCalledWith(
-      "Studio",
+      "",
       "https://studio.example.com",
     );
 
@@ -109,64 +110,38 @@ describe("ConnectionSettingsSection", () => {
     expect(stub.removeCustomServer).toHaveBeenCalledWith("id-1");
   });
 
-  it("shows bb Connect as a removable default entry", async () => {
-    const stub = installDesktopApi({
-      canManageServers: true,
-      connectTrusted: true,
-    });
-    render(<ConnectionSettingsSection />);
+  it("links to remote access when the plugin is available", async () => {
+    installDesktopApi({ canManageServers: true });
+    renderSection("connect");
 
-    expect(await screen.findByText("bb Connect")).not.toBeNull();
-    expect(screen.getByText("Default")).not.toBeNull();
-
-    const remove = screen.getByRole("button", { name: "Remove bb Connect" });
-    await waitFor(() => {
-      expect(isDisabled(remove)).toBe(false);
+    const link = await screen.findByRole("link", {
+      name: /set up remote access/iu,
     });
-    fireEvent.click(remove);
-    expect(stub.setConnectTrusted).toHaveBeenCalledWith(false);
+    expect(link.getAttribute("href")).toBe("/settings/plugins/connect");
   });
 
-  it("offers to add bb Connect back when it is not trusted", async () => {
-    const stub = installDesktopApi({
-      canManageServers: true,
-      connectTrusted: false,
-    });
-    render(<ConnectionSettingsSection />);
+  it("omits the remote access link when the plugin is missing", async () => {
+    installDesktopApi({ canManageServers: true });
+    renderSection(null);
 
-    const add = await screen.findByRole("button", { name: "Add bb Connect" });
-    expect(screen.queryByText("Default")).toBeNull();
-
-    await waitFor(() => {
-      expect(isDisabled(add)).toBe(false);
-    });
-    fireEvent.click(add);
-    expect(stub.setConnectTrusted).toHaveBeenCalledWith(true);
+    await screen.findByLabelText("Server address");
+    expect(screen.queryByRole("link", { name: /set up remote access/iu })).toBe(
+      null,
+    );
   });
 
   it("disables management but not switching while viewing a remote server", async () => {
-    const stub = installDesktopApi({
-      canManageServers: false,
-      connectTrusted: true,
-    });
-    render(<ConnectionSettingsSection />);
+    const stub = installDesktopApi({ canManageServers: false });
+    renderSection();
 
     expect(await screen.findByText(MANAGE_FROM_THIS_MAC_TEXT)).not.toBeNull();
     expect(isDisabled(screen.getByLabelText("Server address"))).toBe(true);
-    expect(isDisabled(screen.getByLabelText("Server name"))).toBe(true);
     expect(isDisabled(screen.getByRole("button", { name: "Add" }))).toBe(true);
 
     const removeCustom = screen.getByRole("button", { name: "Remove Office" });
-    const removeConnect = screen.getByRole("button", {
-      name: "Remove bb Connect",
-    });
     expect(isDisabled(removeCustom)).toBe(true);
-    expect(isDisabled(removeConnect)).toBe(true);
-
     fireEvent.click(removeCustom);
-    fireEvent.click(removeConnect);
     expect(stub.removeCustomServer).not.toHaveBeenCalled();
-    expect(stub.setConnectTrusted).not.toHaveBeenCalled();
 
     const use = screen.getByRole("button", { name: "Use Office" });
     expect(isDisabled(use)).toBe(false);

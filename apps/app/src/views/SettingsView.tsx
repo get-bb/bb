@@ -990,7 +990,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeSection, hasUnknownSection, pluginEntries } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
@@ -1070,7 +1070,14 @@ export function SettingsView() {
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
   } else if (activeSection === "connection") {
-    content = <ConnectionSettingsSection />;
+    content = (
+      <ConnectionSettingsSection
+        remoteAccessPluginId={
+          pluginEntries.find((entry) => entry.label === "Remote access")?.id ??
+          null
+        }
+      />
+    );
   } else if (activeSection === "updates") {
     content = (
       <UpdatesSettingsSection

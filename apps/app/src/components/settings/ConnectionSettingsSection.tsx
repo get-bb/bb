@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { BbDesktopServerOption } from "@bb/desktop-contract";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
@@ -6,43 +7,32 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { useServerTarget } from "@/hooks/useServerTarget";
-
-export const CONNECT_HINT_TEXT =
-  "Sign in to bb Connect to add your machines automatically.";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
 export const MANAGE_FROM_THIS_MAC_TEXT = "Manage servers from This Mac.";
 
-const CONNECT_SERVER_NAME = "bb Connect";
-
-const CONNECT_SERVER_DETAIL = "getbb.app";
-
-const SECTION_DESCRIPTION =
-  "Pick which bb server this app runs from. Opening files, folders, and terminals always happens on the server you are pointed at.";
+const SECTION_DESCRIPTION = "Pick which bb server this app runs from.";
 
 const ADD_SERVER_ERROR_TEXT = "Enter a full http:// or https:// address.";
 
-const CARD_CLASS = "flex items-start gap-3 rounded-md border border-border p-3";
+const CARD_CLASS =
+  "flex items-center gap-3 rounded-md border border-border px-3 py-2.5";
 
-function serverDetail(server: BbDesktopServerOption): string {
-  if (server.kind === "builtin") {
-    return "Runs on this Mac.";
-  }
-  return server.url ?? "";
+interface ConnectionSettingsSectionProps {
+  remoteAccessPluginId: string | null;
 }
 
-export function ConnectionSettingsSection() {
+export function ConnectionSettingsSection({
+  remoteAccessPluginId,
+}: ConnectionSettingsSectionProps) {
   const {
     busy,
     canManageServers,
-    connectTrusted,
-    showConnectHint,
     target,
     addCustomServer,
     removeCustomServer,
     selectServer,
-    setConnectTrusted,
   } = useServerTarget();
-  const [nameDraft, setNameDraft] = useState("");
   const [urlDraft, setUrlDraft] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -53,9 +43,8 @@ export function ConnectionSettingsSection() {
       return;
     }
     setAddError(null);
-    void addCustomServer(nameDraft.trim(), urlDraft.trim()).then((accepted) => {
+    void addCustomServer("", urlDraft.trim()).then((accepted) => {
       if (accepted) {
-        setNameDraft("");
         setUrlDraft("");
         return;
       }
@@ -66,21 +55,14 @@ export function ConnectionSettingsSection() {
   if (target === null) {
     return (
       <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       </SettingsSection>
     );
   }
 
-  const builtinServers = target.servers.filter(
-    (server) => server.kind === "builtin",
-  );
-  const otherServers = target.servers.filter(
-    (server) => server.kind !== "builtin",
-  );
-
   const renderServerCard = (server: BbDesktopServerOption) => (
     <li key={server.id} className={CARD_CLASS}>
-      <div className="min-w-0 flex-1 space-y-1">
+      <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-sm text-foreground">
           {server.name}
           {server.kind === "builtin" ? (
@@ -89,9 +71,11 @@ export function ConnectionSettingsSection() {
             </Badge>
           ) : null}
         </p>
-        <p className="truncate font-mono text-2xs text-subtle-foreground">
-          {serverDetail(server)}
-        </p>
+        {server.url !== null ? (
+          <p className="truncate font-mono text-2xs text-subtle-foreground">
+            {server.url}
+          </p>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {server.selected ? (
@@ -114,7 +98,7 @@ export function ConnectionSettingsSection() {
         {server.kind === "custom" ? (
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             aria-label={`Remove ${server.name}`}
             disabled={managementDisabled}
@@ -131,17 +115,10 @@ export function ConnectionSettingsSection() {
 
   return (
     <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
-      <div className="space-y-1.5">
+      <ul className="space-y-2">{target.servers.map(renderServerCard)}</ul>
+
+      <div className="space-y-1.5 pt-1">
         <div className="flex items-start gap-2">
-          <Input
-            value={nameDraft}
-            onChange={(event) => setNameDraft(event.target.value)}
-            placeholder="Name (optional)"
-            spellCheck={false}
-            aria-label="Server name"
-            className="h-8 w-32 shrink-0 text-xs"
-            disabled={managementDisabled}
-          />
           <Input
             value={urlDraft}
             onChange={(event) => setUrlDraft(event.target.value)}
@@ -169,70 +146,23 @@ export function ConnectionSettingsSection() {
         {addError !== null ? (
           <p className="text-2xs text-destructive-text">{addError}</p>
         ) : null}
-        <p className="text-2xs text-subtle-foreground">
-          {canManageServers
-            ? "Point this app at any bb server you trust."
-            : MANAGE_FROM_THIS_MAC_TEXT}
-        </p>
+        {managementDisabled ? (
+          <p className="text-2xs text-subtle-foreground">
+            {MANAGE_FROM_THIS_MAC_TEXT}
+          </p>
+        ) : null}
       </div>
 
-      <ul className="space-y-2 pt-1">
-        {builtinServers.map(renderServerCard)}
-        {connectTrusted ? (
-          <li className={CARD_CLASS}>
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="flex items-center gap-2 text-sm text-foreground">
-                {CONNECT_SERVER_NAME}
-                <Badge variant="outline" className="text-2xs font-normal">
-                  Default
-                </Badge>
-              </p>
-              <p className="truncate font-mono text-2xs text-subtle-foreground">
-                {CONNECT_SERVER_DETAIL}
-              </p>
-              <p className="text-2xs text-subtle-foreground">
-                Keeps your bb Connect machines in this list and signs you in
-                automatically.
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label={`Remove ${CONNECT_SERVER_NAME}`}
-                disabled={managementDisabled}
-                onClick={() => {
-                  void setConnectTrusted(false);
-                }}
-              >
-                Remove
-              </Button>
-            </div>
-          </li>
-        ) : null}
-        {otherServers.map(renderServerCard)}
-      </ul>
-
-      {connectTrusted ? null : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground"
-          aria-label={`Add ${CONNECT_SERVER_NAME}`}
-          disabled={managementDisabled}
-          onClick={() => {
-            void setConnectTrusted(true);
-          }}
+      {remoteAccessPluginId !== null ? (
+        <Link
+          to={getPluginConfigurationRoutePath({
+            pluginId: remoteAccessPluginId,
+          })}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <Icon name="Plus" className="size-3.5" />
-          Add {CONNECT_SERVER_NAME}
-        </Button>
-      )}
-
-      {showConnectHint ? (
-        <p className="text-2xs text-subtle-foreground">{CONNECT_HINT_TEXT}</p>
+          Set up remote access
+          <Icon name="ArrowUpRight" className="size-3.5" />
+        </Link>
       ) : null}
     </SettingsSection>
   );
