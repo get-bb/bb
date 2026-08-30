@@ -53,7 +53,7 @@ export function SidebarServerIndicator() {
         )}
       >
         <Icon
-          name={isLocal ? "Laptop" : "Cloud"}
+          name={isLocal ? "Monitor" : "Cloud"}
           className="size-3.5 shrink-0 opacity-80"
         />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
@@ -86,7 +86,7 @@ export function SidebarServerIndicator() {
             )}
           >
             <Icon
-              name={server.kind === "builtin" ? "Laptop" : "Cloud"}
+              name={server.kind === "builtin" ? "Monitor" : "Cloud"}
               className="size-3.5 shrink-0 opacity-80"
             />
             <span className="min-w-0 flex-1 truncate">{server.name}</span>
