@@ -53,6 +53,16 @@ setting defaults to `6 hours`; choose `24 hours` or `No limit` from the plugin
 detail page, or configure it with
 `bb plugin config provider-retry set maximumWait <value>`.
 
+The builtin Refusal fallback plugin is enabled on fresh installations. When a
+provider refuses a message on safety grounds and offers no fallback of its own,
+it asks which model to retry on, switches the thread, and sends one agent-only
+`Please continue.` turn. Only models below the refused one in the provider's
+catalog are offered, so retries run out instead of looping.
+
+  bb refusal-fallback status [--json]           Show automatic switches
+  bb refusal-fallback forget <provider-id>      Ask again after a refusal
+  bb refusal-fallback retry [thread-id]         Re-check a thread
+
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
 Extensions → Plugins or run `bb plugin enable workflows` before using:

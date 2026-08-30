@@ -67,6 +67,15 @@ running. Disabling/reloading the plugin or restarting the server clears them;
 the original failed thread remains available for `bb provider-retry retry`.
 Credit and spend-control exhaustion without a reset time is manual-only.
 
+A safety refusal is different from a rate limit: the provider reports that the
+selected model will not answer this message at all. bb surfaces it as a policy
+provider error, and the Refusal fallback plugin offers the models listed below
+the refused one for that provider, then retries on the chosen one.
+
+  bb refusal-fallback status [--json]           Show automatic switches
+  bb refusal-fallback forget <provider-id>      Ask again after a refusal
+  bb refusal-fallback retry [thread-id]         Re-check a thread
+
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.

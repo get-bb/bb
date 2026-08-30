@@ -231,6 +231,7 @@ describe("builtin plugin reconciliation", () => {
       ["provider-claude-code", "./icons/claude-code.svg"],
       ["provider-codex", "./icons/codex.svg"],
       ["provider-pi", "./icons/pi.svg"],
+      ["provider-refusal-fallback", "SecurityCheck"],
       ["provider-retry", "ArrowReloadHorizontal"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],

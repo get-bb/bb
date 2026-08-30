@@ -16,6 +16,7 @@ import {
   MessageAdd02Icon,
   MessageQuestionIcon,
   SmartPhone01Icon,
+  SecurityCheckIcon,
   SourceCodeIcon,
   SparklesIcon,
   TerminalIcon,
@@ -40,6 +41,10 @@ const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
   "Keep Awake": { id: "keep-awake", icon: Coffee01Icon },
   Memory: { id: "memory", icon: BrainIcon },
   "Provider retry": { id: "provider-retry", icon: ArrowReloadHorizontalIcon },
+  "Refusal fallback": {
+    id: "provider-refusal-fallback",
+    icon: SecurityCheckIcon,
+  },
   "Remote access": { id: "connect", icon: SmartPhone01Icon },
   Secrets: { id: "secrets", icon: LockIcon },
   "Side chat": { id: "side-chat", icon: MessageAdd02Icon },

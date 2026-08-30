@@ -107,6 +107,7 @@ describe("official plugin registry invariants", () => {
       "provider-claude-code": "Agent interaction",
       "provider-codex": "Agent interaction",
       "provider-pi": "Agent interaction",
+      "provider-refusal-fallback": "Agent interaction",
       "provider-retry": "Agent interaction",
       secrets: "Developer tools",
       "side-chat": "Agent interaction",
