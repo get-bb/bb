@@ -221,6 +221,11 @@ added/updated/unchanged counts.
                                  tag, engine ranges, install time, and recent
                                  activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
+  bb plugin agent-cli <id> [on|off]
+                                 Show or set whether the plugin's CLI commands
+                                 are listed in the generated plugin-commands
+                                 skill agents read (commands keep working
+                                 either way)
   bb plugin reload [id]          Re-run factories against current sources.
                                  Exits 1 when a plugin does not come up on
                                  them (previous instance kept, or degraded

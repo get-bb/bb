@@ -379,6 +379,70 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(reloaded).not.toContain("## bb acme —");
   });
 
+  it("agent-cli toggle removes commands from the skill but keeps them runnable", async () => {
+    const skillFile = join(
+      pluginCommandsSkillDir(harness.config.dataDir),
+      "SKILL.md",
+    );
+    expect(await readFile(skillFile, "utf8")).toContain("## bb acme —");
+
+    const hide = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/agent-cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ exposed: false }),
+      },
+    );
+    expect(hide.status).toBe(200);
+    const hidden = (await hide.json()) as {
+      ok: boolean;
+      plugin: { agentCliExposed: boolean };
+    };
+    expect(hidden.ok).toBe(true);
+    expect(hidden.plugin.agentCliExposed).toBe(false);
+
+    // acme is the only CLI plugin, so zero contributions removes the skill.
+    await expect(readFile(skillFile, "utf8")).rejects.toThrow();
+    expect(harness.pluginService.listCliContributions()).toEqual([]);
+
+    // The command itself keeps working while hidden.
+    expect(
+      await (await runCli(harness, "acme", { argv: ["issues"] })).json(),
+    ).toMatchObject({ exitCode: 0 });
+
+    const show = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/agent-cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ exposed: true }),
+      },
+    );
+    expect(show.status).toBe(200);
+    expect(await readFile(skillFile, "utf8")).toContain("## bb acme —");
+
+    const badBody = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/agent-cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ exposed: "nope" }),
+      },
+    );
+    expect(badBody.status).toBe(400);
+
+    const unknown = await harness.app.request(
+      `${BASE}/api/v1/plugins/nope/agent-cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ exposed: false }),
+      },
+    );
+    expect(unknown.status).toBe(404);
+  });
+
   it("bb.log writes JSONL to the plugin log file and the tail endpoint serves it", async () => {
     const logFile = join(
       harness.config.dataDir,

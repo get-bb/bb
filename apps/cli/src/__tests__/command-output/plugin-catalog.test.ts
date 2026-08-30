@@ -79,6 +79,7 @@ const installedPlugin = {
   sourceDisplay: "builtin · linear",
   updateState: {},
   enabled: true,
+  agentCliExposed: true,
   description: "Linear issue tools",
   name: "Linear",
   icon: null,

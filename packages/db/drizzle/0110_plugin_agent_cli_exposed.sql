@@ -1,0 +1,1 @@
+ALTER TABLE `plugins` ADD `agent_cli_exposed` integer DEFAULT true NOT NULL;

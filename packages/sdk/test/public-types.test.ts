@@ -298,6 +298,7 @@ type ExpectedPluginsKey =
   | "marketplaces"
   | "reload"
   | "remove"
+  | "setAgentCliExposed"
   | "token"
   | "updateSettings";
 

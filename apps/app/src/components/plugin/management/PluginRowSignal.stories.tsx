@@ -20,6 +20,7 @@ const GIT_PLUGIN = {
   rootDir: "/home/user/.bb/plugins/prompt-shaper",
   version: "0.1.0",
   enabled: true,
+  agentCliExposed: true,
   status: "running",
   statusDetail: null,
   description: "Enhance a rough composer draft before sending it.",

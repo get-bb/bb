@@ -17,6 +17,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     rootDir: "/tmp/bb-plugin-notify",
     version: "0.2.1",
     enabled: true,
+    agentCliExposed: true,
     status: "running",
     statusDetail: null,
     description: "Desktop notifications when a thread needs you.",

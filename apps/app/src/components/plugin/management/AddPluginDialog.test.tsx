@@ -64,6 +64,7 @@ const INSTALLED_PLUGIN_RESPONSE = {
     sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: {},
     enabled: true,
+    agentCliExposed: true,
     description: "Linear integration",
     name: "Linear",
     icon: null,

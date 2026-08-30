@@ -17,6 +17,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     rootDir: "/plugins/linear",
     version: "1.6.2",
     enabled: true,
+    agentCliExposed: true,
     status: "running",
     statusDetail: null,
     description: null,

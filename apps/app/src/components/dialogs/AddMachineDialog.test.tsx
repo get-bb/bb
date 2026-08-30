@@ -60,6 +60,7 @@ function connectPlugin(
     version: "0.1.0",
     provenance: "builtin",
     isOrphanedBuiltin: false,
+    agentCliExposed: true,
     publisherLabel: "BB Official",
     sourceDisplay: "builtin · connect",
     updateState: {},

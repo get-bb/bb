@@ -80,6 +80,8 @@ const installedPluginRowFields = {
   rootDir: z.string(),
   version: z.string(),
   enabled: z.boolean(),
+  // Older snapshots predate the agent-CLI toggle; default matches the column.
+  agentCliExposed: z.boolean().default(true),
   removedAt: z.number().int().nullable(),
   installedAt: z.number().int(),
   updatedAt: z.number().int(),

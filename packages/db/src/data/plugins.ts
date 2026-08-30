@@ -85,6 +85,8 @@ export interface InstalledPluginRow {
   rootDir: string;
   version: string;
   enabled: boolean;
+  /** Whether the plugin's CLI commands appear in the generated agent skill. */
+  agentCliExposed: boolean;
   removedAt: number | null;
   installedAt: number;
   updatedAt: number;
@@ -387,6 +389,19 @@ export function setInstalledPluginEnabled(
     .update(installedPlugins)
     .set({ enabled, updatedAt: Date.now() })
     .where(eq(installedPlugins.id, id))
+    .run();
+  return result.changes > 0;
+}
+
+export function setInstalledPluginAgentCliExposed(
+  db: DbConnection,
+  id: string,
+  exposed: boolean,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({ agentCliExposed: exposed, updatedAt: Date.now() })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();
   return result.changes > 0;
 }

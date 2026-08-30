@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
@@ -51,7 +52,12 @@ import {
   usePluginSource,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import {
+  setPluginAgentCliExposed,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   getPluginFrontendDiagnostics,
   subscribePluginFrontendDiagnostics,
@@ -59,6 +65,39 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
+
+export function PluginAgentCliControl({ plugin }: { plugin: PluginListItem }) {
+  const queryClient = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: (exposed: boolean) =>
+      setPluginAgentCliExposed(fetch, plugin.id, exposed),
+    onError: (error) => {
+      appToast.error(`Updating agent access for ${plugin.id} failed`, {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
+  const exposed = toggle.isPending
+    ? (toggle.variables ?? plugin.agentCliExposed)
+    : plugin.agentCliExposed;
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+        List this plugin's <code className="font-mono text-xs">bb</code>{" "}
+        commands in the skill agents use to discover plugin commands. Turning
+        this off hides the commands from agents; you can still run them
+        yourself.
+      </p>
+      <Switch
+        checked={exposed}
+        disabled={toggle.isPending}
+        aria-label={`${exposed ? "Hide" : "Show"} ${plugin.id} commands ${exposed ? "from" : "to"} agents`}
+        onCheckedChange={(next) => toggle.mutate(next)}
+      />
+    </div>
+  );
+}
 
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
   const label = plugin.publisherLabel;
@@ -389,6 +428,15 @@ export function PluginDetail({
                 />
               </Link>
             </p>
+          </ResourceDetailConfigurationSection>
+        ) : null}
+        {plugin.cliCommand !== null ? (
+          <ResourceDetailConfigurationSection
+            id="agent-access"
+            className="scroll-mt-4"
+            label="Agent access"
+          >
+            <PluginAgentCliControl plugin={plugin} />
           </ResourceDetailConfigurationSection>
         ) : null}
         <ResourceDetailReleaseSection

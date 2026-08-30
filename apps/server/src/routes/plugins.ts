@@ -22,6 +22,7 @@ import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import { pluginImageResponse } from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
+  pluginAgentCliRequestSchema,
   pluginInstallRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
@@ -444,6 +445,24 @@ export function registerPluginRoutes(
 
   app.post("/plugins/:id/disable", async (context) => {
     const plugin = await plugins.setEnabled(context.req.param("id"), false);
+    if (!plugin)
+      return context.json({ ok: false, error: "unknown plugin" }, 404);
+    return context.json({ ok: true, plugin });
+  });
+
+  app.post("/plugins/:id/agent-cli", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginAgentCliRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        { ok: false, error: "expected { exposed: boolean }" },
+        400,
+      );
+    }
+    const plugin = await plugins.setAgentCliExposed(
+      context.req.param("id"),
+      body.data.exposed,
+    );
     if (!plugin)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
     return context.json({ ok: true, plugin });

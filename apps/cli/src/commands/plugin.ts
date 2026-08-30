@@ -684,8 +684,9 @@ function printPlugin(plugin: PluginEntry): void {
     )
       ? ` (core command "bb ${plugin.cliCommand.name}" takes precedence)`
       : "";
+    const agentNote = plugin.agentCliExposed ? "" : " (hidden from agents)";
     console.log(
-      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}${collisionNote}`,
+      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}${collisionNote}${agentNote}`,
     );
   }
 }
@@ -1530,6 +1531,61 @@ export function registerPluginCommands(
         }),
       );
   }
+
+  plugin
+    .command("agent-cli <id> [state]")
+    .description(
+      "Show or set whether the plugin's CLI commands are listed for agents: agent-cli <id> [on|off]. Hidden commands keep working; they just leave the generated plugin-commands skill.",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          id: string,
+          state: string | undefined,
+          opts: JsonOutputOptions,
+        ) => {
+          if (state !== undefined && state !== "on" && state !== "off") {
+            console.error(`Expected "on" or "off", got "${state}"`);
+            process.exit(1);
+          }
+          if (state === undefined) {
+            const result = await createCliBbSdk(getUrl()).plugins.list();
+            const entry = result.plugins.find((p) => p.id === id);
+            if (!entry) exitWithError({ error: `unknown plugin "${id}"` });
+            if (opts.json) {
+              outputJson(opts, {
+                ok: true,
+                id: entry.id,
+                agentCliExposed: entry.agentCliExposed,
+              });
+              return;
+            }
+            console.log(
+              `${entry.id}: agent CLI ${entry.agentCliExposed ? "exposed" : "hidden"}`,
+            );
+            return;
+          }
+          const result = pluginMutationResponseSchema.parse(
+            await callPlugins(
+              getUrl(),
+              `/${encodeURIComponent(id)}/agent-cli`,
+              "POST",
+              { exposed: state === "on" },
+            ),
+          );
+          if (opts.json) {
+            outputJson(opts, result);
+            if (!result.ok) process.exit(1);
+            return;
+          }
+          if (!result.ok || !result.plugin) exitWithError(result);
+          console.log(
+            `${result.plugin.id}: agent CLI ${result.plugin.agentCliExposed ? "exposed" : "hidden"}`,
+          );
+        },
+      ),
+    );
 
   plugin
     .command("config <id> [action] [key] [value]")

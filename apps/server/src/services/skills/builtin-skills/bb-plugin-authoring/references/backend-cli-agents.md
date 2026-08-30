@@ -30,7 +30,10 @@ bb.cli.register({
 
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
-`commands` usage lines — fill both in. Combined stdout and stderr must fit
+`commands` usage lines — fill both in. Users curate that skill per plugin
+with `bb plugin agent-cli <id> on|off` (or the "Agent access" toggle on the
+plugin's detail page); a hidden plugin's commands keep working but are not
+advertised to agents. Combined stdout and stderr must fit
 `PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@get-bb/plugin-sdk` (1,048,576 UTF-8 bytes).
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use

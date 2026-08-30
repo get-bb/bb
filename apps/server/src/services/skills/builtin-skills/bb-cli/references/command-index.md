@@ -210,6 +210,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb plugin reload`
 - `bb plugin enable`
 - `bb plugin disable`
+- `bb plugin agent-cli`
 - `bb plugin config`
 - `bb plugin token`
 - `bb plugin run`

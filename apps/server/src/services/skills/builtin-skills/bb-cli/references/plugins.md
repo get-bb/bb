@@ -114,6 +114,9 @@
     on disk).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
+  - `bb plugin agent-cli <id> [on|off]` — show or set whether the plugin's
+    CLI commands are listed in the generated plugin-commands skill agents
+    read. Hidden commands keep working; they are just not advertised.
   - `bb plugin token <id>` — print a short-lived bearer token for that plugin.
   - List, reload, enable, disable, config, and remove support `--json`.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

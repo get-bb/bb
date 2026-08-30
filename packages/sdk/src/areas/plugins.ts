@@ -12,6 +12,7 @@ import {
   pluginMarketplaceRefreshRequestSchema,
   pluginMarketplaceRefreshResponseSchema,
   pluginMarketplaceRemoveResponseSchema,
+  pluginAgentCliRequestSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
   pluginInstallSourceRequestSchema,
@@ -158,6 +159,12 @@ export interface PluginListUpdateResultsArgs {
 
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
+export type PluginSetAgentCliExposedResult = InstalledPlugin;
+
+export interface PluginSetAgentCliExposedArgs {
+  pluginId: string;
+  exposed: boolean;
+}
 export type PluginGetSettingsResult = PluginSettingsResponse;
 export type PluginInstallResult = InstalledPlugin;
 export type PluginListResult = PluginListResponse;
@@ -210,6 +217,9 @@ export interface PluginsArea {
   marketplaces: PluginMarketplacesArea;
   disable(args: PluginIdArgs): Promise<PluginDisableResult>;
   enable(args: PluginIdArgs): Promise<PluginEnableResult>;
+  setAgentCliExposed(
+    args: PluginSetAgentCliExposedArgs,
+  ): Promise<PluginSetAgentCliExposedResult>;
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
   getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
@@ -393,6 +403,17 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         pluginPath(input.pluginId, "/enable"),
         pluginInstallResponseSchema,
         jsonInit("POST", {}),
+      );
+      return response.plugin;
+    },
+    async setAgentCliExposed(input) {
+      const body = pluginAgentCliRequestSchema.parse({
+        exposed: input.exposed,
+      });
+      const response = await requestParsed(
+        pluginPath(input.pluginId, "/agent-cli"),
+        pluginInstallResponseSchema,
+        jsonInit("POST", body),
       );
       return response.plugin;
     },
