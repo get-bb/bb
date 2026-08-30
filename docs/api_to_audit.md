@@ -833,7 +833,8 @@ links beneath its existing sidebar row. Each child owns a stable id, title,
 relative panel subpath, optional icon, and optional
 `experimental_sidebarAccessory`. The parent remains independently navigable,
 sortable, hideable, and able to render its own accessory. Expansion is stored
-per client and active child routes reveal themselves automatically.
+per client; active child routes reveal themselves automatically, while an
+explicit collapse remains respected for the current sidebar session.
 
 **Audit before stabilizing.**
 

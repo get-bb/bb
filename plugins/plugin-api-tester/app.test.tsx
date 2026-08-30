@@ -43,8 +43,9 @@ describe("Plugin API Tester panel", () => {
     const parentAccessory = render(createElement(ParentAccessory!));
     expect(parentAccessory.getByText("API")).toBeTruthy();
 
-    const Accessory = app.navPanels[0]?.experimental_sidebarSubItems?.[1]
-      ?.experimental_sidebarAccessory;
+    const Accessory =
+      app.navPanels[0]?.experimental_sidebarSubItems?.[1]
+        ?.experimental_sidebarAccessory;
     expect(Accessory).toBeTypeOf("function");
     const accessory = render(createElement(Accessory!));
     expect(accessory.getByText("3")).toBeTruthy();

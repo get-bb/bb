@@ -52,15 +52,14 @@ function pluginNavPanelChromeOf(
     ...(panel.experimental_sidebarSubItems === undefined
       ? {}
       : {
-          experimental_sidebarSubItems:
-            panel.experimental_sidebarSubItems.map(
-              ({ id, title, icon, subPath }) => ({
-                id,
-                title,
-                ...(icon === undefined ? {} : { icon }),
-                subPath,
-              }),
-            ),
+          experimental_sidebarSubItems: panel.experimental_sidebarSubItems.map(
+            ({ id, title, icon, subPath }) => ({
+              id,
+              title,
+              ...(icon === undefined ? {} : { icon }),
+              subPath,
+            }),
+          ),
         }),
   };
 }

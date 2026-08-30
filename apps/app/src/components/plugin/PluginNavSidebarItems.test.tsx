@@ -320,6 +320,28 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
   });
 
+  it("selects only the most specific nested sub-item", () => {
+    registerPanel("lens", "Lens", undefined, [
+      { id: "issues", title: "Issues", subPath: "issues" },
+      { id: "open", title: "Open issues", subPath: "issues/open" },
+    ]);
+
+    renderSidebarItems({
+      initialPath: "/plugins/lens/main/issues/open/123",
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Open issues" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
   it("opens a sidebar sub-item in a split with its subpath", () => {
     registerPanel("lens", "Lens", undefined, [
       { id: "issues", title: "Issues", subPath: "issues" },

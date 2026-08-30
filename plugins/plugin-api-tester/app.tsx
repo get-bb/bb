@@ -24,8 +24,7 @@ function PluginApiTesterPanel({ subPath }: PluginNavPanelProps) {
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Expand this plugin in the sidebar to test child navigation, icons,
-            missing-icon alignment, parent and child accessories, and active
-            route highlighting.
+            parent and child accessories, and active route highlighting.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Current sub-path: {subPath}

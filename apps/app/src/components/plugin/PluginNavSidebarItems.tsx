@@ -426,15 +426,27 @@ function PluginNavSidebarItem({
     useState(false);
   const rowKey = getPluginNavPanelKey(row);
   const subItems = chrome.experimental_sidebarSubItems;
-  const hasActiveSubItem =
-    subItems?.some((subItem) => {
-      const subItemPath = getPluginPanelRoutePath({
-        pluginId: chrome.pluginId,
-        path: chrome.path,
-        subPath: subItem.subPath,
-      });
-      return pathname === subItemPath || pathname.startsWith(`${subItemPath}/`);
-    }) ?? false;
+  const activeSubItemId =
+    subItems?.reduce<{ id: string; pathLength: number } | null>(
+      (active, subItem) => {
+        const subItemPath = getPluginPanelRoutePath({
+          pluginId: chrome.pluginId,
+          path: chrome.path,
+          subPath: subItem.subPath,
+        });
+        if (
+          pathname !== subItemPath &&
+          !pathname.startsWith(`${subItemPath}/`)
+        ) {
+          return active;
+        }
+        return active === null || subItemPath.length > active.pathLength
+          ? { id: subItem.id, pathLength: subItemPath.length }
+          : active;
+      },
+      null,
+    )?.id ?? null;
+  const hasActiveSubItem = activeSubItemId !== null;
   const isExpanded =
     expandedPanelKeys.includes(rowKey) ||
     (hasActiveSubItem && !isActiveSubItemCollapsed);
@@ -527,7 +539,7 @@ function PluginNavSidebarItem({
               chrome={chrome}
               panel={panel}
               subItem={subItem}
-              pathname={pathname}
+              isActive={activeSubItemId === subItem.id}
               onNavigate={onNavigate}
               splitEnabled={splitEnabled}
             />
@@ -546,14 +558,14 @@ function PluginNavSidebarSubItem({
   chrome,
   panel,
   subItem,
-  pathname,
+  isActive,
   onNavigate,
   splitEnabled,
 }: {
   chrome: PluginNavPanelChrome;
   panel: PluginNavPanelSlot | null;
   subItem: PluginNavSidebarSubItemChrome;
-  pathname: string;
+  isActive: boolean;
   onNavigate?: () => void;
   splitEnabled: boolean;
 }) {
@@ -592,8 +604,6 @@ function PluginNavSidebarSubItem({
         <SidebarAccessory />
       </PluginSlotMount>
     ) : null;
-  const isActive = pathname === path || pathname.startsWith(`${path}/`);
-
   return (
     <div
       className={cn(

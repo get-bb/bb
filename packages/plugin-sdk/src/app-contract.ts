@@ -464,6 +464,14 @@ export interface PluginNavPanelRegistration {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_sidebarAccessory?: ComponentType;
+  /**
+   * Ordered child links rendered beneath this panel's sidebar row. Each child
+   * navigates within the same panel through its relative `subPath`; the most
+   * specific matching child is selected on deeper routes. Icons are BB icon
+   * name hints, and accessories follow the parent accessory's constraints.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
   experimental_sidebarSubItems?: readonly {
     id: string;
     title: string;

@@ -247,8 +247,7 @@ export function collectPluginAppRegistrations(
           (() => {
             const values = registration.experimental_sidebarSubItems;
             if (values === undefined) return [];
-            const sidebarSubItemsKind =
-              `${kind}.experimental_sidebarSubItems`;
+            const sidebarSubItemsKind = `${kind}.experimental_sidebarSubItems`;
             if (!Array.isArray(values) || values.length === 0) {
               throw new Error(
                 `${sidebarSubItemsKind} must be a non-empty array when set`,

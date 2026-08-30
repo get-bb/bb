@@ -889,10 +889,7 @@ describe("loadPluginApp", () => {
         { id: "reviews", title: "Reviews", subPath: "issues" },
       ],
     ],
-    [
-      "an empty title",
-      [{ id: "issues", title: "", subPath: "issues" }],
-    ],
+    ["an empty title", [{ id: "issues", title: "", subPath: "issues" }]],
     [
       "an empty icon",
       [{ id: "issues", title: "Issues", icon: "", subPath: "issues" }],

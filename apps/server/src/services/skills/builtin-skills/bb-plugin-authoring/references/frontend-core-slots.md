@@ -148,9 +148,10 @@ target? })`. Inside the fixed-tab component,
   panel's existing sidebar row. Each child is
   `{ id, title, subPath, icon?, experimental_sidebarAccessory? }`. Activating a
   child opens the same panel at its relative `subPath`; deeper routes keep that
-  child selected. Child ids and subpaths must be unique within the panel, and
-  subpaths cannot contain empty, `.` or `..` segments, queries, or fragments.
-  The optional icon follows the same plugin icon rules as the parent. A child
+  child selected; when declared paths nest, the most specific match is active.
+  Child ids and subpaths must be unique within the panel, and subpaths cannot
+  contain empty, `.` or `..` segments, queries, or fragments. The optional icon
+  is a BB icon-name hint like the parent's. A child
   accessory has the same wide-viewport bounds and crash isolation as the
   parent's accessory. Omitting the field leaves the existing single row
   unchanged. Experimental: see `docs/api_to_audit.md`.
