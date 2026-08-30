@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -219,6 +220,29 @@ async function expectScratchFilesGone(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
+
+it("accepts a prompt containing only a local image", async () => {
+  const threadId = "thr_image_only";
+  await harness.startThread(threadId);
+  const imagePath = join(harness.workspaceDir, "screenshot.png");
+  writeFileSync(imagePath, Buffer.from("fake png data"));
+
+  const response = await harness.request(2, "turn/start", {
+    threadId,
+    providerThreadId: threadId,
+    clientRequestId: "creq_234567abcd",
+    input: [{ type: "localImage", path: imagePath, mimeType: "image/png" }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+
+  expect(response.result).toEqual({ threadId });
+  await harness.waitForTurnBoundary(threadId);
+  expect(
+    harness.deltasOf(threadId).some(
+      (delta) => delta.kind === "item.textDelta" && delta.text === "Response to: ",
+    ),
+  ).toBe(true);
+});
 
 it("a child's tool and prompt files go with the child after release and failed construction", async () => {
   await harness.startThread("thr_lc_scratch", {
