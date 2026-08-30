@@ -132,6 +132,190 @@ describe("plugin background services", () => {
     expect(reloaded?.services).toEqual([{ name: "conn", state: "running" }]);
   });
 
+  it("keeps plugin resources alive until a pending async generator settles", async () => {
+    globals.__streamAborts = 0;
+    globals.__streamConstructions = 0;
+    globals.__streamDisposedGenerations = [];
+    globals.__streamDisposals = 0;
+    globals.__streamDisposalResourceUses = 0;
+    globals.__streamResourceUses = 0;
+    globals.__streamReturns = 0;
+    globals.__streamServiceStops = 0;
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-stream-drain",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          const generation = ++g.__streamConstructions;
+          const database = bb.storage.database();
+          bb.background.service("owned", {
+            start(signal: AbortSignal) {
+              return new Promise<void>((resolve) => {
+                signal.addEventListener("abort", () => {
+                  g.__streamServiceStops += 1;
+                  resolve();
+                }, { once: true });
+              });
+            },
+          });
+          bb.onDispose(() => {
+            database.prepare("SELECT 1").get();
+            g.__streamDisposedGenerations.push(generation);
+            g.__streamDisposals += 1;
+            g.__streamDisposalResourceUses += 1;
+          });
+          bb.cli.register({
+            name: "stream-drain",
+            summary: "stream drain fixture",
+            commands: [],
+            run(_argv: string[], ctx: any) {
+              ctx.signal?.addEventListener("abort", () => {
+                g.__streamAborts += 1;
+              }, { once: true });
+              return {
+                exitCode: 0,
+                experimental_stdout: (async function* () {
+                  try {
+                    yield "before";
+                    await new Promise<void>((resolve) => {
+                      g.__releaseStream = resolve;
+                    });
+                    database.prepare("SELECT 1").get();
+                    g.__streamResourceUses += 1;
+                    yield "after";
+                  } finally {
+                    g.__streamReturns += 1;
+                  }
+                })(),
+              };
+            },
+          });
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    const result = await service.runCliCommand("stream-drain", [], {});
+    const iterator = result.experimental_stdout![Symbol.asyncIterator]();
+    expect(await iterator.next()).toEqual({ done: false, value: "before" });
+    const pendingNext = iterator.next();
+    await vi.waitFor(() => {
+      expect(globals.__releaseStream).toBeTypeOf("function");
+    });
+
+    const reload = service.reload("stream-drain");
+    let outcome;
+    try {
+      outcome = await Promise.race([
+        reload,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("reload exceeded its bound")), 500);
+        }),
+      ]);
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("unreachable");
+      expect(outcome.error).toContain(
+        "in-flight plugin work did not settle within 100ms after cancellation",
+      );
+      expect(outcome.error).toContain("the previous instance is still running");
+      expect(await pendingNext).toEqual({ done: true, value: undefined });
+      expect(await iterator.next()).toEqual({ done: true, value: undefined });
+      expect(globals.__streamAborts).toBe(1);
+      expect(globals.__streamServiceStops).toBe(0);
+      expect(globals.__streamDisposals).toBe(1);
+      expect(globals.__streamDisposalResourceUses).toBe(1);
+      expect(globals.__streamDisposedGenerations).toEqual([2]);
+    } finally {
+      (globals.__releaseStream as () => void)();
+      await reload;
+    }
+
+    await vi.waitFor(() => {
+      expect(globals.__streamReturns).toBe(1);
+      expect(globals.__streamResourceUses).toBe(1);
+    });
+    expect((await service.reload("stream-drain")).ok).toBe(true);
+    expect(globals.__streamServiceStops).toBe(1);
+    expect(globals.__streamDisposals).toBe(2);
+    expect(globals.__streamDisposalResourceUses).toBe(2);
+    expect(globals.__streamDisposedGenerations).toEqual([2, 1]);
+  });
+
+  it("bounds reload when stream cancellation never settles", async () => {
+    globals.__neverStreamAborts = 0;
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-never-stream",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          bb.cli.register({
+            name: "never-stream",
+            summary: "never stream fixture",
+            commands: [],
+            run(_argv: string[], ctx: any) {
+              ctx.signal?.addEventListener("abort", () => {
+                g.__neverStreamAborts += 1;
+              }, { once: true });
+              let emitted = false;
+              return {
+                exitCode: 0,
+                experimental_stdout: {
+                  [Symbol.asyncIterator]() { return this; },
+                  next() {
+                    if (!emitted) {
+                      emitted = true;
+                      return Promise.resolve({ done: false, value: "before" });
+                    }
+                    return new Promise((resolve) => {
+                      g.__releaseNeverNext = () => resolve({ done: true, value: undefined });
+                    });
+                  },
+                  return() {
+                    return new Promise((resolve) => {
+                      g.__releaseNeverReturn = () => resolve({ done: true, value: undefined });
+                    });
+                  },
+                },
+              };
+            },
+          });
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    const result = await service.runCliCommand("never-stream", [], {});
+    const iterator = result.experimental_stdout![Symbol.asyncIterator]();
+    expect(await iterator.next()).toEqual({ done: false, value: "before" });
+    const pendingNext = iterator.next();
+    await vi.waitFor(() => {
+      expect(globals.__releaseNeverNext).toBeTypeOf("function");
+    });
+
+    const reload = service.reload("never-stream");
+    try {
+      const outcome = await Promise.race([
+        reload,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("reload exceeded its bound")), 500);
+        }),
+      ]);
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("unreachable");
+      expect(outcome.error).toContain(
+        "in-flight plugin work did not settle within 100ms after cancellation",
+      );
+      expect(await pendingNext).toEqual({ done: true, value: undefined });
+      expect(globals.__neverStreamAborts).toBe(1);
+      await vi.waitFor(() => {
+        expect(globals.__releaseNeverReturn).toBeTypeOf("function");
+      });
+    } finally {
+      (globals.__releaseNeverNext as () => void)();
+      (globals.__releaseNeverReturn as () => void)();
+      await reload;
+    }
+    expect((await service.reload("never-stream")).ok).toBe(true);
+  });
+
   it("rejects new interactions while a plugin is disposing", async () => {
     globals.__disposeRequestErrors = [];
     const requestPluginInteraction = vi.fn(async () => ({
@@ -258,13 +442,21 @@ describe("plugin background services", () => {
   });
 
   it("marks the plugin degraded when a service ignores its abort", async () => {
+    globals.__stubbornDisposals = [];
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-stubborn",
       serverSource: `
         export default function plugin(bb: any) {
+          const g = globalThis as any;
+          const generation = (g.__stubbornGeneration ?? 0) + 1;
+          g.__stubbornGeneration = generation;
+          const database = bb.storage.database();
+          bb.onDispose(() => {
+            database.prepare("SELECT 1").get();
+            g.__stubbornDisposals.push(generation);
+          });
           bb.background.service("socket", {
             start() {
-              // Ignores the abort signal entirely.
               return new Promise(() => {});
             },
           });
@@ -277,6 +469,7 @@ describe("plugin background services", () => {
     expect(entry?.status).toBe("degraded");
     expect(entry?.statusDetail).toContain("service socket did not stop");
     expect(service.getApi("stubborn")).toBeUndefined();
+    expect(globals.__stubbornDisposals).toEqual([1, 2]);
     expect(outcome).toEqual({
       ok: false,
       error: 'plugin "stubborn" reload failed: service socket did not stop',
@@ -291,10 +484,19 @@ describe("plugin background services", () => {
   });
 
   it("reports a failed reload that kept the previous instance", async () => {
+    globals.__keeperDisposals = [];
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-keeper",
       serverSource: `
         export default function plugin(bb: any) {
+          const g = globalThis as any;
+          const generation = (g.__keeperGeneration ?? 0) + 1;
+          g.__keeperGeneration = generation;
+          const database = bb.storage.database();
+          bb.onDispose(() => {
+            database.prepare("SELECT 1").get();
+            g.__keeperDisposals.push(generation);
+          });
           bb.cli.register({ name: "keeper", summary: "keeper", run() { return { exitCode: 0, stdout: "ok" }; } });
         }
       `,
@@ -306,13 +508,24 @@ describe("plugin background services", () => {
 
     await writeFile(
       join(rootDir, "server.ts"),
-      `export default function plugin() { throw new Error("boom on load"); }`,
+      `export default function plugin(bb: any) {
+        const g = globalThis as any;
+        const generation = (g.__keeperGeneration ?? 0) + 1;
+        g.__keeperGeneration = generation;
+        const database = bb.storage.database();
+        bb.onDispose(() => {
+          database.prepare("SELECT 1").get();
+          g.__keeperDisposals.push(generation);
+        });
+        throw new Error("boom on load");
+      }`,
     );
     const outcome = await service.reload("keeper");
     const entry = service.list().find((p) => p.id === "keeper");
     expect(entry?.status).toBe("running");
     expect(entry?.statusDetail).toBe("reload failed: boom on load");
     expect(service.getApi("keeper")).toBeDefined();
+    expect(globals.__keeperDisposals).toEqual([1, 3]);
     expect(outcome.ok).toBe(false);
     if (outcome.ok) throw new Error("unreachable");
     expect(outcome.error).toBe(

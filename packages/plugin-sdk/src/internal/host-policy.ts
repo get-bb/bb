@@ -19,6 +19,7 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginCliResult,
   PluginMentionTrigger,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
@@ -1877,6 +1878,47 @@ export function enforcePluginCliOutputLimit(
         error,
       }
     : { exitCode: 1, stdout: "", stderr: error.message, error };
+}
+
+export function normalizePluginCliResult(
+  result: PluginCliResult,
+  jsonOutput: boolean,
+): PluginCliExecutionResult {
+  const streamed = result.experimental_stdout;
+  if (
+    streamed !== undefined &&
+    (typeof streamed !== "object" ||
+      streamed === null ||
+      typeof streamed[Symbol.asyncIterator] !== "function")
+  ) {
+    throw new Error("cli run() experimental_stdout must be an AsyncIterable");
+  }
+  if (streamed !== undefined && result.stdout !== undefined) {
+    throw new Error(
+      "cli run() cannot return both stdout and experimental_stdout",
+    );
+  }
+  if (
+    streamed !== undefined &&
+    (result.exitCode !== 0 ||
+      (typeof result.stderr === "string" && result.stderr.length > 0))
+  ) {
+    throw new Error(
+      "cli run() experimental_stdout requires exitCode 0 and empty stderr",
+    );
+  }
+  const normalized = enforcePluginCliOutputLimit(
+    {
+      exitCode: result.exitCode,
+      stdout: typeof result.stdout === "string" ? result.stdout : "",
+      stderr: typeof result.stderr === "string" ? result.stderr : "",
+    },
+    jsonOutput,
+  );
+  if (streamed === undefined || normalized.error !== undefined) {
+    return normalized;
+  }
+  return { ...normalized, experimental_stdout: streamed };
 }
 
 /**

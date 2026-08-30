@@ -176,7 +176,7 @@ the current engine values and the entries for its generated surfaces.
   source. The id namespaces routes, storage, settings, and CLI commands.
 
 Backend API imports normally stay type-only. The root runtime exports are
-`defineRpcContract`, `experimental_defineHostEntry`, and the numeric
+`defineRpcContract`, `experimental_defineHostEntry`, and the numeric buffered
 `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:
 `import { defineRpcContract, type BbPluginApi } from
 "@get-bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime

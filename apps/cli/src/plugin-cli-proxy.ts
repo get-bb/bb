@@ -271,7 +271,10 @@ export function findPluginCliCommand(
 }
 
 interface PluginCliOutputStream {
-  write(chunk: string, callback: (error?: Error | null) => void): boolean;
+  write(
+    chunk: string | Uint8Array,
+    callback: (error?: Error | null) => void,
+  ): boolean;
 }
 
 interface PluginCliOutputStreams {
@@ -281,10 +284,14 @@ interface PluginCliOutputStreams {
 
 async function writePluginCliOutput(
   stream: PluginCliOutputStream,
-  value: string,
+  value: string | Uint8Array,
+  appendNewline = true,
 ): Promise<void> {
   if (value.length === 0) return;
-  const output = value.endsWith("\n") ? value : `${value}\n`;
+  const output =
+    appendNewline && typeof value === "string" && !value.endsWith("\n")
+      ? `${value}\n`
+      : value;
   await new Promise<void>((resolvePromise, rejectPromise) => {
     stream.write(output, (error) => {
       if (error) rejectPromise(error);
@@ -317,7 +324,10 @@ export async function runPluginCliCommand(
     `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/cli`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        accept: "application/octet-stream, application/json",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         argv,
         cwd: process.cwd(),
@@ -327,6 +337,59 @@ export async function runPluginCliCommand(
       dispatcher: getPluginCliDispatcher(),
     },
   );
+  const responseMediaType = response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (responseMediaType === "application/octet-stream") {
+    const exitCodeHeader = response.headers.get("x-bb-plugin-cli-exit-code");
+    const exitCode =
+      exitCodeHeader !== null && /^(0|[1-9]\d*)$/.test(exitCodeHeader)
+        ? Number(exitCodeHeader)
+        : NaN;
+    if (
+      !response.ok ||
+      !Number.isSafeInteger(exitCode) ||
+      response.body === null
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      await writePluginCliOutput(
+        streams.stderr,
+        `Unexpected streamed response from the plugin CLI endpoint (HTTP ${response.status})`,
+      );
+      return 1;
+    }
+    try {
+      for await (const chunk of response.body) {
+        await writePluginCliOutput(streams.stdout, chunk, false);
+      }
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "EPIPE"
+      ) {
+        await response.body.cancel().catch(() => undefined);
+        return 0;
+      }
+      await writePluginCliOutput(
+        streams.stderr,
+        `Plugin CLI stream failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 1;
+    }
+    return exitCode;
+  }
+  if (responseMediaType !== "application/json") {
+    await response.body?.cancel().catch(() => undefined);
+    await writePluginCliOutput(
+      streams.stderr,
+      `Unexpected response from the plugin CLI endpoint (HTTP ${response.status})`,
+    );
+    return 1;
+  }
   const result = (await response.json().catch(() => null)) as {
     exitCode?: unknown;
     stdout?: unknown;

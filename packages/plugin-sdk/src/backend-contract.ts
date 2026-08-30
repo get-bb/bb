@@ -304,6 +304,7 @@ export interface PluginCliResult {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  experimental_stdout?: AsyncIterable<string>;
 }
 
 /**
@@ -327,6 +328,7 @@ export interface PluginCliExecutionResult {
   stdout: string;
   stderr: string;
   error?: PluginCliOutputLimitError;
+  experimental_stdout?: AsyncIterable<string>;
 }
 
 export interface PluginCliRegistration {

@@ -28,7 +28,18 @@ const FIXTURE_SOURCE = `
       name: "rf",
       summary: "review fixes fixture",
       commands: [],
-      run: async () => ({ exitCode: 0, stdout: "rf ok" }),
+      run: async (argv: string[]) => {
+        if (argv[0] !== "stream") return { exitCode: 0, stdout: "rf ok" };
+        return {
+          exitCode: 0,
+          experimental_stdout: (async function* () {
+            yield "before\\n";
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            await bb.storage.kv.set("stream-drained", { ok: true });
+            yield "after\\n";
+          })(),
+        };
+      },
     });
     bb.rpc.register(rpcContract, {
       slowKv: async (input: any) => {
@@ -120,5 +131,25 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
     const response = await inFlight;
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, result: "done" });
+  });
+
+  it("dispose settles a cancelled CLI stream before invalidating plugin storage", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/${PLUGIN_ID}/cli`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/octet-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ argv: ["stream"] }),
+      },
+    );
+    const output = response.text();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const outcome = await harness.pluginService.reload(PLUGIN_ID);
+
+    expect(outcome.ok).toBe(true);
+    expect(await output).toBe("before\n");
   });
 });

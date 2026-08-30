@@ -463,7 +463,10 @@ describe("runPluginCliCommand", () => {
         async () =>
           new Response(
             JSON.stringify({ exitCode: 0, stdout, stderr: "warning" }),
-            { status: 200 },
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
           ),
       ),
     );
@@ -493,6 +496,202 @@ describe("runPluginCliCommand", () => {
     expect(writes).toEqual([
       { channel: "stdout", value: `${stdout}\n` },
       { channel: "stderr", value: "warning\n" },
+    ]);
+  });
+
+  it("writes a streamed response incrementally without the buffered output ceiling", async () => {
+    const chunks = Array.from({ length: 17 }, () => "x".repeat(64 * 1024));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const encoder = new TextEncoder();
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              const chunk = chunks.shift();
+              if (chunk === undefined) controller.close();
+              else controller.enqueue(encoder.encode(chunk));
+            },
+          }),
+          {
+            headers: {
+              "content-type": "application/octet-stream; charset=binary",
+              "x-bb-plugin-cli-exit-code": "0",
+            },
+          },
+        );
+      }),
+    );
+    const writes: Uint8Array[] = [];
+    const outputStream = {
+      write(
+        value: string | Uint8Array,
+        callback: (error?: Error | null) => void,
+      ) {
+        writes.push(
+          typeof value === "string" ? new TextEncoder().encode(value) : value,
+        );
+        setTimeout(callback, 0);
+        return false;
+      },
+    };
+
+    const exitCode = await runPluginCliCommand(
+      "http://localhost",
+      "fixture",
+      [],
+      { stdout: outputStream, stderr: outputStream },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(writes).toHaveLength(17);
+    expect(writes.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(
+      17 * 64 * 1024,
+    );
+  });
+
+  it("cancels a streamed response cleanly when stdout closes", async () => {
+    let cancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("first"));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+          {
+            headers: {
+              "content-type": "application/octet-stream",
+              "x-bb-plugin-cli-exit-code": "0",
+            },
+          },
+        );
+      }),
+    );
+    const closedStream = {
+      write(
+        _value: string | Uint8Array,
+        callback: (error?: Error | null) => void,
+      ) {
+        callback(Object.assign(new Error("broken pipe"), { code: "EPIPE" }));
+        return false;
+      },
+    };
+
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: closedStream,
+        stderr: closedStream,
+      }),
+    ).resolves.toBe(0);
+    expect(cancelled).toBe(true);
+  });
+
+  it.each([
+    undefined,
+    "invalid",
+    "-1",
+    "0x10",
+    "1e2",
+    "9007199254740992",
+    "01",
+  ])(
+    "cancels a streamed response with malformed exit-code header %s",
+    async (exitCode) => {
+      let cancelled = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            {
+              headers:
+                exitCode === undefined
+                  ? { "content-type": "application/octet-stream" }
+                  : {
+                      "content-type": "application/octet-stream",
+                      "x-bb-plugin-cli-exit-code": exitCode,
+                    },
+            },
+          );
+        }),
+      );
+      const writes: string[] = [];
+      const outputStream = {
+        write(value: string | Uint8Array, callback: () => void) {
+          writes.push(String(value));
+          callback();
+          return true;
+        },
+      };
+
+      await expect(
+        runPluginCliCommand("http://localhost", "fixture", [], {
+          stdout: outputStream,
+          stderr: outputStream,
+        }),
+      ).resolves.toBe(1);
+      expect(cancelled).toBe(true);
+      expect(writes).toEqual([
+        "Unexpected streamed response from the plugin CLI endpoint (HTTP 200)\n",
+      ]);
+    },
+  );
+
+  it.each([
+    ["a non-OK streamed response", 500, "application/octet-stream"],
+    ["an unsupported media type", 200, "text/plain; charset=utf-8"],
+  ])("cancels %s", async (_label, status, contentType) => {
+    let cancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            {
+              status,
+              headers: {
+                "content-type": contentType,
+                "x-bb-plugin-cli-exit-code": "0",
+              },
+            },
+          ),
+      ),
+    );
+    const writes: string[] = [];
+    const outputStream = {
+      write(value: string | Uint8Array, callback: () => void) {
+        writes.push(String(value));
+        callback();
+        return true;
+      },
+    };
+
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: outputStream,
+        stderr: outputStream,
+      }),
+    ).resolves.toBe(1);
+    expect(cancelled).toBe(true);
+    expect(writes).toEqual([
+      contentType.startsWith("application/octet-stream")
+        ? "Unexpected streamed response from the plugin CLI endpoint (HTTP 500)\n"
+        : "Unexpected response from the plugin CLI endpoint (HTTP 200)\n",
     ]);
   });
 

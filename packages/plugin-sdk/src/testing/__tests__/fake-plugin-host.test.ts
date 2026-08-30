@@ -527,6 +527,54 @@ describe("cli", () => {
     });
   });
 
+  it("preserves streamed stdout without applying the buffered byte ceiling", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.cli.register({
+      name: "exporter",
+      summary: "Export data",
+      run: () => ({
+        exitCode: 0,
+        experimental_stdout: (async function* () {
+          yield "x".repeat(PLUGIN_CLI_OUTPUT_MAX_BYTES);
+          yield "tail";
+        })(),
+      }),
+    });
+
+    const result = await harness.runCli([]);
+    const chunks: string[] = [];
+    for await (const chunk of result.experimental_stdout ?? []) {
+      chunks.push(chunk);
+    }
+    expect(chunks.map((chunk) => chunk.length)).toEqual([
+      PLUGIN_CLI_OUTPUT_MAX_BYTES,
+      4,
+    ]);
+  });
+
+  it("rejects streamed stdout that would hide stderr", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.cli.register({
+      name: "exporter",
+      summary: "Export data",
+      run: () => ({
+        exitCode: 1,
+        stderr: "partial export",
+        experimental_stdout: (async function* () {
+          yield "partial";
+        })(),
+      }),
+    });
+
+    await expect(harness.runCli([])).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      stderr: expect.stringContaining(
+        "experimental_stdout requires exitCode 0 and empty stderr",
+      ),
+    });
+  });
+
   it("mirrors production output-limit errors without truncating", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.cli.register({

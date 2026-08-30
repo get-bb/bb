@@ -17,6 +17,7 @@ import {
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   enforcePluginCliOutputLimit,
+  normalizePluginCliResult,
   isStandardSchema,
   isZodSchemaLike,
   KV_VALUE_MAX_BYTES,
@@ -2075,14 +2076,7 @@ function createFakePluginHostInternal(
             "cli run() must return { exitCode: number, stdout?, stderr? }",
           );
         }
-        return enforcePluginCliOutputLimit(
-          {
-            exitCode: result.exitCode,
-            stdout: typeof result.stdout === "string" ? result.stdout : "",
-            stderr: typeof result.stderr === "string" ? result.stderr : "",
-          },
-          argv.includes("--json"),
-        );
+        return normalizePluginCliResult(result, argv.includes("--json"));
       } catch (error) {
         return enforcePluginCliOutputLimit(
           {

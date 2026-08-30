@@ -149,7 +149,7 @@ describe("workflows CLI argument validation", () => {
       (tool) => tool.name === "bb_workflow_run",
     );
     expect(run?.description).toBe(
-      "Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a run ID and a `previewDirective`. After a successful call, emit that directive exactly once on its own line (not in a code fence) so BB renders live progress in chat. A completion notification is sent to the origin thread. Use `bb workflows status <run-id>` for a compact summary. For detailed history, redirect a bounded JSONL page from `bb workflows history <run-id> --cursor <call-index> --limit <1-100>` into `$BB_THREAD_STORAGE`, then inspect the file with normal filesystem tools.",
+      "Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a run ID and a `previewDirective`. After a successful call, emit that directive exactly once on its own line (not in a code fence) so BB renders live progress in chat. A completion notification is sent to the origin thread. Use `bb workflows status <run-id>` for a compact summary. For complete detailed history, redirect `bb workflows history <run-id>` into `$BB_THREAD_STORAGE`, then inspect the JSONL file with normal filesystem tools.",
     );
     expect(run?.inputSchema).toMatchObject({
       type: "object",

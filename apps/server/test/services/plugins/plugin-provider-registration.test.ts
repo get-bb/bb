@@ -145,15 +145,27 @@ describe("bb.providers.register (server)", () => {
 
   it("keeps a failed provider in the listing as unavailable", async () => {
     await withTestHarness(async (harness) => {
+      const globals = globalThis as Record<string, unknown>;
+      globals.__failedProviderDisposals = 0;
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-failed-agent",
-        serverSource: REGISTER_PROVIDER_SOURCE("failed-agent"),
+        serverSource: REGISTER_PROVIDER_SOURCE("failed-agent").replace(
+          "bb.providers.register({",
+          `const database = bb.storage.database();
+          bb.onDispose(() => {
+            database.prepare("SELECT 1").get();
+            const g = globalThis as any;
+            g.__failedProviderDisposals += 1;
+          });
+          bb.providers.register({`,
+        ),
         bridgeSource: 'import "missing-provider-runtime";\n',
       });
       const entry = await harness.pluginService.installPath(rootDir);
 
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain("Could not resolve");
+      expect(globals.__failedProviderDisposals).toBe(1);
       expect(harness.deps.providerRegistry.get("failed-agent")?.info).toEqual(
         expect.objectContaining({
           id: "failed-agent",
@@ -231,6 +243,114 @@ describe("bb.providers.register (server)", () => {
         .list()
         .filter((candidate) => candidate.info.id === "reload-agent");
       expect(listed).toHaveLength(1);
+    });
+  });
+
+  it("rolls back candidate resources and registrations after activation fails", async () => {
+    await withTestHarness(async (harness) => {
+      const globals = globalThis as Record<string, unknown>;
+      globals.__rollbackDisposals = [];
+      globals.__rollbackServiceStarts = 0;
+      globals.__rollbackServiceStops = 0;
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-rollback-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("rollback-agent").replace(
+          "export default function plugin(bb: any) {",
+          `export default function plugin(bb: any) {
+            const g = globalThis as any;
+            const generation = (g.__rollbackGeneration ?? 0) + 1;
+            g.__rollbackGeneration = generation;
+            const database = bb.storage.database();
+            bb.onDispose(() => {
+              database.prepare("SELECT 1").get();
+              g.__rollbackDisposals.push(generation);
+            });`,
+        ),
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+
+      await writeFile(
+        join(rootDir, "server.ts"),
+        REGISTER_PROVIDER_SOURCE("rollback-agent")
+          .replace(
+            "export default function plugin(bb: any) {",
+            `export default function plugin(bb: any) {
+              const g = globalThis as any;
+              const generation = (g.__rollbackGeneration ?? 0) + 1;
+              g.__rollbackGeneration = generation;
+              const database = bb.storage.database();
+              bb.onDispose(() => {
+                database.prepare("SELECT 1").get();
+                g.__rollbackDisposals.push(generation);
+              });`,
+          )
+          .replace(
+            "  });\n  }\n",
+            `  });
+              bb.providers.register({
+                id: "candidate-only-agent",
+                displayName: "Candidate only",
+                maintenance: { health: true, usage: true, installation: false },
+                capabilities: {
+                  supportsServiceTier: false,
+                  supportsNativeUserQuestion: false,
+                  fork: "tip",
+                  supportsManualCompaction: false,
+                  supportsThreadArchive: false,
+                  supportsThreadRename: false,
+                  permissionModes: ["accept-edits"],
+                  reasoningLevels: ["medium"],
+                },
+                composerActions: [],
+              });
+              bb.background.service("candidate", {
+                start(signal: AbortSignal) {
+                  g.__rollbackServiceStarts += 1;
+                  return new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+                    g.__rollbackServiceStops += 1;
+                    resolve();
+                  }, { once: true }));
+                },
+              });
+              bb.background.schedule("candidate", "0 * * * *", () => {});
+            }
+`,
+          ),
+      );
+      harness.db.$client.exec(`
+        CREATE TRIGGER fail_candidate_schedule
+        BEFORE INSERT ON plugin_schedules
+        BEGIN
+          SELECT RAISE(FAIL, 'injected schedule persistence failure');
+        END
+      `);
+
+      const outcome = await harness.pluginService.reload(entry.id);
+      const reloaded = harness.pluginService
+        .list()
+        .find((plugin) => plugin.id === entry.id);
+
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("unreachable");
+      expect(outcome.error).toContain("injected schedule persistence failure");
+      expect(reloaded?.status).toBe("error");
+      expect(reloaded?.statusDetail).toContain("activation failed");
+      expect(harness.pluginService.getApi(entry.id)).toBeUndefined();
+      expect(harness.deps.providerRegistry.get("rollback-agent")).toBeNull();
+      expect(
+        harness.deps.providerRegistry.get("candidate-only-agent"),
+      ).toBeNull();
+      expect(globals.__rollbackServiceStarts).toBe(0);
+      expect(globals.__rollbackServiceStops).toBe(0);
+      expect(globals.__rollbackDisposals).toEqual([1, 2]);
+      expect(
+        harness.db.$client
+          .prepare(
+            "SELECT COUNT(*) AS count FROM plugin_schedules WHERE plugin_id = ?",
+          )
+          .get(entry.id),
+      ).toEqual({ count: 0 });
     });
   });
 
