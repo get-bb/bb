@@ -310,6 +310,10 @@ describe("PluginNavSidebarItems", () => {
       screen.getByRole("button", { name: "Lens" }).getAttribute("aria-current"),
     ).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Lens" }));
+    expect(screen.getByRole("button", { name: "Expand Lens" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
+
     active.unmount();
     renderSidebarItems({ initialPath: "/plugins/lens/main/issues-old" });
     expect(screen.getByRole("button", { name: "Expand Lens" })).toBeTruthy();

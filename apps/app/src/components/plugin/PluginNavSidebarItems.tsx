@@ -422,6 +422,8 @@ function PluginNavSidebarItem({
   const [expandedPanelKeys, setExpandedPanelKeys] = useAtom(
     expandedPluginNavPanelsAtom,
   );
+  const [isActiveSubItemCollapsed, setIsActiveSubItemCollapsed] =
+    useState(false);
   const rowKey = getPluginNavPanelKey(row);
   const subItems = chrome.experimental_sidebarSubItems;
   const hasActiveSubItem =
@@ -433,7 +435,9 @@ function PluginNavSidebarItem({
       });
       return pathname === subItemPath || pathname.startsWith(`${subItemPath}/`);
     }) ?? false;
-  const isExpanded = hasActiveSubItem || expandedPanelKeys.includes(rowKey);
+  const isExpanded =
+    expandedPanelKeys.includes(rowKey) ||
+    (hasActiveSubItem && !isActiveSubItemCollapsed);
   const SidebarAccessory = panel?.experimental_sidebarAccessory;
   const sidebarAccessory =
     panel !== null && !isCompactViewport && SidebarAccessory !== undefined ? (
@@ -471,13 +475,16 @@ function PluginNavSidebarItem({
             aria-label={`${isExpanded ? "Collapse" : "Expand"} ${chrome.title}`}
             aria-expanded={isExpanded}
             className="absolute inset-y-0 left-0 z-10 h-auto w-7 rounded-md p-0 text-muted-foreground"
-            onClick={() =>
+            onClick={() => {
+              setIsActiveSubItemCollapsed(isExpanded && hasActiveSubItem);
               setExpandedPanelKeys((current) =>
-                current.includes(rowKey)
+                isExpanded
                   ? current.filter((key) => key !== rowKey)
-                  : [...current, rowKey],
-              )
-            }
+                  : current.includes(rowKey)
+                    ? current
+                    : [...current, rowKey],
+              );
+            }}
           >
             <Icon
               name="ChevronRight"
