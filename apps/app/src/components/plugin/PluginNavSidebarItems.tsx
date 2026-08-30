@@ -31,10 +31,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  PluginIcon,
-  pluginIconName,
-} from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
@@ -436,8 +433,7 @@ function PluginNavSidebarItem({
       });
       return pathname === subItemPath || pathname.startsWith(`${subItemPath}/`);
     }) ?? false;
-  const isExpanded =
-    hasActiveSubItem || expandedPanelKeys.includes(rowKey);
+  const isExpanded = hasActiveSubItem || expandedPanelKeys.includes(rowKey);
   const SidebarAccessory = panel?.experimental_sidebarAccessory;
   const sidebarAccessory =
     panel !== null && !isCompactViewport && SidebarAccessory !== undefined ? (
@@ -516,7 +512,7 @@ function PluginNavSidebarItem({
       {isExpanded ? (
         <div
           data-plugin-nav-sidebar-sub-items=""
-          className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 pb-0.5 pl-3"
+          className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 py-1 pl-3"
         >
           {subItems.map((subItem) => (
             <PluginNavSidebarSubItem
@@ -592,7 +588,14 @@ function PluginNavSidebarSubItem({
   const isActive = pathname === path || pathname.startsWith(`${path}/`);
 
   return (
-    <div className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}>
+    <div
+      className={cn(
+        SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+        "relative",
+        isActive &&
+          "before:absolute before:inset-y-1.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-sidebar-foreground",
+      )}
+    >
       <Button
         type="button"
         size="sm"
@@ -603,7 +606,7 @@ function PluginNavSidebarSubItem({
           accessory && "pr-18",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-foreground"
-            : "text-subtle-foreground hover:text-sidebar-foreground",
+            : "text-subtle-foreground hover:text-sidebar-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-sidebar-foreground",
         )}
         aria-current={isActive ? "page" : undefined}
         onPointerDown={onPointerDown}

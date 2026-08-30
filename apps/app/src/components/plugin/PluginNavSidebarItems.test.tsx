@@ -223,7 +223,7 @@ describe("PluginNavSidebarItems", () => {
       "space-y-0.5",
       "border-l",
       "pl-3",
-      "pb-0.5",
+      "py-1",
     ]) {
       expect(subItemGroup?.classList.contains(className), className).toBe(true);
     }
@@ -233,9 +233,14 @@ describe("PluginNavSidebarItems", () => {
         .classList.contains("text-subtle-foreground"),
     ).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Issues" }).querySelector(
-        '[data-icon="Circle"]',
-      ),
+      screen
+        .getByRole("button", { name: "Reviews" })
+        .classList.contains("[&>svg]:text-muted-foreground"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .querySelector('[data-icon="Circle"]'),
     ).toBeTruthy();
     expect(
       screen
@@ -274,28 +279,39 @@ describe("PluginNavSidebarItems", () => {
       initialPath: "/plugins/lens/main/issues/123",
     });
 
+    expect(screen.getByRole("button", { name: "Collapse Lens" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Collapse Lens" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Issues" }).getAttribute(
-        "aria-current",
-      ),
+      screen
+        .getByRole("button", { name: "Issues" })
+        .getAttribute("aria-current"),
     ).toBe("page");
     expect(
       screen
         .getByRole("button", { name: "Issues" })
         .classList.contains("font-medium"),
     ).toBe(true);
+    const activeSubItemRow = screen.getByRole("button", {
+      name: "Issues",
+    }).parentElement;
+    for (const className of [
+      "before:absolute",
+      "before:-left-3",
+      "before:inset-y-1.5",
+      "before:w-0.5",
+      "before:rounded-full",
+      "before:bg-sidebar-foreground",
+    ]) {
+      expect(activeSubItemRow?.classList.contains(className), className).toBe(
+        true,
+      );
+    }
     expect(
       screen.getByRole("button", { name: "Lens" }).getAttribute("aria-current"),
     ).toBeNull();
 
     active.unmount();
     renderSidebarItems({ initialPath: "/plugins/lens/main/issues-old" });
-    expect(
-      screen.getByRole("button", { name: "Expand Lens" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Lens" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
   });
 
