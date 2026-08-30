@@ -464,6 +464,13 @@ export interface PluginNavPanelRegistration {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_sidebarAccessory?: ComponentType;
+  experimental_sidebarSubItems?: readonly {
+    id: string;
+    title: string;
+    icon?: string;
+    subPath: string;
+    experimental_sidebarAccessory?: ComponentType;
+  }[];
   /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a

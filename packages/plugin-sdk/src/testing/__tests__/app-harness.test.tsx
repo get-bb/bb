@@ -823,6 +823,148 @@ describe("loadPluginApp", () => {
     );
   });
 
+  it("validates and captures nav panel sidebar sub-items", async () => {
+    function IssueCount() {
+      return <span>12</span>;
+    }
+    const sidebarSubItems = [
+      {
+        id: "issues",
+        title: "Issues",
+        icon: "CircleDot",
+        subPath: "issues",
+        experimental_sidebarAccessory: IssueCount,
+      },
+      {
+        id: "reviews",
+        title: "Reviews",
+        subPath: "reviews/open",
+      },
+    ];
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "lens",
+          title: "Lens",
+          icon: "Scan",
+          path: "lens",
+          component: Panel,
+          experimental_sidebarSubItems: sidebarSubItems,
+        });
+      }),
+    );
+
+    sidebarSubItems.reverse();
+
+    expect(captured.navPanels[0]?.experimental_sidebarSubItems).toEqual([
+      {
+        id: "issues",
+        title: "Issues",
+        icon: "CircleDot",
+        subPath: "issues",
+        experimental_sidebarAccessory: IssueCount,
+      },
+      {
+        id: "reviews",
+        title: "Reviews",
+        subPath: "reviews/open",
+      },
+    ]);
+  });
+
+  it.each([
+    ["an empty array", []],
+    ["a non-array value", {}],
+    [
+      "duplicate ids",
+      [
+        { id: "issues", title: "Issues", subPath: "issues" },
+        { id: "issues", title: "Reviews", subPath: "reviews" },
+      ],
+    ],
+    [
+      "duplicate subpaths",
+      [
+        { id: "issues", title: "Issues", subPath: "issues" },
+        { id: "reviews", title: "Reviews", subPath: "issues" },
+      ],
+    ],
+    [
+      "an empty title",
+      [{ id: "issues", title: "", subPath: "issues" }],
+    ],
+    [
+      "an empty icon",
+      [{ id: "issues", title: "Issues", icon: "", subPath: "issues" }],
+    ],
+    [
+      "a non-component accessory",
+      [
+        {
+          id: "issues",
+          title: "Issues",
+          subPath: "issues",
+          experimental_sidebarAccessory: "12",
+        },
+      ],
+    ],
+    [
+      "an unknown experimental field",
+      [
+        {
+          id: "issues",
+          title: "Issues",
+          subPath: "issues",
+          experimental_unknown: true,
+        },
+      ],
+    ],
+  ])("rejects sidebar sub-items with %s", async (_label, sidebarSubItems) => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "lens",
+            title: "Lens",
+            icon: "Scan",
+            path: "lens",
+            component: Panel,
+            experimental_sidebarSubItems: sidebarSubItems as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow("slots.navPanel.experimental_sidebarSubItems");
+  });
+
+  it.each([
+    "",
+    "/issues",
+    "issues/",
+    "issues//open",
+    ".",
+    "..",
+    "issues/../open",
+    "issues?state=open",
+    "issues#open",
+  ])("rejects sidebar sub-item path %j", async (subPath) => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "lens",
+            title: "Lens",
+            icon: "Scan",
+            path: "lens",
+            component: Panel,
+            experimental_sidebarSubItems: [
+              { id: "issues", title: "Issues", subPath },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow("subPath");
+  });
+
   it("validates and captures nav panel fixed tabs", async () => {
     function Navigation({ subPath }: PluginNavPanelProps) {
       return <span>{subPath}</span>;
