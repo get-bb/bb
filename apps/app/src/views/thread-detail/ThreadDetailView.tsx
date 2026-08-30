@@ -2391,10 +2391,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     workspaceDeleted: isWorkspaceDeleted,
   });
   const threadTitle = getThreadDisplayTitle(thread);
-  const threadUrl = new URL(
-    getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
-    window.location.origin,
-  ).toString();
   const responsiveWorkspaceActions: ThreadActionsMenuResponsiveAction[] =
     workspaceOpenPath && preferredDirectoryTarget
       ? [
@@ -2464,7 +2460,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined
           }
-          threadUrl={threadUrl}
         />
       )}
       childPillLabel={

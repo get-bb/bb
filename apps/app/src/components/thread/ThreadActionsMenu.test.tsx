@@ -27,6 +27,7 @@ vi.mock("./ThreadActionsProvider", () => ({
 function createThread(): Thread {
   return {
     id: "thr_test",
+    projectId: "proj_test",
     archivedAt: null,
     pinnedAt: null,
   } as Thread;
@@ -38,27 +39,18 @@ afterEach(() => {
 });
 
 describe("ThreadActionsMenu", () => {
-  it("copies the thread URL from the header menu", () => {
-    const threadUrl =
-      "https://example.getbb.app/projects/proj_test/threads/thr_test";
-    render(<ThreadActionsMenu thread={createThread()} threadUrl={threadUrl} />);
+  it("copies the canonical thread URL from every menu instance", () => {
+    render(<ThreadActionsMenu thread={createThread()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy thread link" }));
 
-    expect(mocks.copyToClipboardWithToast).toHaveBeenCalledWith(threadUrl, {
-      successMessage: "Thread link copied",
-      errorMessage: "Failed to copy thread link",
-    });
-  });
-
-  it("keeps the copy action out of menus without a thread URL", () => {
-    render(<ThreadActionsMenu thread={createThread()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-
-    expect(
-      screen.queryByRole("menuitem", { name: "Copy thread link" }),
-    ).toBeNull();
+    expect(mocks.copyToClipboardWithToast).toHaveBeenCalledWith(
+      `${window.location.origin}/projects/proj_test/threads/thr_test`,
+      {
+        successMessage: "Thread link copied",
+        errorMessage: "Failed to copy thread link",
+      },
+    );
   });
 });
