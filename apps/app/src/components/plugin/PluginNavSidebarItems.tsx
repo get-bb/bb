@@ -31,7 +31,10 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import {
+  PluginIcon,
+  pluginIconName,
+} from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
@@ -613,7 +616,11 @@ function PluginNavSidebarSubItem({
             aria-hidden="true"
           />
         ) : (
-          <PluginIcon pluginId={chrome.pluginId} icon={subItem.icon} />
+          <Icon
+            name={pluginIconName(subItem.icon)}
+            className="size-4 shrink-0"
+            aria-hidden="true"
+          />
         )}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
           <span className="min-w-0 truncate">{subItem.title}</span>

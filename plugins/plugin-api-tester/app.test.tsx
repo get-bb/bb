@@ -16,11 +16,12 @@ describe("Plugin API Tester panel", () => {
       title: "Plugin API Tester",
       icon: "Beaker",
       path: "plugin-api-tester",
+      experimental_sidebarAccessory: expect.any(Function),
       experimental_sidebarSubItems: [
         {
           id: "overview",
           title: "Overview",
-          icon: "Beaker",
+          icon: "Circle",
           subPath: "overview",
         },
         {
@@ -33,7 +34,13 @@ describe("Plugin API Tester panel", () => {
 
     const slot = renderSlot(app.navPanels[0]!, { subPath: "activity" });
     expect(await slot.findByText("Plugin API Tester is active")).toBeTruthy();
+    expect(slot.getByRole("heading", { name: "Activity" })).toBeTruthy();
     expect(slot.getByText("Current sub-path: activity")).toBeTruthy();
+
+    const ParentAccessory = app.navPanels[0]?.experimental_sidebarAccessory;
+    expect(ParentAccessory).toBeTypeOf("function");
+    const parentAccessory = render(createElement(ParentAccessory!));
+    expect(parentAccessory.getByText("API")).toBeTruthy();
 
     const Accessory = app.navPanels[0]?.experimental_sidebarSubItems?.[1]
       ?.experimental_sidebarAccessory;

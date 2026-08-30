@@ -26,6 +26,10 @@ import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByContent } from "@/lib/split-layout";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -132,6 +136,7 @@ function panelRowNames(): string[] {
 
 beforeEach(() => {
   window.localStorage.clear();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -140,6 +145,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -182,6 +188,21 @@ describe("PluginNavSidebarItems", () => {
       },
       { id: "reviews", title: "Reviews", subPath: "reviews" },
     ]);
+    setPluginLogoUrls(
+      new Map([
+        [
+          "lens",
+          {
+            displayName: "Lens",
+            icon: "Beaker",
+            compactIconUrl: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
 
     const view = renderSidebarItems();
     const disclosure = screen.getByRole("button", { name: "Expand Lens" });
