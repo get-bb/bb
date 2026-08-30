@@ -81,7 +81,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, experimental_sidebarSubItems?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -143,6 +143,17 @@ target? })`. Inside the fixed-tab component,
   button on row hover or keyboard focus without unmounting. Do not render
   controls or portalled content there. A throw hides only the accessory.
   Experimental: see `docs/api_to_audit.md`.
+
+  `experimental_sidebarSubItems` adds an expandable child list beneath the
+  panel's existing sidebar row. Each child is
+  `{ id, title, subPath, icon?, experimental_sidebarAccessory? }`. Activating a
+  child opens the same panel at its relative `subPath`; deeper routes keep that
+  child selected. Child ids and subpaths must be unique within the panel, and
+  subpaths cannot contain empty, `.` or `..` segments, queries, or fragments.
+  The optional icon follows the same plugin icon rules as the parent. A child
+  accessory has the same wide-viewport bounds and crash isolation as the
+  parent's accessory. Omitting the field leaves the existing single row
+  unchanged. Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
