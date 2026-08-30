@@ -40,6 +40,7 @@ import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
   providerHealthSchema,
   providerHealthResultSchema,
+  providerExtensionValueSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
   providerUsageSchema,
@@ -799,6 +800,18 @@ const providerInstallationRunCommandSchema = z
     action: providerCliInstallActionKindSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
+  })
+  .strict();
+
+const providerExtensionCommandSchema = z
+  .object({
+    type: z.literal("provider.extension"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+    method: z.string().min(1).max(256),
+    params: providerExtensionValueSchema,
+    timeoutMs: z.number().int().min(1).max(5 * 60_000),
   })
   .strict();
 
@@ -1723,6 +1736,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.installation.run",
     schema: providerInstallationRunCommandSchema,
     resultSchema: providerCliInstallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.extension": defineHostDaemonCommandDescriptor({
+    type: "provider.extension",
+    schema: providerExtensionCommandSchema,
+    resultSchema: providerExtensionValueSchema,
     transport: "onlineRpc",
     retryable: false,
     flushEventsBeforeResult: false,

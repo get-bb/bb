@@ -6,6 +6,7 @@ import {
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
+  urlElicitationSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
@@ -15,6 +16,7 @@ import type {
   ThreadOpenFile,
   ThreadOpenSignal,
   ThreadPaneActionSignal,
+  UrlElicitationSignal,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
 import {
@@ -26,6 +28,7 @@ type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
+type UrlElicitationCallback = (signal: UrlElicitationSignal) => void;
 export type WebSocketConnectedEvent =
   | { reconnected: false }
   | {
@@ -76,6 +79,7 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private urlElicitationCallbacks = new Set<UrlElicitationCallback>();
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -312,6 +316,14 @@ export class WebSocketManager {
       return;
     }
 
+    const urlElicitation = urlElicitationSignalLenientSchema.safeParse(parsed);
+    if (urlElicitation.success) {
+      for (const cb of this.urlElicitationCallbacks) {
+        cb(urlElicitation.data);
+      }
+      return;
+    }
+
     const msg = changedMessageLenientSchema.safeParse(parsed);
     if (msg.success) {
       for (const cb of this.callbacks) {
@@ -395,6 +407,24 @@ export class WebSocketManager {
     return () => {
       this.pluginSignalCallbacks.delete(callback);
     };
+  }
+
+  onUrlElicitation(callback: UrlElicitationCallback): () => void {
+    this.urlElicitationCallbacks.add(callback);
+    return () => {
+      this.urlElicitationCallbacks.delete(callback);
+    };
+  }
+
+  respondToUrlElicitation(
+    elicitationId: string,
+    action: "accept" | "decline" | "cancel",
+  ): void {
+    this.sendMessage({
+      type: "url-elicitation-response",
+      elicitationId,
+      action,
+    });
   }
 
   consumePendingOpenFile(threadId: string): ThreadOpenFile | null {

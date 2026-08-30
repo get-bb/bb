@@ -21,6 +21,10 @@ import type {
   HostDaemonSettledCommandType,
 } from "./commands.js";
 import {
+  urlElicitationRequestParamsSchema,
+  urlElicitationResponseSchema,
+} from "@bb/provider-bridge-protocol";
+import {
   hostDaemonConnectTunnelIdentitySchema,
   hostDaemonOnlineRpcResultSchemaByType,
   hostDaemonCommandResultSchemaByType,
@@ -432,6 +436,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.health"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
+    onlineRpcResponseSuccessSchemaFor("provider.extension"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
@@ -466,6 +471,7 @@ const hostDaemonOnlineRpcResponseFailureSchema = z
     commandType: hostDaemonRpcCommandTypeSchema,
     ok: z.literal(false),
     errorCode: z.string().min(1),
+    errorData: jsonValueSchema.optional(),
     errorMessage: z.string().min(1),
   })
   .strict();
@@ -762,6 +768,47 @@ export type HostDaemonInteractiveRequestResponse = z.infer<
   typeof hostDaemonInteractiveRequestResponseSchema
 >;
 
+export const hostDaemonUrlElicitationRequestSchema =
+  urlElicitationRequestParamsSchema
+    .pick({
+      elicitationId: true,
+      message: true,
+      threadId: true,
+      timeoutMs: true,
+      url: true,
+    })
+    .extend({
+      providerId: z.string().min(1),
+      sessionId: z.string().min(1),
+    })
+    .strict();
+export type HostDaemonUrlElicitationRequest = z.infer<
+  typeof hostDaemonUrlElicitationRequestSchema
+>;
+
+export const hostDaemonUrlElicitationResponseSchema =
+  urlElicitationResponseSchema;
+export type HostDaemonUrlElicitationResponse = z.infer<
+  typeof hostDaemonUrlElicitationResponseSchema
+>;
+
+export const hostDaemonUrlElicitationCancelRequestSchema = z
+  .object({
+    elicitationId: z.string().min(1),
+    sessionId: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonUrlElicitationCancelRequest = z.infer<
+  typeof hostDaemonUrlElicitationCancelRequestSchema
+>;
+
+export const hostDaemonUrlElicitationCancelResponseSchema = z
+  .object({ ok: z.literal(true) })
+  .strict();
+export type HostDaemonUrlElicitationCancelResponse = z.infer<
+  typeof hostDaemonUrlElicitationCancelResponseSchema
+>;
+
 export const hostDaemonInteractiveInterruptRequestSchema = z.object({
   sessionId: z.string().min(1),
   providerId: z.string().min(1),
@@ -853,6 +900,18 @@ export type HostDaemonInternalSchema = {
     $post: Endpoint<
       { json: HostDaemonInteractiveRequest },
       HostDaemonInteractiveRequestResponse
+    >;
+  };
+  "/session/url-elicitation": {
+    $post: Endpoint<
+      { json: HostDaemonUrlElicitationRequest },
+      HostDaemonUrlElicitationResponse
+    >;
+  };
+  "/session/url-elicitation/cancel": {
+    $post: Endpoint<
+      { json: HostDaemonUrlElicitationCancelRequest },
+      HostDaemonUrlElicitationCancelResponse
     >;
   };
   "/session/interactive-request/interrupt": {

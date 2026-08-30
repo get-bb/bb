@@ -102,6 +102,8 @@ export {
   providerInstallationSourceSchema,
   providerInstallationStatusSchema,
   providerInstallationVerificationSchema,
+  providerExtensionParamsSchema,
+  providerExtensionResultSchema,
   providerMaintenanceParamsSchema,
   providerUsageResultSchema,
   providerUsageSchema,

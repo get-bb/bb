@@ -13,6 +13,7 @@ import {
   createBridgeIo,
   initializeParamsSchema,
   modelListParamsSchema,
+  providerExtensionParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -36,6 +37,7 @@ import { z } from "zod";
 const scriptedMethodSchema = z.enum([
   "initialize",
   "model/list",
+  "provider/extension",
   "thread/start",
   "thread/resume",
   "thread/fork",
@@ -929,6 +931,32 @@ const handlers: Record<string, RequestHandler> = {
       available: false,
       message: "Fake provider installation is unavailable",
     });
+  },
+
+  [BRIDGE_REQUEST_METHODS.providerExtension]: (id, params) => {
+    const parsed = providerExtensionParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.providerExtension,
+        parsed.error.issues,
+      );
+      return;
+    }
+    if (parsed.data.method === "_test.example/cancel-url-elicitation") {
+      notify(BRIDGE_NOTIFICATION_METHODS.urlElicitationCancel, {
+        elicitationId: "elicit-test",
+      });
+    }
+    if (parsed.data.method === "_test.example/error-data") {
+      io.sendError(id, -32042, "Arc unavailable", {
+        arcId: "arc_test",
+        state: "stopped",
+        arc_error_code: "arc_stopped",
+      });
+      return;
+    }
+    io.sendResult(id, parsed.data.params);
   },
 
   [BRIDGE_REQUEST_METHODS.skillsConfigure]: (id, params) => {

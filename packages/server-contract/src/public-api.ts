@@ -7,6 +7,7 @@ import type {
   Environment,
   Experiments,
   Host,
+  JsonValue,
   PendingInteraction,
   ProjectExecutionDefaults,
   ProjectSource,
@@ -150,6 +151,7 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProviderExtensionRequest,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
   SystemUsageLimitsQuery,
@@ -275,6 +277,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemProviderExtensionRequestSchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -1382,6 +1385,14 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: binaryResponse<Uint8Array>(),
+    }),
+    providerExtension: defineRoute({
+      path: "/system/providers/:id/extension",
+      method: "post",
+      request: jsonRequest<PathId, SystemProviderExtensionRequest>(
+        systemProviderExtensionRequestSchema,
+      ),
+      response: jsonResponse<JsonValue>(),
     }),
     providerStates: defineRoute({
       path: "/system/providers/state",

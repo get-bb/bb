@@ -347,12 +347,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginProviderDeclaration",
           "PluginProviderIconRegistration",
+          "PluginProviderOptionsContext.experimental_sessionOptions",
+          "ProvidersArea.experimental_extension",
         ],
         firstParty: [
           "ACP providers",
           "Claude Code provider",
           "Codex provider",
           "Pi provider",
+          "Rift Arcs",
         ],
         experimental: true,
       },

@@ -6,6 +6,11 @@ import {
   gitBranchNameSchema,
 } from "@bb/domain";
 import type { GitBranchName } from "@bb/domain";
+import {
+  URL_ELICITATION_ID_MAX_LENGTH,
+  URL_ELICITATION_MESSAGE_MAX_LENGTH,
+  URL_ELICITATION_URL_MAX_LENGTH,
+} from "@bb/provider-bridge-protocol";
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -135,6 +140,36 @@ export const serverMessageSchema = changedMessageSchema;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export const serverMessageLenientSchema = changedMessageLenientSchema;
+
+const httpUrlSchema = z
+  .string()
+  .url()
+  .max(URL_ELICITATION_URL_MAX_LENGTH)
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "https:" || protocol === "http:";
+  });
+
+export const urlElicitationSignalSchema = z
+  .object({
+    type: z.literal("url-elicitation"),
+    elicitationId: z.string().min(1).max(URL_ELICITATION_ID_MAX_LENGTH),
+    message: z.string().min(1).max(URL_ELICITATION_MESSAGE_MAX_LENGTH),
+    providerId: z.string().min(1).max(256),
+    url: httpUrlSchema,
+  })
+  .strict();
+export type UrlElicitationSignal = z.infer<
+  typeof urlElicitationSignalSchema
+>;
+
+export const urlElicitationSignalLenientSchema = z.object({
+  type: z.literal("url-elicitation"),
+  elicitationId: z.string().min(1).max(URL_ELICITATION_ID_MAX_LENGTH),
+  message: z.string().min(1).max(URL_ELICITATION_MESSAGE_MAX_LENGTH),
+  providerId: z.string().min(1).max(256),
+  url: httpUrlSchema,
+});
 
 export const pluginSignalSchema = z
   .object({

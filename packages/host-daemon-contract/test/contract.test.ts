@@ -1,5 +1,10 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, turnScope, type JsonObject } from "@bb/domain";
+import {
+  threadScope,
+  turnScope,
+  type JsonObject,
+  type JsonValue,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -24,6 +29,8 @@ import {
   hostDaemonInjectedSkillSourceSchema,
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonInteractiveRequestSchema,
+  hostDaemonUrlElicitationCancelRequestSchema,
+  hostDaemonUrlElicitationCancelResponseSchema,
   hostDaemonOnlineRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
   type HostDaemonRpcCommandType,
@@ -76,7 +83,7 @@ const ACP_LAUNCH_SPEC = {
 
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
-  JsonObject
+  JsonValue
 >;
 type SettledResponseResultFixtures = Record<
   HostDaemonSettledCommandType,
@@ -92,7 +99,7 @@ interface OnlineRpcResponseMismatchCase {
 interface OnlineRpcResponseRoundTripCase {
   commandType: HostDaemonOnlineRpcCommandType;
   name: string;
-  result: JsonObject;
+  result: JsonValue;
 }
 
 const WORKSPACE_UNAVAILABLE_RESULT: JsonObject = {
@@ -406,6 +413,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "provider.extension": {
+    authorization: "pending",
+    userCode: "ABCD-1234",
+  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -525,6 +536,21 @@ const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
+      name: "provider.extension primitive result",
+      commandType: "provider.extension",
+      result: "authorized",
+    },
+    {
+      name: "provider.extension array result",
+      commandType: "provider.extension",
+      result: ["pending", 2, true, null],
+    },
+    {
+      name: "provider.extension null result",
+      commandType: "provider.extension",
+      result: null,
+    },
+    {
       name: "workspace.status available result",
       commandType: "workspace.status",
       result: WORKSPACE_STATUS_AVAILABLE_RESULT,
@@ -598,7 +624,7 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
 
 function buildHostRpcResponseMessage(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
+  result: JsonValue,
 ): JsonObject {
   return {
     type: "host-rpc.response",
@@ -611,7 +637,7 @@ function buildHostRpcResponseMessage(
 
 function expectHostRpcResponseRoundTrip(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
+  result: JsonValue,
   name: string,
 ): void {
   const message = buildHostRpcResponseMessage(commandType, result);
@@ -650,7 +676,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
-    "provider.list_models may omit cwd when only user-level provider configuration applies.",
+    "provider.list_models and provider.extension may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -935,8 +961,39 @@ const ACP_BRIDGE_LAUNCH = {
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(174);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(176);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  it("keeps provider extension requests typed and non-retryable", () => {
+    const command = {
+      type: "provider.extension" as const,
+      providerId: "custom-provider",
+      bridgeLaunch: BRIDGE_LAUNCH,
+      cwd: "/tmp/workspace",
+      method: "account/authorize",
+      params: { scopes: ["account.read"], interactive: true },
+      timeoutMs: 30_000,
+    };
+    expect(hostDaemonOnlineRpcCommandSchema.parse(command)).toEqual(command);
+    expect(
+      contract.hostDaemonCommandRegistry["provider.extension"],
+    ).toMatchObject({
+      transport: "onlineRpc",
+      retryable: false,
+    });
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        timeoutMs: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        params: undefined,
+      }).success,
+    ).toBe(false);
   });
 
   it("uses relative host-plugin timeouts and bounds artifact declarations", () => {
@@ -3819,5 +3876,22 @@ describe("host-daemon session schemas", () => {
     const client = createHostDaemonClient("http://localhost:3334", "secret");
 
     expect(client.session.open.$url().pathname).toBe("/internal/session/open");
+  });
+
+  it("validates owner-bound URL elicitation cancellation", () => {
+    expect(
+      hostDaemonUrlElicitationCancelRequestSchema.parse({
+        elicitationId: "elicit-1",
+        sessionId: "session-1",
+      }),
+    ).toEqual({ elicitationId: "elicit-1", sessionId: "session-1" });
+    expect(
+      hostDaemonUrlElicitationCancelRequestSchema.safeParse({
+        elicitationId: "elicit-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonUrlElicitationCancelResponseSchema.parse({ ok: true }),
+    ).toEqual({ ok: true });
   });
 });

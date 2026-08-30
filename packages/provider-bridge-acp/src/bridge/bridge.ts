@@ -1,17 +1,30 @@
 import {
   isStandaloneBuiltinCompactCommand,
+  jsonObjectSchema,
   pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
 } from "@bb/domain";
-import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
+import type {
+  AvailableModel,
+  JsonObject,
+  PromptInput,
+  ReasoningLevel,
+} from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
+  bridgeErrorDataSchema,
   BRIDGE_NOTIFICATION_METHODS,
+  providerExtensionParamsSchema,
+  providerExtensionResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  URL_ELICITATION_MESSAGE_MAX_LENGTH,
+  URL_ELICITATION_TIMEOUT_MAX_MS,
+  URL_ELICITATION_URL_MAX_LENGTH,
+  urlElicitationResponseSchema,
 } from "@bb/provider-bridge-protocol";
 import type {
   InitializeResult,
@@ -144,6 +157,11 @@ interface PendingAcpPermission {
   options: AcpPermissionOption[];
 }
 
+interface PendingAcpUrlElicitation {
+  elicitationId: string;
+  responder: AcpAgentRequestResponder;
+}
+
 interface AcpPendingTurnInput {
   clientRequestId: string;
   input: PromptInput[];
@@ -171,6 +189,7 @@ interface AcpThreadSession {
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  pendingUrlElicitations: Set<PendingAcpUrlElicitation>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
 }
@@ -700,17 +719,192 @@ async function authenticateAcpAgent(args: {
   }
 }
 
+const acpAccountStatusResultSchema = z
+  .object({
+    state: z.enum(["connected", "disconnected"]),
+    accountId: z.string().min(1).optional(),
+  })
+  .passthrough();
+const acpAccountAuthorizeResultSchema = z
+  .object({ state: z.enum(["connected", "disconnected"]) })
+  .passthrough();
+const acpAccountAuthorizationOptionsSchema = z
+  .object({
+    authorizeMethod: z.string().min(1).max(256),
+    statusMethod: z.string().min(1).max(256),
+  })
+  .strict();
+
+async function authorizeAcpAccount(
+  connection: AcpAgentConnection,
+  providerOptions: Readonly<Record<string, unknown>> | undefined,
+): Promise<void> {
+  const accountOptions = acpAccountAuthorizationOptionsSchema.safeParse(
+    providerOptions?.["acpAccountAuthorization"],
+  );
+  if (!accountOptions.success) {
+    return;
+  }
+  const status = await connection.request({
+    method: accountOptions.data.statusMethod,
+    params: {},
+    resultSchema: acpAccountStatusResultSchema,
+  });
+  if (status.state === "connected") {
+    return;
+  }
+  const authorized = await connection.request({
+    method: accountOptions.data.authorizeMethod,
+    params: {},
+    resultSchema: acpAccountAuthorizeResultSchema,
+  });
+  if (authorized.state !== "connected") {
+    throw new AcpAuthRequiredError("Provider account authorization required");
+  }
+}
+
+class ProviderExtensionTimeoutError extends Error {
+  constructor() {
+    super("ACP extension request timed out");
+    this.name = "ProviderExtensionTimeoutError";
+  }
+}
+
+class ProviderExtensionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderExtensionInputError";
+  }
+}
+
+async function runProviderExtension(
+  params: z.infer<typeof providerExtensionParamsSchema>,
+): Promise<z.infer<typeof providerExtensionResultSchema>> {
+  if (!params.method.startsWith("_")) {
+    throw new ProviderExtensionInputError(
+      "ACP extension methods must begin with '_'",
+    );
+  }
+  const launchSpec = acpLaunchSpecSchema.safeParse(
+    params.providerOptions?.["acpLaunchSpec"],
+  );
+  if (!launchSpec.success) {
+    throw new ProviderExtensionInputError(
+      "providerOptions.acpLaunchSpec is required",
+    );
+  }
+  const allowedMethods = z
+    .array(z.string().min(1).max(256))
+    .max(64)
+    .safeParse(params.providerOptions?.["acpExtensionMethods"]);
+  if (!allowedMethods.success || !allowedMethods.data.includes(params.method)) {
+    throw new ProviderExtensionInputError(
+      `ACP extension method ${JSON.stringify(params.method)} is not declared by the provider`,
+    );
+  }
+  const pendingUrlElicitationIds = new Set<string>();
+  const connection = createAcpAgentConnection({
+    command: launchSpec.data.command,
+    args: launchSpec.data.args,
+    cwd: params.cwd ?? process.cwd(),
+    env: { ...withoutBridgeRuntimeEnv(process.env), ...launchSpec.data.env },
+    recordThreadId: null,
+    onNotification: () => {},
+    onRequest: (method, requestParams, responder) => {
+      if (method !== "elicitation/create") {
+        responder.error(
+          -32601,
+          "Sessionless ACP extension does not support this request",
+        );
+        return;
+      }
+      handleSessionlessUrlElicitation(
+        requestParams,
+        responder,
+        params.timeoutMs,
+        pendingUrlElicitationIds,
+      );
+    },
+    onExit: () => {},
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const operation = async () => {
+      const initializeResult = await connection.request({
+        method: "initialize",
+        params: {
+          protocolVersion: ACP_PROTOCOL_VERSION,
+          clientInfo: { name: "bb", version: "1.0.0" },
+          clientCapabilities: acpClientCapabilities(
+            false,
+            false,
+            params.providerOptions,
+          ),
+        },
+        resultSchema: acpInitializeResultSchema,
+      });
+      await authenticateAcpAgent({
+        connection,
+        env: {
+          ...withoutBridgeRuntimeEnv(process.env),
+          ...launchSpec.data.env,
+        },
+        initializeResult,
+      });
+      return await connection.request({
+        method: params.method,
+        params: params.params,
+        resultSchema: providerExtensionResultSchema,
+      });
+    };
+    const timeoutReached = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new ProviderExtensionTimeoutError()),
+        params.timeoutMs,
+      );
+      timeout.unref();
+    });
+    return await Promise.race([operation(), timeoutReached]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    for (const elicitationId of pendingUrlElicitationIds) {
+      cancelRuntimeUrlElicitation(elicitationId);
+    }
+    pendingUrlElicitationIds.clear();
+    await connection.kill();
+  }
+}
+
 function acpClientCapabilities(
   parameterizedModelPicker: boolean,
   fsAccess = false,
+  providerOptions?: Readonly<Record<string, unknown>>,
 ) {
+  const clientMeta = jsonObjectSchema.safeParse(
+    providerOptions?.["acpClientMeta"],
+  );
   return {
     fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
     terminal: false,
-    ...(parameterizedModelPicker === true
-      ? { _meta: { parameterizedModelPicker: true } }
-      : {}),
+    elicitation: { url: {} },
+    _meta: {
+      ...(parameterizedModelPicker === true
+        ? { parameterizedModelPicker: true }
+        : {}),
+      ...(clientMeta.success ? clientMeta.data : {}),
+    },
   };
+}
+
+function acpSessionMeta(
+  providerOptions: Readonly<Record<string, unknown>> | undefined,
+): JsonObject | undefined {
+  const parsed = jsonObjectSchema.safeParse(
+    providerOptions?.["acpSessionMeta"],
+  );
+  return parsed.success ? parsed.data : undefined;
 }
 
 async function loadAgentModelCatalog(
@@ -829,7 +1023,10 @@ async function loadSessionDiscoveredModels(
         });
         return await connection.request({
           method: "session/new",
-          params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
+          params: {
+            cwd: agent.cwd ?? process.cwd(),
+            mcpServers: [],
+          },
           resultSchema: acpSessionNewResultSchema,
         });
       })(),
@@ -1454,6 +1651,135 @@ function handlePermissionRequest(
   }
 }
 
+const acpUrlElicitationParamsSchema = z
+  .object({
+    mode: z.literal("url"),
+    url: z.string().url().max(URL_ELICITATION_URL_MAX_LENGTH),
+    message: z.string().min(1).max(URL_ELICITATION_MESSAGE_MAX_LENGTH),
+  })
+  .passthrough()
+  .superRefine((params, context) => {
+    try {
+      const parsed = new URL(params.url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url"],
+          message: "URL elicitation requires an HTTP(S) URL",
+        });
+      }
+    } catch {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["url"],
+        message: "URL elicitation requires a valid URL",
+      });
+    }
+  });
+
+async function requestUrlElicitation(args: {
+  elicitationId: string;
+  message: string;
+  providerThreadId: string;
+  threadId?: string;
+  timeoutMs: number;
+  url: string;
+}) {
+  const result = await sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.urlElicitation,
+    {
+      providerThreadId: args.providerThreadId,
+      ...(args.threadId === undefined ? {} : { threadId: args.threadId }),
+      elicitationId: args.elicitationId,
+      message: args.message,
+      url: args.url,
+      timeoutMs: Math.min(args.timeoutMs, URL_ELICITATION_TIMEOUT_MAX_MS),
+    },
+  );
+  const parsed = urlElicitationResponseSchema.safeParse(result);
+  return parsed.success ? parsed.data : { action: "cancel" as const };
+}
+
+function handleSessionlessUrlElicitation(
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+  timeoutMs: number,
+  pendingIds: Set<string>,
+): void {
+  const parsed = acpUrlElicitationParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    responder.error(-32602, "Invalid elicitation/create params");
+    return;
+  }
+  const elicitationId = randomBytes(16).toString("hex");
+  pendingIds.add(elicitationId);
+  void requestUrlElicitation({
+    elicitationId,
+    message: parsed.data.message,
+    providerThreadId: "sessionless",
+    timeoutMs,
+    url: parsed.data.url,
+  })
+    .then(
+      (result) => responder.result(result),
+      () => responder.result({ action: "cancel" }),
+    )
+    .finally(() => pendingIds.delete(elicitationId));
+}
+
+function handleUrlElicitation(
+  session: AcpThreadSession,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  const parsed = acpUrlElicitationParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    responder.error(-32602, "Invalid elicitation/create params");
+    return;
+  }
+  if (session.stopping || session.cancelRequested) {
+    responder.result({ action: "cancel" });
+    return;
+  }
+  const elicitationId = randomBytes(16).toString("hex");
+  const pending = { elicitationId, responder };
+  session.pendingUrlElicitations.add(pending);
+  void requestUrlElicitation({
+    elicitationId,
+    message: parsed.data.message,
+    providerThreadId: session.providerThreadId || session.bbThreadId,
+    threadId: session.bbThreadId,
+    timeoutMs: URL_ELICITATION_TIMEOUT_MAX_MS,
+    url: parsed.data.url,
+  })
+    .then((result) => {
+      if (!session.pendingUrlElicitations.delete(pending)) {
+        return;
+      }
+      responder.result(result);
+    })
+    .catch(() => {
+      if (!session.pendingUrlElicitations.delete(pending)) {
+        return;
+      }
+      responder.result({ action: "cancel" });
+    });
+}
+
+function cancelRuntimeUrlElicitation(elicitationId: string): void {
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.urlElicitationCancel, {
+    elicitationId,
+  });
+}
+
+function cancelPendingUrlElicitations(session: AcpThreadSession): void {
+  for (const pending of session.pendingUrlElicitations) {
+    cancelRuntimeUrlElicitation(pending.elicitationId);
+    pending.responder.result({ action: "cancel" });
+  }
+  session.pendingUrlElicitations.clear();
+}
+
 function isPathInsideRoots(targetPath: string, roots: string[]): boolean {
   const resolvedTarget = resolve(targetPath);
   return roots.some((root) => {
@@ -1713,6 +2039,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    pendingUrlElicitations: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
   };
@@ -1727,6 +2054,7 @@ async function startAgentSession(
         clientCapabilities: acpClientCapabilities(
           params.parameterizedModelPicker,
           true,
+          params.providerOptions,
         ),
       },
       resultSchema: acpInitializeResultSchema,
@@ -1736,6 +2064,7 @@ async function startAgentSession(
       env: childEnv,
       initializeResult,
     });
+    await authorizeAcpAccount(connection, params.providerOptions);
     session.supportsImageInput =
       initializeResult.agentCapabilities?.promptCapabilities?.image ?? false;
     const supportsLoadSession =
@@ -1819,7 +2148,13 @@ async function startAgentSession(
       session.pendingLoadUsageUpdate = undefined;
       const newSession = await connection.request({
         method: "session/new",
-        params: { cwd: params.cwd, mcpServers },
+        params: {
+          cwd: params.cwd,
+          mcpServers,
+          ...(params.sessionMeta === undefined
+            ? {}
+            : { _meta: params.sessionMeta }),
+        },
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
@@ -1903,6 +2238,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
     "ACP session stopped before the steer was sent",
   );
   cancelPendingPermissions(session);
+  cancelPendingUrlElicitations(session);
 
   if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
@@ -1947,6 +2283,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
+  cancelPendingUrlElicitations(session);
   session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
@@ -1963,6 +2300,7 @@ function requestSteerCancel(session: AcpThreadSession): void {
   }
   session.cancelRequested = true;
   cancelPendingPermissions(session);
+  cancelPendingUrlElicitations(session);
   session.connection.notify("session/cancel", {
     sessionId: session.providerThreadId,
   });
@@ -2162,6 +2500,9 @@ function handleAgentRequest(
       return;
     case "fs/write_text_file":
       void handleFsWriteTextFile(session, params, responder);
+      return;
+    case "elicitation/create":
+      handleUrlElicitation(session, params, responder);
       return;
     default:
       handleDialectRequest(session, method, params, responder);
@@ -2434,6 +2775,45 @@ async function handleRequest(
       return;
     }
 
+    case "provider/extension": {
+      try {
+        sendResult(request.id, await runProviderExtension(request.params));
+      } catch (error) {
+        if (error instanceof AcpAgentResponseError) {
+          const data = bridgeErrorDataSchema.safeParse(error.data);
+          sendError(
+            request.id,
+            error.code ?? -32000,
+            error.message,
+            data.success ? data.data : undefined,
+          );
+          return;
+        }
+        if (error instanceof ProviderExtensionInputError) {
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+            error.message,
+          );
+          return;
+        }
+        if (error instanceof ProviderExtensionTimeoutError) {
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+            error.message,
+          );
+          return;
+        }
+        sendError(
+          request.id,
+          BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+          "ACP extension request failed",
+        );
+      }
+      return;
+    }
+
     case "provider/health": {
       const launchSpec = decodeLaunchSpec(request.params.providerOptions);
       sendResult(
@@ -2534,9 +2914,11 @@ async function handleRequest(
           skillRoots: configuredSkillRoots ?? undefined,
         },
         parameterizedModelPicker: modelPicker.parameterizedModelPicker,
+        providerOptions: params.options.providerOptions,
         launchSpec,
         providerLabel: launchSpec.displayName,
         threadId: params.threadId,
+        sessionMeta: acpSessionMeta(params.options.providerOptions),
       });
       const session = await startAgentSession(
         request.method === "thread/resume"

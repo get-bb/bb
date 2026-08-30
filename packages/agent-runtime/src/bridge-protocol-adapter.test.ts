@@ -145,7 +145,7 @@ describe("handshake gating", () => {
     expect(adapter.approvalEnforcedBy).toBe("provider");
   });
 
-  it("routes declared sessionless maintenance methods with provider context", () => {
+  it("routes sessionless provider methods with provider context", () => {
     const adapter = makeAdapter();
     expect(
       adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
@@ -183,6 +183,52 @@ describe("handshake gating", () => {
       kind: "request",
       method: "provider/installation/run",
       params: { providerId: "fake-bridge", action: "update" },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/extension",
+        cwd: "/workspace",
+        method: "account/authorize",
+        params: { interactive: true },
+        timeoutMs: 30_000,
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/extension",
+      params: {
+        providerId: "fake-bridge",
+        cwd: "/workspace",
+        method: "account/authorize",
+        params: { interactive: true },
+        timeoutMs: 30_000,
+      },
+    });
+  });
+
+  it("passes static provider options to provider extensions", () => {
+    const adapter = makeAdapter({
+      acpLaunchSpec: { command: "arc", args: ["acp"] },
+    });
+
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/extension",
+        method: "account/authorize",
+        params: null,
+        timeoutMs: 30_000,
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/extension",
+      params: {
+        providerId: "fake-bridge",
+        providerOptions: {
+          acpLaunchSpec: { command: "arc", args: ["acp"] },
+        },
+        method: "account/authorize",
+        params: null,
+        timeoutMs: 30_000,
+      },
     });
   });
 });

@@ -616,6 +616,26 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
+    onUrlElicitation: (request) =>
+      runSessionRequest({
+        source: "requestUrlElicitation",
+        request: () =>
+          serverClient.requestUrlElicitation({
+            elicitationId: request.elicitationId,
+            message: request.message,
+            providerId: request.providerId,
+            ...(request.threadId === undefined
+              ? {}
+              : { threadId: request.threadId }),
+            timeoutMs: request.timeoutMs,
+            url: request.url,
+          }),
+      }),
+    onUrlElicitationCancel: ({ elicitationId }) =>
+      runSessionRequest({
+        source: "cancelUrlElicitation",
+        request: () => serverClient.cancelUrlElicitation(elicitationId),
+      }).then(() => undefined),
     onProcessExit: (info) => {
       const threadIds = info.threads.map((thread) => thread.threadId);
       if (!info.expected && info.stderr) {
@@ -794,6 +814,13 @@ export async function createHostDaemonApp(
       return runtimeManager.withProviderMaintenanceRuntime(
         { dataDir: options.dataDir },
         (runtime) => runtime.providerInstallationRun(args),
+      );
+    },
+    providerExtension: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.providerExtension(args),
       );
     },
     refreshShellEnv: async () => {

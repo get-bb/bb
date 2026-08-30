@@ -1,5 +1,6 @@
 import type {
   DynamicTool,
+  JsonObject,
   PermissionMode,
   ReasoningLevel,
   ServiceTier,
@@ -72,12 +73,14 @@ export interface AcpSessionParams {
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
   parameterizedModelPicker: boolean;
+  providerOptions?: Readonly<Record<string, unknown>>;
   permissionCli?: AcpBridgePermissionCli;
   permissionMode: "accept-edits" | "full";
   workspaceWriteRoots: string[];
   envVars?: Record<string, string>;
   instructions?: string;
   dynamicTools?: readonly DynamicTool[];
+  sessionMeta?: JsonObject;
 }
 
 function sanitizeAcpSkillDescription(description: string): string {
@@ -300,6 +303,8 @@ interface BuildAcpSessionParamsArgs {
   providerLabel: string;
   threadId: string;
   parameterizedModelPicker: boolean;
+  providerOptions?: Readonly<Record<string, unknown>>;
+  sessionMeta?: JsonObject;
 }
 
 export function buildAcpSessionParams(
@@ -332,6 +337,9 @@ export function buildAcpSessionParams(
       args.dialectId,
     ),
     parameterizedModelPicker: args.parameterizedModelPicker,
+    ...(args.providerOptions === undefined
+      ? {}
+      : { providerOptions: args.providerOptions }),
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }
       : {}),
@@ -352,5 +360,8 @@ export function buildAcpSessionParams(
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
       : {}),
+    ...(args.sessionMeta === undefined
+      ? {}
+      : { sessionMeta: args.sessionMeta }),
   };
 }

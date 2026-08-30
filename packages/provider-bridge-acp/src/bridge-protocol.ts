@@ -7,6 +7,7 @@ import {
   initializeParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
+  providerExtensionParamsSchema,
   providerMaintenanceParamsSchema,
   modelListParamsSchema as canonicalModelListParamsSchema,
   skillsConfigureParamsSchema,
@@ -49,6 +50,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/extension"),
+    params: providerExtensionParamsSchema,
   }),
   z.object({
     method: z.literal("provider/usage"),

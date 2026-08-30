@@ -76,6 +76,28 @@ host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
 acp-hermes-agent.
 
+Rift Arcs
+
+Install the official Rift plugin with `bb plugin install rift --yes`. It
+registers `acp-rift` when `rift-acp` is available on the selected host. Its
+Arcs page and `bb arc` command use the same lifecycle for the host, local Apple
+Container, and remote providers:
+
+  bb arc connect [--host=id|--environment=id] [--json]
+  bb arc list [--host=id|--environment=id] [--json]
+  bb arc read --id=id [--host=id|--environment=id] [--json]
+  bb arc create [--backend=fly|apple-container] [--size=size] [--json]
+  bb arc start|pause|stop|destroy --id=id [--json]
+  bb arc thread --id=id --project=id --prompt=text [--json]
+
+`bb arc use` is an alias for `bb arc thread`. Thread creation stores the Arc
+selection with the thread, so later turns and resumes return to the same Arc.
+Rift owns lifecycle state and account authorization; BB is the plugin UI and
+transport. Run `bb arc <command> --help` for the complete routing and create
+flags. Account authorization is local-first in this release: it is presented
+only when exactly one eligible BB client is connected, and otherwise cancels
+without exposing the verification URL or code.
+
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
 roots such as .agents/skills and .claude/skills when the provider supports them.

@@ -1,5 +1,5 @@
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, JsonValue } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
@@ -85,6 +85,14 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderInstallationRunResult>;
+  providerExtension: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+    method: string;
+    params: JsonValue;
+    timeoutMs: number;
+  }) => Promise<JsonValue>;
   streamProviderInstallation?: (args: {
     providerId: string;
     plan: ProviderInstallationCommand;

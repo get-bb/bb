@@ -142,10 +142,22 @@ export const pingMessageSchema = z.object({
 });
 export type PingMessage = z.infer<typeof pingMessageSchema>;
 
+export const urlElicitationResponseMessageSchema = z
+  .object({
+    type: z.literal("url-elicitation-response"),
+    elicitationId: z.string().min(1).max(256),
+    action: z.enum(["accept", "decline", "cancel"]),
+  })
+  .strict();
+export type UrlElicitationResponseMessage = z.infer<
+  typeof urlElicitationResponseMessageSchema
+>;
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
   pingMessageSchema,
+  urlElicitationResponseMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 

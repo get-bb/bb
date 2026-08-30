@@ -65,7 +65,7 @@ export function AppNavigationUrlHost({ children }: { children: ReactNode }) {
   );
 }
 
-function useOpenUrlByPreference(): (url: string) => boolean {
+export function useOpenUrlByPreference(): (url: string) => boolean {
   const openInAppBrowser = useContext(InAppBrowserUrlOpenContext);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   const desktopBrowserAvailable =

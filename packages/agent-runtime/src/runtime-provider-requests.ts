@@ -49,10 +49,71 @@ interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
     threadId: string,
   ) => AgentRuntimeExecutionOptions | undefined;
   onInteractiveRequest: AgentRuntimeOptions["onInteractiveRequest"];
+  onUrlElicitation?: AgentRuntimeOptions["onUrlElicitation"];
   onToolCall: AgentRuntimeOptions["onToolCall"];
   resolveThreadId: (
     args: ResolveRuntimeProviderRequestThreadIdArgs,
   ) => string | null;
+}
+
+function handleUrlElicitationProviderRequest(
+  args: HandleRuntimeProviderRequestArgs,
+): boolean {
+  const request = args.providerProcess.adapter.decodeUrlElicitationRequest(
+    args.rawRequest,
+  );
+  if (!request) {
+    return false;
+  }
+
+  let threadId: string | undefined;
+  if (request.threadId !== undefined) {
+    threadId =
+      args.resolveThreadId({
+        parsedId: args.parsedId,
+        providerThreadId: request.providerThreadId,
+        requestKind: "interactive request",
+        threadIdHint: request.threadId,
+      }) ?? undefined;
+    if (threadId === undefined) {
+      return true;
+    }
+  }
+
+  if (!args.onUrlElicitation) {
+    sendJsonRpcResult({
+      child: args.providerProcess.child,
+      id: args.parsedId,
+      result: { action: "cancel" },
+    });
+    return true;
+  }
+
+  void args
+    .onUrlElicitation({
+      elicitationId: request.elicitationId,
+      message: request.message,
+      providerId: args.providerProcess.adapter.id,
+      providerThreadId: request.providerThreadId,
+      ...(threadId === undefined ? {} : { threadId }),
+      timeoutMs: request.timeoutMs,
+      url: request.url,
+    })
+    .then((result) => {
+      sendJsonRpcResult({
+        child: args.providerProcess.child,
+        id: args.parsedId,
+        result,
+      });
+    })
+    .catch(() => {
+      sendJsonRpcResult({
+        child: args.providerProcess.child,
+        id: args.parsedId,
+        result: { action: "cancel" },
+      });
+    });
+  return true;
 }
 
 interface ResolveRuntimeProviderRequestTurnIdArgs extends HandleRuntimeProviderRequestArgs {
@@ -379,6 +440,9 @@ function handleInteractiveProviderRequest(
 export function handleRuntimeProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): void {
+  if (handleUrlElicitationProviderRequest(args)) {
+    return;
+  }
   if (handleToolCallProviderRequest(args)) {
     return;
   }

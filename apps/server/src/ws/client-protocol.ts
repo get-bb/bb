@@ -55,6 +55,9 @@ export function onClientSocketMessage(
     case "ping":
       socket.send(JSON.stringify(PONG_MESSAGE));
       break;
+    case "url-elicitation-response":
+      deps.hub.recordUrlElicitationResponse(socket, parsed);
+      break;
     default: {
       const _exhaustive: never = parsed;
       throw new Error(`Unhandled client message: ${_exhaustive}`);

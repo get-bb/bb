@@ -8,7 +8,7 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
-import type { JsonValue } from "./json-value.js";
+import type { JsonValue, JsonObject } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -649,6 +649,7 @@ export interface PluginProviderOptionsContext {
   model: string;
   /** BB's permission mode for this command (already clamped to the host). */
   permissionMode: PluginProviderPermissionMode;
+  experimental_sessionOptions: Readonly<JsonObject>;
   /**
    * `"plan"` when the prompt entered plan mode through this provider's
    * declared `plan` composer action. Absent for an ordinary prompt — plan

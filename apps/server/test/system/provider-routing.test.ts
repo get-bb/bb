@@ -219,6 +219,83 @@ describe("system provider host routing", () => {
       });
     },
   );
+
+  it("routes provider extensions once to the selected host", async () => {
+    await withTestHarness({}, async (harness) => {
+      const primary = seedHostSession(harness.deps, {
+        id: "host-provider-extension-primary",
+      });
+      const remote = seedHostSession(harness.deps, {
+        id: "host-provider-extension-remote",
+      });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      const commands: HostDaemonOnlineRpcRequestMessage["command"][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: remote.host.id,
+        sessionId: remote.session.id,
+        handle: (request) => {
+          commands.push(request.command);
+          if (request.command.type !== "provider.extension") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return {
+            ok: true as const,
+            result: { echoed: true },
+          };
+        },
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/system/providers/acp-opencode/extension",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: remote.host.id,
+            method: "_test.example/echo",
+            params: { value: "hello" },
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({
+        echoed: true,
+      });
+      expect(commands).toHaveLength(1);
+      expect(commands[0]).toMatchObject({
+        type: "provider.extension",
+        providerId: "acp-opencode",
+        method: "_test.example/echo",
+        params: { value: "hello" },
+      });
+    });
+  });
+
+  it("rejects conflicting provider extension host selectors", async () => {
+    await withTestHarness({}, async (harness) => {
+      const response = await harness.app.request(
+        "/api/v1/system/providers/acp-rift/extension",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            environmentId: "env-one",
+            hostId: "host-one",
+            method: "_test.example/echo",
+            params: {},
+          }),
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await readJson(response)).toMatchObject({
+        code: "invalid_request",
+        message: expect.stringContaining(
+          "hostId and environmentId are mutually exclusive",
+        ),
+      });
+    });
+  });
 });
 
 describe("GET /api/v1/system/providers", () => {

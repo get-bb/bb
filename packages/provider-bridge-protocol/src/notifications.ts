@@ -6,8 +6,18 @@ export const BRIDGE_NOTIFICATION_METHODS = {
   sessionReplaced: "session/replaced",
   providerRaw: "provider/raw",
   providerRecovery: "provider/recovery",
+  urlElicitationCancel: "elicitation/url/cancel",
   error: "error",
 } as const;
+
+export const urlElicitationCancelNotificationSchema = z
+  .object({
+    elicitationId: z.string().min(1),
+  })
+  .strict();
+export type UrlElicitationCancelNotification = z.infer<
+  typeof urlElicitationCancelNotificationSchema
+>;
 
 export const threadIdentityNotificationSchema = z
   .object({

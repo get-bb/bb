@@ -126,7 +126,12 @@ async function callHostOnlineRpcWithRetry(
   });
 
   if (!response.ok) {
-    throw new ApiError(502, response.errorCode, response.errorMessage, false);
+    throw new ApiError(502, response.errorCode, response.errorMessage, {
+      ...(response.errorData === undefined
+        ? {}
+        : { details: response.errorData }),
+      retryable: false,
+    });
   }
 
   if (response.commandType !== args.command.type) {

@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   markThreadDeleted,
+  threads,
   setExperiments,
   setThreadExecutionOverride,
 } from "@bb/db";
@@ -11,8 +13,6 @@ import {
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
-import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
@@ -38,10 +38,7 @@ import {
   registerHostRpcResponder,
   type HostRpcResponder,
 } from "../helpers/host-rpc.js";
-import {
-  configuredAcpProvider,
-  stubHostArtifact,
-} from "../helpers/provider-registry.js";
+import { configuredAcpProvider } from "../helpers/provider-registry.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -896,52 +893,10 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("runs the owning plugin's options hook with the command context", async () => {
+  it("fails closed when persisted provider session options are malformed", async () => {
     await withTestHarness(async (harness) => {
-      const pluginId = "provider-hooked";
-      const registration = buildPluginProviderRegistration({
-        available: true,
-        pluginId,
-        declaration: validatePluginProviderDeclaration({
-          id: "hooked",
-          displayName: "Hooked",
-          maintenance: { health: false, usage: false, installation: false },
-          capabilities: {
-            supportsServiceTier: false,
-            supportsNativeUserQuestion: false,
-            fork: "none",
-            supportsManualCompaction: false,
-            supportsThreadArchive: false,
-            supportsThreadRename: false,
-            permissionModes: ["accept-edits", "auto", "full"],
-            reasoningLevels: ["medium"],
-          },
-          composerActions: ["plan"],
-          deriveProviderOptions: (context) => ({
-            seen: {
-              threadId: context.threadId,
-              projectId: context.projectId,
-              model: context.model,
-              permissionMode: context.permissionMode,
-              promptMode: context.promptMode ?? null,
-            },
-            verbose: context.settings.verbose === true,
-          }),
-        }),
-        readSettings: () => ({ verbose: true }),
-      });
-      harness.deps.providerRegistry.register({
-        ...registration,
-        pluginId,
-        iconNames: new Set<string>(),
-      });
-      harness.deps.pluginHostArtifacts.set(
-        pluginId,
-        stubHostArtifact(pluginId),
-      );
-
       const { host } = seedHostSession(harness.deps, {
-        id: "host-provider-hook",
+        id: "host-invalid-session-options",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -953,37 +908,32 @@ describe("thread runtime config", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        providerId: "hooked",
       });
-      const command = await buildThreadStartCommand(harness.deps, {
-        environment,
-        execution: {
-          model: "hook-model",
-          permissionMode: "auto",
-          reasoningLevel: "medium",
-          serviceTier: "default",
-          source: "client/turn/requested",
-        },
-        fork: null,
-        permissionEscalation: "ask",
-        input: textInput("hello"),
-        projectId: project.id,
-        providerId: "hooked",
-        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-        syncGeneratedTitle: false,
-        thread,
-      });
-
-      expect(command.options.providerOptions).toEqual({
-        seen: {
-          threadId: thread.id,
+      harness.deps.db
+        .update(threads)
+        .set({ providerSessionOptions: "not-json" })
+        .where(eq(threads.id, thread.id))
+        .run();
+      await expect(
+        buildThreadStartCommand(harness.deps, {
+          environment,
+          execution: {
+            model: "model",
+            permissionMode: "auto",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            source: "client/turn/requested",
+          },
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
           projectId: project.id,
-          model: "hook-model",
-          permissionMode: "auto",
-          promptMode: null,
-        },
-        verbose: true,
-      });
+          providerId: thread.providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 2 }),
+          syncGeneratedTitle: false,
+          thread,
+        }),
+      ).rejects.toThrow("Invalid provider session options");
     });
   });
 

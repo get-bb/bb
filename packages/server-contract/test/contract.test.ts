@@ -97,6 +97,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "createThreadRequestSchema.model",
       "createThreadRequestSchema.parentThreadId",
       "createThreadRequestSchema.providerId",
+      "createThreadRequestSchema.providerSessionOptions",
       "createThreadRequestSchema.permissionMode",
       "createThreadRequestSchema.reasoningLevel",
       "createThreadRequestSchema.serviceTier",
@@ -1080,6 +1081,36 @@ describe("server-contract canonical schemas", () => {
     });
   });
 
+  it("accepts bounded provider session options", () => {
+    const providerSessionOptions = {
+      arc: {
+        arcId: "arc_123",
+        backend: "apple-container",
+      },
+    };
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "acp-rift",
+      providerSessionOptions,
+      origin: "plugin",
+      originPluginId: "provider-acp",
+      input: [{ type: "text", text: "Open the Arc" }],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+    });
+
+    expect(parsed.providerSessionOptions).toEqual(providerSessionOptions);
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...parsed,
+        providerSessionOptions: { value: "é".repeat(32_765) },
+      }),
+    ).toThrow("providerSessionOptions exceeds the 64 KiB limit");
+  });
+
   it("normalizes the deprecated writable alias without widening readonly", () => {
     const createBase = {
       projectId: "proj_123",
@@ -1565,6 +1596,11 @@ describe("server-contract clients", () => {
     expect(publicClient.system["execution-options"].$url().pathname).toBe(
       "/api/v1/system/execution-options",
     );
+    expect(
+      publicClient.system.providers[":id"].extension.$url({
+        param: { id: "acp-example" },
+      }).pathname,
+    ).toBe("/api/v1/system/providers/acp-example/extension");
     expect(
       publicClient.projects[":id"].paths.$url({
         param: { id: "proj_123" },

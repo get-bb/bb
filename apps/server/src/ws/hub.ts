@@ -10,6 +10,7 @@ import {
   type ThreadChangeKind,
   type ThreadChangeMetadata,
   type ThreadEventType,
+  type UrlElicitationResponseMessage,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -25,6 +26,7 @@ import {
   terminalServerMessageSchema,
   threadOpenSignalSchema,
   threadPaneActionSignalSchema,
+  urlElicitationSignalSchema,
   type ThreadPaneAction,
   type ThreadOpenFile,
   type ThreadOpenSplit,
@@ -35,6 +37,9 @@ const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
 const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
 const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 const THREAD_LIST_EVENTS_APPENDED_COALESCE_MS = 1_000;
+const URL_ELICITATION_MAX_PENDING = 32;
+const URL_ELICITATION_CANCEL_TOMBSTONE_TTL_MS = 30_000;
+const URL_ELICITATION_MAX_CANCEL_TOMBSTONES = 64;
 const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
   new Set<ThreadEventType>(["client/turn/requested", "turn/completed"]);
 
@@ -136,6 +141,18 @@ interface HostOnlineRpcWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface UrlElicitationWaiter {
+  allowedSockets: Set<HubSocket>;
+  sessionId: string;
+  resolve: (response: { action: "accept" | "decline" | "cancel" }) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+export interface PendingUrlElicitation {
+  cancel(): void;
+  promise: Promise<{ action: "accept" | "decline" | "cancel" }>;
+}
+
 interface RecordHostOnlineRpcResponseArgs {
   message: HostDaemonOnlineRpcResponseMessage;
   sessionId: string;
@@ -203,6 +220,14 @@ export class NotificationHub implements DbNotifier {
     string,
     ReturnType<typeof setTimeout>
   >();
+  private readonly urlElicitationWaiters = new Map<
+    string,
+    UrlElicitationWaiter
+  >();
+  private readonly urlElicitationCancelTombstones = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly terminalClientSocketsById = new Map<
     string,
     Set<HubSocket>
@@ -233,6 +258,12 @@ export class NotificationHub implements DbNotifier {
 
   unregisterClient(socket: HubSocket): void {
     this.unregisterTerminalClientSocket(socket);
+    for (const [elicitationId, waiter] of this.urlElicitationWaiters) {
+      waiter.allowedSockets.delete(socket);
+      if (waiter.allowedSockets.size === 0) {
+        this.settleUrlElicitation(elicitationId, "cancel");
+      }
+    }
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
       return;
@@ -250,6 +281,177 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.clientKeysBySocket.delete(socket);
+  }
+
+  requestUrlElicitation(args: {
+    elicitationId: string;
+    message: string;
+    providerId: string;
+    sessionId: string;
+    threadId?: string;
+    timeoutMs: number;
+    url: string;
+  }): PendingUrlElicitation {
+    const tombstoneKey = this.urlElicitationTombstoneKey(
+      args.elicitationId,
+      args.sessionId,
+    );
+    const tombstone = this.urlElicitationCancelTombstones.get(tombstoneKey);
+    if (tombstone !== undefined) {
+      clearTimeout(tombstone);
+      this.urlElicitationCancelTombstones.delete(tombstoneKey);
+      return {
+        promise: Promise.resolve({ action: "cancel" }),
+        cancel: () => undefined,
+      };
+    }
+    if (this.urlElicitationWaiters.has(args.elicitationId)) {
+      throw new Error("URL elicitation is already pending");
+    }
+    if (this.urlElicitationWaiters.size >= URL_ELICITATION_MAX_PENDING) {
+      throw new Error("Too many URL elicitations are pending");
+    }
+    const payload = JSON.stringify(
+      urlElicitationSignalSchema.parse({
+        type: "url-elicitation",
+        elicitationId: args.elicitationId,
+        message: args.message,
+        providerId: args.providerId,
+        url: args.url,
+      }),
+    );
+    const candidates =
+      args.threadId === undefined
+        ? new Set(this.clientKeysBySocket.keys())
+        : new Set(
+            this.clientSocketsByKey.get(
+              subscriptionKey({
+                kind: "thread-detail",
+                threadId: args.threadId,
+              }),
+            ) ?? [],
+          );
+    const allowedSockets =
+      candidates.size === 1 ? candidates : new Set<HubSocket>();
+    let waiter!: UrlElicitationWaiter;
+    const promise = new Promise<{
+      action: "accept" | "decline" | "cancel";
+    }>((resolve) => {
+      waiter = {
+        allowedSockets,
+        sessionId: args.sessionId,
+        resolve,
+        timeout: setTimeout(() => {
+          this.settleUrlElicitation(args.elicitationId, "cancel");
+        }, args.timeoutMs),
+      };
+    });
+    waiter.timeout.unref();
+    this.urlElicitationWaiters.set(args.elicitationId, waiter);
+
+    for (const socket of allowedSockets) {
+      try {
+        socket.send(payload);
+      } catch {
+        allowedSockets.delete(socket);
+      }
+    }
+    if (allowedSockets.size === 0) {
+      this.settleUrlElicitation(args.elicitationId, "cancel");
+    }
+
+    return {
+      promise,
+      cancel: () => {
+        this.settleUrlElicitation(args.elicitationId, "cancel");
+      },
+    };
+  }
+
+  recordUrlElicitationResponse(
+    socket: HubSocket,
+    message: UrlElicitationResponseMessage,
+  ): boolean {
+    const waiter = this.urlElicitationWaiters.get(message.elicitationId);
+    if (!waiter?.allowedSockets.has(socket)) {
+      return false;
+    }
+    this.settleUrlElicitation(message.elicitationId, message.action);
+    return true;
+  }
+
+  cancelUrlElicitation(elicitationId: string, sessionId: string): boolean {
+    const waiter = this.urlElicitationWaiters.get(elicitationId);
+    if (waiter !== undefined && waiter.sessionId !== sessionId) {
+      return false;
+    }
+    if (waiter !== undefined) {
+      this.settleUrlElicitation(elicitationId, "cancel");
+      return true;
+    }
+    this.rememberUrlElicitationCancellation(elicitationId, sessionId);
+    return true;
+  }
+
+  private rememberUrlElicitationCancellation(
+    elicitationId: string,
+    sessionId: string,
+  ): void {
+    const key = this.urlElicitationTombstoneKey(elicitationId, sessionId);
+    const existing = this.urlElicitationCancelTombstones.get(key);
+    if (existing !== undefined) {
+      clearTimeout(existing);
+      this.urlElicitationCancelTombstones.delete(key);
+    }
+    while (
+      this.urlElicitationCancelTombstones.size >=
+      URL_ELICITATION_MAX_CANCEL_TOMBSTONES
+    ) {
+      const oldest = this.urlElicitationCancelTombstones.entries().next().value;
+      if (oldest === undefined) break;
+      clearTimeout(oldest[1]);
+      this.urlElicitationCancelTombstones.delete(oldest[0]);
+    }
+    const timeout = setTimeout(() => {
+      this.urlElicitationCancelTombstones.delete(key);
+    }, URL_ELICITATION_CANCEL_TOMBSTONE_TTL_MS);
+    timeout.unref();
+    this.urlElicitationCancelTombstones.set(key, timeout);
+  }
+
+  private urlElicitationTombstoneKey(
+    elicitationId: string,
+    sessionId: string,
+  ): string {
+    return `${sessionId}\u0000${elicitationId}`;
+  }
+
+  private cancelUrlElicitationsForSession(sessionId: string): void {
+    for (const [elicitationId, waiter] of this.urlElicitationWaiters) {
+      if (waiter.sessionId === sessionId) {
+        this.settleUrlElicitation(elicitationId, "cancel");
+      }
+    }
+    const prefix = `${sessionId}\u0000`;
+    for (const [key, timeout] of this.urlElicitationCancelTombstones) {
+      if (key.startsWith(prefix)) {
+        clearTimeout(timeout);
+        this.urlElicitationCancelTombstones.delete(key);
+      }
+    }
+  }
+
+  private settleUrlElicitation(
+    elicitationId: string,
+    action: "accept" | "decline" | "cancel",
+  ): void {
+    const waiter = this.urlElicitationWaiters.get(elicitationId);
+    if (!waiter) {
+      return;
+    }
+    this.urlElicitationWaiters.delete(elicitationId);
+    clearTimeout(waiter.timeout);
+    waiter.resolve({ action });
   }
 
   onChangedMessage(listener: ChangedMessageListener): () => void {
@@ -515,6 +717,7 @@ export class NotificationHub implements DbNotifier {
   }
 
   unregisterDaemon(sessionId: string): void {
+    this.cancelUrlElicitationsForSession(sessionId);
     const entry = this.daemonSessions.get(sessionId);
     if (!entry) {
       return;

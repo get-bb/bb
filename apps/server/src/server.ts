@@ -35,6 +35,7 @@ import { registerInternalPluginHostArtifactRoutes } from "./internal/plugin-host
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalSkillRoutes } from "./internal/skills.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
+import { registerInternalUrlElicitationRoutes } from "./internal/url-elicitations.js";
 import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
@@ -613,6 +614,7 @@ export function createApp(
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
+  registerInternalUrlElicitationRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
   app.get(

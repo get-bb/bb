@@ -11,3 +11,5 @@ export type JsonValue =
   | null
   | JsonValue[]
   | { [key: string]: JsonValue };
+
+export type JsonObject = { [key: string]: JsonValue };

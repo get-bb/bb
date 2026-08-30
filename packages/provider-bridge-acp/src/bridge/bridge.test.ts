@@ -237,7 +237,18 @@ interface StartThreadArgs extends AgentLaunchArgs {
   reasoningLevel?: ReasoningLevel;
   serviceTier?: "default" | "fast";
   additionalWorkspaceWriteRoots?: string[];
+  providerOptions?: Record<string, unknown>;
 }
+
+const riftAccountProviderOptions = {
+  acpAccountAuthorization: {
+    authorizeMethod: "_riftar.cc/account/authorize",
+    statusMethod: "_riftar.cc/account/status",
+  },
+  acpClientMeta: {
+    "riftar.cc": { accountAuthorization: { version: 1 } },
+  },
+};
 
 async function startThread(args?: StartThreadArgs): Promise<{
   bbThreadId: string;
@@ -271,6 +282,7 @@ async function startThread(args?: StartThreadArgs): Promise<{
               additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
             }
           : {}),
+        ...(args?.providerOptions ?? {}),
       },
     }),
     ...(args?.dynamicTools ? { dynamicTools: args.dynamicTools } : {}),
@@ -2035,6 +2047,194 @@ describe("acp bridge", () => {
 
     await waitForTurnCompleted();
     expect(agentMessageTexts()).toContain("permission:no");
+  });
+
+  it("forwards URL elicitation through the ephemeral runtime path", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "request-url-elicitation", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "elicitation/url" && message.id !== undefined,
+        ),
+      "forwarded URL elicitation",
+    );
+    expect(forwarded.params).toMatchObject({
+      threadId: bbThreadId,
+      providerThreadId,
+      message: "Authorize this session",
+      url: "https://accounts.example.test/authorize?code=public",
+      timeoutMs: 300_000,
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { action: "accept" },
+      }),
+    );
+
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain("elicitation:accept");
+  });
+
+  it("preserves structured errors from sessionless ACP extensions", async () => {
+    const id = sendRequest("provider/extension", {
+      providerId: "rift",
+      cwd: workspaceDir,
+      method: "_test.example/error-data",
+      params: null,
+      timeoutMs: 30_000,
+      providerOptions: {
+        acpLaunchSpec: acpLaunchSpec({}),
+        acpExtensionMethods: ["_test.example/error-data"],
+      },
+    });
+
+    expect(await waitForResponse(id)).toMatchObject({
+      error: {
+        code: -32042,
+        message: "Arc unavailable",
+        data: {
+          arcId: "arc_test",
+          state: "stopped",
+          arc_error_code: "arc_stopped",
+        },
+      },
+    });
+  });
+
+  it("cancels a pending URL elicitation when its thread stops", async () => {
+    const { providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "request-url-elicitation", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "elicitation/url" && message.id !== undefined,
+        ),
+      "forwarded URL elicitation",
+    );
+    const elicitationId = (forwarded.params as { elicitationId: string })
+      .elicitationId;
+
+    await stopThread(providerThreadId);
+
+    await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "elicitation/url/cancel" &&
+            (message.params as { elicitationId?: string })?.elicitationId ===
+              elicitationId,
+        ),
+      "URL elicitation cancellation",
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { action: "cancel" },
+      }),
+    );
+  });
+
+  it("checks connected Rift accounts before session creation", async () => {
+    const requestLog = join(workspaceDir, "rift-account-connected.jsonl");
+    await startThread({
+      envVars: {
+        FAKE_ACP_RIFT_ACCOUNT: "1",
+        FAKE_ACP_RIFT_ACCOUNT_CONNECTED: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+      providerOptions: riftAccountProviderOptions,
+    });
+    const methods = loggedAcpRequests(requestLog).map(
+      (request) => request.method,
+    );
+    expect(methods).toContain("_riftar.cc/account/status");
+    expect(methods).not.toContain("_riftar.cc/account/authorize");
+  });
+
+  it("sends Arc affinity through ACP session metadata", async () => {
+    const requestLog = join(workspaceDir, "rift-arc-session-metadata.jsonl");
+    nextThreadSerial += 1;
+    const id = sendRequest("thread/start", {
+      threadId: `thread-${nextThreadSerial}`,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+          }),
+          acpSessionMeta: {
+            "riftar.cc": {
+              arc: { arcId: "arc_123", arcSize: "a1.medium" },
+            },
+          },
+        },
+      }),
+    });
+
+    expect((await waitForResponse(id)).error).toBeUndefined();
+    const sessionNew = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "session/new",
+    );
+    expect(sessionNew?.params).toMatchObject({
+      _meta: {
+        "riftar.cc": {
+          arc: { arcId: "arc_123", arcSize: "a1.medium" },
+        },
+      },
+    });
+    expect(sessionNew?.params).not.toHaveProperty("riftar.cc");
+  });
+
+  it("authorizes disconnected Rift accounts through URL elicitation", async () => {
+    nextThreadSerial += 1;
+    const id = sendRequest("thread/start", {
+      threadId: `thread-${nextThreadSerial}`,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        envVars: { FAKE_ACP_RIFT_ACCOUNT: "1" },
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_RIFT_ACCOUNT: "1" },
+          }),
+          ...riftAccountProviderOptions,
+        },
+      }),
+    });
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "elicitation/url" && message.id !== undefined,
+        ),
+      "account URL elicitation",
+    );
+    expect(forwarded.params).toMatchObject({
+      message: "Authorize this session",
+      url: "https://accounts.example.test/authorize?code=public",
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { action: "accept" },
+      }),
+    );
+    expect((await waitForResponse(id)).error).toBeUndefined();
   });
 
   it("presents an external-directory write permission as a file-change approval", async () => {

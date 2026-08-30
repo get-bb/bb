@@ -94,6 +94,9 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .map((method) => method.trim())
   .filter(Boolean);
 const authOptional = process.env.FAKE_ACP_AUTH_OPTIONAL === "1";
+const riftAccount = process.env.FAKE_ACP_RIFT_ACCOUNT === "1";
+const riftAccountConnected =
+  process.env.FAKE_ACP_RIFT_ACCOUNT_CONNECTED === "1";
 const sessionNewError = process.env.FAKE_ACP_SESSION_NEW_ERROR;
 const exitOnSessionNew = process.env.FAKE_ACP_EXIT_ON_SESSION_NEW;
 const sessionNewDelayMs = Number(
@@ -434,6 +437,19 @@ async function handlePrompt(message) {
 
   if (text === "/compact") {
     // OpenCode treats this exact prompt as a provider-local control.
+  } else if (text.includes("request-url-elicitation")) {
+    let action = "cancel";
+    try {
+      const result = await requestClient("elicitation/create", {
+        mode: "url",
+        url: "https://accounts.example.test/authorize?code=public",
+        message: "Authorize this session",
+      });
+      action = result?.action ?? "cancel";
+    } catch {
+      action = "cancel";
+    }
+    notifyUpdate(messageChunk(`elicitation:${action}`));
   } else if (text.includes("request-external-directory-permission")) {
     // opencode's external_directory permission: the running edit tool asks
     // with the generic kind "other", a bare directory title, and
@@ -598,6 +614,13 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
+            ...(riftAccount
+              ? {
+                  _meta: {
+                    "riftar.cc": { accountAuthorization: { version: 1 } },
+                  },
+                }
+              : {}),
             ...(forkSession ? { sessionCapabilities: { fork: {} } } : {}),
           },
           ...(authMethods.length > 0
@@ -626,6 +649,51 @@ async function handleMessage(message) {
       }
       authenticatedMethod = methodId;
       send({ jsonrpc: "2.0", id: message.id, result: null });
+      return;
+    }
+    case "_riftar.cc/account/status":
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          state: riftAccountConnected ? "connected" : "disconnected",
+          ...(riftAccountConnected ? { accountId: "acct_test" } : {}),
+        },
+      });
+      return;
+    case "_test.example/error-data":
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32042,
+          message: "Arc unavailable",
+          data: {
+            arcId: "arc_test",
+            state: "stopped",
+            arc_error_code: "arc_stopped",
+          },
+        },
+      });
+      return;
+    case "_riftar.cc/account/authorize": {
+      let action = "cancel";
+      try {
+        const result = await requestClient("elicitation/create", {
+          mode: "url",
+          url: "https://accounts.example.test/authorize?code=public",
+          message: "Authorize this session",
+        });
+        action = result?.action ?? "cancel";
+      } catch {}
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result:
+          action === "accept"
+            ? { state: "connected" }
+            : { state: "disconnected" },
+      });
       return;
     }
     case "session/new":

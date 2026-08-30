@@ -544,6 +544,7 @@ describe("@bb/sdk", () => {
           modelLoadError: null,
         },
       },
+      { body: { echoed: true } },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -562,6 +563,14 @@ describe("@bb/sdk", () => {
         providerId: "acp-remote",
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
+    await expect(
+      sdk.providers.experimental_extension({
+        hostId: "host_remote",
+        method: "_test.example/echo",
+        params: { value: "hello" },
+        providerId: "custom-provider",
+      }),
+    ).resolves.toEqual({ echoed: true });
 
     expect(queue.requests).toEqual([
       {
@@ -573,6 +582,15 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+      },
+      {
+        bodyText: JSON.stringify({
+          hostId: "host_remote",
+          method: "_test.example/echo",
+          params: { value: "hello" },
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/system/providers/custom-provider/extension",
       },
     ]);
   });

@@ -40,6 +40,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   references/theming.md before you create or edit theme CSS.
 - Read references/plugins.md for plugin discovery, install, build, update,
   configuration, runtime, and contributed commands.
+- Read references/arcs.md before listing, creating, selecting, or changing the
+  lifecycle of a Rift Arc.
 - Read references/app-settings.md for complete app setting keys and effects.
 
 ## Command habits

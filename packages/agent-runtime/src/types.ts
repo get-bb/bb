@@ -5,6 +5,7 @@ import type {
   DynamicTool,
   InstructionMode,
   JsonObject,
+  JsonValue,
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
@@ -21,6 +22,7 @@ import type {
   ProviderInstallationStatus,
   ProviderUsageResult,
   SkillsConfigureRoot,
+  UrlElicitationResponse,
 } from "@bb/provider-bridge-protocol";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
@@ -71,11 +73,30 @@ export interface AgentRuntimeOptions {
     request: PendingInteractionCreate,
   ) => Promise<PendingInteractionResolution>;
 
+  onUrlElicitation?: (
+    request: AgentRuntimeUrlElicitationRequest,
+  ) => Promise<UrlElicitationResponse>;
+
+  onUrlElicitationCancel?: (request: {
+    elicitationId: string;
+    providerId: string;
+  }) => Promise<void> | void;
+
   onStderr?: (line: string, threadId?: string) => void;
 
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
 
   onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
+}
+
+export interface AgentRuntimeUrlElicitationRequest {
+  elicitationId: string;
+  message: string;
+  providerId: string;
+  providerThreadId: string;
+  threadId?: string;
+  timeoutMs: number;
+  url: string;
 }
 
 export interface AgentRuntimeProviderRecoveryHint {
@@ -280,6 +301,12 @@ interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
 }
 
+export interface ProviderExtensionArgs extends ProviderMaintenanceArgs {
+  method: string;
+  params: JsonValue;
+  timeoutMs: number;
+}
+
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
@@ -323,6 +350,8 @@ export interface AgentRuntime {
   providerInstallationRun(
     args: ProviderMaintenanceArgs & { action: "install" | "update" },
   ): Promise<ProviderInstallationRunResult>;
+
+  providerExtension(args: ProviderExtensionArgs): Promise<JsonValue>;
 
   listRunningProviders(): string[];
 

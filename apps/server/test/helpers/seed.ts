@@ -181,6 +181,7 @@ export function seedThread(
     projectId: string;
     environmentId?: string | null;
     providerId?: string;
+    providerSessionOptions?: import("@bb/domain").JsonObject;
     status?: "idle" | "starting" | "active" | "stopping" | "error";
     title?: string | null;
     parentThreadId?: string | null;
@@ -195,6 +196,7 @@ export function seedThread(
     projectId: args.projectId,
     environmentId: args.environmentId ?? null,
     providerId: args.providerId ?? "codex",
+    providerSessionOptions: args.providerSessionOptions,
     status: args.status ?? "idle",
     title: args.title ?? "Test Thread",
     titleFallback: args.titleFallback ?? "Test Thread",

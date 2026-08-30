@@ -1,7 +1,11 @@
 import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
-import { bridgeErrorDataSchema, type ProviderRecoveryHint } from "../errors.js";
+import {
+  bridgeErrorDataSchema,
+  type BridgeErrorData,
+  type ProviderRecoveryHint,
+} from "../errors.js";
 import type { ProviderRequestCommandPlan } from "./contracts.js";
 
 export type JsonRpcObject = Record<string, unknown>;
@@ -51,17 +55,19 @@ export class ProviderResponseEncodeError extends Error {
 
 export class JsonRpcResponseError extends Error {
   readonly code: number;
+  readonly data: BridgeErrorData | null;
   readonly recovery: ProviderRecoveryHint | null;
 
   constructor(
     code: number,
     message: string,
-    recovery: ProviderRecoveryHint | null = null,
+    data: BridgeErrorData | null = null,
   ) {
     super(message);
     this.name = "JsonRpcResponseError";
     this.code = code;
-    this.recovery = recovery;
+    this.data = data;
+    this.recovery = data?.recovery ?? null;
   }
 }
 
@@ -170,21 +176,14 @@ function jsonRpcResponseError(error: unknown): Error {
     typeof error.code === "number" &&
     typeof error.message === "string"
   ) {
+    const data = bridgeErrorDataSchema.safeParse(error.data);
     return new JsonRpcResponseError(
       error.code,
       error.message,
-      decodeRecoveryHint(error.data),
+      data.success ? data.data : null,
     );
   }
   return new Error(formatJsonRpcErrorMessage(error));
-}
-
-function decodeRecoveryHint(data: unknown): ProviderRecoveryHint | null {
-  if (data === undefined) {
-    return null;
-  }
-  const parsed = bridgeErrorDataSchema.safeParse(data);
-  return parsed.success ? (parsed.data.recovery ?? null) : null;
 }
 
 function isClosedJsonRpcStdinError(error: Error): boolean {

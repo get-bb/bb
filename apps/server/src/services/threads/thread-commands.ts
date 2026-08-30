@@ -10,6 +10,8 @@ import {
   Thread,
   ClientTurnRequestId,
   EnvironmentStatus,
+  jsonObjectSchema,
+  type JsonObject,
   promptInputHasCommandMention,
 } from "@bb/domain";
 import {
@@ -128,6 +130,37 @@ interface RuntimeExecutionOptionsArgs {
   threadId: string;
 }
 
+function readProviderSessionOptions(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): JsonObject {
+  const stored =
+    deps.db
+      .select({ providerSessionOptions: threads.providerSessionOptions })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.providerSessionOptions ?? "{}";
+  if (Buffer.byteLength(stored, "utf8") > 65536) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      "Invalid provider session options",
+    );
+  }
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    const result = jsonObjectSchema.safeParse(parsed);
+    if (!result.success) throw new Error("invalid");
+    return result.data;
+  } catch {
+    throw new ApiError(
+      500,
+      "internal_error",
+      "Invalid provider session options",
+    );
+  }
+}
+
 interface BuildExecutionOptionsArgs {
   hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
@@ -202,6 +235,10 @@ function toRuntimeExecutionOptions(
   const providerOptions =
     args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
       threadId: args.threadId,
+      experimental_sessionOptions: readProviderSessionOptions(
+        args.deps,
+        args.threadId,
+      ),
       projectId: args.projectId,
       model: args.execution.model,
       permissionMode,

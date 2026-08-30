@@ -26,6 +26,7 @@ import type {
   ThreadVisibility,
   WorkspaceProvisionType,
 } from "@bb/domain";
+import type { JsonObject } from "@bb/domain";
 import {
   evaluateThreadLifecycleEvent,
   resolveEnvironmentWorkspaceDisplayKind,
@@ -262,6 +263,7 @@ export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
   providerId: string;
+  providerSessionOptions?: JsonObject;
   title?: string | null;
   titleFallback?: string | null;
   sectionId?: string | null;
@@ -291,6 +293,7 @@ export function createThread(
           projectId: input.projectId,
           environmentId: input.environmentId ?? null,
           providerId: input.providerId,
+          providerSessionOptions: JSON.stringify(input.providerSessionOptions ?? {}),
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
           sectionId: input.sectionId ?? null,

@@ -38,6 +38,7 @@ import {
 } from "../services/system/execution-options.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
+import { callProviderExtension } from "../services/system/provider-extension.js";
 import {
   listCustomThemeNames,
   readCustomThemeCss,
@@ -293,6 +294,12 @@ export function registerSystemRoutes(
       `Provider '${providerId}' has no logo.`,
     );
   });
+
+  post(routes.providerExtension, async (context, body) =>
+    context.json(
+      await callProviderExtension(deps, context.req.param("id"), body),
+    ),
+  );
 
   get(routes.providerStates, async (context, query) =>
     context.json(await getProviderStates(deps, query)),

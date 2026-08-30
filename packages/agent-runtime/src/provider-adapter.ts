@@ -3,6 +3,7 @@ import type {
   DynamicTool,
   InstructionMode,
   JsonObject,
+  JsonValue,
   PromptInput,
   PromptMode,
   ReasoningLevel,
@@ -50,6 +51,13 @@ export type AdapterCommand =
       type: "provider/installation/run";
       action: "install" | "update";
       cwd?: string;
+    }
+  | {
+      type: "provider/extension";
+      cwd?: string;
+      method: string;
+      params: JsonValue;
+      timeoutMs: number;
     }
   | {
       type: "thread/start";

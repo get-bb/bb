@@ -299,6 +299,7 @@
   "requestMethods": [
     "initialize",
     "model/list",
+    "provider/extension",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",

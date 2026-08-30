@@ -29,6 +29,7 @@ import { roundDurationMs } from "./event-loop-stall-monitor.js";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
+import { JsonRpcResponseError } from "@bb/provider-bridge-protocol/bridge-kit";
 
 type CommandRouterLogger = Pick<HostDaemonLogger, "debug" | "warn">;
 
@@ -74,6 +75,7 @@ export interface CommandRouterOptions {
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
   providerInstallationRun: CommandDispatchOptions["providerInstallationRun"];
+  providerExtension: CommandDispatchOptions["providerExtension"];
   refreshShellEnv: CommandDispatchOptions["refreshShellEnv"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
@@ -140,6 +142,9 @@ export class CommandRouter {
         commandType: message.command.type,
         ok: false,
         errorCode,
+        ...(error instanceof JsonRpcResponseError && error.data !== null
+          ? { errorData: error.data }
+          : {}),
         errorMessage: error instanceof Error ? error.message : String(error),
       };
     }
@@ -289,6 +294,7 @@ export class CommandRouter {
       providerUsage: this.options.providerUsage,
       providerInstallationStatus: this.options.providerInstallationStatus,
       providerInstallationRun: this.options.providerInstallationRun,
+      providerExtension: this.options.providerExtension,
       refreshShellEnv: this.options.refreshShellEnv,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,

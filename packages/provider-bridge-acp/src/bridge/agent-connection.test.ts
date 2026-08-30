@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   AcpAgentExitedError,
+  AcpAgentResponseError,
   createAcpAgentConnection,
   formatAgentError,
   type AcpAgentConnection,
@@ -41,14 +42,14 @@ async function stopConnection(
 }
 
 describe("formatAgentError", () => {
-  it("appends error.data.details to the generic JSON-RPC message", () => {
+  it("keeps structured error data out of the display message", () => {
     expect(
       formatAgentError({
         code: -32603,
         message: "Internal error",
         data: { details: "bb-bridge: Transport closed" },
       }),
-    ).toBe("Internal error: bb-bridge: Transport closed");
+    ).toBe("Internal error");
   });
 
   it("keeps the message alone when there is no usable data", () => {
@@ -63,14 +64,47 @@ describe("formatAgentError", () => {
     );
   });
 
-  it("serializes structured data without a details string", () => {
+  it("does not serialize structured data into the display message", () => {
     expect(
       formatAgentError({ message: "Invalid params", data: { field: "cwd" } }),
-    ).toBe('Invalid params: {"field":"cwd"}');
+    ).toBe("Invalid params");
   });
 });
 
 describe("ACP agent stdio lifecycle", () => {
+  it("preserves structured JSON-RPC error data", async () => {
+    const connection = createAcpAgentConnection({
+      recordThreadId: null,
+      command: process.execPath,
+      args: [
+        "-e",
+        'process.stdin.once("data", () => process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,error:{code:-32042,message:"Arc unavailable",data:{arcId:"arc_test",state:"stopped"}}})+"\\n"));',
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      onNotification() {},
+      onRequest() {},
+      onExit() {},
+    });
+
+    try {
+      const error = await connection
+        .request({
+          method: "arc/read",
+          params: {},
+          resultSchema: z.unknown(),
+        })
+        .catch((value: unknown) => value);
+      expect(error).toBeInstanceOf(AcpAgentResponseError);
+      expect(error).toMatchObject({
+        code: -32042,
+        data: { arcId: "arc_test", state: "stopped" },
+      });
+    } finally {
+      connection.kill();
+    }
+  });
+
   it("does not surface a closed agent stdin as an unhandled EPIPE", async () => {
     const ready = deferred<void>();
     const exited = deferred<AcpAgentExitInfo>();

@@ -1,4 +1,5 @@
 import type {
+  JsonValue,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
@@ -18,6 +19,13 @@ export type ProviderModelsArgs = ProviderHostRoutingArgs & {
   providerId?: string;
   signal?: AbortSignal;
 };
+export type ExperimentalProviderExtensionArgs = ProviderHostRoutingArgs & {
+  providerId: string;
+  cwd?: string;
+  method: string;
+  params: JsonValue;
+  signal?: AbortSignal;
+};
 
 export type ProviderListResult = SystemProviderInfo[];
 export type ProviderModelsResult = SystemExecutionOptionsResponse;
@@ -25,6 +33,9 @@ export type ProviderModelsResult = SystemExecutionOptionsResponse;
 export interface ProvidersArea {
   list(args?: ProviderListArgs): Promise<ProviderListResult>;
   models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
+  experimental_extension(
+    args: ExperimentalProviderExtensionArgs,
+  ): Promise<JsonValue>;
 }
 
 export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
@@ -52,6 +63,23 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
               environmentId: input.environmentId,
               hostId: input.hostId,
               providerId: input.providerId,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_extension(input) {
+      return transport.readJson(
+        transport.api.v1.system.providers[":id"].extension.$post(
+          {
+            param: { id: input.providerId },
+            json: {
+              cwd: input.cwd,
+              environmentId: input.environmentId,
+              hostId: input.hostId,
+              method: input.method,
+              params: input.params,
             },
           },
           ...signalRequestArgs(input.signal),

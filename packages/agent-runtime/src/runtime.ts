@@ -8,12 +8,15 @@ import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  BRIDGE_NOTIFICATION_METHODS,
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
+  providerExtensionResultSchema,
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
+  urlElicitationCancelNotificationSchema,
 } from "@bb/provider-bridge-protocol";
 import {
   JsonRpcResponseError,
@@ -1182,6 +1185,31 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
+    if (
+      args.parsed["method"] === BRIDGE_NOTIFICATION_METHODS.urlElicitationCancel
+    ) {
+      const parsed = urlElicitationCancelNotificationSchema.safeParse(
+        args.parsed["params"],
+      );
+      if (!parsed.success) {
+        options.onStderr?.(
+          `Dropping invalid ${BRIDGE_NOTIFICATION_METHODS.urlElicitationCancel} notification from provider "${args.proc.providerId}".`,
+        );
+        return;
+      }
+      const cancellation = options.onUrlElicitationCancel?.({
+        elicitationId: parsed.data.elicitationId,
+        providerId: args.proc.providerId,
+      });
+      if (cancellation !== undefined) {
+        void Promise.resolve(cancellation).catch((error: unknown) => {
+          options.onStderr?.(
+            `Failed to cancel URL elicitation for provider "${args.proc.providerId}": ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
+      return;
+    }
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
     if (
       sourceThreadId !== undefined &&
@@ -1239,6 +1267,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         getThreadExecutionOptions: (threadId) =>
           threadRuntimeConfigs.get(threadId)?.options,
         onInteractiveRequest: options.onInteractiveRequest,
+        onUrlElicitation: options.onUrlElicitation,
         onToolCall: options.onToolCall,
         parsedId: parsedLine.parsedId,
         parsedMethod: parsedLine.parsedMethod,
@@ -2271,6 +2300,38 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         proc,
         message: plan,
         resultSchema: providerInstallationRunResultSchema,
+      });
+    },
+
+    async providerExtension({
+      providerId,
+      bridgeLaunch,
+      cwd,
+      method,
+      params,
+      timeoutMs,
+    }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const plan = requireProviderRequestPlan({
+        commandType: "provider/extension",
+        plan: proc.adapter.buildCommandPlan({
+          type: "provider/extension",
+          ...(cwd !== undefined ? { cwd } : {}),
+          method,
+          params,
+          timeoutMs,
+        }),
+        providerId,
+      });
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: providerExtensionResultSchema,
+        timeoutMs: timeoutMs + 5_000,
       });
     },
 

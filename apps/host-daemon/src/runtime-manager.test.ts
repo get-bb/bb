@@ -280,6 +280,9 @@ function createFakeRuntime() {
     providerInstallationRun: vi.fn(async () => {
       throw new Error("Unexpected provider installation run call");
     }),
+    async providerExtension({ params }) {
+      return params;
+    },
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>

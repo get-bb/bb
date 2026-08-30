@@ -192,6 +192,9 @@ function createRuntime(): FakeDispatchRuntime {
     providerInstallationRun: vi.fn(async () => {
       throw new Error("Unexpected provider installation run call");
     }),
+    async providerExtension({ params }) {
+      return params;
+    },
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: vi.fn(

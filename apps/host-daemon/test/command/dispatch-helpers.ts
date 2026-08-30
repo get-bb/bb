@@ -48,6 +48,7 @@ export const unexpectedProviderMaintenance: Pick<
   | "providerUsage"
   | "providerInstallationStatus"
   | "providerInstallationRun"
+  | "providerExtension"
   | "refreshShellEnv"
 > = {
   listModels: async () => {
@@ -64,6 +65,9 @@ export const unexpectedProviderMaintenance: Pick<
   },
   providerInstallationRun: async () => {
     throw new Error("Unexpected provider.installation.run call");
+  },
+  providerExtension: async () => {
+    throw new Error("Unexpected provider.extension call");
   },
   refreshShellEnv: async () => undefined,
 };
@@ -447,6 +451,9 @@ export function createFakeRuntime() {
     },
     async providerInstallationRun() {
       throw new Error("Unexpected provider installation run call");
+    },
+    async providerExtension({ params }) {
+      return params;
     },
     async shutdown() {
       state.shutdownCount += 1;

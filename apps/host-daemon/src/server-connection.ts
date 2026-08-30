@@ -54,11 +54,13 @@ interface ServerMessagePayloadSummary {
 
 export type ServerSessionInvalidationSource =
   | "callTool"
+  | "cancelUrlElicitation"
   | "fetchProjectAttachment"
   | "fetchSkillTree"
   | "fetchPluginHostArtifact"
   | "interruptInteractiveRequests"
   | "postEvents"
+  | "requestUrlElicitation"
   | "registerInteractiveRequest";
 
 export interface HandleServerSessionInvalidatedArgs {

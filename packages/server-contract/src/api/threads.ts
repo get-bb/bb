@@ -5,6 +5,7 @@ import {
   environmentSchema,
   hostSchema,
   jsonValueSchema,
+  jsonObjectSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
   permissionModeInputSchema,
@@ -87,6 +88,12 @@ export const startedOnBehalfOfSchema = z.object({
 });
 export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
 
+const providerSessionOptionsSchema = jsonObjectSchema.refine(
+  (value) =>
+    new TextEncoder().encode(JSON.stringify(value)).byteLength <= 65536,
+  "providerSessionOptions exceeds the 64 KiB limit",
+);
+
 export const createThreadRequestSchema = z
   .object({
     projectId: z.string().min(1),
@@ -101,6 +108,7 @@ export const createThreadRequestSchema = z
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeInputSchema.optional(),
     executionInputSources: createExecutionInputSourcesSchema.optional(),
+    providerSessionOptions: providerSessionOptionsSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     sectionId: z.string().min(1).nullable().optional(),

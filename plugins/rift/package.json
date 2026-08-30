@@ -1,0 +1,51 @@
+{
+  "name": "bb-plugin-rift",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Create, manage, and run BB threads on Rift Arcs.",
+  "files": [
+    "dist",
+    "server.ts",
+    "app.tsx",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.29"
+  },
+  "bb": {
+    "name": "Rift Arcs",
+    "description": "Create, manage, and run BB threads on local or remote Rift Arcs.",
+    "branding": {
+      "icon": "Boxes"
+    },
+    "server": "./server.ts",
+    "host": "./src/host.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin",
+    "rift",
+    "arcs"
+  ],
+  "scripts": {
+    "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs rift",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

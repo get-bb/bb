@@ -177,7 +177,7 @@ added/updated/unchanged counts.
                                  the app plus every registered marketplace
                                  catalog
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks),
+                                 (rift, github, docs, memory, tasks),
                                  <entry-id>@<marketplace>, a Git repository
                                  URL, local path, builtin:<name>,
                                  git:<url>[@<ref|semver-range>], or

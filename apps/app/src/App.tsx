@@ -57,6 +57,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { UrlElicitationCoordinator } from "./components/url-elicitation-coordinator";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -341,6 +342,7 @@ export function App() {
         <RouteNavigationProvider>
           <AppNavigationUrlHost>
             <AppFileExternalNavigationHost>
+              <UrlElicitationCoordinator />
               <HashNavigationScroll />
               <NativeShellReporter />
               <Routes>

@@ -12,6 +12,7 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
+import { providerExtensionValueSchema } from "@bb/provider-bridge-protocol";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
@@ -70,6 +71,24 @@ export const systemProvidersQuerySchema = z
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
+
+export const systemProviderExtensionRequestSchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    cwd: z.string().min(1),
+    method: z.string().min(1).max(256),
+    params: providerExtensionValueSchema,
+  })
+  .partial({
+    cwd: true,
+    environmentId: true,
+    hostId: true,
+  })
+  .strict()
+  .superRefine(rejectMultipleProviderHostSelectors);
+export type SystemProviderExtensionRequest = z.infer<
+  typeof systemProviderExtensionRequestSchema
+>;
 
 export const systemExecutionOptionsQuerySchema = z
   .object({

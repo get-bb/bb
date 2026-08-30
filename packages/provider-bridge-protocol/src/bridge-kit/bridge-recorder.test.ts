@@ -146,6 +146,59 @@ describe("bridge recorder", () => {
     ]);
   });
 
+  it("redacts URL elicitation secrets in runtime and provider lanes", () => {
+    dir = mkdtempSync(join(tmpdir(), "bb-bridge-recorder-"));
+    const recorder = createBridgeRecorder({ dir });
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    recorder.recordChildIo({ stdin, stdout }, { threadId: "thr_secret" });
+    const secretUrl = "https://accounts.example.test/connect?code=SECRET-CODE";
+
+    recorder.recordRuntimeLine(
+      "bridge→runtime",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "elicitation/url",
+        params: {
+          elicitationId: "elicit-1",
+          message: "Use SECRET-CODE",
+          threadId: "thr_secret",
+          url: secretUrl,
+        },
+      }),
+    );
+    stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "elicitation/create",
+        params: { message: "Use SECRET-CODE", mode: "url", url: secretUrl },
+      })}\n`,
+    );
+    stdout.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "elicitation/create",
+        params: { message: "Use SECRET-CODE", mode: "url", url: secretUrl },
+      })}\n`,
+    );
+    recorder.close();
+
+    const recorded = [
+      ...readLane("thr_secret", "bridge→runtime"),
+      ...readLane("thr_secret", "bridge→provider"),
+      ...readLane("thr_secret", "provider→bridge"),
+    ];
+    expect(recorded).toHaveLength(3);
+    for (const entry of recorded) {
+      expect(entry.line).not.toContain("SECRET-CODE");
+      expect(entry.line).not.toContain("accounts.example.test");
+      expect(JSON.parse(entry.line).params).toMatchObject({ redacted: true });
+    }
+  });
+
   it("drops an oversized line instead of holding it", () => {
     const lines: string[] = [];
     const splitter = createRecordingLineSplitter((line) => lines.push(line), 8);

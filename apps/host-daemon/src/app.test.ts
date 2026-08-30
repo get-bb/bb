@@ -274,6 +274,9 @@ function createFakeRuntime(): AgentRuntime {
     async providerInstallationRun() {
       throw new Error("Unexpected provider installation run call");
     },
+    async providerExtension({ params }) {
+      return params;
+    },
     listRunningProviders() {
       return [];
     },

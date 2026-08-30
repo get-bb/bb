@@ -982,6 +982,25 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
 
+## `PluginProviderOptionsContext.experimental_sessionOptions` and `bb.sdk.providers.experimental_extension`
+
+**What they do.** `experimental_sessionOptions` gives the provider declaration
+the bounded JSON object persisted when a BB thread is created, so the provider
+can derive the same opaque bridge options for every start, turn, and resume.
+`experimental_extension` sends one typed, bounded JSON request to a custom
+method explicitly allowed by that provider's static bridge options on the
+selected host. Rift Arcs is the first consumer: it persists Arc affinity and
+projects Rift's negotiated lifecycle and account methods without moving the
+Arc state machine or credentials into BB.
+
+**Audit before stabilizing.** Decide whether provider session options need a
+provider-owned schema at thread-create time instead of validation during
+command derivation; whether extension method allowlists belong in a typed
+declaration field instead of opaque bridge options; whether extension calls
+need a reusable session or subscription primitive; and how an interactive
+extension binds its presentation to one authenticated BB client when several
+clients are connected.
+
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
 **Kept experimental (2026-08-22).** `experimental_defineProviderBridge` / `experimental_apiVersion` are an artifact↔daemon contract (the bootstrap refuses anything but version 1 by name), and the deprecation window between independently-updating artifacts and daemons (item 4) is undecided.

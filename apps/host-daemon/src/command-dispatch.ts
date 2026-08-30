@@ -649,6 +649,20 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,
+  "provider.extension": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.providerExtension({
+      providerId: command.providerId,
+      bridgeLaunch,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      method: command.method,
+      params: command.params,
+      timeoutMs: command.timeoutMs,
+    });
+  },
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

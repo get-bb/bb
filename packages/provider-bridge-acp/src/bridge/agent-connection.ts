@@ -5,6 +5,7 @@ import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+const AGENT_KILL_GRACE_MS = 1_000;
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
@@ -41,7 +42,7 @@ interface AcpAgentRequestArgs<TResult> {
 export interface AcpAgentConnection {
   request<TResult>(args: AcpAgentRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params: unknown): void;
-  kill(): void;
+  kill(): Promise<void>;
   readonly exited: boolean;
 }
 
@@ -54,11 +55,13 @@ export class AcpAgentExitedError extends Error {
 
 export class AcpAgentResponseError extends Error {
   readonly code: number | undefined;
+  readonly data: unknown;
 
-  constructor(message: string, code: number | undefined) {
+  constructor(message: string, code: number | undefined, data: unknown) {
     super(message);
     this.name = "AcpAgentResponseError";
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -90,32 +93,9 @@ function isClosedAgentStdinError(error: Error): boolean {
 }
 
 export function formatAgentError(error: AgentErrorObject): string {
-  const message =
-    error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
-  const details = formatAgentErrorData(error.data);
-  return details === undefined ? message : `${message}: ${details}`;
-}
-
-function formatAgentErrorData(data: unknown): string | undefined {
-  if (data === undefined || data === null) {
-    return undefined;
-  }
-  if (typeof data === "string") {
-    return data.trim() === "" ? undefined : data;
-  }
-  if (
-    typeof data === "object" &&
-    "details" in data &&
-    typeof data.details === "string" &&
-    data.details.trim() !== ""
-  ) {
-    return data.details;
-  }
-  try {
-    return JSON.stringify(data);
-  } catch {
-    return undefined;
-  }
+  return (
+    error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`
+  );
 }
 
 function parseAgentLine(line: string): ParsedAgentMessage | null {
@@ -152,6 +132,20 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
   let stopping = false;
+  let killEscalation: ReturnType<typeof setTimeout> | null = null;
+  let resolveExit: () => void = () => {};
+  const settledExit = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
+
+  function settleExit(info: AcpAgentExitInfo): void {
+    if (killEscalation !== null) {
+      clearTimeout(killEscalation);
+      killEscalation = null;
+    }
+    options.onExit(info);
+    resolveExit();
+  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -175,7 +169,7 @@ export function createAcpAgentConnection(
     );
     child.kill("SIGKILL");
     const stderrTail = [...stderrChunks, detail].join("\n");
-    options.onExit({ code: null, signal: null, stderrTail });
+    settleExit({ code: null, signal: null, stderrTail });
   }
 
   function writeLine(message: object): void {
@@ -231,6 +225,7 @@ export function createAcpAgentConnection(
             new AcpAgentResponseError(
               formatAgentError(message.error),
               message.error.code,
+              message.error.data,
             ),
           );
         } else {
@@ -291,7 +286,7 @@ export function createAcpAgentConnection(
         `Failed to launch ACP agent "${options.command}": ${error.message}`,
       ),
     );
-    options.onExit({ code: null, signal: null, stderrTail: error.message });
+    settleExit({ code: null, signal: null, stderrTail: error.message });
   });
 
   child.on("exit", (code, signal) => {
@@ -307,7 +302,7 @@ export function createAcpAgentConnection(
         }`,
       ),
     );
-    options.onExit({ code, signal, stderrTail });
+    settleExit({ code, signal, stderrTail });
   });
 
   return {
@@ -352,9 +347,12 @@ export function createAcpAgentConnection(
       writeLine({ jsonrpc: "2.0", method, params });
     },
 
-    kill() {
-      if (stopping || exited) {
+    async kill() {
+      if (exited) {
         return;
+      }
+      if (stopping) {
+        return settledExit;
       }
       stopping = true;
       rejectAllPending(
@@ -363,6 +361,11 @@ export function createAcpAgentConnection(
         ),
       );
       child.kill("SIGTERM");
+      killEscalation = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, AGENT_KILL_GRACE_MS);
+      killEscalation.unref();
+      await settledExit;
     },
   };
 }

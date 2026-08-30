@@ -140,6 +140,27 @@ describe("threads", () => {
     expect(fetched).toMatchObject({ id: thread.id });
   });
 
+  it("persists provider session options", () => {
+    const { db, project } = setup();
+    const providerSessionOptions = {
+      arc: {
+        arcId: "arc_123",
+        backend: "apple-container",
+      },
+    };
+    const serializedOptions = JSON.stringify(providerSessionOptions);
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-rift",
+      providerSessionOptions,
+    });
+
+    expect(thread.providerSessionOptions).toBe(serializedOptions);
+    expect(getThread(db, thread.id)?.providerSessionOptions).toBe(
+      serializedOptions,
+    );
+  });
+
   it("resolves only exact non-deleted mention thread rows", () => {
     const { db, project } = setup();
     const visible = createThread(db, noopNotifier, {

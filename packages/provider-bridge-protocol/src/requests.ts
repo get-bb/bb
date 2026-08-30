@@ -3,10 +3,39 @@ import {
   clientTurnRequestIdSchema,
   dynamicToolSchema,
   instructionModeSchema,
+  jsonObjectSchema,
   promptInputSchema,
 } from "@bb/domain";
+import type { JsonValue } from "@bb/domain";
 import { z } from "zod";
 import { bridgeExecutionOptionsSchema } from "./execution-options.js";
+
+export const PROVIDER_EXTENSION_MAX_BYTES = 1024 * 1024;
+export const PROVIDER_EXTENSION_MAX_DEPTH = 32;
+
+const providerExtensionPrimitiveSchema: z.ZodType<JsonValue> = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+let providerExtensionDepthSchema: z.ZodType<JsonValue> =
+  providerExtensionPrimitiveSchema;
+for (let depth = 0; depth < PROVIDER_EXTENSION_MAX_DEPTH; depth += 1) {
+  const childSchema = providerExtensionDepthSchema;
+  providerExtensionDepthSchema = z.union([
+    providerExtensionPrimitiveSchema,
+    z.array(childSchema),
+    z.record(z.string(), childSchema),
+  ]);
+}
+export const providerExtensionValueSchema =
+  providerExtensionDepthSchema.refine(
+    (value) =>
+      new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+      PROVIDER_EXTENSION_MAX_BYTES,
+    `Provider extension JSON must not exceed ${PROVIDER_EXTENSION_MAX_BYTES} bytes`,
+  );
 
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
@@ -15,6 +44,7 @@ export const BRIDGE_REQUEST_METHODS = {
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
   providerInstallationRun: "provider/installation/run",
+  providerExtension: "provider/extension",
   threadStart: "thread/start",
   threadResume: "thread/resume",
   threadFork: "thread/fork",
@@ -41,6 +71,19 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({ cwd: z.string().min(1).optional() })
   .passthrough();
+
+export const providerExtensionParamsSchema = z
+  .object({
+    providerId: z.string().min(1),
+    cwd: z.string().min(1).optional(),
+    providerOptions: jsonObjectSchema.optional(),
+    method: z.string().min(1).max(256),
+    params: providerExtensionValueSchema,
+    timeoutMs: z.number().int().min(1).max(5 * 60_000),
+  })
+  .strict();
+
+export const providerExtensionResultSchema = providerExtensionValueSchema;
 
 export const threadStartParamsSchema = z
   .object({

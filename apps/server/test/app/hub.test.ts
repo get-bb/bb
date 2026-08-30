@@ -260,6 +260,65 @@ describe("NotificationHub", () => {
     expect(socket3.messages).toHaveLength(0);
   });
 
+  it("cancels URL elicitations only from their owning daemon session", async () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerClient(socket);
+
+    const pending = hub.requestUrlElicitation({
+      elicitationId: "elicit-1",
+      message: "Connect Rift",
+      providerId: "rift",
+      sessionId: "session-1",
+      timeoutMs: 1_000,
+      url: "https://riftar.cc/connect",
+    });
+
+    expect(hub.cancelUrlElicitation("elicit-1", "session-2")).toBe(false);
+    expect(hub.cancelUrlElicitation("elicit-1", "session-1")).toBe(true);
+    await expect(pending.promise).resolves.toEqual({ action: "cancel" });
+    expect(hub.cancelUrlElicitation("elicit-1", "session-1")).toBe(true);
+  });
+
+  it("honors URL elicitation cancellation that arrives before registration", async () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerClient(socket);
+
+    expect(hub.cancelUrlElicitation("elicit-early", "session-1")).toBe(true);
+    const pending = hub.requestUrlElicitation({
+      elicitationId: "elicit-early",
+      message: "Connect Rift",
+      providerId: "rift",
+      sessionId: "session-1",
+      timeoutMs: 1_000,
+      url: "https://riftar.cc/connect",
+    });
+
+    await expect(pending.promise).resolves.toEqual({ action: "cancel" });
+    expect(socket.messages).toEqual([]);
+  });
+
+  it("cancels URL elicitations when their daemon unregisters", async () => {
+    const hub = new NotificationHub();
+    const daemonSocket = createMockHubSocket();
+    const clientSocket = createMockHubSocket();
+    hub.registerDaemon("session-1", "host-1", daemonSocket);
+    hub.registerClient(clientSocket);
+    const pending = hub.requestUrlElicitation({
+      elicitationId: "elicit-disconnect",
+      message: "Connect Rift",
+      providerId: "rift",
+      sessionId: "session-1",
+      timeoutMs: 1_000,
+      url: "https://riftar.cc/connect",
+    });
+
+    hub.unregisterDaemon("session-1");
+
+    await expect(pending.promise).resolves.toEqual({ action: "cancel" });
+  });
+
   it("cancels the replaced daemon session's pending disconnect timer", async () => {
     vi.useFakeTimers();
     try {

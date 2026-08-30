@@ -2,6 +2,10 @@ import type {
   PendingInteractionPayload,
   PendingInteractionResolution,
 } from "@bb/domain";
+import type {
+  UrlElicitationRequestParams,
+  UrlElicitationResponse,
+} from "../bridge-requests.js";
 
 export interface ProviderRequestCommandPlan {
   kind: "request";
@@ -52,6 +56,13 @@ export interface DecodedInteractiveRequest {
   payload: PendingInteractionPayload;
   threadId?: string;
 }
+
+export interface DecodedUrlElicitationRequest
+  extends UrlElicitationRequestParams {
+  requestId: string | number;
+}
+
+export type ProviderUrlElicitationResponse = UrlElicitationResponse;
 
 export interface PreparedProviderCommandDispatch {
   rollback(): void;

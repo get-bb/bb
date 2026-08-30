@@ -197,6 +197,8 @@ export interface RuntimeManagerOptions {
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
   ) => Promise<PendingInteractionResolution>;
+  onUrlElicitation?: AgentRuntimeOptions["onUrlElicitation"];
+  onUrlElicitationCancel?: AgentRuntimeOptions["onUrlElicitationCancel"];
   onToolCall?: AgentRuntimeOptions["onToolCall"];
   onStderr?: AgentRuntimeOptions["onStderr"];
   onProcessExit?: AgentRuntimeOptions["onProcessExit"];
@@ -1295,6 +1297,8 @@ export class RuntimeManager {
           success: true,
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
+      onUrlElicitation: this.options.onUrlElicitation,
+      onUrlElicitationCancel: this.options.onUrlElicitationCancel,
       onStderr: this.options.onStderr,
       onProcessExit: (info) => {
         if (
@@ -1364,6 +1368,8 @@ export class RuntimeManager {
           success: true,
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
+      onUrlElicitation: this.options.onUrlElicitation,
+      onUrlElicitationCancel: this.options.onUrlElicitationCancel,
       onStderr: this.options.onStderr,
       onProviderRecovery: (hint) => {
         this.options.logger?.debug(

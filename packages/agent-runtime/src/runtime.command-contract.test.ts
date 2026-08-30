@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import { JsonRpcResponseError } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import { UNSOLICITED_TURN_THREAD_ID_ENV } from "./test/bridges/unsolicited-turn-bridge.js";
 import {
@@ -28,6 +29,10 @@ interface CreateContractRuntimeArgs {
   launch?: CreateScriptedEchoLaunchOptions;
   onEvent?: (event: ThreadEvent) => void;
   onStderr?: (line: string) => void;
+  onUrlElicitationCancel?: (request: {
+    elicitationId: string;
+    providerId: string;
+  }) => void;
 }
 
 interface ContractRuntime {
@@ -90,6 +95,9 @@ describe("createAgentRuntime command contracts", () => {
           : {}),
         onEvent: args.onEvent ?? (() => {}),
         ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
+        ...(args.onUrlElicitationCancel === undefined
+          ? {}
+          : { onUrlElicitationCancel: args.onUrlElicitationCancel }),
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "ok" }],
           success: true,
@@ -169,6 +177,91 @@ describe("createAgentRuntime command contracts", () => {
         providerThreadId: "provider-resume",
         options: { providerOptions: { acpLaunchSpec } },
       });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("round-trips a generic provider extension through the bridge process", async () => {
+    const { record, runtime } = createContractRuntime();
+    const bridgeLaunch = createScriptedEchoLaunch({
+      pluginId: "provider-extension",
+      providerOptions: { acpLaunchSpec },
+    });
+
+    try {
+      const result = await runtime.providerExtension({
+        providerId: "extension-provider",
+        bridgeLaunch,
+        cwd: "/workspace",
+        method: "account/authorize",
+        params: { userCode: "ABCD-1234", scopes: ["account.read"] },
+        timeoutMs: 30_000,
+      });
+
+      expect(result).toEqual({
+        userCode: "ABCD-1234",
+        scopes: ["account.read"],
+      });
+      expect(record.last("provider/extension")?.params).toEqual({
+        providerId: "extension-provider",
+        cwd: "/workspace",
+        providerOptions: { acpLaunchSpec },
+        method: "account/authorize",
+        params: { userCode: "ABCD-1234", scopes: ["account.read"] },
+        timeoutMs: 30_000,
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("preserves structured provider extension errors through the bridge process", async () => {
+    const { runtime } = createContractRuntime();
+
+    try {
+      const request = runtime.providerExtension({
+        providerId: "extension-provider",
+        method: "_test.example/error-data",
+        params: null,
+        timeoutMs: 30_000,
+      });
+
+      await expect(request).rejects.toMatchObject({
+        code: -32042,
+        data: {
+          arcId: "arc_test",
+          state: "stopped",
+          arc_error_code: "arc_stopped",
+        },
+      });
+      await expect(request).rejects.toBeInstanceOf(JsonRpcResponseError);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("forwards bridge URL elicitation cancellation to the runtime owner", async () => {
+    const cancellations: Array<{ elicitationId: string; providerId: string }> =
+      [];
+    const { runtime } = createContractRuntime({
+      onUrlElicitationCancel: (request) => cancellations.push(request),
+    });
+
+    try {
+      await runtime.providerExtension({
+        providerId: "extension-provider",
+        method: "_test.example/cancel-url-elicitation",
+        params: null,
+        timeoutMs: 30_000,
+      });
+      await vi.waitFor(() => expect(cancellations).toHaveLength(1));
+      expect(cancellations).toEqual([
+        {
+          elicitationId: "elicit-test",
+          providerId: "extension-provider",
+        },
+      ]);
     } finally {
       await runtime.shutdown();
     }

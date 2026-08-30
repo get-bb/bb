@@ -148,6 +148,12 @@ export const BUILTIN_PLUGINS = [
 
 export const OFFICIAL_PLUGINS = [
   {
+    name: "rift",
+    pluginId: "rift",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
     name: "github",
     pluginId: "github",
     defaultEnabled: true,

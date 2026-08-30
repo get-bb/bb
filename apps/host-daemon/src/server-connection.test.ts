@@ -91,6 +91,8 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
     postEvents: unused,
     callTool: unused,
     registerInteractiveRequest: unused,
+    requestUrlElicitation: unused,
+    cancelUrlElicitation: unused,
     interruptInteractiveRequests: unused,
   } satisfies ServerClient;
 

@@ -17,6 +17,7 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
+  urlElicitationRequestParamsSchema,
   type BridgeCapabilities,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -31,6 +32,7 @@ import type {
 import type {
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
+  DecodedUrlElicitationRequest,
   ProviderCommandPlan,
   ProviderInboundRequest,
   ProviderInteractiveResponse,
@@ -66,6 +68,9 @@ export interface BridgeProtocolAdapter {
   decodeInteractiveRequest(
     request: ProviderInboundRequest,
   ): DecodedInteractiveRequest | null;
+  decodeUrlElicitationRequest(
+    request: ProviderInboundRequest,
+  ): DecodedUrlElicitationRequest | null;
   buildInteractiveResponse(
     args: BuildInteractiveResponseArgs,
   ): ProviderInteractiveResponse;
@@ -261,6 +266,21 @@ export function createBridgeProtocolAdapter(
               ...(options.staticProviderOptions !== undefined
                 ? { providerOptions: options.staticProviderOptions }
                 : {}),
+            },
+          };
+        case "provider/extension":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.providerExtension,
+            params: {
+              providerId: options.id,
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+              method: command.method,
+              params: command.params,
+              timeoutMs: command.timeoutMs,
             },
           };
         case "skills/configure":
@@ -680,6 +700,24 @@ export function createBridgeProtocolAdapter(
         payload,
         ...(threadId ? { threadId } : {}),
       };
+    },
+
+    decodeUrlElicitationRequest(
+      request: ProviderInboundRequest,
+    ): DecodedUrlElicitationRequest | null {
+      if (
+        request.method !== BRIDGE_INBOUND_REQUEST_METHODS.urlElicitation ||
+        (typeof request.id !== "string" && typeof request.id !== "number")
+      ) {
+        return null;
+      }
+      const parsed = urlElicitationRequestParamsSchema.safeParse(
+        request.params,
+      );
+      if (!parsed.success) {
+        return null;
+      }
+      return { requestId: request.id, ...parsed.data };
     },
 
     buildInteractiveResponse(

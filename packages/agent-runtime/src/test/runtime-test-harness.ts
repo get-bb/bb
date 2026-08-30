@@ -133,7 +133,8 @@ type LaunchBearingMethod =
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
-  | "providerInstallationRun";
+  | "providerInstallationRun"
+  | "providerExtension";
 
 type WithDefaultBridgeLaunch<TMethod extends (args: never) => unknown> = (
   args: Omit<Parameters<TMethod>[0], "bridgeLaunch"> & {
@@ -171,6 +172,8 @@ export function withBridgeLaunch(
       runtime.providerInstallationStatus({ bridgeLaunch, ...args }),
     providerInstallationRun: (args) =>
       runtime.providerInstallationRun({ bridgeLaunch, ...args }),
+    providerExtension: (args) =>
+      runtime.providerExtension({ bridgeLaunch, ...args }),
   };
 }
 

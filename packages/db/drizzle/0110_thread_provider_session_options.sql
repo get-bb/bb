@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `provider_session_options` text DEFAULT '{}' NOT NULL;

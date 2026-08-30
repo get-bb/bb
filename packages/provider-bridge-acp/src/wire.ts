@@ -239,6 +239,7 @@ export const acpInitializeResultSchema = z
           })
           .passthrough()
           .optional(),
+        _meta: z.record(z.string(), z.unknown()).optional(),
       })
       .passthrough()
       .optional(),

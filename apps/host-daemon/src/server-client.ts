@@ -8,6 +8,8 @@ import {
   hostDaemonSessionOpenResponseSchema,
   hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
+  hostDaemonUrlElicitationResponseSchema,
+  hostDaemonUrlElicitationCancelResponseSchema,
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonActiveThread,
@@ -23,6 +25,10 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonToolCallRequest,
   type HostDaemonToolCallResponse,
+  type HostDaemonUrlElicitationRequest,
+  type HostDaemonUrlElicitationResponse,
+  type HostDaemonUrlElicitationCancelRequest,
+  type HostDaemonUrlElicitationCancelResponse,
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
@@ -194,6 +200,12 @@ export interface ServerClient {
   registerInteractiveRequest(
     request: PendingInteractionCreate,
   ): Promise<HostDaemonInteractiveRequestResponse>;
+  requestUrlElicitation(
+    request: Omit<HostDaemonUrlElicitationRequest, "sessionId">,
+  ): Promise<HostDaemonUrlElicitationResponse>;
+  cancelUrlElicitation(
+    elicitationId: string,
+  ): Promise<HostDaemonUrlElicitationCancelResponse>;
   interruptInteractiveRequests(args: {
     providerId: string;
     reason: string;
@@ -650,6 +662,52 @@ export function createServerClient(
             );
           },
         },
+      );
+    },
+
+    async requestUrlElicitation(
+      request,
+    ): Promise<HostDaemonUrlElicitationResponse> {
+      const payload: HostDaemonUrlElicitationRequest = {
+        ...request,
+        sessionId: requireSessionId(),
+      };
+      const response = await fetchFn(
+        buildInternalUrl("/session/url-elicitation"),
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!response.ok) {
+        throw await createResponseError("request URL elicitation", response);
+      }
+      return hostDaemonUrlElicitationResponseSchema.parse(
+        await response.json(),
+      );
+    },
+
+    async cancelUrlElicitation(
+      elicitationId,
+    ): Promise<HostDaemonUrlElicitationCancelResponse> {
+      const payload: HostDaemonUrlElicitationCancelRequest = {
+        elicitationId,
+        sessionId: requireSessionId(),
+      };
+      const response = await fetchFn(
+        buildInternalUrl("/session/url-elicitation/cancel"),
+        {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!response.ok) {
+        throw await createResponseError("cancel URL elicitation", response);
+      }
+      return hostDaemonUrlElicitationCancelResponseSchema.parse(
+        await response.json(),
       );
     },
 
