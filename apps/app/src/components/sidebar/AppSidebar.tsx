@@ -256,7 +256,6 @@ export function AppSidebar({
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {}
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
-          <SidebarServerIndicator />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               asChild
@@ -306,6 +305,7 @@ export function AppSidebar({
             onNavigate={closeOnMobile}
           />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
+          <SidebarServerIndicator />
         </SidebarMenu>
       </SidebarFooter>
       <div
