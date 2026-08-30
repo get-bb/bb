@@ -3,6 +3,7 @@ import {
   getLatestStoredRateLimitsEventForProvider,
   getLatestStoredThreadEventOfTypes,
   getThread,
+  type DbConnection,
   type StoredThreadEventDataRow,
 } from "@bb/db";
 import {
@@ -14,38 +15,11 @@ import {
   type Thread,
   type TurnRequestEventData,
 } from "@bb/domain";
-import type { PluginTurnFailure } from "@get-bb/plugin-sdk";
+import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import type { AppDeps } from "../../types.js";
-import { requirePublicProject } from "../lib/entity-lookup.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { listQueuedThreadMessages } from "@bb/db";
-import { recordQueuedMessageWait } from "./queue-waits.js";
-import { toThreadQueuedMessage } from "./thread-queued-messages.js";
-import { buildExecutionOptions } from "./thread-commands.js";
-import {
-  dispatchGateEnvironmentAndHost,
-  dispatchInputText,
-  hasDispatchGates,
-  runTurnFailedGatePass,
-} from "./dispatch-gates.js";
-import {
-  currentPermissionMode,
-  parseStoredTurnRequestEvent,
-} from "./thread-events.js";
-import { toThreadResponseFromThread } from "./thread-runtime-display.js";
-
-export type TurnFailedGateDeps = Pick<
-  AppDeps,
-  "config" | "db" | "hub" | "logger" | "providerRegistry"
->;
+import { parseStoredTurnRequestEvent } from "./thread-events.js";
 
 /** The message shapes the fallback query can return, by event type. */
-const failureMessageDataSchema = z.union([
-  z.object({ error: z.object({ message: z.string() }).optional() }),
-  z.object({ message: z.string() }),
-]);
-
 const providerErrorDataSchema = z.object({
   message: z.string(),
   errorInfo: providerErrorInfoSchema.optional(),
@@ -63,14 +37,6 @@ function parseRowData(row: StoredThreadEventDataRow): unknown {
   }
 }
 
-function failureMessageFromRow(row: StoredThreadEventDataRow | null): string | null {
-  if (row === null) return null;
-  const parsed = failureMessageDataSchema.safeParse(parseRowData(row));
-  if (!parsed.success) return null;
-  if ("message" in parsed.data) return parsed.data.message;
-  return parsed.data.error?.message ?? null;
-}
-
 interface FailedTurnRecord {
   request: TurnRequestEventData;
   requestSequence: number;
@@ -84,29 +50,32 @@ interface FailedTurnRecord {
  * appends one while dispatching, and a queue drain waits for the thread to be
  * quiescent, which this failure is what makes it. Returns null for a thread
  * that has never dispatched a turn (a start that failed before any request),
- * where there is nothing for a retry to re-submit.
+ * where there is nothing to announce and nothing for a retry to re-submit.
  */
-function loadFailedTurn(
-  deps: Pick<TurnFailedGateDeps, "db">,
+export function loadFailedTurn(
+  db: DbConnection,
   threadId: string,
 ): FailedTurnRecord | null {
-  const row = getLastStoredTurnRequestEvent(deps.db, threadId);
+  const row = getLastStoredTurnRequestEvent(db, threadId);
   if (row === null) return null;
   try {
-    return { request: parseStoredTurnRequestEvent(row), requestSequence: row.sequence };
+    return {
+      request: parseStoredTurnRequestEvent(row),
+      requestSequence: row.sequence,
+    };
   } catch {
     return null;
   }
 }
 
 /**
- * Which attempt just failed, and which request the chain started from.
+ * Which attempt failed, and which request the chain started from.
  *
  * Both come off the failed request itself rather than a tally: the marker
  * written when a retry dispatched IS the counter, so restarts, re-queues and a
  * server that never saw the earlier attempts all arrive at the same number.
  */
-function retryChain(request: TurnRequestEventData): {
+export function retryChain(request: TurnRequestEventData): {
   attemptNumber: number;
   originalRequestId: ClientTurnRequestId;
 } {
@@ -116,260 +85,61 @@ function retryChain(request: TurnRequestEventData): {
   };
 }
 
-function buildTurnFailure(
-  deps: Pick<TurnFailedGateDeps, "db">,
-  args: { failed: FailedTurnRecord; thread: Thread },
-): PluginTurnFailure {
-  const { failed, thread } = args;
-  const providerErrorRow = getLatestStoredThreadEventOfTypes(deps.db, {
-    threadId: thread.id,
+/**
+ * The `turn.failed` payload: ids and failure facts, assembled from the failed
+ * turn's own records so a listener never replays the event log itself.
+ *
+ * Deliberately carries no thread DTO and no copy of the message. A retry is
+ * asked for BY REFERENCE (`sdk.threads.retry`), so the request id is the whole
+ * of what a policy needs, and a listener that wants more reads it when it uses
+ * it rather than being handed a snapshot that is already aging.
+ *
+ * Returns null when the thread is gone or never dispatched a turn — there is
+ * no failed turn to announce.
+ */
+export function buildTurnFailedEvent(
+  db: DbConnection,
+  threadId: string,
+): PluginTurnFailedEvent | null {
+  const thread = getThread(db, threadId);
+  if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
+    return null;
+  }
+  const failed = loadFailedTurn(db, threadId);
+  if (failed === null) return null;
+  // The provider's own account of the failure, when the failure happened
+  // inside a provider turn at all: it carries both the turn id and the
+  // structured classification, so one row answers two fields.
+  const providerError = getLatestStoredThreadEventOfTypes(db, {
+    threadId,
     types: ["provider/error"],
     afterSequence: failed.requestSequence,
   });
-  const providerError =
-    providerErrorRow === null
-      ? null
-      : (providerErrorDataSchema.safeParse(parseRowData(providerErrorRow)).data ??
-        null);
-  // The provider's own account of the failure is the best message; the turn's
-  // completion or a system error covers failures that never reached it.
-  const fallbackRow =
+  const errorInfo: ProviderErrorInfo | null =
     providerError === null
-      ? getLatestStoredThreadEventOfTypes(deps.db, {
-          threadId: thread.id,
-          types: ["turn/completed", "system/error"],
-          afterSequence: failed.requestSequence,
-        })
-      : null;
-  const rateLimitsRow = getLatestStoredRateLimitsEventForProvider(deps.db, {
+      ? null
+      : (providerErrorDataSchema.safeParse(parseRowData(providerError)).data
+          ?.errorInfo ?? null);
+  return {
+    threadId,
+    requestId: failed.request.requestId,
+    turnId: providerError?.turnId ?? null,
+    errorInfo,
+    rateLimits: latestRateLimits(db, thread),
+    attemptNumber: retryChain(failed.request).attemptNumber,
+  };
+}
+
+function latestRateLimits(
+  db: DbConnection,
+  thread: Thread,
+): ProviderRateLimitState | null {
+  const row = getLatestStoredRateLimitsEventForProvider(db, {
     threadId: thread.id,
     providerId: thread.providerId,
   });
-  const rateLimits: ProviderRateLimitState | null =
-    rateLimitsRow === null
-      ? null
-      : (rateLimitsDataSchema.safeParse(parseRowData(rateLimitsRow)).data
-          ?.rateLimits ?? null);
-  const errorInfo: ProviderErrorInfo | null = providerError?.errorInfo ?? null;
-  const chain = retryChain(failed.request);
-  return {
-    requestId: failed.request.requestId,
-    originalRequestId: chain.originalRequestId,
-    turnId: providerErrorRow?.turnId ?? null,
-    message:
-      providerError?.message ??
-      failureMessageFromRow(fallbackRow) ??
-      "The turn failed.",
-    errorInfo,
-    rateLimits,
-    attemptNumber: chain.attemptNumber,
-  };
-}
-
-/**
- * True when this original request already has a queued retry row.
- *
- * `run.failed` applies once per failure, so this is not the common path — it is
- * the guard that keeps a duplicate or replayed failure from queueing the same
- * turn twice, which the user would see as two identical retry cards.
- */
-function hasQueuedRetryFor(
-  deps: Pick<TurnFailedGateDeps, "db">,
-  args: { threadId: string; originalRequestId: string },
-): boolean {
-  return listQueuedThreadMessages(deps.db, args.threadId).some((row) => {
-    const payload = toThreadQueuedMessage(row).payload;
-    return (
-      payload.kind === "retry" &&
-      payload.retryOfTurnRequestId === args.originalRequestId
-    );
-  });
-}
-
-async function runTurnFailedGatesForThread(
-  deps: TurnFailedGateDeps,
-  threadId: string,
-): Promise<void> {
-  const thread = getThread(deps.db, threadId);
-  if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
-    return;
-  }
-  const failed = loadFailedTurn(deps, threadId);
-  if (failed === null) {
-    return;
-  }
-  const failure = buildTurnFailure(deps, { failed, thread });
-  const { environment, host } = dispatchGateEnvironmentAndHost(
-    deps,
-    thread.environmentId,
+  if (row === null) return null;
+  return (
+    rateLimitsDataSchema.safeParse(parseRowData(row)).data?.rateLimits ?? null
   );
-  const outcome = await runTurnFailedGatePass(deps, {
-    threadId,
-    context: {
-      thread: toThreadResponseFromThread(deps, { thread }),
-      project: requirePublicProject(deps.db, thread.projectId),
-      environment,
-      host,
-      input: {
-        blocks: [...failed.request.input],
-        text: dispatchInputText(failed.request.input),
-      },
-      requestedExecution: {
-        providerId: thread.providerId,
-        model: failed.request.execution.model,
-        reasoningLevel: failed.request.execution.reasoningLevel,
-        serviceTier: failed.request.execution.serviceTier,
-        permissionMode: currentPermissionMode(
-          failed.request.execution.permissionMode,
-        ),
-      },
-      origin: null,
-      originPluginId: null,
-      startedOnBehalfOf: null,
-      parentThreadId: thread.parentThreadId,
-      failure,
-    },
-  });
-  if (outcome.kind === "none") {
-    return;
-  }
-  if (
-    hasQueuedRetryFor(deps, {
-      threadId,
-      originalRequestId: failure.originalRequestId,
-    })
-  ) {
-    deps.logger.info(
-      { threadId, pluginId: outcome.verdict.pluginId },
-      "Ignored a turn.failed retry verdict: this turn already has a queued retry",
-    );
-    return;
-  }
-  // A by-reference row: it carries no message of its own, only the id of the
-  // request it will re-submit. `resumeAt` becomes its `sendAt`, so the due
-  // sweep re-attempts it — and that re-attempt runs the dispatch checkpoint
-  // like any other, which is what makes a retry respect a limiter that is at
-  // capacity instead of jumping the queue.
-  recordQueuedMessageWait(deps, {
-    thread,
-    message: {
-      // The original blocks verbatim, so the provider is asked the same
-      // question the failed attempt asked rather than being nudged with a
-      // synthetic "please continue" whose meaning depends on what it
-      // remembers. Their VISIBILITY is the one thing that changes: `agent-only`
-      // is what keeps the timeline from showing the user's message a second
-      // time, using the same projection rule that has always hidden system
-      // continuations. The user's message stays where it was, on the attempt
-      // that failed. Applied here, at the queue, so the frozen row carries it
-      // and every later re-attempt of this row inherits it.
-      input: failed.request.input.map((block) => ({
-        ...block,
-        visibility: "agent-only" as const,
-      })),
-      execution: await buildExecutionOptions(deps, {}, { threadId }),
-      senderThreadId: null,
-      payload: {
-        kind: "retry",
-        retryOfTurnRequestId: failure.originalRequestId,
-        attempt: failure.attemptNumber + 1,
-      },
-      systemNotice: null,
-    },
-    waitingOn: {
-      kind: "plugin",
-      pluginId: outcome.verdict.pluginId,
-      reason: outcome.verdict.reason,
-    },
-    sendAt: outcome.verdict.resumeAt,
-    claimed: null,
-  });
-}
-
-/**
- * Serializes the pass per thread.
- *
- * Two failures on one thread are rare but not impossible (a command failure
- * settling as a turn completion arrives), and running their passes concurrently
- * would let both read "no live retry row" and queue the turn twice. Chaining
- * per thread rather than globally keeps one slow retry policy from delaying
- * every other thread's failure handling; the gate pass itself still takes the
- * server-wide evaluation lock.
- */
-const passChainByThreadId = new Map<string, Promise<void>>();
-
-function serializePerThread(
-  threadId: string,
-  run: () => Promise<void>,
-): Promise<void> {
-  const previous = passChainByThreadId.get(threadId) ?? Promise.resolve();
-  const next = previous.then(run, run);
-  const chain = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  passChainByThreadId.set(threadId, chain);
-  void chain.then(() => {
-    if (passChainByThreadId.get(threadId) === chain) {
-      passChainByThreadId.delete(threadId);
-    }
-  });
-  return next;
-}
-
-export type TurnFailedGateNotifier = (threadId: string) => void;
-
-/**
- * Module-level bridge from the lifecycle seam to the gate pass, mirroring
- * `plugin-thread-events.ts`: `lifecycle-outcome.ts` receives narrow
- * `{ db, hub, logger }` deps assembled long before the plugin service exists,
- * so createApp registers the one notifier here rather than threading full deps
- * through every caller. Unset (tests that never build an app) it is a no-op.
- */
-let notifier: TurnFailedGateNotifier | undefined;
-
-export function setTurnFailedGateNotifier(
-  next: TurnFailedGateNotifier | undefined,
-): void {
-  notifier = next;
-}
-
-/**
- * Called after a `run.failed` lifecycle event is applied.
- *
- * Fire-and-forget on purpose: this stage observes a failure that has already
- * landed, so nothing about the thread's state depends on it, and the caller —
- * often mid-transaction — must not wait on plugin code.
- */
-export function notifyThreadRunFailed(threadId: string): void {
-  notifier?.(threadId);
-}
-
-/**
- * Builds the notifier createApp registers.
- *
- * The pass is deferred to the next macrotask because one of the two lifecycle
- * seams applies its event inside the caller's still-open transaction. Reading
- * the failed turn from there would see a half-written thread, and writing the
- * queued row would nest a transaction inside it. Deferring also makes the "no gates
- * installed" path cost one boolean check on the failure path and nothing else.
- */
-export function createTurnFailedGateNotifier(
-  deps: TurnFailedGateDeps,
-): TurnFailedGateNotifier {
-  return (threadId) => {
-    if (!hasDispatchGates("turn.failed")) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      void serializePerThread(threadId, () =>
-        runTurnFailedGatesForThread(deps, threadId),
-      ).catch((error: unknown) => {
-        deps.logger.warn(
-          { threadId, ...runtimeErrorLogFields(deps.config, error) },
-          "turn.failed gate pass failed; the thread's failure is unchanged",
-        );
-      });
-    }, 0);
-    timer.unref?.();
-  };
 }

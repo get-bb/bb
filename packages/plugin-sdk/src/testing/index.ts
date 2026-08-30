@@ -36,6 +36,7 @@ export {
 export {
   makeQueueEntry,
   makeThreadResponse,
+  makeTurnFailedEvent,
 } from "./fixtures.js";
 export {
   scanPublicSdkOnly as experimental_scanPublicSdkOnly,

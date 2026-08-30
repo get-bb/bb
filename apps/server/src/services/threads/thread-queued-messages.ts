@@ -26,6 +26,7 @@ interface StoredQueuedThreadMessageRow {
   reasoningLevel: string;
   retryAttempt: number | null;
   retryOfTurnRequestId: string | null;
+  retryReason: string | null;
   permissionMode: PermissionMode;
   sendAt: number | null;
   serviceTier: string;
@@ -98,7 +99,11 @@ function toQueuedMessagePayload(
   if (row.payloadKind === "inline") {
     return { kind: "inline" };
   }
-  if (row.retryOfTurnRequestId === null || row.retryAttempt === null) {
+  if (
+    row.retryOfTurnRequestId === null ||
+    row.retryAttempt === null ||
+    row.retryReason === null
+  ) {
     throw new ApiError(
       500,
       "internal_error",
@@ -109,6 +114,7 @@ function toQueuedMessagePayload(
     kind: "retry",
     retryOfTurnRequestId: row.retryOfTurnRequestId,
     attempt: row.retryAttempt,
+    reason: row.retryReason,
   };
 }
 

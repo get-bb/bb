@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  dispatchGateStageSchema,
   environmentStatusSchema,
   hostStatusSchema,
   pluginIdSchema,
@@ -116,15 +115,14 @@ export type ParentThreadInvalidErrorDetails = z.infer<
   typeof parentThreadInvalidErrorDetailsSchema
 >;
 
-/** Which plugin's gate ended the dispatch, and at which stage. Shared by the
- *  gate's `reject` verdict (409) and its fail-closed failure (502): both name
- *  the same gate, so the client can attribute either one without guessing. */
-export const dispatchGateErrorDetailsSchema = z.object({
+/** Which plugin's `message.dispatch` hook ended the dispatch. Shared by the
+ *  hook's `reject` decision (409) and its fail-closed failure (502): both name
+ *  the same plugin, so the client can attribute either one without guessing. */
+export const dispatchHookErrorDetailsSchema = z.object({
   pluginId: pluginIdSchema,
-  stage: dispatchGateStageSchema,
 });
-export type DispatchGateErrorDetails = z.infer<
-  typeof dispatchGateErrorDetailsSchema
+export type DispatchHookErrorDetails = z.infer<
+  typeof dispatchHookErrorDetailsSchema
 >;
 
 export const environmentNotReadyApiErrorSchema = apiErrorSchema.extend({
@@ -161,12 +159,12 @@ export const parentThreadInvalidApiErrorSchema = apiErrorSchema.extend({
 
 export const dispatchRejectedApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("dispatch_rejected"),
-  details: dispatchGateErrorDetailsSchema,
+  details: dispatchHookErrorDetailsSchema,
 });
 
-export const dispatchGateFailedApiErrorSchema = apiErrorSchema.extend({
-  code: z.literal("dispatch_gate_failed"),
-  details: dispatchGateErrorDetailsSchema,
+export const dispatchHookFailedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("dispatch_hook_failed"),
+  details: dispatchHookErrorDetailsSchema,
 });
 
 export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
@@ -177,6 +175,6 @@ export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   projectUnavailableApiErrorSchema,
   parentThreadInvalidApiErrorSchema,
   dispatchRejectedApiErrorSchema,
-  dispatchGateFailedApiErrorSchema,
+  dispatchHookFailedApiErrorSchema,
 ]);
 export type LifecycleApiError = z.infer<typeof lifecycleApiErrorSchema>;

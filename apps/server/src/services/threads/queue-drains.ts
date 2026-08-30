@@ -13,7 +13,7 @@ import {
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { isDispatchRequeuedRecently } from "./dispatch-gates.js";
+import { isDispatchRequeuedRecently } from "./dispatch-hooks.js";
 import { clearQueuedMessageWait } from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
@@ -145,7 +145,7 @@ function requestThreadQueueDrain(
  *
  * A due row is dispatched by claiming it directly rather than by clearing a
  * wait, because "due" is not something the idle drain can see: the row's wait
- * is `time` (or a plugin wait with a `retryAt`), which is deliberately not
+ * is `time` (or a plugin wait with a `sendAt`), which is deliberately not
  * drainable, and it is this sweep's own clock check that makes it eligible.
  */
 export async function runDueScheduledQueueSweep(

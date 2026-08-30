@@ -16,8 +16,8 @@ import type {
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
-  emitPluginQueueDispatched,
-  emitPluginQueueWaiting,
+  emitPluginMessageDispatched,
+  emitPluginMessageQueued,
 } from "../plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 
@@ -51,7 +51,7 @@ export interface RecordQueuedMessageWaitArgs {
   /**
    * The row's scheduled instant. Passed every time the wait is written rather
    * than left alone, because writing a wait is a fresh statement of when this
-   * row may run: a `time` wait sets it, a plugin wait with a `retryAt` sets it,
+   * row may run: a `time` wait sets it, a plugin wait with a `sendAt` sets it,
    * and every other wait clears it by passing null.
    */
   sendAt: number | null;
@@ -106,7 +106,7 @@ export function recordQueuedMessageWait(
     // Hand every claimed row back AND write the lead's wait in one
     // transaction. Doing it in two would leave the group unclaimed and with no
     // wait in between, which is exactly the window where the idle drain could
-    // pick up a message a gate has just said must wait.
+    // pick up a message a hook has just said must wait.
     row = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
       claims: claimed.map((claim) => ({
         id: claim.id,
@@ -124,18 +124,18 @@ export function recordQueuedMessageWait(
     return null;
   }
   const entry = toThreadQueuedMessage(row);
-  emitPluginQueueWaiting(entry);
+  emitPluginMessageQueued(entry);
   deps.hub.notifyThread(args.thread.id, ["queue-changed"]);
   return entry;
 }
 
 /**
  * Records that a queued row's waits all cleared and it dispatched. Called
- * AFTER the row is consumed, so a plugin listening on `queue.dispatched` sees
+ * AFTER the row is consumed, so a plugin listening on `message.dispatched` sees
  * the row leave the queue rather than a row that is about to.
  */
 export function settleQueueRowDispatched(args: SettleQueueRowArgs): void {
-  emitPluginQueueDispatched(toThreadQueuedMessage(args.row));
+  emitPluginMessageDispatched(toThreadQueuedMessage(args.row));
 }
 
 /**

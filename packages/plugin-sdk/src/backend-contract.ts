@@ -165,12 +165,57 @@ export interface PluginStorage {
 // ---------------------------------------------------------------------------
 
 /**
+ * Why a turn failed, assembled by core from the failed turn's own records so a
+ * listener never has to replay the event log to find out.
+ *
+ * Ids and failure facts only. There is no thread DTO and no copy of the
+ * message that failed: a retry re-submits the turn BY REFERENCE
+ * (`bb.sdk.threads.retry`), so the id is the whole of what a policy needs, and
+ * anything else about the thread is one `bb.sdk.threads.get` away and fresher
+ * for being read when it is used.
+ */
+export interface PluginTurnFailedEvent {
+  /** The thread the failed turn ran on. */
+  threadId: string;
+  /**
+   * The failed turn's `client/turn/requested` id — what
+   * `bb.sdk.threads.retry` takes as `turnRequestId`. On a retry's failure this
+   * is the RETRY's id; core walks back to the request the chain started from
+   * when it queues the next attempt.
+   */
+  requestId: string;
+  /** The provider turn, when the failure happened inside one. */
+  turnId: string | null;
+  /**
+   * The provider's structured classification, when it reported one. Null for a
+   * command that never reached the provider, so a retry policy must handle
+   * null rather than assume.
+   */
+  errorInfo: ProviderErrorInfo | null;
+  /**
+   * The most recent rate-limit snapshot this thread's provider reported, or
+   * null when the provider reports no windows.
+   */
+  rateLimits: ProviderRateLimitState | null;
+  /**
+   * Which attempt just failed: 1 is the original dispatch, 2 the first retry.
+   * A policy caps its own retries by comparing against this.
+   */
+  attemptNumber: number;
+}
+
+/**
  * Lifecycle events a plugin can observe with `bb.events.on` (design §4.5).
- * Observe-only: handlers run fire-and-forget after the change is applied and
- * can never block or veto it — the surface that *can* is
- * `bb.experimental_dispatch.gate`. `thread` is the same public DTO
- * GET /threads/:id serves and `entry` is the queued row
- * GET /threads/:id/queued-messages serves.
+ *
+ * **Events are announcements core makes.** Something already happened; a
+ * handler is told about it and whatever it returns is IGNORED. Handlers run
+ * fire-and-forget after the change is applied and can never block or veto it.
+ * The surface that *can* is `bb.experimental_hooks`, where core asks a
+ * question and acts on the answer — the same split git draws between its
+ * post-commit and pre-commit hooks.
+ *
+ * `thread` is the same public DTO GET /threads/:id serves and `entry` is the
+ * queued row GET /threads/:id/queued-messages serves.
  */
 export interface PluginThreadEventPayloads {
   /** Fired after a thread row is created. */
@@ -188,9 +233,9 @@ export interface PluginThreadEventPayloads {
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
   /**
-   * Fired after a dispatch attempt is queued as a row — by a gate's `wait`
-   * verdict, by a `sendAt` in the future, or by a core wait (the thread is
-   * busy, provisioning, or awaiting an interaction).
+   * Fired after a dispatch attempt is queued as a row — by a `message.dispatch`
+   * hook's `wait` decision, by a `sendAt` in the future, or by a core wait (the
+   * thread is busy, provisioning, or awaiting an interaction).
    *
    * Every listener sees every queued row, not just the ones it is holding: an
    * observer that only wants its own filters on
@@ -199,12 +244,23 @@ export interface PluginThreadEventPayloads {
    * A re-queue fires this again with the new wait, because a row that moved
    * from one wait to another is news to whoever was waiting on the old one.
    */
-  "queue.waiting": { entry: ThreadQueuedMessage };
+  "message.queued": { entry: ThreadQueuedMessage };
   /**
    * Fired after a queued row's waits all cleared and it dispatched. The turn
    * it carried runs after this, so a handler must not assume it has started.
    */
-  "queue.dispatched": { entry: ThreadQueuedMessage };
+  "message.dispatched": { entry: ThreadQueuedMessage };
+  /**
+   * Fired after a turn failed and the thread has already landed in `error`.
+   *
+   * An announcement, not a question: the failure stands exactly as core
+   * applied it, and a listener that wants another attempt asks for one with
+   * `bb.sdk.threads.retry({ threadId, turnRequestId, sendAt })`. That retry is
+   * an ordinary dispatch attempt, so it still passes the `message.dispatch`
+   * hook — a retry coming back after a rate-limit window respects a limiter
+   * that is at capacity instead of jumping the queue.
+   */
+  "turn.failed": PluginTurnFailedEvent;
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -214,32 +270,31 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
 ) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
-// The dispatch checkpoint and the rows it queues
-// (plans/dispatch-queue-rework.md).
+// Hooks: the questions core asks (plans/dispatch-queue-rework.md).
 // ---------------------------------------------------------------------------
 
 /**
- * A gate's answer.
+ * What a `message.dispatch` hook answers.
  *
  * `proceed` lets the attempt continue. `wait` QUEUES the message as a row
  * whose `waitingOn` names this plugin and carries `reason` verbatim; the
- * row stays queued until `retryAt` comes due, capacity frees, the user sends
+ * row stays queued until `sendAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
- * running. `retryAt` (epoch ms) sets the row's `sendAt`, so core's due sweep
+ * running. `sendAt` (epoch ms) sets the row's own `sendAt`, so core's due sweep
  * re-attempts at that instant without the plugin holding a timer of its own —
  * which is what a rate-limit window wants. `reject` refuses the attempt
  * outright: `message` is shown to the user verbatim.
  *
- * There is deliberately no "handled it myself" verdict and no amendment arm —
- * a gate is a decision, never an owner or an author of the work.
+ * There is deliberately no "handled it myself" answer and no amendment arm —
+ * a hook is a decision, never an owner or an author of the work.
  */
-export type PluginDispatchDecision =
+export type MessageDispatchHookDecision =
   | { action: "proceed" }
-  | { action: "wait"; reason: string; retryAt?: number | null }
+  | { action: "wait"; reason: string; sendAt?: number | null }
   | { action: "reject"; message: string };
 
 /**
- * The execution tuple as core resolved it before this gate ran. `model` and
+ * The execution tuple as core resolved it before this hook ran. `model` and
  * the three option fields are null only when no default has been resolved for
  * them yet; `providerId` is always resolved.
  */
@@ -254,7 +309,7 @@ export interface PluginDispatchExecution {
 /**
  * Where each execution value came from. `explicit` is a user choice,
  * `client-preference` a remembered client default, and null means core
- * resolved it from project/provider defaults. A gate that must not act against
+ * resolved it from project/provider defaults. A hook that must not act against
  * a deliberate choice checks for `explicit` here.
  */
 export interface PluginDispatchExecutionSources {
@@ -267,28 +322,12 @@ export interface PluginDispatchExecutionSources {
 
 /**
  * The prompt this dispatch carries. `blocks` is the message itself; `text` is
- * the concatenated text of its text blocks, which is what a rules-based gate
+ * the concatenated text of its text blocks, which is what a rules-based hook
  * actually wants to match on.
  */
 export interface PluginDispatchInput {
   blocks: readonly PromptInput[];
   text: string;
-}
-
-/** What every stage — admission and post-hoc alike — puts on a context. */
-export interface PluginDispatchGateContextCommon {
-  project: Project;
-  /** Null until an environment is chosen (a held or not-yet-provisioned thread). */
-  environment: Environment | null;
-  /** The machine the work will run on; null whenever `environment` is. */
-  host: Host | null;
-  input: PluginDispatchInput;
-  requestedExecution: PluginDispatchExecution;
-  /** How the dispatch was requested; null for internal/core-driven sends. */
-  origin: ThreadCreateOrigin | null;
-  originPluginId: string | null;
-  startedOnBehalfOf: StartedOnBehalfOf | null;
-  parentThreadId: string | null;
 }
 
 /**
@@ -299,14 +338,15 @@ export interface PluginDispatchGateContextCommon {
  * found no running turn to join. `join-turn` is an injection into a turn that
  * is already executing.
  *
- * Verdict powers are identical for both — a steer is gated exactly like a
- * send, uniformly. A gate that limits concurrency proceeds on `join-turn`: the
+ * Decision powers are identical for both — a steer is hooked exactly like a
+ * send, uniformly. A hook that limits concurrency proceeds on `join-turn`: the
  * thread already holds its slot, so joining it asks for nothing new.
  */
 export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
 
 /**
- * `dispatch`: the one checkpoint, run before any message reaches a provider.
+ * What core hands a `message.dispatch` hook: the one checkpoint, run before
+ * any message reaches a provider.
  *
  * It runs identically whether the attempt is inline (someone just sent) or
  * from a drain (a queued row became eligible again), and whether the message
@@ -314,176 +354,106 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * handler must therefore be idempotent for one logical dispatch: passes re-run
  * on every drain, on restart, and on retry.
  */
-export interface PluginDispatchAttemptContext
-  extends PluginDispatchGateContextCommon {
-  stage: "dispatch";
+export interface MessageDispatchHookContext {
   /**
-   * The target thread. Never null: thread creation is ungated — it is a cheap
+   * The target thread. Never null: thread creation is unhooked — it is a cheap
    * row — so by the time the first message is decided about, the thread exists
    * in `pending`, with its provider resolved and nothing provisioned.
    */
   thread: ThreadResponse;
+  project: Project;
+  /** Null until an environment is chosen (a held or not-yet-provisioned thread). */
+  environment: Environment | null;
+  /** The machine the work will run on; null whenever `environment` is. */
+  host: Host | null;
+  input: PluginDispatchInput;
+  requestedExecution: PluginDispatchExecution;
+  /** Where each execution value came from. */
+  executionSources: PluginDispatchExecutionSources;
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
-  /**
-   * Where each execution value came from. Attempt-only: at `turn.failed` the
-   * tuple is a historical fact about a turn that already ran, and "who asked
-   * for this model" is no longer a question the gate can act on.
-   */
-  executionSources: PluginDispatchExecutionSources;
   /**
    * The queued row this attempt is re-trying, or null when the attempt is
    * inline and no row has ever existed for it.
    *
-   * This is how a gate tells a fresh send from a re-attempt of something it
+   * This is how a hook tells a fresh send from a re-attempt of something it
    * already decided about — the replacement for the old
-   * `isReleaseReevaluation`/`hold` pair. A gate that counts in-flight work
-   * should treat the two identically; a gate that logs should not
+   * `isReleaseReevaluation`/`hold` pair. A hook that counts in-flight work
+   * should treat the two identically; a hook that logs should not
    * double-count.
    */
   queuedMessage: ThreadQueuedMessage | null;
+  /** How the dispatch was requested; null for internal/core-driven sends. */
+  origin: ThreadCreateOrigin | null;
+  originPluginId: string | null;
+  startedOnBehalfOf: StartedOnBehalfOf | null;
+  parentThreadId: string | null;
 }
 
 /**
- * Why a turn failed, assembled by core from the failed turn's own records so a
- * gate never has to replay the event log to find out.
+ * The hooks a plugin can answer, each mapping its key to the context core
+ * hands the handler and the decision core acts on. `on()` and the handler type
+ * derive from this map — and so does the server's hook registry — so a
+ * half-added hook does not compile.
  *
- * `errorInfo` and `rateLimits` are null when the failure produced none — a
- * command that never reached the provider, or a provider that reports no
- * windows. A retry policy that needs them must handle null rather than assume.
+ * One hook today: `message.dispatch`, THE admission checkpoint, run identically
+ * for a thread's first message, a follow-up, a steer, a retry, and every
+ * re-attempt a drain makes. It replaced the earlier `thread.create` +
+ * `turn.submit` pair, whose split was an accident of where the code happened to
+ * branch rather than a difference a plugin needed to see — the attempt's own
+ * `attempt` kind carries what actually differs.
  */
-export interface PluginTurnFailure {
-  /** The failed turn's `client/turn/requested` id. */
-  requestId: string;
-  /**
-   * The ORIGINAL request of this retry chain. Equal to `requestId` on a first
-   * failure; on a retry's failure it is the request the chain started from.
-   */
-  originalRequestId: string;
-  /** The provider turn, when the failure happened inside one. */
-  turnId: string | null;
-  /** The failure text core recorded, always populated. */
-  message: string;
-  /** The provider's structured classification, when it reported one. */
-  errorInfo: ProviderErrorInfo | null;
-  /** The most recent rate-limit snapshot this thread's provider reported. */
-  rateLimits: ProviderRateLimitState | null;
-  /**
-   * Which attempt just failed: 1 is the original dispatch, 2 the first retry.
-   * A policy caps its own retries by comparing against this.
-   */
-  attemptNumber: number;
-}
-
-/**
- * What a `turn.failed` gate may answer.
- *
- * `none` leaves the failure exactly as core applied it. `retry` queues a row
- * of payload kind `retry`, waiting on this plugin, that re-submits the
- * ORIGINAL turn when it dispatches: `resumeAt` (epoch ms) becomes the row's
- * `sendAt`, so core's due sweep re-attempts then, and `reason` is the
- * user-visible line on the row's card and timeline row.
- *
- * The re-attempt runs the `dispatch` checkpoint like any other, so a retry
- * coming back after a rate-limit window still respects a limiter that is at
- * capacity — it re-queues rather than jumping the queue.
- *
- * There is no `wait`/`reject`/amendment arm: the turn already failed, so there
- * is nothing left to admit, refuse or rewrite.
- */
-export type PluginTurnFailedDecision =
-  | { action: "none" }
-  | { action: "retry"; reason: string; resumeAt: number };
-
-/**
- * `turn.failed`: a turn on this thread just failed and the thread has already
- * landed in `error`.
- *
- * The execution fields describe the turn that failed, so a retry policy can
- * read the model and permission mode the attempt actually ran with.
- */
-export interface PluginTurnFailedGateContext
-  extends PluginDispatchGateContextCommon {
-  stage: "turn.failed";
-  thread: ThreadResponse;
-  failure: PluginTurnFailure;
-}
-
-/**
- * The per-stage context and decision types. `gate()`, the handler type and the
- * server's registry all derive from this map, so a half-added stage does not
- * compile.
- */
-export interface PluginDispatchGateStages {
-  dispatch: {
-    context: PluginDispatchAttemptContext;
-    decision: PluginDispatchDecision;
-  };
-  "turn.failed": {
-    context: PluginTurnFailedGateContext;
-    decision: PluginTurnFailedDecision;
+export interface PluginHookSignatures {
+  "message.dispatch": {
+    context: MessageDispatchHookContext;
+    decision: MessageDispatchHookDecision;
   };
 }
 
-export type PluginDispatchGateStage = keyof PluginDispatchGateStages;
+export type PluginHookName = keyof PluginHookSignatures;
 
-export type PluginDispatchGateContext<S extends PluginDispatchGateStage> =
-  PluginDispatchGateStages[S]["context"];
-
-export type PluginDispatchGateDecision<S extends PluginDispatchGateStage> =
-  PluginDispatchGateStages[S]["decision"];
-
-export type PluginDispatchGateHandler<S extends PluginDispatchGateStage> = (
-  context: PluginDispatchGateContext<S>,
+export type PluginHookHandler<K extends PluginHookName> = (
+  context: PluginHookSignatures[K]["context"],
 ) =>
-  | PluginDispatchGateDecision<S>
-  | Promise<PluginDispatchGateDecision<S>>;
+  | PluginHookSignatures[K]["decision"]
+  | Promise<PluginHookSignatures[K]["decision"]>;
 
-export interface PluginDispatch {
+export interface PluginHooks {
   /**
-   * Register a gate at a dispatch stage.
+   * Answer a hook.
    *
-   * There are two: `"dispatch"`, the single admission checkpoint every message
-   * passes through, and `"turn.failed"`, which observes a failure that has
-   * already landed. The stage stays an explicit argument even though only one
-   * of the two admits anything — with `turn.failed` still registered by name,
-   * a bare `gate(handler)` for the other would read as if it were the only
-   * gate there is.
+   * **Hooks are questions core asks.** Core stops at a checkpoint, hands the
+   * handler a context, and ACTS ON what it returns — the opposite of
+   * `bb.events`, whose handlers are told what already happened and whose
+   * return value is ignored. It is the same split git draws between its
+   * pre-commit and post-commit hooks, and the reason the two live in separate
+   * namespaces rather than behind one `on`.
    *
-   * Gates for a stage run as a deterministic chain in plugin install order, a
-   * `reject` short-circuits the pass, and `wait` verdicts are COLLECTED across
-   * the whole pass rather than short-circuiting. The attempt proceeds only
-   * when a pass yields no waits. When several gates wait, the FIRST owns the
-   * row's `waitingOn` and the rest have their reasons appended to it, so one
-   * decision produces one card rather than one per gate; each of them votes
-   * again on the next attempt, so nothing is lost by not owning the row.
+   * Handlers for a hook run as a deterministic chain in plugin install order,
+   * a `reject` short-circuits the pass, and `wait` decisions are COLLECTED
+   * across the whole pass rather than short-circuiting. The attempt proceeds
+   * only when a pass yields no waits. When several plugins wait, the FIRST owns
+   * the row's `waitingOn` and the rest have their reasons appended to it, so
+   * one decision produces one card rather than one per plugin; each of them
+   * answers again on the next attempt, so nothing is lost by not owning the
+   * row.
    *
-   * Fail-closed at `"dispatch"`: a handler that throws or exceeds the 10
-   * second decision box FAILS THE ATTEMPT with this plugin named. Decide in
-   * milliseconds — if the answer needs real work, return `wait` with a
-   * `retryAt` and answer again on the re-attempt.
+   * Fail-closed: a handler that throws or exceeds the 10 second decision box
+   * FAILS THE ATTEMPT with this plugin named. Decide in milliseconds — if the
+   * answer needs real work, return `wait` with a `sendAt` and answer again on
+   * the re-attempt.
    *
-   * At `turn.failed` fail-closed means the opposite of blocking: the turn has
-   * already failed, so the safe state is the failure standing as core applied
-   * it. A handler that throws or times out has its verdict DISCARDED (with this
-   * plugin named in the log and its status), and the failure is untouched. A
-   * broken retry plugin can cost you a retry; it can never make failures
-   * unrecoverable or a thread unusable.
-   *
-   * The whole pass runs under one server-wide lock, so a counting gate never
-   * races another attempt. It also means a gate that blocks delays every
+   * The whole pass runs under one server-wide lock, so a counting handler never
+   * races another attempt. It also means a handler that blocks delays every
    * other attempt, up to the box.
    *
    * Passes re-run on every drain, on restart and on retry. A handler must be
    * idempotent for one logical dispatch.
    *
-   * At most one gate per stage per plugin; registering a second replaces
+   * At most one handler per hook per plugin; registering a second replaces
    * nothing and throws.
    */
-  gate<S extends PluginDispatchGateStage>(
-    stage: S,
-    handler: PluginDispatchGateHandler<S>,
-  ): void;
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandler<K>): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1524,14 +1494,17 @@ export interface BbPluginApi {
   readonly providers: PluginProviders;
   /** Host-rendered UI contributions (design §4.9). */
   readonly ui: PluginUi;
-  /** Additive plugin lifecycle listeners (design §4.5). */
+  /**
+   * Additive plugin lifecycle listeners (design §4.5). Announcements core
+   * makes: a handler's return value is ignored.
+   */
   readonly events: PluginEvents;
   /**
-   * The dispatch checkpoint and the rows it queues: intercept every
-   * message on its way to a provider, queue it with a reason, and let it go
-   * later.
+   * Questions core asks and acts on the answer to. Today: the dispatch
+   * checkpoint every message on its way to a provider passes through, which a
+   * handler may let go, queue with a reason, or refuse.
    */
-  readonly experimental_dispatch: PluginDispatch;
+  readonly experimental_hooks: PluginHooks;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

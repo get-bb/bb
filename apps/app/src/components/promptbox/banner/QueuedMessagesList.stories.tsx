@@ -325,6 +325,7 @@ const retry: readonly ThreadQueuedMessage[] = [
       kind: "retry",
       retryOfTurnRequestId: "creq_2m4kq7bxvn",
       attempt: 2,
+      reason: "Rate limited",
     },
     waitingOn: {
       kind: "plugin",

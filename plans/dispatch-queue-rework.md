@@ -17,7 +17,7 @@ message passes through.
 
 **Plugins get one checkpoint: the dispatch attempt.** It runs identically
 whether the attempt is inline (fresh send) or from the drain (a queued
-message becoming eligible). Thread creation itself is ungated — it is a cheap
+message becoming eligible). Thread creation itself is unhooked — it is a cheap
 row; admission happens at the first message's attempt.
 
 **The first message never waits on provisioning.** A cleared first attempt
@@ -31,8 +31,8 @@ follow-ups/steers sent while a thread is mid-(re)provisioning.
 One entry point, `attemptDispatch(msg, thread)`, called identically inline
 and from the drain: (1) core waits checked first (sendAt future, thread-busy
 unless steer-mode, provisioning for follow-ups, pending interaction) — each
-queues the message with its typed waiting-on; (2) the single plugin gate pass —
-`wait(reason)` queues with `plugin(<id>)` attribution, `reject` fails,
+queues the message with its typed waiting-on; (2) the single `message.dispatch`
+hook pass — `wait(reason)` queues with `plugin(<id>)` attribution, `reject` fails,
 `proceed` may amend (provider/environment only on `firstDispatch`); (3) on a
 clear, a `pending` thread flips to `starting` (which absorbs provisioning +
 session start exactly as today, the message riding along) and a live thread
@@ -46,21 +46,22 @@ idle, workspace ready, interaction settled, plugin `clearsWait`).
   unprovisioned; a freed slot → `clearsWait` → full pass re-runs.
 - Sandbox provisioning: `wait("Provisioning sandbox…")`, background VM
   create + host enroll, `clearsWait` with an environment amendment; other
-  gates still apply on the re-attempt.
+  hook handlers still apply on the re-attempt.
 - Steer during provisioning: pure core wait (`provisioning` + steer mode);
   the workspace-ready drain does everything.
-- Retry: `turn.failed` (unchanged) queues a by-reference row with
-  `time(resetAt)`; the re-attempt runs gates too, so retries respect the
+- Retry: the `turn.failed` event, and a listener calling
+  `sdk.threads.retry({ sendAt })`, which queues a by-reference row with
+  `time(sendAt)`; the re-attempt runs the hook too, so retries respect the
   limiter.
 
 Plugins learn one verdict (`wait`) and one release (`clearWait`); every
 feature is a different author of the same queued row. The happy path runs
 1→2→3 with nothing blocking and never creates a row.
 
-**Steers are gated too — every dispatch attempt runs the checkpoint,
+**Steers are hooked too — every dispatch attempt runs the checkpoint,
 uniformly.** (This deliberately reverses the earlier live-steer exemption:
 steers already queue on core waits — interaction, provisioning, scheduled
-time — so exempting them from the gate pass alone was a carve-out, not a
+time — so exempting them from the hook pass alone was a carve-out, not a
 rule.) The context carries the attempt kind: `start-turn` (first message,
 plain send, steer-mode message finding an idle or pending thread) vs
 `join-turn` (injection into a running turn). Verdict powers are identical;
@@ -92,10 +93,10 @@ interim backend UI can stay functional-but-plain until the visuals arrive.
 | Scheduling | `sendAt` on queue rows (nullable = eligible now / when turn ends). Scheduled follow-up = queued row with `sendAt`. Scheduled spawn = `pending` thread + queued first message with `sendAt`; nothing provisions until due |
 | Thread status | New canonical status **`pending`**: created, no message has ever cleared an attempt. Leaves it the moment the first attempt clears → `starting` (which keeps its current meaning). Archival/deletion legal from `pending`. This deliberately reverses the earlier no-new-status decision |
 | Provider/env at create | **Nullable provider is deferred**: rows keep a resolved provider at insert (defaults ladder), amendable at the first cleared attempt (the shipped pre-session amendment machinery relocates there). `environmentId` stays null until provisioning, as it already does |
-| Plugin checkpoint | One gate stage — the dispatch attempt — replacing `thread.create` + `turn.submit`. Context carries `firstDispatch` (provider/environment amendments allowed only there), the same provenance/pluginInputs/typed context as today. Verdicts: `proceed` (with amendments) \| `wait` (queue with reason — replaces `hold`) \| `reject`. `turn.failed` unchanged; retry verdicts create by-reference queue rows |
-| Concurrency limiting | A `wait` verdict at the attempt; the row shows `plugin:concurrency-limit · "4 of 4 running"`. Same tally, release = the plugin marking its wait cleared (drain re-attempts; gates re-run, so a stale release safely re-queues) |
+| Plugin checkpoint | One hook — `message.dispatch`, the dispatch attempt — replacing `thread.create` + `turn.submit`. Context carries `firstDispatch` (provider/environment amendments allowed only there), the same provenance/pluginInputs/typed context as today. Verdicts: `proceed` (with amendments) \| `wait` (queue with reason — replaces `hold`) \| `reject`. Turn failure stays a separate concern; a retry creates a by-reference queue row |
+| Concurrency limiting | A `wait` verdict at the attempt; the row shows `plugin:concurrency-limit · "4 of 4 running"`. Same tally, release = the plugin marking its wait cleared (drain re-attempts; the hook re-runs, so a stale release safely re-queues) |
 | Send now | **Bypasses every plugin check** (and `sendAt`). `provisioning` and `interaction` waits are not overridable — they guard invariants; `thread-busy` clears via a join-turn steer, so send-now works on ordinary queued rows. Loosens the previous skip-owner-only rule by explicit choice |
-| Fail-closed | Unchanged: a gate that throws/times out (10s) fails the attempt naming the plugin; an inline attempt surfaces the error to the sender, a drain attempt marks the row errored-visible. Orphan rule transfers: a `plugin` wait whose plugin is not running is cleared by the sweep |
+| Fail-closed | Unchanged: a hook handler that throws/times out (10s) fails the attempt naming the plugin; an inline attempt surfaces the error to the sender, a drain attempt marks the row errored-visible. Orphan rule transfers: a `plugin` wait whose plugin is not running is cleared by the sweep |
 | Exactly-once | The release/claim CAS semantics transfer to row state transitions (queued → dispatching → consumed); double-drain safe as today's claim tokens already are |
 
 ## What this dissolves
@@ -113,7 +114,7 @@ interim backend UI can stay functional-but-plain until the visuals arrive.
   and reason; report/progress API transfers for long plugin waits).
 - The held-card/banner UI split — everything renders as queued rows with
   waiting-on badges (the in-flight card/queue styling unification lands first).
-- `thread.create` gate stage; `PluginDispatchCreateAmendments` merges into
+- The `thread.create` checkpoint; `PluginDispatchCreateAmendments` merges into
   the single attempt context.
 
 ## Schema
@@ -192,7 +193,7 @@ above:
 - **Auto provider routing was removed afterwards.** The `model-router` plugin,
   the `app.slots.experimental_executionPickerEntry` slot and its
   `{ kind: "plugin-entry" }` picker value arm, the CLI
-  `--provider auto:<pluginId>[:<entryId>]` grammar, and `providerId` as a gate
+  `--provider auto:<pluginId>[:<entryId>]` grammar, and `providerId` as a hook
   amendment (with `threadProviderAmendmentRefusal` and the db `setThreadProvider`
   write) are all deleted. The picker is providers-only again and a thread's
   provider is fixed at creation. The generic amendment surface
@@ -216,11 +217,11 @@ above:
     Ids are the composition primitive — a caller that needs more than "which
     ids, on which hosts" fetches the threads it named.
   - **Flip-before-unlock.** A cleared first dispatch now commits its
-    `pending → starting` transition INSIDE the gate evaluation lock
-    (`DispatchGatePassRequest.commitAdmission`), so attempt N+1 reads a
+    `pending → starting` transition INSIDE the hook evaluation lock
+    (`MessageDispatchHookPassRequest.commitAdmission`), so attempt N+1 reads a
     database that already contains attempt N's admission. That is what makes
-    `listRunning` **exact inside a dispatch gate and a snapshot everywhere
-    else**, and it is what killed the in-flight-`proceed` tally. Honest
+    `listRunning` **exact inside a `message.dispatch` hook and a snapshot
+    everywhere else**, and it is what killed the in-flight-`proceed` tally. Honest
     boundary: a warm follow-up's `idle → active` flip lives in the send
     transaction (it needs a prepared host command) and lands just after the
     lock, so bursts of follow-ups to distinct idle threads can momentarily
@@ -244,7 +245,7 @@ above:
   limiter briefly did not count threads with a `parentThreadId` or an
   `originPluginId`, and let their own dispatches through a full pool. Removed
   in both directions: every running thread counts, every `start-turn` dispatch
-  is gated. The join-turn (and already-`starting`/`active`) proceed rule stays,
+  runs the hook. The join-turn (and already-`starting`/`active`) proceed rule stays,
   because a thread that already holds its slot is not asking for a new one —
   that is correctness, not exemption.
 
@@ -267,7 +268,7 @@ above:
   in the same wave (their behaviors are unchanged; their verdict/carrier
   vocabulary changes).
 - SDK/CLI/guide/skill surfaces updated in the same wave per repo rules;
-  plugin SDK bump; api_to_audit rewritten for the single-stage contract.
+  plugin SDK bump; api_to_audit rewritten for the single-hook contract.
 
 - **The plugin checkpoint was cut back to a pure decision.** Consumer-less
   surface built during the rework and never used by any shipped plugin is
@@ -279,12 +280,12 @@ above:
     environment window, the permission-mode clamp, `DispatchAmendmentResult`
     with its `amendedBy`/`originalInput` audit trail, the `amendedByPluginId` /
     `originalInput` turn-event fields, the `turnRequest.amendment` projection
-    and the "Chosen by <plugin>" chip. A gate now answers `proceed | wait |
-    reject` and cannot rewrite the dispatch it is deciding about. Because
-    nothing a gate returns changes what the next gate sees, one context is
-    built per pass instead of one per gate. `"plugin"` left
-    `callerExecutionInputSourceValues` (`applyGateAmendment` was its only
-    writer), and `shouldRememberProjectExecutionDefaults` lost the
+    and the "Chosen by <plugin>" chip. A `message.dispatch` hook now answers
+    `proceed | wait | reject` and cannot rewrite the dispatch it is deciding
+    about. Because nothing a handler returns changes what the next handler
+    sees, one context is built per pass instead of one per handler. `"plugin"`
+    left `callerExecutionInputSourceValues` (the amendment-application path was
+    its only writer), and `shouldRememberProjectExecutionDefaults` lost the
     `pluginAmended` guard that was already always false.
   - **`firstDispatch` left the plugin context too.** Its only stated purpose
     was the environment-amendment window; with that gone, nothing read it —
@@ -297,17 +298,17 @@ above:
     `entries` transcript, so the field, its projection, its merge and its
     expandable rendering went with it — a queued row's body is now its
     schedule and the queued message, and `detail` is always null. A wait
-    clears only via `retryAt`, the freed-capacity drain, Send-now and the
+    clears only via `sendAt`, the freed-capacity drain, Send-now and the
     orphan sweep; the authoring skill says exactly that.
   - **`pluginInputs`.** The side channel is gone end to end: the domain
     schema and 8KB cap, the create/send/queued-message request fields, the
     `plugin_inputs` column, `ctx.pluginInput`, `--plugin-input`,
     `useComposer().experimental_setPluginInput` and its composer store, the
     guide/skill passages and the api_to_audit entry.
-  - **The Dispatch Gates settings panel** and the `dispatchGateOrder` app
-    setting are deleted, along with `dispatchGateStages` on the plugin-list
-    response (the panel was its only consumer) and the SDK's `.default([])`
-    tolerance for it. Gate order is plugin install order, full stop; the
+  - **The dispatch-hook settings panel** and its plugin-order app setting are
+    deleted, along with the plugin-list response's list of which dispatch
+    hooks a plugin answers (the panel was its only consumer) and the SDK's
+    `.default([])` tolerance for it. Hook order is plugin install order, full stop; the
     deterministic chain and the multi-waiter first-owns rule are unchanged.
     The retired settings key is simply ignored on read — `getAppSettings`
     selects only live keys — so no migration is needed.
@@ -350,8 +351,8 @@ above:
   sorting, filtering and status copy and drives no glyph at all. `queue-changed`
   now dirties the thread lists on web and mobile, which it did not before.
 
-- **Provider retry never intercepts a send, so a stock install runs zero
-  gates.** The plugin briefly also registered a `dispatch` gate: once one thread
+- **Provider retry never intercepts a send, so a stock install answers no
+  hooks.** The plugin briefly also answered `message.dispatch`: once one thread
   proved an account exhausted it queued every other dispatch into that account
   until the window it remembered had passed, saving them each a failure. That is
   deleted, along with the in-memory blocked-scope map and every structure
@@ -363,15 +364,16 @@ above:
   accepted cost is stated rather than engineered around: N threads on one
   exhausted account each fail once instead of the first failing and the rest
   queueing; the reset jitter, now the only thing spreading retries out, keeps
-  them from waking together. The plugin is exactly one `turn.failed` gate —
-  buffer, jitter, maximum wait, attempt cap — plus its queue-reading RPC/CLI.
+  them from waking together. The plugin is exactly one `turn.failed` listener
+  that decides — buffer, jitter, maximum wait, attempt cap — and then asks for
+  the attempt with `sdk.threads.retry`, plus its queue-reading RPC/CLI.
 
-  That deletion has a structural consequence worth naming: **`dispatch` is now
-  an empty stage on a fresh install.** `concurrency-limit` is the only bundled
-  plugin that registers one and it ships `defaultEnabled: false`, and a disabled
-  plugin never loads, so `listGates("dispatch")` is empty. The
-  `hasDispatchGates` guard's promise — "with no gates the dispatch path is
-  byte-for-byte what it was before gates existed" — therefore describes the
+  That deletion has a structural consequence worth naming: **`message.dispatch`
+  is now an unanswered hook on a fresh install.** `concurrency-limit` is the only
+  bundled plugin that answers it and it ships `defaultEnabled: false`, and a
+  disabled plugin never loads, so `listHooks("message.dispatch")` is empty. The
+  `hasMessageDispatchHooks` guard's promise — "with no handlers the dispatch path
+  is byte-for-byte what it was before hooks existed" — therefore describes the
   default machine rather than a hypothetical one: a user pays for the evaluation
   lock and context assembly only by asking for admission control. Both halves
   are pinned in `builtin-plugins.test.ts`.
@@ -391,9 +393,9 @@ above:
   arms — plus the api_to_audit entry and the authoring-skill section. The event
   type itself was subsequently purged too — see "The three legacy decode-only
   event types are purged" below.
-  `queue.waiting`/`queue.dispatched` stay: they are event-bus members like
-  `turn.*`, which no bundled plugin subscribes to either, and cutting only the
-  queue pair would be a carve-out rather than a rule.
+  `message.queued`/`message.dispatched` stay: they are event-bus members like
+  `thread.created`, which no bundled plugin subscribes to either, and cutting
+  only the queue pair would be a carve-out rather than a rule.
 
 - **The three legacy decode-only event types are purged, and the protocol is
   flattened to one bump.** `system/dispatch-hold`, `system/queue-state` and

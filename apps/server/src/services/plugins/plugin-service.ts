@@ -70,6 +70,7 @@ import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
 } from "../threads/thread-data.js";
+import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import {
@@ -109,7 +110,7 @@ import {
   type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
-import type { DispatchGateProvider } from "./dispatch-gate-registry.js";
+import type { PluginHookProvider } from "./plugin-hook-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -159,8 +160,8 @@ export function dispatchPluginSourceWatchChange(
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
-  /** The gate chain the dispatch pipeline consults; registered in createApp. */
-  dispatchGates: DispatchGateProvider;
+  /** The hook chain the dispatch pipeline consults; registered in createApp. */
+  hooks: PluginHookProvider;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -320,12 +321,12 @@ export interface PluginService {
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 /**
- * Per-gate decision box. A gate is on the dispatch hot path and holds a
- * server-wide lock while it runs, so it must decide in milliseconds; this is
- * the outer bound past which the dispatch fails with the plugin named, not a
- * budget to spend.
+ * Per-handler decision box. A hook handler is on the dispatch hot path and
+ * holds a server-wide lock while it runs, so it must decide in milliseconds;
+ * this is the outer bound past which the dispatch fails with the plugin named,
+ * not a budget to spend.
  */
-const DEFAULT_DISPATCH_GATE_TIMEOUT_MS = 10_000;
+const DEFAULT_PLUGIN_HOOK_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
@@ -814,8 +815,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
-  const dispatchGateTimeoutMs =
-    deps.dispatchGateTimeoutMs ?? DEFAULT_DISPATCH_GATE_TIMEOUT_MS;
+  const pluginHookTimeoutMs =
+    deps.pluginHookTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
   const stabilizationWindowMs =
     deps.stabilizationWindowMs ?? DEFAULT_STABILIZATION_WINDOW_MS;
   const artifactRetentionMs =
@@ -843,7 +844,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
-    buildQueueEventEmitter,
+    buildQueuedMessageEventEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
@@ -852,7 +853,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
-    listDispatchGates,
+    listPluginHooks,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -1361,19 +1362,27 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
-      emitQueueWaiting: buildQueueEventEmitter("queue.waiting"),
-      emitQueueDispatched: buildQueueEventEmitter("queue.dispatched"),
+      emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
+      emitMessageDispatched:
+        buildQueuedMessageEventEmitter("message.dispatched"),
+      emitTurnFailed(threadId) {
+        // Built lazily inside the emitter: with no listener the failure path
+        // pays one map lookup and never touches the database.
+        emitThreadEvent("turn.failed", () =>
+          buildTurnFailedEvent(deps.db, threadId),
+        );
+      },
     },
 
-    dispatchGates: {
-      listGates: listDispatchGates,
-      invokeGate: async (pluginId, label, run) => {
+    hooks: {
+      listHooks: listPluginHooks,
+      invokeHook: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok
           ? { ok: true, value: outcome.value }
           : { ok: false, error: outcome.error };
       },
-      decisionTimeoutMs: dispatchGateTimeoutMs,
+      decisionTimeoutMs: pluginHookTimeoutMs,
     },
 
     bindSdk: bindRuntimeSdk,

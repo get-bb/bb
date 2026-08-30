@@ -1,7 +1,8 @@
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type QueueEntry = PluginThreadEventPayloads["queue.waiting"]["entry"];
+type QueueEntry = PluginThreadEventPayloads["message.queued"]["entry"];
+type TurnFailedEvent = PluginThreadEventPayloads["turn.failed"];
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -42,7 +43,7 @@ export function makeThreadResponse(
 }
 
 /**
- * A complete, deterministic queued row for the `queue.*` event payloads
+ * A complete, deterministic queued row for the `message.*` event payloads
  * and for faking `sdk.threads.queuedMessages.list`. Defaults are a live inline
  * row on this plugin's wait; override what the test is about. If the
  * contract grows a required field, this builder fails typecheck — update the
@@ -69,6 +70,27 @@ export function makeQueueEntry(overrides: Partial<QueueEntry> = {}): QueueEntry 
     editable: true,
     createdAt: 0,
     updatedAt: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * A complete, deterministic `turn.failed` payload. Defaults are a first attempt
+ * that failed inside a provider turn with neither structured error info nor
+ * rate limits — the shape a retry policy must handle before it handles the
+ * interesting ones. If the contract grows a required field, this builder fails
+ * typecheck — update the default here.
+ */
+export function makeTurnFailedEvent(
+  overrides: Partial<TurnFailedEvent> = {},
+): TurnFailedEvent {
+  return {
+    threadId: "thread-1",
+    requestId: "creq_2222222222",
+    turnId: "turn-1",
+    errorInfo: null,
+    rateLimits: null,
+    attemptNumber: 1,
     ...overrides,
   };
 }

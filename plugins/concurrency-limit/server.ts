@@ -1,11 +1,11 @@
 // bb-plugin-concurrency-limit — admission control for thread dispatches.
 //
-// One gate at the dispatch checkpoint makes an attempt WAIT when the pool it
+// One handler at the dispatch checkpoint makes an attempt WAIT when the pool it
 // would join is full. That is the entire plugin: parse the settings, ask the
 // server what is running, compare, answer.
 //
 // The limit is uniform: every running thread counts and every start-turn
-// dispatch is gated, with no carve-out for child threads or plugin-spawned
+// dispatch is hooked, with no carve-out for child threads or plugin-spawned
 // ones. That has a real cost, stated here rather than hidden behind an
 // exemption: under a tight limit, an orchestration pattern where a running
 // parent waits on threads it spawned (the workflows plugin) can wedge, because
@@ -22,23 +22,23 @@
 // that is needed now:
 //
 //   * `sdk.threads.listRunning()` answers "which threads are occupying
-//     capacity" directly. Gate passes are serialized under one server-wide lock
+//     capacity" directly. Hook passes are serialized under one server-wide lock
 //     AND a cleared first attempt commits its `pending -> starting` flip before
-//     that lock releases, so inside a gate the answer already includes every
+//     that lock releases, so inside a handler the answer already includes every
 //     admission granted ahead of this one. No in-flight bookkeeping, no
 //     reseeding, no drift to reconcile.
 //   * Core re-attempts every plugin-queued row whenever a thread leaves the
-//     occupying set. A queued row is re-decided by this very gate, so a
+//     occupying set. A queued row is re-decided by this very handler, so a
 //     release that is not warranted simply re-queues — which is why the plugin
 //     never needed to choose *which* row to release.
 //
 // What remains, deliberately: unparseable settings report through
-// `needsConfiguration` and leave that limit unenforced (a gate that threw on a
+// `needsConfiguration` and leave that limit unenforced (a handler that threw on a
 // typo would fail every dispatch in the server), and a `join-turn` attempt or
 // an already-running thread proceeds unconditionally — it holds its slot
 // already.
 
-import type { BbPluginApi, PluginDispatchDecision } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, MessageDispatchHookDecision } from "@get-bb/plugin-sdk";
 import {
   isFullyUnlimited,
   resolveLimits,
@@ -55,7 +55,10 @@ export const MAX_REASON_LENGTH = 200;
  * than an off-by-one. A limit of 0 shows as "0 of 0", which is honest: the
  * pool has no slots.
  */
-function waitVerdict(limit: number, scopeLabel: string): PluginDispatchDecision {
+function waitDecision(
+  limit: number,
+  scopeLabel: string,
+): MessageDispatchHookDecision {
   const reason = `${limit} of ${limit} running on ${scopeLabel}`;
   return {
     action: "wait",
@@ -93,7 +96,7 @@ export default async function concurrencyLimitPlugin(
     const resolved = resolveLimits(raw);
     limits = resolved.limits;
     if (resolved.problems.length > 0) {
-      // Report rather than throw. A gate that threw on a typo would fail every
+      // Report rather than throw. A handler that threw on a typo would fail every
       // dispatch in the server with this plugin named, which is a far worse
       // outcome than an unenforced limit the user is told about.
       bb.status.needsConfiguration(resolved.problems.join(" "));
@@ -106,7 +109,7 @@ export default async function concurrencyLimitPlugin(
     void applySettings();
   });
 
-  bb.experimental_dispatch.gate("dispatch", async (context) => {
+  bb.experimental_hooks.on("message.dispatch", async (context) => {
     // A thread that is already occupying its slot is not asking for a new one.
     // Re-evaluating it would queue a running thread's own follow-up behind the
     // pool it is itself filling — and a `join-turn` attempt is by definition
@@ -129,10 +132,10 @@ export default async function concurrencyLimitPlugin(
 
     if (limits.global !== null && running.length >= limits.global) {
       // Broadest limit first, and deterministically so: both limits can be at
-      // capacity at once, and a gate that reported whichever it noticed first
+      // capacity at once, and a handler that reported whichever it noticed first
       // would give the same thread a different reason on each re-evaluation.
       // "the server is full" also explains more than "this host is full".
-      return waitVerdict(limits.global, "all hosts");
+      return waitDecision(limits.global, "all hosts");
     }
 
     // Null whenever the environment is not chosen yet, which is the normal
@@ -143,7 +146,7 @@ export default async function concurrencyLimitPlugin(
       const onHost = running.filter((thread) => thread.hostId === host.id);
       if (onHost.length >= limits.perHost) {
         const label = host.name.trim() === "" ? host.id : host.name;
-        return waitVerdict(limits.perHost, `host ${label}`);
+        return waitDecision(limits.perHost, `host ${label}`);
       }
     }
 

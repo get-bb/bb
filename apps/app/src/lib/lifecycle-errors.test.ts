@@ -559,7 +559,6 @@ const descriptionCases: DescriptionCase[] = [
       message: "Sandbox quota is exhausted. Free a slot first.",
       details: {
         pluginId: "policy-guard",
-        stage: "dispatch",
       },
     },
     expected: {
@@ -569,19 +568,18 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "dispatch_gate_failed adds the recovery hint",
+    name: "dispatch_hook_failed adds the recovery hint",
     body: {
-      code: "dispatch_gate_failed",
+      code: "dispatch_hook_failed",
       message:
-        'The "policy-guard" plugin\'s dispatch gate failed: gate timed out after 5000ms',
+        'The "policy-guard" plugin\'s message.dispatch hook failed: did not decide within 5000ms',
       details: {
         pluginId: "policy-guard",
-        stage: "dispatch",
       },
     },
     expected: {
-      title: "Plugin dispatch gate failed",
-      body: 'The "policy-guard" plugin\'s dispatch gate failed: gate timed out after 5000ms. Disable that plugin to continue.',
+      title: "Plugin dispatch hook failed",
+      body: 'The "policy-guard" plugin\'s message.dispatch hook failed: did not decide within 5000ms. Disable that plugin to continue.',
       severity: "error",
     },
   },
@@ -672,7 +670,7 @@ describe("describeLifecycleError", () => {
     const body: LifecycleApiError = {
       code: "dispatch_rejected",
       message: pluginMessage,
-      details: { pluginId: "release-freeze", stage: "dispatch" },
+      details: { pluginId: "release-freeze" },
     };
 
     const description = describeLifecycleError({
@@ -692,10 +690,10 @@ describe("describeLifecycleError", () => {
 
   it("names the plugin once when a gate fails closed", () => {
     const body: LifecycleApiError = {
-      code: "dispatch_gate_failed",
+      code: "dispatch_hook_failed",
       message:
-        'The "release-freeze" plugin\'s dispatch gate failed: handler threw',
-      details: { pluginId: "release-freeze", stage: "dispatch" },
+        'The "release-freeze" plugin\'s message.dispatch hook failed: handler threw',
+      details: { pluginId: "release-freeze" },
     };
 
     const description = describeLifecycleError({

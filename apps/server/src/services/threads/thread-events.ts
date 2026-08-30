@@ -77,7 +77,7 @@ export interface TurnRequestRetryMarker {
  *
  * Persisted turns are historical facts, so a `client/turn/requested` can carry
  * a mode that has since been retired. Anything replaying such a turn — a retry
- * re-submitting it, a gate reading what it ran with — needs the current
+ * re-submitting it, a hook reading what it ran with — needs the current
  * vocabulary, and null (meaning "resolve it as usual") is the only honest
  * answer for a mode that no longer exists.
  */

@@ -1,5 +1,5 @@
-// The gate's decision table, driven through the fake plugin host: settings in,
-// `listRunning` stubbed, verdicts out.
+// The hook's decision table, driven through the fake plugin host: settings in,
+// `listRunning` stubbed, decisions out.
 //
 // The plugin is now settings-parse + one query + a comparison, so the table
 // below IS the plugin. Settings parsing itself is covered by limits.test.ts.
@@ -7,7 +7,7 @@
 import type {
   BbPluginApi,
   PluginDispatchAttemptKind,
-  PluginDispatchGateContext,
+  MessageDispatchHookContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import {
@@ -64,7 +64,7 @@ interface GateContextOverrides {
 
 function dispatchContext(
   overrides: GateContextOverrides = {},
-): PluginDispatchGateContext<"dispatch"> {
+): MessageDispatchHookContext {
   const hostId = overrides.hostId === undefined ? "host-a" : overrides.hostId;
   const thread = makeThreadResponse({
     id: "thr_1",
@@ -72,7 +72,6 @@ function dispatchContext(
     ...overrides.thread,
   });
   return {
-    stage: "dispatch",
     thread,
     attempt: overrides.attempt ?? "start-turn",
     queuedMessage: null,
@@ -116,18 +115,18 @@ async function setup(options: SetupOptions = {}) {
     },
   });
   await plugin(bb);
-  const gate = harness.registrations.dispatchGates.dispatch;
-  if (gate === null) throw new Error("the dispatch gate was not registered");
-  return { bb, gate, harness };
+  const hook = harness.registrations.hooks["message.dispatch"];
+  if (hook === null) throw new Error("the message.dispatch hook was not registered");
+  return { bb, harness, hook };
 }
 
 describe("registration", () => {
   it("changes nothing until a limit is configured", async () => {
-    const { gate, harness } = await setup({
+    const { harness, hook } = await setup({
       running: [running({ id: "a" }), running({ id: "b" })],
     });
 
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "proceed",
     });
     // Unconfigured means it must not even ask: installing this plugin cannot
@@ -136,7 +135,7 @@ describe("registration", () => {
   });
 
   it("reports an unparseable limit instead of throwing, and enforces the good one", async () => {
-    const { gate, harness } = await setup({
+    const { harness, hook } = await setup({
       settings: {
         maxConcurrentThreads: "lots",
         maxConcurrentThreadsPerHost: "1",
@@ -147,55 +146,55 @@ describe("registration", () => {
     expect(harness.needsConfigurationMessages).toEqual([
       'Max concurrent threads must be a whole number of threads (for example 4), or empty for no limit. Got "lots".',
     ]);
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host host-a",
     });
   });
 });
 
-describe("the dispatch gate", () => {
+describe("the message.dispatch hook", () => {
   it("waits once the running set has filled the global pool", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "2" },
       running: [running({ id: "a" }), running({ id: "b" })],
     });
 
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
       reason: "2 of 2 running on all hosts",
     });
   });
 
   it("holds at the limit, not one past it", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "2" },
       running: [running({ id: "a" })],
     });
 
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "proceed",
     });
   });
 
   it("pauses everything at a limit of zero", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "0" },
       running: [],
     });
 
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
       reason: "0 of 0 running on all hosts",
     });
   });
 
-  it("gates a child and a plugin-spawned thread like any other", async () => {
+  it("hooks a child and a plugin-spawned thread like any other", async () => {
     // The limit is uniform in both directions: provenance changes neither what
     // the pool contains nor who has to wait for it. The user asked for N
     // threads, so N is what runs — a workflow's children queue like everyone
     // else, and a tight limit can wedge a parent that waits on them.
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "a" })],
     });
@@ -204,7 +203,7 @@ describe("the dispatch gate", () => {
       { parentThreadId: "thr_parent" },
       { originPluginId: "workflows" },
     ]) {
-      await expect(gate(dispatchContext({ thread }))).resolves.toEqual({
+      await expect(hook(dispatchContext({ thread }))).resolves.toEqual({
         action: "wait",
         reason: "1 of 1 running on all hosts",
       });
@@ -212,33 +211,33 @@ describe("the dispatch gate", () => {
   });
 
   it("keeps separate host pools separate", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreadsPerHost: "1" },
       running: [running({ id: "a", hostId: "host-a" })],
     });
 
-    await expect(gate(dispatchContext({ hostId: "host-b" }))).resolves.toEqual({
+    await expect(hook(dispatchContext({ hostId: "host-b" }))).resolves.toEqual({
       action: "proceed",
     });
-    await expect(gate(dispatchContext({ hostId: "host-a" }))).resolves.toEqual({
+    await expect(hook(dispatchContext({ hostId: "host-a" }))).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host host-a",
     });
   });
 
   it("skips the host limit entirely when no host is chosen yet", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreadsPerHost: "1" },
       running: [running({ id: "a", hostId: "host-a" })],
     });
 
-    await expect(gate(dispatchContext({ hostId: null }))).resolves.toEqual({
+    await expect(hook(dispatchContext({ hostId: null }))).resolves.toEqual({
       action: "proceed",
     });
   });
 
   it("reports the global limit when both are full", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: {
         maxConcurrentThreads: "1",
         maxConcurrentThreadsPerHost: "1",
@@ -246,62 +245,62 @@ describe("the dispatch gate", () => {
       running: [running({ id: "a", hostId: "host-a" })],
     });
 
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on all hosts",
     });
   });
 
   it("names the host by its display name, falling back to its id", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreadsPerHost: "1" },
       running: [running({ id: "a", hostId: "host-a" })],
     });
 
     await expect(
-      gate(dispatchContext({ hostName: "Michael's Mac" })),
+      hook(dispatchContext({ hostName: "Michael's Mac" })),
     ).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host Michael's Mac",
     });
-    await expect(gate(dispatchContext({ hostName: "   " }))).resolves.toEqual({
+    await expect(hook(dispatchContext({ hostName: "   " }))).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on host host-a",
     });
   });
 
   it("does not re-admit a thread that is already running", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "thr_1" })],
     });
 
     for (const status of ["active", "starting"] as const) {
       await expect(
-        gate(dispatchContext({ thread: { status } })),
+        hook(dispatchContext({ thread: { status } })),
       ).resolves.toEqual({ action: "proceed" });
     }
   });
 
   it("lets a join-turn attempt through even when the pool is full", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "a" })],
     });
 
     await expect(
-      gate(dispatchContext({ attempt: "join-turn", thread: { status: "idle" } })),
+      hook(dispatchContext({ attempt: "join-turn", thread: { status: "idle" } })),
     ).resolves.toEqual({ action: "proceed" });
   });
 
   it("queues a start-turn attempt on an idle thread when the pool is full", async () => {
-    const { gate } = await setup({
+    const { hook } = await setup({
       settings: { maxConcurrentThreads: "1" },
       running: [running({ id: "a" })],
     });
 
     await expect(
-      gate(dispatchContext({ thread: { status: "idle" } })),
+      hook(dispatchContext({ thread: { status: "idle" } })),
     ).resolves.toEqual({
       action: "wait",
       reason: "1 of 1 running on all hosts",
@@ -318,19 +317,20 @@ describe("the dispatch gate", () => {
       sdk: { threads: { listRunning: async () => rows } },
     });
     await plugin(bb);
-    const gate = harness.registrations.dispatchGates.dispatch;
-    if (gate === null) throw new Error("the dispatch gate was not registered");
+    const hook = harness.registrations.hooks["message.dispatch"];
+    if (hook === null)
+      throw new Error("the message.dispatch hook was not registered");
 
-    await expect(gate(dispatchContext())).resolves.toMatchObject({
+    await expect(hook(dispatchContext())).resolves.toMatchObject({
       action: "wait",
     });
     rows = [];
-    await expect(gate(dispatchContext())).resolves.toEqual({
+    await expect(hook(dispatchContext())).resolves.toEqual({
       action: "proceed",
     });
   });
 
-  it("registers nothing but the gate", async () => {
+  it("registers nothing but the hook", async () => {
     // No lifecycle subscriptions, no queue subscriptions, no background
     // service: a freed slot is core's signal to re-attempt, not the plugin's.
     const { harness } = await setup({

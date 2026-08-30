@@ -19,8 +19,8 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
-  PluginDispatchGateHandler,
-  PluginDispatchGateStage,
+  PluginHookHandler,
+  PluginHookName,
   PluginMentionTrigger,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
@@ -2017,29 +2017,27 @@ export function providerWithoutBridgeMessage(providerId: string): string {
 }
 
 /**
- * Files a gate handler under its stage in a per-stage record.
+ * Files a hook handler under its key in a per-hook record.
  *
- * The record is a mapped type over the stage union, so writing to it through a
- * generic key is not expressible soundly in TypeScript: this call site knows
- * `handler` matches `stage`, but the checker only knows both range over the
- * union and so demands their intersection. The erasure is confined to this one
- * function; every READ is sound, because a slot is typed for its own stage and
- * the runner builds the context for the stage it read the handler from.
+ * The record is a mapped type over the hook-name union, so writing to it
+ * through a generic key is not expressible soundly in TypeScript: this call
+ * site knows `handler` matches `hook`, but the checker only knows both range
+ * over the union and so demands their intersection. The erasure is confined to
+ * this one function; every READ is sound, because a slot is typed for its own
+ * hook and the runner builds the context for the hook it read the handler from.
  *
  * Shared by the real host (`plugin-api.ts`) and the fake one so both register
- * gates by the same rule, which is the point of every other helper here.
+ * hooks by the same rule, which is the point of every other helper here.
  */
-export function storeDispatchGate<S extends PluginDispatchGateStage>(
-  records: { [K in PluginDispatchGateStage]: PluginDispatchGateHandler<K> | null },
-  stage: S,
-  handler: PluginDispatchGateHandler<S>,
+export function storePluginHook<K extends PluginHookName>(
+  records: { [N in PluginHookName]: PluginHookHandler<N> | null },
+  hook: K,
+  handler: PluginHookHandler<K>,
 ): void {
-  (records as Record<PluginDispatchGateStage, unknown>)[stage] = handler;
+  (records as Record<PluginHookName, unknown>)[hook] = handler;
 }
 
-/** The refusal a second gate for one stage from one plugin gets. */
-export function dispatchGateAlreadyRegisteredMessage(
-  stage: PluginDispatchGateStage,
-): string {
-  return `a "${stage}" dispatch gate is already registered by this plugin`;
+/** The refusal a second handler for one hook from one plugin gets. */
+export function pluginHookAlreadyRegisteredMessage(hook: PluginHookName): string {
+  return `a "${hook}" hook handler is already registered by this plugin`;
 }

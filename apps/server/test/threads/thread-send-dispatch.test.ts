@@ -121,7 +121,7 @@ function parseThreadMessages(
   });
 }
 
-describe("queued message dispatch gate", () => {
+describe("queued message dispatch hook", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedProviderThreadFixture({ harness, value: 1 });

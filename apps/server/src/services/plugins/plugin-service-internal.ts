@@ -82,8 +82,8 @@ export interface PluginServiceDeps {
    * rows waiting on it) is cleared here instead of waiting for a sweep.
    */
   onPluginUnregistered?: (pluginId: string) => void;
-  /** Per-gate decision box; tests shrink it to exercise the timeout path. */
-  dispatchGateTimeoutMs?: number;
+  /** Per-handler hook decision box; tests shrink it to exercise the timeout path. */
+  pluginHookTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -195,8 +195,14 @@ export interface PluginThreadEventEmitter {
    * DTO is built once and shared by every listener, exactly like the thread
    * events above.
    */
-  emitQueueWaiting(entry: ThreadQueuedMessage): void;
-  emitQueueDispatched(entry: ThreadQueuedMessage): void;
+  emitMessageQueued(entry: ThreadQueuedMessage): void;
+  emitMessageDispatched(entry: ThreadQueuedMessage): void;
+  /**
+   * A turn on this thread failed and the thread has already landed in `error`.
+   * Takes the id alone: the payload is read from the failed turn's own records,
+   * and only when a plugin is listening.
+   */
+  emitTurnFailed(threadId: string): void;
 }
 
 export type PluginWireLookup<T> =

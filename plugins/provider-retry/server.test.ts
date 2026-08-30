@@ -2,13 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeQueueEntry,
-  makeThreadResponse,
+  makeTurnFailedEvent,
   type CreateFakePluginHostOptions,
 } from "@get-bb/plugin-sdk/testing";
-import type {
-  PluginTurnFailedGateContext,
-  PluginTurnFailure,
-} from "@get-bb/plugin-sdk";
+import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -23,9 +20,10 @@ const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
 const HOST_ID = "host-one";
 const THREAD_ID = "thread-limited";
+const REQUEST_ID = "creq_aaaaaaaaaa";
 const PLUGIN_ID = "provider-retry";
 
-type RateLimits = NonNullable<PluginTurnFailure["rateLimits"]>;
+type RateLimits = NonNullable<PluginTurnFailedEvent["rateLimits"]>;
 
 function rateLimits(overrides: Partial<RateLimits> = {}): RateLimits {
   return {
@@ -47,87 +45,37 @@ function rateLimits(overrides: Partial<RateLimits> = {}): RateLimits {
   };
 }
 
-function failure(overrides: Partial<PluginTurnFailure> = {}): PluginTurnFailure {
-  return {
-    requestId: "creq_aaaaaaaaaa",
-    originalRequestId: "creq_aaaaaaaaaa",
-    turnId: "turn-1",
-    message: "Usage limit reached",
+function failure(
+  overrides: Partial<PluginTurnFailedEvent> = {},
+): PluginTurnFailedEvent {
+  return makeTurnFailedEvent({
+    threadId: THREAD_ID,
+    requestId: REQUEST_ID,
     errorInfo: {
       category: "rate-limit",
       providerCode: "usage_limit_reached",
       httpStatusCode: 429,
     },
     rateLimits: rateLimits(),
-    attemptNumber: 1,
     ...overrides,
-  };
-}
-
-function gateHost(): NonNullable<PluginTurnFailedGateContext["host"]> {
-  return {
-    id: HOST_ID,
-    name: "Local",
-    type: "persistent",
-    status: "connected",
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    lastSeenAt: NOW_MS,
-    createdAt: NOW_MS,
-    updatedAt: NOW_MS,
-  };
-}
-
-function turnFailedContext(
-  overrides: Partial<PluginTurnFailure> = {},
-): PluginTurnFailedGateContext {
-  return {
-    stage: "turn.failed",
-    thread: makeThreadResponse({ id: THREAD_ID, providerId: "codex" }),
-    project: {
-      id: "project-one",
-      name: "Project",
-      kind: "standard",
-      gitRemoteUrl: null,
-      createdAt: NOW_MS,
-      updatedAt: NOW_MS,
-    },
-    environment: null,
-    host: gateHost(),
-    input: { blocks: [], text: "do the thing" },
-    requestedExecution: {
-      providerId: "codex",
-      model: "gpt-5",
-      reasoningLevel: null,
-      serviceTier: null,
-      permissionMode: null,
-    },
-    origin: null,
-    originPluginId: null,
-    startedOnBehalfOf: null,
-    parentThreadId: null,
-    failure: failure(overrides),
-  };
+  });
 }
 
 /**
- * A queued retry as the server would return it: this plugin's wait, a retry
- * payload and a `sendAt` for core's due sweep.
+ * A queued retry as the server would return it: a retry payload and a `sendAt`
+ * for core's due sweep.
  */
 function queuedRetry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return makeQueueEntry({
     id: "queued_1",
     threadId: THREAD_ID,
     sendAt: RESET_AT_MS + RESET_BUFFER_MS,
-    waitingOn: {
-      kind: "plugin",
-      pluginId: PLUGIN_ID,
-      reason: "Rate limited",
-    },
+    waitingOn: { kind: "time" },
     payload: {
       kind: "retry",
-      retryOfTurnRequestId: "creq_aaaaaaaaaa",
+      retryOfTurnRequestId: REQUEST_ID,
       attempt: 2,
+      reason: "Rate limited",
     },
     ...overrides,
   });
@@ -141,12 +89,32 @@ interface QueuedMessageSend extends QueuedMessageTarget {
   mode: string;
 }
 
+interface RetryRequest {
+  threadId: string;
+  turnRequestId?: string;
+  sendAt?: number;
+  reason?: string;
+}
+
 function createHost(queued: QueueEntry[] = []) {
   const deleted: QueuedMessageTarget[] = [];
   const sent: QueuedMessageSend[] = [];
+  const retries: RetryRequest[] = [];
   const sdk: CreateFakePluginHostOptions["sdk"] = {
     threads: {
       queue: { list: async () => queued },
+      retry: async (args: RetryRequest) => {
+        retries.push(args);
+        return {
+          ok: true,
+          delivery: "queued",
+          turnRequestId: args.turnRequestId ?? REQUEST_ID,
+          attempt: 2,
+          queuedMessageId: "queued_1",
+          waitingOn: { kind: "time" },
+          sendAt: args.sendAt ?? null,
+        };
+      },
       queuedMessages: {
         delete: async (args: QueuedMessageTarget) => {
           deleted.push(args);
@@ -159,7 +127,12 @@ function createHost(queued: QueueEntry[] = []) {
       },
     },
   };
-  return { ...createFakePluginHost({ pluginId: PLUGIN_ID, sdk }), deleted, sent };
+  return {
+    ...createFakePluginHost({ pluginId: PLUGIN_ID, sdk }),
+    deleted,
+    retries,
+    sent,
+  };
 }
 
 describe("provider retry policy", () => {
@@ -181,12 +154,12 @@ describe("provider retry policy", () => {
     });
     expect(earliest).toEqual({
       kind: "retry",
-      resumeAt: RESET_AT_MS + RESET_BUFFER_MS,
+      sendAt: RESET_AT_MS + RESET_BUFFER_MS,
     });
     expect(latest.kind).toBe("retry");
     if (latest.kind !== "retry") return;
-    expect(latest.resumeAt).toBeGreaterThan(RESET_AT_MS + RESET_BUFFER_MS);
-    expect(latest.resumeAt).toBeLessThan(
+    expect(latest.sendAt).toBeGreaterThan(RESET_AT_MS + RESET_BUFFER_MS);
+    expect(latest.sendAt).toBeLessThan(
       RESET_AT_MS + RESET_BUFFER_MS + RESET_JITTER_MS,
     );
   });
@@ -211,7 +184,7 @@ describe("provider retry policy", () => {
     });
     expect(decision).toEqual({
       kind: "retry",
-      resumeAt: NOW_MS + RESET_BUFFER_MS,
+      sendAt: NOW_MS + RESET_BUFFER_MS,
     });
   });
 
@@ -242,7 +215,7 @@ describe("provider retry policy", () => {
     });
     expect(decision).toEqual({
       kind: "retry",
-      resumeAt: weekly + RESET_BUFFER_MS,
+      sendAt: weekly + RESET_BUFFER_MS,
     });
   });
 
@@ -329,12 +302,13 @@ describe("provider retry plugin", () => {
     vi.useRealTimers();
   });
 
-  it("registers exactly one gate, and it is not a dispatch gate", async () => {
-    // The load-bearing half is `dispatch: null`. This plugin must never
+  it("listens for one event and answers no hook", async () => {
+    // The load-bearing half is the empty hook slot. This plugin must never
     // intercept a send: a remembered rate limit is a stale cache of provider
     // state, and refusing an attempt on it strands a user who fixed the limit
-    // out of band. It is also what keeps a stock install free of dispatch-stage
-    // gates entirely, since the only other one ships disabled by default.
+    // out of band. It is also what keeps a stock install free of
+    // `message.dispatch` handlers entirely, since the only other one ships
+    // disabled by default.
     const host = createHost();
     await plugin(host.bb);
 
@@ -348,39 +322,44 @@ describe("provider retry plugin", () => {
         default: "6 hours",
       },
     });
-    expect(host.harness.registrations.dispatchGates["turn.failed"]).not.toBeNull();
-    expect(host.harness.registrations.dispatchGates.dispatch).toBeNull();
+    expect(host.harness.registrations.threadEventHandlers["turn.failed"]).toBe(1);
+    expect(host.harness.registrations.hooks["message.dispatch"]).toBeNull();
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
     ).toEqual(["status", "cancel", "retry"]);
     await host.harness.dispose();
   });
 
-  it("asks for a retry at the reset window", async () => {
+  it("asks core to retry the failed turn at the reset window", async () => {
     const host = createHost();
     await plugin(host.bb);
-    const gate = host.harness.registrations.dispatchGates["turn.failed"];
-    expect(gate).not.toBeNull();
 
-    const decision = await gate?.(turnFailedContext());
-    expect(decision?.action).toBe("retry");
-    if (decision?.action !== "retry") return;
-    expect(decision.resumeAt).toBeGreaterThanOrEqual(
-      RESET_AT_MS + RESET_BUFFER_MS,
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      failure(),
     );
+
+    expect(errors).toEqual([]);
+    expect(host.retries).toHaveLength(1);
+    const retry = host.retries[0];
+    expect(retry?.threadId).toBe(THREAD_ID);
+    // By reference: core re-submits the turn itself, so the id is the whole of
+    // what this plugin has to say about WHAT to retry.
+    expect(retry?.turnRequestId).toBe(REQUEST_ID);
+    expect(retry?.sendAt).toBeGreaterThanOrEqual(RESET_AT_MS + RESET_BUFFER_MS);
     // Just the cause, no time: every surface renders the row's `sendAt`
     // itself, so a time here shows up twice on the card and in the queue list.
-    expect(decision.reason).toBe("Rate limited");
+    expect(retry?.reason).toBe("Rate limited");
     await host.harness.dispose();
   });
 
   it("leaves ordinary failures alone", async () => {
     const host = createHost();
     await plugin(host.bb);
-    const gate = host.harness.registrations.dispatchGates["turn.failed"];
 
-    const decision = await gate?.(
-      turnFailedContext({
+    await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      failure({
         errorInfo: {
           category: "internal",
           providerCode: null,
@@ -388,17 +367,17 @@ describe("provider retry plugin", () => {
         },
       }),
     );
-    expect(decision).toEqual({ action: "none" });
+
+    expect(host.retries).toEqual([]);
     await host.harness.dispose();
   });
 
   it("re-reads the maximum wait when the setting changes", async () => {
-    // The gate closes over a cached number, so the `onChange` wiring is the
+    // The listener closes over a cached number, so the `onChange` wiring is the
     // only thing that stops a raised limit from being ignored until restart.
     const host = createHost();
     await plugin(host.bb);
-    const gate = host.harness.registrations.dispatchGates["turn.failed"];
-    const beyondSixHours = turnFailedContext({
+    const beyondSixHours = failure({
       rateLimits: rateLimits({
         windows: [
           {
@@ -411,10 +390,12 @@ describe("provider retry plugin", () => {
       }),
     });
 
-    expect(await gate?.(beyondSixHours)).toEqual({ action: "none" });
+    await host.harness.behavior.emitThreadEvent("turn.failed", beyondSixHours);
+    expect(host.retries).toEqual([]);
 
     await host.harness.setSettings({ maximumWait: "No limit" });
-    expect((await gate?.(beyondSixHours))?.action).toBe("retry");
+    await host.harness.behavior.emitThreadEvent("turn.failed", beyondSixHours);
+    expect(host.retries).toHaveLength(1);
     await host.harness.dispose();
   });
 
@@ -433,10 +414,11 @@ describe("provider retry plugin", () => {
         },
       ],
     });
-    // Scoped by the indexed wait-holder filter rather than by listing the
-    // whole queue and filtering here.
-    expect(host.harness.inspection.sdk.callsTo("threads.queue.list")[0]?.[0])
-      .toEqual({ waitHolder: `plugin:${PLUGIN_ID}`, threadId: THREAD_ID });
+    // Scoped to the thread the user asked about; a retry is identified by its
+    // payload, not by a wait this plugin owns.
+    expect(
+      host.harness.inspection.sdk.callsTo("threads.queue.list")[0]?.[0],
+    ).toEqual({ threadId: THREAD_ID });
     await host.harness.dispose();
   });
 

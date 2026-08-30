@@ -29,9 +29,9 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
-  PluginDispatch,
-  PluginDispatchGateHandler,
-  PluginDispatchGateStage,
+  PluginHooks,
+  PluginHookHandler,
+  PluginHookName,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -83,8 +83,8 @@ import {
   summarizeParseIssues,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
-  dispatchGateAlreadyRegisteredMessage,
-  storeDispatchGate,
+  pluginHookAlreadyRegisteredMessage,
+  storePluginHook,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -134,13 +134,13 @@ export function isNeedsConfigurationError(error: unknown): error is Error {
 }
 
 /**
- * The gate this plugin registered per stage, or null where it registered
- * none. A mapped type over the stage union rather than a loose map: a stage
+ * The handler this plugin registered per hook, or null where it registered
+ * none. A mapped type over the hook-name union rather than a loose map: a hook
  * added to the contract without an entry here fails to compile, which is what
  * keeps the registry and the contract from drifting.
  */
-export type PluginDispatchGateRecords = {
-  [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+export type PluginHookRecords = {
+  [K in PluginHookName]: PluginHookHandler<K> | null;
 };
 
 /** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
@@ -225,8 +225,8 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
-  /** Dispatch gates recorded by `bb.experimental_dispatch.gate`. */
-  dispatchGates: PluginDispatchGateRecords;
+  /** Hook handlers recorded by `bb.experimental_hooks.on`. */
+  hooks: PluginHookRecords;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
@@ -471,12 +471,12 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "queue.waiting": [],
-    "queue.dispatched": [],
+    "message.queued": [],
+    "message.dispatched": [],
+    "turn.failed": [],
   };
-  const dispatchGates: PluginDispatchGateRecords = {
-    dispatch: null,
-    "turn.failed": null,
+  const hooks: PluginHookRecords = {
+    "message.dispatch": null,
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -1295,16 +1295,16 @@ export function createPluginApi(options: {
     },
   };
 
-  const experimental_dispatch: PluginDispatch = {
-    gate(stage, handler) {
+  const experimental_hooks: PluginHooks = {
+    on(hook, handler) {
       assertLive();
-      if (dispatchGates[stage] !== null) {
-        // Two gates from one plugin at one stage would make the order within
-        // the plugin invisible. Say so at registration rather than silently
-        // keeping one.
-        throw new Error(dispatchGateAlreadyRegisteredMessage(stage));
+      if (hooks[hook] !== null) {
+        // Two handlers from one plugin for one hook would make the order
+        // within the plugin invisible. Say so at registration rather than
+        // silently keeping one.
+        throw new Error(pluginHookAlreadyRegisteredMessage(hook));
       }
-      storeDispatchGate(dispatchGates, stage, handler);
+      storePluginHook(hooks, hook, handler);
     },
   };
 
@@ -1340,7 +1340,7 @@ export function createPluginApi(options: {
     providers,
     ui,
     events,
-    experimental_dispatch,
+    experimental_hooks,
     status,
     server,
     hosts,
@@ -1369,7 +1369,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
-    dispatchGates,
+    hooks,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

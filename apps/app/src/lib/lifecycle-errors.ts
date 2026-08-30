@@ -86,8 +86,8 @@ interface DispatchRejectedDescriptionArgs {
   operation?: LifecycleErrorOperation | undefined;
 }
 
-interface DispatchGateFailedDescriptionArgs {
-  error: Extract<LifecycleApiError, { code: "dispatch_gate_failed" }>;
+interface DispatchHookFailedDescriptionArgs {
+  error: Extract<LifecycleApiError, { code: "dispatch_hook_failed" }>;
   operation?: LifecycleErrorOperation | undefined;
 }
 
@@ -440,19 +440,19 @@ function describeDispatchRejected({
 }
 
 /**
- * A gate that threw or timed out, failing closed. The server message already
- * names the plugin and the stage, so it is passed through rather than rebuilt,
- * and the recovery hint says "that plugin" to avoid naming it twice.
+ * A hook handler that threw or timed out, failing closed. The server message
+ * already names the plugin and the hook, so it is passed through rather than
+ * rebuilt, and the recovery hint says "that plugin" to avoid naming it twice.
  */
-function describeDispatchGateFailed({
+function describeDispatchHookFailed({
   error,
   operation,
-}: DispatchGateFailedDescriptionArgs): LifecycleErrorDescription {
+}: DispatchHookFailedDescriptionArgs): LifecycleErrorDescription {
   const reason = error.message.trim();
   const sentence = reason.endsWith(".") ? reason : `${reason}.`;
   return errorDescription({
     operation,
-    title: "Plugin dispatch gate failed",
+    title: "Plugin dispatch hook failed",
     body: `${sentence} Disable that plugin to continue.`,
   });
 }
@@ -508,8 +508,8 @@ export function describeLifecycleError({
       });
     case "dispatch_rejected":
       return describeDispatchRejected({ error: lifecycleError, operation });
-    case "dispatch_gate_failed":
-      return describeDispatchGateFailed({ error: lifecycleError, operation });
+    case "dispatch_hook_failed":
+      return describeDispatchHookFailed({ error: lifecycleError, operation });
     default:
       return assertNever(lifecycleError);
   }

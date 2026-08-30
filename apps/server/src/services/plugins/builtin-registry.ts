@@ -140,7 +140,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "concurrency-limit",
     pluginId: "concurrency-limit",
-    // Off by default: it gates every thread create and follow-up send, so
+    // Off by default: it hooks every thread create and follow-up send, so
     // enabling it on a user's behalf would put a dispatch decision in the hot
     // path of a server that never asked for admission control.
     defaultEnabled: false,

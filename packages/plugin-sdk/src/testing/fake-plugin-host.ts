@@ -12,7 +12,7 @@ import {
   AGENT_TOOL_NAME_PATTERN,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
-  dispatchGateAlreadyRegisteredMessage,
+  pluginHookAlreadyRegisteredMessage,
   assertAiServiceRegistrable,
   assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
@@ -20,7 +20,7 @@ import {
   enforcePluginCliOutputLimit,
   isStandardSchema,
   isZodSchemaLike,
-  storeDispatchGate,
+  storePluginHook,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -60,9 +60,9 @@ import type {
   PluginCliContext,
   PluginCliExecutionResult,
   PluginCliResult,
-  PluginDispatch,
-  PluginDispatchGateHandler,
-  PluginDispatchGateStage,
+  PluginHookHandler,
+  PluginHookName,
+  PluginHooks,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -250,9 +250,9 @@ export interface FakePluginRegistrations {
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
-  /** The gate registered per stage by `bb.experimental_dispatch.gate`. */
-  dispatchGates: {
-    [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+  /** The handler registered per hook by `bb.experimental_hooks.on`. */
+  hooks: {
+    [K in PluginHookName]: PluginHookHandler<K> | null;
   };
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
@@ -1598,14 +1598,14 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
-    "queue.waiting": [],
-    "queue.dispatched": [],
+    "message.queued": [],
+    "message.dispatched": [],
+    "turn.failed": [],
   };
-  const dispatchGates: {
-    [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+  const hooks: {
+    [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
-    dispatch: null,
-    "turn.failed": null,
+    "message.dispatch": null,
   };
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
@@ -1862,12 +1862,12 @@ function createFakePluginHostInternal(
     },
   };
 
-  const experimental_dispatch: PluginDispatch = {
-    gate(stage, handler) {
-      if (dispatchGates[stage] !== null) {
-        throw new Error(dispatchGateAlreadyRegisteredMessage(stage));
+  const experimental_hooks: PluginHooks = {
+    on(hook, handler) {
+      if (hooks[hook] !== null) {
+        throw new Error(pluginHookAlreadyRegisteredMessage(hook));
       }
-      storeDispatchGate(dispatchGates, stage, handler);
+      storePluginHook(hooks, hook, handler);
     },
   };
 
@@ -1885,7 +1885,7 @@ function createFakePluginHostInternal(
     providers,
     ui,
     events,
-    experimental_dispatch,
+    experimental_hooks,
     status,
     server,
     hosts,
@@ -1976,12 +1976,14 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
-          "queue.waiting": threadEventHandlers["queue.waiting"].length,
-          "queue.dispatched": threadEventHandlers["queue.dispatched"].length,
+          "message.queued": threadEventHandlers["message.queued"].length,
+          "message.dispatched":
+            threadEventHandlers["message.dispatched"].length,
+          "turn.failed": threadEventHandlers["turn.failed"].length,
         };
       },
-      get dispatchGates() {
-        return { ...dispatchGates };
+      get hooks() {
+        return { ...hooks };
       },
       mentionProviders,
       providerRegistrations,

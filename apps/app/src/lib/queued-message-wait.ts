@@ -180,13 +180,16 @@ export function describeQueuedMessageWait(
 
   // A retry speaks for itself before it speaks for its wait: it has no message
   // of its own, so the attempt number is the only thing that distinguishes it
-  // from the failed turn already rendered above it in the timeline. Its wait is
-  // always the retry policy's, so that policy's reason ("Rate limited") leads —
-  // it is why the turn failed, which is the whole story of the row.
+  // from the failed turn already rendered above it in the timeline. Its own
+  // reason ("Rate limited") leads — it is why the turn is being retried, which
+  // is the whole story of the row — and a plugin currently holding it is added
+  // after, because that is a second, later fact about the same row.
   if (args.payload.kind === "retry") {
-    const parts: string[] = [];
+    const parts: string[] = [args.payload.reason];
     if (args.waitingOn?.kind === "plugin") {
-      parts.push(args.waitingOn.reason);
+      parts.push(
+        `held by ${args.pluginDisplayName ?? args.waitingOn.pluginId} · ${args.waitingOn.reason}`,
+      );
     }
     if (args.sendAt !== null) {
       parts.push(

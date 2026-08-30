@@ -1662,13 +1662,14 @@ describe("queued row affordances", () => {
             visibility: "agent-only",
           },
         ],
-        payload: { kind: "retry", retryOfTurnRequestId: "req_1", attempt: 2 },
-        editable: false,
-        waitingOn: {
-          kind: "plugin",
-          pluginId: "provider-retry",
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req_1",
+          attempt: 2,
           reason: "Rate limited",
         },
+        editable: false,
+        waitingOn: { kind: "time" },
         sendAt: 0,
       },
     ]);
@@ -1680,7 +1681,12 @@ describe("queued row affordances", () => {
     const { queryByLabelText } = renderQueuedMessages([
       {
         ...makeQueuedMessage("q_retry", ""),
-        payload: { kind: "retry", retryOfTurnRequestId: "req_1", attempt: 2 },
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req_1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
         editable: false,
         waitingOn: { kind: "time" },
         sendAt: 0,

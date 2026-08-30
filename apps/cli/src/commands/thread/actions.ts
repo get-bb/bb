@@ -9,7 +9,7 @@ import {
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import type { ThreadSendResult } from "@bb/sdk";
+import type { ThreadRetryResult, ThreadSendResult } from "@bb/sdk";
 import type { QueuedMessageWaitingOn } from "@bb/domain";
 import {
   confirmDestructiveAction,
@@ -82,6 +82,14 @@ interface ThreadTellCommandOptions {
 interface ThreadActionOptions {
   self?: boolean;
   json?: boolean;
+}
+
+interface ThreadRetryCommandOptions {
+  self?: boolean;
+  json?: boolean;
+  turn?: string;
+  sendAt?: string;
+  reason?: string;
 }
 
 interface ThreadEditMessageCommandOptions {
@@ -475,6 +483,34 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("retry [id]")
+    .description("Retry the failed turn on a thread")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option(
+      "--turn <requestId>",
+      "Retry this turn request id specifically; fails when it is not the thread's failed turn",
+    )
+    .option("--send-at <when>", SEND_AT_HELP)
+    .option("--reason <text>", "Why it is being retried, shown on the queued row")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        const response = await sdk.threads.retry({
+          threadId,
+          ...(opts.turn === undefined ? {} : { turnRequestId: opts.turn }),
+          ...(opts.sendAt === undefined
+            ? {}
+            : { sendAt: parseSendAt(opts.sendAt) }),
+          ...(opts.reason === undefined ? {} : { reason: opts.reason }),
+        });
+        if (outputJson(opts, { threadId, ...response })) return;
+        console.log(describeThreadRetryOutcome(threadId, response));
+      }),
+    );
+
+  parent
     .command("stop [id]")
     .description("Stop work and release the loaded agent runtime")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
@@ -576,6 +612,21 @@ function describeThreadTellOutcome(
   return response.mode === "steer"
     ? `Thread ${threadId} steered`
     : `Thread ${threadId} updated`;
+}
+
+/**
+ * What the retry did. A retry is a dispatch like any other, so it either went
+ * or is waiting — and when it is waiting the server says why, exactly as `tell`
+ * reports a queued send.
+ */
+function describeThreadRetryOutcome(
+  threadId: string,
+  response: ThreadRetryResult,
+): string {
+  const turn = `turn ${response.turnRequestId} (attempt ${response.attempt})`;
+  return response.delivery === "queued"
+    ? `Thread ${threadId} retry of ${turn} queued (${describeQueueWait(response)}); it dispatches when that clears`
+    : `Thread ${threadId} retrying ${turn}`;
 }
 
 /** One short phrase for a queued row's wait, shared by `tell` and `queue`. */

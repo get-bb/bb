@@ -9,7 +9,7 @@ import {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import { dispatchGateEnvironmentAndHost } from "./dispatch-gates.js";
+import { dispatchEnvironmentAndHost } from "./dispatch-hooks.js";
 
 type QueueDrainFailureDeps = Pick<AppDeps, "db" | "hub">;
 
@@ -50,7 +50,7 @@ export function recordQueuedMessageDrainFailure(
   deps: QueueDrainFailureDeps,
   args: { error: unknown; row: QueuedThreadMessageRow; thread: Thread },
 ): void {
-  const { host } = dispatchGateEnvironmentAndHost(deps, args.thread.environmentId);
+  const { host } = dispatchEnvironmentAndHost(deps, args.thread.environmentId);
   if (host !== null && host.status === "disconnected") {
     setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
       id: args.row.id,

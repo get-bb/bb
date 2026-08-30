@@ -1,7 +1,6 @@
 import { getEnvironment } from "@bb/db";
 import {
   QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
-  type DispatchGateStage,
   type Environment,
   type Host,
   type Project,
@@ -16,55 +15,54 @@ import type {
   ThreadResponse,
 } from "@bb/server-contract";
 import type {
-  PluginDispatchAttemptContext,
+  MessageDispatchHookContext,
   PluginDispatchAttemptKind,
   PluginDispatchExecution,
   PluginDispatchExecutionSources,
-  PluginTurnFailedGateContext,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { getNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import {
-  dispatchGateProvider,
-  type DispatchGateProvider,
-  type DispatchGateRegistration,
-} from "../plugins/dispatch-gate-registry.js";
+  pluginHookProvider,
+  type PluginHookProvider,
+  type PluginHookRegistration,
+} from "../plugins/plugin-hook-registry.js";
 
-type DispatchGateDeps = Pick<AppDeps, "db" | "hub">;
+type DispatchHookDeps = Pick<AppDeps, "db" | "hub">;
 
 /**
  * Whether an attempt starts a turn or joins one that is already running. The
- * verdict powers are identical either way — a steer is gated exactly like a
+ * decision powers are identical either way — a steer is hooked exactly like a
  * send.
  */
 export type DispatchAttemptKind = PluginDispatchAttemptKind;
 
 /**
- * A gate's answer, re-parsed at the boundary. Plugin sources are untyped at
- * runtime, so the contract's TypeScript shape is a promise, not a guarantee:
- * everything a gate returns is validated here and a malformed verdict fails
- * the attempt with the plugin named, exactly like a throw.
+ * A hook handler's answer, re-parsed at the boundary. Plugin sources are
+ * untyped at runtime, so the contract's TypeScript shape is a promise, not a
+ * guarantee: everything a handler returns is validated here and a malformed
+ * decision fails the attempt with the plugin named, exactly like a throw.
  */
-const dispatchGateDecisionSchema = z.discriminatedUnion("action", [
+const messageDispatchHookDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proceed") }),
   z.object({
     action: z.literal("wait"),
     reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
-    retryAt: z.number().int().nonnegative().nullable().optional(),
+    sendAt: z.number().int().nonnegative().nullable().optional(),
   }),
   z.object({ action: z.literal("reject"), message: z.string().min(1) }),
 ]);
 
-export interface DispatchGateWaitVerdict {
+export interface MessageDispatchWaitDecision {
   pluginId: string;
   reason: string;
   /** Becomes the queued row's `sendAt`, so core's due sweep re-attempts then. */
-  retryAt: number | null;
+  sendAt: number | null;
 }
 
-export type DispatchGatePassOutcome =
+export type MessageDispatchHookPassOutcome =
   | { kind: "proceed" }
   | {
       kind: "wait";
@@ -76,14 +74,14 @@ export type DispatchGatePassOutcome =
        * reasons are appended to that reason; each of them votes again on the
        * next attempt, so nothing is lost by not owning the row.
        */
-      waiter: DispatchGateWaitVerdict;
-      additionalWaiters: readonly DispatchGateWaitVerdict[];
+      waiter: MessageDispatchWaitDecision;
+      additionalWaiters: readonly MessageDispatchWaitDecision[];
     };
 
-export interface DispatchGatePassRequest {
+export interface MessageDispatchHookPassRequest {
   /** The target thread; a `pending` row for a first message. */
   thread: Thread;
-  /** The thread's public DTO, as the gate context carries it. */
+  /** The thread's public DTO, as the hook context carries it. */
   threadResponse: ThreadResponse;
   project: Project;
   environmentId: string | null;
@@ -100,7 +98,7 @@ export interface DispatchGatePassRequest {
   /**
    * Commits this admission BEFORE the evaluation lock releases.
    *
-   * This is what makes `sdk.threads.listRunning()` exact inside a gate. The
+   * This is what makes `sdk.threads.listRunning()` exact inside a handler. The
    * lock already serializes evaluation, but serializing the *questions* is
    * worthless if the answers land later: five creates arriving together would
    * each ask "how many are running", each be told the same stale number, and
@@ -120,10 +118,10 @@ export interface DispatchGatePassRequest {
  * Minimum gap between a re-attempt that re-queued and the next drain attempt
  * on that thread.
  *
- * Clearing a wait re-runs the gate pass, and a pass that votes to wait again
+ * Clearing a wait re-runs the hook pass, and a pass that votes to wait again
  * queues the row afresh — so a plugin that clears the moment it sees
- * `queue.waiting` would spin clear → re-queue → clear at whatever rate its event
- * handler fires. Core owns the pacing rather than trusting plugins, the same
+ * `message.queued` would spin clear → re-queue → clear at whatever rate its
+ * event handler fires. Core owns the pacing rather than trusting plugins, the same
  * way `STALE_QUEUED_MESSAGE_CLAIM_MS` in the queue owns claim recovery rather
  * than trusting senders.
  *
@@ -164,38 +162,40 @@ export function isDispatchRequeuedRecently(threadId: string): boolean {
 }
 
 /**
- * True when at least one plugin registered a gate for this stage. Every wiring
- * site checks this first: with no gates the dispatch path must be
- * byte-for-byte what it was before gates existed — no lock, no context
- * assembly, no queued row.
+ * True when at least one plugin answers `message.dispatch`. Every wiring site
+ * checks this first: with no handler the dispatch path must be byte-for-byte
+ * what it was before hooks existed — no lock, no context assembly, no queued
+ * row.
  *
- * For the `dispatch` stage that is not a hypothetical — it is what a stock
- * install actually does. Exactly one bundled plugin registers a `dispatch`
- * gate, `concurrency-limit`, and it ships `defaultEnabled: false`; a disabled
- * plugin never loads, so it never reaches `listGates`. (`provider-retry` ships
- * enabled but gates only `turn.failed`: it deliberately never intercepts a
- * send, because a remembered rate limit is a stale cache of provider state.)
- * So on a fresh install every send takes the untouched pre-gates path, and a
- * user pays for admission control only by asking for it.
+ * That is not a hypothetical — it is what a stock install actually does.
+ * Exactly one bundled plugin answers the hook, `concurrency-limit`, and it
+ * ships `defaultEnabled: false`; a disabled plugin never loads, so it never
+ * reaches `listHooks`. (`provider-retry` ships enabled but answers no hook at
+ * all: it listens for `turn.failed` and deliberately never intercepts a send,
+ * because a remembered rate limit is a stale cache of provider state.) So on a
+ * fresh install every send takes the untouched pre-hooks path, and a user pays
+ * for admission control only by asking for it.
  * `builtin-plugins.test.ts` pins both halves.
  */
-export function hasDispatchGates(stage: DispatchGateStage): boolean {
-  const provider = dispatchGateProvider();
-  return provider !== undefined && provider.listGates(stage).length > 0;
+export function hasMessageDispatchHooks(): boolean {
+  const provider = pluginHookProvider();
+  return (
+    provider !== undefined && provider.listHooks("message.dispatch").length > 0
+  );
 }
 
 /**
  * Server-wide evaluation lock.
  *
- * A gate that limits concurrency is only correct if no two passes interleave,
- * so every pass runs to completion before the next starts — AND, via
- * `commitAdmission`, a cleared attempt's thread-status flip commits before the
- * lock releases. Those two together are what let a gate simply ask the server
- * what is running (`sdk.threads.listRunning()`) instead of maintaining its own
- * tally of in-flight `proceed`s: the fact is already true by the time the next
- * gate reads it.
+ * A handler that limits concurrency is only correct if no two passes
+ * interleave, so every pass runs to completion before the next starts — AND,
+ * via `commitAdmission`, a cleared attempt's thread-status flip commits before
+ * the lock releases. Those two together are what let a handler simply ask the
+ * server what is running (`sdk.threads.listRunning()`) instead of maintaining
+ * its own tally of in-flight `proceed`s: the fact is already true by the time
+ * the next handler reads it.
  *
- * The cost is real — a slow gate delays other dispatches up to its box — and is
+ * The cost is real — a slow handler delays other dispatches up to its box — and is
  * accepted deliberately; scoping the lock per project or host is the fix if it
  * bites.
  */
@@ -211,36 +211,32 @@ function withEvaluationLock<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
-function dispatchGateFailure(
-  pluginId: string,
-  stage: DispatchGateStage,
-  detail: string,
-): ApiError {
+function messageDispatchHookFailure(pluginId: string, detail: string): ApiError {
   // Fail-closed, mirroring how a throwing `deriveProviderOptions` fails the
   // command: 502 says the failure came from something behind the server rather
   // than from the caller's request, and the plugin is named so the user knows
   // which one to disable.
   return new ApiError(
     502,
-    "dispatch_gate_failed",
-    `The "${pluginId}" plugin's ${stage} gate failed: ${detail}`,
-    { details: { pluginId, stage } },
+    "dispatch_hook_failed",
+    `The "${pluginId}" plugin's message.dispatch hook failed: ${detail}`,
+    { details: { pluginId } },
   );
 }
 
 function dispatchRejection(pluginId: string, message: string): ApiError {
   return new ApiError(409, "dispatch_rejected", message, {
-    details: { pluginId, stage: "dispatch" },
+    details: { pluginId },
   });
 }
 
-/** True when `error` is a gate's `reject` verdict rather than a failure. */
+/** True when `error` is a handler's `reject` decision rather than a failure. */
 export function isDispatchRejectedError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.body.code === "dispatch_rejected";
 }
 
 /**
- * Runs one gate inside its decision box. A timeout resolves as a failure
+ * Runs one handler inside its decision box. A timeout resolves as a failure
  * rather than racing on: the handler's promise may never settle, and the whole
  * point of the box is that the dispatch does not wait on it.
  */
@@ -276,31 +272,30 @@ async function decideWithinBox<T>(
 }
 
 /**
- * The gate chain for a stage: plugin install order, which is deterministic and
- * is the only order there is. Nothing reorders it — a chain of pure decisions
- * composes the same way whichever order it runs in, because a `reject` from
- * any gate refuses and a `wait` from any gate queues.
+ * The handler chain for a hook: plugin install order, which is deterministic
+ * and is the only order there is. Nothing reorders it — a chain of pure
+ * decisions composes the same way whichever order it runs in, because a
+ * `reject` from any handler refuses and a `wait` from any handler queues.
  */
-function orderedGates(
-  provider: DispatchGateProvider,
-  stage: DispatchGateStage,
-): DispatchGateRegistration<DispatchGateStage>[] {
-  return provider.listGates(stage);
+function orderedHooks(
+  provider: PluginHookProvider,
+): PluginHookRegistration<"message.dispatch">[] {
+  return provider.listHooks("message.dispatch");
 }
 
 /**
- * The environment/host pair a gate context carries, resolved the same way for
- * every stage so a `turn.failed` gate sees the same host record — including its
- * live connection state — that the attempt gate did.
+ * The environment/host pair a dispatch context carries, resolved the same way
+ * for every reader so a queue-failure line names the same host record —
+ * including its live connection state — that the hook context did.
  */
-export function dispatchGateEnvironmentAndHost(
+export function dispatchEnvironmentAndHost(
   deps: Pick<AppDeps, "db" | "hub">,
   environmentId: string | null,
 ): { environment: Environment | null; host: Host | null } {
   if (environmentId === null) return { environment: null, host: null };
   const environment = getEnvironment(deps.db, environmentId);
   if (environment === null) return { environment: null, host: null };
-  // The same DTO `GET /threads/:id?include=host` serves, so a gate reading
+  // The same DTO `GET /threads/:id?include=host` serves, so a handler reading
   // `host.status` sees the live connection state rather than a stored row.
   return {
     environment,
@@ -317,22 +312,21 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
 }
 
 /**
- * The context every gate in a pass sees.
+ * The context every handler in a pass sees.
  *
- * Built once and shared: with no amendments, nothing a gate returns can change
- * what the next one is deciding about, so the pass is a chain of independent
- * verdicts on one unchanging fact.
+ * Built once and shared: with no amendments, nothing a handler returns can
+ * change what the next one is deciding about, so the pass is a chain of
+ * independent decisions on one unchanging fact.
  */
-function buildGateContext(
-  deps: DispatchGateDeps,
-  request: DispatchGatePassRequest,
-): PluginDispatchAttemptContext {
-  const { environment, host } = dispatchGateEnvironmentAndHost(
+function buildHookContext(
+  deps: DispatchHookDeps,
+  request: MessageDispatchHookPassRequest,
+): MessageDispatchHookContext {
+  const { environment, host } = dispatchEnvironmentAndHost(
     deps,
     request.environmentId,
   );
   return {
-    stage: "dispatch",
     thread: request.threadResponse,
     attempt: request.attempt,
     project: request.project,
@@ -353,75 +347,73 @@ function buildGateContext(
 }
 
 /**
- * Runs one full gate pass at the single dispatch checkpoint.
+ * Runs one full `message.dispatch` pass at the single dispatch checkpoint.
  *
  * Order is plugin install order; a `reject` short-circuits the pass and throws
- * a 409; `wait` verdicts are COLLECTED across the whole pass rather than
- * short-circuiting, so every gate that would have queued the message gets its
+ * a 409; `wait` decisions are COLLECTED across the whole pass rather than
+ * short-circuiting, so every plugin that would have queued the message gets its
  * reason onto the one row. The attempt proceeds only when a pass yields no
  * waits.
  *
- * The caller must check {@link hasDispatchGates} first; with no gates this
- * returns an empty `proceed` without touching the lock.
+ * The caller must check {@link hasMessageDispatchHooks} first; with no handler
+ * this returns an empty `proceed` without touching the lock.
  */
-export async function runDispatchGatePass(
-  deps: DispatchGateDeps,
-  request: DispatchGatePassRequest,
-): Promise<DispatchGatePassOutcome> {
-  const provider = dispatchGateProvider();
+export async function runMessageDispatchHookPass(
+  deps: DispatchHookDeps,
+  request: MessageDispatchHookPassRequest,
+): Promise<MessageDispatchHookPassOutcome> {
+  const provider = pluginHookProvider();
   if (provider === undefined) {
     return { kind: "proceed" };
   }
-  const gates = orderedGates(provider, "dispatch");
-  if (gates.length === 0) {
+  const hooks = orderedHooks(provider);
+  if (hooks.length === 0) {
     return { kind: "proceed" };
   }
 
   return withEvaluationLock(async () => {
-    const context = buildGateContext(deps, request);
-    const waits: DispatchGateWaitVerdict[] = [];
+    const context = buildHookContext(deps, request);
+    const waits: MessageDispatchWaitDecision[] = [];
 
-    for (const gate of gates) {
-      const invocation = await provider.invokeGate(
-        gate.pluginId,
-        "dispatch gate",
+    for (const hook of hooks) {
+      const invocation = await provider.invokeHook(
+        hook.pluginId,
+        "message.dispatch hook",
         () =>
           decideWithinBox(
-            async () => gate.handler(context),
+            async () => hook.handler(context),
             provider.decisionTimeoutMs,
           ),
       );
       if (!invocation.ok) {
-        throw dispatchGateFailure(gate.pluginId, "dispatch", invocation.error);
+        throw messageDispatchHookFailure(hook.pluginId, invocation.error);
       }
       if (!invocation.value.ok) {
-        throw dispatchGateFailure(
-          gate.pluginId,
-          "dispatch",
+        throw messageDispatchHookFailure(
+          hook.pluginId,
           invocation.value.error,
         );
       }
-      const parsed = dispatchGateDecisionSchema.safeParse(
+      const parsed = messageDispatchHookDecisionSchema.safeParse(
         invocation.value.value,
       );
       if (!parsed.success) {
-        throw dispatchGateFailure(
-          gate.pluginId,
-          "dispatch",
-          `returned an invalid verdict: ${parsed.error.issues
+        throw messageDispatchHookFailure(
+          hook.pluginId,
+          `returned an invalid decision: ${parsed.error.issues
             .map((issue) => `${issue.path.join(".")} ${issue.message}`)
             .join("; ")}`,
         );
       }
       const decision = parsed.data;
       if (decision.action === "reject") {
-        throw dispatchRejection(gate.pluginId, decision.message);
+        throw dispatchRejection(hook.pluginId, decision.message);
       }
       if (decision.action === "wait") {
         waits.push({
-          pluginId: gate.pluginId,
+          pluginId: hook.pluginId,
           reason: decision.reason,
-          retryAt: decision.retryAt ?? null,
+          sendAt: decision.sendAt ?? null,
         });
         continue;
       }
@@ -440,10 +432,10 @@ export async function runDispatchGatePass(
 /**
  * The wait reason for a pass, naming every plugin that voted to wait. The
  * first waiter owns the row, so its reason leads; the rest are appended so the
- * user sees the whole picture on one card rather than one card per gate.
+ * user sees the whole picture on one card rather than one card per plugin.
  */
 export function dispatchWaitReasonForPass(
-  outcome: Extract<DispatchGatePassOutcome, { kind: "wait" }>,
+  outcome: Extract<MessageDispatchHookPassOutcome, { kind: "wait" }>,
 ): string {
   const extra = outcome.additionalWaiters
     .map((entry) => `${entry.pluginId}: ${entry.reason}`)
@@ -455,125 +447,6 @@ export function dispatchWaitReasonForPass(
   return reason.length > QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH
     ? `${reason.slice(0, QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH - 1)}…`
     : reason;
-}
-
-const turnFailedGateDecisionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("none") }),
-  z.object({
-    action: z.literal("retry"),
-    reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
-    resumeAt: z.number().int().nonnegative(),
-  }),
-]);
-
-export interface TurnFailedRetryVerdict {
-  pluginId: string;
-  reason: string;
-  resumeAt: number;
-}
-
-export type TurnFailedGatePassOutcome =
-  | { kind: "none" }
-  | { kind: "retry"; verdict: TurnFailedRetryVerdict };
-
-export interface TurnFailedGatePassRequest {
-  context: Omit<PluginTurnFailedGateContext, "stage">;
-  /** Named in the log line when a gate misbehaves. */
-  threadId: string;
-}
-
-type TurnFailedGatePassDeps = Pick<AppDeps, "db" | "logger">;
-
-/**
- * Runs the `turn.failed` chain.
- *
- * Two things differ from an attempt pass, both because the failure has
- * already been applied:
- *
- * - **A bad gate loses its vote, not the thread.** Fail-closed at the attempt
- *   means refusing to dispatch, because the safe state is "nothing ran". Here
- *   the safe state is the failure standing exactly as core wrote it, so a gate
- *   that throws, times out or returns a malformed verdict is logged with its
- *   plugin named and SKIPPED. Propagating would let one broken retry plugin
- *   turn every failure into a second failure, and there is no caller left to
- *   receive the error anyway.
- * - **The first `retry` wins and stops the chain.** One failure earns at most
- *   one retry row, so continuing past a decided retry would only ask later
- *   gates to answer a question that is already settled.
- *
- * It still runs under the same server-wide evaluation lock as attempt passes:
- * a retry policy that counts what it has in flight must not interleave with
- * the limiter deciding whether that retry may dispatch.
- */
-export async function runTurnFailedGatePass(
-  deps: TurnFailedGatePassDeps,
-  request: TurnFailedGatePassRequest,
-): Promise<TurnFailedGatePassOutcome> {
-  const provider = dispatchGateProvider();
-  if (provider === undefined) {
-    return { kind: "none" };
-  }
-  const gates = orderedGates(provider, "turn.failed");
-  if (gates.length === 0) {
-    return { kind: "none" };
-  }
-
-  return withEvaluationLock(async () => {
-    for (const gate of gates) {
-      const context: PluginTurnFailedGateContext = {
-        ...request.context,
-        stage: "turn.failed",
-      };
-      const invocation = await provider.invokeGate(
-        gate.pluginId,
-        "turn.failed dispatch gate",
-        () =>
-          decideWithinBox(
-            async () => gate.handler(context),
-            provider.decisionTimeoutMs,
-          ),
-      );
-      const detail = !invocation.ok
-        ? invocation.error
-        : !invocation.value.ok
-          ? invocation.value.error
-          : null;
-      if (detail !== null) {
-        deps.logger.warn(
-          { pluginId: gate.pluginId, threadId: request.threadId, detail },
-          "Discarded a turn.failed gate verdict: the gate failed",
-        );
-        continue;
-      }
-      const parsed = turnFailedGateDecisionSchema.safeParse(
-        invocation.ok && invocation.value.ok ? invocation.value.value : null,
-      );
-      if (!parsed.success) {
-        deps.logger.warn(
-          {
-            pluginId: gate.pluginId,
-            threadId: request.threadId,
-            detail: parsed.error.issues
-              .map((issue) => `${issue.path.join(".")} ${issue.message}`)
-              .join("; "),
-          },
-          "Discarded a turn.failed gate verdict: the gate returned an invalid decision",
-        );
-        continue;
-      }
-      if (parsed.data.action === "retry") {
-        return {
-          kind: "retry",
-          verdict: {
-            pluginId: gate.pluginId,
-            reason: parsed.data.reason,
-            resumeAt: parsed.data.resumeAt,
-          },
-        };
-      }
-    }
-    return { kind: "none" };
-  });
 }
 
 /** The per-field sources a request carries into a pass. */

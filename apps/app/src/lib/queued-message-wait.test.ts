@@ -112,10 +112,11 @@ describe("describeQueuedMessageWait", () => {
     expect(describeWait({ kind: "time" })).toBe("Scheduled");
   });
 
-  it("leads a retry with why the turn failed, then when and which attempt", () => {
-    // A retry row is waiting on the retry policy's own plugin wait, so its
-    // reason IS the failure that caused the retry — the most useful thing the
-    // row can say about itself, since it has no message of its own to show.
+  it("leads a retry with why it is being retried, then when and which attempt", () => {
+    // A retry carries its own reason — the failure that earned it — which is
+    // the most useful thing the row can say about itself, since it has no
+    // message of its own to show. A plugin that is separately holding the row
+    // is named after it, not instead of it.
     expect(
       describeQueuedMessageWait({
         failureReason: null,
@@ -124,16 +125,34 @@ describe("describeQueuedMessageWait", () => {
           kind: "retry",
           retryOfTurnRequestId: "req-1",
           attempt: 2,
+          reason: "Rate limited",
         },
         pluginDisplayName: null,
         sendAt: NOW + HOUR,
-        waitingOn: {
-          kind: "plugin",
-          pluginId: "provider-retry",
-          reason: "Rate limited",
-        },
+        waitingOn: { kind: "time" },
       }),
     ).toBe(`Rate limited · retrying at ${clockAt(NOW + HOUR)} · attempt 2`);
+    expect(
+      describeQueuedMessageWait({
+        failureReason: null,
+        now: NOW,
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req-1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
+        pluginDisplayName: "Concurrency limit",
+        sendAt: null,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "concurrency-limit",
+          reason: "2 of 2 running on all hosts",
+        },
+      }),
+    ).toBe(
+      "Rate limited · held by Concurrency limit · 2 of 2 running on all hosts · attempt 2",
+    );
   });
 });
 
@@ -168,7 +187,12 @@ describe("queuedMessageWaitIcon", () => {
     expect(
       queuedMessageWaitIcon({
         failureReason: null,
-        payload: { kind: "retry", retryOfTurnRequestId: "req-1", attempt: 2 },
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req-1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
         waitingOn: { kind: "plugin", pluginId: "provider-retry", reason: "r" },
       }),
     ).toBe("RotateCcw");
@@ -184,7 +208,12 @@ describe("queuedMessageFallbackTitle", () => {
       queuedMessageFallbackTitle({
         createdAt: NOW,
         now: NOW,
-        payload: { kind: "retry", retryOfTurnRequestId: "req-1", attempt: 2 },
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req-1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
       }),
     ).toBe(`Retry failed turn from ${clockAt(NOW)}`);
   });
@@ -258,7 +287,12 @@ describe("queuedMessageCountdownInstant", () => {
     ).toBeNull();
     expect(
       queuedMessageCountdownInstant({
-        payload: { kind: "retry", retryOfTurnRequestId: "req-1", attempt: 2 },
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req-1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
         sendAt: NOW + HOUR,
         waitingOn: { kind: "time" },
       }),

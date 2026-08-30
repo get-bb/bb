@@ -310,6 +310,20 @@ Persisted panel tabs:
 
 Lifecycle:
 
+  bb thread retry [id]                     Retry the thread's failed turn
+    --self                                 Target current thread
+    --turn <requestId>                     Retry this turn request id specifically; fails when it is not the thread's failed turn
+    --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --reason <text>                        Why it is being retried, shown on the queued row
+
+  Retry re-submits the failed turn by reference: the same prompt blocks, no
+  duplicated user message in the timeline, and an attempt number that increments
+  (2 is the first retry). With no --turn it retries the most recent turn, the
+  one whose failure put the thread in error; --turn asserts which turn you mean
+  and fails when the thread has moved on, as does retrying a thread that has not
+  failed or a turn that already has a retry queued. Without --send-at the retry
+  is attempted now, and may still queue behind a busy thread or a plugin.
+
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
 

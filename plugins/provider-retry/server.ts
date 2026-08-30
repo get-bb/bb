@@ -1,11 +1,11 @@
 // bb-plugin-provider-retry — continue a turn once a subscription window resets.
 //
-// The entire plugin is one gate on `turn.failed`: if the failure is a rate
-// limit that reports a reset, ask for a retry at that time. Buffer, jitter,
-// maximum wait and the attempt cap are the only policy it owns.
+// The entire plugin is one listener on `turn.failed`: if the failure is a rate
+// limit that reports a reset, ask core for a retry at that time. Buffer,
+// jitter, maximum wait and the attempt cap are the only policy it owns.
 //
-// **It never intercepts a send.** An earlier version also registered a
-// `dispatch` gate: once one thread proved an account exhausted, it queued every
+// **It never intercepts a send.** An earlier version answered the dispatch
+// checkpoint too: once one thread proved an account exhausted, it queued every
 // other dispatch into that account until the window it remembered had passed.
 // That is wrong on principle. A rate-limit record is a stale cache of provider
 // state — the provider is the only thing that knows whether the limit still
@@ -77,25 +77,27 @@ export default async function plugin(bb: BbPluginApi) {
   /**
    * The retry decision, which is the whole plugin.
    *
-   * Everything it needs — did the turn really fail, what did the provider say
-   * about its windows, how many times has this turn been retried — arrives on
-   * the context. What is left is policy.
+   * Everything it needs — which turn failed, what the provider said about its
+   * windows, how many times this turn has been retried — arrives on the event.
+   * What is left is policy, and then one call: core owns the queue, the
+   * schedule and the re-attempt, so asking for the retry IS scheduling it.
    */
-  bb.experimental_dispatch.gate("turn.failed", (context) => {
+  bb.events.on("turn.failed", async (event) => {
     const decision = decideRetry({
-      failure: context.failure,
+      failure: event,
       maximumWaitMs: maximumWait,
       now: Date.now(),
       random: Math.random(),
     });
     if (decision.kind === "decline") {
-      return { action: "none" };
+      return;
     }
-    return {
-      action: "retry",
+    await bb.sdk.threads.retry({
+      threadId: event.threadId,
+      turnRequestId: event.requestId,
+      sendAt: decision.sendAt,
       reason: RATE_LIMITED_WAIT_REASON,
-      resumeAt: decision.resumeAt,
-    };
+    });
   });
 
   registerProviderRetryCli(bb);

@@ -61,7 +61,7 @@ import {
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import { hasDispatchGates } from "./dispatch-gates.js";
+import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
 import { settleQueueRowDispatched } from "./queue-waits.js";
@@ -413,13 +413,13 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     return null;
   }
   // This fast path dispatches straight to the daemon, bypassing the dispatch
-  // checkpoint. With gates installed the drain takes the general path instead,
-  // so there is exactly one place a turn is gated. With none installed (the
+  // checkpoint. With a hook installed the drain takes the general path instead,
+  // so there is exactly one place a turn is decided about. With none (the
   // overwhelming case) this check is a boolean and the drain is byte-for-byte
   // what it was before the queue carried waits: the row it claims is already
   // known drainable, so every core wait it could hit has been answered by the
   // claim query itself.
-  if (hasDispatchGates("dispatch")) {
+  if (hasMessageDispatchHooks()) {
     return null;
   }
 

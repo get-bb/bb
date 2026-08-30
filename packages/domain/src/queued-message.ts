@@ -176,6 +176,16 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
     retryOfTurnRequestId: clientTurnRequestIdSchema,
     /** Which attempt this row will dispatch: 2 is the first retry. */
     attempt: z.number().int().min(2),
+    /**
+     * Why this turn is being retried, in the retrier's words ("Rate limited"),
+     * as the row's card and `bb thread queue list` render it.
+     *
+     * It lives on the payload rather than on `waitingOn` because a retry can
+     * wait on the clock, on a limiter, or on nothing at all, and the reason
+     * outlives all three: it is a fact about the retry, not about what is
+     * currently holding it. Filled at the boundary, so every row has one.
+     */
+    reason: queuedMessageWaitReasonSchema,
   }),
 ]);
 export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;

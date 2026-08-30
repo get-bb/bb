@@ -7,38 +7,54 @@ pseudo-code.
 
 ## The API as shipped
 
-One checkpoint, three verdicts:
+Two namespaces, split by who is asking: **hooks are questions core asks and
+acts on the answer to; events are announcements core makes, whose return
+value is ignored.**
+
+One hook — one checkpoint, three verdicts:
 
 ```ts
-bb.experimental_dispatch.gate("dispatch", async (ctx) => {
-  // ctx: thread, project, input {blocks, text}, requestedExecution + sources,
+bb.experimental_hooks.on("message.dispatch", async (ctx) => {
+  // ctx: thread, project, input {blocks, text},
+  //      requestedExecution + executionSources,
   //      attempt: "start-turn" | "join-turn", queuedMessage | null,
   //      origin / originPluginId / parentThreadId / startedOnBehalfOf
   return { action: "proceed" };
-  // or { action: "wait", reason: "why", retryAt?: epochMs }
+  // or { action: "wait", reason: "why", sendAt?: epochMs }
   // or { action: "reject", message: "why not" }
 });
 ```
 
-A post-failure hook that can only schedule, never block:
+A post-failure announcement, and one call that asks for another attempt:
 
 ```ts
-bb.experimental_dispatch.gate("turn.failed", (ctx) => {
-  // ctx: original turn request, errorInfo {category, providerCode, httpStatus},
-  //      rateLimits (latest window), attemptNumber
-  return { action: "retry", reason: "Rate limited", resumeAt: ctx.rateLimits.resetsAt };
-  // or { action: "none" }
+bb.events.on("turn.failed", async (event) => {   // whatever it returns is ignored
+  // event: threadId, requestId (the failed turn), turnId,
+  //        errorInfo {category, providerCode, httpStatus},
+  //        rateLimits (latest window), attemptNumber
+  await bb.sdk.threads.retry({
+    threadId: event.threadId,
+    turnRequestId: event.requestId,
+    sendAt: event.rateLimits.resetsAt,
+    reason: "Rate limited",
+  });
 });
 ```
+
+The retry is a by-reference row routed through the ordinary dispatch attempt:
+a future `sendAt` makes it a `time` wait, an omitted one attempts it now, and
+either way it runs the `message.dispatch` hook like any other send. Core
+allows one live retry per original turn and computes `attemptNumber` from the
+retry chain.
 
 Facts and signals:
 
 ```ts
-await bb.sdk.threads.listRunning();      // [{id, hostId}] — EXACT inside a gate
+await bb.sdk.threads.listRunning();      // [{id, hostId}] — EXACT inside a hook
                                           // (evaluation lock + flip-before-unlock),
                                           // snapshot anywhere else
-bb.events.on("queue.waiting",    ({entry}) => …);  // a message queued with a wait
-bb.events.on("queue.dispatched", ({entry}) => …);  // a queued message went
+bb.events.on("message.queued",     ({entry}) => …);  // a message queued with a wait
+bb.events.on("message.dispatched", ({entry}) => …);  // a queued message went
 ```
 
 Scheduling is data, not API: `sendAt` on any send/create (`--send-at`,
@@ -48,7 +64,7 @@ The three shipped consumers, whole:
 
 ```ts
 // concurrency-limit: the entire policy
-gate("dispatch", async (ctx) => {
+hooks.on("message.dispatch", async (ctx) => {
   if (ctx.attempt === "join-turn") return proceed;      // already holds its slot
   const running = await sdk.threads.listRunning();
   if (running.length >= max) return wait(`${max} of ${max} running`);
@@ -56,12 +72,13 @@ gate("dispatch", async (ctx) => {
 });
 
 // provider-retry: the entire policy
-gate("turn.failed", (ctx) =>
-  isRateLimit(ctx.errorInfo) && ctx.rateLimits?.resetsAt
-    ? retry("Rate limited", ctx.rateLimits.resetsAt + jitter())
-    : none);
+events.on("turn.failed", (e) => {
+  if (!isRateLimit(e.errorInfo) || !e.rateLimits?.resetsAt) return;
+  sdk.threads.retry({ threadId: e.threadId, turnRequestId: e.requestId,
+    reason: "Rate limited", sendAt: e.rateLimits.resetsAt + jitter() });
+});
 
-// scheduled-send: no gate at all — a dialog that submits with sendAt
+// scheduled-send: no hook at all — a dialog that submits with sendAt
 ```
 
 How a queued message wakes (all core-driven): `sendAt` due · any thread
@@ -75,32 +92,32 @@ Send-now · orphan sweep (owning plugin gone).
 **Quiet hours / org pause / maintenance window** — a wait with a known end:
 
 ```ts
-gate("dispatch", () =>
+hooks.on("message.dispatch", () =>
   inQuietHours() ? wait("Quiet hours until 8:00", quietHoursEnd()) : proceed);
 ```
 
 **Budget caps on provider windows** — own accounting + wait until window end:
 
 ```ts
-bb.events.on("queue.dispatched", track);
-gate("dispatch", () =>
+bb.events.on("message.dispatched", track);
+hooks.on("message.dispatch", () =>
   spentThisWindow() > cap ? wait("Budget cap hit", windowEnd()) : proceed);
 ```
 
 **Dependency ordering ("run after thread X") / CI-aware dispatch** — works
-today by polling: wait with a short `retryAt`, and the re-attempted gate
+today by polling: wait with a short `sendAt`, and the re-attempted hook
 re-checks the condition:
 
 ```ts
-gate("dispatch", async (ctx) => {
+hooks.on("message.dispatch", async (ctx) => {
   const blocker = blockerFor(ctx.thread);
   if (blocker && !(await isDone(blocker)))
-    return wait(`After ${blocker.title}`, now() + 30_000);   // poll via retryAt
+    return wait(`After ${blocker.title}`, now() + 30_000);   // poll via sendAt
   return proceed;
 });
 ```
 
-Polling through the gate is the *designed* degraded mode for any
+Polling through the hook is the *designed* degraded mode for any
 external-event wait. Latency = poll interval. Good enough until a consumer
 proves it isn't.
 
@@ -110,15 +127,15 @@ For **modifying dispatch parameters** — org model policy, DLP/prompt
 rewriting, auto model selection:
 
 ```ts
-gate("dispatch", (ctx) => {
-  if (ctx.requestedExecution.sources.model !== "explicit")
+hooks.on("message.dispatch", (ctx) => {
+  if (ctx.executionSources.model !== "explicit")
     return proceed({ amend: { model: orgDefaultModel } });
   return proceed;
 });
 
 // DLP: input amendment is legal even on join-turn (steers) — the one
 // amendment that never conflicts with a running turn
-gate("dispatch", (ctx) =>
+hooks.on("message.dispatch", (ctx) =>
   proceed({ amend: { input: redact(ctx.input.blocks) } }));
 ```
 
@@ -127,24 +144,25 @@ died: verdict schema, per-field validation windows (`join-turn` → input
 only; provider only before the first session), provenance
 (never-remembered-as-defaults), and the original-vs-effective audit. It
 returns from git history as a unit. The one open design each revival must
-re-decide: whether amendments compose across gates (they did — last writer
-per field, which forces per-pass context rebuilds and ordering questions).
+re-decide: whether amendments compose across the handlers in a pass (they did
+— last writer per field, which forces per-handler context rebuilds and
+ordering questions).
 
 ### Needs addition #2: plugin-initiated wake (`clearWait`) — external events
 
 For **custom environment provisioning** (the sandbox), human-approval
-gates, webhook-driven dispatch — waits whose end only the plugin observes:
+waits, webhook-driven dispatch — waits whose end only the plugin observes:
 
 ```ts
-gate("dispatch", (ctx) => {
+hooks.on("message.dispatch", (ctx) => {
   if (!wantsSandbox(ctx)) return proceed;
   startProvisioning(ctx.queuedMessage?.id ?? "inline", ctx);   // background
-  return wait("Provisioning sandbox…");                        // no retryAt
+  return wait("Provisioning sandbox…");                        // no sendAt
 });
 
 // background service, minutes later:
 const host = await createVm().then(enrollViaJoinCode);         // existing SDK
-await bb.experimental_dispatch.clearWait(rowId, {
+await bb.experimental_hooks.clearWait(rowId, {                 // hypothetical
   amend: { environment: { type: "host", hostId: host.id, workspace } },
 });
 // clearWait re-runs the FULL pass (limiter still applies), and a refused
@@ -172,12 +190,12 @@ The API scales on exactly three axes, and every use case above lands on one:
 
 | Axis | Mechanism | Cost when needed |
 |---|---|---|
-| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `retryAt` polling | zero — write a plugin |
+| New *policies* | compose `wait`/`proceed`/`reject` + sdk facts + `sendAt` polling | zero — write a plugin |
 | New *powers* | `amend` on proceed; `clearWait`/`report` for external wakes | revive from history against the real consumer |
 | New *conditions* | `waitingOn` arms + drain triggers in core | additive core change |
 
 The bet, stated plainly: everything cut was cut *because* it re-adds
 cleanly. The verdict union extends without breaking handlers; queue rows
 carry new wait kinds without schema surgery; and the degraded mode
-(retryAt polling) means no use case is ever *impossible* before its
+(sendAt polling) means no use case is ever *impossible* before its
 addition lands — only slower.

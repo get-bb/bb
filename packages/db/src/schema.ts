@@ -851,9 +851,17 @@ export const queuedThreadMessages = sqliteTable(
       .notNull()
       .default("inline"),
     // Set together, and only on a `retry` row: the ORIGINAL request this row
-    // re-submits, and which attempt it is (2 is the first retry).
+    // re-submits, which attempt it is (2 is the first retry), and why it is
+    // being retried in the retrier's words ("Rate limited").
+    //
+    // The reason is a column of the retry rather than part of `waiting_on`
+    // because a retry can wait on the clock, on a plugin, or on nothing, and
+    // the reason outlives all three: it is a fact about the retry, not about
+    // what is currently holding it, so a re-queue that rewrites the wait must
+    // not erase it.
     retryOfTurnRequestId: text("retry_of_turn_request_id"),
     retryAttempt: integer("retry_attempt"),
+    retryReason: text("retry_reason"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),

@@ -226,7 +226,7 @@ describe("plugin thread lifecycle events", () => {
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
       expect(recorded[0]?.thread.id).toBe(thread.id);
-      // `pending`, not `starting`: creation is ungated, so the row — and this
+      // `pending`, not `starting`: creation is unhooked, so the row — and this
       // event — exist before the first message has been admitted. A listener
       // that treated `thread.created` as "this thread is running" would count
       // a thread that may never start (the concurrency limiter used to).

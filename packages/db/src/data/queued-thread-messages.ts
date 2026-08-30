@@ -524,6 +524,7 @@ export function createQueuedThreadMessageInTransaction(
       retryOfTurnRequestId:
         input.payload.kind === "retry" ? input.payload.retryOfTurnRequestId : null,
       retryAttempt: input.payload.kind === "retry" ? input.payload.attempt : null,
+      retryReason: input.payload.kind === "retry" ? input.payload.reason : null,
       groupWithNext: false,
       claimedAt: null,
       claimToken: null,

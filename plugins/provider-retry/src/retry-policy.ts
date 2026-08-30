@@ -1,4 +1,4 @@
-import type { PluginTurnFailure } from "@get-bb/plugin-sdk";
+import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 
 /**
  * How long after a reported reset to actually retry.
@@ -40,10 +40,10 @@ export type RetryDeclineReason =
 
 export type RetryDecision =
   | { kind: "decline"; reason: RetryDeclineReason }
-  | { kind: "retry"; resumeAt: number };
+  | { kind: "retry"; sendAt: number };
 
 export interface RetryPolicyInput {
-  failure: PluginTurnFailure;
+  failure: PluginTurnFailedEvent;
   /** Null means "no limit": wait however long the provider says. */
   maximumWaitMs: number | null;
   now: number;
@@ -59,7 +59,7 @@ export interface RetryPolicyInput {
  * weekly one is still blocked just fails again.
  */
 export function blockedWindowResetAtMs(
-  rateLimits: NonNullable<PluginTurnFailure["rateLimits"]>,
+  rateLimits: NonNullable<PluginTurnFailedEvent["rateLimits"]>,
 ): number | null {
   const blocked = rateLimits.windows.filter(
     (window) => window.status === "blocked",
@@ -72,7 +72,7 @@ export function blockedWindowResetAtMs(
 }
 
 /** When to wake for a reset, buffered and jittered, never in the past. */
-export function retryAtMs(args: {
+export function sendAtMs(args: {
   resetsAtMs: number;
   now: number;
   random: number;
@@ -91,8 +91,8 @@ export function retryAtMs(args: {
  * The eligibility rules are the ones the log-replay classifier applied, minus
  * the ones core now answers. It no longer has to prove the turn really failed,
  * pair requests with completions, or check that a newer user action has not
- * superseded the turn: `turn.failed` fires once, for the turn that failed, with
- * the failure attached.
+ * superseded the turn: `turn.failed` is announced once, for the turn that
+ * failed, with the failure facts attached.
  */
 export function decideRetry(input: RetryPolicyInput): RetryDecision {
   const { failure } = input;
@@ -123,7 +123,7 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
   }
   return {
     kind: "retry",
-    resumeAt: retryAtMs({
+    sendAt: sendAtMs({
       resetsAtMs,
       now: input.now,
       random: input.random,

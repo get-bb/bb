@@ -490,7 +490,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         title: "Running & reacting",
-        surfaceIds: ["background", "wire", "thread-events", "host-workers"],
+        surfaceIds: [
+          "background",
+          "wire",
+          "thread-events",
+          "dispatch-hook",
+          "host-workers",
+        ],
       },
       {
         title: "Data & platform",
@@ -607,11 +613,36 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Runs server code when a thread changes state. With this, a plugin can:",
         bullets: [
           "Subscribe to threads being created, going active or idle, failing, being archived, or being deleted",
-          "Receive a typed payload describing the thread and the transition",
-          "Respond by sending a notification, retrying, or writing to its own storage",
+          "Subscribe to messages being queued behind a wait and dispatching when it clears",
+          "Subscribe to a turn failing, with the provider's error and rate-limit windows attached",
+          "Respond by sending a notification, asking for a retry, or writing to its own storage",
         ],
-        apiSymbols: ["PluginEvents", "PluginThreadEventPayloads"],
+        apiSymbols: [
+          "PluginEvents",
+          "PluginThreadEventPayloads",
+          "PluginTurnFailedEvent",
+        ],
         firstParty: ["Automations", "Provider retry", "Tasks", "Workflows"],
+      },
+      {
+        id: "dispatch-hook",
+        tagline: "Decide whether a message may go",
+        title: "Dispatch hook",
+        summary:
+          "Answers the checkpoint every message passes on its way to a provider. With this, a plugin can:",
+        bullets: [
+          "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
+          "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
+          "Hold work until a moment it names, or until capacity frees and core re-asks",
+        ],
+        apiSymbols: [
+          "PluginHooks",
+          "PluginHookSignatures",
+          "MessageDispatchHookContext",
+          "MessageDispatchHookDecision",
+        ],
+        firstParty: ["Concurrency limit"],
+        experimental: true,
       },
       {
         id: "host-workers",

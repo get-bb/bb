@@ -11,7 +11,10 @@ import {
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { threadTabsResponseSchema } from "@bb/server-contract";
+import {
+  DEFAULT_TURN_RETRY_REASON,
+  threadTabsResponseSchema,
+} from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
@@ -51,6 +54,8 @@ import type {
   ReorderQueuedMessageRequest,
   ResolveThreadMentionsRequest,
   ResolveThreadMentionsResponse,
+  RetryTurnRequest,
+  RetryTurnResponse,
   SendMessageRequest,
   SendMessageResponse,
   SendQueuedMessageRequest,
@@ -133,14 +138,14 @@ export type ThreadCountResult = ThreadCountResponse;
  * `hostId` (null until an environment is chosen), `projectId`,
  * `parentThreadId` and `originPluginId`.
  *
- * **Exact inside a dispatch gate, a snapshot everywhere else.** Gate passes are
- * serialized under one server-wide lock and a cleared first attempt commits its
- * `pending -> starting` flip before that lock releases, so a gate reading this
- * sees every admission granted ahead of it in the same burst — which is what
- * makes "five quick creates against a limit of two" hold three of them instead
- * of admitting all five. Read from a background service, a timer or a
- * `turn.failed` gate it is an ordinary query racing with every concurrent
- * dispatch, exactly like {@link ThreadsArea.count}.
+ * **Exact inside the `message.dispatch` hook, a snapshot everywhere else.**
+ * Hook passes are serialized under one server-wide lock and a cleared first
+ * attempt commits its `pending -> starting` flip before that lock releases, so
+ * a handler reading this sees every admission granted ahead of it in the same
+ * burst — which is what makes "five quick creates against a limit of two" hold
+ * three of them instead of admitting all five. Read from a background service,
+ * a timer or a `turn.failed` listener it is an ordinary query racing with every
+ * concurrent dispatch, exactly like {@link ThreadsArea.count}.
  *
  * One boundary: a warm follow-up admitted on an already-live `idle` thread
  * flips `idle -> active` inside the send transaction, just AFTER the lock
@@ -170,6 +175,7 @@ export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = SendMessageResponse;
+export type ThreadRetryResult = RetryTurnResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
 export type ThreadCompactResult = { ok: true };
@@ -243,6 +249,23 @@ export interface ThreadSendArgs extends SendMessageRequest {
 
 export interface ThreadEditMessageArgs extends EditMessageRequest {
   threadId: string;
+}
+
+export interface ThreadRetryArgs {
+  threadId: string;
+  /**
+   * The failed turn to re-submit. Omitted means the thread's most recent turn,
+   * which is the one whose failure put it in `error`; naming one asserts which
+   * failure you decided on and fails if the thread has moved on since.
+   */
+  turnRequestId?: string;
+  /**
+   * Epoch ms to retry at. Omitted attempts the retry now — it may still queue
+   * behind a busy thread or a plugin wait, like any other dispatch.
+   */
+  sendAt?: number;
+  /** Why the turn is being retried, shown verbatim on the queued row. */
+  reason?: string;
 }
 
 export interface ThreadActionArgs {
@@ -537,6 +560,12 @@ export interface ThreadsArea {
   resolveMentions(
     args: ThreadResolveMentionsArgs,
   ): Promise<ThreadResolveMentionsResult>;
+  /**
+   * Re-submit a failed turn. The retry is an ordinary dispatch attempt, so a
+   * `sendAt` in the future queues it on the clock and a `message.dispatch` hook
+   * can still hold it; the response says which of the two happened.
+   */
+  retry(args: ThreadRetryArgs): Promise<ThreadRetryResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
@@ -617,6 +646,14 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     // Present ⇒ the message joins the queue waiting for the clock instead
     // of attempting now; the response reports `delivery: "queued"`.
     sendAt: args.sendAt,
+  };
+}
+
+function retryJson(args: ThreadRetryArgs): RetryTurnRequest {
+  return {
+    turnRequestId: args.turnRequestId ?? null,
+    sendAt: args.sendAt ?? null,
+    reason: args.reason ?? DEFAULT_TURN_RETRY_REASON,
   };
 }
 
@@ -1180,6 +1217,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].send.$post({
           param: { id: input.threadId },
           json: sendJson(input),
+        }),
+      );
+    },
+    async retry(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].retry.$post({
+          param: { id: input.threadId },
+          json: retryJson(input),
         }),
       );
     },

@@ -418,7 +418,7 @@ function intentHostId(
  * in agreement about forks, execution defaults, telemetry and cleanup.
  *
  * The row inserts `pending`: created, with its provider resolved, and nothing
- * provisioned. Creation itself is ungated — it is a cheap row — and admission
+ * provisioned. Creation itself is unhooked — it is a cheap row — and admission
  * happens at the first message's attempt. A cleared attempt moves the thread
  * to `starting` and provisions with the message riding along; a queued one
  * leaves the thread exactly where it is, with the start context recorded so a
@@ -660,7 +660,7 @@ export async function createThreadFromRequest(
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
-  // No gate pass here. Creation is UNGATED — a thread row is cheap, costs no
+  // No hook pass here. Creation is UNHOOKED — a thread row is cheap, costs no
   // worktree, no setup script and no host resources — and admission happens at
   // the first message's dispatch attempt, where a plugin sees the thread it is
   // deciding about and can amend its provider and environment while neither is

@@ -140,93 +140,92 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
-## `bb.experimental_dispatch` (`gate`)
+## `bb.experimental_hooks` (`on`)
 
-**What it does.** The one plugin surface that *decides* about a dispatch rather
-than observing it. `bb.experimental_dispatch.gate(stage, handler)` registers a
-gate at one of two stages.
+**What it does.** The one plugin surface that *decides* rather than observes.
+`bb.experimental_hooks.on(hook, handler)` registers this plugin's answer to a
+hook — a question core stops to ask and then acts on the answer to. Its
+counterpart is `bb.events.on`, whose handlers are told what already happened
+and whose return value is ignored; the split is the one git draws between
+pre-commit and post-commit hooks, and it is why the two are separate
+namespaces rather than one `on`.
 
-`"dispatch"` is THE admission checkpoint: it runs before every message reaches
-a provider — a thread's first message, a follow-up, a steer, a drained queue
-row, a retry of a failed turn — and it runs identically for all of them. The
-handler receives a typed context (project, environment/host, prompt blocks plus
-a plain-text view, the resolved execution tuple with per-field provenance,
-origin/parent provenance, the target thread, whether the attempt would
-`start-turn` or `join-turn`, and the queued row when the attempt is a
-re-attempt) and answers `proceed`, `wait` (queue the message as a row
-with a reason and an optional `retryAt`), or `reject` (a synchronous 409
-carrying the plugin's message). A gate cannot rewrite the dispatch it is
+One hook today. `"message.dispatch"` is THE admission checkpoint: it runs
+before every message reaches a provider — a thread's first message, a
+follow-up, a steer, a drained queue row, a retry of a failed turn — and it runs
+identically for all of them. The handler receives a typed context (project,
+environment/host, prompt blocks plus a plain-text view, the resolved execution
+tuple with per-field provenance, origin/parent provenance, the target thread,
+whether the attempt would `start-turn` or `join-turn`, and the queued row when
+the attempt is a re-attempt) and answers `proceed`, `wait` (queue the message as
+a row with a reason and an optional `sendAt`), or `reject` (a synchronous 409
+carrying the plugin's message). A handler cannot rewrite the dispatch it is
 deciding about: there is no amendment arm.
 
-The POST-HOC stage `"turn.failed"` runs after a turn's failure has already been
-applied and the thread has landed in `error`. Its context drops the fields that
-only describe a dispatch that has not happened (`executionSources`, `attempt`,
-`queuedMessage`) and adds `failure`: the failed request id, the original
-request id of the retry chain, the provider turn id, the failure message, the
-provider's `ProviderErrorInfo`, the latest `ProviderRateLimitState`, and
-`attemptNumber`. It answers `none` or `retry(reason, resumeAt)`, and a `retry`
-queues a by-reference row that re-submits the ORIGINAL turn when it
-dispatches.
-
-Gates run as a deterministic chain in plugin install order, `reject`
-short-circuits, `wait` verdicts collect across a full pass, and the FIRST
+Handlers run as a deterministic chain in plugin install order, `reject`
+short-circuits, `wait` decisions collect across a full pass, and the FIRST
 waiter owns the row while the rest have their reasons appended to it. The whole
-pass runs under a single server-wide async lock. At `"dispatch"` a gate that
-throws or exceeds a 10s decision box fails the attempt with the plugin named
+pass runs under a single server-wide async lock. A handler that throws or
+exceeds a 10s decision box fails the attempt with the plugin named
 (fail-closed, the `deriveProviderOptions` precedent).
 
-A plugin's wait clears without the plugin doing anything: the row's `retryAt`
+A plugin's wait clears without the plugin doing anything: the row's `sendAt`
 comes due, a thread leaves the running set and core re-attempts every
 plugin-queued row, the user sends it now, or the orphan sweep clears a wait
 whose plugin is no longer running.
 
-At `turn.failed` fail-closed resolves the other way, deliberately. The turn has
-already failed, so the safe state is the failure standing exactly as core
-applied it. A gate that throws, times out or returns a malformed verdict has its
-verdict DISCARDED with the plugin named in the server log. The chain also
-short-circuits on the first `retry`, and the pass is serialized per thread so
-two failures arriving together cannot queue the same turn twice.
-
 **Audit before stabilizing.**
 
-- **One method, two opposite fail-closed stories.** `"dispatch"` blocks on
-  handler failure; `"turn.failed"` ignores it. Both are right, and they are one
-  method name. Confirm the doc comment carries that, or split the registration.
-- **`wait` returns no row id.** A gate returns a reason; the id arrives later on
-  `queue.waiting`. Every plugin that must act on its own wait therefore
+- **One hook is not a shape.** The registry, the map and the `on(hook, handler)`
+  signature are all built for several hooks, and there is one. Confirm the
+  second hook fits the shape before stabilizing it — or collapse the argument.
+- **`wait` returns no row id.** A handler returns a reason; the id arrives later
+  on `message.queued`. Every plugin that must act on its own wait therefore
   correlates by ordering or re-queries `threads.queue.list({ waitHolder })`.
-  Decide whether the verdict should be able to name a correlation key.
-- **A wait has no plugin-driven release.** The only ways out are `retryAt`,
+  Decide whether the decision should be able to name a correlation key.
+- **A wait has no plugin-driven release.** The only ways out are `sendAt`,
   the freed-capacity drain, the user, and the orphan sweep. A plugin whose
-  condition resolves early can only shorten the wait by having set a `retryAt`
+  condition resolves early can only shorten the wait by having set a `sendAt`
   it can live with. Confirm that is enough before stabilizing.
-- **`retryAt` and a user's `sendAt` are the same column.** A plugin wait with a
-  `retryAt` sets the row's `sendAt`, which is also what `--send-at` sets.
-  Confirm nothing renders a plugin's retry instant as a user's schedule.
+- **A handler's `sendAt` and a user's `--send-at` are the same column.** A
+  plugin wait with a `sendAt` sets the row's `sendAt`, which is also what
+  `--send-at` sets. Confirm nothing renders a plugin's instant as a user's
+  schedule.
 - **Send-now bypasses EVERY plugin check.** A user's "Send now" skips the pass
   entirely, so a content-policy `reject` is skipped with it. That is a
   deliberate loosening of the old skip-owner-only rule; confirm it before
   stabilizing, or split `wait` bypass from `reject` bypass.
-- **`PluginTurnFailure` completeness.** Confirm the failure record answers every
-  question a retry policy asks without replaying the event log.
-- **Attempt caps are entirely the plugin's.** Core enforces no ceiling on retry
-  chains beyond one queued row per original request.
 - **"Never started" is now a thread status, not an event-log fact.** That
   replaced a `getLastProviderThreadId(...) === null` probe on a hot-ish path.
   Confirm `pending` is maintained everywhere that probe used to be consulted.
 - **The context DTOs.** `thread`, `project`, `environment`, `host` and
   `queuedMessage` are public DTOs; confirm they are what a plugin should couple
   to.
-- **The single server-wide lock.** One slow gate delays every dispatch in the
+- **The single server-wide lock.** One slow handler delays every dispatch in the
   server, up to its box.
 
-## `queue.waiting` / `queue.dispatched` (`bb.events.on`)
+## `message.queued` / `message.dispatched` / `turn.failed` (`bb.events.on`)
 
-**What it does.** Queue lifecycle events on the existing observe-only
-`bb.events.on` registry, each carrying the `ThreadQueuedMessage` DTO that
-`GET /threads/:id/queued-messages` serves. `queue.waiting` fires when a row's
-wait is rewritten as well as when the row is first queued, because a row that
-moved from one wait to another is news to whoever was waiting on the old one.
+**What it does.** Three announcements on the observe-only `bb.events.on`
+registry.
+
+`message.queued` and `message.dispatched` each carry the `ThreadQueuedMessage`
+DTO that `GET /threads/:id/queued-messages` serves. `message.queued` fires when
+a row's wait is rewritten as well as when the row is first queued, because a row
+that moved from one wait to another is news to whoever was waiting on the old
+one.
+
+`turn.failed` fires after a turn failed and the thread has landed in `error`. It
+carries ids and failure facts only — `threadId`, the failed turn's `requestId`,
+the provider `turnId`, the provider's `ProviderErrorInfo`, the latest
+`ProviderRateLimitState` and `attemptNumber` — and no thread DTO or copy of the
+message, because a retry is asked for by reference with
+`bb.sdk.threads.retry({ threadId, turnRequestId, sendAt })` and anything else is
+one `threads.get` away and fresher for being read when it is used. It is an
+announcement, not a question: the failure stands as core applied it, a handler's
+return value is ignored, and a handler that throws is isolated like any other
+event handler. A broken retry plugin can therefore cost a retry; it can never
+make failures unrecoverable.
 
 **Audit before stabilizing.** These are still the only non-thread events on
 `bb.events.on`, so the interface is called `PluginThreadEventPayloads` and its
@@ -234,11 +233,14 @@ handler type `PluginThreadEventHandler`; renaming both project-wide is part of
 stabilizing. Decide whether every plugin should see every queued row (it does
 today, and filtering on `entry.waitingOn` is the documented pattern) or whether
 a plugin should only see the rows whose wait it owns. Decide too whether
-`queue.waiting` firing on every rewritten wait is what a listener wants, or
-whether a separate `queue.updated` belongs alongside it — the timeline event
+`message.queued` firing on every rewritten wait is what a listener wants, or
+whether a separate `message.updated` belongs alongside it — the timeline event
 already distinguishes the two. There is no cancellation event: a plugin that
 needs a teardown signal has none today, so decide whether one belongs here
-before this is stable.
+before this is stable. For `turn.failed`, confirm the payload answers every
+question a retry policy asks without replaying the event log, and note that
+attempt caps are entirely the plugin's: core enforces no ceiling on retry chains
+beyond one live retry row per original request.
 
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 

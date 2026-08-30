@@ -906,17 +906,54 @@ bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // la
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
-bb.events.on("queue.waiting", ({ entry }) => { ... });                     // entry: ThreadQueuedMessage
-bb.events.on("queue.dispatched", ({ entry }) => { ... });
+bb.events.on("message.queued", ({ entry }) => { ... });                    // entry: ThreadQueuedMessage
+bb.events.on("message.dispatched", ({ entry }) => { ... });
+bb.events.on("turn.failed", (event) => { ... });                          // ids + failure facts
 ```
 
-Eight events. The six `thread.*` ones are thread lifecycle; the two `queue.*`
+**Events are announcements core makes.** Something already happened, your
+handler is told, and whatever it returns is IGNORED. The surface that ASKS is
+`bb.experimental_hooks`, below, where core acts on your answer — the same split
+git draws between post-commit and pre-commit hooks.
+
+Nine events. The six `thread.*` ones are thread lifecycle. The two `message.*`
 ones fire when a dispatch is queued behind a wait, and when a queued row's
 waits all clear and it dispatches. Every listener sees every queued row, so a
 plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`queue.waiting` fires again when a row's wait is rewritten, because a row that
+`message.queued` fires again when a row's wait is rewritten, because a row that
 moved from one wait to another is news to whoever was waiting on the old one.
+
+`"turn.failed"` fires after a turn failed and the thread has already landed in
+`error`. Its payload is ids and failure facts only — `threadId`, the failed
+turn's `requestId`, the provider `turnId` (null when the failure never reached
+a turn), `errorInfo` (the provider's `ProviderErrorInfo`, null when it reported
+none), `rateLimits` (the latest `ProviderRateLimitState`, null when the provider
+reports no windows) and `attemptNumber` (1 on a first failure, 2 on the first
+retry's). There is no thread DTO and no copy of the message, because a retry is
+asked for BY REFERENCE:
+
+```ts
+bb.events.on("turn.failed", async (event) => {
+  if (event.errorInfo?.category !== "rate-limit") return;
+  if (event.attemptNumber >= 5) return;                  // cap your own retries
+  await bb.sdk.threads.retry({
+    threadId: event.threadId,
+    turnRequestId: event.requestId,
+    sendAt: resetsAtMs + 15_000,   // omit to attempt now
+    reason: "Rate limited",        // shown verbatim on the queued row
+  });
+});
+```
+
+`threads.retry` re-submits the failed turn: the user's message is not appended
+again, the provider is asked the identical question, and the new attempt carries
+a retry marker so the next failure's `attemptNumber` is right. A future `sendAt`
+queues it on the clock; without one it is attempted now. Either way it is an
+ordinary dispatch attempt, so it still passes the `message.dispatch` hook and a
+retry coming back after a rate-limit window respects a limiter at capacity
+instead of jumping the queue. Core allows one live retry per original turn and
+enforces no ceiling beyond that — the cap is yours.
 
 `thread.active` fires when an applied lifecycle
 transition enters the running `active` state. `thread.archived` fires after a
@@ -936,16 +973,18 @@ always in the timeline yet. To react to a thread's content, listen on
 in a handler — including `bb.sdk.threads.update({ threadId, title })` —
 cannot delay or interrupt the thread's turn.
 
-### bb.experimental_dispatch — the dispatch checkpoint
+### bb.experimental_hooks — the dispatch checkpoint
 
-A gate is the one place a plugin can *decide* about a dispatch rather than
-observe it. There is ONE admission checkpoint, `"dispatch"`, and every message
-passes through it exactly once per attempt: a thread's first message, a
-follow-up, a steer, a drained queue row, a retry of a failed turn.
+**Hooks are questions core asks.** Core stops, hands your handler a context, and
+ACTS ON what you return — the opposite of `bb.events`, whose handlers are told
+what already happened. There is ONE hook today, `"message.dispatch"`, the
+admission checkpoint every message passes through exactly once per attempt: a
+thread's first message, a follow-up, a steer, a drained queue row, a retry of a
+failed turn.
 
 ```ts
-bb.experimental_dispatch.gate("dispatch", (ctx) => {
-  // ctx.thread (always present — creation is ungated, so the row exists),
+bb.experimental_hooks.on("message.dispatch", (ctx) => {
+  // ctx.thread (always present — creation is unhooked, so the row exists),
   // ctx.attempt ("start-turn" | "join-turn"),
   // ctx.project / ctx.environment / ctx.host, ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
@@ -955,28 +994,12 @@ bb.experimental_dispatch.gate("dispatch", (ctx) => {
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
   return { action: "proceed" };
 });
-
-bb.experimental_dispatch.gate("turn.failed", (ctx) => {
-  // Post-hoc: the turn already failed and the thread is already in `error`.
-  // ctx.failure has requestId, originalRequestId, turnId, message, errorInfo
-  // (the provider's ProviderErrorInfo), rateLimits (the latest
-  // ProviderRateLimitState) and attemptNumber (1 on a first failure).
-  if (ctx.failure.errorInfo?.category !== "rate-limit") {
-    return { action: "none" };
-  }
-  return {
-    action: "retry",
-    reason: "Rate limited",
-    resumeAt: resetsAtMs + 15_000,
-  };
-});
 ```
 
-Verdicts at `"dispatch"` are `proceed`, `wait` (`reason`, optional `retryAt`
-epoch ms, which becomes the row's `sendAt` so core's due sweep re-attempts
-then) and `reject` (`message` shown to the user; the caller gets a 409
-`dispatch_rejected`). A gate decides; it never rewrites the dispatch it is
-deciding about.
+Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, which
+becomes the row's `sendAt` so core's due sweep re-attempts then) and `reject`
+(`message` shown to the user; the caller gets a 409 `dispatch_rejected`). A
+handler decides; it never rewrites the dispatch it is deciding about.
 
 A `wait` QUEUES the message as a row whose `waitingOn` names your plugin
 and carries your reason verbatim. The row sits in the thread's queue with a
@@ -992,64 +1015,45 @@ no thread event, so a `wait` never writes anything into the transcript the
 model or the user reads back.
 
 **How a wait clears.** You do not release it yourself. It clears when the row's
-`retryAt` comes due, when a thread leaves the running set and core re-attempts
+`sendAt` comes due, when a thread leaves the running set and core re-attempts
 every plugin-queued row, when the user sends it now, or when the orphan sweep
 clears a wait whose plugin stopped running. Every one of those re-runs the full
-pass, including your own gate, so a message that is still blocked simply
+pass, including your own handler, so a message that is still blocked simply
 re-queues. Waiting on an external event you cannot predict means polling: set a
-`retryAt` you can live with and answer again on the re-attempt.
+`sendAt` you can live with and answer again on the re-attempt.
 
-`turn.failed` is the POST-HOC stage and answers a different union: `none` or
-`retry` (`reason`, required `resumeAt`). It runs after the failure has been
-applied, so it cannot refuse or amend anything. A `retry` queues a by-reference
-queued row that re-submits the ORIGINAL turn when it dispatches: the user's
-message is not appended again, the provider is asked the identical question,
-and the new attempt carries a retry marker so the next failure's
-`attemptNumber` is right. The re-attempt runs the `"dispatch"` checkpoint like
-any other, so a retry still respects a limiter at capacity. Cap your own
-retries with `attemptNumber`; core will queue as many as you ask for. Its
-context omits the attempt-only fields (`executionSources`, `attempt`,
-`queuedMessage`) and adds `failure`.
-
-**A gate cannot rewrite the dispatch.** There is no amendment arm: the model,
+**A handler cannot rewrite the dispatch.** There is no amendment arm: the model,
 reasoning level, service tier, permission mode, environment and prompt blocks a
-gate sees are the ones the turn will run with. A plugin that wants different
+handler sees are the ones the turn will run with. A plugin that wants different
 settings changes them where they are chosen — project execution defaults, the
 composer, or the request it makes itself — not at the checkpoint. A thread's
 provider is fixed when the thread is created.
 
-Composition: gates run in plugin install order, a `reject` short-circuits, and
-`wait` verdicts are collected across the whole pass rather than
+Composition: handlers run in plugin install order, a `reject` short-circuits,
+and `wait` decisions are collected across the whole pass rather than
 short-circuiting. One row is queued per pass, owned by the FIRST waiter; the
-rest have their reasons appended to that row's reason, and each of them votes
-again on the next attempt. Because nothing a gate returns changes what the next
-gate is deciding about, every gate in a pass sees the same context. The whole
-pass runs under one server-wide lock, and a cleared
-first dispatch commits its thread-status flip before that lock releases — which
-is what makes `bb.sdk.threads.listRunning()` exact inside a gate.
+rest have their reasons appended to that row's reason, and each of them answers
+again on the next attempt. Because nothing a handler returns changes what the
+next one is deciding about, every handler in a pass sees the same context. The
+whole pass runs under one server-wide lock, and a cleared first dispatch commits
+its thread-status flip before that lock releases — which is what makes
+`bb.sdk.threads.listRunning()` exact inside a handler.
 
-**Fail-closed.** At `"dispatch"`, a gate that throws or exceeds the 10s
-decision box fails the attempt with your plugin named — it does not fall
-through. Decide in milliseconds; if the answer needs real work, return `wait`
-with a `retryAt` and answer again on the re-attempt. Passes re-run on every
-drain, on restart and on retry, so a handler must be idempotent for one logical
-dispatch.
+**Fail-closed.** A handler that throws or exceeds the 10s decision box fails the
+attempt with your plugin named — it does not fall through. Decide in
+milliseconds; if the answer needs real work, return `wait` with a `sendAt` and
+answer again on the re-attempt. Passes re-run on every drain, on restart and on
+retry, so a handler must be idempotent for one logical dispatch. At most one
+handler per hook per plugin; registering a second throws.
 
-At `turn.failed`, fail-closed means the opposite, because the turn has already
-failed and the safe state is that failure standing as core wrote it: a gate
-that throws, times out or returns a malformed verdict has its verdict
-DISCARDED with your plugin named in the log, and the failure is untouched. A
-broken retry policy costs a retry; it can never make failures unrecoverable.
-The chain also stops at the first `retry` — one failure earns at most one row.
-
-**Core waits you never see.** Before your gate runs, core queues a message that
-cannot run for a structural reason: a future `sendAt`, a thread already running
-a turn the message did not ask to join, a workspace still provisioning, an
-unanswered interaction. Those rows carry `waitingOn.kind` of `time`,
+**Core waits you never see.** Before your handler runs, core queues a message
+that cannot run for a structural reason: a future `sendAt`, a thread already
+running a turn the message did not ask to join, a workspace still provisioning,
+an unanswered interaction. Those rows carry `waitingOn.kind` of `time`,
 `thread-busy`, `provisioning` or `interaction` and are not yours to clear.
 
-**Finding your own rows.** A `wait` verdict returns a reason, not an id — the
-id arrives on `queue.waiting`. After a restart, ask for them:
+**Finding your own rows.** A `wait` decision returns a reason, not an id — the
+id arrives on `message.queued`. After a restart, ask for them:
 
 ```ts
 const mine = await bb.sdk.threads.queue.list({
@@ -1072,20 +1076,21 @@ if (running.length >= limit) {
 return { action: "proceed" };
 ```
 
-**Exact inside a dispatch gate, a snapshot everywhere else.** Passes are
-serialized under one server-wide lock, AND a cleared first dispatch commits its
-`pending → starting` flip before that lock releases — so inside your gate the
+**Exact inside the hook, a snapshot everywhere else.** Passes are serialized
+under one server-wide lock, AND a cleared first dispatch commits its
+`pending → starting` flip before that lock releases — so inside your handler the
 answer already contains every admission granted ahead of you in the same burst.
 Five creates arriving together against a limit of two admit two and queue three.
-Read the same method from a background service, a timer or a `turn.failed`
-gate and it is an ordinary query racing every concurrent dispatch, exactly like
-`threads.count`. One boundary: a follow-up admitted on an already-live `idle`
-thread flips `idle → active` inside the send transaction, just after the lock,
-so a burst of follow-ups to distinct idle threads can momentarily under-report.
+Read the same method from a background service, a timer or a `"turn.failed"`
+listener and it is an ordinary query racing every concurrent dispatch, exactly
+like `threads.count`. One boundary: a follow-up admitted on an already-live
+`idle` thread flips `idle → active` inside the send transaction, just after the
+lock, so a burst of follow-ups to distinct idle threads can momentarily
+under-report.
 
 You do NOT need to release your own waits — there is no way to. When a thread
 leaves the occupying set — idle, failed, archived, deleted — core re-attempts
-every plugin-queued row in queue order, which re-runs your gate; rows still
+every plugin-queued row in queue order, which re-runs your handler; rows still
 over the limit re-queue, and core paces the retries. Subscribing to lifecycle
 events to chase the same moment duplicates that and races it.
 
@@ -1101,7 +1106,7 @@ so re-deciding it would queue a running thread behind the pool it is itself
 filling. That is the one rule that is correctness rather than policy.
 
 **Wedge hazard, stated rather than carved out.** The shipped limiter
-(`concurrency-limit`) counts every running thread and gates every `start-turn`
+(`concurrency-limit`) counts every running thread and hooks every `start-turn`
 dispatch, with no exemption for child or plugin-spawned threads. Under a tight
 limit, an orchestration pattern where a running parent waits on threads it
 spawned — the `workflows` plugin — can wedge: the parent holds a slot while the
@@ -2867,6 +2872,7 @@ Backend (`server.ts`) — `createFakePluginHost()`:
 import {
   createFakePluginHost,
   makeThreadResponse,
+  makeTurnFailedEvent,
 } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
@@ -2890,6 +2896,9 @@ await harness.behavior.emitThreadEvent("thread.idle", {
   thread: makeThreadResponse({ id: "th_1" }), // complete ThreadResponse fixture
   lastAssistantText: "done",
 });
+await harness.behavior.emitThreadEvent("turn.failed", makeTurnFailedEvent());
+// Hooks are called directly; the registry holds one handler per hook:
+await harness.registrations.hooks["message.dispatch"]?.(context);
 await harness.behavior.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
 await harness.behavior.experimental_emitHostSignal(
   "changed",

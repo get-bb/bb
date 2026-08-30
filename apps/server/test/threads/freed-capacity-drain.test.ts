@@ -1,10 +1,10 @@
 import { getThread, listEvents, listQueuedThreadMessages } from "@bb/db";
-import type { PluginDispatchGateStage } from "@get-bb/plugin-sdk";
+import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  setDispatchGateProvider,
-  type DispatchGateRegistration,
-} from "../../src/services/plugins/dispatch-gate-registry.js";
+  setPluginHookProvider,
+  type PluginHookRegistration,
+} from "../../src/services/plugins/plugin-hook-registry.js";
 import { setFreedThreadCapacityListener } from "../../src/services/threads/freed-capacity-signal.js";
 import {
   archiveThreadAndHiddenSourceForks,
@@ -26,14 +26,14 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/freed-capacity-project";
 
-type GateRegistry = {
-  [S in PluginDispatchGateStage]: DispatchGateRegistration<S>[];
+type HookRegistry = {
+  [K in PluginHookName]: PluginHookRegistration<K>[];
 };
 
-function installGates(registry: GateRegistry): void {
-  setDispatchGateProvider({
-    listGates: (stage) => registry[stage],
-    invokeGate: async (_pluginId, _label, run) => ({
+function installHooks(registry: HookRegistry): void {
+  setPluginHookProvider({
+    listHooks: (hook) => registry[hook],
+    invokeHook: async (_pluginId, _label, run) => ({
       ok: true,
       value: await run(),
     }),
@@ -42,7 +42,7 @@ function installGates(registry: GateRegistry): void {
 }
 
 afterEach(() => {
-  setDispatchGateProvider(undefined);
+  setPluginHookProvider(undefined);
   setFreedThreadCapacityListener(undefined);
 });
 
@@ -88,21 +88,21 @@ function turnRequests(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the freed-capacity drain", () => {
-  it("re-attempts a plugin-queued row once the gate lets it through", async () => {
+  it("re-attempts a plugin-queued row once the hook lets it through", async () => {
     // The release path that replaced a plugin releasing its own wait: core
-    // re-attempts, the gate re-decides, and a row that is still blocked simply
+    // re-attempts, the hook re-decides, and a row that is still blocked simply
     // re-queues. No plugin has to work out which row deserves the freed slot.
     await withTestHarness(async (harness) => {
       let full = true;
-      const registry: GateRegistry = { dispatch: [], "turn.failed": [] };
-      registry.dispatch.push({
+      const registry: HookRegistry = { "message.dispatch": [] };
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () =>
           full
             ? ({ action: "wait", reason: "1 of 1 running on all hosts" } as const)
             : ({ action: "proceed" } as const),
       });
-      installGates(registry);
+      installHooks(registry);
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-freed-drain",
         status: "idle",
@@ -130,7 +130,7 @@ describe("the freed-capacity drain", () => {
     // would be pure churn.
     await withTestHarness(async (harness) => {
       const seen: string[] = [];
-      const registry: GateRegistry = { dispatch: [], "turn.failed": [] };
+      const registry: HookRegistry = { "message.dispatch": [] };
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-core-wait",
         status: "active",
@@ -142,14 +142,14 @@ describe("the freed-capacity drain", () => {
       const queued = listQueuedThreadMessages(harness.db, thread.id);
       expect(queued).toHaveLength(1);
 
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: (context) => {
           seen.push(context.thread.id);
           return { action: "proceed" } as const;
         },
       });
-      installGates(registry);
+      installHooks(registry);
       await runFreedCapacityQueueDrain(harness.deps);
 
       expect(seen).toEqual([]);
@@ -160,15 +160,15 @@ describe("the freed-capacity drain", () => {
   it("honours the re-queue pacing so a plugin that stays full is not re-asked in a loop", async () => {
     await withTestHarness(async (harness) => {
       let passes = 0;
-      const registry: GateRegistry = { dispatch: [], "turn.failed": [] };
-      registry.dispatch.push({
+      const registry: HookRegistry = { "message.dispatch": [] };
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () => {
           passes += 1;
           return { action: "wait", reason: "still full" } as const;
         },
       });
-      installGates(registry);
+      installHooks(registry);
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-freed-pacing",
         status: "idle",
@@ -181,7 +181,7 @@ describe("the freed-capacity drain", () => {
 
       // The first drain re-queues, which starts the thread's cooldown; the
       // second finds it and does nothing, so a burst of completions costs one
-      // gate pass per thread rather than one per completion.
+      // hook pass per thread rather than one per completion.
       await runFreedCapacityQueueDrain(harness.deps);
       expect(passes).toBe(2);
       await runFreedCapacityQueueDrain(harness.deps);

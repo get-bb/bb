@@ -6,13 +6,13 @@ import {
   listRunningThreads,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import type { PluginDispatchGateStage } from "@get-bb/plugin-sdk";
+import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
-  setDispatchGateProvider,
-  type DispatchGateRegistration,
-} from "../../src/services/plugins/dispatch-gate-registry.js";
+  setPluginHookProvider,
+  type PluginHookRegistration,
+} from "../../src/services/plugins/plugin-hook-registry.js";
 import {
   createQueuedMessageForThread,
   sendNextQueuedMessageIfPresent,
@@ -31,35 +31,35 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-const WORKSPACE_PATH = "/tmp/dispatch-gates-project";
+const WORKSPACE_PATH = "/tmp/dispatch-hooks-project";
 
 /**
- * The gate registry, per stage. Reading a mapped type through a generic key is
- * sound, which is what lets the fake provider satisfy `listGates<S>` with no
- * cast — the same shape the real registry uses on the plugin handle.
+ * The hook registry. Reading a mapped type through a generic key is sound,
+ * which is what lets the fake provider satisfy `listHooks<K>` with no cast —
+ * the same shape the real registry uses on the plugin handle.
  */
-type GateRegistry = {
-  [S in PluginDispatchGateStage]: DispatchGateRegistration<S>[];
+type HookRegistry = {
+  [K in PluginHookName]: PluginHookRegistration<K>[];
 };
 
-function emptyRegistry(): GateRegistry {
-  return { dispatch: [], "turn.failed": [] };
+function emptyRegistry(): HookRegistry {
+  return { "message.dispatch": [] };
 }
 
 /**
- * Installs fake gates through the same seam createApp registers the plugin
+ * Installs fake handlers through the same seam createApp registers the plugin
  * service through, so these tests exercise the real runner (order, lock, box,
  * validation, provenance) without loading plugins.
  */
-function installGates(
-  registry: GateRegistry,
+function installHooks(
+  registry: HookRegistry,
   options: { decisionTimeoutMs?: number } = {},
 ): void {
-  setDispatchGateProvider({
-    listGates: (stage) => registry[stage],
+  setPluginHookProvider({
+    listHooks: (hook) => registry[hook],
     // Mirrors the plugin service's failure isolation: a throw is reported, not
     // propagated, and the runner is what turns it into a failed dispatch.
-    invokeGate: async (_pluginId, _label, run) => {
+    invokeHook: async (_pluginId, _label, run) => {
       try {
         return { ok: true, value: await run() };
       } catch (error) {
@@ -74,10 +74,10 @@ function installGates(
 }
 
 afterEach(() => {
-  setDispatchGateProvider(undefined);
+  setPluginHookProvider(undefined);
 });
 
-function seedGateFixture(harness: TestAppHarness, hostId: string) {
+function seedDispatchFixture(harness: TestAppHarness, hostId: string) {
   const { host } = seedHostSession(harness.deps, { id: hostId });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
@@ -91,7 +91,7 @@ function seedGateFixture(harness: TestAppHarness, hostId: string) {
   return { environment, host, project };
 }
 
-function createGatedThread(
+function createHookedThread(
   harness: TestAppHarness,
   args: {
     hostId: string;
@@ -155,7 +155,7 @@ function seedRunnableThread(
   harness: TestAppHarness,
   args: { hostId: string; status: "idle" | "active" },
 ) {
-  const { environment, project } = seedGateFixture(harness, args.hostId);
+  const { environment, project } = seedDispatchFixture(harness, args.hostId);
   const thread = seedThread(harness.deps, {
     environmentId: environment.id,
     projectId: project.id,
@@ -189,13 +189,13 @@ async function expectApiError(
   throw new Error("expected the operation to fail");
 }
 
-describe("dispatch gate composition", () => {
-  it("runs every gate in install order and freezes the resolved tuple", async () => {
+describe("message.dispatch hook composition", () => {
+  it("runs every handler in install order and freezes the resolved tuple", async () => {
     await withTestHarness(async (harness) => {
       const seen: string[] = [];
       let secondSawModel: string | null = null;
       const registry = emptyRegistry();
-      registry.dispatch.push(
+      registry["message.dispatch"].push(
         {
           pluginId: "first",
           handler: () => {
@@ -214,17 +214,17 @@ describe("dispatch gate composition", () => {
           },
         },
       );
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-order");
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-hook-order");
 
-      const thread = await createGatedThread(harness, {
+      const thread = await createHookedThread(harness, {
         hostId: host.id,
         projectId: project.id,
         model: "requested-model",
       });
 
       expect(seen).toEqual(["first", "second"]);
-      // Every gate decides about the same resolved request, and that is the
+      // Every handler decides about the same resolved request, and that is the
       // tuple the queued row freezes.
       expect(secondSawModel).toBe("requested-model");
       expect(onlyQueuedRow(harness, thread.id).model).toBe("requested-model");
@@ -234,7 +234,7 @@ describe("dispatch gate composition", () => {
   it("names every waiter on the reason when a pass collects several", async () => {
     await withTestHarness(async (harness) => {
       const registry = emptyRegistry();
-      registry.dispatch.push(
+      registry["message.dispatch"].push(
         {
           pluginId: "limiter",
           handler: () => ({ action: "wait", reason: "at capacity" }) as const,
@@ -244,10 +244,10 @@ describe("dispatch gate composition", () => {
           handler: () => ({ action: "wait", reason: "after hours" }) as const,
         },
       );
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-multi");
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-hook-multi");
 
-      const thread = await createGatedThread(harness, {
+      const thread = await createHookedThread(harness, {
         hostId: host.id,
         projectId: project.id,
       });
@@ -262,9 +262,9 @@ describe("dispatch gate composition", () => {
 
   it("short-circuits the pass on reject with a 409 naming the plugin", async () => {
     await withTestHarness(async (harness) => {
-      let laterGateRan = false;
+      let laterHandlerRan = false;
       const registry = emptyRegistry();
-      registry.dispatch.push(
+      registry["message.dispatch"].push(
         {
           pluginId: "dlp",
           handler: () =>
@@ -273,40 +273,37 @@ describe("dispatch gate composition", () => {
         {
           pluginId: "never",
           handler: () => {
-            laterGateRan = true;
+            laterHandlerRan = true;
             return { action: "proceed" } as const;
           },
         },
       );
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-reject");
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-hook-reject");
 
       const error = await expectApiError(() =>
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
+        createHookedThread(harness, { hostId: host.id, projectId: project.id }),
       );
 
       expect(error.status).toBe(409);
       expect(error.body.code).toBe("dispatch_rejected");
       expect(error.body.message).toBe("Contains a secret");
-      expect(error.body.details).toEqual({
-        pluginId: "dlp",
-        stage: "dispatch",
-      });
-      expect(laterGateRan).toBe(false);
+      expect(error.body.details).toEqual({ pluginId: "dlp" });
+      expect(laterHandlerRan).toBe(false);
       // Nothing persisted: a rejected create leaves no thread and no row.
       expect(listQueuedThreadMessagesForApi(harness.db, {})).toEqual([]);
     });
   });
 
-  it("runs one pass at a time so a counting gate never sees itself interleaved", async () => {
+  it("runs one pass at a time so a counting handler never sees itself interleaved", async () => {
     await withTestHarness(async (harness) => {
       let inFlight = 0;
       let maxInFlight = 0;
       const registry = emptyRegistry();
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: async () => {
-          // A gate that tallies its own in-flight work is only correct if the
+          // A handler that tallies its own in-flight work is only correct if the
           // server-wide evaluation lock holds; without it both passes would
           // see zero running and both would proceed.
           inFlight += 1;
@@ -316,12 +313,12 @@ describe("dispatch gate composition", () => {
           return { action: "wait", reason: "counting" } as const;
         },
       });
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-lock");
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-hook-lock");
 
       await Promise.all([
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
+        createHookedThread(harness, { hostId: host.id, projectId: project.id }),
+        createHookedThread(harness, { hostId: host.id, projectId: project.id }),
       ]);
 
       expect(maxInFlight).toBe(1);
@@ -329,7 +326,7 @@ describe("dispatch gate composition", () => {
   });
 });
 
-describe("dispatch gate admission visibility", () => {
+describe("message.dispatch hook admission visibility", () => {
   it("commits a cleared first dispatch before the lock releases, so the next pass sees it", async () => {
     // The invariant `sdk.threads.listRunning()` rests on. The evaluation lock
     // already serializes the QUESTIONS; this pins that the ANSWERS land inside
@@ -339,11 +336,11 @@ describe("dispatch gate admission visibility", () => {
     await withTestHarness(async (harness) => {
       const seen: string[][] = [];
       const registry = emptyRegistry();
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: async () => {
           // Precisely what the concurrency limiter does: ask the server what
-          // is running, at the moment the gate runs.
+          // is running, at the moment the handler runs.
           const running = listRunningThreads(harness.db);
           seen.push(running.map((row) => row.id));
           return running.length >= 1
@@ -351,12 +348,12 @@ describe("dispatch gate admission visibility", () => {
             : ({ action: "proceed" } as const);
         },
       });
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-admission");
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(harness, "host-admission");
 
       const created = await Promise.all([
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
-        createGatedThread(harness, { hostId: host.id, projectId: project.id }),
+        createHookedThread(harness, { hostId: host.id, projectId: project.id }),
+        createHookedThread(harness, { hostId: host.id, projectId: project.id }),
       ]);
 
       expect(seen).toHaveLength(2);
@@ -382,20 +379,20 @@ describe("dispatch gate admission visibility", () => {
     // `pending -> starting` inside the lock; a follow-up on an already-live
     // thread commits `idle -> active` inside the send transaction, which needs
     // a prepared host command and therefore cannot run under the lock. So a
-    // gate deciding about an idle thread does not yet see it, and sees it on
+    // handler deciding about an idle thread does not yet see it, and sees it on
     // the next attempt. Pinned here so a future change that closes the gap
     // fails loudly and takes the doc comment with it.
     await withTestHarness(async (harness) => {
       const seen: string[][] = [];
       const registry = emptyRegistry();
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () => {
           seen.push(listRunningThreads(harness.db).map((row) => row.id));
           return { action: "proceed" } as const;
         },
       });
-      installGates(registry);
+      installHooks(registry);
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-warm-admission",
         status: "idle",
@@ -423,20 +420,15 @@ describe("dispatch gate admission visibility", () => {
   });
 });
 
-describe("dispatch gates and the no-gate path", () => {
-  it("leaves creation unchanged when the dispatch stage has no gates", async () => {
+describe("dispatch hooks and the no-hook path", () => {
+  it("leaves creation unchanged when no plugin answers the hook", async () => {
     await withTestHarness(async (harness) => {
-      // A provider is registered, but it declares no `dispatch` gate: the pass
-      // must not run, take the lock, or allocate a queued row.
-      const registry = emptyRegistry();
-      registry["turn.failed"].push({
-        pluginId: "failure-only",
-        handler: () => ({ action: "none" }) as const,
-      });
-      installGates(registry);
-      const { host, project } = seedGateFixture(harness, "host-gate-none");
+      // A provider is registered, but no plugin answers `message.dispatch`:
+      // the pass must not run, take the lock, or allocate a queued row.
+      installHooks(emptyRegistry());
+      const { host, project } = seedDispatchFixture(harness, "host-hook-none");
 
-      const thread = await createGatedThread(harness, {
+      const thread = await createHookedThread(harness, {
         hostId: host.id,
         projectId: project.id,
       });
@@ -449,23 +441,23 @@ describe("dispatch gates and the no-gate path", () => {
     });
   });
 
-  it("gates a steer into a live turn like any other dispatch", async () => {
+  it("hooks a steer into a live turn like any other dispatch", async () => {
     // Steers used to be exempt because they joined a decision already made.
-    // With one checkpoint they are gated uniformly, distinguished only by
-    // `attempt` — which is what lets a limiter or a DLP gate cover them.
+    // With one checkpoint they are hooked uniformly, distinguished only by
+    // `attempt` — which is what lets a limiter or a DLP handler cover them.
     await withTestHarness(async (harness) => {
       const attempts: string[] = [];
       const registry = emptyRegistry();
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: (context) => {
           attempts.push(context.attempt);
           return { action: "reject", message: "no steering right now" } as const;
         },
       });
-      installGates(registry);
+      installHooks(registry);
       const { thread } = seedRunnableThread(harness, {
-        hostId: "host-gate-steer",
+        hostId: "host-hook-steer",
         status: "active",
       });
 
@@ -483,17 +475,17 @@ describe("dispatch gates and the no-gate path", () => {
   });
 });
 
-describe("dispatch gates on the queue drain", () => {
+describe("message.dispatch hooks on the queue drain", () => {
   it("returns the claimed row to the queue instead of consuming it when the pass waits", async () => {
     await withTestHarness(async (harness) => {
       const registry = emptyRegistry();
-      registry.dispatch.push({
+      registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () => ({ action: "wait", reason: "at capacity" }) as const,
       });
-      installGates(registry);
+      installHooks(registry);
       const { thread } = seedRunnableThread(harness, {
-        hostId: "host-gate-drain",
+        hostId: "host-hook-drain",
         status: "idle",
       });
       const queued = await createQueuedMessageForThread(harness.deps, {

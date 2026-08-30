@@ -62,10 +62,10 @@ import type { ProviderInstallRank } from "../providers/provider-registry.js";
 import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { readPluginSettingsValuesSync } from "./plugin-settings.js";
 import type {
-  PluginDispatchGateStage,
+  PluginHookName,
   PluginSettingDescriptors,
 } from "@get-bb/plugin-sdk";
-import type { DispatchGateRegistration } from "./dispatch-gate-registry.js";
+import type { PluginHookRegistration } from "./plugin-hook-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -607,16 +607,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   /**
-   * The gates registered for one stage, in plugin install order (the `loaded`
+   * The handlers registered for one hook, in plugin install order (the `loaded`
    * map's insertion order, which is the order `listInstalledPlugins` returns).
-   * The runner reorders from settings on top of this.
    */
-  function listDispatchGates<S extends PluginDispatchGateStage>(
-    stage: S,
-  ): DispatchGateRegistration<S>[] {
-    const registrations: DispatchGateRegistration<S>[] = [];
+  function listPluginHooks<K extends PluginHookName>(
+    hook: K,
+  ): PluginHookRegistration<K>[] {
+    const registrations: PluginHookRegistration<K>[] = [];
     for (const [id, plugin] of loaded) {
-      const handler = plugin.handle.dispatchGates[stage];
+      const handler = plugin.handle.hooks[hook];
       if (handler !== null) registrations.push({ pluginId: id, handler });
     }
     return registrations;
@@ -694,13 +693,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (pending.size === 0) pendingInvocations.delete(id);
   }
 
+  /**
+   * Fire-and-forget dispatch: the lifecycle seam returns immediately; the
+   * payload is assembled and handlers run on the next macrotask, after the
+   * transition (and any surrounding transaction) has settled. Handlers are
+   * looked up live at dispatch time, so a plugin disposed in between
+   * receives nothing.
+   *
+   * A builder may return null for "on second look there is nothing to
+   * announce" — a `turn.failed` on a thread that never dispatched a turn, say.
+   * The builder runs only when a handler is listening, so that second look
+   * costs nothing on a stock install.
+   */
   function emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
-    buildPayload: () => PluginThreadEventPayloads[E],
+    buildPayload: () => PluginThreadEventPayloads[E] | null,
   ): void {
     if (!hasThreadEventHandlers(event)) return;
     setImmediate(() => {
-      let payload: PluginThreadEventPayloads[E];
+      let payload: PluginThreadEventPayloads[E] | null;
       try {
         payload = buildPayload();
       } catch (error) {
@@ -709,16 +720,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         );
         return;
       }
+      if (payload === null) return;
+      const delivered = payload;
       for (const [id, plugin] of loaded) {
         for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
-          void invokeWrapped(id, `${event} handler`, () => handler(payload));
+          void invokeWrapped(id, `${event} handler`, () => handler(delivered));
         }
       }
     });
   }
 
-  function buildQueueEventEmitter(
-    event: Extract<PluginThreadEventName, `queue.${string}`>,
+  function buildQueuedMessageEventEmitter(
+    event: Extract<PluginThreadEventName, `message.${string}`>,
   ): (entry: ThreadQueuedMessage) => void {
     return (entry) => {
       emitThreadEvent(event, () => ({ entry }));
@@ -1689,14 +1702,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
-    buildQueueEventEmitter,
+    buildQueuedMessageEventEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
-    listDispatchGates,
+    listPluginHooks,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

@@ -135,6 +135,8 @@ import type {
   ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
+  RetryTurnRequest,
+  RetryTurnResponse,
   SendMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
@@ -275,6 +277,7 @@ import {
   resolvePendingInteractionRequestSchema,
   resolveThreadMentionsRequestSchema,
   respondPluginInteractionRequestSchema,
+  retryTurnRequestSchema,
   sendMessageRequestSchema,
   editMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
@@ -1016,6 +1019,17 @@ export const publicApiRoutes = {
         editMessageRequestSchema,
       ),
       response: jsonResponse<EditMessageResponse>(),
+    }),
+    /**
+     * Retry a failed turn: re-submit it by reference, as an ordinary dispatch
+     * attempt. `turnRequestId` null means the thread's most recent turn, whose
+     * failure is what put the thread in `error`.
+     */
+    retry: defineRoute({
+      path: "/threads/:id/retry",
+      method: "post",
+      request: jsonRequest<PathId, RetryTurnRequest>(retryTurnRequestSchema),
+      response: jsonResponse<RetryTurnResponse>(),
     }),
     queuedMessages: defineRoute({
       path: "/threads/:id/queued-messages",

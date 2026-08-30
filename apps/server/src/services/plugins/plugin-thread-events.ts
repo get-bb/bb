@@ -36,13 +36,25 @@ export function emitPluginThreadDeleted(thread: Thread): void {
 }
 
 /** Called after a dispatch attempt is queued as a row (recordQueuedMessageWait). */
-export function emitPluginQueueWaiting(entry: ThreadQueuedMessage): void {
-  emitter?.emitQueueWaiting(entry);
+export function emitPluginMessageQueued(entry: ThreadQueuedMessage): void {
+  emitter?.emitMessageQueued(entry);
 }
 
 /** Called after a queued row's waits cleared and it dispatched. */
-export function emitPluginQueueDispatched(entry: ThreadQueuedMessage): void {
-  emitter?.emitQueueDispatched(entry);
+export function emitPluginMessageDispatched(entry: ThreadQueuedMessage): void {
+  emitter?.emitMessageDispatched(entry);
+}
+
+/**
+ * Called after an applied `run.failed` lifecycle event, from the same seam
+ * that announces the thread's move into `error`.
+ *
+ * `thread.failed` says the thread stopped; this says which turn stopped it and
+ * why, which is what a retry policy decides on. Both are announcements — the
+ * failure stands either way — so neither can block the seam.
+ */
+export function emitPluginTurnFailed(threadId: string): void {
+  emitter?.emitTurnFailed(threadId);
 }
 
 /**

@@ -28,11 +28,7 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
-import { setDispatchGateProvider } from "./services/plugins/dispatch-gate-registry.js";
-import {
-  createTurnFailedGateNotifier,
-  setTurnFailedGateNotifier,
-} from "./services/threads/turn-failed.js";
+import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   clearQueueWaitsForUnregisteredPlugin,
   requestFreedCapacityQueueDrain,
@@ -599,13 +595,9 @@ export function createApp(
   setFreedThreadCapacityListener(() => {
     requestFreedCapacityQueueDrain(deps);
   });
-  // Bridge the dispatch pipeline to this service's gates. Until this runs
-  // there are no gates, which is exactly the zero-overhead path.
-  setDispatchGateProvider(pluginService.dispatchGates);
-  // Bridge the `run.failed` lifecycle seam to the `turn.failed` gate stage.
-  // Registered after the gate provider so the first failure it sees can already
-  // find gates.
-  setTurnFailedGateNotifier(createTurnFailedGateNotifier(deps));
+  // Bridge the dispatch pipeline to this service's hooks. Until this runs
+  // there are no hooks, which is exactly the zero-overhead path.
+  setPluginHookProvider(pluginService.hooks);
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();

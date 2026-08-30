@@ -378,6 +378,7 @@ type ExpectedThreadsKey =
   | "queuedMessages"
   | "reorderPinned"
   | "resolveMentions"
+  | "retry"
   | "search"
   | "send"
   | "spawn"

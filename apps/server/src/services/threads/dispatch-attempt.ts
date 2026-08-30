@@ -29,11 +29,11 @@ import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   dispatchExecutionSources,
   dispatchWaitReasonForPass,
-  hasDispatchGates,
+  hasMessageDispatchHooks,
   noteDispatchRequeued,
-  runDispatchGatePass,
+  runMessageDispatchHookPass,
   type DispatchAttemptKind,
-} from "./dispatch-gates.js";
+} from "./dispatch-hooks.js";
 import {
   recordQueuedMessageWait,
   settleQueueRowDispatched,
@@ -144,7 +144,7 @@ export type DispatchAttemptOutcome =
  * Whether this attempt starts a turn or joins one that is already running.
  *
  * Read off the thread's live status and the message's own delivery mode, which
- * is exactly what makes "steers are gated uniformly" implementable: the same
+ * is exactly what makes "steers are hooked uniformly" implementable: the same
  * message is a `join-turn` attempt against a running thread and a `start-turn`
  * attempt against an idle one, and it is the drain firing at the right moment
  * — not a separate code path — that decides which.
@@ -171,7 +171,7 @@ export function resolveDispatchAttemptKind(
  *    unanswered interaction. Each queues the message with its typed reason and
  *    returns; none of them consults a plugin, because none of them is a
  *    policy — they are the invariants a dispatch cannot violate.
- * 2. **The single plugin pass.** One stage, one chain, `proceed` / `wait` /
+ * 2. **The single plugin pass.** One hook, one chain, `proceed` / `wait` /
  *    `reject`.
  * 3. **Dispatch.** A cleared first attempt moves a `pending` thread to
  *    `starting` and rides the cold-start command; every other cleared attempt
@@ -282,8 +282,8 @@ export async function attemptDispatch(
    */
   const admitted: { value: PendingThreadAdmission | null } = { value: null };
 
-  if (!sendNow && hasDispatchGates("dispatch")) {
-    const outcome = await runDispatchGatePass(deps, {
+  if (!sendNow && hasMessageDispatchHooks()) {
+    const outcome = await runMessageDispatchHookPass(deps, {
       thread,
       threadResponse: toThreadResponseFromThread(deps, { thread }),
       project: requirePublicProject(deps.db, thread.projectId),
@@ -308,7 +308,7 @@ export async function attemptDispatch(
         claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
       // A first dispatch is the admission a limiter is deciding about, so its
       // `pending → starting` flip is committed here, inside the lock, and the
-      // next gate in line sees it. A follow-up has no transition this side of
+      // next handler in line sees it. A follow-up has no transition this side of
       // the send transaction, so it has nothing to commit.
       ...(firstDispatch
         ? {
@@ -333,7 +333,7 @@ export async function attemptDispatch(
           pluginId: outcome.waiter.pluginId,
           reason: dispatchWaitReasonForPass(outcome),
         },
-        outcome.waiter.retryAt,
+        outcome.waiter.sendAt,
       );
     }
   }
@@ -341,8 +341,8 @@ export async function attemptDispatch(
   // --- 3. dispatch --------------------------------------------------------
 
   if (firstDispatch) {
-    // Already admitted under the lock when a gate pass ran; admitted here when
-    // no gate is installed or send-now skipped the pass entirely.
+    // Already admitted under the lock when a hook pass ran; admitted here when
+    // no handler is installed or send-now skipped the pass entirely.
     const admission =
       admitted.value ??
       (await admitPendingThread(deps, {
@@ -421,7 +421,7 @@ interface PendingThreadAdmission {
  * The committing half of a cleared FIRST attempt: the thread leaves `pending`
  * for `starting`, and the queued row that carried the message is consumed.
  *
- * This runs INSIDE the gate evaluation lock whenever a gate pass ran, which is
+ * This runs INSIDE the hook evaluation lock whenever a hook pass ran, which is
  * the whole flip-before-unlock invariant — the next attempt in the queue reads
  * a database that already contains this admission, so a limiter can answer
  * from `listRunning()` instead of tracking its own in-flight `proceed`s.

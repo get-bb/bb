@@ -8,31 +8,30 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 export interface QueuedRetry {
   id: string;
   threadId: string;
-  /** When core's due sweep will re-attempt it; null if it waits on us alone. */
+  /** When core's due sweep will re-attempt it; null when it is already due. */
   sendAt: number | null;
 }
 
-/** The wait holder core stamps on every row this plugin queues. */
-export function retryWaitHolder(bb: BbPluginApi): `plugin:${string}` {
-  return `plugin:${bb.pluginId}`;
-}
-
 /**
- * Every retry this plugin currently has queued, newest state from the server.
+ * Every retry currently queued, newest state from the server.
  *
  * This is the whole of the plugin's "what am I waiting on" state. It used to be
  * a Map rebuilt by replaying each thread's event log; queued rows are the
- * durable record now, so the question is one indexed query and a restart cannot
- * lose the answer.
+ * durable record now, so the question is one query and a restart cannot lose
+ * the answer.
+ *
+ * Retries are identified by their payload rather than by a wait holder: a retry
+ * this plugin asked for waits on the clock like any other scheduled dispatch,
+ * so there is no plugin-owned wait to filter on — and a retry is a retry
+ * whoever asked for it, which is exactly what these surfaces act on.
  */
 export async function listQueuedRetries(
   bb: BbPluginApi,
   threadId?: string,
 ): Promise<QueuedRetry[]> {
-  const rows = await bb.sdk.threads.queue.list({
-    waitHolder: retryWaitHolder(bb),
-    ...(threadId === undefined ? {} : { threadId }),
-  });
+  const rows = await bb.sdk.threads.queue.list(
+    threadId === undefined ? {} : { threadId },
+  );
   return rows
     .filter((row) => row.payload.kind === "retry")
     .map((row) => ({
