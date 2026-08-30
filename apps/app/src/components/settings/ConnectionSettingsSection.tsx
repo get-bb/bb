@@ -11,12 +11,12 @@ import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
 export const MANAGE_FROM_THIS_MAC_TEXT = "Manage servers from This Mac.";
 
-const SECTION_DESCRIPTION = "Pick which bb server this app runs from.";
+const SECTION_DESCRIPTION =
+  "Point this app at your own Mac or a remote bb server.";
 
 const ADD_SERVER_ERROR_TEXT = "Enter a full http:// or https:// address.";
 
-const CARD_CLASS =
-  "flex items-center gap-3 rounded-md border border-border px-3 py-2.5";
+const ROW_CLASS = "flex items-center gap-3 py-2.5 first:pt-0";
 
 interface ConnectionSettingsSectionProps {
   remoteAccessPluginId: string | null;
@@ -52,6 +52,17 @@ export function ConnectionSettingsSection({
     });
   };
 
+  const remoteAccessLink =
+    remoteAccessPluginId !== null ? (
+      <Link
+        to={getPluginConfigurationRoutePath({ pluginId: remoteAccessPluginId })}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        Set up remote access
+        <Icon name="ArrowUpRight" className="size-3.5" />
+      </Link>
+    ) : undefined;
+
   if (target === null) {
     return (
       <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
@@ -60,8 +71,8 @@ export function ConnectionSettingsSection({
     );
   }
 
-  const renderServerCard = (server: BbDesktopServerOption) => (
-    <li key={server.id} className={CARD_CLASS}>
+  const renderServerRow = (server: BbDesktopServerOption) => (
+    <div key={server.id} className={ROW_CLASS}>
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-sm text-foreground">
           {server.name}
@@ -110,15 +121,18 @@ export function ConnectionSettingsSection({
           </Button>
         ) : null}
       </div>
-    </li>
+    </div>
   );
 
   return (
-    <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
-      <ul className="space-y-2">{target.servers.map(renderServerCard)}</ul>
-
-      <div className="space-y-1.5 pt-1">
-        <div className="flex items-start gap-2">
+    <SettingsSection
+      title="Connection"
+      description={SECTION_DESCRIPTION}
+      action={remoteAccessLink}
+    >
+      <div className="divide-y divide-border">
+        {target.servers.map(renderServerRow)}
+        <div className="flex items-center gap-2 pt-3">
           <Input
             value={urlDraft}
             onChange={(event) => setUrlDraft(event.target.value)}
@@ -128,7 +142,7 @@ export function ConnectionSettingsSection({
                 submitCustomServer();
               }
             }}
-            placeholder="https://my-mac.getbb.app"
+            placeholder="Add a server by URL…"
             spellCheck={false}
             aria-label="Server address"
             className="h-8 font-mono text-xs"
@@ -143,26 +157,14 @@ export function ConnectionSettingsSection({
             Add
           </Button>
         </div>
-        {addError !== null ? (
-          <p className="text-2xs text-destructive-text">{addError}</p>
-        ) : null}
-        {managementDisabled ? (
-          <p className="text-2xs text-subtle-foreground">
-            {MANAGE_FROM_THIS_MAC_TEXT}
-          </p>
-        ) : null}
       </div>
-
-      {remoteAccessPluginId !== null ? (
-        <Link
-          to={getPluginConfigurationRoutePath({
-            pluginId: remoteAccessPluginId,
-          })}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          Set up remote access
-          <Icon name="ArrowUpRight" className="size-3.5" />
-        </Link>
+      {addError !== null ? (
+        <p className="pt-1.5 text-2xs text-destructive-text">{addError}</p>
+      ) : null}
+      {managementDisabled ? (
+        <p className="pt-1.5 text-2xs text-subtle-foreground">
+          {MANAGE_FROM_THIS_MAC_TEXT}
+        </p>
       ) : null}
     </SettingsSection>
   );

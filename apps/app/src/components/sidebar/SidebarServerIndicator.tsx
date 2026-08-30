@@ -27,14 +27,8 @@ export const SIDEBAR_SERVER_INDICATOR_TEST_ID = "sidebar-server-indicator";
 
 export function SidebarServerIndicator() {
   const remoteUiEnabled = useSystemConfig().data?.experiments.remoteUi ?? false;
-  const {
-    available,
-    busy,
-    selectedServer,
-    showConnectHint,
-    target,
-    selectServer,
-  } = useServerTarget();
+  const { available, busy, selectedServer, target, selectServer } =
+    useServerTarget();
   const connectionState = useServerConnectionState();
   const [open, setOpen] = useState(false);
 
@@ -59,13 +53,15 @@ export function SidebarServerIndicator() {
           )}
         >
           <Icon name={isLocal ? "Monitor" : "Cloud"} />
-          <span
-            aria-hidden="true"
-            className={cn(
-              "absolute right-1 top-1 size-1.5 rounded-full ring-2 ring-sidebar",
-              STATUS_DOT_CLASS[connectionState],
-            )}
-          />
+          {connectionState === "connected" ? null : (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute right-1 top-1 size-1.5 rounded-full ring-2 ring-sidebar",
+                STATUS_DOT_CLASS[connectionState],
+              )}
+            />
+          )}
           <span className="sr-only">{label}</span>
         </PopoverTrigger>
         <PopoverContent
@@ -85,7 +81,7 @@ export function SidebarServerIndicator() {
               }}
               className={cn(
                 "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs",
-                "hover:bg-accent hover:text-accent-foreground disabled:opacity-50",
+                "hover:bg-muted hover:text-foreground disabled:opacity-50",
               )}
             >
               <Icon
@@ -98,18 +94,13 @@ export function SidebarServerIndicator() {
               ) : null}
             </button>
           ))}
-          {showConnectHint ? (
-            <p className="px-2 py-1.5 text-2xs leading-snug text-subtle-foreground">
-              Sign in to bb Connect to add your machines automatically.
-            </p>
-          ) : null}
           <div className="my-1 h-px bg-border" />
           <Link
             to={getSettingsRoutePath("connection")}
             onClick={() => setOpen(false)}
             className={cn(
               "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground",
-              "hover:bg-accent hover:text-accent-foreground",
+              "hover:bg-muted hover:text-foreground",
             )}
           >
             Manage servers…
