@@ -39,7 +39,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="read · unpinned"
-        hint="Mark unread · Pin — Rename — Archive · Delete"
+        hint="Mark unread · Pin — Rename thread — Archive · Delete"
       >
         <Stage>
           <ThreadActionsMenu thread={readThread} />
