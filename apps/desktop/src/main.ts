@@ -74,7 +74,10 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
-import { isConnectServerUrl } from "./connect-target-origin.js";
+import {
+  isConnectServerUrl,
+  isTrustedSwitchOrigin,
+} from "./connect-target-origin.js";
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
@@ -1218,6 +1221,18 @@ function ensureDesktopMachineEnrolled(): void {
   });
 }
 
+function isTrustedServerTargetSender(event: IpcMainInvokeEvent): boolean {
+  const frameUrl = event.senderFrame?.url;
+  if (frameUrl === undefined || frameUrl === "") {
+    return false;
+  }
+  const localServerUrls = [builtinServerUrl];
+  if (currentRuntime !== null) {
+    localServerUrls.push(currentRuntime.serverUrl);
+  }
+  return isTrustedSwitchOrigin(frameUrl, localServerUrls);
+}
+
 async function applyServerTarget(): Promise<void> {
   if (serverTargetStore === null) {
     return;
@@ -1677,7 +1692,10 @@ function registerDesktopUpdateIpc(): void {
   });
   ipcMain.handle(
     BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
-    (_event, payload: unknown) => {
+    (event, payload: unknown) => {
+      if (!isTrustedServerTargetSender(event)) {
+        return false;
+      }
       if (typeof payload !== "string") {
         return false;
       }
@@ -1694,7 +1712,10 @@ function registerDesktopUpdateIpc(): void {
   );
   ipcMain.handle(
     BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
-    async (_event, payload: unknown) => {
+    async (event, payload: unknown) => {
+      if (!isTrustedServerTargetSender(event)) {
+        return false;
+      }
       if (serverTargetStore === null) {
         return false;
       }

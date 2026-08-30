@@ -16,3 +16,27 @@ export function isConnectServerUrl(serverUrl: string): boolean {
     hostname.endsWith(`.${CONNECT_APEX_HOSTNAME}`)
   );
 }
+
+export function isTrustedSwitchOrigin(
+  frameUrl: string,
+  localServerUrls: readonly string[],
+): boolean {
+  let frameOrigin: string;
+  try {
+    frameOrigin = new URL(frameUrl).origin;
+  } catch {
+    return false;
+  }
+  for (const localServerUrl of localServerUrls) {
+    let localOrigin: string;
+    try {
+      localOrigin = new URL(localServerUrl).origin;
+    } catch {
+      continue;
+    }
+    if (localOrigin === frameOrigin) {
+      return true;
+    }
+  }
+  return isConnectServerUrl(frameUrl);
+}
