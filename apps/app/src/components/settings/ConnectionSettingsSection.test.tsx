@@ -21,6 +21,7 @@ interface DesktopStub {
   addCustomServer: ReturnType<typeof vi.fn>;
   removeCustomServer: ReturnType<typeof vi.fn>;
   setConnectTrusted: ReturnType<typeof vi.fn>;
+  setServerTarget: ReturnType<typeof vi.fn>;
 }
 
 const BUILTIN: BbDesktopServerOption = {
@@ -46,6 +47,7 @@ function installDesktopApi(
     addCustomServer: vi.fn(() => Promise.resolve(true)),
     removeCustomServer: vi.fn(() => Promise.resolve(true)),
     setConnectTrusted: vi.fn(() => Promise.resolve(true)),
+    setServerTarget: vi.fn(() => Promise.resolve(true)),
   };
   Object.defineProperty(window, "bbDesktop", {
     configurable: true,
@@ -58,7 +60,7 @@ function installDesktopApi(
           servers: [BUILTIN, CUSTOM],
         } satisfies BbDesktopServerTarget),
       experimental_onServerTargetChange: () => () => {},
-      experimental_setServerTarget: () => Promise.resolve(true),
+      experimental_setServerTarget: stub.setServerTarget,
       experimental_addCustomServer: stub.addCustomServer,
       experimental_removeCustomServer: stub.removeCustomServer,
       experimental_setConnectTrusted: stub.setConnectTrusted,
@@ -77,7 +79,7 @@ afterEach(() => {
 });
 
 describe("ConnectionSettingsSection", () => {
-  it("manages the allowlist from This Mac", async () => {
+  it("adds a custom server and removes an existing one", async () => {
     const stub = installDesktopApi({
       canManageServers: true,
       connectTrusted: true,
@@ -105,18 +107,44 @@ describe("ConnectionSettingsSection", () => {
     });
     fireEvent.click(remove);
     expect(stub.removeCustomServer).toHaveBeenCalledWith("id-1");
+  });
 
-    const trustToggle = screen.getByRole("switch", {
-      name: "Trust bb Connect",
+  it("shows bb Connect as a removable default entry", async () => {
+    const stub = installDesktopApi({
+      canManageServers: true,
+      connectTrusted: true,
     });
+    render(<ConnectionSettingsSection />);
+
+    expect(await screen.findByText("bb Connect")).not.toBeNull();
+    expect(screen.getByText("Default")).not.toBeNull();
+
+    const remove = screen.getByRole("button", { name: "Remove bb Connect" });
     await waitFor(() => {
-      expect(isDisabled(trustToggle)).toBe(false);
+      expect(isDisabled(remove)).toBe(false);
     });
-    fireEvent.click(trustToggle);
+    fireEvent.click(remove);
     expect(stub.setConnectTrusted).toHaveBeenCalledWith(false);
   });
 
-  it("disables management while viewing a remote server", async () => {
+  it("offers to add bb Connect back when it is not trusted", async () => {
+    const stub = installDesktopApi({
+      canManageServers: true,
+      connectTrusted: false,
+    });
+    render(<ConnectionSettingsSection />);
+
+    const add = await screen.findByRole("button", { name: "Add bb Connect" });
+    expect(screen.queryByText("Default")).toBeNull();
+
+    await waitFor(() => {
+      expect(isDisabled(add)).toBe(false);
+    });
+    fireEvent.click(add);
+    expect(stub.setConnectTrusted).toHaveBeenCalledWith(true);
+  });
+
+  it("disables management but not switching while viewing a remote server", async () => {
     const stub = installDesktopApi({
       canManageServers: false,
       connectTrusted: true,
@@ -127,16 +155,22 @@ describe("ConnectionSettingsSection", () => {
     expect(isDisabled(screen.getByLabelText("Server address"))).toBe(true);
     expect(isDisabled(screen.getByLabelText("Server name"))).toBe(true);
     expect(isDisabled(screen.getByRole("button", { name: "Add" }))).toBe(true);
-    const remove = screen.getByRole("button", { name: "Remove Office" });
-    const trustToggle = screen.getByRole("switch", {
-      name: "Trust bb Connect",
-    });
-    expect(isDisabled(remove)).toBe(true);
-    expect(isDisabled(trustToggle)).toBe(true);
 
-    fireEvent.click(remove);
-    fireEvent.click(trustToggle);
+    const removeCustom = screen.getByRole("button", { name: "Remove Office" });
+    const removeConnect = screen.getByRole("button", {
+      name: "Remove bb Connect",
+    });
+    expect(isDisabled(removeCustom)).toBe(true);
+    expect(isDisabled(removeConnect)).toBe(true);
+
+    fireEvent.click(removeCustom);
+    fireEvent.click(removeConnect);
     expect(stub.removeCustomServer).not.toHaveBeenCalled();
     expect(stub.setConnectTrusted).not.toHaveBeenCalled();
+
+    const use = screen.getByRole("button", { name: "Use Office" });
+    expect(isDisabled(use)).toBe(false);
+    fireEvent.click(use);
+    expect(stub.setServerTarget).toHaveBeenCalledWith("id-1");
   });
 });

@@ -1,12 +1,29 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopServerTarget,
   BbDesktopServerOption,
 } from "@bb/desktop-contract";
 import { SidebarServerIndicator } from "./SidebarServerIndicator";
+
+function renderIndicator() {
+  return render(
+    <MemoryRouter>
+      <ul>
+        <SidebarServerIndicator />
+      </ul>
+    </MemoryRouter>,
+  );
+}
 
 const testState = vi.hoisted(() => ({
   remoteUi: true,
@@ -76,7 +93,7 @@ describe("SidebarServerIndicator", () => {
       servers: [builtin(true), connectServer(false)],
     });
 
-    render(<SidebarServerIndicator />);
+    renderIndicator();
 
     const pill = await screen.findByTestId("sidebar-server-indicator");
     expect(pill.textContent).toContain("This Mac");
@@ -93,7 +110,7 @@ describe("SidebarServerIndicator", () => {
       servers: [builtin(false), connectServer(true)],
     });
 
-    render(<SidebarServerIndicator />);
+    renderIndicator();
 
     const pill = await screen.findByTestId("sidebar-server-indicator");
     expect(pill.textContent).toContain("studio");
@@ -109,12 +126,28 @@ describe("SidebarServerIndicator", () => {
       servers: [builtin(true)],
     });
 
-    render(<SidebarServerIndicator />);
+    renderIndicator();
 
     const pill = await screen.findByTestId("sidebar-server-indicator");
     expect(pill.getAttribute("aria-label")).toBe(
       "Server: This Mac (Unreachable)",
     );
+  });
+
+  it("links to the connection settings from the popover", async () => {
+    installDesktopApi({
+      canManageServers: true,
+      connectServersSkipReason: null,
+      connectTrusted: true,
+      servers: [builtin(true), connectServer(false)],
+    });
+
+    renderIndicator();
+
+    fireEvent.click(await screen.findByTestId("sidebar-server-indicator"));
+
+    const manage = await screen.findByRole("link", { name: "Manage servers…" });
+    expect(manage.getAttribute("href")).toBe("/settings/connection");
   });
 
   it("renders nothing when the remoteUi experiment is off", async () => {
@@ -126,7 +159,7 @@ describe("SidebarServerIndicator", () => {
       servers: [builtin(true)],
     });
 
-    render(<SidebarServerIndicator />);
+    renderIndicator();
 
     await waitFor(() => {
       expect(screen.queryByTestId("sidebar-server-indicator")).toBeNull();
@@ -134,7 +167,7 @@ describe("SidebarServerIndicator", () => {
   });
 
   it("renders nothing outside the desktop app", async () => {
-    render(<SidebarServerIndicator />);
+    renderIndicator();
 
     await waitFor(() => {
       expect(screen.queryByTestId("sidebar-server-indicator")).toBeNull();

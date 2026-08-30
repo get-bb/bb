@@ -255,8 +255,8 @@ export function AppSidebar({
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {}
-        <SidebarServerIndicator />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
+          <SidebarServerIndicator />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               asChild

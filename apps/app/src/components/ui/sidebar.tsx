@@ -2151,6 +2151,7 @@ SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton";
 
 export {
   SIDEBAR_CONTENT_SELECTOR,
+  SIDEBAR_MENU_BUTTON_CLASS,
   Sidebar,
   SidebarContent,
   SidebarFooter,
