@@ -513,8 +513,12 @@ function PluginNavSidebarItem({
   return (
     <div ref={rowRef} style={rowStyle}>
       {parentRow}
-      {isExpanded
-        ? subItems.map((subItem) => (
+      {isExpanded ? (
+        <div
+          data-plugin-nav-sidebar-sub-items=""
+          className="ml-3 border-l border-sidebar-border/70 pl-3"
+        >
+          {subItems.map((subItem) => (
             <PluginNavSidebarSubItem
               key={subItem.id}
               chrome={chrome}
@@ -524,8 +528,9 @@ function PluginNavSidebarItem({
               onNavigate={onNavigate}
               splitEnabled={splitEnabled}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -594,9 +599,11 @@ function PluginNavSidebarSubItem({
         variant="ghost"
         className={cn(
           PROJECT_LIST_ACTION_BUTTON_CLASS,
-          "w-full pl-7 pr-2",
+          "w-full pl-2 pr-2",
           accessory && "pr-18",
-          isActive && "bg-sidebar-accent text-sidebar-foreground",
+          isActive
+            ? "bg-sidebar-accent text-sidebar-foreground"
+            : "text-subtle-foreground hover:text-sidebar-foreground",
         )}
         aria-current={isActive ? "page" : undefined}
         onPointerDown={onPointerDown}

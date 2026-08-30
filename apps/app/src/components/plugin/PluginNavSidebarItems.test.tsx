@@ -213,6 +213,18 @@ describe("PluginNavSidebarItems", () => {
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("button", { name: "Issues" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reviews" })).toBeTruthy();
+    const subItemGroup = view.container.querySelector(
+      "[data-plugin-nav-sidebar-sub-items]",
+    );
+    expect(subItemGroup).not.toBeNull();
+    for (const className of ["ml-3", "border-l", "pl-3"]) {
+      expect(subItemGroup?.classList.contains(className), className).toBe(true);
+    }
+    expect(
+      screen
+        .getByRole("button", { name: "Reviews" })
+        .classList.contains("text-subtle-foreground"),
+    ).toBe(true);
     expect(
       screen.getByRole("button", { name: "Issues" }).querySelector(
         '[data-icon="Circle"]',
