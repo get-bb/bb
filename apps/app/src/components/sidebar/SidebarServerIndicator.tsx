@@ -38,7 +38,7 @@ export function SidebarServerIndicator() {
   const connectionState = useServerConnectionState();
   const [open, setOpen] = useState(false);
 
-  if (!remoteUiEnabled || !available || target === null) {
+  if (!remoteUiEnabled || !available || !canManageServers || target === null) {
     return null;
   }
 
@@ -80,7 +80,7 @@ export function SidebarServerIndicator() {
             <button
               key={server.id}
               type="button"
-              disabled={busy || !canManageServers}
+              disabled={busy}
               onClick={() => {
                 setOpen(false);
                 selectServer(server.id);

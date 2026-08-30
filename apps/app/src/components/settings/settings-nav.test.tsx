@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -105,9 +105,16 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("shows Connection when the desktop exposes the server switcher", () => {
+  it("shows Connection when the desktop exposes the server switcher", async () => {
     vi.stubGlobal("bbDesktop", {
-      experimental_getServerTarget: () => Promise.resolve(null),
+      experimental_getServerTarget: () =>
+        Promise.resolve({
+          canManageServers: true,
+          connectServersSkipReason: null,
+          connectTrusted: true,
+          servers: [],
+        }),
+      experimental_onServerTargetChange: () => () => {},
     });
 
     const { result } = renderHook(() => useSettingsNavState(), {
@@ -115,7 +122,32 @@ describe("useSettingsNavState", () => {
     });
 
     expect(result.current.activeSection).toBe("connection");
-    expect(result.current.sections.map((section) => section.id)).toContain(
+    await waitFor(() => {
+      expect(result.current.sections.map((section) => section.id)).toContain(
+        "connection",
+      );
+    });
+  });
+
+  it("hides Connection in a window viewing a remote server", async () => {
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () =>
+        Promise.resolve({
+          canManageServers: false,
+          connectServersSkipReason: null,
+          connectTrusted: true,
+          servers: [],
+        }),
+      experimental_onServerTargetChange: () => () => {},
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    await act(async () => {});
+    await act(async () => {});
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
       "connection",
     );
   });

@@ -4,6 +4,7 @@ import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useServerTarget } from "@/hooks/useServerTarget";
 import { isDesktopServerTargetAvailable } from "@/lib/bb-desktop";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
@@ -53,8 +54,8 @@ export function useSettingsNavState(): SettingsNavState {
   const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
-  const remoteUiEnabled =
-    useSystemConfig().data?.experiments.remoteUi ?? false;
+  const remoteUiEnabled = useSystemConfig().data?.experiments.remoteUi ?? false;
+  const { canManageServers } = useServerTarget();
 
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
@@ -86,7 +87,9 @@ export function useSettingsNavState(): SettingsNavState {
       );
     }
     if (section.id === "connection") {
-      return remoteUiEnabled && isDesktopServerTargetAvailable();
+      return (
+        remoteUiEnabled && isDesktopServerTargetAvailable() && canManageServers
+      );
     }
     return true;
   });

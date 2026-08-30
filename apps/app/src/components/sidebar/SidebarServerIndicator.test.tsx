@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -148,6 +149,21 @@ describe("SidebarServerIndicator", () => {
 
     const manage = await screen.findByRole("link", { name: "Manage servers…" });
     expect(manage.getAttribute("href")).toBe("/settings/connection");
+  });
+
+  it("renders nothing in a window viewing a remote server", async () => {
+    installDesktopApi({
+      canManageServers: false,
+      connectServersSkipReason: null,
+      connectTrusted: true,
+      servers: [builtin(false), connectServer(true)],
+    });
+
+    renderIndicator();
+
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.queryByTestId("sidebar-server-indicator")).toBeNull();
   });
 
   it("renders nothing when the remoteUi experiment is off", async () => {
