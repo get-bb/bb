@@ -130,7 +130,7 @@ describe("ConnectionSettingsSection", () => {
     );
   });
 
-  it("disables management but not switching while viewing a remote server", async () => {
+  it("disables switching and management while viewing a remote server", async () => {
     const stub = installDesktopApi({ canManageServers: false });
     renderSection();
 
@@ -143,9 +143,9 @@ describe("ConnectionSettingsSection", () => {
     fireEvent.click(removeCustom);
     expect(stub.removeCustomServer).not.toHaveBeenCalled();
 
-    const use = screen.getByRole("button", { name: "Use Office" });
-    expect(isDisabled(use)).toBe(false);
-    fireEvent.click(use);
-    expect(stub.setServerTarget).toHaveBeenCalledWith("id-1");
+    const open = screen.getByRole("button", { name: "Open Office" });
+    expect(isDisabled(open)).toBe(true);
+    fireEvent.click(open);
+    expect(stub.setServerTarget).not.toHaveBeenCalled();
   });
 });

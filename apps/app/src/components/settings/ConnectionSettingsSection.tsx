@@ -12,7 +12,7 @@ import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 export const MANAGE_FROM_THIS_MAC_TEXT = "Manage servers from This Mac.";
 
 const SECTION_DESCRIPTION =
-  "Point this app at your own Mac or a remote bb server.";
+  "Work on your own Mac, or open a remote bb server in its own window.";
 
 const ADD_SERVER_ERROR_TEXT = "Enter a full http:// or https:// address.";
 
@@ -92,18 +92,18 @@ export function ConnectionSettingsSection({
         {server.selected ? (
           <span className="flex items-center gap-1 text-2xs text-subtle-foreground">
             <Icon name="Check" className="size-3.5" />
-            In use
+            This window
           </span>
         ) : (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={busy}
-            aria-label={`Use ${server.name}`}
+            disabled={managementDisabled}
+            aria-label={`Open ${server.name}`}
             onClick={() => selectServer(server.id)}
           >
-            Use
+            Open
           </Button>
         )}
         {server.kind === "custom" ? (
@@ -142,7 +142,7 @@ export function ConnectionSettingsSection({
                 submitCustomServer();
               }
             }}
-            placeholder="Add a server by URL…"
+            placeholder="https://my-machine.getbb.app"
             spellCheck={false}
             aria-label="Server address"
             className="h-8 font-mono text-xs"

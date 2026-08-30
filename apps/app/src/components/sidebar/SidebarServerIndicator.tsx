@@ -27,8 +27,14 @@ export const SIDEBAR_SERVER_INDICATOR_TEST_ID = "sidebar-server-indicator";
 
 export function SidebarServerIndicator() {
   const remoteUiEnabled = useSystemConfig().data?.experiments.remoteUi ?? false;
-  const { available, busy, selectedServer, target, selectServer } =
-    useServerTarget();
+  const {
+    available,
+    busy,
+    canManageServers,
+    selectedServer,
+    target,
+    selectServer,
+  } = useServerTarget();
   const connectionState = useServerConnectionState();
   const [open, setOpen] = useState(false);
 
@@ -74,7 +80,7 @@ export function SidebarServerIndicator() {
             <button
               key={server.id}
               type="button"
-              disabled={busy}
+              disabled={busy || !canManageServers}
               onClick={() => {
                 setOpen(false);
                 selectServer(server.id);

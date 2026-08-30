@@ -60,7 +60,7 @@ describe("loadRemoteServerPage", () => {
     expect(view?.title).toBe("Could not reach this bb server");
     expect(view?.details).toContain("http://bb-host.tailnet.ts.net:38886");
     expect(view?.details).toContain("Window ▸ Server");
-    expect(view?.details).toContain("This Mac");
+    expect(view?.details).toContain("close this window");
     expect(view?.details).not.toContain("rejectAndCleanup");
     expect(view?.details).not.toContain("node:electron");
 
