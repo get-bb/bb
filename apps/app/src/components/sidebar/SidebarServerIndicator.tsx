@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@bb/shared-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { WebSocketConnectionState } from "@/lib/ws";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
@@ -26,10 +22,15 @@ const STATUS_LABEL: Record<WebSocketConnectionState, string> = {
 export const SIDEBAR_SERVER_INDICATOR_TEST_ID = "sidebar-server-indicator";
 
 export function SidebarServerIndicator() {
-  const remoteUiEnabled =
-    useSystemConfig().data?.experiments.remoteUi ?? false;
-  const { available, busy, selectedServer, showConnectHint, target, selectServer } =
-    useServerTarget();
+  const remoteUiEnabled = useSystemConfig().data?.experiments.remoteUi ?? false;
+  const {
+    available,
+    busy,
+    selectedServer,
+    showConnectHint,
+    target,
+    selectServer,
+  } = useServerTarget();
   const connectionState = useServerConnectionState();
   const [open, setOpen] = useState(false);
 
