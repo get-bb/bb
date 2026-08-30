@@ -286,6 +286,16 @@ describe("resolveRelativeLocalFileHref", () => {
     ).toBe("/work space/资料%/child file.md#section%20one");
   });
 
+  it("preserves an encoded hash in a relative file path", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/root/docs",
+        href: "notes%231.md",
+        rootPath: "/root",
+      }),
+    ).toBe("/root/docs/notes#1.md");
+  });
+
   it("parses file line suffixes before checking URI schemes", () => {
     expect(
       resolveRelativeLocalFileHref({

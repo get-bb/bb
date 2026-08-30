@@ -145,6 +145,15 @@ describe("buildMarkdownFilePreviewRouting", () => {
 });
 
 describe("resolveMarkdownFilePreviewRootPath", () => {
+  it("selects the first containing root when roots overlap", () => {
+    expect(
+      resolveMarkdownFilePreviewRootPath({
+        filePath: "/workspace/project/docs/readme.md",
+        rootPaths: ["/workspace/project", "/workspace"],
+      }),
+    ).toBe("/workspace/project");
+  });
+
   it("selects the containing root and rejects traversal or missing roots", () => {
     expect(
       resolveMarkdownFilePreviewRootPath({

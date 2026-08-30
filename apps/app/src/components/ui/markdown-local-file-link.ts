@@ -322,10 +322,11 @@ export function resolveRelativeLocalFileHref({
     return null;
   }
 
+  const fragmentIndex = href.indexOf("#");
   const suffix =
-    parsedHref.fragment === undefined
+    parsedHref.fragment === undefined || fragmentIndex === -1
       ? decodedHref.slice(parsedHref.path.length)
-      : href.slice(href.indexOf("#"));
+      : href.slice(fragmentIndex);
   return `${normalizedHrefPath}${suffix}`;
 }
 
