@@ -217,7 +217,14 @@ describe("PluginNavSidebarItems", () => {
       "[data-plugin-nav-sidebar-sub-items]",
     );
     expect(subItemGroup).not.toBeNull();
-    for (const className of ["ml-3", "border-l", "pl-3"]) {
+    for (const className of [
+      "ml-3",
+      "mt-0.5",
+      "space-y-0.5",
+      "border-l",
+      "pl-3",
+      "pb-0.5",
+    ]) {
       expect(subItemGroup?.classList.contains(className), className).toBe(true);
     }
     expect(
@@ -275,6 +282,11 @@ describe("PluginNavSidebarItems", () => {
         "aria-current",
       ),
     ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Issues" })
+        .classList.contains("font-medium"),
+    ).toBe(true);
     expect(
       screen.getByRole("button", { name: "Lens" }).getAttribute("aria-current"),
     ).toBeNull();

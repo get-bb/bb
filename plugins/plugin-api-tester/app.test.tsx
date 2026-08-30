@@ -21,12 +21,13 @@ describe("Plugin API Tester panel", () => {
         {
           id: "overview",
           title: "Overview",
-          icon: "Circle",
+          icon: "Info",
           subPath: "overview",
         },
         {
           id: "activity",
           title: "Activity",
+          icon: "Workflow",
           subPath: "activity",
         },
       ],

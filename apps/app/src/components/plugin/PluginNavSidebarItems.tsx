@@ -516,7 +516,7 @@ function PluginNavSidebarItem({
       {isExpanded ? (
         <div
           data-plugin-nav-sidebar-sub-items=""
-          className="ml-3 border-l border-sidebar-border/70 pl-3"
+          className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 pb-0.5 pl-3"
         >
           {subItems.map((subItem) => (
             <PluginNavSidebarSubItem
@@ -602,7 +602,7 @@ function PluginNavSidebarSubItem({
           "w-full pl-2 pr-2",
           accessory && "pr-18",
           isActive
-            ? "bg-sidebar-accent text-sidebar-foreground"
+            ? "bg-sidebar-accent font-medium text-sidebar-foreground"
             : "text-subtle-foreground hover:text-sidebar-foreground",
         )}
         aria-current={isActive ? "page" : undefined}
