@@ -207,6 +207,7 @@ describe("PluginNavSidebarItems", () => {
     const view = renderSidebarItems();
     const disclosure = screen.getByRole("button", { name: "Expand Lens" });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(disclosure.classList.contains("w-7")).toBe(true);
 
     fireEvent.click(disclosure);
 
@@ -218,11 +219,11 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(subItemGroup).not.toBeNull();
     for (const className of [
-      "ml-3",
+      "ml-3.5",
       "mt-0.5",
       "space-y-0.5",
       "border-l",
-      "pl-3",
+      "pl-1.5",
       "py-1",
     ]) {
       expect(subItemGroup?.classList.contains(className), className).toBe(true);
@@ -295,7 +296,7 @@ describe("PluginNavSidebarItems", () => {
     }).parentElement;
     for (const className of [
       "before:absolute",
-      "before:-left-3",
+      "before:-left-1.5",
       "before:inset-y-1.5",
       "before:w-0.5",
       "before:rounded-full",

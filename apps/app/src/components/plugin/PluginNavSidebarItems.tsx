@@ -470,7 +470,7 @@ function PluginNavSidebarItem({
             variant="ghost"
             aria-label={`${isExpanded ? "Collapse" : "Expand"} ${chrome.title}`}
             aria-expanded={isExpanded}
-            className="absolute inset-y-0 left-0 z-10 h-auto w-6 rounded-md p-0 text-muted-foreground"
+            className="absolute inset-y-0 left-0 z-10 h-auto w-7 rounded-md p-0 text-muted-foreground"
             onClick={() =>
               setExpandedPanelKeys((current) =>
                 current.includes(rowKey)
@@ -512,7 +512,7 @@ function PluginNavSidebarItem({
       {isExpanded ? (
         <div
           data-plugin-nav-sidebar-sub-items=""
-          className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 py-1 pl-3"
+          className="ml-3.5 mt-0.5 space-y-0.5 border-l border-sidebar-border/70 py-1 pl-1.5"
         >
           {subItems.map((subItem) => (
             <PluginNavSidebarSubItem
@@ -593,7 +593,7 @@ function PluginNavSidebarSubItem({
         SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
         "relative",
         isActive &&
-          "before:absolute before:inset-y-1.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-sidebar-foreground",
+          "before:absolute before:inset-y-1.5 before:-left-1.5 before:w-0.5 before:rounded-full before:bg-sidebar-foreground",
       )}
     >
       <Button
