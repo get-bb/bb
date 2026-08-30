@@ -1887,3 +1887,42 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+## `BbDesktopApi.experimental_getServerTarget` / `experimental_setServerTarget` / `experimental_setCustomServerUrl` / `experimental_onServerTargetChange`
+
+**What it does.** Exposes the desktop app's server target (which bb server the
+window points at) to the renderer. `experimental_getServerTarget` returns the
+selectable servers (`This Mac`, every bb Connect server on the account, and the
+saved custom URL) with the selected one flagged, plus the raw custom URL.
+`experimental_setServerTarget` switches to a server by id and
+`experimental_setCustomServerUrl` saves or clears the custom URL; both return
+whether the request was accepted and then reload the window against the new
+server. `experimental_onServerTargetChange` pushes the same snapshot whenever
+the main process refreshes its application menu. Before this, the switcher was
+reachable only from the native "Window > Server" menu, and
+`@bb/desktop-contract` exposed nothing about it. Settings > Connection is the
+first consumer.
+
+**Audit before stabilizing.**
+
+1. **Surface ownership.** `BbDesktopApi` is a desktop/renderer contract, not a
+   plugin API, so the `experimental_` rule in AGENTS.md does not strictly cover
+   it. Decide whether desktop contract members should carry the prefix at all,
+   or whether this should follow the unprefixed style of the members beside it
+   (`getWindowState`, `openServerDaemonLogs`).
+2. **Optionality.** All four are optional so the web renderer and older desktop
+   builds can omit them. Confirm feature detection on one member
+   (`experimental_getServerTarget`, which the Settings nav uses to decide
+   whether to show the section) is the contract we want, rather than a single
+   capability flag on `BbDesktopInfo`.
+3. **Boolean returns.** The setters resolve `true` before the window navigates,
+   and `false` on a rejected id or unparseable URL. Decide whether callers need
+   a reason instead of a boolean, especially for the custom URL path where the
+   only failure today is "not a http(s) URL".
+4. **Server ids.** Ids are the native menu's ids (`builtin`, `custom`,
+   `connect:<handle>`). Confirm that string shape is a contract we want to
+   publish rather than a menu implementation detail.
+5. **Custom + Connect auth.** A custom URL on a `getbb.app` host now
+   authenticates through bb Connect. Confirm the apex allowlist belongs in the
+   desktop app, and how it should behave for self-hosted Connect deployments
+   and for the `BB_DEV_CONNECT_BASE_URL` dev origin.

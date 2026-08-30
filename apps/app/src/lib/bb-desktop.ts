@@ -57,6 +57,10 @@ export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
   return getBbDesktopInfo()?.browser ?? null;
 }
 
+export function isDesktopServerTargetAvailable(): boolean {
+  return getBbDesktopInfo()?.experimental_getServerTarget !== undefined;
+}
+
 export function isDesktopBrowserAvailable(): boolean {
   return getDesktopBrowserApi() !== null;
 }

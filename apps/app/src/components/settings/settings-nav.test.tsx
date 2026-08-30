@@ -31,6 +31,7 @@ function wrapperFor(path: string) {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.unstubAllGlobals();
   mocks.accessState = "unavailable";
 });
 
@@ -83,6 +84,31 @@ describe("useSettingsNavState", () => {
 
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
+    );
+  });
+
+  it("hides Connection when the desktop server switcher is unavailable", () => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
+      "connection",
+    );
+  });
+
+  it("shows Connection when the desktop exposes the server switcher", () => {
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () => Promise.resolve(null),
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    expect(result.current.activeSection).toBe("connection");
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "connection",
     );
   });
 });

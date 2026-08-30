@@ -28,6 +28,7 @@ import type { AppKeybindings } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopServerTarget,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -70,13 +71,21 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
+import { isConnectServerUrl } from "./connect-target-origin.js";
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
+  normalizeCustomServerUrl,
   SERVER_TARGET_FILE_NAME,
   type ConnectServerRef,
   type ServerTargetStore,
 } from "./server-target.js";
+import {
+  BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+  BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+  BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+} from "./server-target-ipc.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
   createConnectServerSync,
@@ -704,6 +713,64 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
   return items;
 }
 
+function buildServerTargetState(): BbDesktopServerTarget | null {
+  if (serverTargetStore === null) {
+    return null;
+  }
+  const target = serverTargetStore.getTarget();
+  const customUrl = serverTargetStore.getCustomServerUrl();
+  const servers: BbDesktopServerTarget["servers"] = [
+    {
+      id: "builtin",
+      kind: "builtin",
+      name: BUILTIN_SERVER_NAME,
+      selected: target.kind === "builtin",
+      url: null,
+    },
+  ];
+  for (const server of listMenuConnectServers()) {
+    servers.push({
+      id: connectServerMenuId(server.handle),
+      kind: "connect",
+      name: server.name,
+      selected:
+        target.kind === "connect" && target.server.handle === server.handle,
+      url: server.url,
+    });
+  }
+  if (customUrl !== null) {
+    servers.push({
+      id: "custom",
+      kind: "custom",
+      name: formatCustomServerName(customUrl),
+      selected: target.kind === "custom",
+      url: customUrl,
+    });
+  }
+  return { customUrl, servers };
+}
+
+function sendServerTargetChanged(): void {
+  const state = buildServerTargetState();
+  if (state === null) {
+    return;
+  }
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (isRegisteredApplicationWindow(browserWindow)) {
+      sendToApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+        state,
+      );
+    } else {
+      browserWindow.webContents.send(
+        BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
+        state,
+      );
+    }
+  }
+}
+
 function installCurrentApplicationMenu(): void {
   const connectServers = listMenuConnectServers();
   installApplicationMenu({
@@ -809,6 +876,7 @@ function installCurrentApplicationMenu(): void {
 
 function refreshApplicationMenu(): void {
   installCurrentApplicationMenu();
+  sendServerTargetChanged();
 }
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
@@ -1185,43 +1253,47 @@ async function applyServerTarget(): Promise<void> {
         serverUrl: localServerUrl,
       }),
     );
-  } else if (target.kind === "connect") {
-    const result = await authenticateConnectTarget(
-      target.server.url,
-      isCurrent,
-    );
-    if (!isCurrent()) {
-      return;
-    }
-    if (!result.ok) {
-      createDesktopLogger().warn(
-        `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
-      );
-      await loadStartupError({
-        details:
-          "The desktop app could not establish a session for this Connect server. " +
-          `Try switching servers again. (${result.code}: ${result.detail})`,
-        logs: "",
-        title: "Could not authenticate with bb Connect",
-      });
-      refreshApplicationMenu();
-      return;
-    }
-    connectSessionRenewal?.start({
-      expiresAt: result.expiresAt,
-      remoteServerUrl: target.server.url,
-    });
-    const loaded = await loadRemoteServerTarget(target.server.url, isCurrent);
-    if (!isCurrent()) {
-      return;
-    }
-    if (!loaded) {
-      connectSessionRenewal?.stop();
-    }
   } else {
-    await loadRemoteServerTarget(target.url, isCurrent);
-    if (!isCurrent()) {
-      return;
+    const remoteServerUrl =
+      target.kind === "connect" ? target.server.url : target.url;
+    if (target.kind === "connect" || isConnectServerUrl(remoteServerUrl)) {
+      const result = await authenticateConnectTarget(
+        remoteServerUrl,
+        isCurrent,
+      );
+      if (!isCurrent()) {
+        return;
+      }
+      if (!result.ok) {
+        createDesktopLogger().warn(
+          `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
+        );
+        await loadStartupError({
+          details:
+            "The desktop app could not establish a session for this Connect server. " +
+            `Try switching servers again. (${result.code}: ${result.detail})`,
+          logs: "",
+          title: "Could not authenticate with bb Connect",
+        });
+        refreshApplicationMenu();
+        return;
+      }
+      connectSessionRenewal?.start({
+        expiresAt: result.expiresAt,
+        remoteServerUrl,
+      });
+      const loaded = await loadRemoteServerTarget(remoteServerUrl, isCurrent);
+      if (!isCurrent()) {
+        return;
+      }
+      if (!loaded) {
+        connectSessionRenewal?.stop();
+      }
+    } else {
+      await loadRemoteServerTarget(remoteServerUrl, isCurrent);
+      if (!isCurrent()) {
+        return;
+      }
     }
   }
   refreshApplicationMenu();
@@ -1602,6 +1674,49 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
+  ipcMain.handle(BB_DESKTOP_GET_SERVER_TARGET_CHANNEL, () => {
+    return buildServerTargetState();
+  });
+  ipcMain.handle(
+    BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
+    (_event, payload: unknown) => {
+      if (typeof payload !== "string") {
+        return false;
+      }
+      const state = buildServerTargetState();
+      if (
+        state === null ||
+        !state.servers.some((server) => server.id === payload)
+      ) {
+        return false;
+      }
+      void setActiveServerTarget(payload);
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+    async (_event, payload: unknown) => {
+      if (serverTargetStore === null) {
+        return false;
+      }
+      if (payload === null) {
+        await serverTargetStore.setCustomServerUrl(null);
+        void applyServerTarget();
+        return true;
+      }
+      if (typeof payload !== "string") {
+        return false;
+      }
+      const normalized = normalizeCustomServerUrl(payload);
+      if (normalized === null) {
+        return false;
+      }
+      await serverTargetStore.setCustomServerUrl(normalized);
+      void applyServerTarget();
+      return true;
+    },
+  );
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
