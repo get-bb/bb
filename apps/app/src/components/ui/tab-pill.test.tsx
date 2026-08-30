@@ -161,7 +161,10 @@ describe("TabPill", () => {
     const close = screen.getByRole("button", { name: "Close side chat" });
     expect(close.classList).toContain("pointer-coarse:opacity-100");
     expect(close.classList).toContain("[@media(hover:none)]:opacity-100");
+    expect(close.classList).toContain("pointer-coarse:size-5");
+    expect(close.classList).toContain("[@media(hover:none)]:size-5");
     expect(close.classList).not.toContain("max-md:pointer-coarse:opacity-100");
+    expect(close.classList).not.toContain("max-md:pointer-coarse:size-5");
 
     const leadingVisual = screen.getByText("chat").parentElement;
     expect(leadingVisual?.classList).toContain("pointer-coarse:opacity-0");

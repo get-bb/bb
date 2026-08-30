@@ -322,6 +322,25 @@
     opacity: 0;
   }
 
+  @media (min-width: 768px) and (hover: none),
+    (min-width: 768px) and (pointer: coarse) {
+    .bb-sidebar-hover-actions-row.bb-sidebar-selected-row
+      .bb-sidebar-hover-actions {
+      pointer-events: auto;
+      opacity: 1;
+    }
+
+    .bb-sidebar-hover-actions-row.bb-sidebar-selected-row
+      .bb-sidebar-hover-actions-inset {
+      padding-right: calc(var(--spacing) * 7.5);
+    }
+
+    .bb-sidebar-hover-actions-row.bb-sidebar-selected-row
+      .bb-sidebar-hover-actions-fade {
+      opacity: 0;
+    }
+  }
+
   @media (max-width: 767px) and (pointer: coarse) {
     /* The overlay is hidden on coarse phones, so no room is reserved. */
     .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset {

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export const DARK_COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+export const HOVER_NONE_QUERY = "(hover: none)";
 export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 type MediaQueryRef = {
