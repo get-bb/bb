@@ -5,6 +5,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Label } from "@bb/shared-ui/label";
 import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
+import { Switch } from "@bb/shared-ui/switch";
 import {
   SettingsSection,
   SettingsWithControl,
@@ -17,7 +18,11 @@ const HOST_LOCAL_NOTE =
 export const CONNECT_HINT_TEXT =
   "Sign in to bb Connect to add your machines automatically.";
 
+export const MANAGE_FROM_THIS_MAC_TEXT = "Manage servers from This Mac.";
+
 const SECTION_DESCRIPTION = "Pick which bb server this app runs from.";
+
+const ADD_SERVER_ERROR_TEXT = "Enter a full http:// or https:// address.";
 
 function serverDetail(server: BbDesktopServerOption): string {
   if (server.kind === "builtin") {
@@ -29,31 +34,35 @@ function serverDetail(server: BbDesktopServerOption): string {
 export function ConnectionSettingsSection() {
   const {
     busy,
+    canManageServers,
+    connectTrusted,
     selectedServer,
     showConnectHint,
     target,
+    addCustomServer,
+    removeCustomServer,
     selectServer,
-    setCustomServerUrl,
+    setConnectTrusted,
   } = useServerTarget();
-  const [customUrlDraft, setCustomUrlDraft] = useState("");
-  const [customUrlError, setCustomUrlError] = useState<string | null>(null);
-  const [syncedCustomUrl, setSyncedCustomUrl] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [urlDraft, setUrlDraft] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
-  if (target !== null && target.customUrl !== syncedCustomUrl) {
-    setSyncedCustomUrl(target.customUrl);
-    setCustomUrlDraft(target.customUrl ?? "");
-  }
+  const managementDisabled = busy || !canManageServers;
 
-  const submitCustomUrl = () => {
-    const trimmed = customUrlDraft.trim();
-    setCustomUrlError(null);
-    void setCustomServerUrl(trimmed.length === 0 ? null : trimmed).then(
-      (accepted) => {
-        if (!accepted) {
-          setCustomUrlError("Enter a full http:// or https:// address.");
-        }
-      },
-    );
+  const submitCustomServer = () => {
+    if (managementDisabled || urlDraft.trim().length === 0) {
+      return;
+    }
+    setAddError(null);
+    void addCustomServer(nameDraft.trim(), urlDraft.trim()).then((accepted) => {
+      if (accepted) {
+        setNameDraft("");
+        setUrlDraft("");
+        return;
+      }
+      setAddError(ADD_SERVER_ERROR_TEXT);
+    });
   };
 
   if (target === null) {
@@ -80,7 +89,7 @@ export function ConnectionSettingsSection() {
                 id={`connection-server-${server.id}`}
                 className="mt-0.5"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <Label
                   htmlFor={`connection-server-${server.id}`}
                   className="text-sm font-normal text-foreground"
@@ -91,6 +100,21 @@ export function ConnectionSettingsSection() {
                   {serverDetail(server)}
                 </p>
               </div>
+              {server.kind === "custom" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="size-7 shrink-0 p-0"
+                  aria-label={`Remove ${server.name}`}
+                  disabled={managementDisabled}
+                  onClick={() => {
+                    void removeCustomServer(server.id);
+                  }}
+                >
+                  <Icon name="Trash2" className="size-3.5" />
+                </Button>
+              ) : null}
             </div>
           ))}
         </RadioGroup>
@@ -102,40 +126,68 @@ export function ConnectionSettingsSection() {
         ) : null}
 
         <SettingsWithControl
-          label="Add a server by address"
-          description="Point this app at any bb server. getbb.app addresses sign you in automatically."
+          label="Trust bb Connect (getbb.app)"
+          description="Keeps your bb Connect machines in this list and signs you in to them automatically."
+        >
+          <Switch
+            checked={connectTrusted}
+            disabled={managementDisabled}
+            aria-label="Trust bb Connect"
+            onCheckedChange={(checked) => {
+              void setConnectTrusted(checked);
+            }}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label="Add a server"
+          description="Point this app at any bb server you trust. Name is optional."
           controlPlacement="below"
         >
           <div className="space-y-2">
             <div className="flex gap-2">
               <Input
-                value={customUrlDraft}
-                onChange={(event) => setCustomUrlDraft(event.target.value)}
+                value={nameDraft}
+                onChange={(event) => setNameDraft(event.target.value)}
+                placeholder="Name (optional)"
+                spellCheck={false}
+                aria-label="Server name"
+                className="h-8 w-32 shrink-0 text-xs"
+                disabled={managementDisabled}
+              />
+              <Input
+                value={urlDraft}
+                onChange={(event) => setUrlDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    submitCustomUrl();
+                    submitCustomServer();
                   }
                 }}
                 placeholder="https://my-mac.getbb.app"
                 spellCheck={false}
                 aria-label="Server address"
                 className="h-8 text-xs"
-                disabled={busy}
+                disabled={managementDisabled}
               />
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="h-8 shrink-0 px-3 text-xs"
-                disabled={busy}
-                onClick={submitCustomUrl}
+                disabled={managementDisabled || urlDraft.trim().length === 0}
+                onClick={submitCustomServer}
               >
-                {customUrlDraft.trim().length === 0 ? "Clear" : "Use"}
+                Add
               </Button>
             </div>
-            {customUrlError !== null ? (
-              <p className="text-xs text-destructive-text">{customUrlError}</p>
+            {addError !== null ? (
+              <p className="text-xs text-destructive-text">{addError}</p>
+            ) : null}
+            {!canManageServers ? (
+              <p className="text-xs leading-snug text-subtle-foreground">
+                {MANAGE_FROM_THIS_MAC_TEXT}
+              </p>
             ) : null}
           </div>
         </SettingsWithControl>

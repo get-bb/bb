@@ -1,5 +1,11 @@
 const CONNECT_APEX_HOSTNAME = "getbb.app";
 
+export interface TrustedSwitchOriginArgs {
+  connectTrusted: boolean;
+  frameUrl: string;
+  trustedServerUrls: readonly string[];
+}
+
 export function isConnectServerUrl(serverUrl: string): boolean {
   let parsed: URL;
   try {
@@ -17,9 +23,9 @@ export function isConnectServerUrl(serverUrl: string): boolean {
   );
 }
 
-export function isTrustedSwitchOrigin(
+function matchesAnyOrigin(
   frameUrl: string,
-  localServerUrls: readonly string[],
+  serverUrls: readonly string[],
 ): boolean {
   let frameOrigin: string;
   try {
@@ -27,16 +33,30 @@ export function isTrustedSwitchOrigin(
   } catch {
     return false;
   }
-  for (const localServerUrl of localServerUrls) {
-    let localOrigin: string;
+  for (const serverUrl of serverUrls) {
+    let serverOrigin: string;
     try {
-      localOrigin = new URL(localServerUrl).origin;
+      serverOrigin = new URL(serverUrl).origin;
     } catch {
       continue;
     }
-    if (localOrigin === frameOrigin) {
+    if (serverOrigin === frameOrigin) {
       return true;
     }
   }
-  return isConnectServerUrl(frameUrl);
+  return false;
+}
+
+export function isBuiltinServerOrigin(
+  frameUrl: string,
+  localServerUrls: readonly string[],
+): boolean {
+  return matchesAnyOrigin(frameUrl, localServerUrls);
+}
+
+export function isTrustedSwitchOrigin(args: TrustedSwitchOriginArgs): boolean {
+  if (matchesAnyOrigin(args.frameUrl, args.trustedServerUrls)) {
+    return true;
+  }
+  return args.connectTrusted && isConnectServerUrl(args.frameUrl);
 }

@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  isBuiltinServerOrigin,
   isConnectServerUrl,
   isTrustedSwitchOrigin,
 } from "../src/connect-target-origin.js";
+
+const LOCAL_SERVERS = ["http://127.0.0.1:38886", "http://localhost:38886"];
+const CUSTOM_SERVERS = ["https://office.example.com", "http://10.0.0.5:38886"];
+
+function switchAllowed(frameUrl: string, connectTrusted = true): boolean {
+  return isTrustedSwitchOrigin({
+    connectTrusted,
+    frameUrl,
+    trustedServerUrls: [...LOCAL_SERVERS, ...CUSTOM_SERVERS],
+  });
+}
 
 describe("isConnectServerUrl", () => {
   it("routes a pasted Connect handle URL through Connect authentication", () => {
@@ -27,35 +39,56 @@ describe("isConnectServerUrl", () => {
 });
 
 describe("isTrustedSwitchOrigin", () => {
-  const localServers = ["http://127.0.0.1:38886", "http://localhost:38886"];
-
   it("trusts the local builtin server origin", () => {
+    expect(switchAllowed("http://127.0.0.1:38886/threads")).toBe(true);
+    expect(switchAllowed("http://localhost:38886/")).toBe(true);
+  });
+
+  it("trusts an origin the user already added to the allowlist", () => {
+    expect(switchAllowed("https://office.example.com/threads")).toBe(true);
+    expect(switchAllowed("http://10.0.0.5:38886")).toBe(true);
+  });
+
+  it("trusts a getbb.app origin only while bb Connect is trusted", () => {
+    expect(switchAllowed("https://sawyer.getbb.app/threads")).toBe(true);
+    expect(switchAllowed("https://getbb.app")).toBe(true);
+    expect(switchAllowed("https://sawyer.getbb.app/threads", false)).toBe(
+      false,
+    );
+    expect(switchAllowed("https://getbb.app", false)).toBe(false);
+  });
+
+  it("rejects an origin that is not on the allowlist", () => {
+    expect(switchAllowed("https://example.com")).toBe(false);
+    expect(switchAllowed("https://getbb.app.evil.com")).toBe(false);
+    expect(switchAllowed("http://192.168.1.9:38886")).toBe(false);
+    expect(switchAllowed("https://office.example.com.evil.com")).toBe(false);
+    expect(switchAllowed("not-a-url")).toBe(false);
+    expect(switchAllowed("")).toBe(false);
+  });
+});
+
+describe("isBuiltinServerOrigin", () => {
+  it("accepts only the local server origins", () => {
     expect(
-      isTrustedSwitchOrigin("http://127.0.0.1:38886/threads", localServers),
+      isBuiltinServerOrigin("http://127.0.0.1:38886/x", LOCAL_SERVERS),
     ).toBe(true);
-    expect(isTrustedSwitchOrigin("http://localhost:38886/", localServers)).toBe(
+    expect(isBuiltinServerOrigin("http://localhost:38886", LOCAL_SERVERS)).toBe(
       true,
     );
   });
 
-  it("trusts a getbb.app origin", () => {
+  it("rejects every remote origin, including trusted switch targets", () => {
     expect(
-      isTrustedSwitchOrigin("https://sawyer.getbb.app/threads", localServers),
-    ).toBe(true);
-    expect(isTrustedSwitchOrigin("https://getbb.app", localServers)).toBe(true);
-  });
-
-  it("rejects an arbitrary custom origin", () => {
-    expect(isTrustedSwitchOrigin("https://example.com", localServers)).toBe(
+      isBuiltinServerOrigin("https://sawyer.getbb.app", LOCAL_SERVERS),
+    ).toBe(false);
+    expect(isBuiltinServerOrigin("https://getbb.app", LOCAL_SERVERS)).toBe(
       false,
     );
     expect(
-      isTrustedSwitchOrigin("https://getbb.app.evil.com", localServers),
+      isBuiltinServerOrigin("https://office.example.com", LOCAL_SERVERS),
     ).toBe(false);
-    expect(
-      isTrustedSwitchOrigin("http://192.168.1.9:38886", localServers),
-    ).toBe(false);
-    expect(isTrustedSwitchOrigin("not-a-url", localServers)).toBe(false);
-    expect(isTrustedSwitchOrigin("", localServers)).toBe(false);
+    expect(isBuiltinServerOrigin("not-a-url", LOCAL_SERVERS)).toBe(false);
+    expect(isBuiltinServerOrigin("", LOCAL_SERVERS)).toBe(false);
   });
 });

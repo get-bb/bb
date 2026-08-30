@@ -9,11 +9,15 @@ import { getBbDesktopInfo } from "@/lib/bb-desktop";
 export interface ServerTargetState {
   available: boolean;
   busy: boolean;
+  canManageServers: boolean;
+  connectTrusted: boolean;
   selectedServer: BbDesktopServerOption | null;
   showConnectHint: boolean;
   target: BbDesktopServerTarget | null;
+  addCustomServer: (name: string, url: string) => Promise<boolean>;
+  removeCustomServer: (serverId: string) => Promise<boolean>;
   selectServer: (serverId: string) => void;
-  setCustomServerUrl: (url: string | null) => Promise<boolean>;
+  setConnectTrusted: (trusted: boolean) => Promise<boolean>;
 }
 
 function hasSelectableServerBeyondBuiltin(
@@ -68,15 +72,16 @@ export function useServerTarget(): ServerTargetState {
     [desktopApi],
   );
 
-  const setCustomServerUrl = useCallback(
-    async (url: string | null): Promise<boolean> => {
-      const setUrl = desktopApi?.experimental_setCustomServerUrl;
-      if (desktopApi === null || setUrl === undefined) {
+  const runMutation = useCallback(
+    async (
+      mutate: (api: BbDesktopApi) => Promise<boolean>,
+    ): Promise<boolean> => {
+      if (desktopApi === null) {
         return false;
       }
       setBusy(true);
       try {
-        return await setUrl.call(desktopApi, url);
+        return await mutate(desktopApi);
       } catch {
         return false;
       } finally {
@@ -84,6 +89,36 @@ export function useServerTarget(): ServerTargetState {
       }
     },
     [desktopApi],
+  );
+
+  const addCustomServer = useCallback(
+    (name: string, url: string): Promise<boolean> =>
+      runMutation((api) =>
+        api.experimental_addCustomServer === undefined
+          ? Promise.resolve(false)
+          : api.experimental_addCustomServer(name, url),
+      ),
+    [runMutation],
+  );
+
+  const removeCustomServer = useCallback(
+    (serverId: string): Promise<boolean> =>
+      runMutation((api) =>
+        api.experimental_removeCustomServer === undefined
+          ? Promise.resolve(false)
+          : api.experimental_removeCustomServer(serverId),
+      ),
+    [runMutation],
+  );
+
+  const setConnectTrusted = useCallback(
+    (trusted: boolean): Promise<boolean> =>
+      runMutation((api) =>
+        api.experimental_setConnectTrusted === undefined
+          ? Promise.resolve(false)
+          : api.experimental_setConnectTrusted(trusted),
+      ),
+    [runMutation],
   );
 
   const selectedServer = useMemo(
@@ -99,10 +134,14 @@ export function useServerTarget(): ServerTargetState {
   return {
     available: desktopApi?.experimental_getServerTarget !== undefined,
     busy,
+    canManageServers: target?.canManageServers ?? false,
+    connectTrusted: target?.connectTrusted ?? true,
     selectedServer,
     showConnectHint,
     target,
+    addCustomServer,
+    removeCustomServer,
     selectServer,
-    setCustomServerUrl,
+    setConnectTrusted,
   };
 }

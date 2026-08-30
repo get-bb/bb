@@ -65,9 +65,10 @@ export type BbDesktopConnectServersSkipReason = z.infer<
 
 export const bbDesktopServerTargetSchema = z
   .object({
+    canManageServers: z.boolean(),
     connectServersSkipReason:
       bbDesktopConnectServersSkipReasonSchema.nullable(),
-    customUrl: z.string().min(1).nullable(),
+    connectTrusted: z.boolean(),
     servers: z.array(bbDesktopServerOptionSchema),
   })
   .strict();
@@ -106,7 +107,9 @@ export interface BbDesktopApi extends BbDesktopInfo {
   setTheme(theme: BbDesktopTheme): void;
   experimental_getServerTarget?(): Promise<BbDesktopServerTarget | null>;
   experimental_setServerTarget?(serverId: string): Promise<boolean>;
-  experimental_setCustomServerUrl?(url: string | null): Promise<boolean>;
+  experimental_addCustomServer?(name: string, url: string): Promise<boolean>;
+  experimental_removeCustomServer?(serverId: string): Promise<boolean>;
+  experimental_setConnectTrusted?(trusted: boolean): Promise<boolean>;
   experimental_onServerTargetChange?(
     listener: BbDesktopServerTargetChangeHandler,
   ): BbDesktopInfoUnsubscribe;

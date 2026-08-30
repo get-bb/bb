@@ -41,9 +41,11 @@ import {
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
+  BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
   BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
   BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
-  BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+  BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
   BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
 } from "./server-target-ipc.js";
 import {
@@ -180,7 +182,7 @@ async function invokeServerTarget(): Promise<BbDesktopServerTarget | null> {
 
 async function invokeServerTargetMutation(
   channel: string,
-  payload: string | null,
+  payload: unknown,
 ): Promise<boolean> {
   try {
     return (await ipcRenderer.invoke(channel, payload)) === true;
@@ -399,10 +401,22 @@ const bbDesktopApi: BbDesktopApi = {
       serverId,
     );
   },
-  experimental_setCustomServerUrl(url: string | null): Promise<boolean> {
-    return invokeServerTargetMutation(
-      BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+  experimental_addCustomServer(name: string, url: string): Promise<boolean> {
+    return invokeServerTargetMutation(BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL, {
+      name,
       url,
+    });
+  },
+  experimental_removeCustomServer(serverId: string): Promise<boolean> {
+    return invokeServerTargetMutation(
+      BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+      serverId,
+    );
+  },
+  experimental_setConnectTrusted(trusted: boolean): Promise<boolean> {
+    return invokeServerTargetMutation(
+      BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+      trusted,
     );
   },
   experimental_onServerTargetChange(

@@ -10,10 +10,7 @@ import { SidebarServerIndicator } from "./SidebarServerIndicator";
 
 const testState = vi.hoisted(() => ({
   remoteUi: true,
-  connectionState: "connected" as
-    | "connected"
-    | "connecting"
-    | "reconnecting",
+  connectionState: "connected" as "connected" | "connecting" | "reconnecting",
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -53,7 +50,9 @@ function installDesktopApi(target: BbDesktopServerTarget): void {
       experimental_getServerTarget: () => Promise.resolve(target),
       experimental_onServerTargetChange: () => () => {},
       experimental_setServerTarget: () => Promise.resolve(true),
-      experimental_setCustomServerUrl: () => Promise.resolve(true),
+      experimental_addCustomServer: () => Promise.resolve(true),
+      experimental_removeCustomServer: () => Promise.resolve(true),
+      experimental_setConnectTrusted: () => Promise.resolve(true),
     },
   });
 }
@@ -71,8 +70,9 @@ afterEach(() => {
 describe("SidebarServerIndicator", () => {
   it("shows This Mac when the builtin server is selected", async () => {
     installDesktopApi({
+      canManageServers: true,
       connectServersSkipReason: null,
-      customUrl: null,
+      connectTrusted: true,
       servers: [builtin(true), connectServer(false)],
     });
 
@@ -87,8 +87,9 @@ describe("SidebarServerIndicator", () => {
 
   it("shows the remote server name when a connect server is selected", async () => {
     installDesktopApi({
+      canManageServers: true,
       connectServersSkipReason: null,
-      customUrl: null,
+      connectTrusted: true,
       servers: [builtin(false), connectServer(true)],
     });
 
@@ -102,8 +103,9 @@ describe("SidebarServerIndicator", () => {
   it("reports an unreachable server while the socket is reconnecting", async () => {
     testState.connectionState = "reconnecting";
     installDesktopApi({
+      canManageServers: true,
       connectServersSkipReason: null,
-      customUrl: null,
+      connectTrusted: true,
       servers: [builtin(true)],
     });
 
@@ -118,8 +120,9 @@ describe("SidebarServerIndicator", () => {
   it("renders nothing when the remoteUi experiment is off", async () => {
     testState.remoteUi = false;
     installDesktopApi({
+      canManageServers: true,
       connectServersSkipReason: null,
-      customUrl: null,
+      connectTrusted: true,
       servers: [builtin(true)],
     });
 

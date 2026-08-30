@@ -75,21 +75,29 @@ import {
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
-  isConnectServerUrl,
+  isBuiltinServerOrigin,
   isTrustedSwitchOrigin,
 } from "./connect-target-origin.js";
 import {
-  BUILTIN_SERVER_NAME,
+  BUILTIN_SERVER_ID,
+  connectServerHandleFromId,
+  connectServerId,
   createServerTargetStore,
-  normalizeCustomServerUrl,
   SERVER_TARGET_FILE_NAME,
   type ConnectServerRef,
   type ServerTargetStore,
 } from "./server-target.js";
 import {
+  buildServerTargetOptions,
+  shouldAuthenticateCustomWithConnect,
+} from "./server-target-options.js";
+import {
+  addCustomServerRequestSchema,
+  BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
   BB_DESKTOP_GET_SERVER_TARGET_CHANNEL,
+  BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
   BB_DESKTOP_SERVER_TARGET_CHANGED_CHANNEL,
-  BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+  BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
   BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
 } from "./server-target-ipc.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
@@ -658,20 +666,10 @@ function getFocusedApplicationWindow(): BrowserWindow | null {
   return null;
 }
 
-function formatCustomServerName(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? parsed.host : url;
-  } catch {
-    return url;
-  }
-}
-
-function connectServerMenuId(handle: string): string {
-  return `connect:${handle}`;
-}
-
 function listMenuConnectServers(): ConnectServerRef[] {
+  if (serverTargetStore !== null && !serverTargetStore.getConnectTrusted()) {
+    return [];
+  }
   const servers: ConnectServerRef[] = connectAccountServers.map((server) => ({
     handle: server.handle,
     name: server.name,
@@ -698,40 +696,26 @@ function buildMenuServerItems(
   }));
 }
 
+function selectedServerOptionId(): string {
+  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
+  if (target.kind === "connect") {
+    return connectServerId(target.server.handle);
+  }
+  if (target.kind === "custom") {
+    return target.server.id;
+  }
+  return BUILTIN_SERVER_ID;
+}
+
 function buildServerOptions(
   connectServers: ConnectServerRef[],
 ): BbDesktopServerTarget["servers"] {
-  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
-  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
-  const servers: BbDesktopServerTarget["servers"] = [
-    {
-      id: "builtin",
-      kind: "builtin",
-      name: BUILTIN_SERVER_NAME,
-      selected: target.kind === "builtin",
-      url: null,
-    },
-  ];
-  for (const server of connectServers) {
-    servers.push({
-      id: connectServerMenuId(server.handle),
-      kind: "connect",
-      name: server.name,
-      selected:
-        target.kind === "connect" && target.server.handle === server.handle,
-      url: server.url,
-    });
-  }
-  if (customUrl !== null) {
-    servers.push({
-      id: "custom",
-      kind: "custom",
-      name: formatCustomServerName(customUrl),
-      selected: target.kind === "custom",
-      url: customUrl,
-    });
-  }
-  return servers;
+  return buildServerTargetOptions({
+    connectServers,
+    connectTrusted: serverTargetStore?.getConnectTrusted() ?? true,
+    customServers: serverTargetStore?.getCustomServers() ?? [],
+    selectedServerId: selectedServerOptionId(),
+  });
 }
 
 function resolveConnectServersSkipReason(
@@ -740,24 +724,32 @@ function resolveConnectServersSkipReason(
   return connectServers.length === 0 ? connectServerSyncSkipReason : null;
 }
 
-function buildServerTargetState(): BbDesktopServerTarget | null {
+function buildServerTargetState(
+  canManageServers: boolean,
+): BbDesktopServerTarget | null {
   if (serverTargetStore === null) {
     return null;
   }
   const connectServers = listMenuConnectServers();
   return {
+    canManageServers,
     connectServersSkipReason: resolveConnectServersSkipReason(connectServers),
-    customUrl: serverTargetStore.getCustomServerUrl(),
+    connectTrusted: serverTargetStore.getConnectTrusted(),
     servers: buildServerOptions(connectServers),
   };
 }
 
 function sendServerTargetChanged(): void {
-  const state = buildServerTargetState();
-  if (state === null) {
-    return;
-  }
   for (const browserWindow of BrowserWindow.getAllWindows()) {
+    const state = buildServerTargetState(
+      isBuiltinServerOrigin(
+        browserWindow.webContents.getURL(),
+        localServerUrls(),
+      ),
+    );
+    if (state === null) {
+      return;
+    }
     if (isRegisteredApplicationWindow(browserWindow)) {
       sendToApplicationRenderer(
         browserWindow,
@@ -1221,16 +1213,40 @@ function ensureDesktopMachineEnrolled(): void {
   });
 }
 
-function isTrustedServerTargetSender(event: IpcMainInvokeEvent): boolean {
+function localServerUrls(): string[] {
+  const urls = [builtinServerUrl];
+  if (currentRuntime !== null) {
+    urls.push(currentRuntime.serverUrl);
+  }
+  return urls;
+}
+
+function senderFrameUrl(event: IpcMainInvokeEvent): string | null {
   const frameUrl = event.senderFrame?.url;
-  if (frameUrl === undefined || frameUrl === "") {
+  return frameUrl === undefined || frameUrl === "" ? null : frameUrl;
+}
+
+function isTrustedServerTargetSender(event: IpcMainInvokeEvent): boolean {
+  const frameUrl = senderFrameUrl(event);
+  if (frameUrl === null) {
     return false;
   }
-  const localServerUrls = [builtinServerUrl];
-  if (currentRuntime !== null) {
-    localServerUrls.push(currentRuntime.serverUrl);
+  const customServerUrls = (serverTargetStore?.getCustomServers() ?? []).map(
+    (server) => server.url,
+  );
+  return isTrustedSwitchOrigin({
+    connectTrusted: serverTargetStore?.getConnectTrusted() ?? true,
+    frameUrl,
+    trustedServerUrls: [...localServerUrls(), ...customServerUrls],
+  });
+}
+
+function isBuiltinServerTargetSender(event: IpcMainInvokeEvent): boolean {
+  const frameUrl = senderFrameUrl(event);
+  if (frameUrl === null) {
+    return false;
   }
-  return isTrustedSwitchOrigin(frameUrl, localServerUrls);
+  return isBuiltinServerOrigin(frameUrl, localServerUrls());
 }
 
 async function applyServerTarget(): Promise<void> {
@@ -1267,9 +1283,14 @@ async function applyServerTarget(): Promise<void> {
       }),
     );
   } else {
-    const remoteServerUrl =
-      target.kind === "connect" ? target.server.url : target.url;
-    if (target.kind === "connect" || isConnectServerUrl(remoteServerUrl)) {
+    const remoteServerUrl = target.server.url;
+    if (
+      target.kind === "connect" ||
+      shouldAuthenticateCustomWithConnect({
+        connectTrusted: serverTargetStore.getConnectTrusted(),
+        url: remoteServerUrl,
+      })
+    ) {
       const result = await authenticateConnectTarget(
         remoteServerUrl,
         isCurrent,
@@ -1337,8 +1358,8 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
   if (serverTargetStore === null) {
     return;
   }
-  if (serverId.startsWith("connect:")) {
-    const handle = serverId.slice("connect:".length);
+  const handle = connectServerHandleFromId(serverId);
+  if (handle !== null) {
     const server = listMenuConnectServers().find(
       (candidate) => candidate.handle === handle,
     );
@@ -1350,10 +1371,7 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     await applyServerTarget();
     return;
   }
-  if (serverId !== "builtin" && serverId !== "custom") {
-    return;
-  }
-  const switched = await serverTargetStore.setTarget(serverId);
+  const switched = await serverTargetStore.setSelectedServerId(serverId);
   if (!switched) {
     refreshApplicationMenu();
     return;
@@ -1365,23 +1383,29 @@ async function openSetServerUrlDialog(): Promise<void> {
   if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
     return;
   }
+  const target = serverTargetStore.getTarget();
+  const selectedCustom = target.kind === "custom" ? target.server : null;
   const result = await openServerUrlDialog({
-    initialUrl: serverTargetStore.getCustomServerUrl(),
+    initialUrl: selectedCustom?.url ?? null,
     parentWindow: getFocusedApplicationWindow(),
     preloadPath: serverUrlDialogPreloadPath,
   });
   if (result.kind === "cancelled") {
     return;
   }
-  if (
-    result.kind === "clear" &&
-    serverTargetStore.getCustomServerUrl() === null
-  ) {
+  if (result.kind === "clear") {
+    if (selectedCustom === null) {
+      return;
+    }
+    await serverTargetStore.removeCustomServer(selectedCustom.id);
+    await applyServerTarget();
     return;
   }
-  await serverTargetStore.setCustomServerUrl(
-    result.kind === "set" ? result.url : null,
-  );
+  const added = await serverTargetStore.addCustomServer("", result.url);
+  if (added === null) {
+    return;
+  }
+  await serverTargetStore.setSelectedServerId(added.id);
   await applyServerTarget();
 }
 
@@ -1687,8 +1711,8 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
-  ipcMain.handle(BB_DESKTOP_GET_SERVER_TARGET_CHANNEL, () => {
-    return buildServerTargetState();
+  ipcMain.handle(BB_DESKTOP_GET_SERVER_TARGET_CHANNEL, (event) => {
+    return buildServerTargetState(isBuiltinServerTargetSender(event));
   });
   ipcMain.handle(
     BB_DESKTOP_SET_SERVER_TARGET_CHANNEL,
@@ -1699,7 +1723,7 @@ function registerDesktopUpdateIpc(): void {
       if (typeof payload !== "string") {
         return false;
       }
-      const state = buildServerTargetState();
+      const state = buildServerTargetState(false);
       if (
         state === null ||
         !state.servers.some((server) => server.id === payload)
@@ -1711,28 +1735,65 @@ function registerDesktopUpdateIpc(): void {
     },
   );
   ipcMain.handle(
-    BB_DESKTOP_SET_CUSTOM_SERVER_URL_CHANNEL,
+    BB_DESKTOP_ADD_CUSTOM_SERVER_CHANNEL,
     async (event, payload: unknown) => {
-      if (!isTrustedServerTargetSender(event)) {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
         return false;
       }
-      if (serverTargetStore === null) {
+      const parsed = addCustomServerRequestSchema.safeParse(payload);
+      if (!parsed.success) {
         return false;
       }
-      if (payload === null) {
-        await serverTargetStore.setCustomServerUrl(null);
-        void applyServerTarget();
-        return true;
+      const added = await serverTargetStore.addCustomServer(
+        parsed.data.name,
+        parsed.data.url,
+      );
+      if (added === null) {
+        return false;
+      }
+      refreshApplicationMenu();
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_REMOVE_CUSTOM_SERVER_CHANNEL,
+    async (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
+        return false;
       }
       if (typeof payload !== "string") {
         return false;
       }
-      const normalized = normalizeCustomServerUrl(payload);
-      if (normalized === null) {
+      const wasSelected =
+        serverTargetStore.getSelectedServerId() === payload &&
+        serverTargetStore.getTarget().kind === "custom";
+      if (!(await serverTargetStore.removeCustomServer(payload))) {
         return false;
       }
-      await serverTargetStore.setCustomServerUrl(normalized);
-      void applyServerTarget();
+      if (wasSelected) {
+        await applyServerTarget();
+      } else {
+        refreshApplicationMenu();
+      }
+      return true;
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_SET_CONNECT_TRUSTED_CHANNEL,
+    async (event, payload: unknown) => {
+      if (!isBuiltinServerTargetSender(event) || serverTargetStore === null) {
+        return false;
+      }
+      if (typeof payload !== "boolean") {
+        return false;
+      }
+      const wasConnectTarget = serverTargetStore.getTarget().kind === "connect";
+      await serverTargetStore.setConnectTrusted(payload);
+      if (wasConnectTarget && !payload) {
+        await applyServerTarget();
+      } else {
+        refreshApplicationMenu();
+      }
       return true;
     },
   );
