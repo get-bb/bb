@@ -25,6 +25,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     editMessages: false,
     mobileApp: false,
     providerSessionReaping: false,
+    remoteUi: false,
     timelineWindowing: false,
   },
   appearance: defaultAppTheme,

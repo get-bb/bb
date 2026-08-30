@@ -358,6 +358,7 @@ function ExperimentsStory() {
       editMessagesEnabled={state.experiments.editMessages}
       mobileAppEnabled={state.experiments.mobileApp}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
+      remoteUiEnabled={state.experiments.remoteUi}
       timelineWindowingEnabled={state.experiments.timelineWindowing}
       onChangelogPreviewEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
@@ -381,6 +382,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           providerSessionReaping: enabled,
+        }))
+      }
+      onRemoteUiEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          remoteUi: enabled,
         }))
       }
       onTimelineWindowingEnabledChange={(enabled) =>

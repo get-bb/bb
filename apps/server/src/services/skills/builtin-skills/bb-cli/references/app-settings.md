@@ -88,6 +88,13 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment mobileApp true`. It shows the
   **Add mobile device** card under Settings → Remote access.
 
+## Remote UI
+
+- The `remoteUi` experiment defaults to false.
+- Enable it with `bb settings experiment remoteUi true` in the desktop app. It
+  shows Settings → Connection plus a server switcher at the bottom of the
+  sidebar, so you can point the app at this Mac or a remote bb server.
+
 ## Changelog preview
 
 - The `changelogPreview` experiment defaults to false.

@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type {
-  BbDesktopApi,
-  BbDesktopServerTarget,
-} from "@bb/desktop-contract";
+import { useState } from "react";
+import type { BbDesktopServerOption } from "@bb/desktop-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -12,116 +9,66 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
-import { getBbDesktopInfo } from "@/lib/bb-desktop";
+import { useServerTarget } from "@/hooks/useServerTarget";
 
 const HOST_LOCAL_NOTE =
-  "Opening files, folders, and terminals uses a helper on this Mac (127.0.0.1). While you are pointed at a remote server, those actions apply to that server's host instead of this one.";
+  "Opening files, folders, and terminals always happens on the server you are pointed at, not on this Mac.";
 
-function selectedServerId(target: BbDesktopServerTarget): string {
-  return target.servers.find((server) => server.selected)?.id ?? "builtin";
-}
+export const CONNECT_HINT_TEXT =
+  "Sign in to bb Connect to add your machines automatically.";
 
-function serverDetail(
-  server: BbDesktopServerTarget["servers"][number],
-): string {
+const SECTION_DESCRIPTION = "Pick which bb server this app runs from.";
+
+function serverDetail(server: BbDesktopServerOption): string {
   if (server.kind === "builtin") {
-    return "The bb server running on this Mac.";
+    return "Runs on this Mac.";
   }
   return server.url ?? "";
 }
 
 export function ConnectionSettingsSection() {
-  const [desktopApi] = useState<BbDesktopApi | null>(() => getBbDesktopInfo());
-  const [target, setTarget] = useState<BbDesktopServerTarget | null>(null);
+  const {
+    busy,
+    selectedServer,
+    showConnectHint,
+    target,
+    selectServer,
+    setCustomServerUrl,
+  } = useServerTarget();
   const [customUrlDraft, setCustomUrlDraft] = useState("");
   const [customUrlError, setCustomUrlError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [syncedCustomUrl, setSyncedCustomUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    const getServerTarget = desktopApi?.experimental_getServerTarget;
-    const onServerTargetChange = desktopApi?.experimental_onServerTargetChange;
-    if (
-      desktopApi === null ||
-      getServerTarget === undefined ||
-      onServerTargetChange === undefined
-    ) {
-      return;
-    }
-    let mounted = true;
-    const apply = (next: BbDesktopServerTarget) => {
-      setTarget(next);
-      setCustomUrlDraft(next.customUrl ?? "");
-    };
-    void getServerTarget
-      .call(desktopApi)
-      .then((next) => {
-        if (mounted && next !== null) {
-          apply(next);
-        }
-      })
-      .catch(() => undefined);
-    const unsubscribe = onServerTargetChange.call(desktopApi, apply);
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [desktopApi]);
+  if (target !== null && target.customUrl !== syncedCustomUrl) {
+    setSyncedCustomUrl(target.customUrl);
+    setCustomUrlDraft(target.customUrl ?? "");
+  }
 
-  const selectServer = useCallback(
-    (serverId: string) => {
-      const setServerTarget = desktopApi?.experimental_setServerTarget;
-      if (desktopApi === null || setServerTarget === undefined) {
-        return;
-      }
-      setBusy(true);
-      void setServerTarget
-        .call(desktopApi, serverId)
-        .catch(() => undefined)
-        .finally(() => setBusy(false));
-    },
-    [desktopApi],
-  );
-
-  const submitCustomUrl = useCallback(() => {
-    const setCustomServerUrl = desktopApi?.experimental_setCustomServerUrl;
-    if (desktopApi === null || setCustomServerUrl === undefined) {
-      return;
-    }
+  const submitCustomUrl = () => {
     const trimmed = customUrlDraft.trim();
     setCustomUrlError(null);
-    setBusy(true);
-    void setCustomServerUrl
-      .call(desktopApi, trimmed.length === 0 ? null : trimmed)
-      .then((accepted) => {
+    void setCustomServerUrl(trimmed.length === 0 ? null : trimmed).then(
+      (accepted) => {
         if (!accepted) {
-          setCustomUrlError("Enter a full http:// or https:// server URL.");
+          setCustomUrlError("Enter a full http:// or https:// address.");
         }
-      })
-      .catch(() => undefined)
-      .finally(() => setBusy(false));
-  }, [customUrlDraft, desktopApi]);
+      },
+    );
+  };
 
   if (target === null) {
     return (
-      <SettingsSection
-        title="Connection"
-        description="Choose which bb server this app talks to."
-      >
+      <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
         <p className="text-sm text-muted-foreground">Loading...</p>
       </SettingsSection>
     );
   }
 
-  const activeId = selectedServerId(target);
-
   return (
-    <SettingsSection
-      title="Connection"
-      description="Choose which bb server this app talks to."
-    >
+    <SettingsSection title="Connection" description={SECTION_DESCRIPTION}>
       <div className="space-y-5">
         <RadioGroup
-          value={activeId}
+          value={selectedServer?.id ?? "builtin"}
           onValueChange={selectServer}
           disabled={busy}
           className="gap-3"
@@ -148,9 +95,15 @@ export function ConnectionSettingsSection() {
           ))}
         </RadioGroup>
 
+        {showConnectHint ? (
+          <p className="text-xs leading-snug text-subtle-foreground">
+            {CONNECT_HINT_TEXT}
+          </p>
+        ) : null}
+
         <SettingsWithControl
-          label="Custom server URL"
-          description="Point this app at any bb server. getbb.app addresses sign in with your bb Connect account automatically."
+          label="Add a server by address"
+          description="Point this app at any bb server. getbb.app addresses sign you in automatically."
           controlPlacement="below"
         >
           <div className="space-y-2">
@@ -166,7 +119,7 @@ export function ConnectionSettingsSection() {
                 }}
                 placeholder="https://my-mac.getbb.app"
                 spellCheck={false}
-                aria-label="Custom server URL"
+                aria-label="Server address"
                 className="h-8 text-xs"
                 disabled={busy}
               />

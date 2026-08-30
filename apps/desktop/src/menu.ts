@@ -6,6 +6,7 @@ import {
 } from "electron";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
+import type { BbDesktopServerKind } from "@bb/desktop-contract";
 
 const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
 const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
@@ -25,16 +26,17 @@ export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
   ConnectServerSyncSkipReason,
   string
 > = {
-  "no-credential": "No Connect servers — sign in to bb Connect",
-  "not-paired": "No Connect servers — Connect not paired on This Mac",
-  "plugin-disabled": "No Connect servers — Connect plugin disabled",
-  unauthorized: "No Connect servers — sign in to bb Connect again",
-  unavailable: "No Connect servers — could not reach bb Connect",
+  "no-credential": "Sign in to add remote servers",
+  "not-paired": "Sign in to reach your other machines",
+  "plugin-disabled": "Turn on bb Connect to use remote servers",
+  unauthorized: "Session expired, sign in again",
+  unavailable: "Can't reach bb Connect right now",
 };
 
-interface ApplicationMenuServerItem {
+export interface ApplicationMenuServerItem {
   checked: boolean;
   id: string;
+  kind: BbDesktopServerKind;
   name: string;
 }
 
@@ -76,6 +78,12 @@ function createServerDaemonLogsMenuItems(
   ];
 }
 
+function hasSelectableServerBeyondBuiltin(
+  servers: readonly { kind: BbDesktopServerKind }[],
+): boolean {
+  return servers.some((server) => server.kind !== "builtin");
+}
+
 function createServerMenuItems(
   args: InstallApplicationMenuArgs,
 ): MenuItemConstructorOptions[] {
@@ -90,16 +98,18 @@ function createServerMenuItems(
     }),
   );
   const skipReason = args.connectServersSkipReason;
+  const showSkipReason =
+    skipReason !== null && !hasSelectableServerBeyondBuiltin(args.servers);
   return [
     ...serverItems,
-    ...(skipReason === null
-      ? []
-      : [
+    ...(showSkipReason
+      ? [
           {
             enabled: false,
             label: CONNECT_SERVERS_SKIPPED_MENU_LABELS[skipReason],
           },
-        ]),
+        ]
+      : []),
     { type: "separator" },
     {
       label: SET_SERVER_URL_MENU_LABEL,

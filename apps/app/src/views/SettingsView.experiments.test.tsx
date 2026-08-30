@@ -9,6 +9,7 @@ function renderSection(overrides?: {
   onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onMobileAppEnabledChange?: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
+  onRemoteUiEnabledChange?: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
@@ -18,6 +19,7 @@ function renderSection(overrides?: {
       editMessagesEnabled={false}
       mobileAppEnabled={false}
       providerSessionReapingEnabled={false}
+      remoteUiEnabled={false}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
@@ -27,6 +29,7 @@ function renderSection(overrides?: {
       onProviderSessionReapingEnabledChange={
         overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
       }
+      onRemoteUiEnabledChange={overrides?.onRemoteUiEnabledChange ?? vi.fn()}
       onTimelineWindowingEnabledChange={
         overrides?.onTimelineWindowingEnabledChange ?? vi.fn()
       }
@@ -53,6 +56,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onProviderSessionReapingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("Idle provider session release"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports remote UI changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onRemoteUiEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Remote UI"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 

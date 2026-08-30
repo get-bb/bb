@@ -1926,3 +1926,10 @@ first consumer.
    authenticates through bb Connect. Confirm the apex allowlist belongs in the
    desktop app, and how it should behave for self-hosted Connect deployments
    and for the `BB_DEV_CONNECT_BASE_URL` dev origin.
+6. **`connectServersSkipReason`.** The snapshot carries why the bb Connect
+   server sync produced nothing (`no-credential`, `not-paired`,
+   `plugin-disabled`, `unauthorized`, `unavailable`) so the renderer can show
+   the same guidance the native menu shows. Both surfaces render it only when
+   no server beyond `This Mac` is selectable. Decide whether the renderer
+   should receive a raw reason code it has to map to copy, or a resolved
+   message owned by the main process.

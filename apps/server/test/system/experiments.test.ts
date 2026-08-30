@@ -18,6 +18,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: false,
         providerSessionReaping: false,
+        remoteUi: false,
         timelineWindowing: false,
       });
     });
@@ -33,6 +34,7 @@ describe("experiments settings", () => {
           editMessages: true,
           mobileApp: true,
           providerSessionReaping: true,
+          remoteUi: true,
           timelineWindowing: true,
         }),
       });
@@ -42,6 +44,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        remoteUi: true,
         timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
@@ -49,6 +52,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        remoteUi: true,
         timelineWindowing: true,
       });
 
@@ -60,6 +64,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        remoteUi: true,
         timelineWindowing: true,
       });
     });
@@ -87,6 +92,7 @@ describe("experiments settings", () => {
           editMessages: true,
           mobileApp: false,
           providerSessionReaping: true,
+          remoteUi: true,
           timelineWindowing: false,
         }),
       });
@@ -112,6 +118,7 @@ describe("experiments settings", () => {
           editMessages: false,
           mobileApp: false,
           providerSessionReaping: false,
+          remoteUi: false,
           timelineWindowing: false,
         }),
       });

@@ -54,7 +54,10 @@ import {
   stopForeignRuntime,
 } from "./foreign-runtime.js";
 import { createLocalViewUrl } from "./local-view.js";
-import { installApplicationMenu } from "./menu.js";
+import {
+  installApplicationMenu,
+  type ApplicationMenuServerItem,
+} from "./menu.js";
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
   resolveApplicationMenuAccelerators,
@@ -681,44 +684,22 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
-  checked: boolean;
-  id: string;
-  name: string;
-}> {
-  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
-  const items = [
-    {
-      checked: target.kind === "builtin",
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-    },
-  ];
-  for (const server of connectServers) {
-    items.push({
-      checked:
-        target.kind === "connect" && target.server.handle === server.handle,
-      id: connectServerMenuId(server.handle),
-      name: server.name,
-    });
-  }
-  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
-  if (customUrl !== null) {
-    items.push({
-      checked: target.kind === "custom",
-      id: "custom",
-      name: formatCustomServerName(customUrl),
-    });
-  }
-  return items;
+function buildMenuServerItems(
+  connectServers: ConnectServerRef[],
+): ApplicationMenuServerItem[] {
+  return buildServerOptions(connectServers).map((server) => ({
+    checked: server.selected,
+    id: server.id,
+    kind: server.kind,
+    name: server.name,
+  }));
 }
 
-function buildServerTargetState(): BbDesktopServerTarget | null {
-  if (serverTargetStore === null) {
-    return null;
-  }
-  const target = serverTargetStore.getTarget();
-  const customUrl = serverTargetStore.getCustomServerUrl();
+function buildServerOptions(
+  connectServers: ConnectServerRef[],
+): BbDesktopServerTarget["servers"] {
+  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
+  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
   const servers: BbDesktopServerTarget["servers"] = [
     {
       id: "builtin",
@@ -728,7 +709,7 @@ function buildServerTargetState(): BbDesktopServerTarget | null {
       url: null,
     },
   ];
-  for (const server of listMenuConnectServers()) {
+  for (const server of connectServers) {
     servers.push({
       id: connectServerMenuId(server.handle),
       kind: "connect",
@@ -747,7 +728,25 @@ function buildServerTargetState(): BbDesktopServerTarget | null {
       url: customUrl,
     });
   }
-  return { customUrl, servers };
+  return servers;
+}
+
+function resolveConnectServersSkipReason(
+  connectServers: ConnectServerRef[],
+): ConnectServerSyncSkipReason | null {
+  return connectServers.length === 0 ? connectServerSyncSkipReason : null;
+}
+
+function buildServerTargetState(): BbDesktopServerTarget | null {
+  if (serverTargetStore === null) {
+    return null;
+  }
+  const connectServers = listMenuConnectServers();
+  return {
+    connectServersSkipReason: resolveConnectServersSkipReason(connectServers),
+    customUrl: serverTargetStore.getCustomServerUrl(),
+    servers: buildServerOptions(connectServers),
+  };
 }
 
 function sendServerTargetChanged(): void {
@@ -775,8 +774,7 @@ function installCurrentApplicationMenu(): void {
   const connectServers = listMenuConnectServers();
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
-    connectServersSkipReason:
-      connectServers.length === 0 ? connectServerSyncSkipReason : null,
+    connectServersSkipReason: resolveConnectServersSkipReason(connectServers),
     isMac: process.platform === "darwin",
     createNewWindow() {
       void createApplicationWindow({

@@ -3,6 +3,7 @@ import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { isDesktopServerTargetAvailable } from "@/lib/bb-desktop";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
@@ -52,6 +53,8 @@ export function useSettingsNavState(): SettingsNavState {
   const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
+  const remoteUiEnabled =
+    useSystemConfig().data?.experiments.remoteUi ?? false;
 
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,
@@ -83,7 +86,7 @@ export function useSettingsNavState(): SettingsNavState {
       );
     }
     if (section.id === "connection") {
-      return isDesktopServerTargetAvailable();
+      return remoteUiEnabled && isDesktopServerTargetAvailable();
     }
     return true;
   });

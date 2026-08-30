@@ -52,8 +52,21 @@ export const bbDesktopServerOptionSchema = z
   .strict();
 export type BbDesktopServerOption = z.infer<typeof bbDesktopServerOptionSchema>;
 
+export const bbDesktopConnectServersSkipReasonSchema = z.enum([
+  "no-credential",
+  "not-paired",
+  "plugin-disabled",
+  "unauthorized",
+  "unavailable",
+]);
+export type BbDesktopConnectServersSkipReason = z.infer<
+  typeof bbDesktopConnectServersSkipReasonSchema
+>;
+
 export const bbDesktopServerTargetSchema = z
   .object({
+    connectServersSkipReason:
+      bbDesktopConnectServersSkipReasonSchema.nullable(),
     customUrl: z.string().min(1).nullable(),
     servers: z.array(bbDesktopServerOptionSchema),
   })

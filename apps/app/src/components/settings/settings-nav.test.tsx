@@ -10,11 +10,18 @@ import { useSettingsNavState } from "./settings-nav";
 
 const mocks = vi.hoisted(() => ({
   accessState: "unavailable",
+  remoteUi: true,
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
   useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: { experiments: { remoteUi: mocks.remoteUi } },
+  }),
 }));
 
 function wrapperFor(path: string) {
@@ -33,6 +40,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   vi.unstubAllGlobals();
   mocks.accessState = "unavailable";
+  mocks.remoteUi = true;
 });
 
 describe("useSettingsNavState", () => {
@@ -108,6 +116,21 @@ describe("useSettingsNavState", () => {
 
     expect(result.current.activeSection).toBe("connection");
     expect(result.current.sections.map((section) => section.id)).toContain(
+      "connection",
+    );
+  });
+
+  it("hides Connection when the remoteUi experiment is off", () => {
+    mocks.remoteUi = false;
+    vi.stubGlobal("bbDesktop", {
+      experimental_getServerTarget: () => Promise.resolve(null),
+    });
+
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/connection"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
       "connection",
     );
   });

@@ -20,6 +20,7 @@ import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import { SidebarServerIndicator } from "./SidebarServerIndicator";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -254,6 +255,7 @@ export function AppSidebar({
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {}
+        <SidebarServerIndicator />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
