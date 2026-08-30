@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { HOVER_NONE_QUERY } from "@bb/shared-ui/hooks/use-media-query";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   computeMessageActionRowLayout,
@@ -82,6 +83,19 @@ function mockMobileCoarsePointer() {
 function mockWideCoarsePointer() {
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
     matches: query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function mockWideNoHoverPointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === HOVER_NONE_QUERY,
     media: query,
     onchange: null,
     addListener: () => {},
@@ -472,6 +486,25 @@ describe("MessageActionBar", () => {
     expect(fork.hasAttribute("data-state")).toBe(false);
     expect(fork.classList).toContain("pointer-coarse:opacity-100");
     expect(fork.classList).not.toContain("max-md:pointer-coarse:opacity-100");
+  });
+
+  it("uses the always-visible touch surface when the pointer cannot hover", () => {
+    mockWideNoHoverPointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+        onFork={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Message actions" }).classList,
+    ).toContain("[@media(hover:none)]:inline-flex");
+    expect(
+      screen.queryByRole("button", { name: "Fork into new thread" }),
+    ).toBeNull();
   });
 
   it("collapses desktop actions that do not fit into a trailing overflow menu", () => {
