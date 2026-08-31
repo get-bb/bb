@@ -50,6 +50,18 @@ export function TabPill({
 }: TabPillProps) {
   return (
     <div
+      onAuxClick={(event) => {
+        if (
+          event.button !== 1 ||
+          closeAction === null ||
+          closeAction.isClosing
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        closeAction.onClose();
+      }}
       className={cn(
         `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
