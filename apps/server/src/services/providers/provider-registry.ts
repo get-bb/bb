@@ -231,7 +231,8 @@ export function createProviderRegistryService(
 
     lookupInstalled(key) {
       const hostEntries = installedByHostId.get(key.hostId);
-      const entry = hostEntries?.get(key.providerId);
+      if (hostEntries === undefined) return undefined;
+      const entry = hostEntries.get(key.providerId);
       if (entry === undefined) return undefined;
       if (
         entry.registrationRevision !== registrationRevision ||
