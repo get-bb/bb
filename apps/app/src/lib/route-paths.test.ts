@@ -60,6 +60,17 @@ describe("route path helpers", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
   });
 
+  it("recognizes machine settings routes", () => {
+    const path = "/settings/machines/host_123";
+    expect(isRoutePath({ path })).toBe(true);
+    expect(
+      resolveRouteHref({
+        currentOrigin: "https://bb.local",
+        href: `https://bb.local${path}`,
+      }),
+    ).toEqual({ path });
+  });
+
   it("builds and recognizes the Extensions routes", () => {
     expect(getSkillsRoutePath()).toBe("/extensions/skills");
     expect(
