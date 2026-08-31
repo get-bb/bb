@@ -41,6 +41,7 @@ interface CreateProviderProcessManagerArgs {
   onStderr?: NonNullable<AgentRuntimeOptions["onStderr"]>;
   onProcessExit: NonNullable<AgentRuntimeOptions["onProcessExit"]>;
   rawScriptPath?: string;
+  skipPostInitializeRequests?: boolean;
   workspacePath: string;
 }
 
@@ -66,7 +67,7 @@ describe("createAgentRuntime process lifecycle", () => {
   function createManagerAdapter(
     args: Pick<
       CreateProviderProcessManagerArgs,
-      "adapterProcessEnv" | "rawScriptPath"
+      "adapterProcessEnv" | "rawScriptPath" | "skipPostInitializeRequests"
     >,
   ): BridgeProtocolAdapter {
     const adapter = createProviderForId("fake", {
@@ -79,6 +80,9 @@ describe("createAgentRuntime process lifecycle", () => {
         : { command: adapter.process.command, args: [args.rawScriptPath] };
     return {
       ...adapter,
+      ...(args.skipPostInitializeRequests
+        ? { buildPostInitializeRequests: () => [] }
+        : {}),
       process: {
         ...process,
         ...(args.adapterProcessEnv !== undefined
@@ -277,36 +281,46 @@ describe("createAgentRuntime process lifecycle", () => {
       onProcessExit: vi.fn(),
       workspacePath: tmpDir,
     });
-
-    await manager.ensureProvider({
+    const provider = {
       bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: "fake",
       providerId: "fake",
-    });
-    const retiringProcess = manager.requireProviderProcess({
-      processKey: "fake",
-      providerId: "fake",
-    });
+    };
 
-    const retirement = manager.shutdownProvider({
-      processKey: "fake",
-      providerId: "fake",
-    });
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: "fake",
-      providerId: "fake",
-    });
+    await manager.ensureProvider(provider);
+    const retiringProcess = manager.requireProviderProcess(provider);
+    const retirement = manager.shutdownProvider(provider);
+    await manager.ensureProvider(provider);
     await retirement;
 
-    const replacementProcess = manager.requireProviderProcess({
-      processKey: "fake",
-      providerId: "fake",
-    });
+    const replacementProcess = manager.requireProviderProcess(provider);
     expect(replacementProcess).not.toBe(retiringProcess);
     expect(retiringProcess.child.killed).toBe(true);
 
     await manager.shutdown();
+  });
+
+  it("finishes a retirement-blocked ensure before full shutdown", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      skipPostInitializeRequests: true,
+      workspacePath: tmpDir,
+    });
+    const provider = {
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    };
+
+    await manager.ensureProvider(provider);
+    const retirement = manager.shutdownProvider(provider);
+    const replacementStart = manager.ensureProvider(provider);
+    const fullShutdown = manager.shutdown();
+
+    await expect(
+      Promise.all([retirement, replacementStart, fullShutdown]),
+    ).resolves.toEqual([undefined, undefined, undefined]);
+    expect(manager.listRunningProviders()).toEqual([]);
   });
 
   it("bounds provider stderr while data arrives without a newline", async () => {

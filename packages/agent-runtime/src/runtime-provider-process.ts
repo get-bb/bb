@@ -322,6 +322,16 @@ export class RuntimeProviderProcessManager {
   }
 
   async shutdown(): Promise<void> {
+    const retiringProcessKeys = [...this.providerRetiring.keys()];
+    if (retiringProcessKeys.length > 0) {
+      await Promise.allSettled(this.providerRetiring.values());
+      await Promise.allSettled(
+        retiringProcessKeys.flatMap((processKey) => {
+          const start = this.providerStarting.get(processKey);
+          return start === undefined ? [] : [start];
+        }),
+      );
+    }
     this.shuttingDown = true;
     const shutdownPromises: Promise<void>[] = [];
 
