@@ -429,6 +429,50 @@ interface UsePersistentOverlayFocusArgs {
   requestClose: () => void;
 }
 
+type PersistentOverlayReturnFocus = {
+  ariaLabel: string | null;
+  dataTestId: string | null;
+  element: HTMLElement;
+  id: string | null;
+  ownerDocument: Document;
+  tagName: string;
+};
+
+function capturePersistentOverlayReturnFocus(
+  element: HTMLElement,
+): PersistentOverlayReturnFocus {
+  return {
+    ariaLabel: element.getAttribute("aria-label"),
+    dataTestId: element.getAttribute("data-testid"),
+    element,
+    id: element.id || null,
+    ownerDocument: element.ownerDocument,
+    tagName: element.tagName,
+  };
+}
+
+function resolvePersistentOverlayReturnFocus(
+  target: PersistentOverlayReturnFocus,
+): HTMLElement | null {
+  if (target.element.isConnected) return target.element;
+  if (target.id !== null) {
+    const element = target.ownerDocument.getElementById(target.id);
+    if (element instanceof HTMLElement) return element;
+  }
+  if (target.ariaLabel === null && target.dataTestId === null) return null;
+  return (
+    Array.from(target.ownerDocument.getElementsByTagName(target.tagName)).find(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement &&
+        (target.ariaLabel === null ||
+          element.getAttribute("aria-label") === target.ariaLabel) &&
+        (target.dataTestId === null ||
+          element.getAttribute("data-testid") === target.dataTestId) &&
+        element.closest('[aria-hidden="true"], [inert]') === null,
+    ) ?? null
+  );
+}
+
 export function usePersistentOverlayFocus({
   onAfterCloseAutoFocus,
   onBeforeCloseAutoFocus,
@@ -436,7 +480,9 @@ export function usePersistentOverlayFocus({
   panelRef,
   requestClose,
 }: UsePersistentOverlayFocusArgs): void {
-  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  const returnFocusRef = React.useRef<PersistentOverlayReturnFocus | null>(
+    null,
+  );
 
   React.useLayoutEffect(() => {
     if (!open) return;
@@ -445,7 +491,9 @@ export function usePersistentOverlayFocus({
     const ownerDocument = panel.ownerDocument;
     const previousFocus = ownerDocument.activeElement;
     returnFocusRef.current =
-      previousFocus instanceof HTMLElement ? previousFocus : null;
+      previousFocus instanceof HTMLElement
+        ? capturePersistentOverlayReturnFocus(previousFocus)
+        : null;
     const unregister = registerOpenDrawer(ownerDocument, {
       panel: () => panelRef.current,
       requestClose,
@@ -459,26 +507,38 @@ export function usePersistentOverlayFocus({
     let cancelDeferredFocus: (() => void) | undefined;
     if (previousOpenRef.current && !open) {
       onBeforeCloseAutoFocus?.();
-      const returnFocus = returnFocusRef.current;
+      const returnFocusTarget = returnFocusRef.current;
+      const returnFocus =
+        returnFocusTarget === null
+          ? null
+          : resolvePersistentOverlayReturnFocus(returnFocusTarget);
       if (
         returnFocus?.isConnected &&
         returnFocus.closest('[aria-hidden="true"], [inert]') === null
       ) {
         returnFocus.focus({ preventScroll: true });
-        if (returnFocus.ownerDocument.activeElement !== returnFocus) {
-          const ownerWindow = returnFocus.ownerDocument.defaultView;
-          if (ownerWindow !== null) {
-            const frame = ownerWindow.requestAnimationFrame(() => {
-              if (
-                returnFocus.isConnected &&
-                returnFocus.closest('[aria-hidden="true"], [inert]') === null
-              ) {
-                returnFocus.focus({ preventScroll: true });
-              }
-              onAfterCloseAutoFocus?.();
-            });
-            cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
-          }
+      }
+      if (
+        returnFocusTarget !== null &&
+        returnFocusTarget.ownerDocument.activeElement !== returnFocus
+      ) {
+        const ownerWindow = returnFocusTarget.ownerDocument.defaultView;
+        if (ownerWindow !== null) {
+          const frame = ownerWindow.requestAnimationFrame(() => {
+            const deferredReturnFocus = resolvePersistentOverlayReturnFocus(
+              returnFocusTarget,
+            );
+            if (
+              deferredReturnFocus?.isConnected &&
+              deferredReturnFocus.closest(
+                '[aria-hidden="true"], [inert]',
+              ) === null
+            ) {
+              deferredReturnFocus.focus({ preventScroll: true });
+            }
+            onAfterCloseAutoFocus?.();
+          });
+          cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
         }
       }
       returnFocusRef.current = null;
