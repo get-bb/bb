@@ -122,7 +122,7 @@ describe("ThreadDetailHeader", () => {
     const trigger = screen.getByRole("button", {
       name: "Hide right panel",
     });
-    expect(trigger.closest("[data-app-page-header-actions]")).not.toBeNull();
+    expect(trigger.closest("[data-thread-header-pane-actions]")).not.toBeNull();
   });
 
   it.each([

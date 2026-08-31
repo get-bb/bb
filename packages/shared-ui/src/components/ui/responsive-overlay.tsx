@@ -445,7 +445,10 @@ export function usePersistentOverlayFocus({
     const ownerDocument = panel.ownerDocument;
     const previousFocus = ownerDocument.activeElement;
     returnFocusRef.current =
-      previousFocus instanceof HTMLElement ? previousFocus : null;
+      previousFocus instanceof HTMLElement &&
+      previousFocus !== ownerDocument.body
+        ? previousFocus
+        : null;
     const unregister = registerOpenDrawer(ownerDocument, {
       panel: () => panelRef.current,
       requestClose,
