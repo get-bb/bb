@@ -965,7 +965,7 @@ export function ThreadSecondaryPanel({
   ) : (
     renderPanelSurface({
       activeSurfaceFixedTab: activeFixedTab,
-      activeSurfaceTabId: activeTab?.id ?? null,
+      activeSurfaceTabId: activeRenderableTab?.tab.id ?? activeTab?.id ?? null,
       surfaceTabs: tabs,
       fixedSurfaceTabs: fixedTabs,
       isFocused: true,
