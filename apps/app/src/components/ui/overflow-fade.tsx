@@ -2,7 +2,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 type OverflowFadePlacement = "above" | "below" | "left" | "right";
 export type OverflowFadeTone = "background" | "sidebar" | "surface-raised";
-type OverflowFadeSize = "default" | "sm";
+type OverflowFadeSize = "default" | "sm" | "lg";
 
 interface OverflowFadeProps {
   className?: string;
@@ -32,11 +32,17 @@ const OVERFLOW_FADE_VERTICAL_SIZE_CLASSES: Record<
     aboveOffset: "-top-2",
     belowOffset: "-bottom-2",
   },
+  lg: {
+    height: "h-24",
+    aboveOffset: "-top-24",
+    belowOffset: "-bottom-24",
+  },
 };
 
 const OVERFLOW_FADE_HORIZONTAL_WIDTH_CLASS: Record<OverflowFadeSize, string> = {
   default: "w-6",
   sm: "w-2",
+  lg: "w-24",
 };
 
 function isHorizontalPlacement(

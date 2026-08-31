@@ -378,6 +378,7 @@ interface PromptBoxInternalProps {
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  allowSoftKeyboardAutoFocus?: boolean;
   className?: string;
   textEffects?: readonly ComposerTextEffectSource[];
   onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
@@ -1100,6 +1101,7 @@ export function PromptBoxInternal({
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
+  allowSoftKeyboardAutoFocus = false,
   className,
   textEffects,
   onComposerLayoutChange,
@@ -1163,7 +1165,8 @@ export function PromptBoxInternal({
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
-  const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
+  const shouldAvoidSoftKeyboardAutofocus =
+    isPointerCoarse && !allowSoftKeyboardAutoFocus;
   const formRef = useRef<HTMLFormElement>(null);
   const typeaheadMenuRef = useRef<HTMLDivElement>(null);
   const reportQueuedEditorTypeaheadLayout = useContext(
